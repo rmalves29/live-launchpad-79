@@ -28,6 +28,13 @@ const Index = () => {
       color: 'text-green-600'
     },
     {
+      title: 'Produtos',
+      description: 'Cadastrar e gerenciar produtos',
+      icon: Package,
+      path: '/produtos',
+      color: 'text-orange-600'
+    },
+    {
       title: 'Pedidos',
       description: 'Gerenciar todos os pedidos do sistema',
       icon: List,

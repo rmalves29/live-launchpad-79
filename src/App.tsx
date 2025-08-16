@@ -13,6 +13,7 @@ import Checkout from "./pages/Checkout";
 import Pedidos from "./pages/Pedidos";
 import Sorteio from "./pages/Sorteio";
 import Config from "./pages/Config";
+import Produtos from "./pages/Produtos";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +54,11 @@ const App = () => (
             <Route path="/config" element={
               <ProtectedRoute>
                 <Config />
+              </ProtectedRoute>
+            } />
+            <Route path="/produtos" element={
+              <ProtectedRoute>
+                <Produtos />
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
