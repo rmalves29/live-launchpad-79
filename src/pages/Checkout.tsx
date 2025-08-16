@@ -226,6 +226,25 @@ const Checkout = () => {
     return `${numbers.slice(0, 5)}-${numbers.slice(5, 8)}`;
   };
 
+  const handleCepChange = async (value: string) => {
+    const formattedCep = formatCep(value);
+    setCep(formattedCep);
+    
+    // Auto calculate shipping when CEP is complete
+    const cleanCep = formattedCep.replace(/[^0-9]/g, '');
+    if (cleanCep.length === 8 && cart) {
+      // Clear previous quotes
+      setShippingQuotes([]);
+      setSelectedShipping(null);
+      
+      // Get both PAC and SEDEX quotes automatically
+      await Promise.all([
+        getShippingQuotes('PAC'),
+        getShippingQuotes('SEDEX')
+      ]);
+    }
+  };
+
   return (
     <div className="container mx-auto py-6 max-w-4xl space-y-6">
       <div className="flex justify-between items-center">
@@ -307,7 +326,7 @@ const Checkout = () => {
                 <Input
                   placeholder="CEP de destino"
                   value={cep}
-                  onChange={(e) => setCep(formatCep(e.target.value))}
+                  onChange={(e) => handleCepChange(e.target.value)}
                   maxLength={9}
                 />
                 <Button 
