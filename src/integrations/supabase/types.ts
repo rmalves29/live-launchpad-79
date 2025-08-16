@@ -86,6 +86,51 @@ export type Database = {
         }
         Relationships: []
       }
+      customers: {
+        Row: {
+          cep: string | null
+          city: string | null
+          complement: string | null
+          cpf: string | null
+          created_at: string | null
+          id: number
+          name: string
+          number: string | null
+          phone: string
+          state: string | null
+          street: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cep?: string | null
+          city?: string | null
+          complement?: string | null
+          cpf?: string | null
+          created_at?: string | null
+          id?: number
+          name: string
+          number?: string | null
+          phone: string
+          state?: string | null
+          street?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cep?: string | null
+          city?: string | null
+          complement?: string | null
+          cpf?: string | null
+          created_at?: string | null
+          id?: number
+          name?: string
+          number?: string | null
+          phone?: string
+          state?: string | null
+          street?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           cart_id: number | null
