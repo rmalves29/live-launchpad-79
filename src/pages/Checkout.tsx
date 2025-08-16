@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Copy, Package, Truck } from 'lucide-react';
+import { Loader2, Copy, Package, Truck, User, MapPin } from 'lucide-react';
 
 interface CartItem {
   id: number;
@@ -30,16 +30,39 @@ interface ShippingQuote {
   description?: string;
 }
 
+interface CustomerData {
+  name: string;
+  cpf: string;
+}
+
+interface AddressData {
+  street: string;
+  number: string;
+  complement: string;
+  city: string;
+  state: string;
+  cep: string;
+}
+
 const Checkout = () => {
   const { toast } = useToast();
   const [phone, setPhone] = useState('');
-  const [cep, setCep] = useState('');
+  const [customerData, setCustomerData] = useState<CustomerData>({ name: '', cpf: '' });
+  const [addressData, setAddressData] = useState<AddressData>({
+    street: '',
+    number: '',
+    complement: '',
+    city: '',
+    state: '',
+    cep: ''
+  });
   const [cart, setCart] = useState<Cart | null>(null);
   const [shippingQuotes, setShippingQuotes] = useState<ShippingQuote[]>([]);
   const [selectedShipping, setSelectedShipping] = useState<ShippingQuote | null>(null);
   const [paymentLink, setPaymentLink] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingShipping, setLoadingShipping] = useState(false);
+  const [loadingAddress, setLoadingAddress] = useState(false);
   const [generatingPayment, setGeneratingPayment] = useState(false);
 
   const normalizePhone = (phone: string): string => {
@@ -127,7 +150,7 @@ const Checkout = () => {
   };
 
   const getShippingQuotes = async (service: 'PAC' | 'SEDEX') => {
-    if (!cart || !cep) {
+    if (!cart || !addressData.cep) {
       toast({
         title: 'Erro',
         description: 'Carregue o carrinho e informe o CEP primeiro',
@@ -136,7 +159,7 @@ const Checkout = () => {
       return;
     }
 
-    const cleanCep = cep.replace(/[^0-9]/g, '');
+    const cleanCep = addressData.cep.replace(/[^0-9]/g, '');
     if (cleanCep.length !== 8) {
       toast({
         title: 'Erro',
@@ -239,22 +262,68 @@ const Checkout = () => {
     return `${numbers.slice(0, 5)}-${numbers.slice(5, 8)}`;
   };
 
+  const searchAddressByCep = async (cep: string) => {
+    const cleanCep = cep.replace(/[^0-9]/g, '');
+    if (cleanCep.length !== 8) return;
+
+    setLoadingAddress(true);
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      const data = await response.json();
+      
+      if (data.erro) {
+        toast({
+          title: 'CEP não encontrado',
+          description: 'Verifique o CEP informado',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setAddressData(prev => ({
+        ...prev,
+        street: data.logradouro || '',
+        city: data.localidade || '',
+        state: data.uf || '',
+        cep: formatCep(cleanCep)
+      }));
+
+      toast({
+        title: 'Endereço encontrado',
+        description: `${data.logradouro}, ${data.localidade} - ${data.uf}`
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao buscar endereço',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingAddress(false);
+    }
+  };
+
   const handleCepChange = async (value: string) => {
     const formattedCep = formatCep(value);
-    setCep(formattedCep);
+    setAddressData(prev => ({ ...prev, cep: formattedCep }));
     
-    // Auto calculate shipping when CEP is complete
+    // Auto search address when CEP is complete
     const cleanCep = formattedCep.replace(/[^0-9]/g, '');
-    if (cleanCep.length === 8 && cart) {
-      // Clear previous delivery quotes but keep pickup option
-      setShippingQuotes(prev => prev.filter(q => q.service === 'RETIRADA'));
-      setSelectedShipping(null);
+    if (cleanCep.length === 8) {
+      await searchAddressByCep(formattedCep);
       
-      // Get both PAC and SEDEX quotes automatically
-      await Promise.all([
-        getShippingQuotes('PAC'),
-        getShippingQuotes('SEDEX')
-      ]);
+      // Auto calculate shipping when CEP is complete and cart is loaded
+      if (cart) {
+        // Clear previous delivery quotes but keep pickup option
+        setShippingQuotes(prev => prev.filter(q => q.service === 'RETIRADA'));
+        setSelectedShipping(null);
+        
+        // Get both PAC and SEDEX quotes automatically
+        await Promise.all([
+          getShippingQuotes('PAC'),
+          getShippingQuotes('SEDEX')
+        ]);
+      }
     }
   };
 
@@ -264,28 +333,45 @@ const Checkout = () => {
         <h1 className="text-3xl font-bold">Checkout</h1>
       </div>
 
-      {/* Customer Phone */}
+      {/* Customer Data */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
-            <Package className="h-5 w-5 mr-2" />
+            <User className="h-5 w-5 mr-2" />
             Dados do Cliente
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex space-x-4">
-            <Input
-              placeholder="Telefone do cliente"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="flex-1"
-            />
-            <Button onClick={loadCart} disabled={loading}>
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              Carregar Carrinho
-            </Button>
+          <div className="space-y-4">
+            <div className="flex space-x-4">
+              <Input
+                placeholder="Telefone do cliente"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="flex-1"
+              />
+              <Button onClick={loadCart} disabled={loading}>
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
+                Carregar Carrinho
+              </Button>
+            </div>
+            
+            {cart && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                <Input
+                  placeholder="Nome completo"
+                  value={customerData.name}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, name: e.target.value }))}
+                />
+                <Input
+                  placeholder="CPF"
+                  value={customerData.cpf}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, cpf: e.target.value }))}
+                />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -324,8 +410,69 @@ const Checkout = () => {
         </Card>
       )}
 
-      {/* Shipping */}
+      {/* Address Information */}
       {cart && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <MapPin className="h-5 w-5 mr-2" />
+              Endereço de Entrega
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Input
+                  placeholder="CEP"
+                  value={addressData.cep}
+                  onChange={(e) => handleCepChange(e.target.value)}
+                  maxLength={9}
+                />
+                <Input
+                  placeholder="Rua"
+                  value={addressData.street}
+                  onChange={(e) => setAddressData(prev => ({ ...prev, street: e.target.value }))}
+                  className="md:col-span-2"
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Input
+                  placeholder="Número"
+                  value={addressData.number}
+                  onChange={(e) => setAddressData(prev => ({ ...prev, number: e.target.value }))}
+                />
+                <Input
+                  placeholder="Complemento"
+                  value={addressData.complement}
+                  onChange={(e) => setAddressData(prev => ({ ...prev, complement: e.target.value }))}
+                />
+                <Input
+                  placeholder="Cidade"
+                  value={addressData.city}
+                  onChange={(e) => setAddressData(prev => ({ ...prev, city: e.target.value }))}
+                />
+                <Input
+                  placeholder="Estado"
+                  value={addressData.state}
+                  onChange={(e) => setAddressData(prev => ({ ...prev, state: e.target.value }))}
+                  maxLength={2}
+                />
+              </div>
+              
+              {loadingAddress && (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Buscando endereço...</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Shipping */}
+      {cart && addressData.cep && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -336,12 +483,6 @@ const Checkout = () => {
           <CardContent>
             <div className="space-y-4">
               <div className="flex space-x-4">
-                <Input
-                  placeholder="CEP de destino"
-                  value={cep}
-                  onChange={(e) => handleCepChange(e.target.value)}
-                  maxLength={9}
-                />
                 <Button 
                   onClick={() => getShippingQuotes('PAC')} 
                   disabled={loadingShipping}
