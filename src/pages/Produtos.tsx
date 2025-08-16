@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Package } from 'lucide-react';
+import { Plus, Edit2, Package, Upload, X } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 
 interface Product {
@@ -38,6 +38,10 @@ const Produtos = () => {
     image_url: '',
     is_active: true
   });
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -76,12 +80,31 @@ const Produtos = () => {
     }
 
     try {
+      setUploadingImage(true);
+      
+      let imageUrl = formData.image_url;
+      
+      // If a new file is selected, upload it
+      if (selectedFile) {
+        try {
+          imageUrl = await uploadImage(selectedFile);
+        } catch (uploadError: any) {
+          toast({
+            title: "Erro no upload",
+            description: uploadError.message || "Erro ao fazer upload da imagem",
+            variant: "destructive",
+          });
+          setUploadingImage(false);
+          return;
+        }
+      }
+
       const productData = {
         code: formData.code.toUpperCase().startsWith('C') ? formData.code.toUpperCase() : `C${formData.code}`,
         name: formData.name,
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock) || 0,
-        image_url: formData.image_url || null,
+        image_url: imageUrl || null,
         is_active: formData.is_active
       };
 
@@ -119,6 +142,47 @@ const Produtos = () => {
         description: error.message || "Erro desconhecido",
         variant: "destructive",
       });
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const uploadImage = async (file: File): Promise<string> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random()}.${fileExt}`;
+    const filePath = `products/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('product-images')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      
+      // Create preview URL
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+    }
+  };
+
+  const removeSelectedFile = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
     }
   };
 
@@ -132,6 +196,9 @@ const Produtos = () => {
       is_active: true
     });
     setEditingProduct(null);
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setUploadingImage(false);
   };
 
   const handleEdit = (product: Product) => {
@@ -262,13 +329,64 @@ const Produtos = () => {
               </div>
               
               <div>
-                <Label htmlFor="image_url">URL da Imagem</Label>
-                <Input
-                  id="image_url"
-                  placeholder="https://..."
-                  value={formData.image_url}
-                  onChange={(e) => setFormData(prev => ({ ...prev, image_url: e.target.value }))}
-                />
+                <Label>Imagem do Produto</Label>
+                <div className="space-y-2">
+                  {/* File input */}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      id="image-upload"
+                    />
+                    <Label 
+                      htmlFor="image-upload" 
+                      className="flex items-center gap-2 cursor-pointer p-2 border border-input rounded-md hover:bg-accent"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Escolher imagem
+                    </Label>
+                    {selectedFile && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={removeSelectedFile}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {/* Preview */}
+                  {previewUrl && (
+                    <div className="w-20 h-20 border rounded overflow-hidden">
+                      <img 
+                        src={previewUrl} 
+                        alt="Preview" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Show current image if editing and no new file selected */}
+                  {editingProduct && !selectedFile && formData.image_url && (
+                    <div className="w-20 h-20 border rounded overflow-hidden">
+                      <img 
+                        src={formData.image_url} 
+                        alt="Imagem atual" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  
+                  {selectedFile && (
+                    <p className="text-sm text-muted-foreground">
+                      Arquivo selecionado: {selectedFile.name}
+                    </p>
+                  )}
+                </div>
               </div>
               
               <div className="flex items-center space-x-2">
@@ -288,8 +406,8 @@ const Produtos = () => {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit">
-                  {editingProduct ? 'Atualizar' : 'Cadastrar'}
+                <Button type="submit" disabled={uploadingImage}>
+                  {uploadingImage ? 'Salvando...' : (editingProduct ? 'Atualizar' : 'Cadastrar')}
                 </Button>
               </div>
             </form>
