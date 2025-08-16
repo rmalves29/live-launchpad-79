@@ -14,6 +14,7 @@ import { Loader2, CalendarIcon, Eye, Filter, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import Navbar from '@/components/Navbar';
 
 interface Order {
   id: number;
@@ -81,8 +82,13 @@ const Pedidos = () => {
     setProcessingIds(prev => new Set(prev).add(orderId));
     
     try {
-      // Simulate API call - in real implementation, this would call POST /orders/:id/mark-paid
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Update payment status in database
+      const { error } = await supabase
+        .from('orders')
+        .update({ is_paid: !currentStatus })
+        .eq('id', orderId);
+
+      if (error) throw error;
       
       // Update local state
       setOrders(prev => prev.map(order => 
@@ -149,14 +155,17 @@ const Pedidos = () => {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Gestão de Pedidos</h1>
-        <Button onClick={exportToCSV} variant="outline">
-          <Download className="h-4 w-4 mr-2" />
-          Exportar CSV
-        </Button>
-      </div>
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <div className="p-6">
+        <div className="container mx-auto space-y-6">
+          <div className="flex justify-between items-center">
+            <h1 className="text-3xl font-bold">Gestão de Pedidos</h1>
+            <Button onClick={exportToCSV} variant="outline">
+              <Download className="h-4 w-4 mr-2" />
+              Exportar CSV
+            </Button>
+          </div>
 
       {/* Filters */}
       <Card>
@@ -193,6 +202,8 @@ const Pedidos = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="MANUAL">Manual</SelectItem>
+                  <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
                   <SelectItem value="BAZAR">BAZAR</SelectItem>
                   <SelectItem value="LIVE">LIVE</SelectItem>
                 </SelectContent>
@@ -322,6 +333,8 @@ const Pedidos = () => {
           )}
         </CardContent>
       </Card>
+        </div>
+      </div>
     </div>
   );
 };

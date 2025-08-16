@@ -123,8 +123,28 @@ const PedidosManual = () => {
     setProcessingIds(prev => new Set(prev).add(product.id));
 
     try {
-      // Simulate API call since we don't have the backend yet
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const subtotal = product.price * qty;
+      
+      // Create order in database
+      const { error: orderError } = await supabase
+        .from('orders')
+        .insert([{
+          customer_phone: normalizedPhone,
+          event_type: 'MANUAL',
+          event_date: new Date().toISOString().split('T')[0], // Today's date
+          total_amount: subtotal,
+          is_paid: false
+        }]);
+
+      if (orderError) throw orderError;
+
+      // Update product stock in database
+      const { error: stockError } = await supabase
+        .from('products')
+        .update({ stock: product.stock - qty })
+        .eq('id', product.id);
+
+      if (stockError) throw stockError;
       
       // Update stock locally for immediate feedback
       setProducts(prev => prev.map(p => 
@@ -132,12 +152,10 @@ const PedidosManual = () => {
           ? { ...p, stock: p.stock - qty }
           : p
       ));
-
-      const subtotal = product.price * qty;
       
       toast({
         title: 'Sucesso',
-        description: `Lançado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
+        description: `Pedido criado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
 
       // Clear inputs for this product
