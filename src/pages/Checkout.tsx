@@ -23,10 +23,11 @@ interface Cart {
 }
 
 interface ShippingQuote {
-  service: 'PAC' | 'SEDEX';
+  service: 'PAC' | 'SEDEX' | 'RETIRADA';
   serviceCode: string;
   freight_cost: number;
   delivery_days: number;
+  description?: string;
 }
 
 const Checkout = () => {
@@ -98,6 +99,17 @@ const Checkout = () => {
       };
 
       setCart(mockCart);
+      
+      // Always add pickup option when cart is loaded
+      const pickupOption: ShippingQuote = {
+        service: 'RETIRADA',
+        serviceCode: 'PICKUP',
+        freight_cost: 0,
+        delivery_days: 0,
+        description: 'Retirada na Fábrica'
+      };
+      setShippingQuotes([pickupOption]);
+      
       toast({
         title: 'Sucesso',
         description: 'Carrinho carregado com sucesso'
@@ -148,6 +160,7 @@ const Checkout = () => {
       };
 
       setShippingQuotes(prev => {
+        // Keep pickup option and filter out the same service
         const filtered = prev.filter(q => q.service !== service);
         return [...filtered, mockQuote];
       });
@@ -233,8 +246,8 @@ const Checkout = () => {
     // Auto calculate shipping when CEP is complete
     const cleanCep = formattedCep.replace(/[^0-9]/g, '');
     if (cleanCep.length === 8 && cart) {
-      // Clear previous quotes
-      setShippingQuotes([]);
+      // Clear previous delivery quotes but keep pickup option
+      setShippingQuotes(prev => prev.filter(q => q.service === 'RETIRADA'));
       setSelectedShipping(null);
       
       // Get both PAC and SEDEX quotes automatically
@@ -361,14 +374,19 @@ const Checkout = () => {
                       onClick={() => setSelectedShipping(quote)}
                     >
                       <div className="flex justify-between items-center">
-                        <div>
-                          <div className="font-medium">{quote.service}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {quote.delivery_days} dias úteis
-                          </div>
-                        </div>
+                      <div>
                         <div className="font-medium">
-                          R$ {quote.freight_cost.toFixed(2)}
+                          {quote.description || quote.service}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {quote.service === 'RETIRADA' 
+                            ? 'Retire no local' 
+                            : `${quote.delivery_days} dias úteis`
+                          }
+                        </div>
+                      </div>
+                        <div className="font-medium">
+                          {quote.freight_cost === 0 ? 'GRÁTIS' : `R$ ${quote.freight_cost.toFixed(2)}`}
                         </div>
                       </div>
                     </div>
@@ -379,8 +397,10 @@ const Checkout = () => {
               {selectedShipping && (
                 <div className="p-3 bg-muted rounded">
                   <div className="flex justify-between items-center">
-                    <span>Frete selecionado ({selectedShipping.service}):</span>
-                    <span className="font-medium">R$ {selectedShipping.freight_cost.toFixed(2)}</span>
+                    <span>Frete selecionado ({selectedShipping.description || selectedShipping.service}):</span>
+                    <span className="font-medium">
+                      {selectedShipping.freight_cost === 0 ? 'GRÁTIS' : `R$ ${selectedShipping.freight_cost.toFixed(2)}`}
+                    </span>
                   </div>
                 </div>
               )}
@@ -403,8 +423,8 @@ const Checkout = () => {
                   <span>R$ {cart.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Frete ({selectedShipping.service}):</span>
-                  <span>R$ {selectedShipping.freight_cost.toFixed(2)}</span>
+                  <span>Frete ({selectedShipping.description || selectedShipping.service}):</span>
+                  <span>{selectedShipping.freight_cost === 0 ? 'GRÁTIS' : `R$ ${selectedShipping.freight_cost.toFixed(2)}`}</span>
                 </div>
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
