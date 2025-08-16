@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Plus, Edit2, Package } from 'lucide-react';
+import Navbar from '@/components/Navbar';
 
 interface Product {
   id: number;
@@ -184,7 +185,10 @@ const Produtos = () => {
   }
 
   return (
-    <div className="container mx-auto py-6 max-w-7xl space-y-6">
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <div className="p-6">
+        <div className="container mx-auto max-w-7xl space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold flex items-center">
           <Package className="h-8 w-8 mr-3" />
@@ -363,6 +367,8 @@ const Produtos = () => {
           )}
         </CardContent>
       </Card>
+        </div>
+      </div>
     </div>
   );
 };

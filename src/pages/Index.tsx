@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { ShoppingCart, Package, List, Dice6, Settings, Plus } from 'lucide-react';
+import Navbar from '@/components/Navbar';
 
 const Index = () => {
   const { logout } = useAuth();
@@ -59,14 +60,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border p-4">
-        <div className="flex justify-between items-center max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold">MM Live Commerce</h1>
-          <Button variant="outline" onClick={handleLogout}>
-            Sair
-          </Button>
-        </div>
-      </header>
+      <Navbar />
       
       <main className="container mx-auto py-8 max-w-6xl">
         <div className="text-center mb-8">

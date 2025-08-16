@@ -18,6 +18,7 @@ const Navbar = () => {
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
     { path: '/checkout', label: 'Checkout' },
+    { path: '/produtos', label: 'Produtos' },
     { path: '/pedidos', label: 'Pedidos' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/config', label: 'Config' }

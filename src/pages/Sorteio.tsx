@@ -275,6 +275,7 @@ const Sorteio = () => {
           </CardContent>
         </Card>
       )}
+
     </div>
   );
 };
