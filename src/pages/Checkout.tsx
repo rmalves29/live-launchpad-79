@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Copy, Package, Truck, User, MapPin } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface CartItem {
   id: number;
@@ -63,6 +64,7 @@ const Checkout = () => {
   const [loading, setLoading] = useState(false);
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [loadingAddress, setLoadingAddress] = useState(false);
+  const [loadingCustomer, setLoadingCustomer] = useState(false);
   const [generatingPayment, setGeneratingPayment] = useState(false);
 
   const normalizePhone = (phone: string): string => {
@@ -71,6 +73,89 @@ const Checkout = () => {
       return '55' + digits;
     }
     return digits;
+  };
+
+  const loadCustomerData = async (phone: string) => {
+    const normalizedPhone = normalizePhone(phone);
+    setLoadingCustomer(true);
+    
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setCustomerData({ name: data.name, cpf: data.cpf || '' });
+        setAddressData({
+          street: data.street || '',
+          number: data.number || '',
+          complement: data.complement || '',
+          city: data.city || '',
+          state: data.state || '',
+          cep: data.cep || ''
+        });
+        
+        toast({
+          title: 'Cliente encontrado',
+          description: `Dados de ${data.name} carregados automaticamente`
+        });
+      } else {
+        // Reset customer data if not found
+        setCustomerData({ name: '', cpf: '' });
+        setAddressData({
+          street: '',
+          number: '',
+          complement: '',
+          city: '',
+          state: '',
+          cep: ''
+        });
+      }
+    } catch (error) {
+      console.error('Error loading customer:', error);
+    } finally {
+      setLoadingCustomer(false);
+    }
+  };
+
+  const saveCustomerData = async () => {
+    const normalizedPhone = normalizePhone(phone);
+    
+    try {
+      const customerPayload = {
+        phone: normalizedPhone,
+        name: customerData.name,
+        cpf: customerData.cpf,
+        street: addressData.street,
+        number: addressData.number,
+        complement: addressData.complement,
+        city: addressData.city,
+        state: addressData.state,
+        cep: addressData.cep
+      };
+
+      const { error } = await supabase
+        .from('customers')
+        .upsert(customerPayload, { onConflict: 'phone' });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Dados salvos',
+        description: 'Informações do cliente salvas com sucesso'
+      });
+    } catch (error) {
+      console.error('Error saving customer:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao salvar dados do cliente',
+        variant: 'destructive'
+      });
+    }
   };
 
   const loadCart = async () => {
@@ -92,6 +177,9 @@ const Checkout = () => {
       });
       return;
     }
+
+    // Load customer data first
+    await loadCustomerData(phone);
 
     setLoading(true);
     try {
@@ -362,26 +450,18 @@ const Checkout = () => {
                 onChange={(e) => setPhone(e.target.value)}
                 className="flex-1"
               />
-              <Button onClick={loadCart} disabled={loading}>
-                {loading ? (
+              <Button onClick={loadCart} disabled={loading || loadingCustomer}>
+                {loading || loadingCustomer ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : null}
                 Carregar Carrinho
               </Button>
             </div>
             
-            {cart && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
-                <Input
-                  placeholder="Nome completo"
-                  value={customerData.name}
-                  onChange={(e) => setCustomerData(prev => ({ ...prev, name: e.target.value }))}
-                />
-                <Input
-                  placeholder="CPF"
-                  value={customerData.cpf}
-                  onChange={(e) => setCustomerData(prev => ({ ...prev, cpf: e.target.value }))}
-                />
+            {loadingCustomer && (
+              <div className="flex items-center justify-center py-2">
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <span className="text-sm text-muted-foreground">Buscando dados do cliente...</span>
               </div>
             )}
           </div>
@@ -433,6 +513,19 @@ const Checkout = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  placeholder="Nome completo"
+                  value={customerData.name}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, name: e.target.value }))}
+                />
+                <Input
+                  placeholder="CPF"
+                  value={customerData.cpf}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, cpf: e.target.value }))}
+                />
+              </div>
+              
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Input
                   placeholder="CEP"
@@ -478,6 +571,12 @@ const Checkout = () => {
                   <span className="text-sm text-muted-foreground">Buscando endereço...</span>
                 </div>
               )}
+              
+              <div className="flex justify-end">
+                <Button onClick={saveCustomerData} variant="outline">
+                  Salvar Dados do Cliente
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

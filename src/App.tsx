@@ -14,6 +14,7 @@ import Pedidos from "./pages/Pedidos";
 import Sorteio from "./pages/Sorteio";
 import Config from "./pages/Config";
 import Produtos from "./pages/Produtos";
+import Clientes from "./pages/Clientes";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +60,11 @@ const App = () => (
             <Route path="/produtos" element={
               <ProtectedRoute>
                 <Produtos />
+              </ProtectedRoute>
+            } />
+            <Route path="/clientes" element={
+              <ProtectedRoute>
+                <Clientes />
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

@@ -19,6 +19,7 @@ const Navbar = () => {
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
     { path: '/checkout', label: 'Checkout' },
     { path: '/produtos', label: 'Produtos' },
+    { path: '/clientes', label: 'Clientes' },
     { path: '/pedidos', label: 'Pedidos' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/config', label: 'Config' }
