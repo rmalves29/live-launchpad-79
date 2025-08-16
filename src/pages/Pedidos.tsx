@@ -32,7 +32,7 @@ const Pedidos = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterPaid, setFilterPaid] = useState<boolean | null>(null);
-  const [filterEventType, setFilterEventType] = useState<string>('');
+  const [filterEventType, setFilterEventType] = useState<string>('all');
   const [filterDate, setFilterDate] = useState<Date | undefined>();
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
 
@@ -48,7 +48,7 @@ const Pedidos = () => {
         query = query.eq('is_paid', filterPaid);
       }
 
-      if (filterEventType) {
+      if (filterEventType && filterEventType !== 'all') {
         query = query.eq('event_type', filterEventType);
       }
 
@@ -144,7 +144,7 @@ const Pedidos = () => {
 
   const clearFilters = () => {
     setFilterPaid(null);
-    setFilterEventType('');
+    setFilterEventType('all');
     setFilterDate(undefined);
   };
 
@@ -192,7 +192,7 @@ const Pedidos = () => {
                   <SelectValue placeholder="Todos os tipos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="BAZAR">BAZAR</SelectItem>
                   <SelectItem value="LIVE">LIVE</SelectItem>
                 </SelectContent>
