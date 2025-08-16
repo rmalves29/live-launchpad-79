@@ -173,7 +173,7 @@ const Sorteio = () => {
           <div className="space-y-3 text-sm">
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-primary rounded-full"></div>
-              <span>Apenas pedidos <strong>pagos</strong> (is_paid = true) participam do sorteio</span>
+              <span>Apenas pedidos <strong>PAGOS</strong> (is_paid = true) participam do sorteio</span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-primary rounded-full"></div>
