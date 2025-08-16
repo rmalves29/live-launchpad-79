@@ -8,6 +8,11 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import PedidosManual from "./pages/PedidosManual";
+import Checkout from "./pages/Checkout";
+import Pedidos from "./pages/Pedidos";
+import Sorteio from "./pages/Sorteio";
+import Config from "./pages/Config";
 
 const queryClient = new QueryClient();
 
@@ -23,6 +28,31 @@ const App = () => (
             <Route path="/" element={
               <ProtectedRoute>
                 <Index />
+              </ProtectedRoute>
+            } />
+            <Route path="/pedidos-manual" element={
+              <ProtectedRoute>
+                <PedidosManual />
+              </ProtectedRoute>
+            } />
+            <Route path="/checkout" element={
+              <ProtectedRoute>
+                <Checkout />
+              </ProtectedRoute>
+            } />
+            <Route path="/pedidos" element={
+              <ProtectedRoute>
+                <Pedidos />
+              </ProtectedRoute>
+            } />
+            <Route path="/sorteio" element={
+              <ProtectedRoute>
+                <Sorteio />
+              </ProtectedRoute>
+            } />
+            <Route path="/config" element={
+              <ProtectedRoute>
+                <Config />
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

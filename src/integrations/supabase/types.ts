@@ -14,7 +14,152 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      cart_items: {
+        Row: {
+          cart_id: number | null
+          created_at: string | null
+          id: number
+          product_id: number | null
+          qty: number
+          unit_price: number
+        }
+        Insert: {
+          cart_id?: number | null
+          created_at?: string | null
+          id?: number
+          product_id?: number | null
+          qty?: number
+          unit_price: number
+        }
+        Update: {
+          cart_id?: number | null
+          created_at?: string | null
+          id?: number
+          product_id?: number | null
+          qty?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cart_items_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "carts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      carts: {
+        Row: {
+          created_at: string | null
+          customer_instagram: string | null
+          customer_phone: string
+          event_date: string
+          event_type: string
+          id: number
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          customer_instagram?: string | null
+          customer_phone: string
+          event_date: string
+          event_type: string
+          id?: number
+          status?: string
+        }
+        Update: {
+          created_at?: string | null
+          customer_instagram?: string | null
+          customer_phone?: string
+          event_date?: string
+          event_type?: string
+          id?: number
+          status?: string
+        }
+        Relationships: []
+      }
+      orders: {
+        Row: {
+          cart_id: number | null
+          created_at: string | null
+          customer_phone: string
+          event_date: string
+          event_type: string
+          id: number
+          is_paid: boolean
+          payment_link: string | null
+          total_amount: number
+        }
+        Insert: {
+          cart_id?: number | null
+          created_at?: string | null
+          customer_phone: string
+          event_date: string
+          event_type: string
+          id?: number
+          is_paid?: boolean
+          payment_link?: string | null
+          total_amount: number
+        }
+        Update: {
+          cart_id?: number | null
+          created_at?: string | null
+          customer_phone?: string
+          event_date?: string
+          event_type?: string
+          id?: number
+          is_paid?: boolean
+          payment_link?: string | null
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "carts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          code: string
+          id: number
+          image_url: string | null
+          is_active: boolean
+          name: string
+          price: number
+          stock: number
+        }
+        Insert: {
+          code: string
+          id?: number
+          image_url?: string | null
+          is_active?: boolean
+          name: string
+          price: number
+          stock?: number
+        }
+        Update: {
+          code?: string
+          id?: number
+          image_url?: string | null
+          is_active?: boolean
+          name?: string
+          price?: number
+          stock?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
