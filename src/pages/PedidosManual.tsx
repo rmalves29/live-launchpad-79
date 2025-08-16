@@ -7,7 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, RefreshCw } from 'lucide-react';
+import { Loader2, Search, RefreshCw, Edit, Trash2, Plus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Navbar from '@/components/Navbar';
 
 interface Product {
@@ -20,16 +22,31 @@ interface Product {
   is_active: boolean;
 }
 
+interface Order {
+  id: number;
+  customer_phone: string;
+  event_type: string;
+  event_date: string;
+  total_amount: number;
+  is_paid: boolean;
+  created_at: string;
+}
+
 const PedidosManual = () => {
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [defaultPhone, setDefaultPhone] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState('10');
   const [phones, setPhones] = useState<{[key: number]: string}>({});
   const [quantities, setQuantities] = useState<{[key: number]: number}>({});
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editPhone, setEditPhone] = useState('');
+  const [editAmount, setEditAmount] = useState('');
 
   const loadProducts = async () => {
     try {
@@ -67,8 +84,32 @@ const PedidosManual = () => {
     }
   };
 
+  const loadOrders = async () => {
+    try {
+      setOrdersLoading(true);
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('event_type', 'MANUAL')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setOrders(data || []);
+    } catch (error) {
+      console.error('Error loading orders:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao carregar pedidos',
+        variant: 'destructive'
+      });
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadProducts();
+    loadOrders();
   }, [searchQuery, itemsPerPage]);
 
   const normalizePhone = (phone: string): string => {
@@ -161,6 +202,9 @@ const PedidosManual = () => {
       // Clear inputs for this product
       setPhones(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
+      
+      // Reload orders to show the new one
+      loadOrders();
 
     } catch (error) {
       console.error('Error launching sale:', error);
@@ -174,6 +218,70 @@ const PedidosManual = () => {
         const newSet = new Set(prev);
         newSet.delete(product.id);
         return newSet;
+      });
+    }
+  };
+
+  const handleEditOrder = (order: Order) => {
+    setEditingOrder(order);
+    setEditPhone(order.customer_phone);
+    setEditAmount(order.total_amount.toString());
+  };
+
+  const handleUpdateOrder = async () => {
+    if (!editingOrder) return;
+
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          customer_phone: editPhone,
+          total_amount: parseFloat(editAmount)
+        })
+        .eq('id', editingOrder.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Pedido atualizado com sucesso'
+      });
+
+      setEditingOrder(null);
+      loadOrders();
+    } catch (error) {
+      console.error('Error updating order:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao atualizar pedido',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!confirm('Tem certeza que deseja excluir este pedido?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Pedido excluído com sucesso'
+      });
+
+      loadOrders();
+    } catch (error) {
+      console.error('Error deleting order:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao excluir pedido',
+        variant: 'destructive'
       });
     }
   };
@@ -192,9 +300,20 @@ const PedidosManual = () => {
       <Navbar />
       <div className="p-6">
         <div className="container mx-auto space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Pedidos Manual</h1>
-      </div>
+          <div className="flex justify-between items-center">
+            <h1 className="text-3xl font-bold">Pedidos Manual</h1>
+          </div>
+
+          <Tabs defaultValue="create" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="create">
+                <Plus className="h-4 w-4 mr-2" />
+                Criar Pedido
+              </TabsTrigger>
+              <TabsTrigger value="manage">Gerenciar Pedidos</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="create" className="space-y-6">
 
       {/* Toolbar */}
       <Card>
@@ -348,6 +467,116 @@ const PedidosManual = () => {
           </div>
         </CardContent>
       </Card>
+            </TabsContent>
+
+            <TabsContent value="manage" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Pedidos Manuais</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>ID</TableHead>
+                          <TableHead>Telefone</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Valor</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {ordersLoading ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-8">
+                              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                            </TableCell>
+                          </TableRow>
+                        ) : orders.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                              Nenhum pedido manual encontrado
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          orders.map((order) => (
+                            <TableRow key={order.id}>
+                              <TableCell>#{order.id}</TableCell>
+                              <TableCell>{order.customer_phone}</TableCell>
+                              <TableCell>{new Date(order.created_at).toLocaleDateString('pt-BR')}</TableCell>
+                              <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
+                              <TableCell>
+                                <Badge variant={order.is_paid ? 'default' : 'secondary'}>
+                                  {order.is_paid ? 'Pago' : 'Pendente'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex space-x-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleEditOrder(order)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteOrder(order.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+
+          {/* Edit Order Dialog */}
+          <Dialog open={!!editingOrder} onOpenChange={(open) => !open && setEditingOrder(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Editar Pedido #{editingOrder?.id}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Telefone</label>
+                  <Input
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    placeholder="Telefone do cliente"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">Valor Total</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={editAmount}
+                    onChange={(e) => setEditAmount(e.target.value)}
+                    placeholder="Valor total"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button variant="outline" onClick={() => setEditingOrder(null)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleUpdateOrder}>
+                    Salvar
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </div>

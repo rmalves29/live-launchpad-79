@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Package, Upload, X } from 'lucide-react';
+import { Plus, Edit2, Package, Upload, X, Trash2 } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 
 interface Product {
@@ -233,6 +233,32 @@ const Produtos = () => {
       toast({
         title: "Erro ao atualizar status",
         description: "Não foi possível alterar o status do produto",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteProduct = async (product: Product) => {
+    if (!confirm(`Tem certeza que deseja excluir o produto "${product.name}"?`)) return;
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', product.id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Produto excluído",
+        description: `${product.code} foi excluído com sucesso`,
+      });
+      
+      loadProducts();
+    } catch (error) {
+      toast({
+        title: "Erro ao excluir produto",
+        description: "Não foi possível excluir o produto",
         variant: "destructive",
       });
     }
@@ -465,13 +491,22 @@ const Produtos = () => {
                     />
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(product)}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(product)}
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteProduct(product)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
