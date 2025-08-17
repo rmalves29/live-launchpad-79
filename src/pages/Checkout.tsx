@@ -263,6 +263,8 @@ const Checkout = () => {
       // Use real Correios API
       const serviceCode = service === 'PAC' ? '3298' : '3220';
       
+      console.log(`Calculando frete ${service} para CEP:`, addressData.cep, "Items:", cart.items);
+      
       const { data, error } = await supabase.functions.invoke('calculate-shipping', {
         body: {
           cep: addressData.cep,
@@ -270,6 +272,8 @@ const Checkout = () => {
           cartItems: cart.items
         }
       });
+      
+      console.log(`Resposta frete ${service}:`, { data, error });
 
       if (error) {
         throw new Error(error.message);
@@ -463,10 +467,16 @@ const Checkout = () => {
           description: 'Buscando melhores opções de entrega...'
         });
         
-        await Promise.all([
-          getShippingQuotes('PAC'),
-          getShippingQuotes('SEDEX')
-        ]);
+        console.log("Iniciando cálculo de frete para CEP:", cleanCep);
+        try {
+          await Promise.all([
+            getShippingQuotes('PAC'),
+            getShippingQuotes('SEDEX')
+          ]);
+          console.log("Cálculo de frete concluído");
+        } catch (error) {
+          console.error("Erro no cálculo de frete:", error);
+        }
       }
     }
   };
