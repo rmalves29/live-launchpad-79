@@ -260,8 +260,9 @@ const Checkout = () => {
     }
   };
 
-  const getShippingQuotes = async () => {
-    if (!cart || !addressData.cep) {
+  const getShippingQuotes = async (cepInput?: string) => {
+    const cepToUse = cepInput || addressData.cep;
+    if (!cart || !cepToUse) {
       toast({
         title: 'Erro',
         description: 'Carregue o carrinho e informe o CEP primeiro',
@@ -270,8 +271,8 @@ const Checkout = () => {
       return;
     }
 
-    const cleanCep = normalizeCep(addressData.cep);
-    if (!isValidCep(addressData.cep)) {
+    const cleanCep = normalizeCep(cepToUse);
+    if (!isValidCep(cepToUse)) {
       toast({
         title: 'Erro',
         description: 'CEP inválido. Digite 8 dígitos.',
@@ -289,8 +290,6 @@ const Checkout = () => {
           cep: cleanCep
         }
       });
-      
-      console.log('Resposta da API de frete:', { data, error });
 
       if (error) {
         throw new Error(error.message);
@@ -306,10 +305,10 @@ const Checkout = () => {
       if (data.resultados && data.resultados.length > 0) {
         data.resultados.forEach((resultado: any) => {
           const quote: ShippingQuote = {
-            service: resultado.service,
+            service: resultado.servico,
             serviceCode: resultado.codigo,
-            freight_cost: resultado.price || 0,
-            delivery_days: resultado.delivery_time || 0
+            freight_cost: resultado.valor || 0,
+            delivery_days: resultado.prazo || 0
           };
           quotes.push(quote);
         });
@@ -323,6 +322,15 @@ const Checkout = () => {
 
       console.log('Cálculo de frete concluído');
 
+      // Show freight results
+      if (quotes.length > 0) {
+        const resultsText = quotes.map(q => `${q.service}: R$ ${q.freight_cost.toFixed(2)} — prazo ${q.delivery_days} dia(s)`).join(' | ');
+        toast({
+          title: 'Frete calculado',
+          description: resultsText
+        });
+      }
+
     } catch (error) {
       console.error('Error calculating shipping:', error);
       toast({
@@ -333,6 +341,20 @@ const Checkout = () => {
     } finally {
       setLoadingShipping(false);
     }
+  };
+
+  const handleFreteCalculation = async () => {
+    const cep = normalizeCep(addressData.cep);
+    if (cep.length !== 8) {
+      toast({
+        title: 'Erro',
+        description: 'CEP inválido. Digite 8 dígitos.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    await getShippingQuotes(cep);
   };
 
   const generatePaymentLink = async () => {
@@ -658,11 +680,44 @@ const Checkout = () => {
                 </div>
               )}
               
-              <div className="flex justify-end">
-                <Button onClick={saveCustomerData} variant="outline">
-                  Salvar Dados do Cliente
-                </Button>
-              </div>
+               {/* Freight Calculator Section */}
+               <div className="mt-6 p-4 border border-primary/20 rounded-lg bg-primary/5">
+                 <h3 className="text-lg font-semibold mb-3 text-primary">Simulador de Frete</h3>
+                 <p className="text-sm text-muted-foreground mb-4">Digite o CEP (8 dígitos) para calcular PAC e SEDEX.</p>
+                 
+                 <div className="flex gap-3">
+                   <Input
+                     placeholder="Ex: 01001-000"
+                     value={addressData.cep}
+                     onChange={(e) => handleCepChange(e.target.value)}
+                     maxLength={9}
+                     className="flex-1"
+                     autoComplete="postal-code"
+                   />
+                   <Button 
+                     onClick={handleFreteCalculation}
+                     disabled={loadingShipping || !cart}
+                     variant="default"
+                   >
+                     {loadingShipping ? (
+                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                     ) : null}
+                     Calcular Frete
+                   </Button>
+                 </div>
+                 
+                 {loadingShipping && (
+                   <div className="mt-3 text-sm text-muted-foreground">
+                     Calculando...
+                   </div>
+                 )}
+               </div>
+
+               <div className="flex justify-end">
+                 <Button onClick={saveCustomerData} variant="outline">
+                   Salvar Dados do Cliente
+                 </Button>
+               </div>
             </div>
           </CardContent>
         </Card>
