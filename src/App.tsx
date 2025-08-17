@@ -18,6 +18,7 @@ import Clientes from "./pages/Clientes";
 import WhatsApp from "./pages/WhatsApp";
 import ConfigurationsPage from "./pages/ConfigurationsPage";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
+import MpReturn from "./pages/MpReturn";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,7 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/checkout" element={<Checkout />} />
+            <Route path="/mp/return" element={<MpReturn />} />
             <Route path="/" element={<Index />} />
             <Route path="/pedidos-manual" element={<PedidosManual />} />
             <Route path="/pedidos" element={<Pedidos />} />

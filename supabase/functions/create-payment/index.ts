@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { cartItems, customerData, addressData, shippingCost, total } = await req.json();
+    const { cartItems, customerData, addressData, shippingCost, total, cartId } = await req.json();
 
     // Validate required data
     if (!cartItems || !customerData || !total) {
@@ -42,6 +42,11 @@ serve(async (req) => {
       throw new Error("Preferência inválida: carrinho sem itens válidos.");
     }
 
+    const appHost = Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host");
+    const appBase = appHost?.startsWith("http") ? appHost : `https://${appHost}`;
+    const apiBase = Deno.env.get("PUBLIC_API_URL");
+    const webhookSecret = Deno.env.get("WEBHOOK_SECRET") || "mmsecret";
+
     const preference = {
       binary_mode: true,
       items,
@@ -62,13 +67,16 @@ serve(async (req) => {
         mode: "not_specified"
       },
       back_urls: {
-        success: `https://${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host")}/checkout?status=success`,
-        failure: `https://${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host")}/checkout?status=failure`,
-        pending: `https://${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host")}/checkout?status=pending`
+        success: `${appBase}/mp/return?status=success`,
+        failure: `${appBase}/mp/return?status=failure`,
+        pending: `${appBase}/mp/return?status=pending`
       },
       auto_return: "approved",
       statement_descriptor: "MANIA DEMULHER",
-      external_reference: `order_${Date.now()}`
+      notification_url: apiBase && apiBase.startsWith("http")
+        ? `${apiBase.replace(/\/$/, '')}/webhooks/mp?whk=${webhookSecret}`
+        : undefined,
+      external_reference: String(cartId ?? `order_${Date.now()}`)
     };
 
     console.log("Creating MP preference:", JSON.stringify(preference, null, 2));
@@ -103,6 +111,7 @@ serve(async (req) => {
     );
 
     const orderData = {
+      cart_id: cartId ?? null,
       customer_phone: customerData.phone,
       event_date: new Date().toISOString().split('T')[0],
       event_type: 'BAZAR',

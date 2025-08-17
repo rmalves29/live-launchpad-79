@@ -340,7 +340,8 @@ const Checkout = () => {
         },
         addressData,
         shippingCost: selectedShipping.freight_cost,
-        total
+        total,
+        cartId: cart.id
       };
 
       console.log("Generating payment with data:", paymentData);
