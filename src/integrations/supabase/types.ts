@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          correios_origin_cep: string | null
+          correios_service_pac: string | null
+          correios_service_sedex: string | null
+          created_at: string
+          default_diameter_cm: number | null
+          default_height_cm: number | null
+          default_length_cm: number | null
+          default_weight_kg: number | null
+          default_width_cm: number | null
+          id: number
+          public_base_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          correios_origin_cep?: string | null
+          correios_service_pac?: string | null
+          correios_service_sedex?: string | null
+          created_at?: string
+          default_diameter_cm?: number | null
+          default_height_cm?: number | null
+          default_length_cm?: number | null
+          default_weight_kg?: number | null
+          default_width_cm?: number | null
+          id?: number
+          public_base_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          correios_origin_cep?: string | null
+          correios_service_pac?: string | null
+          correios_service_sedex?: string | null
+          created_at?: string
+          default_diameter_cm?: number | null
+          default_height_cm?: number | null
+          default_length_cm?: number | null
+          default_weight_kg?: number | null
+          default_width_cm?: number | null
+          id?: number
+          public_base_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cart_items: {
         Row: {
           cart_id: number | null
@@ -202,6 +247,33 @@ export type Database = {
           name?: string
           price?: number
           stock?: number
+        }
+        Relationships: []
+      }
+      whatsapp_templates: {
+        Row: {
+          content: string
+          created_at: string
+          id: number
+          title: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: number
+          title?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: number
+          title?: string | null
+          type?: string
+          updated_at?: string
         }
         Relationships: []
       }
