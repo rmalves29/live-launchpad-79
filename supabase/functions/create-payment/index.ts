@@ -31,8 +31,7 @@ serve(async (req) => {
       const raw = shippingCost;
       if (typeof raw === 'string') {
         // handles "19,90" -> 19.90
-        const normalized = raw.replace('.', '').replace(',', '.');
-        return Number(normalized || 0);
+        return Number(raw.replace('.', '').replace(',', '.')) || 0;
       }
       return Number(raw || 0);
     })();
