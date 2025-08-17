@@ -21,7 +21,7 @@ const Config = () => {
     const mockConfig: SystemConfig = {
       event_date: '2025-08-16',
       event_type: 'BAZAR',
-      origin_cep: '01310-100',
+      origin_cep: '31575-060',
       supabase_url: 'https://hxtbsieodbtzgcvvkeqx.supabase.co',
       supabase_anon_key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
     };
@@ -43,8 +43,8 @@ const Config = () => {
       icon: Truck,
       items: [
         { label: 'CEP de Origem', value: config?.origin_cep, type: 'text' },
-        { label: 'Serviço PAC', value: '04510', type: 'code' },
-        { label: 'Serviço SEDEX', value: '04014', type: 'code' }
+        { label: 'Serviço PAC', value: '3298', type: 'code' },
+        { label: 'Serviço SEDEX', value: '3220', type: 'code' }
       ]
     },
     {
