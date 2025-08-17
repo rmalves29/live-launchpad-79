@@ -21,33 +21,40 @@ serve(async (req) => {
     }
 
     const MP_ACCESS_TOKEN = Deno.env.get("MP_ACCESS_TOKEN");
-    const MP_PUBLIC_KEY = Deno.env.get("MP_PUBLIC_KEY");
 
     if (!MP_ACCESS_TOKEN) {
       throw new Error("Token de acesso do Mercado Pago não configurado");
     }
 
-    // Create preference for Mercado Pago
-    const itemsRaw = cartItems.map((item: any) => ({
-      title: String(item.name || 'Item').slice(0, 60) || 'Item',
+    // Convert freight to safe number - handles "19,90" -> 19.90
+    const freightCost = (() => {
+      const raw = shippingCost;
+      if (typeof raw === 'string') {
+        // handles "19,90" -> 19.90
+        const normalized = raw.replace('.', '').replace(',', '.');
+        return Number(normalized || 0);
+      }
+      return Number(raw || 0);
+    })();
+
+    // Create properly sanitized items for Mercado Pago
+    const items = cartItems.map((item: any) => ({
+      title: String(`${item.code || ''} ${item.name || 'Produto'}`).slice(0, 60) || 'Item',
       quantity: Math.max(1, Number(item.qty || 1)),
       unit_price: Number(item.unit_price),
       currency_id: "BRL"
-    }));
+    })).filter((i: any) => i.quantity >= 1 && i.unit_price > 0);
 
-    // Filter out invalid items (quantity < 1 or unit_price <= 0)
-    const items = itemsRaw.filter((i: any) => i.quantity >= 1 && i.unit_price > 0);
-
-    if (!items.length) {
+    if (items.length === 0) {
       throw new Error("Preferência inválida: carrinho sem itens válidos.");
     }
 
-    const appHost = Deno.env.get("PUBLIC_APP_URL") || Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host");
-    const appBase = appHost?.startsWith("http") ? appHost : `https://${appHost}`;
+    const appBase = Deno.env.get("PUBLIC_APP_URL") || "https://live-launchpad-79.lovable.app";
     const apiBase = Deno.env.get("PUBLIC_API_URL");
     const webhookSecret = Deno.env.get("WEBHOOK_SECRET") || "mmsecret";
 
     const preference = {
+      external_reference: String(cartId ?? `order_${Date.now()}`),
       binary_mode: true,
       items,
       payer: {
@@ -63,7 +70,7 @@ serve(async (req) => {
         } : undefined
       },
       shipments: {
-        cost: Math.max(0, Number(shippingCost) || 0),
+        cost: freightCost,
         mode: "not_specified"
       },
       back_urls: {
@@ -75,8 +82,7 @@ serve(async (req) => {
       statement_descriptor: "MANIA DEMULHER",
       notification_url: apiBase && apiBase.startsWith("http")
         ? `${apiBase.replace(/\/$/, '')}/webhooks/mp?whk=${webhookSecret}`
-        : undefined,
-      external_reference: String(cartId ?? `order_${Date.now()}`)
+        : undefined
     };
 
     console.log("Creating MP preference:", JSON.stringify(preference, null, 2));
@@ -99,11 +105,11 @@ serve(async (req) => {
     const mpResponse = await response.json();
     console.log("MP Response:", mpResponse);
 
-    // Choose correct link based on access token environment
-    const isSandbox = (MP_ACCESS_TOKEN || "").startsWith("TEST-");
-    const paymentLink = isSandbox
-      ? (mpResponse.sandbox_init_point || mpResponse.init_point)
-      : (mpResponse.init_point || mpResponse.sandbox_init_point);
+    // For APP_USR tokens (production), always use init_point
+    const paymentLink = mpResponse.init_point;
+    if (!paymentLink) {
+      throw new Error("Mercado Pago não retornou init_point.");
+    }
     // Save order to database
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
