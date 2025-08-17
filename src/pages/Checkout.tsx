@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,6 +67,8 @@ const Checkout = () => {
   const [loadingAddress, setLoadingAddress] = useState(false);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
   const [generatingPayment, setGeneratingPayment] = useState(false);
+
+  const cepInputRef = useRef<HTMLInputElement>(null);
 
   // CEP helper functions
   const normalizeCep = (v: string): string => {
@@ -233,6 +235,14 @@ const Checkout = () => {
         description: 'Retirada na Fábrica'
       };
       setShippingQuotes([pickupOption]);
+      
+      // Auto ação: se há CEP válido no cadastro, dispara busca de endereço e frete; senão foca no campo
+      const cepFromCustomer = normalizeCep(addressData.cep);
+      if (isValidCep(cepFromCustomer)) {
+        await handleCepChange(cepFromCustomer);
+      } else {
+        setTimeout(() => cepInputRef.current?.focus(), 0);
+      }
       
       toast({
         title: 'Sucesso',
