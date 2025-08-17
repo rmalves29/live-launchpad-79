@@ -15,6 +15,9 @@ import Sorteio from "./pages/Sorteio";
 import Config from "./pages/Config";
 import Produtos from "./pages/Produtos";
 import Clientes from "./pages/Clientes";
+import WhatsApp from "./pages/WhatsApp";
+import ConfigurationsPage from "./pages/ConfigurationsPage";
+import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 
 const queryClient = new QueryClient();
 
@@ -65,6 +68,21 @@ const App = () => (
             <Route path="/clientes" element={
               <ProtectedRoute>
                 <Clientes />
+              </ProtectedRoute>
+            } />
+            <Route path="/whatsapp" element={
+              <ProtectedRoute>
+                <WhatsApp />
+              </ProtectedRoute>
+            } />
+            <Route path="/configuracoes" element={
+              <ProtectedRoute>
+                <ConfigurationsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/whatsapp-templates" element={
+              <ProtectedRoute>
+                <WhatsAppTemplates />
               </ProtectedRoute>
             } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

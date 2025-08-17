@@ -60,9 +60,9 @@ serve(async (req) => {
         } : undefined
       },
       back_urls: {
-        success: `${req.headers.get("origin")}/checkout?status=success`,
-        failure: `${req.headers.get("origin")}/checkout?status=failure`,
-        pending: `${req.headers.get("origin")}/checkout?status=pending`
+        success: `${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("origin")}/checkout?status=success`,
+        failure: `${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("origin")}/checkout?status=failure`,
+        pending: `${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("origin")}/checkout?status=pending`
       },
       auto_return: "approved",
       external_reference: `order_${Date.now()}`

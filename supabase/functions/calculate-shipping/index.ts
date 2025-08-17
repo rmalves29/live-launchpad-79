@@ -47,18 +47,32 @@ serve(async (req) => {
     // Ensure weight is at least 300g
     totalWeight = Math.max(totalWeight, 0.3);
 
+    // Get configuration from environment variables
+    const originCep = Deno.env.get("CORREIOS_ORIGIN_CEP") || '31575060';
+    const defaultWeight = parseFloat(Deno.env.get("DEFAULT_WEIGHT_KG") || '0.3');
+    const defaultLength = parseInt(Deno.env.get("DEFAULT_LENGTH_CM") || '20');
+    const defaultHeight = parseInt(Deno.env.get("DEFAULT_HEIGHT_CM") || '2');
+    const defaultWidth = parseInt(Deno.env.get("DEFAULT_WIDTH_CM") || '16');
+    const defaultDiameter = parseInt(Deno.env.get("DEFAULT_DIAMETER_CM") || '0');
+
+    // Recalculate with defaults
+    totalWeight = Math.max(totalWeight, defaultWeight);
+    const finalLength = Math.max(length, defaultLength);
+    const finalHeight = Math.max(height, defaultHeight);
+    const finalWidth = Math.max(width, defaultWidth);
+
     const params = new URLSearchParams({
       'usuario': CORREIOS_COMPANY_CODE,
       'senha': CORREIOS_PASSWORD,
       'servico': serviceType,
-      'ceporigem': '31575060', // Origin CEP from config
+      'ceporigem': originCep.replace(/\D/g, ''),
       'cepdestino': cep.replace(/\D/g, ''),
       'peso': totalWeight.toString(),
       'formato': '1', // Box format
-      'comprimento': length.toString(),
-      'altura': height.toString(),
-      'largura': width.toString(),
-      'diametro': '0',
+      'comprimento': finalLength.toString(),
+      'altura': finalHeight.toString(),
+      'largura': finalWidth.toString(),
+      'diametro': defaultDiameter.toString(),
       'maopropria': 'N',
       'valorDeclarado': '0',
       'avisoRecebimento': 'N'

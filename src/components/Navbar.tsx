@@ -21,7 +21,10 @@ const Navbar = () => {
     { path: '/produtos', label: 'Produtos' },
     { path: '/clientes', label: 'Clientes' },
     { path: '/pedidos', label: 'Pedidos' },
+    { path: '/whatsapp', label: 'WhatsApp' },
+    { path: '/whatsapp-templates', label: 'Templates WPP' },
     { path: '/sorteio', label: 'Sorteio' },
+    { path: '/configuracoes', label: 'Configurações' },
     { path: '/config', label: 'Config' }
   ];
 
