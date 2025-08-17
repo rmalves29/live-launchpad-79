@@ -68,6 +68,18 @@ const Checkout = () => {
   const [loadingCustomer, setLoadingCustomer] = useState(false);
   const [generatingPayment, setGeneratingPayment] = useState(false);
 
+  // CEP helper functions
+  const normalizeCep = (v: string): string => {
+    return String(v || "")
+      .normalize("NFKD")             // tira acentos e caracteres estranhos
+      .replace(/[^\d]/g, "")         // deixa só dígitos
+      .slice(0, 8);                  // máximo 8
+  };
+
+  const isValidCep = (v: string): boolean => {
+    return normalizeCep(v).length === 8;
+  };
+
   const normalizePhone = (phone: string): string => {
     const digits = phone.replace(/[^0-9]/g, '');
     if (!digits.startsWith('55')) {
@@ -136,7 +148,7 @@ const Checkout = () => {
         complement: addressData.complement,
         city: addressData.city,
         state: addressData.state,
-        cep: addressData.cep
+        cep: normalizeCep(addressData.cep)
       };
 
       const { error } = await supabase
@@ -248,11 +260,11 @@ const Checkout = () => {
       return;
     }
 
-    const cleanCep = addressData.cep.replace(/[^0-9]/g, '');
-    if (cleanCep.length !== 8) {
+    const cleanCep = normalizeCep(addressData.cep);
+    if (!isValidCep(addressData.cep)) {
       toast({
         title: 'Erro',
-        description: 'CEP inválido',
+        description: 'CEP inválido. Digite 8 dígitos.',
         variant: 'destructive'
       });
       return;
@@ -267,7 +279,7 @@ const Checkout = () => {
       
       const { data, error } = await supabase.functions.invoke('calculate-shipping', {
         body: {
-          cep: addressData.cep,
+          cep: cleanCep,
           serviceType: serviceCode,
           cartItems: cart.items
         }
@@ -406,8 +418,8 @@ const Checkout = () => {
   };
 
   const searchAddressByCep = async (cep: string) => {
-    const cleanCep = cep.replace(/[^0-9]/g, '');
-    if (cleanCep.length !== 8) return;
+    const cleanCep = normalizeCep(cep);
+    if (!isValidCep(cep)) return;
 
     setLoadingAddress(true);
     try {
@@ -447,12 +459,15 @@ const Checkout = () => {
   };
 
   const handleCepChange = async (value: string) => {
-    const formattedCep = formatCep(value);
+    const normalizedCep = normalizeCep(value);
+    const formattedCep = normalizedCep.length === 8 ? 
+      `${normalizedCep.slice(0, 5)}-${normalizedCep.slice(5, 8)}` : 
+      normalizedCep;
+    
     setAddressData(prev => ({ ...prev, cep: formattedCep }));
     
     // Auto search address when CEP is complete
-    const cleanCep = formattedCep.replace(/[^0-9]/g, '');
-    if (cleanCep.length === 8) {
+    if (isValidCep(value)) {
       await searchAddressByCep(formattedCep);
       
       // Auto calculate shipping when CEP is complete and cart is loaded
@@ -467,7 +482,7 @@ const Checkout = () => {
           description: 'Buscando melhores opções de entrega...'
         });
         
-        console.log("Iniciando cálculo de frete para CEP:", cleanCep);
+        console.log("Iniciando cálculo de frete para CEP:", normalizedCep);
         try {
           await Promise.all([
             getShippingQuotes('PAC'),
