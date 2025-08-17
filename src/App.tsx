@@ -30,61 +30,17 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route path="/" element={
-              <ProtectedRoute>
-                <Index />
-              </ProtectedRoute>
-            } />
-            <Route path="/pedidos-manual" element={
-              <ProtectedRoute>
-                <PedidosManual />
-              </ProtectedRoute>
-            } />
-            <Route path="/checkout" element={
-              <ProtectedRoute>
-                <Checkout />
-              </ProtectedRoute>
-            } />
-            <Route path="/pedidos" element={
-              <ProtectedRoute>
-                <Pedidos />
-              </ProtectedRoute>
-            } />
-            <Route path="/sorteio" element={
-              <ProtectedRoute>
-                <Sorteio />
-              </ProtectedRoute>
-            } />
-            <Route path="/config" element={
-              <ProtectedRoute>
-                <Config />
-              </ProtectedRoute>
-            } />
-            <Route path="/produtos" element={
-              <ProtectedRoute>
-                <Produtos />
-              </ProtectedRoute>
-            } />
-            <Route path="/clientes" element={
-              <ProtectedRoute>
-                <Clientes />
-              </ProtectedRoute>
-            } />
-            <Route path="/whatsapp" element={
-              <ProtectedRoute>
-                <WhatsApp />
-              </ProtectedRoute>
-            } />
-            <Route path="/configuracoes" element={
-              <ProtectedRoute>
-                <ConfigurationsPage />
-              </ProtectedRoute>
-            } />
-            <Route path="/whatsapp-templates" element={
-              <ProtectedRoute>
-                <WhatsAppTemplates />
-              </ProtectedRoute>
-            } />
+            <Route path="/checkout" element={<Checkout />} />
+            <Route path="/" element={<Index />} />
+            <Route path="/pedidos-manual" element={<PedidosManual />} />
+            <Route path="/pedidos" element={<Pedidos />} />
+            <Route path="/sorteio" element={<Sorteio />} />
+            <Route path="/config" element={<Config />} />
+            <Route path="/produtos" element={<Produtos />} />
+            <Route path="/clientes" element={<Clientes />} />
+            <Route path="/whatsapp" element={<WhatsApp />} />
+            <Route path="/configuracoes" element={<ConfigurationsPage />} />
+            <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
