@@ -608,6 +608,7 @@ const Checkout = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Input
                   placeholder="CEP"
+                  ref={cepInputRef}
                   value={addressData.cep}
                   onChange={(e) => handleCepChange(e.target.value)}
                   maxLength={9}
