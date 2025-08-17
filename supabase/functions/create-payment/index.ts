@@ -46,6 +46,7 @@ serve(async (req) => {
     }
 
     const preference = {
+      binary_mode: true,
       items,
       payer: {
         name: customerData.name,
@@ -59,10 +60,14 @@ serve(async (req) => {
           street_number: addressData.number
         } : undefined
       },
+      shipments: {
+        cost: shippingCost ? Number(shippingCost) : 0,
+        mode: "not_specified"
+      },
       back_urls: {
-        success: `${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("origin")}/checkout?status=success`,
-        failure: `${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("origin")}/checkout?status=failure`,
-        pending: `${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("origin")}/checkout?status=pending`
+        success: `https://${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host")}/checkout?status=success`,
+        failure: `https://${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host")}/checkout?status=failure`,
+        pending: `https://${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host")}/checkout?status=pending`
       },
       auto_return: "approved",
       external_reference: `order_${Date.now()}`
