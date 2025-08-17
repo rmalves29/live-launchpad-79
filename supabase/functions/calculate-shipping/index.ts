@@ -5,6 +5,42 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const onlyDigits = (s: string) => String(s || "").replace(/\D/g, "");
+const toCorreiosPeso = (kg: number) => String(Number(kg).toFixed(3)).replace(".", ",");
+
+// Parse XML response
+function parseXML(xmlText: string) {
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+  
+  const servicos = xmlDoc.getElementsByTagName("cServico");
+  const results = [];
+  
+  for (let i = 0; i < servicos.length; i++) {
+    const servico = servicos[i];
+    const codigo = servico.getElementsByTagName("Codigo")[0]?.textContent || "";
+    const erro = servico.getElementsByTagName("Erro")[0]?.textContent;
+    const msgErro = servico.getElementsByTagName("MsgErro")[0]?.textContent;
+    const valor = servico.getElementsByTagName("Valor")[0]?.textContent;
+    const prazo = servico.getElementsByTagName("PrazoEntrega")[0]?.textContent;
+    
+    const serviceName = codigo === "04510" ? "PAC" : codigo === "04014" ? "SEDEX" : codigo;
+    const price = valor ? Number(String(valor).replace(".", "").replace(",", ".")) : 0;
+    const deliveryTime = prazo ? Number(prazo) : 0;
+    const hasError = erro && erro !== "0";
+    
+    results.push({
+      service: serviceName,
+      codigo,
+      price,
+      delivery_time: deliveryTime,
+      error: hasError ? msgErro || erro : null
+    });
+  }
+  
+  return results;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -12,79 +48,53 @@ serve(async (req) => {
   }
 
   try {
-    const { cep, serviceType, cartItems } = await req.json();
+    const { cep } = await req.json();
 
-    if (!cep || !serviceType) {
-      throw new Error("CEP e tipo de serviço são obrigatórios");
+    if (!cep) {
+      throw new Error("CEP é obrigatório");
     }
 
-    const CORREIOS_COMPANY_CODE = Deno.env.get("CORREIOS_COMPANY_CODE");
-    const CORREIOS_PASSWORD = Deno.env.get("CORREIOS_PASSWORD");
-
-    if (!CORREIOS_COMPANY_CODE || !CORREIOS_PASSWORD) {
-      throw new Error("Credenciais dos Correios não configuradas");
+    const cepDestino = onlyDigits(cep);
+    if (cepDestino.length !== 8) {
+      throw new Error("CEP inválido. Use 8 dígitos.");
     }
-
-    // Calculate package dimensions and weight from cart items
-    let totalWeight = 0;
-    let totalVolume = 0;
-
-    cartItems.forEach((item: any) => {
-      // Default dimensions if not specified in product
-      const weight = item.weight || 0.3; // 300g default
-      const volume = item.volume || (20 * 15 * 5); // 20x15x5 cm default
-      
-      totalWeight += weight * item.qty;
-      totalVolume += volume * item.qty;
-    });
-
-    // Calculate package dimensions from total volume (assuming cubic root)
-    const dimension = Math.ceil(Math.cbrt(totalVolume));
-    const length = Math.max(dimension, 16); // Min 16cm
-    const width = Math.max(dimension, 11); // Min 11cm
-    const height = Math.max(dimension, 2); // Min 2cm
-
-    // Ensure weight is at least 300g
-    totalWeight = Math.max(totalWeight, 0.3);
 
     // Get configuration from environment variables
-    const originCep = Deno.env.get("CORREIOS_ORIGIN_CEP") || '31575060';
-    const defaultWeight = parseFloat(Deno.env.get("DEFAULT_WEIGHT_KG") || '0.3');
-    const defaultLength = parseInt(Deno.env.get("DEFAULT_LENGTH_CM") || '20');
-    const defaultHeight = parseInt(Deno.env.get("DEFAULT_HEIGHT_CM") || '2');
-    const defaultWidth = parseInt(Deno.env.get("DEFAULT_WIDTH_CM") || '16');
-    const defaultDiameter = parseInt(Deno.env.get("DEFAULT_DIAMETER_CM") || '0');
+    const originCep = Deno.env.get("CORREIOS_ORIGIN_CEP") || "31575060";
+    const COD_PAC = Deno.env.get("CORREIOS_SERVICE_PAC") || "04510";
+    const COD_SEDEX = Deno.env.get("CORREIOS_SERVICE_SEDEX") || "04014";
+    
+    // Fixed dimensions and weight as requested
+    const PESO_KG = 0.01; // 10 gramas
+    const DIM = { comprimento: 10, largura: 10, altura: 10, diametro: 0 };
 
-    // Recalculate with defaults
-    totalWeight = Math.max(totalWeight, defaultWeight);
-    const finalLength = Math.max(length, defaultLength);
-    const finalHeight = Math.max(height, defaultHeight);
-    const finalWidth = Math.max(width, defaultWidth);
+    if (!/^\d{8}$/.test(onlyDigits(originCep))) {
+      throw new Error("CEP de origem não configurado.");
+    }
 
     const params = new URLSearchParams({
-      'usuario': CORREIOS_COMPANY_CODE,
-      'senha': CORREIOS_PASSWORD,
-      'servico': serviceType,
-      'ceporigem': originCep.replace(/\D/g, ''),
-      'cepdestino': cep.replace(/\D/g, ''),
-      'peso': totalWeight.toString(),
-      'formato': '1', // Box format
-      'comprimento': finalLength.toString(),
-      'altura': finalHeight.toString(),
-      'largura': finalWidth.toString(),
-      'diametro': defaultDiameter.toString(),
-      'maopropria': 'N',
-      'valorDeclarado': '0',
-      'avisoRecebimento': 'N'
+      nCdEmpresa: "",          // vazio = sem contrato
+      sDsSenha: "",            // vazio = sem contrato
+      nCdServico: `${COD_PAC},${COD_SEDEX}`,
+      sCepOrigem: onlyDigits(originCep),
+      sCepDestino: cepDestino,
+      nVlPeso: toCorreiosPeso(PESO_KG),
+      nCdFormato: "1",         // 1 = caixa/pacote
+      nVlComprimento: DIM.comprimento.toString(),
+      nVlAltura: DIM.altura.toString(),
+      nVlLargura: DIM.largura.toString(),
+      nVlDiametro: DIM.diametro.toString(),
+      sCdMaoPropria: "N",
+      nVlValorDeclarado: "0",
+      sCdAvisoRecebimento: "N",
+      StrRetorno: "xml",
     });
 
     console.log("Correios request params:", params.toString());
 
     const response = await fetch(`http://ws.correios.com.br/calculador/CalcPrecoPrazo.asmx/CalcPrecoPrazo?${params.toString()}`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+      timeout: 15000
     });
 
     if (!response.ok) {
@@ -94,37 +104,24 @@ serve(async (req) => {
     const xmlText = await response.text();
     console.log("Correios XML response:", xmlText);
 
-    // Parse XML response
-    const parser = new DOMParser();
-    const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+    const results = parseXML(xmlText);
     
-    const servicos = xmlDoc.getElementsByTagName("cServico");
-    
-    if (servicos.length === 0) {
-      throw new Error("Nenhum serviço encontrado na resposta dos Correios");
-    }
+    // Filter successful results and errors
+    const sucessos = results.filter(r => !r.error);
+    const erros = results.filter(r => r.error);
 
-    const servico = servicos[0];
-    const erro = servico.getElementsByTagName("Erro")[0]?.textContent;
-    
-    if (erro && erro !== "0") {
-      const msgErro = servico.getElementsByTagName("MsgErro")[0]?.textContent;
-      throw new Error(`Erro dos Correios: ${msgErro || erro}`);
-    }
-
-    const valor = servico.getElementsByTagName("Valor")[0]?.textContent?.replace(",", ".");
-    const prazo = servico.getElementsByTagName("PrazoEntrega")[0]?.textContent;
-
-    const shippingQuote = {
-      service: serviceType === "3298" ? "PAC" : "SEDEX",
-      price: valor ? parseFloat(valor) : 0,
-      delivery_time: prazo ? parseInt(prazo) : 0,
-      error: null
+    const responseData = {
+      origem: originCep,
+      destino: cepDestino,
+      pesoKg: PESO_KG,
+      dimensoesCm: DIM,
+      resultados: sucessos,
+      erros: erros.length ? erros : undefined,
     };
 
-    console.log("Shipping quote result:", shippingQuote);
+    console.log("Shipping calculation result:", responseData);
 
-    return new Response(JSON.stringify(shippingQuote), {
+    return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
@@ -133,9 +130,8 @@ serve(async (req) => {
     console.error("Error calculating shipping:", error);
     return new Response(JSON.stringify({ 
       error: error.message,
-      service: "",
-      price: 0,
-      delivery_time: 0
+      resultados: [],
+      erros: [{ error: error.message }]
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

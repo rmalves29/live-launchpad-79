@@ -260,7 +260,7 @@ const Checkout = () => {
     }
   };
 
-  const getShippingQuotes = async (service: 'PAC' | 'SEDEX') => {
+  const getShippingQuotes = async () => {
     if (!cart || !addressData.cep) {
       toast({
         title: 'Erro',
@@ -281,44 +281,53 @@ const Checkout = () => {
     }
 
     setLoadingShipping(true);
+    console.log('Iniciando cálculo de frete para CEP:', cleanCep);
+    
     try {
-      // Use real Correios API
-      const serviceCode = service === 'PAC' ? '3298' : '3220';
-      
-      console.log(`Calculando frete ${service} para CEP:`, addressData.cep, "Items:", cart.items);
-      
       const { data, error } = await supabase.functions.invoke('calculate-shipping', {
         body: {
-          cep: cleanCep,
-          serviceType: serviceCode,
-          cartItems: cart.items
+          cep: cleanCep
         }
       });
       
-      console.log(`Resposta frete ${service}:`, { data, error });
+      console.log('Resposta da API de frete:', { data, error });
 
       if (error) {
         throw new Error(error.message);
       }
 
-      const shippingQuote: ShippingQuote = {
-        service,
-        serviceCode,
-        freight_cost: data.price || 0,
-        delivery_days: data.delivery_time || 0
-      };
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      const quotes: ShippingQuote[] = [];
+      
+      // Process results from the new API format
+      if (data.resultados && data.resultados.length > 0) {
+        data.resultados.forEach((resultado: any) => {
+          const quote: ShippingQuote = {
+            service: resultado.service,
+            serviceCode: resultado.codigo,
+            freight_cost: resultado.price || 0,
+            delivery_days: resultado.delivery_time || 0
+          };
+          quotes.push(quote);
+        });
+      }
 
       setShippingQuotes(prev => {
-        // Keep pickup option and filter out the same service
-        const filtered = prev.filter(q => q.service !== service);
-        return [...filtered, shippingQuote];
+        // Keep pickup option and add new shipping quotes
+        const pickup = prev.find(q => q.service === 'RETIRADA');
+        return pickup ? [pickup, ...quotes] : quotes;
       });
+
+      console.log('Cálculo de frete concluído');
 
     } catch (error) {
       console.error('Error calculating shipping:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao calcular frete',
+        description: `Erro ao calcular frete: ${error.message}`,
         variant: 'destructive'
       });
     } finally {
@@ -494,10 +503,7 @@ const Checkout = () => {
         
         console.log("Iniciando cálculo de frete para CEP:", normalizedCep);
         try {
-          await Promise.all([
-            getShippingQuotes('PAC'),
-            getShippingQuotes('SEDEX')
-          ]);
+          await getShippingQuotes();
           console.log("Cálculo de frete concluído");
         } catch (error) {
           console.error("Erro no cálculo de frete:", error);
