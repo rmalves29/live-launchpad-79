@@ -34,6 +34,7 @@ interface ShippingQuote {
 interface CustomerData {
   name: string;
   cpf: string;
+  email?: string;
 }
 
 interface AddressData {
@@ -259,26 +260,26 @@ const Checkout = () => {
 
     setLoadingShipping(true);
     try {
-      // Calculate shipping using Correios API
-      const cleanOriginCep = '01310-100'; // Your company's CEP
-      const cleanDestCep = addressData.cep.replace(/[^0-9]/g, '');
+      // Use real Correios API
+      const serviceCode = service === 'PAC' ? '3298' : '3220';
       
-      // Simulate real Correios API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Calculate realistic shipping based on distance and service
-      const basePrice = service === 'PAC' ? 12.00 : 22.00;
-      const distanceMultiplier = Math.random() * 0.5 + 0.8; // 0.8 to 1.3
-      const weightMultiplier = cart ? Math.min(cart.items.length * 0.1 + 1, 2) : 1;
-      
-      const finalPrice = basePrice * distanceMultiplier * weightMultiplier;
-      const deliveryDays = service === 'PAC' ? Math.floor(Math.random() * 5) + 7 : Math.floor(Math.random() * 3) + 3;
-      
+      const { data, error } = await supabase.functions.invoke('calculate-shipping', {
+        body: {
+          cep: addressData.cep,
+          serviceType: serviceCode,
+          cartItems: cart.items
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
       const shippingQuote: ShippingQuote = {
         service,
-        serviceCode: service === 'PAC' ? '04510' : '04014',
-        freight_cost: Math.round(finalPrice * 100) / 100,
-        delivery_days: deliveryDays
+        serviceCode,
+        freight_cost: data.price || 0,
+        delivery_days: data.delivery_time || 0
       };
 
       setShippingQuotes(prev => {
@@ -309,26 +310,68 @@ const Checkout = () => {
       return;
     }
 
-    setGeneratingPayment(true);
-    try {
-      // Simulate API call - in real implementation, this would call POST /checkout
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const total = cart.subtotal + selectedShipping.freight_cost;
-      const mockPaymentLink = `https://mercadopago.com.br/checkout/v1/redirect?pref_id=mock-${Date.now()}`;
-      
-      setPaymentLink(mockPaymentLink);
-      
-      toast({
-        title: 'Sucesso',
-        description: `Link de pagamento gerado! Total: R$ ${total.toFixed(2)}`
-      });
-    } catch (error) {
-      console.error('Error generating payment link:', error);
+    if (!customerData.name) {
       toast({
         title: 'Erro',
-        description: 'Erro ao gerar link de pagamento',
+        description: 'Preencha os dados do cliente',
         variant: 'destructive'
+      });
+      return;
+    }
+
+    setGeneratingPayment(true);
+    try {
+      // Prepare cart items for Mercado Pago
+      const cartItems = cart.items.map(item => ({
+        name: item.product_name,
+        qty: item.qty,
+        unit_price: item.unit_price.toString()
+      }));
+
+      const total = cart.subtotal + selectedShipping.freight_cost;
+      
+      // Prepare payment data
+      const paymentData = {
+        cartItems,
+        customerData: {
+          ...customerData,
+          phone: normalizePhone(phone),
+          email: customerData.email || `${normalizePhone(phone)}@checkout.com`
+        },
+        addressData,
+        shippingCost: selectedShipping.freight_cost,
+        total
+      };
+
+      console.log("Generating payment with data:", paymentData);
+
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: paymentData
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (data?.payment_url) {
+        setPaymentLink(data.payment_url);
+        
+        // Open Mercado Pago checkout in new tab
+        window.open(data.payment_url, '_blank');
+        
+        toast({
+          title: "Redirecionando para o pagamento",
+          description: `Total: R$ ${total.toFixed(2)} - Mercado Pago aberto em nova aba`,
+        });
+      } else {
+        throw new Error("URL de pagamento não recebida");
+      }
+    } catch (error) {
+      console.error("Payment generation error:", error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Falha ao gerar link de pagamento.",
+        variant: "destructive",
       });
     } finally {
       setGeneratingPayment(false);
