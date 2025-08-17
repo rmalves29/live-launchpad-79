@@ -28,21 +28,18 @@ serve(async (req) => {
     }
 
     // Create preference for Mercado Pago
-    const items = cartItems.map((item: any) => ({
-      title: item.name,
-      quantity: item.qty,
-      unit_price: parseFloat(item.unit_price),
+    const itemsRaw = cartItems.map((item: any) => ({
+      title: String(item.name || 'Item').slice(0, 60) || 'Item',
+      quantity: Math.max(1, Number(item.qty || 1)),
+      unit_price: Number(item.unit_price),
       currency_id: "BRL"
     }));
 
-    // Add shipping cost if applicable
-    if (shippingCost && shippingCost > 0) {
-      items.push({
-        title: "Frete",
-        quantity: 1,
-        unit_price: shippingCost,
-        currency_id: "BRL"
-      });
+    // Filter out invalid items (quantity < 1 or unit_price <= 0)
+    const items = itemsRaw.filter((i: any) => i.quantity >= 1 && i.unit_price > 0);
+
+    if (!items.length) {
+      throw new Error("Preferência inválida: carrinho sem itens válidos.");
     }
 
     const preference = {
@@ -61,7 +58,7 @@ serve(async (req) => {
         } : undefined
       },
       shipments: {
-        cost: shippingCost ? Number(shippingCost) : 0,
+        cost: Math.max(0, Number(shippingCost) || 0),
         mode: "not_specified"
       },
       back_urls: {
@@ -70,6 +67,7 @@ serve(async (req) => {
         pending: `https://${Deno.env.get("PUBLIC_BASE_URL") || req.headers.get("host")}/checkout?status=pending`
       },
       auto_return: "approved",
+      statement_descriptor: "MANIA DEMULHER",
       external_reference: `order_${Date.now()}`
     };
 
@@ -93,6 +91,11 @@ serve(async (req) => {
     const mpResponse = await response.json();
     console.log("MP Response:", mpResponse);
 
+    // Choose correct link based on access token environment
+    const isSandbox = (MP_ACCESS_TOKEN || "").startsWith("TEST-");
+    const paymentLink = isSandbox
+      ? (mpResponse.sandbox_init_point || mpResponse.init_point)
+      : (mpResponse.init_point || mpResponse.sandbox_init_point);
     // Save order to database
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -104,7 +107,7 @@ serve(async (req) => {
       event_date: new Date().toISOString().split('T')[0],
       event_type: 'BAZAR',
       total_amount: total,
-      payment_link: mpResponse.init_point,
+      payment_link: paymentLink,
       is_paid: false
     };
 
@@ -117,7 +120,7 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ 
-      payment_url: mpResponse.init_point,
+      payment_url: paymentLink,
       preference_id: mpResponse.id 
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
