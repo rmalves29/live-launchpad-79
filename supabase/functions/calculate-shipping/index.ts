@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 const onlyDigits = (s: string) => String(s || "").replace(/\D/g, "");
-const toCorreiosPeso = (kg: number) => String(Number(kg).toFixed(3)).replace(".", ",");
+const moneyToNumber = (s: string) => parseFloat(String(s || "0").replace(",", ".").replace(".", ""));
 
 // Parse XML response
 function parseXML(xmlText: string) {
@@ -14,31 +14,39 @@ function parseXML(xmlText: string) {
   const xmlDoc = parser.parseFromString(xmlText, "text/xml");
   
   const servicos = xmlDoc.getElementsByTagName("cServico");
-  const results = [];
+  const resultados = [];
+  const erros = [];
   
   for (let i = 0; i < servicos.length; i++) {
     const servico = servicos[i];
     const codigo = servico.getElementsByTagName("Codigo")[0]?.textContent || "";
     const erro = servico.getElementsByTagName("Erro")[0]?.textContent;
     const msgErro = servico.getElementsByTagName("MsgErro")[0]?.textContent;
-    const valor = servico.getElementsByTagName("Valor")[0]?.textContent;
+    const valor = servico.getElementsByTagName("Valor")[0]?.textContent || "";
     const prazo = servico.getElementsByTagName("PrazoEntrega")[0]?.textContent;
     
-    const serviceName = codigo === "04510" ? "PAC" : codigo === "04014" ? "SEDEX" : codigo;
-    const price = valor ? Number(String(valor).replace(".", "").replace(",", ".")) : 0;
-    const deliveryTime = prazo ? Number(prazo) : 0;
-    const hasError = erro && erro !== "0";
+    // Get configuration from environment variables
+    const COD_PAC = Deno.env.get("CORREIOS_SERVICE_PAC") || "04510";
+    const COD_SEDEX = Deno.env.get("CORREIOS_SERVICE_SEDEX") || "04014";
     
-    results.push({
-      service: serviceName,
+    const serviceName = codigo === COD_SEDEX ? "SEDEX" : codigo === COD_PAC ? "PAC" : codigo;
+    
+    const item = {
+      servico: serviceName,
       codigo,
-      price,
-      delivery_time: deliveryTime,
-      error: hasError ? msgErro || erro : null
-    });
+      valor: moneyToNumber(valor),
+      prazo: parseInt(prazo || "0", 10)
+    };
+    
+    if (erro !== "0") {
+      item.erro = msgErro || erro;
+      erros.push(item);
+    } else {
+      resultados.push(item);
+    }
   }
   
-  return results;
+  return { resultados, erros };
 }
 
 serve(async (req) => {
@@ -78,7 +86,7 @@ serve(async (req) => {
       nCdServico: `${COD_PAC},${COD_SEDEX}`,
       sCepOrigem: onlyDigits(originCep),
       sCepDestino: cepDestino,
-      nVlPeso: toCorreiosPeso(PESO_KG),
+      nVlPeso: String(Number(PESO_KG).toFixed(3)).replace(".", ","),
       nCdFormato: "1",         // 1 = caixa/pacote
       nVlComprimento: DIM.comprimento.toString(),
       nVlAltura: DIM.altura.toString(),
@@ -104,19 +112,15 @@ serve(async (req) => {
     const xmlText = await response.text();
     console.log("Correios XML response:", xmlText);
 
-    const results = parseXML(xmlText);
-    
-    // Filter successful results and errors
-    const sucessos = results.filter(r => !r.error);
-    const erros = results.filter(r => r.error);
+    const { resultados, erros } = parseXML(xmlText);
 
     const responseData = {
       origem: originCep,
       destino: cepDestino,
       pesoKg: PESO_KG,
       dimensoesCm: DIM,
-      resultados: sucessos,
-      erros: erros.length ? erros : undefined,
+      resultados: resultados,
+      erros: erros.length ? erros : null,
     };
 
     console.log("Shipping calculation result:", responseData);
