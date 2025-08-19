@@ -18,6 +18,7 @@ import Clientes from "./pages/Clientes";
 import WhatsApp from "./pages/WhatsApp";
 import ConfigurationsPage from "./pages/ConfigurationsPage";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
+import WhatsAppConnection from "./pages/WhatsAppConnection";
 import MpReturn from "./pages/MpReturn";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/whatsapp" element={<WhatsApp />} />
             <Route path="/configuracoes" element={<ConfigurationsPage />} />
             <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
+            <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

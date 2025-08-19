@@ -250,6 +250,51 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_messages: {
+        Row: {
+          amount: number | null
+          created_at: string
+          id: number
+          message: string
+          order_id: number | null
+          phone: string
+          processed: boolean | null
+          product_name: string | null
+          received_at: string | null
+          sent_at: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string
+          id?: number
+          message: string
+          order_id?: number | null
+          phone: string
+          processed?: boolean | null
+          product_name?: string | null
+          received_at?: string | null
+          sent_at?: string | null
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string
+          id?: number
+          message?: string
+          order_id?: number | null
+          phone?: string
+          processed?: boolean | null
+          product_name?: string | null
+          received_at?: string | null
+          sent_at?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_templates: {
         Row: {
           content: string
