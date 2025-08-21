@@ -134,7 +134,7 @@ const Pedidos = () => {
 
       await supabase.functions.invoke('whatsapp-connection', {
         body: {
-          action: 'sendPaidNotification',
+          action: 'send_paid_notification',
           data: {
             phone: order.customer_phone,
             orderId: order.id,
