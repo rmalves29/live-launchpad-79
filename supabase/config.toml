@@ -2,3 +2,9 @@ project_id = "hxtbsieodbtzgcvvkeqx"
 
 [functions.calculate-shipping]
 verify_jwt = false
+
+[functions.create-payment]
+verify_jwt = false
+
+[functions.create-pix-payment]
+verify_jwt = false

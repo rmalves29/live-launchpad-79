@@ -41,7 +41,17 @@ const Produtos = () => {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Seleção de produtos para exclusão em massa
+  const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
+  const toggleProductSelection = (id: number) => {
+    setSelectedProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     loadProducts();
@@ -264,6 +274,30 @@ const Produtos = () => {
     }
   };
 
+  const deleteSelectedProducts = async () => {
+    if (selectedProducts.size === 0) {
+      toast({ title: 'Aviso', description: 'Selecione ao menos um produto', variant: 'destructive' });
+      return;
+    }
+    if (!confirm(`Excluir ${selectedProducts.size} produto(s) selecionado(s)? Essa ação não pode ser desfeita.`)) return;
+
+    try {
+      const ids = Array.from(selectedProducts);
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .in('id', ids);
+
+      if (error) throw error;
+
+      toast({ title: 'Sucesso', description: `${ids.length} produto(s) excluído(s).` });
+      setSelectedProducts(new Set());
+      loadProducts();
+    } catch (error) {
+      toast({ title: 'Erro ao excluir', description: 'Falha ao excluir os produtos selecionados', variant: 'destructive' });
+    }
+  };
+
   const filteredProducts = products.filter(product =>
     product.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -458,6 +492,13 @@ const Produtos = () => {
             <Badge variant="outline">
               {filteredProducts.length} produto(s)
             </Badge>
+            <Button
+              variant="destructive"
+              onClick={deleteSelectedProducts}
+              disabled={selectedProducts.size === 0}
+            >
+              Excluir Selecionados ({selectedProducts.size})
+            </Button>
           </div>
         </CardHeader>
         
@@ -465,6 +506,19 @@ const Produtos = () => {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>
+                  <input
+                    type="checkbox"
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedProducts(new Set(filteredProducts.map(p => p.id)));
+                      } else {
+                        setSelectedProducts(new Set());
+                      }
+                    }}
+                    checked={selectedProducts.size > 0 && selectedProducts.size === filteredProducts.length}
+                  />
+                </TableHead>
                 <TableHead>Foto</TableHead>
                 <TableHead>Código</TableHead>
                 <TableHead>Nome</TableHead>
@@ -475,8 +529,15 @@ const Produtos = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredProducts.map((product) => (
+            {filteredProducts.map((product) => (
                 <TableRow key={product.id}>
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      checked={selectedProducts.has(product.id)}
+                      onChange={() => toggleProductSelection(product.id)}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="w-12 h-12 border rounded overflow-hidden bg-muted">
                       {product.image_url ? (

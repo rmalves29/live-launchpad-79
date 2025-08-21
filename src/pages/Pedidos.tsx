@@ -287,6 +287,7 @@ const Pedidos = () => {
 
     const printWindow = window.open('', '_blank');
     if (printWindow) {
+      printWindow.document.open();
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
@@ -303,7 +304,24 @@ const Pedidos = () => {
         </html>
       `);
       printWindow.document.close();
-      printWindow.print();
+      printWindow.focus();
+      // Aguarda o conteúdo carregar antes de imprimir
+      printWindow.onload = () => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } finally {
+          setTimeout(() => {
+            printWindow.close();
+          }, 300);
+        }
+      };
+    } else {
+      toast({
+        title: 'Aviso',
+        description: 'O navegador bloqueou a janela de impressão. Permita pop-ups para este site.',
+        variant: 'destructive'
+      });
     }
   };
 
