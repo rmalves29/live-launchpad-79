@@ -30,7 +30,12 @@ serve(async (req) => {
     const ME_ACCESS_TOKEN = Deno.env.get('MELHOR_ENVIO_ACCESS_TOKEN');
     const ME_FROM_CEP = Deno.env.get('MELHOR_ENVIO_FROM_CEP') || '31575060';
 
+    console.log('ME_ENV:', ME_ENV);
+    console.log('ME_ACCESS_TOKEN exists:', !!ME_ACCESS_TOKEN);
+    console.log('ME_FROM_CEP:', ME_FROM_CEP);
+
     if (!ME_ACCESS_TOKEN) {
+      console.error('MELHOR_ENVIO_ACCESS_TOKEN not found in environment');
       return new Response(
         JSON.stringify({ error: 'Token de acesso do Melhor Envio não configurado' }), 
         { 
