@@ -394,6 +394,40 @@ const Checkout = () => {
     // Auto search address when CEP is complete
     if (isValidCep(value)) {
       await searchAddressByCep(formattedCep);
+      await calculateShipping(normalizedCep);
+    }
+  };
+
+  const calculateShipping = async (cep: string) => {
+    if (!isValidCep(cep)) return;
+
+    setLoadingAddress(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
+        body: { to_postal_code: cep }
+      });
+
+      if (error) throw error;
+
+      if (data?.shipping_options) {
+        console.log('Shipping options:', data.shipping_options);
+        toast({
+          title: 'Frete calculado',
+          description: `${data.shipping_options.length} opção(ões) de frete disponível(is)`,
+        });
+        
+        // Aqui você pode armazenar as opções de frete em um estado
+        // e exibi-las na interface para o usuário escolher
+      }
+    } catch (error) {
+      console.error('Shipping calculation error:', error);
+      toast({
+        title: 'Erro no cálculo de frete',
+        description: 'Não foi possível calcular o frete',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingAddress(false);
     }
   };
 
