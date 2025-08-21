@@ -24,11 +24,13 @@ interface Cart {
 }
 
 interface ShippingQuote {
-  service: 'PAC' | 'SEDEX' | 'RETIRADA';
+  service: string;
   serviceCode: string;
   freight_cost: number;
   delivery_days: number;
   description?: string;
+  provider?: 'CORREIOS' | 'MELHOR_ENVIO';
+  company?: string;
 }
 
 interface CustomerData {
@@ -260,6 +262,52 @@ const Checkout = () => {
     }
   };
 
+  const getMelhorEnvioQuotes = async (cep: string) => {
+    if (!cart) return [];
+    
+    try {
+      const products = cart.items.map(item => ({
+        id: item.id.toString(),
+        width: 10, // Default values - can be configured
+        height: 2,
+        length: 16, 
+        weight: 0.3,
+        price: item.unit_price,
+        quantity: item.qty
+      }));
+
+      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
+        body: {
+          cep_origem: '31575060', // Configure in settings
+          cep_destino: cep,
+          products: products
+        }
+      });
+
+      if (error) {
+        console.error('Melhor Envio error:', error);
+        return [];
+      }
+
+      if (data.opcoes && data.opcoes.length > 0) {
+        return data.opcoes.map((opcao: any) => ({
+          service: opcao.nome,
+          serviceCode: opcao.id.toString(),
+          freight_cost: opcao.preco,
+          delivery_days: opcao.prazo_max || opcao.prazo_min || 0,
+          provider: 'MELHOR_ENVIO' as const,
+          company: opcao.empresa,
+          description: `${opcao.nome} - ${opcao.empresa}`
+        }));
+      }
+
+      return [];
+    } catch (error) {
+      console.error('Error calling Melhor Envio:', error);
+      return [];
+    }
+  };
+
   const getShippingQuotes = async (cepInput?: string) => {
     const cepToUse = cepInput || addressData.cep;
     if (!cart || !cepToUse) {
@@ -285,33 +333,38 @@ const Checkout = () => {
     console.log('Iniciando cálculo de frete para CEP:', cleanCep);
     
     try {
-      const { data, error } = await supabase.functions.invoke('calculate-shipping', {
-        body: {
-          cep: cleanCep
-        }
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
+      // Call both Correios and Melhor Envio APIs in parallel
+      const [correiosPromise, melhorEnvioPromise] = await Promise.allSettled([
+        supabase.functions.invoke('calculate-shipping', {
+          body: { cep: cleanCep }
+        }),
+        getMelhorEnvioQuotes(cleanCep)
+      ]);
 
       const quotes: ShippingQuote[] = [];
       
-      // Process results from the new API format
-      if (data.resultados && data.resultados.length > 0) {
-        data.resultados.forEach((resultado: any) => {
-          const quote: ShippingQuote = {
-            service: resultado.servico,
-            serviceCode: resultado.codigo,
-            freight_cost: resultado.valor || 0,
-            delivery_days: resultado.prazo || 0
-          };
-          quotes.push(quote);
-        });
+      // Process Correios results
+      if (correiosPromise.status === 'fulfilled') {
+        const { data, error } = correiosPromise.value;
+        if (!error && !data.error && data.resultados && data.resultados.length > 0) {
+          data.resultados.forEach((resultado: any) => {
+            const quote: ShippingQuote = {
+              service: resultado.servico,
+              serviceCode: resultado.codigo,
+              freight_cost: resultado.valor || 0,
+              delivery_days: resultado.prazo || 0,
+              provider: 'CORREIOS',
+              description: `${resultado.servico} - Correios`
+            };
+            quotes.push(quote);
+          });
+        }
+      }
+
+      // Process Melhor Envio results
+      if (melhorEnvioPromise.status === 'fulfilled') {
+        const melhorEnvioQuotes = melhorEnvioPromise.value;
+        quotes.push(...melhorEnvioQuotes);
       }
 
       setShippingQuotes(prev => {
@@ -324,10 +377,27 @@ const Checkout = () => {
 
       // Show freight results
       if (quotes.length > 0) {
-        const resultsText = quotes.map(q => `${q.service}: R$ ${q.freight_cost.toFixed(2)} — prazo ${q.delivery_days} dia(s)`).join(' | ');
+        const correiosQuotes = quotes.filter(q => q.provider === 'CORREIOS');
+        const melhorEnvioQuotes = quotes.filter(q => q.provider === 'MELHOR_ENVIO');
+        
+        let resultsText = '';
+        if (correiosQuotes.length > 0) {
+          resultsText += 'Correios: ' + correiosQuotes.map(q => `${q.service} R$ ${q.freight_cost.toFixed(2)}`).join(', ');
+        }
+        if (melhorEnvioQuotes.length > 0) {
+          if (resultsText) resultsText += ' | ';
+          resultsText += 'Melhor Envio: ' + melhorEnvioQuotes.map(q => `${q.service} R$ ${q.freight_cost.toFixed(2)}`).join(', ');
+        }
+        
         toast({
           title: 'Frete calculado',
           description: resultsText
+        });
+      } else {
+        toast({
+          title: 'Atenção',
+          description: 'Nenhuma opção de frete disponível para este CEP',
+          variant: 'destructive'
         });
       }
 
