@@ -28,6 +28,26 @@ interface Order {
   cart_id?: number;
   printed?: boolean;
   observation?: string;
+  customer?: {
+    name?: string;
+    cpf?: string;
+    street?: string;
+    number?: string;
+    complement?: string;
+    city?: string;
+    state?: string;
+    cep?: string;
+  };
+  cart_items?: {
+    id: number;
+    qty: number;
+    unit_price: number;
+    product: {
+      name: string;
+      code: string;
+      image_url?: string;
+    };
+  }[];
 }
 
 const Pedidos = () => {
@@ -63,10 +83,42 @@ const Pedidos = () => {
         query = query.eq('event_date', dateStr);
       }
 
-      const { data, error } = await query;
+      const { data: orderData, error: orderError } = await query;
 
-      if (error) throw error;
-      setOrders(data || []);
+      if (orderError) throw orderError;
+
+      // Fetch customer and cart items data for each order
+      const ordersWithDetails = await Promise.all((orderData || []).map(async (order) => {
+        // Fetch customer data
+        const { data: customerData } = await supabase
+          .from('customers')
+          .select('name, cpf, street, number, complement, city, state, cep')
+          .eq('phone', order.customer_phone)
+          .single();
+
+        // Fetch cart items with products
+        const { data: cartItemsData } = await supabase
+          .from('cart_items')
+          .select(`
+            id,
+            qty,
+            unit_price,
+            product:products!cart_items_product_id_fkey (
+              name,
+              code,
+              image_url
+            )
+          `)
+          .eq('cart_id', order.cart_id || 0);
+
+        return {
+          ...order,
+          customer: customerData || undefined,
+          cart_items: cartItemsData || []
+        };
+      }));
+
+      setOrders(ordersWithDetails);
     } catch (error) {
       console.error('Error loading orders:', error);
       toast({
@@ -245,61 +297,126 @@ const Pedidos = () => {
   };
 
   const generateOrderReport = (ordersToExport: Order[]) => {
-    const reportContent = ordersToExport.map(order => `
-      <div style="page-break-after: always; padding: 20px; font-family: Arial, sans-serif;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h2>Pedido #${order.id}</h2>
-          <p>${format(new Date(order.created_at), 'dd \'de\' MMMM \'de\' yyyy \'às\' HH:mm:ss', { locale: ptBR })}</p>
-        </div>
-        
-        <div style="margin-bottom: 20px;">
-          <h3>Dados do Cliente</h3>
-          <p>Telefone: ${order.customer_phone}</p>
-          <p>Data do Evento: ${format(new Date(order.event_date), 'dd/MM/yyyy')}</p>
-          
-          <div style="margin-top: 15px;">
-            <h4>Forma de Entrega</h4>
-            <p>Método: Retirada na loja</p>
-          </div>
-          
-          <div style="margin-top: 15px;">
-            <h4>Endereço de Entrega</h4>
-            <p>Aos cuidados: Cliente</p>
-            <p>Endereço: A definir</p>
-          </div>
-        </div>
+    const reportContent = ordersToExport.map(order => {
+      const customerName = order.customer?.name || 'Cliente';
+      const customerCPF = order.customer?.cpf || 'Não informado';
+      const customerAddress = order.customer ? 
+        `${order.customer.street || 'Endereço'}, ${order.customer.number || 'S/N'}${order.customer.complement ? `, ${order.customer.complement}` : ''}, ${order.customer.city || 'Cidade'} - ${order.customer.state || 'Estado'}, CEP: ${order.customer.cep || 'Não informado'}` 
+        : 'Endereço não cadastrado';
 
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-          <thead>
-            <tr style="background-color: #f5f5f5;">
-              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Produto</th>
-              <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qtd.</th>
-              <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
+      const cartItemsRows = order.cart_items && order.cart_items.length > 0 
+        ? order.cart_items.map(item => `
             <tr>
-              <td style="border: 1px solid #ddd; padding: 8px;">
-                <div style="display: flex; align-items: center;">
-                  <div style="width: 50px; height: 50px; margin-right: 10px; border: 1px solid #ddd; background-color: #f9f9f9; display: flex; align-items: center; justify-content: center; font-size: 12px;">
-                    Foto
+              <td style="border: 1px solid #ddd; padding: 8px; vertical-align: top;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  ${item.product.image_url ? 
+                    `<img src="${item.product.image_url}" alt="${item.product.name}" style="width: 60px; height: 60px; object-fit: cover; border: 1px solid #ddd; border-radius: 4px;" />` :
+                    `<div style="width: 60px; height: 60px; border: 1px solid #ddd; background-color: #f9f9f9; display: flex; align-items: center; justify-content: center; font-size: 12px; border-radius: 4px;">Sem foto</div>`
+                  }
+                  <div>
+                    <div style="font-weight: bold; margin-bottom: 4px;">${item.product.name}</div>
+                    <div style="font-size: 12px; color: #666;">Código: ${item.product.code}</div>
                   </div>
-                  <span>Produtos do pedido</span>
                 </div>
               </td>
-              <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
-              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">R$ ${order.total_amount.toFixed(2)}</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top;">
+                R$ ${item.unit_price.toFixed(2)}
+              </td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top;">
+                ${item.qty}
+              </td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right; vertical-align: top;">
+                R$ ${(item.qty * item.unit_price).toFixed(2)}
+              </td>
             </tr>
-          </tbody>
-        </table>
+          `).join('')
+        : `<tr>
+             <td style="border: 1px solid #ddd; padding: 8px;" colspan="4">
+               <div style="text-align: center; color: #666;">Produtos do pedido - detalhes não disponíveis</div>
+             </td>
+           </tr>`;
 
-        <div style="margin-top: 20px;">
-          <p><strong>Total do pedido: R$ ${order.total_amount.toFixed(2)}</strong></p>
-          <p>Status: ${order.is_paid ? 'Pago' : 'Pendente'}</p>
-          ${order.observation ? `<p><strong>Observação:</strong> ${order.observation}</p>` : ''}
+      return `
+        <div style="page-break-after: always; padding: 20px; font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
+          <!-- Header -->
+          <div style="border-bottom: 2px solid #ddd; padding-bottom: 20px; margin-bottom: 20px;">
+            <h1 style="margin: 0 0 10px 0; font-size: 24px; font-weight: bold;">${customerName}</h1>
+            <div style="display: flex; gap: 20px; margin-bottom: 10px;">
+              <span><strong>CPF:</strong> ${customerCPF}</span>
+              <span><strong>Celular:</strong> ${order.customer_phone}</span>
+            </div>
+          </div>
+
+          <!-- Two Column Layout -->
+          <div style="display: flex; gap: 30px; margin-bottom: 30px;">
+            <!-- Left Column - Order Summary -->
+            <div style="flex: 2;">
+              <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 5px;">
+                Resumo do pedido (${order.cart_items?.length || 0})
+              </h3>
+              
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
+                <thead>
+                  <tr style="background-color: #f8f9fa;">
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Produto</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 80px;">Unitário</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 50px;">Qtd</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: center; width: 80px;">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${cartItemsRows}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Right Column - Shipping Info -->
+            <div style="flex: 1;">
+              <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: bold;">Informações do envio</h3>
+              
+              <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <div style="font-size: 14px; line-height: 1.5;">
+                  <div style="margin-bottom: 8px;">${customerAddress}</div>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 20px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; font-weight: bold;">Dados do envio</h4>
+                <div style="font-size: 14px; line-height: 1.6;">
+                  <div><strong>PAC</strong></div>
+                  <div>R$ 23,00 - até 9 dias úteis</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Payment Information -->
+          <div style="border-top: 1px solid #ddd; padding-top: 20px;">
+            <h3 style="margin: 0 0 15px 0; font-size: 16px; font-weight: bold;">Forma de pagamento (1)</h3>
+            
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px;">
+              <div style="font-size: 14px; line-height: 1.6;">
+                <div style="margin-bottom: 8px;"><strong>Pix - mercado pago</strong></div>
+                <div style="margin-bottom: 4px;">R$ ${order.total_amount.toFixed(2)} - Data do pagamento: ${format(new Date(order.created_at), 'dd/MM/yy')}</div>
+                ${order.observation ? `
+                  <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;">
+                    <div style="font-weight: bold; margin-bottom: 4px;">Observações do pagamento</div>
+                    <div>${order.observation}</div>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div style="margin-top: 30px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #ddd; padding-top: 15px;">
+            <div><strong>Total do pedido: R$ ${order.total_amount.toFixed(2)}</strong></div>
+            <div style="margin-top: 5px;">Status: ${order.is_paid ? 'Pago' : 'Pendente'}</div>
+            <div style="margin-top: 5px;">Pedido #${order.id} - ${format(new Date(order.created_at), 'dd/MM/yyyy \'às\' HH:mm')}</div>
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     const printWindow = window.open('', '_blank');
     if (printWindow) {
