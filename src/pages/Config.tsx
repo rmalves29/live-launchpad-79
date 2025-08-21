@@ -39,12 +39,12 @@ const Config = () => {
       ]
     },
     {
-      title: 'Configurações dos Correios',
+      title: 'Melhor Envio',
       icon: Truck,
       items: [
         { label: 'CEP de Origem', value: config?.origin_cep, type: 'text' },
-        { label: 'Serviço PAC', value: '3298', type: 'code' },
-        { label: 'Serviço SEDEX', value: '3220', type: 'code' }
+        { label: 'Ambiente', value: 'Sandbox', type: 'badge' },
+        { label: 'Status OAuth', value: 'Configurar', type: 'status' }
       ]
     },
     {
@@ -66,10 +66,10 @@ const Config = () => {
       status: 'Configuração necessária'
     },
     {
-      title: 'Correios',
-      description: 'API de cálculo de frete PAC/SEDEX',
+      title: 'Melhor Envio',
+      description: 'Cálculo de frete e geração de etiquetas',
       icon: Truck,
-      url: 'https://www.correios.com.br/para-voce/correios-de-a-a-z/pdf/calculador-remoto-de-precos-e-prazos',
+      url: 'https://docs.melhorenvio.com.br/',
       status: 'Configuração necessária'
     },
     {
@@ -123,6 +123,8 @@ const Config = () => {
         return `${value.substring(0, 20)}...`;
       case 'code':
         return <Badge variant="secondary" className="font-mono">{value}</Badge>;
+      case 'status':
+        return <Badge variant="outline">{value}</Badge>;
       default:
         return value;
     }
