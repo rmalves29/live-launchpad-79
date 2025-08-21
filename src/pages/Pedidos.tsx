@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, CalendarIcon, Eye, Filter, Download } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -26,6 +26,8 @@ interface Order {
   payment_link?: string;
   created_at: string;
   cart_id?: number;
+  printed?: boolean;
+  observation?: string;
 }
 
 const Pedidos = () => {
@@ -36,6 +38,9 @@ const Pedidos = () => {
   const [filterEventType, setFilterEventType] = useState<string>('all');
   const [filterDate, setFilterDate] = useState<Date | undefined>();
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
+  const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
+  const [editingObservation, setEditingObservation] = useState<number | null>(null);
+  const [observationText, setObservationText] = useState('');
 
   const loadOrders = async () => {
     try {
@@ -97,6 +102,11 @@ const Pedidos = () => {
           : order
       ));
 
+      // Se o pedido foi marcado como pago, enviar mensagem automática
+      if (!currentStatus) {
+        await sendPaidOrderMessage(orderId);
+      }
+
       toast({
         title: 'Sucesso',
         description: `Pedido ${!currentStatus ? 'marcado como pago' : 'desmarcado como pago'}`
@@ -114,6 +124,186 @@ const Pedidos = () => {
         newSet.delete(orderId);
         return newSet;
       });
+    }
+  };
+
+  const sendPaidOrderMessage = async (orderId: number) => {
+    try {
+      const order = orders.find(o => o.id === orderId);
+      if (!order) return;
+
+      await supabase.functions.invoke('whatsapp-connection', {
+        body: {
+          action: 'sendPaidNotification',
+          data: {
+            phone: order.customer_phone,
+            orderId: order.id,
+            totalAmount: order.total_amount,
+            customerName: order.customer_phone // Poderia ser melhorado com nome real
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error sending paid order message:', error);
+    }
+  };
+
+  const saveObservation = async (orderId: number) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ observation: observationText })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      setOrders(prev => prev.map(order => 
+        order.id === orderId 
+          ? { ...order, observation: observationText }
+          : order
+      ));
+
+      setEditingObservation(null);
+      setObservationText('');
+
+      toast({
+        title: 'Sucesso',
+        description: 'Observação salva com sucesso'
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao salvar observação',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const toggleOrderSelection = (orderId: number) => {
+    setSelectedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  const markOrdersAsPrinted = async () => {
+    if (selectedOrders.size === 0) {
+      toast({
+        title: 'Aviso',
+        description: 'Selecione pelo menos um pedido para marcar como impresso',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ printed: true })
+        .in('id', Array.from(selectedOrders));
+
+      if (error) throw error;
+
+      setOrders(prev => prev.map(order => 
+        selectedOrders.has(order.id) 
+          ? { ...order, printed: true }
+          : order
+      ));
+
+      setSelectedOrders(new Set());
+
+      toast({
+        title: 'Sucesso',
+        description: `${selectedOrders.size} pedido(s) marcado(s) como impresso(s)`
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao marcar pedidos como impressos',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const exportSelectedOrders = () => {
+    if (selectedOrders.size === 0) {
+      toast({
+        title: 'Aviso',
+        description: 'Selecione pelo menos um pedido para exportar',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const selectedOrdersData = orders.filter(order => selectedOrders.has(order.id));
+    generateOrderReport(selectedOrdersData);
+  };
+
+  const generateOrderReport = (ordersToExport: Order[]) => {
+    const reportContent = ordersToExport.map(order => `
+      <div style="page-break-after: always; padding: 20px; font-family: Arial, sans-serif;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h2>Pedido #${order.id} - LOJA VIRTUAL</h2>
+          <p>${format(new Date(order.created_at), 'dd \'de\' MMMM \'de\' yyyy \'às\' HH:mm:ss', { locale: ptBR })}</p>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+          <h3>Endereço de entrega</h3>
+          <p>Aos cuidados: Cliente</p>
+          <p>Telefone: ${order.customer_phone}</p>
+          <p>Tipo de Evento: ${order.event_type}</p>
+          <p>Data do Evento: ${format(new Date(order.event_date), 'dd/MM/yyyy')}</p>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+          <thead>
+            <tr style="background-color: #f5f5f5;">
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Produto</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Qtd.</th>
+              <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="border: 1px solid #ddd; padding: 8px;">Produtos do pedido</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
+              <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">R$ ${order.total_amount.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="margin-top: 20px;">
+          <p><strong>Total do pedido: R$ ${order.total_amount.toFixed(2)}</strong></p>
+          <p>Status: ${order.is_paid ? 'Pago' : 'Pendente'}</p>
+          ${order.observation ? `<p>Observação: ${order.observation}</p>` : ''}
+        </div>
+      </div>
+    `).join('');
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Pedidos Selecionados</title>
+            <style>
+              @page { margin: 1cm; }
+              body { margin: 0; }
+            </style>
+          </head>
+          <body>
+            ${reportContent}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
     }
   };
 
@@ -161,10 +351,28 @@ const Pedidos = () => {
         <div className="container mx-auto space-y-6">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold">Gestão de Pedidos</h1>
-            <Button onClick={exportToCSV} variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Exportar CSV
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                onClick={exportSelectedOrders} 
+                variant="outline"
+                disabled={selectedOrders.size === 0}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Imprimir Selecionados ({selectedOrders.size})
+              </Button>
+              <Button 
+                onClick={markOrdersAsPrinted} 
+                variant="outline"
+                disabled={selectedOrders.size === 0}
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                Marcar como Impresso
+              </Button>
+              <Button onClick={exportToCSV} variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Exportar CSV
+              </Button>
+            </div>
           </div>
 
       {/* Filters */}
@@ -254,32 +462,53 @@ const Pedidos = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>
+                    <input 
+                      type="checkbox" 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedOrders(new Set(orders.map(o => o.id)));
+                        } else {
+                          setSelectedOrders(new Set());
+                        }
+                      }}
+                      checked={selectedOrders.size === orders.length && orders.length > 0}
+                    />
+                  </TableHead>
                   <TableHead>#Pedido</TableHead>
                   <TableHead>Telefone</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Pago?</TableHead>
+                  <TableHead>Impresso?</TableHead>
                   <TableHead>Tipo Evento</TableHead>
                   <TableHead>Data Evento</TableHead>
-                  <TableHead>Criado em</TableHead>
+                  <TableHead>Observação</TableHead>
                   <TableHead>Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
+                    <TableCell colSpan={10} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       Nenhum pedido encontrado
                     </TableCell>
                   </TableRow>
                 ) : (
                   orders.map((order) => (
                     <TableRow key={order.id}>
+                      <TableCell>
+                        <input 
+                          type="checkbox"
+                          checked={selectedOrders.has(order.id)}
+                          onChange={() => toggleOrderSelection(order.id)}
+                        />
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">#{order.id}</Badge>
                       </TableCell>
@@ -301,13 +530,68 @@ const Pedidos = () => {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center">
+                          {order.printed ? (
+                            <Badge variant="default" className="flex items-center">
+                              <Check className="h-3 w-3 mr-1" />
+                              Impresso
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">Não impresso</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <Badge variant="outline">{order.event_type}</Badge>
                       </TableCell>
                       <TableCell>
                         {format(new Date(order.event_date), 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell>
-                        {format(new Date(order.created_at), 'dd/MM/yyyy HH:mm')}
+                        <div className="flex items-center space-x-2">
+                          {editingObservation === order.id ? (
+                            <div className="flex items-center space-x-2">
+                              <Input
+                                value={observationText}
+                                onChange={(e) => setObservationText(e.target.value)}
+                                placeholder="Adicionar observação"
+                                className="w-32"
+                              />
+                              <Button 
+                                size="sm" 
+                                onClick={() => saveObservation(order.id)}
+                              >
+                                <Save className="h-3 w-3" />
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingObservation(null);
+                                  setObservationText('');
+                                }}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center space-x-2">
+                              <span className="text-sm max-w-32 truncate">
+                                {order.observation || 'Sem observação'}
+                              </span>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingObservation(order.id);
+                                  setObservationText(order.observation || '');
+                                }}
+                              >
+                                <FileText className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Button size="sm" variant="outline">

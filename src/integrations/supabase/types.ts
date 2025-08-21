@@ -185,7 +185,9 @@ export type Database = {
           event_type: string
           id: number
           is_paid: boolean
+          observation: string | null
           payment_link: string | null
+          printed: boolean | null
           total_amount: number
         }
         Insert: {
@@ -196,7 +198,9 @@ export type Database = {
           event_type: string
           id?: number
           is_paid?: boolean
+          observation?: string | null
           payment_link?: string | null
+          printed?: boolean | null
           total_amount: number
         }
         Update: {
@@ -207,7 +211,9 @@ export type Database = {
           event_type?: string
           id?: number
           is_paid?: boolean
+          observation?: string | null
           payment_link?: string | null
+          printed?: boolean | null
           total_amount?: number
         }
         Relationships: [

@@ -40,6 +40,9 @@ serve(async (req) => {
       case "send_cancellation":
         return await sendCancellation(data, supabase);
       
+      case "send_paid_notification":
+        return await sendPaidNotification(data, supabase);
+      
       case "process_manual_order":
         return await processManualOrder(data, supabase);
       
@@ -152,6 +155,40 @@ Obrigado! 🙏`;
   return new Response(JSON.stringify({ 
     success: true, 
     message: "Cancelamento enviado com sucesso" 
+  }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status: 200,
+  });
+}
+
+async function sendPaidNotification(data: any, supabase: any) {
+  const message = `🎉 *Pedido Confirmado - #${data.orderId}*
+
+Olá! Seu pagamento foi confirmado com sucesso! ✅
+
+💰 Valor pago: R$ ${data.totalAmount?.toFixed(2)}
+
+📦 Seu pedido está sendo preparado e em breve entraremos em contato com as informações de entrega.
+
+🚚 Acompanhe o status do seu pedido em:
+${Deno.env.get("PUBLIC_APP_URL")}/pedidos
+
+Obrigado pela preferência! 😊`;
+
+  console.log(`Enviando confirmação de pagamento para ${data.phone}:`, message);
+  
+  await supabase.from('whatsapp_messages').insert({
+    phone: data.phone,
+    message,
+    type: 'paid_order',
+    order_id: data.orderId,
+    amount: data.totalAmount,
+    sent_at: new Date().toISOString()
+  });
+
+  return new Response(JSON.stringify({ 
+    success: true, 
+    message: "Notificação de pagamento enviada com sucesso" 
   }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
     status: 200,

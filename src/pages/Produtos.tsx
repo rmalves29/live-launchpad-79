@@ -465,6 +465,7 @@ const Produtos = () => {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Foto</TableHead>
                 <TableHead>Código</TableHead>
                 <TableHead>Nome</TableHead>
                 <TableHead>Preço</TableHead>
@@ -476,6 +477,21 @@ const Produtos = () => {
             <TableBody>
               {filteredProducts.map((product) => (
                 <TableRow key={product.id}>
+                  <TableCell>
+                    <div className="w-12 h-12 border rounded overflow-hidden bg-muted">
+                      {product.image_url ? (
+                        <img 
+                          src={product.image_url} 
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Package className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="font-mono">{product.code}</TableCell>
                   <TableCell>{product.name}</TableCell>
                   <TableCell>R$ {product.price.toFixed(2)}</TableCell>
