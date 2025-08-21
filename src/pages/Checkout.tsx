@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Copy, Package, Truck, User, MapPin } from 'lucide-react';
+import { Loader2, Copy, User, MapPin } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface CartItem {
@@ -23,15 +23,6 @@ interface Cart {
   subtotal: number;
 }
 
-interface ShippingQuote {
-  service: string;
-  serviceCode: string;
-  freight_cost: number;
-  delivery_days: number;
-  description?: string;
-  provider?: 'CORREIOS' | 'MELHOR_ENVIO';
-  company?: string;
-}
 
 interface CustomerData {
   name: string;
@@ -61,11 +52,8 @@ const Checkout = () => {
     cep: ''
   });
   const [cart, setCart] = useState<Cart | null>(null);
-  const [shippingQuotes, setShippingQuotes] = useState<ShippingQuote[]>([]);
-  const [selectedShipping, setSelectedShipping] = useState<ShippingQuote | null>(null);
   const [paymentLink, setPaymentLink] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingShipping, setLoadingShipping] = useState(false);
   const [loadingAddress, setLoadingAddress] = useState(false);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
   const [generatingPayment, setGeneratingPayment] = useState(false);
@@ -228,17 +216,7 @@ const Checkout = () => {
 
       setCart(mockCart);
       
-      // Always add pickup option when cart is loaded
-      const pickupOption: ShippingQuote = {
-        service: 'RETIRADA',
-        serviceCode: 'PICKUP',
-        freight_cost: 0,
-        delivery_days: 0,
-        description: 'Retirada na Fábrica'
-      };
-      setShippingQuotes([pickupOption]);
-      
-      // Auto ação: se há CEP válido no cadastro, dispara busca de endereço e frete; senão foca no campo
+      // Auto ação: se há CEP válido no cadastro, dispara busca de endereço; senão foca no campo
       const cepFromCustomer = normalizeCep(addressData.cep);
       if (isValidCep(cepFromCustomer)) {
         await handleCepChange(cepFromCustomer);
@@ -262,252 +240,12 @@ const Checkout = () => {
     }
   };
 
-  const getMelhorEnvioQuotes = async (cep: string) => {
-    if (!cart) return [];
-    
-    try {
-      const products = cart.items.map(item => ({
-        id: item.id.toString(),
-        width: 10, // Default values - can be configured
-        height: 2,
-        length: 16, 
-        weight: 0.3,
-        price: item.unit_price,
-        quantity: item.qty
-      }));
-
-      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
-        body: {
-          cep_origem: '31575060', // Configure in settings
-          cep_destino: cep,
-          products: products
-        }
-      });
-
-      if (error) {
-        console.error('Melhor Envio error:', error);
-        return [];
-      }
-
-      if (data.opcoes && data.opcoes.length > 0) {
-        return data.opcoes.map((opcao: any) => ({
-          service: opcao.nome,
-          serviceCode: opcao.id.toString(),
-          freight_cost: opcao.preco,
-          delivery_days: opcao.prazo_max || opcao.prazo_min || 0,
-          provider: 'MELHOR_ENVIO' as const,
-          company: opcao.empresa,
-          description: `${opcao.nome} - ${opcao.empresa}`
-        }));
-      }
-
-      return [];
-    } catch (error) {
-      console.error('Error calling Melhor Envio:', error);
-      return [];
-    }
-  };
-
-  const getShippingQuotes = async (cepInput?: string) => {
-    const cepToUse = cepInput || addressData.cep;
-    if (!cart || !cepToUse) {
-      toast({
-        title: 'Erro',
-        description: 'Carregue o carrinho e informe o CEP primeiro',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    const cleanCep = normalizeCep(cepToUse);
-    if (!isValidCep(cepToUse)) {
-      toast({
-        title: 'Erro',
-        description: 'CEP inválido. Digite 8 dígitos.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    setLoadingShipping(true);
-    console.log('Iniciando cálculo de frete para CEP:', cleanCep);
-    
-    try {
-      // Call both Correios and Melhor Envio APIs in parallel
-      const [correiosPromise, melhorEnvioPromise] = await Promise.allSettled([
-        supabase.functions.invoke('calculate-shipping', {
-          body: { cep: cleanCep }
-        }),
-        getMelhorEnvioQuotes(cleanCep)
-      ]);
-
-      const quotes: ShippingQuote[] = [];
-      
-      // Process Correios results
-      if (correiosPromise.status === 'fulfilled') {
-        const { data, error } = correiosPromise.value;
-        if (!error && !data.error && data.resultados && data.resultados.length > 0) {
-          data.resultados.forEach((resultado: any) => {
-            const quote: ShippingQuote = {
-              service: resultado.servico,
-              serviceCode: resultado.codigo,
-              freight_cost: resultado.valor || 0,
-              delivery_days: resultado.prazo || 0,
-              provider: 'CORREIOS',
-              description: `${resultado.servico} - Correios`
-            };
-            quotes.push(quote);
-          });
-        }
-      }
-
-      // Process Melhor Envio results
-      if (melhorEnvioPromise.status === 'fulfilled') {
-        const melhorEnvioQuotes = melhorEnvioPromise.value;
-        quotes.push(...melhorEnvioQuotes);
-      }
-
-      setShippingQuotes(prev => {
-        // Keep pickup option and add new shipping quotes
-        const pickup = prev.find(q => q.service === 'RETIRADA');
-        return pickup ? [pickup, ...quotes] : quotes;
-      });
-
-      console.log('Cálculo de frete concluído');
-
-      // Show freight results
-      if (quotes.length > 0) {
-        const correiosQuotes = quotes.filter(q => q.provider === 'CORREIOS');
-        const melhorEnvioQuotes = quotes.filter(q => q.provider === 'MELHOR_ENVIO');
-        
-        let resultsText = '';
-        if (correiosQuotes.length > 0) {
-          resultsText += 'Correios: ' + correiosQuotes.map(q => `${q.service} R$ ${q.freight_cost.toFixed(2)}`).join(', ');
-        }
-        if (melhorEnvioQuotes.length > 0) {
-          if (resultsText) resultsText += ' | ';
-          resultsText += 'Melhor Envio: ' + melhorEnvioQuotes.map(q => `${q.service} R$ ${q.freight_cost.toFixed(2)}`).join(', ');
-        }
-        
-        toast({
-          title: 'Frete calculado',
-          description: resultsText
-        });
-      } else {
-        toast({
-          title: 'Atenção',
-          description: 'Nenhuma opção de frete disponível para este CEP',
-          variant: 'destructive'
-        });
-      }
-
-    } catch (error) {
-      console.error('Error calculating shipping:', error);
-      toast({
-        title: 'Erro',
-        description: `Erro ao calcular frete: ${error.message}`,
-        variant: 'destructive'
-      });
-    } finally {
-      setLoadingShipping(false);
-    }
-  };
-
-  const handleFreteCalculation = async () => {
-    const cep = normalizeCep(addressData.cep);
-    if (cep.length !== 8) {
-      toast({
-        title: 'Erro',
-        description: 'CEP inválido. Digite 8 dígitos.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    await getShippingQuotes(cep);
-  };
-
-  const importToMelhorEnvio = async (orderData: any, selectedService: ShippingQuote) => {
-    try {
-      console.log("Importing order to Melhor Envio...", orderData);
-      
-      const melhorEnvioData = {
-        action: 'import_order',
-        orderData: {
-          serviceId: selectedService.serviceCode,
-          from: {
-            name: "Loja Virtual",
-            phone: "31999999999", // Configure with store data
-            email: "loja@exemplo.com",
-            document: "00000000000191", // Configure with store CNPJ
-            address: "Rua da Loja, 123",
-            number: "123",
-            district: "Centro",
-            city: "Belo Horizonte",
-            state_abbr: "MG",
-            postal_code: "31575060" // Configure with store CEP
-          },
-          to: {
-            name: customerData.name,
-            phone: normalizePhone(phone),
-            email: customerData.email || `${normalizePhone(phone)}@checkout.com`,
-            document: customerData.cpf?.replace(/\D/g, '') || "00000000000",
-            address: addressData.street,
-            complement: addressData.complement,
-            number: addressData.number,
-            district: "Centro", // You might want to add district field
-            city: addressData.city,
-            state_abbr: addressData.state,
-            postal_code: addressData.cep
-          },
-          products: cart?.items.map(item => ({
-            id: item.id.toString(),
-            width: 10, // Default values - can be configured per product
-            height: 2,
-            length: 16,
-            weight: 0.3,
-            insurance_value: item.unit_price,
-            quantity: item.qty
-          })) || [],
-          insurance_value: cart?.subtotal || 0,
-          order_id: cart?.id.toString() || "",
-          order_url: window.location.origin
-        }
-      };
-
-      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
-        body: melhorEnvioData
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if (data.success) {
-        toast({
-          title: "Pedido importado",
-          description: `Pedido #${data.melhor_envio_id} importado para o Melhor Envio com sucesso!`,
-        });
-        return data.melhor_envio_id;
-      } else {
-        throw new Error("Falha na importação para o Melhor Envio");
-      }
-    } catch (error) {
-      console.error("Error importing to Melhor Envio:", error);
-      toast({
-        title: "Aviso",
-        description: "Pedido criado, mas houve erro na importação para o Melhor Envio. Você pode importar manualmente.",
-        variant: "destructive"
-      });
-      return null;
-    }
-  };
 
   const generatePaymentLink = async () => {
-    if (!cart || !selectedShipping) {
+    if (!cart) {
       toast({
         title: 'Erro',
-        description: 'Selecione o frete primeiro',
+        description: 'Carregue o carrinho primeiro',
         variant: 'destructive'
       });
       return;
@@ -531,7 +269,7 @@ const Checkout = () => {
         unit_price: item.unit_price.toString()
       }));
 
-      const total = cart.subtotal + selectedShipping.freight_cost;
+      const total = cart.subtotal;
       
       // Prepare payment data
       const paymentData = {
@@ -542,7 +280,7 @@ const Checkout = () => {
           email: customerData.email || `${normalizePhone(phone)}@checkout.com`
         },
         addressData,
-        shippingCost: selectedShipping.freight_cost,
+        shippingCost: 0,
         total,
         cartId: cart.id
       };
@@ -559,11 +297,6 @@ const Checkout = () => {
 
       if (data?.payment_url) {
         setPaymentLink(data.payment_url);
-        
-        // If Melhor Envio service was selected, import the order
-        if (selectedShipping.provider === 'MELHOR_ENVIO') {
-          await importToMelhorEnvio(paymentData, selectedShipping);
-        }
         
         // Open Mercado Pago checkout in new tab
         window.open(data.payment_url, '_blank');
@@ -661,27 +394,6 @@ const Checkout = () => {
     // Auto search address when CEP is complete
     if (isValidCep(value)) {
       await searchAddressByCep(formattedCep);
-      
-      // Auto calculate shipping when CEP is complete and cart is loaded
-      if (cart) {
-        // Clear previous delivery quotes but keep pickup option
-        setShippingQuotes(prev => prev.filter(q => q.service === 'RETIRADA'));
-        setSelectedShipping(null);
-        
-        // Auto calculate both PAC and SEDEX quotes
-        toast({
-          title: 'Calculando frete',
-          description: 'Buscando melhores opções de entrega...'
-        });
-        
-        console.log("Iniciando cálculo de frete para CEP:", normalizedCep);
-        try {
-          await getShippingQuotes();
-          console.log("Cálculo de frete concluído");
-        } catch (error) {
-          console.error("Erro no cálculo de frete:", error);
-        }
-      }
     }
   };
 
@@ -824,45 +536,12 @@ const Checkout = () => {
                 />
               </div>
               
-              {loadingAddress && (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  <span className="text-sm text-muted-foreground">Buscando endereço...</span>
-                </div>
-              )}
-              
-               {/* Freight Calculator Section */}
-                <div className="mt-6 p-4 border border-primary/20 rounded-lg bg-primary/5">
-                  <h3 className="text-lg font-semibold mb-3 text-primary">CALCULAR FRETE</h3>
-                  <p className="text-sm text-muted-foreground mb-4">Digite o CEP (8 dígitos) para calcular frete via Correios e Melhor Envio.</p>
-                 
-                 <div className="flex gap-3">
-                   <Input
-                     placeholder="Ex: 01001-000"
-                     value={addressData.cep}
-                     onChange={(e) => handleCepChange(e.target.value)}
-                     maxLength={9}
-                     className="flex-1"
-                     autoComplete="postal-code"
-                   />
-                   <Button 
-                     onClick={handleFreteCalculation}
-                     disabled={loadingShipping || !cart}
-                     variant="default"
-                   >
-                     {loadingShipping ? (
-                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                     ) : null}
-                     Calcular Frete
-                   </Button>
+               {loadingAddress && (
+                 <div className="flex items-center justify-center py-4">
+                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                   <span className="text-sm text-muted-foreground">Buscando endereço...</span>
                  </div>
-                 
-                 {loadingShipping && (
-                   <div className="mt-3 text-sm text-muted-foreground">
-                     Calculando...
-                   </div>
-                 )}
-               </div>
+               )}
 
                <div className="flex justify-end">
                  <Button onClick={saveCustomerData} variant="outline">
@@ -874,75 +553,9 @@ const Checkout = () => {
         </Card>
       )}
 
-      {/* Shipping */}
-      {cart && addressData.cep && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Truck className="h-5 w-5 mr-2" />
-              Frete
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {loadingShipping && (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  <span className="text-sm text-muted-foreground">Calculando opções de frete...</span>
-                </div>
-              )}
-
-              {shippingQuotes.length > 0 && (
-                <div className="space-y-2">
-                  <h4 className="font-medium">Opções de Frete:</h4>
-                  {shippingQuotes.map((quote) => (
-                    <div 
-                      key={quote.service}
-                      className={`p-3 border rounded cursor-pointer transition-colors ${
-                        selectedShipping?.service === quote.service 
-                          ? 'border-primary bg-primary/5' 
-                          : 'hover:bg-muted'
-                      }`}
-                      onClick={() => setSelectedShipping(quote)}
-                    >
-                      <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-medium">
-                          {quote.description || quote.service}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {quote.service === 'RETIRADA' 
-                            ? 'Retire no local' 
-                            : `${quote.delivery_days} dias úteis`
-                          }
-                        </div>
-                      </div>
-                        <div className="font-medium">
-                          {quote.freight_cost === 0 ? 'GRÁTIS' : `R$ ${quote.freight_cost.toFixed(2)}`}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {selectedShipping && (
-                <div className="p-3 bg-muted rounded">
-                  <div className="flex justify-between items-center">
-                    <span>Frete selecionado ({selectedShipping.description || selectedShipping.service}):</span>
-                    <span className="font-medium">
-                      {selectedShipping.freight_cost === 0 ? 'GRÁTIS' : `R$ ${selectedShipping.freight_cost.toFixed(2)}`}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Total and Payment */}
-      {cart && selectedShipping && (
+      {cart && (
         <Card>
           <CardHeader>
             <CardTitle>Finalizar Pedido</CardTitle>
@@ -950,18 +563,9 @@ const Checkout = () => {
           <CardContent>
             <div className="space-y-4">
               <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>R$ {cart.subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Frete ({selectedShipping.description || selectedShipping.service}):</span>
-                  <span>{selectedShipping.freight_cost === 0 ? 'GRÁTIS' : `R$ ${selectedShipping.freight_cost.toFixed(2)}`}</span>
-                </div>
-                <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total:</span>
-                  <span>R$ {(cart.subtotal + selectedShipping.freight_cost).toFixed(2)}</span>
+                  <span>R$ {cart.subtotal.toFixed(2)}</span>
                 </div>
               </div>
 
