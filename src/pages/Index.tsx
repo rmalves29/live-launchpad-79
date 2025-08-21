@@ -1,17 +1,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import { ShoppingCart, Package, List, Dice6, Settings, Plus } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 
 const Index = () => {
-  const { logout } = useAuth();
   const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-  };
 
   const dashboardItems = [
     {

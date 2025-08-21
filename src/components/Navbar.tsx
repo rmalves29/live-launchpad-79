@@ -1,20 +1,11 @@
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
+import { NavLink } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
-import { Menu, LogOut, User } from 'lucide-react';
+import { Menu } from 'lucide-react';
 
 const Navbar = () => {
-  const { logout, profile, user } = useAuth();
-  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
@@ -56,20 +47,6 @@ const Navbar = () => {
                 {item.label}
               </NavLink>
             ))}
-            
-            {/* User Profile Display */}
-            <div className="flex items-center space-x-2 ml-4 pl-4 border-l">
-              <User className="h-4 w-4" />
-              <span className="text-sm font-medium">{user?.email}</span>
-              <Badge variant={profile?.role === 'admin' ? 'default' : 'secondary'}>
-                {profile?.role}
-              </Badge>
-            </div>
-            
-            <Button variant="outline" size="sm" onClick={handleLogout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Sair
-            </Button>
           </div>
 
           {/* Mobile Navigation */}
@@ -82,15 +59,6 @@ const Navbar = () => {
               </SheetTrigger>
               <SheetContent side="right" className="w-[300px]">
                 <div className="flex flex-col space-y-4 mt-8">
-                  {/* User Profile in Mobile */}
-                  <div className="flex items-center space-x-2 pb-4 border-b">
-                    <User className="h-4 w-4" />
-                    <span className="text-sm font-medium">{user?.email}</span>
-                    <Badge variant={profile?.role === 'admin' ? 'default' : 'secondary'}>
-                      {profile?.role}
-                    </Badge>
-                  </div>
-                  
                   {navItems.map((item) => (
                     <NavLink
                       key={item.path}
@@ -107,10 +75,6 @@ const Navbar = () => {
                       {item.label}
                     </NavLink>
                   ))}
-                  <Button variant="outline" onClick={handleLogout} className="mt-4">
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Sair
-                  </Button>
                 </div>
               </SheetContent>
             </Sheet>
