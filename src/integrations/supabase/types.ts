@@ -145,6 +145,7 @@ export type Database = {
           state: string | null
           street: string | null
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           cep?: string | null
@@ -159,6 +160,7 @@ export type Database = {
           state?: string | null
           street?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           cep?: string | null
@@ -173,6 +175,7 @@ export type Database = {
           state?: string | null
           street?: string | null
           updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -256,6 +259,30 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string
+          role: Database["public"]["Enums"]["user_role"]
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          id: string
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["user_role"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_messages: {
         Row: {
           amount: number | null
@@ -333,10 +360,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_role: {
+        Args: { user_id: string }
+        Returns: Database["public"]["Enums"]["user_role"]
+      }
     }
     Enums: {
-      [_ in never]: never
+      user_role: "admin" | "customer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -463,6 +493,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      user_role: ["admin", "customer"],
+    },
   },
 } as const

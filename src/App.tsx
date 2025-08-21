@@ -34,17 +34,63 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/mp/return" element={<MpReturn />} />
-            <Route path="/" element={<Index />} />
-            <Route path="/pedidos-manual" element={<PedidosManual />} />
-            <Route path="/pedidos" element={<Pedidos />} />
-            <Route path="/sorteio" element={<Sorteio />} />
-            <Route path="/config" element={<Config />} />
-            <Route path="/produtos" element={<Produtos />} />
-            <Route path="/clientes" element={<Clientes />} />
-            <Route path="/whatsapp" element={<WhatsApp />} />
-            <Route path="/configuracoes" element={<ConfigurationsPage />} />
-            <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
-            <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
+            
+            {/* Protected Admin Routes */}
+            <Route path="/" element={
+              <ProtectedRoute requireAdmin>
+                <Index />
+              </ProtectedRoute>
+            } />
+            <Route path="/pedidos-manual" element={
+              <ProtectedRoute requireAdmin>
+                <PedidosManual />
+              </ProtectedRoute>
+            } />
+            <Route path="/pedidos" element={
+              <ProtectedRoute requireAdmin>
+                <Pedidos />
+              </ProtectedRoute>
+            } />
+            <Route path="/sorteio" element={
+              <ProtectedRoute requireAdmin>
+                <Sorteio />
+              </ProtectedRoute>
+            } />
+            <Route path="/config" element={
+              <ProtectedRoute requireAdmin>
+                <Config />
+              </ProtectedRoute>
+            } />
+            <Route path="/produtos" element={
+              <ProtectedRoute requireAdmin>
+                <Produtos />
+              </ProtectedRoute>
+            } />
+            <Route path="/clientes" element={
+              <ProtectedRoute requireAdmin>
+                <Clientes />
+              </ProtectedRoute>
+            } />
+            <Route path="/whatsapp" element={
+              <ProtectedRoute requireAdmin>
+                <WhatsApp />
+              </ProtectedRoute>
+            } />
+            <Route path="/configuracoes" element={
+              <ProtectedRoute requireAdmin>
+                <ConfigurationsPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/whatsapp-templates" element={
+              <ProtectedRoute requireAdmin>
+                <WhatsAppTemplates />
+              </ProtectedRoute>
+            } />
+            <Route path="/whatsapp-connection" element={
+              <ProtectedRoute requireAdmin>
+                <WhatsAppConnection />
+              </ProtectedRoute>
+            } />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
