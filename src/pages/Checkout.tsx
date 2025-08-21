@@ -427,6 +427,82 @@ const Checkout = () => {
     await getShippingQuotes(cep);
   };
 
+  const importToMelhorEnvio = async (orderData: any, selectedService: ShippingQuote) => {
+    try {
+      console.log("Importing order to Melhor Envio...", orderData);
+      
+      const melhorEnvioData = {
+        action: 'import_order',
+        orderData: {
+          serviceId: selectedService.serviceCode,
+          from: {
+            name: "Loja Virtual",
+            phone: "31999999999", // Configure with store data
+            email: "loja@exemplo.com",
+            document: "00000000000191", // Configure with store CNPJ
+            address: "Rua da Loja, 123",
+            number: "123",
+            district: "Centro",
+            city: "Belo Horizonte",
+            state_abbr: "MG",
+            postal_code: "31575060" // Configure with store CEP
+          },
+          to: {
+            name: customerData.name,
+            phone: normalizePhone(phone),
+            email: customerData.email || `${normalizePhone(phone)}@checkout.com`,
+            document: customerData.cpf?.replace(/\D/g, '') || "00000000000",
+            address: addressData.street,
+            complement: addressData.complement,
+            number: addressData.number,
+            district: "Centro", // You might want to add district field
+            city: addressData.city,
+            state_abbr: addressData.state,
+            postal_code: addressData.cep
+          },
+          products: cart?.items.map(item => ({
+            id: item.id.toString(),
+            width: 10, // Default values - can be configured per product
+            height: 2,
+            length: 16,
+            weight: 0.3,
+            insurance_value: item.unit_price,
+            quantity: item.qty
+          })) || [],
+          insurance_value: cart?.subtotal || 0,
+          order_id: cart?.id.toString() || "",
+          order_url: window.location.origin
+        }
+      };
+
+      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
+        body: melhorEnvioData
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (data.success) {
+        toast({
+          title: "Pedido importado",
+          description: `Pedido #${data.melhor_envio_id} importado para o Melhor Envio com sucesso!`,
+        });
+        return data.melhor_envio_id;
+      } else {
+        throw new Error("Falha na importação para o Melhor Envio");
+      }
+    } catch (error) {
+      console.error("Error importing to Melhor Envio:", error);
+      toast({
+        title: "Aviso",
+        description: "Pedido criado, mas houve erro na importação para o Melhor Envio. Você pode importar manualmente.",
+        variant: "destructive"
+      });
+      return null;
+    }
+  };
+
   const generatePaymentLink = async () => {
     if (!cart || !selectedShipping) {
       toast({
@@ -483,6 +559,11 @@ const Checkout = () => {
 
       if (data?.payment_url) {
         setPaymentLink(data.payment_url);
+        
+        // If Melhor Envio service was selected, import the order
+        if (selectedShipping.provider === 'MELHOR_ENVIO') {
+          await importToMelhorEnvio(paymentData, selectedShipping);
+        }
         
         // Open Mercado Pago checkout in new tab
         window.open(data.payment_url, '_blank');
@@ -751,9 +832,9 @@ const Checkout = () => {
               )}
               
                {/* Freight Calculator Section */}
-               <div className="mt-6 p-4 border border-primary/20 rounded-lg bg-primary/5">
-                 <h3 className="text-lg font-semibold mb-3 text-primary">Simulador de Frete</h3>
-                 <p className="text-sm text-muted-foreground mb-4">Digite o CEP (8 dígitos) para calcular PAC e SEDEX.</p>
+                <div className="mt-6 p-4 border border-primary/20 rounded-lg bg-primary/5">
+                  <h3 className="text-lg font-semibold mb-3 text-primary">CALCULAR FRETE</h3>
+                  <p className="text-sm text-muted-foreground mb-4">Digite o CEP (8 dígitos) para calcular frete via Correios e Melhor Envio.</p>
                  
                  <div className="flex gap-3">
                    <Input
