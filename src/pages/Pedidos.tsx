@@ -248,16 +248,25 @@ const Pedidos = () => {
     const reportContent = ordersToExport.map(order => `
       <div style="page-break-after: always; padding: 20px; font-family: Arial, sans-serif;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h2>Pedido #${order.id} - LOJA VIRTUAL</h2>
+          <h2>Pedido #${order.id}</h2>
           <p>${format(new Date(order.created_at), 'dd \'de\' MMMM \'de\' yyyy \'às\' HH:mm:ss', { locale: ptBR })}</p>
         </div>
         
         <div style="margin-bottom: 20px;">
-          <h3>Endereço de entrega</h3>
-          <p>Aos cuidados: Cliente</p>
+          <h3>Dados do Cliente</h3>
           <p>Telefone: ${order.customer_phone}</p>
-          <p>Tipo de Evento: ${order.event_type}</p>
           <p>Data do Evento: ${format(new Date(order.event_date), 'dd/MM/yyyy')}</p>
+          
+          <div style="margin-top: 15px;">
+            <h4>Forma de Entrega</h4>
+            <p>Método: Retirada na loja</p>
+          </div>
+          
+          <div style="margin-top: 15px;">
+            <h4>Endereço de Entrega</h4>
+            <p>Aos cuidados: Cliente</p>
+            <p>Endereço: A definir</p>
+          </div>
         </div>
 
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
@@ -270,7 +279,14 @@ const Pedidos = () => {
           </thead>
           <tbody>
             <tr>
-              <td style="border: 1px solid #ddd; padding: 8px;">Produtos do pedido</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">
+                <div style="display: flex; align-items: center;">
+                  <div style="width: 50px; height: 50px; margin-right: 10px; border: 1px solid #ddd; background-color: #f9f9f9; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                    Foto
+                  </div>
+                  <span>Produtos do pedido</span>
+                </div>
+              </td>
               <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">-</td>
               <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">R$ ${order.total_amount.toFixed(2)}</td>
             </tr>
@@ -280,7 +296,7 @@ const Pedidos = () => {
         <div style="margin-top: 20px;">
           <p><strong>Total do pedido: R$ ${order.total_amount.toFixed(2)}</strong></p>
           <p>Status: ${order.is_paid ? 'Pago' : 'Pendente'}</p>
-          ${order.observation ? `<p>Observação: ${order.observation}</p>` : ''}
+          ${order.observation ? `<p><strong>Observação:</strong> ${order.observation}</p>` : ''}
         </div>
       </div>
     `).join('');
