@@ -80,7 +80,7 @@ const Checkout = () => {
     return digits;
   };
 
-  const loadCustomerData = async (phone: string) => {
+  const loadCustomerData = async (phone: string): Promise<any | null> => {
     const normalizedPhone = normalizePhone(phone);
     setLoadingCustomer(true);
     
@@ -108,6 +108,8 @@ const Checkout = () => {
           title: 'Cliente encontrado',
           description: `Dados de ${data.name} carregados automaticamente`
         });
+
+        return data;
       } else {
         // Reset customer data if not found
         setCustomerData({ name: '', cpf: '' });
@@ -119,9 +121,11 @@ const Checkout = () => {
           state: '',
           cep: ''
         });
+        return null;
       }
     } catch (error) {
       console.error('Error loading customer:', error);
+      return null;
     } finally {
       setLoadingCustomer(false);
     }
@@ -184,7 +188,7 @@ const Checkout = () => {
     }
 
     // Load customer data first
-    await loadCustomerData(phone);
+    const customer = await loadCustomerData(phone);
 
     setLoading(true);
     try {
@@ -217,7 +221,7 @@ const Checkout = () => {
       setCart(mockCart);
       
       // Auto ação: se há CEP válido no cadastro, dispara busca de endereço; senão foca no campo
-      const cepFromCustomer = normalizeCep(addressData.cep);
+      const cepFromCustomer = normalizeCep((customer?.cep as string) || addressData.cep);
       if (isValidCep(cepFromCustomer)) {
         await handleCepChange(cepFromCustomer);
       } else {
