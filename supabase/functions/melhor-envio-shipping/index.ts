@@ -121,9 +121,26 @@ serve(async (req) => {
     const data = await response.json();
     console.log('Melhor Envio API response:', data);
 
-    // Formatar resposta para o frontend
+    // Filtrar apenas os serviços específicos: SEDEX, PAC e JeT Standard
+    const allowedServices = [
+      { id: 1, name: 'PAC', company: 'Correios' },
+      { id: 2, name: 'SEDEX', company: 'Correios' },
+      { id: 33, name: 'Standard', company: 'JeT' }
+    ];
+
     const formattedOptions = data
-      .filter((option: any) => !option.error && option.price) // Filter out options with errors or no price
+      .filter((option: any) => {
+        // Filtrar apenas serviços permitidos
+        const isAllowed = allowedServices.some(allowed => 
+          allowed.id === option.id && 
+          option.company?.name === allowed.company
+        );
+        
+        // Verificar se não tem erro, tem preço e preço > 0
+        const hasValidPrice = !option.error && option.price && parseFloat(option.price) > 0;
+        
+        return isAllowed && hasValidPrice;
+      })
       .map((option: any) => ({
         service_id: option.id,
         service_name: option.name,
