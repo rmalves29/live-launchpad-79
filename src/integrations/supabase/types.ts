@@ -128,6 +128,45 @@ export type Database = {
         }
         Relationships: []
       }
+      coupons: {
+        Row: {
+          code: string
+          created_at: string
+          discount_type: string
+          discount_value: number
+          expires_at: string | null
+          id: number
+          is_active: boolean
+          updated_at: string
+          usage_limit: number | null
+          used_count: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          discount_type: string
+          discount_value: number
+          expires_at?: string | null
+          id?: number
+          is_active?: boolean
+          updated_at?: string
+          usage_limit?: number | null
+          used_count?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          discount_type?: string
+          discount_value?: number
+          expires_at?: string | null
+          id?: number
+          is_active?: boolean
+          updated_at?: string
+          usage_limit?: number | null
+          used_count?: number
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           cep: string | null
@@ -328,6 +367,36 @@ export type Database = {
           shipment_id?: string | null
           status?: string | null
           tracking_code?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      gifts: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: number
+          is_active: boolean
+          minimum_purchase_amount: number
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: number
+          is_active?: boolean
+          minimum_purchase_amount: number
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: number
+          is_active?: boolean
+          minimum_purchase_amount?: number
+          name?: string
           updated_at?: string
         }
         Relationships: []

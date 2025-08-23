@@ -72,6 +72,13 @@ const Checkout = () => {
   const [loading, setLoading] = useState(false);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
   const [calculatingShipping, setCalculatingShipping] = useState(false);
+  
+  // Coupon and gifts state
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [availableGifts, setAvailableGifts] = useState<any[]>([]);
+  const [loadingCoupon, setLoadingCoupon] = useState(false);
 
   const cepInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,6 +100,103 @@ const Checkout = () => {
       return '55' + digits;
     }
     return digits;
+  };
+
+  // Apply coupon function
+  const applyCoupon = async () => {
+    if (!couponCode.trim() || !cart) return;
+    
+    setLoadingCoupon(true);
+    try {
+      const { data: coupon, error } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('code', couponCode.toUpperCase())
+        .eq('is_active', true)
+        .single();
+
+      if (error || !coupon) {
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: "Cupom inválido ou não encontrado"
+        });
+        return;
+      }
+
+      // Check expiration
+      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: "Cupom expirado"
+        });
+        return;
+      }
+
+      // Check usage limit
+      if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) {
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: "Cupom esgotado"
+        });
+        return;
+      }
+
+      // Calculate discount
+      let discount = 0;
+      if (coupon.discount_type === 'percentage') {
+        discount = (cart.total * coupon.discount_value) / 100;
+      } else {
+        discount = coupon.discount_value;
+      }
+
+      setAppliedCoupon(coupon);
+      setCouponDiscount(discount);
+      
+      toast({
+        title: "Cupom aplicado!",
+        description: `Desconto de R$ ${discount.toFixed(2)} aplicado`
+      });
+    } catch (error) {
+      console.error('Erro ao aplicar cupom:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao aplicar cupom"
+      });
+    } finally {
+      setLoadingCoupon(false);
+    }
+  };
+
+  // Remove coupon function
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponCode('');
+    toast({
+      title: "Cupom removido",
+      description: "Desconto removido do pedido"
+    });
+  };
+
+  // Load available gifts based on cart total
+  const loadAvailableGifts = async (cartTotal: number) => {
+    try {
+      const { data: gifts, error } = await supabase
+        .from('gifts')
+        .select('*')
+        .eq('is_active', true)
+        .lte('minimum_purchase_amount', cartTotal)
+        .order('minimum_purchase_amount', { ascending: false });
+
+      if (error) throw error;
+      setAvailableGifts(gifts || []);
+    } catch (error) {
+      console.error('Erro ao carregar brindes:', error);
+    }
   };
 
   // Safe number parser for prices from API (strings)
@@ -245,7 +349,11 @@ const Checkout = () => {
         ]
       };
 
+      console.log('Cart loaded:', mockCart);
       setCart(mockCart);
+      
+      // Load available gifts based on cart total
+      await loadAvailableGifts(mockCart.total);
       
       // Auto ação: se há CEP válido no cadastro, dispara busca de endereço; senão foca no campo
       const cepFromCustomer = normalizeCep((customer?.cep as string) || addressData.cep);
@@ -312,6 +420,9 @@ const Checkout = () => {
       return;
     }
 
+    const shippingCost = toNumber(selectedShipping.price);
+    const finalTotal = (cart.total - couponDiscount) + shippingCost;
+    
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('create-payment', {
@@ -322,8 +433,11 @@ const Checkout = () => {
             phone: normalizePhone(phone)
           },
           addressData,
-          shippingCost: toNumber(selectedShipping.custom_price ?? selectedShipping.price),
-          total: getTotalWithShipping()
+          shippingCost,
+          total: finalTotal,
+          coupon_code: appliedCoupon?.code || null,
+          coupon_discount: couponDiscount,
+          gifts: availableGifts.map(gift => gift.id)
         }
       });
 
@@ -433,8 +547,8 @@ const Checkout = () => {
 
   const getTotalWithShipping = () => {
     if (!cart) return 0;
-    const shipping = selectedShipping ? toNumber(selectedShipping.custom_price ?? selectedShipping.price) : 0;
-    return toNumber(cart.total) + shipping;
+    const shipping = selectedShipping ? toNumber(selectedShipping.price) : 0;
+    return (cart.total - couponDiscount) + shipping;
   };
 
   return (
@@ -510,9 +624,99 @@ const Checkout = () => {
                 </div>
               ))}
               <Separator />
-              <div className="flex justify-between items-center font-medium">
-                <span>Subtotal:</span>
-                <span>R$ {cart.total.toFixed(2)}</span>
+              <div className="space-y-2">
+                {appliedCoupon && (
+                  <div className="flex justify-between items-center text-sm text-green-600">
+                    <span>Desconto ({appliedCoupon.code}):</span>
+                    <span>- R$ {couponDiscount.toFixed(2)}</span>
+                  </div>
+                )}
+                {selectedShipping && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span>Frete ({selectedShipping.service_name}):</span>
+                    <span>R$ {selectedShipping.price.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center font-medium text-lg">
+                  <span>Total:</span>
+                  <span>R$ {((cart.total - couponDiscount) + (selectedShipping?.price || 0)).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Coupon Section */}
+      {cart && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Cupom de Desconto</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!appliedCoupon ? (
+              <div className="flex space-x-2">
+                <Input
+                  placeholder="Digite o código do cupom"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  className="flex-1"
+                />
+                <Button 
+                  onClick={applyCoupon} 
+                  disabled={loadingCoupon || !couponCode.trim()}
+                >
+                  {loadingCoupon ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  Aplicar
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded">
+                <div>
+                  <Badge variant="outline" className="mr-2">{appliedCoupon.code}</Badge>
+                  <span className="text-green-700">
+                    {appliedCoupon.discount_type === 'percentage' 
+                      ? `${appliedCoupon.discount_value}%` 
+                      : `R$ ${appliedCoupon.discount_value.toFixed(2)}`} de desconto aplicado
+                  </span>
+                </div>
+                <Button variant="outline" size="sm" onClick={removeCoupon}>
+                  Remover
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Available Gifts */}
+      {cart && availableGifts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              🎁 Brindes Disponíveis
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {availableGifts.map((gift) => (
+                <div key={gift.id} className="flex items-center p-3 bg-primary/5 border border-primary/20 rounded">
+                  <div className="flex-grow">
+                    <div className="font-medium text-primary">{gift.name}</div>
+                    {gift.description && (
+                      <div className="text-sm text-muted-foreground">{gift.description}</div>
+                    )}
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Para compras acima de R$ {gift.minimum_purchase_amount.toFixed(2)}
+                    </div>
+                  </div>
+                  <Badge className="ml-2">Incluído!</Badge>
+                </div>
+              ))}
+              <div className="text-sm text-muted-foreground">
+                ✨ Estes brindes serão incluídos automaticamente no seu pedido!
               </div>
             </div>
           </CardContent>
@@ -619,13 +823,13 @@ const Checkout = () => {
                       <div className="flex justify-between items-center">
                         <div>
                           <div className="font-medium">{option.company} - {option.service_name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            Entrega em até {option.custom_delivery_time || option.delivery_time} dias úteis
-                          </div>
+                           <div className="text-sm text-muted-foreground">
+                             Entrega em até {option.delivery_time} dias úteis
+                           </div>
                         </div>
-                        <div className="font-medium">
-                          R$ {toNumber(option.custom_price ?? option.price).toFixed(2)}
-                        </div>
+                         <div className="font-medium">
+                           R$ {toNumber(option.price).toFixed(2)}
+                         </div>
                       </div>
                     </Label>
                   </div>
@@ -649,12 +853,18 @@ const Checkout = () => {
                   <span>Subtotal:</span>
                   <span>R$ {cart.total.toFixed(2)}</span>
                 </div>
-                {selectedShipping && (
-                  <div className="flex justify-between">
-                    <span>Frete:</span>
-                    <span>R$ {toNumber(selectedShipping.custom_price ?? selectedShipping.price).toFixed(2)}</span>
-                  </div>
-                )}
+                 {selectedShipping && (
+                   <div className="flex justify-between">
+                     <span>Frete:</span>
+                     <span>R$ {toNumber(selectedShipping.price).toFixed(2)}</span>
+                   </div>
+                 )}
+                 {appliedCoupon && (
+                   <div className="flex justify-between text-green-600">
+                     <span>Desconto ({appliedCoupon.code}):</span>
+                     <span>- R$ {couponDiscount.toFixed(2)}</span>
+                   </div>
+                 )}
                 <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total:</span>

@@ -3,7 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift } from 'lucide-react';
+import { CouponsManager } from '@/components/CouponsManager';
+import { GiftsManager } from '@/components/GiftsManager';
 
 interface SystemConfig {
   event_date: string;
@@ -137,6 +140,28 @@ const Config = () => {
         </h1>
       </div>
 
+      <Tabs defaultValue="config" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="config" className="flex items-center">
+            <Settings className="h-4 w-4 mr-2" />
+            Configurações
+          </TabsTrigger>
+          <TabsTrigger value="coupons" className="flex items-center">
+            <Percent className="h-4 w-4 mr-2" />
+            Cupons
+          </TabsTrigger>
+          <TabsTrigger value="gifts" className="flex items-center">
+            <Gift className="h-4 w-4 mr-2" />
+            Brindes
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className="flex items-center">
+            <Database className="h-4 w-4 mr-2" />
+            Integrações
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="config" className="space-y-6 mt-6">
+
       {/* Current Configuration */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {configSections.map((section) => (
@@ -257,6 +282,111 @@ const Config = () => {
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="coupons" className="space-y-6 mt-6">
+          <CouponsManager />
+        </TabsContent>
+
+        <TabsContent value="gifts" className="space-y-6 mt-6">
+          <GiftsManager />
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6 mt-6">
+          {/* Integration Status */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Status das Integrações</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {integrationDocs.map((integration) => (
+                  <div 
+                    key={integration.title}
+                    className="p-4 border rounded-lg hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3 mb-2">
+                      <integration.icon className="h-5 w-5 text-primary" />
+                      <div className="font-medium">{integration.title}</div>
+                    </div>
+                    <div className="text-sm text-muted-foreground mb-3">
+                      {integration.description}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Badge variant="outline" className="text-xs">
+                        {integration.status}
+                      </Badge>
+                      <Button asChild size="sm" variant="ghost">
+                        <a 
+                          href={integration.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center"
+                        >
+                          Docs
+                          <ExternalLink className="h-3 w-3 ml-1" />
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Environment Variables Documentation */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Variáveis de Ambiente (Backend)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm text-muted-foreground mb-4">
+                As seguintes variáveis devem ser configuradas no arquivo <code>.env</code> do backend Node.js:
+              </div>
+              
+              <div className="space-y-4">
+                {['WhatsApp', 'Evento', 'Supabase', 'Mercado Pago', 'Melhor Envio', 'Dimensões Padrão'].map((category) => (
+                  <div key={category}>
+                    <h4 className="font-medium mb-2 text-primary">{category}</h4>
+                    <div className="space-y-2 ml-4">
+                      {envVariables
+                        .filter(variable => {
+                          switch (category) {
+                            case 'WhatsApp': return variable.name.includes('GROUP_ID');
+                            case 'Evento': return variable.name.includes('EVENT_');
+                            case 'Supabase': return variable.name.includes('SUPABASE_');
+                            case 'Mercado Pago': return variable.name.includes('MP_') || variable.name.includes('PUBLIC_BASE_URL');
+                            case 'Melhor Envio': return variable.name.includes('MELHOR_ENVIO_');
+                            case 'Dimensões Padrão': return variable.name.includes('DEFAULT_');
+                            default: return false;
+                          }
+                        })
+                        .map((variable) => (
+                          <div key={variable.name} className="flex flex-col space-y-1">
+                            <code className="text-sm bg-muted px-2 py-1 rounded font-mono w-fit">
+                              {variable.name}
+                            </code>
+                            <span className="text-xs text-muted-foreground">
+                              {variable.description}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                    <Separator className="my-3" />
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+                <div className="text-sm">
+                  <strong>Nota:</strong> Essas configurações são gerenciadas no backend Node.js que 
+                  já está fornecido. O frontend Lovable consome os dados através das APIs REST.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
