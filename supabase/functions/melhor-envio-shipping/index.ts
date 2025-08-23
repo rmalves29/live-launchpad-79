@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { to_postal_code } = await req.json();
+    const { to_postal_code, weight, height, width, length, insurance_value } = await req.json();
     
     if (!to_postal_code) {
       return new Response(
@@ -25,18 +26,35 @@ serve(async (req) => {
       );
     }
 
-    // Configurações do Melhor Envio
-    const ME_ENV = Deno.env.get('MELHOR_ENVIO_ENV') || 'sandbox';
-    const ME_ACCESS_TOKEN = Deno.env.get('MELHOR_ENVIO_ACCESS_TOKEN');
-    const ME_FROM_CEP = Deno.env.get('MELHOR_ENVIO_FROM_CEP') || '31575060';
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('ME_ENV:', ME_ENV);
-    console.log('ME_ACCESS_TOKEN exists:', !!ME_ACCESS_TOKEN);
-    console.log('ME_ACCESS_TOKEN first 20 chars:', ME_ACCESS_TOKEN ? ME_ACCESS_TOKEN.substring(0, 20) : 'null');
-    console.log('ME_FROM_CEP:', ME_FROM_CEP);
+    // Get configuration from database
+    const { data: configData, error: configError } = await supabase
+      .from('frete_config')
+      .select('*')
+      .limit(1)
+      .single();
 
-    if (!ME_ACCESS_TOKEN) {
-      console.error('MELHOR_ENVIO_ACCESS_TOKEN not found in environment');
+    if (configError || !configData) {
+      console.error('Frete config not found:', configError);
+      return new Response(
+        JSON.stringify({ error: 'Configuração de frete não encontrada' }), 
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    console.log('Using config - API Base URL:', configData.api_base_url);
+    console.log('Using config - CEP Origin:', configData.cep_origem);
+    console.log('Access token exists:', !!configData.access_token);
+
+    if (!configData.access_token) {
+      console.error('MELHOR_ENVIO_ACCESS_TOKEN not found in config');
       return new Response(
         JSON.stringify({ error: 'Token de acesso do Melhor Envio não configurado' }), 
         { 
@@ -46,35 +64,40 @@ serve(async (req) => {
       );
     }
 
-    const baseUrl = ME_ENV === 'production' 
-      ? 'https://www.melhorenvio.com.br'
-      : 'https://sandbox.melhorenvio.com.br';
+    const baseUrl = configData.api_base_url;
 
     // Payload para cotação
     const payload = {
       from: {
-        postal_code: ME_FROM_CEP
+        postal_code: configData.cep_origem
       },
       to: {
         postal_code: to_postal_code.replace(/\D/g, '')
       },
       package: {
-        height: 2,
-        width: 16,
-        length: 20,
-        weight: 0.3
+        height: height || 2,
+        width: width || 16,
+        length: length || 20,
+        weight: weight || 0.3
       }
     };
 
-    console.log('Calling Melhor Envio API:', `${baseUrl}/api/v2/me/shipment/calculate`, payload);
+    // Add insurance value if provided
+    if (insurance_value) {
+      payload.options = {
+        insurance_value: insurance_value
+      };
+    }
 
-    const response = await fetch(`${baseUrl}/api/v2/me/shipment/calculate`, {
+    console.log('Calling Melhor Envio API:', `${baseUrl}/v2/me/shipment/calculate`, payload);
+
+    const response = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${ME_ACCESS_TOKEN}`,
-        'User-Agent': 'ManiaDeMulher (contato@maniadomulher.com.br)'
+        'Authorization': `Bearer ${configData.access_token}`,
+        'User-Agent': 'FreteApp (contato@empresa.com)'
       },
       body: JSON.stringify(payload)
     });

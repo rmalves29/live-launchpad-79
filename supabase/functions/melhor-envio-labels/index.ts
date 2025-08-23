@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,153 +14,312 @@ serve(async (req) => {
   }
 
   try {
-    const { order } = await req.json();
+    const { action, order_id, shipment_id, customer_phone } = await req.json();
     
-    if (!order) {
+    console.log('Labels action:', action);
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get configuration
+    const { data: configData, error: configError } = await supabase
+      .from('frete_config')
+      .select('*')
+      .limit(1)
+      .single();
+
+    if (configError || !configData) {
       return new Response(
-        JSON.stringify({ error: 'Dados do pedido são obrigatórios' }), 
+        JSON.stringify({ error: 'Configuração de frete não encontrada' }),
         { 
-          status: 400, 
+          status: 404, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
 
-    // Configurações do Melhor Envio
-    const ME_ENV = Deno.env.get('MELHOR_ENVIO_ENV') || 'sandbox';
-    const ME_ACCESS_TOKEN = Deno.env.get('MELHOR_ENVIO_ACCESS_TOKEN');
-    const ME_FROM_CEP = Deno.env.get('MELHOR_ENVIO_FROM_CEP') || '31575060';
-
-    if (!ME_ACCESS_TOKEN) {
+    if (!configData.access_token) {
       return new Response(
-        JSON.stringify({ error: 'Token de acesso do Melhor Envio não configurado' }), 
+        JSON.stringify({ error: 'Token de acesso não configurado' }),
         { 
-          status: 500, 
+          status: 401, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
 
-    const baseUrl = ME_ENV === 'production' 
-      ? 'https://www.melhorenvio.com.br'
-      : 'https://sandbox.melhorenvio.com.br';
+    const baseUrl = configData.api_base_url;
+    const accessToken = configData.access_token;
 
-    const headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${ME_ACCESS_TOKEN}`,
-      'User-Agent': 'ManiaDeMulher (contato@maniadomulher.com.br)'
-    };
-
-    // 1. Adicionar ao carrinho
-    const cartPayload = {
-      service: order.service_id,
-      from: {
-        name: "Mania de Mulher",
-        postal_code: ME_FROM_CEP,
-        address: "Rua Principal",
-        number: "123",
-        city: "Belo Horizonte",
-        state_id: 13, // MG
-        country_id: 76, // Brasil
-        phone: "(31) 99999-9999"
-      },
-      to: {
-        name: order.customer_name,
-        postal_code: order.customer_cep.replace(/\D/g, ''),
-        address: order.customer_street,
-        number: order.customer_number,
-        city: order.customer_city,
-        state_id: getStateId(order.customer_state),
-        country_id: 76,
-        phone: order.customer_phone
-      },
-      package: {
-        height: 2,
-        width: 16,
-        length: 20,
-        weight: 0.3
-      },
-      options: {
-        receipt: false,
-        own_hand: false
+    if (action === 'create_shipment') {
+      if (!order_id || !customer_phone) {
+        return new Response(
+          JSON.stringify({ error: 'order_id e customer_phone são obrigatórios' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
       }
-    };
 
-    console.log('Adding to cart:', cartPayload);
+      // Get order details
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', order_id)
+        .single();
 
-    let cartResponse = await fetch(`${baseUrl}/api/v2/me/cart`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(cartPayload)
-    });
+      if (orderError || !orderData) {
+        return new Response(
+          JSON.stringify({ error: 'Pedido não encontrado' }),
+          { 
+            status: 404, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
 
-    if (!cartResponse.ok) {
-      const errorData = await cartResponse.text();
-      console.error('Cart error:', cartResponse.status, errorData);
-      throw new Error(`Erro ao adicionar ao carrinho: ${errorData}`);
+      // Get customer details (you might need to adapt this based on your customer data structure)
+      const { data: customerData, error: customerError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('phone', customer_phone)
+        .limit(1)
+        .single();
+
+      // Get freight quotation
+      const { data: cotacaoData, error: cotacaoError } = await supabase
+        .from('frete_cotacoes')
+        .select('*')
+        .eq('pedido_id', order_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (cotacaoError || !cotacaoData) {
+        return new Response(
+          JSON.stringify({ error: 'Cotação de frete não encontrada para este pedido' }),
+          { 
+            status: 404, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // Create shipment payload
+      const shipmentPayload = {
+        service: cotacaoData.raw_response?.service_id || 1,
+        from: {
+          name: configData.remetente_nome,
+          phone: "1199999999", // You might want to add this to config
+          email: "contato@empresa.com", // You might want to add this to config
+          document: configData.remetente_documento,
+          company_document: configData.remetente_documento,
+          state_register: "123456789",
+          postal_code: configData.cep_origem,
+          address: configData.remetente_endereco_rua,
+          number: configData.remetente_endereco_numero,
+          complement: configData.remetente_endereco_comp || "",
+          district: configData.remetente_bairro,
+          city: configData.remetente_cidade,
+          state_abbr: configData.remetente_uf,
+          country_id: "BR"
+        },
+        to: {
+          name: customerData?.name || "Cliente",
+          phone: customer_phone,
+          email: "cliente@email.com", // You might want to get this from customer data
+          document: customerData?.cpf || "00000000000",
+          postal_code: cotacaoData.cep_destino,
+          address: customerData?.street || "Rua do Cliente",
+          number: customerData?.number || "123",
+          complement: customerData?.complement || "",
+          district: customerData?.city || "Centro",
+          city: customerData?.city || "São Paulo",
+          state_abbr: customerData?.state || "SP",
+          country_id: "BR"
+        },
+        products: [
+          {
+            name: "Produto",
+            quantity: 1,
+            unitary_value: orderData.total_amount,
+            weight: cotacaoData.peso
+          }
+        ],
+        volumes: [
+          {
+            height: cotacaoData.altura,
+            width: cotacaoData.largura,
+            length: cotacaoData.comprimento,
+            weight: cotacaoData.peso
+          }
+        ],
+        options: {
+          insurance_value: cotacaoData.valor_declarado || orderData.total_amount,
+          receipt: false,
+          own_hand: false,
+          reverse: false,
+          non_commercial: false,
+          invoice: {
+            key: `NFE${orderData.id}${Date.now()}`
+          }
+        }
+      };
+
+      console.log('Creating shipment with payload:', JSON.stringify(shipmentPayload, null, 2));
+
+      const response = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': 'FreteApp (contato@empresa.com)'
+        },
+        body: JSON.stringify(shipmentPayload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Shipment creation error:', response.status, errorData);
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'Erro ao criar envio',
+            details: errorData 
+          }),
+          { 
+            status: response.status, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      const responseData = await response.json();
+      console.log('Shipment created successfully:', responseData);
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          shipment_id: responseData[0]?.id,
+          data: responseData
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const cartData = await cartResponse.json();
-    console.log('Cart response:', cartData);
+    if (action === 'pay_shipment') {
+      if (!shipment_id) {
+        return new Response(
+          JSON.stringify({ error: 'shipment_id é obrigatório' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
 
-    // 2. Fazer checkout
-    const checkoutResponse = await fetch(`${baseUrl}/api/v2/me/shipment/checkout`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ orders: [cartData.id] })
-    });
+      console.log('Paying shipment:', shipment_id);
 
-    if (!checkoutResponse.ok) {
-      const errorData = await checkoutResponse.text();
-      console.error('Checkout error:', checkoutResponse.status, errorData);
-      throw new Error(`Erro no checkout: ${errorData}`);
+      const response = await fetch(`${baseUrl}/v2/me/shipment/${shipment_id}/checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': 'FreteApp (contato@empresa.com)'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Shipment payment error:', response.status, errorData);
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'Erro ao pagar envio',
+            details: errorData 
+          }),
+          { 
+            status: response.status, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      const responseData = await response.json();
+      console.log('Shipment paid successfully:', responseData);
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          data: responseData
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const checkoutData = await checkoutResponse.json();
-    console.log('Checkout response:', checkoutData);
+    if (action === 'download_label') {
+      if (!shipment_id) {
+        return new Response(
+          JSON.stringify({ error: 'shipment_id é obrigatório' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
 
-    // 3. Gerar etiqueta
-    const generateResponse = await fetch(`${baseUrl}/api/v2/me/shipment/generate`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ orders: [checkoutData.purchase.id] })
-    });
+      console.log('Getting label for shipment:', shipment_id);
 
-    if (!generateResponse.ok) {
-      const errorData = await generateResponse.text();
-      console.error('Generate error:', generateResponse.status, errorData);
-      throw new Error(`Erro ao gerar etiqueta: ${errorData}`);
+      const response = await fetch(`${baseUrl}/v2/me/shipment/${shipment_id}/print`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': 'FreteApp (contato@empresa.com)'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('Label download error:', response.status, errorData);
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'Erro ao obter etiqueta',
+            details: errorData 
+          }),
+          { 
+            status: response.status, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      const responseData = await response.json();
+      console.log('Label URL obtained:', responseData);
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          label_url: responseData.url,
+          data: responseData
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-
-    const generateData = await generateResponse.json();
-    console.log('Generate response:', generateData);
-
-    // 4. Imprimir etiqueta
-    const printResponse = await fetch(`${baseUrl}/api/v2/me/shipment/print`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ orders: [checkoutData.purchase.id] })
-    });
-
-    if (!printResponse.ok) {
-      const errorData = await printResponse.text();
-      console.error('Print error:', printResponse.status, errorData);
-      throw new Error(`Erro ao imprimir etiqueta: ${errorData}`);
-    }
-
-    const printData = await printResponse.json();
-    console.log('Print response:', printData);
 
     return new Response(
-      JSON.stringify({ 
-        success: true,
-        order_id: checkoutData.purchase.id,
-        tracking_code: generateData.tracking || 'Aguardando',
-        print_url: printData.url,
-        protocol: checkoutData.purchase.protocol
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: 'Ação não reconhecida' }),
+      { 
+        status: 400, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
     );
 
   } catch (error) {
@@ -173,14 +333,3 @@ serve(async (req) => {
     );
   }
 });
-
-// Mapear estados para IDs do Melhor Envio
-function getStateId(state: string): number {
-  const stateMap: Record<string, number> = {
-    'AC': 23, 'AL': 17, 'AP': 16, 'AM': 23, 'BA': 5, 'CE': 3, 'DF': 25,
-    'ES': 32, 'GO': 29, 'MA': 10, 'MT': 28, 'MS': 10, 'MG': 13, 'PA': 15,
-    'PB': 21, 'PR': 18, 'PE': 8, 'PI': 22, 'RJ': 19, 'RN': 20, 'RS': 11,
-    'RO': 24, 'RR': 14, 'SC': 26, 'SP': 9, 'SE': 30, 'TO': 31
-  };
-  return stateMap[state.toUpperCase()] || 13; // Default: MG
-}

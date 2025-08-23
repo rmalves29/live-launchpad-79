@@ -17,6 +17,9 @@ import ConfigurationsPage from "./pages/ConfigurationsPage";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import WhatsAppConnection from "./pages/WhatsAppConnection";
 import MpReturn from "./pages/MpReturn";
+import ConfigFrete from "./pages/ConfigFrete";
+import CotacaoFrete from "./pages/CotacaoFrete";
+import Etiquetas from "./pages/Etiquetas";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +43,9 @@ const App = () => (
           <Route path="/configuracoes" element={<ConfigurationsPage />} />
           <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
           <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
+          <Route path="/config-frete" element={<ConfigFrete />} />
+          <Route path="/cotacao-frete" element={<CotacaoFrete />} />
+          <Route path="/etiquetas" element={<Etiquetas />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

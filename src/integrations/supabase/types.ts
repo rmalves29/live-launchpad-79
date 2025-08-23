@@ -176,6 +176,162 @@ export type Database = {
         }
         Relationships: []
       }
+      frete_config: {
+        Row: {
+          access_token: string | null
+          api_base_url: string
+          cep_origem: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          id: number
+          localidade_retirada_url: string | null
+          redirect_uri: string | null
+          refresh_token: string | null
+          remetente_bairro: string | null
+          remetente_cidade: string | null
+          remetente_documento: string | null
+          remetente_endereco_comp: string | null
+          remetente_endereco_numero: string | null
+          remetente_endereco_rua: string | null
+          remetente_nome: string | null
+          remetente_uf: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          api_base_url?: string
+          cep_origem?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          id?: number
+          localidade_retirada_url?: string | null
+          redirect_uri?: string | null
+          refresh_token?: string | null
+          remetente_bairro?: string | null
+          remetente_cidade?: string | null
+          remetente_documento?: string | null
+          remetente_endereco_comp?: string | null
+          remetente_endereco_numero?: string | null
+          remetente_endereco_rua?: string | null
+          remetente_nome?: string | null
+          remetente_uf?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          api_base_url?: string
+          cep_origem?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          id?: number
+          localidade_retirada_url?: string | null
+          redirect_uri?: string | null
+          refresh_token?: string | null
+          remetente_bairro?: string | null
+          remetente_cidade?: string | null
+          remetente_documento?: string | null
+          remetente_endereco_comp?: string | null
+          remetente_endereco_numero?: string | null
+          remetente_endereco_rua?: string | null
+          remetente_nome?: string | null
+          remetente_uf?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      frete_cotacoes: {
+        Row: {
+          altura: number
+          cep_destino: string
+          comprimento: number
+          created_at: string
+          id: number
+          largura: number
+          pedido_id: number | null
+          peso: number
+          prazo: number | null
+          raw_response: Json | null
+          servico_escolhido: string | null
+          transportadora: string | null
+          valor_declarado: number | null
+          valor_frete: number | null
+        }
+        Insert: {
+          altura: number
+          cep_destino: string
+          comprimento: number
+          created_at?: string
+          id?: number
+          largura: number
+          pedido_id?: number | null
+          peso: number
+          prazo?: number | null
+          raw_response?: Json | null
+          servico_escolhido?: string | null
+          transportadora?: string | null
+          valor_declarado?: number | null
+          valor_frete?: number | null
+        }
+        Update: {
+          altura?: number
+          cep_destino?: string
+          comprimento?: number
+          created_at?: string
+          id?: number
+          largura?: number
+          pedido_id?: number | null
+          peso?: number
+          prazo?: number | null
+          raw_response?: Json | null
+          servico_escolhido?: string | null
+          transportadora?: string | null
+          valor_declarado?: number | null
+          valor_frete?: number | null
+        }
+        Relationships: []
+      }
+      frete_envios: {
+        Row: {
+          created_at: string
+          id: number
+          label_url: string | null
+          pedido_id: number | null
+          raw_response: Json | null
+          shipment_id: string | null
+          status: string | null
+          tracking_code: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          label_url?: string | null
+          pedido_id?: number | null
+          raw_response?: Json | null
+          shipment_id?: string | null
+          status?: string | null
+          tracking_code?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          label_url?: string | null
+          pedido_id?: number | null
+          raw_response?: Json | null
+          shipment_id?: string | null
+          status?: string | null
+          tracking_code?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           cart_id: number | null
