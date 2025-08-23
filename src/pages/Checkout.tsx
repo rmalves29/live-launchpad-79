@@ -16,6 +16,7 @@ interface CartItem {
   product_code: string;
   qty: number;
   unit_price: number;
+  image_url?: string;
 }
 
 interface Cart {
@@ -230,14 +231,16 @@ const Checkout = () => {
             product_name: 'Produto Exemplo 1',
             product_code: 'C001',
             qty: 2,
-            unit_price: 29.90
+            unit_price: 29.90,
+            image_url: '/placeholder.svg'
           },
           {
             id: 2,
             product_name: 'Produto Exemplo 2',
             product_code: 'C002',
             qty: 1,
-            unit_price: 29.90
+            unit_price: 29.90,
+            image_url: '/placeholder.svg'
           }
         ]
       };
@@ -484,9 +487,16 @@ const Checkout = () => {
           <CardContent>
             <div className="space-y-4">
               {cart.items.map((item) => (
-                <div key={item.id} className="flex justify-between items-center p-3 border rounded">
-                  <div>
-                    <div className="flex items-center space-x-2">
+                <div key={item.id} className="flex items-center p-3 border rounded space-x-4">
+                  <div className="flex-shrink-0">
+                    <img 
+                      src={item.image_url || '/placeholder.svg'} 
+                      alt={item.product_name}
+                      className="w-16 h-16 object-cover rounded border"
+                    />
+                  </div>
+                  <div className="flex-grow">
+                    <div className="flex items-center space-x-2 mb-1">
                       <Badge variant="outline">{item.product_code}</Badge>
                       <span className="font-medium">{item.product_name}</span>
                     </div>
