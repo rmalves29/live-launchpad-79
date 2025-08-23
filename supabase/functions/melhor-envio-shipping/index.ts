@@ -32,7 +32,7 @@ serve(async (req) => {
 
     console.log('ME_ENV:', ME_ENV);
     console.log('ME_ACCESS_TOKEN exists:', !!ME_ACCESS_TOKEN);
-    console.log('ME_ACCESS_TOKEN length:', ME_ACCESS_TOKEN ? ME_ACCESS_TOKEN.length : 0);
+    console.log('ME_ACCESS_TOKEN first 20 chars:', ME_ACCESS_TOKEN ? ME_ACCESS_TOKEN.substring(0, 20) : 'null');
     console.log('ME_FROM_CEP:', ME_FROM_CEP);
 
     if (!ME_ACCESS_TOKEN) {

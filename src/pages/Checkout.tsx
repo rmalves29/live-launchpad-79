@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Copy, User, MapPin } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { Loader2, Copy, User, MapPin, Truck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface CartItem {
@@ -18,16 +20,27 @@ interface CartItem {
 
 interface Cart {
   id: number;
-  customer_phone: string;
+  customerPhone: string;
+  eventType: string;
+  eventDate: string;
   items: CartItem[];
-  subtotal: number;
+  status: string;
+  total: number;
 }
 
+interface ShippingOption {
+  service_id: string;
+  service_name: string;
+  company: string;
+  price: number;
+  delivery_time: number;
+  custom_price?: number;
+  custom_delivery_time?: number;
+}
 
 interface CustomerData {
   name: string;
   cpf: string;
-  email?: string;
 }
 
 interface AddressData {
@@ -52,20 +65,21 @@ const Checkout = () => {
     cep: ''
   });
   const [cart, setCart] = useState<Cart | null>(null);
-  const [paymentLink, setPaymentLink] = useState('');
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
+  const [selectedShipping, setSelectedShipping] = useState<ShippingOption | null>(null);
+  const [paymentLink, setPaymentLink] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [loadingAddress, setLoadingAddress] = useState(false);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
-  const [generatingPayment, setGeneratingPayment] = useState(false);
+  const [calculatingShipping, setCalculatingShipping] = useState(false);
 
   const cepInputRef = useRef<HTMLInputElement>(null);
 
-  // CEP helper functions
+  // Helper functions
   const normalizeCep = (v: string): string => {
     return String(v || "")
-      .normalize("NFKD")             // tira acentos e caracteres estranhos
-      .replace(/[^\d]/g, "")         // deixa só dígitos
-      .slice(0, 8);                  // máximo 8
+      .normalize("NFKD")
+      .replace(/[^\d]/g, "")
+      .slice(0, 8);
   };
 
   const isValidCep = (v: string): boolean => {
@@ -198,8 +212,11 @@ const Checkout = () => {
       // Mock cart data
       const mockCart: Cart = {
         id: 1,
-        customer_phone: normalizedPhone,
-        subtotal: 89.70,
+        customerPhone: normalizedPhone,
+        eventType: 'BAZAR',
+        eventDate: '2025-08-16',
+        status: 'OPEN',
+        total: 89.70,
         items: [
           {
             id: 1,
@@ -244,83 +261,81 @@ const Checkout = () => {
     }
   };
 
-
-  const generatePaymentLink = async () => {
-    if (!cart) {
-      toast({
-        title: 'Erro',
-        description: 'Carregue o carrinho primeiro',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    if (!customerData.name) {
-      toast({
-        title: 'Erro',
-        description: 'Preencha os dados do cliente',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    setGeneratingPayment(true);
+  const calculateShipping = async (cep: string) => {
+    if (!isValidCep(cep)) return;
+    
+    setCalculatingShipping(true);
     try {
-      // Prepare cart items for Mercado Pago
-      const cartItems = cart.items.map(item => ({
-        name: item.product_name,
-        qty: item.qty,
-        unit_price: item.unit_price.toString()
-      }));
-
-      const total = cart.subtotal;
-      
-      // Prepare payment data
-      const paymentData = {
-        cartItems,
-        customerData: {
-          ...customerData,
-          phone: normalizePhone(phone),
-          email: customerData.email || `${normalizePhone(phone)}@checkout.com`
-        },
-        addressData,
-        shippingCost: 0,
-        total,
-        cartId: cart.id
-      };
-
-      console.log("Generating payment with data:", paymentData);
-
-      const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: paymentData
+      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
+        body: { to_postal_code: cep }
       });
 
-      if (error) {
-        throw new Error(error.message);
-      }
+      if (error) throw error;
 
-      if (data?.payment_url) {
-        setPaymentLink(data.payment_url);
-        
-        // Open Mercado Pago checkout in new tab
-        window.open(data.payment_url, '_blank');
-        
+      if (data?.shipping_options) {
+        setShippingOptions(data.shipping_options);
         toast({
-          title: "Redirecionando para o pagamento",
-          description: `Total: R$ ${total.toFixed(2)} - Mercado Pago aberto em nova aba`,
+          title: 'Frete calculado',
+          description: `${data.shipping_options.length} opção(ões) de frete encontrada(s)`,
         });
-      } else {
-        throw new Error("URL de pagamento não recebida");
       }
     } catch (error) {
-      console.error("Payment generation error:", error);
+      console.error('Shipping calculation error:', error);
       toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Falha ao gerar link de pagamento.",
-        variant: "destructive",
+        title: 'Erro no cálculo de frete',
+        description: 'Não foi possível calcular o frete. Tente novamente.',
+        variant: 'destructive'
+      });
+      setShippingOptions([]);
+    } finally {
+      setCalculatingShipping(false);
+    }
+  };
+
+  const generatePaymentLink = async () => {
+    if (!customerData.name || !customerData.cpf || !addressData.street || !addressData.cep || !selectedShipping) {
+      toast({
+        title: 'Dados incompletos',
+        description: 'Preencha todos os dados obrigatórios e selecione uma opção de frete',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: {
+          cartItems: cart?.items || [],
+          customerData,
+          addressData,
+          shippingCost: selectedShipping.custom_price || selectedShipping.price,
+          total: (cart?.total || 0) + (selectedShipping.custom_price || selectedShipping.price),
+          cartId: cart?.id
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.init_point) {
+        setPaymentLink(data.init_point);
+        // Open payment link in new tab
+        window.open(data.init_point, '_blank');
+        
+        toast({
+          title: 'Link de pagamento gerado',
+          description: 'O link foi aberto em uma nova aba'
+        });
+      }
+    } catch (error) {
+      console.error('Error generating payment link:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao gerar link de pagamento',
+        variant: 'destructive'
       });
     } finally {
-      setGeneratingPayment(false);
+      setLoading(false);
     }
   };
 
@@ -350,7 +365,6 @@ const Checkout = () => {
     const cleanCep = normalizeCep(cep);
     if (!isValidCep(cep)) return;
 
-    setLoadingAddress(true);
     try {
       const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
       const data = await response.json();
@@ -382,8 +396,6 @@ const Checkout = () => {
         description: 'Erro ao buscar endereço',
         variant: 'destructive'
       });
-    } finally {
-      setLoadingAddress(false);
     }
   };
 
@@ -402,37 +414,14 @@ const Checkout = () => {
     }
   };
 
-  const calculateShipping = async (cep: string) => {
-    if (!isValidCep(cep)) return;
+  const handleShippingSelection = (optionId: string) => {
+    const option = shippingOptions.find(opt => opt.service_id === optionId);
+    setSelectedShipping(option || null);
+  };
 
-    setLoadingAddress(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
-        body: { to_postal_code: cep }
-      });
-
-      if (error) throw error;
-
-      if (data?.shipping_options) {
-        console.log('Shipping options:', data.shipping_options);
-        toast({
-          title: 'Frete calculado',
-          description: `${data.shipping_options.length} opção(ões) de frete disponível(is)`,
-        });
-        
-        // Aqui você pode armazenar as opções de frete em um estado
-        // e exibi-las na interface para o usuário escolher
-      }
-    } catch (error) {
-      console.error('Shipping calculation error:', error);
-      toast({
-        title: 'Erro no cálculo de frete',
-        description: 'Não foi possível calcular o frete',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoadingAddress(false);
-    }
+  const getTotalWithShipping = () => {
+    if (!cart || !selectedShipping) return cart?.total || 0;
+    return cart.total + (selectedShipping.custom_price || selectedShipping.price);
   };
 
   return (
@@ -503,7 +492,7 @@ const Checkout = () => {
               <Separator />
               <div className="flex justify-between items-center font-medium">
                 <span>Subtotal:</span>
-                <span>R$ {cart.subtotal.toFixed(2)}</span>
+                <span>R$ {cart.total.toFixed(2)}</span>
               </div>
             </div>
           </CardContent>
@@ -574,23 +563,58 @@ const Checkout = () => {
                 />
               </div>
               
-               {loadingAddress && (
-                 <div className="flex items-center justify-center py-4">
-                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                   <span className="text-sm text-muted-foreground">Buscando endereço...</span>
-                 </div>
-               )}
+              {calculatingShipping && (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <span className="text-sm text-muted-foreground">Calculando frete...</span>
+                </div>
+              )}
 
-               <div className="flex justify-end">
-                 <Button onClick={saveCustomerData} variant="outline">
-                   Salvar Dados do Cliente
-                 </Button>
-               </div>
+              <div className="flex justify-end">
+                <Button onClick={saveCustomerData} variant="outline">
+                  Salvar Dados do Cliente
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
+      {/* Shipping Options */}
+      {shippingOptions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Truck className="h-5 w-5 mr-2" />
+              Opções de Frete
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup value={selectedShipping?.service_id} onValueChange={handleShippingSelection}>
+              <div className="space-y-3">
+                {shippingOptions.map((option) => (
+                  <div key={option.service_id} className="flex items-center space-x-2 p-3 border rounded">
+                    <RadioGroupItem value={option.service_id} id={option.service_id} />
+                    <Label htmlFor={option.service_id} className="flex-1 cursor-pointer">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-medium">{option.company} - {option.service_name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            Entrega em até {option.custom_delivery_time || option.delivery_time} dias úteis
+                          </div>
+                        </div>
+                        <div className="font-medium">
+                          R$ {(option.custom_price || option.price).toFixed(2)}
+                        </div>
+                      </div>
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </RadioGroup>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Total and Payment */}
       {cart && (
@@ -601,19 +625,30 @@ const Checkout = () => {
           <CardContent>
             <div className="space-y-4">
               <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>R$ {cart.total.toFixed(2)}</span>
+                </div>
+                {selectedShipping && (
+                  <div className="flex justify-between">
+                    <span>Frete:</span>
+                    <span>R$ {(selectedShipping.custom_price || selectedShipping.price).toFixed(2)}</span>
+                  </div>
+                )}
+                <Separator />
                 <div className="flex justify-between font-bold text-lg">
                   <span>Total:</span>
-                  <span>R$ {cart.subtotal.toFixed(2)}</span>
+                  <span>R$ {getTotalWithShipping().toFixed(2)}</span>
                 </div>
               </div>
 
               <Button 
                 onClick={generatePaymentLink} 
-                disabled={generatingPayment}
+                disabled={loading || !selectedShipping}
                 className="w-full"
                 size="lg"
               >
-                {generatingPayment ? (
+                {loading ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : null}
                 Gerar Link de Pagamento

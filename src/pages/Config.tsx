@@ -87,11 +87,9 @@ const Config = () => {
     { name: 'EVENT_DATE', description: 'Data padrão do evento (YYYY-MM-DD)' },
     { name: 'MP_ACCESS_TOKEN', description: 'Token de acesso do Mercado Pago' },
     { name: 'PUBLIC_BASE_URL', description: 'URL base para callbacks' },
-    { name: 'CORREIOS_ORIGIN_CEP', description: 'CEP de origem para cálculo de frete' },
-    { name: 'CORREIOS_COMPANY_CODE', description: 'Código da empresa nos Correios' },
-    { name: 'CORREIOS_PASSWORD', description: 'Senha dos Correios' },
-    { name: 'CORREIOS_SERVICE_PAC', description: 'Código do serviço PAC' },
-    { name: 'CORREIOS_SERVICE_SEDEX', description: 'Código do serviço SEDEX' },
+    { name: 'MELHOR_ENVIO_ACCESS_TOKEN', description: 'Token de acesso do Melhor Envio' },
+    { name: 'MELHOR_ENVIO_FROM_CEP', description: 'CEP de origem para cálculo de frete' },
+    { name: 'MELHOR_ENVIO_ENV', description: 'Ambiente do Melhor Envio (sandbox/production)' },
     { name: 'DEFAULT_WEIGHT_KG', description: 'Peso padrão dos produtos (kg)' },
     { name: 'DEFAULT_LENGTH_CM', description: 'Comprimento padrão (cm)' },
     { name: 'DEFAULT_HEIGHT_CM', description: 'Altura padrão (cm)' },
@@ -219,7 +217,7 @@ const Config = () => {
           </div>
           
           <div className="space-y-4">
-            {['WhatsApp', 'Evento', 'Supabase', 'Mercado Pago', 'Correios', 'Dimensões Padrão'].map((category) => (
+            {['WhatsApp', 'Evento', 'Supabase', 'Mercado Pago', 'Melhor Envio', 'Dimensões Padrão'].map((category) => (
               <div key={category}>
                 <h4 className="font-medium mb-2 text-primary">{category}</h4>
                 <div className="space-y-2 ml-4">
@@ -230,7 +228,7 @@ const Config = () => {
                         case 'Evento': return variable.name.includes('EVENT_');
                         case 'Supabase': return variable.name.includes('SUPABASE_');
                         case 'Mercado Pago': return variable.name.includes('MP_') || variable.name.includes('PUBLIC_BASE_URL');
-                        case 'Correios': return variable.name.includes('CORREIOS_');
+                        case 'Melhor Envio': return variable.name.includes('MELHOR_ENVIO_');
                         case 'Dimensões Padrão': return variable.name.includes('DEFAULT_');
                         default: return false;
                       }

@@ -16,9 +16,6 @@ export type Database = {
     Tables: {
       app_settings: {
         Row: {
-          correios_origin_cep: string | null
-          correios_service_pac: string | null
-          correios_service_sedex: string | null
           created_at: string
           default_diameter_cm: number | null
           default_height_cm: number | null
@@ -26,13 +23,12 @@ export type Database = {
           default_weight_kg: number | null
           default_width_cm: number | null
           id: number
+          melhor_envio_env: string | null
+          melhor_envio_from_cep: string | null
           public_base_url: string | null
           updated_at: string
         }
         Insert: {
-          correios_origin_cep?: string | null
-          correios_service_pac?: string | null
-          correios_service_sedex?: string | null
           created_at?: string
           default_diameter_cm?: number | null
           default_height_cm?: number | null
@@ -40,13 +36,12 @@ export type Database = {
           default_weight_kg?: number | null
           default_width_cm?: number | null
           id?: number
+          melhor_envio_env?: string | null
+          melhor_envio_from_cep?: string | null
           public_base_url?: string | null
           updated_at?: string
         }
         Update: {
-          correios_origin_cep?: string | null
-          correios_service_pac?: string | null
-          correios_service_sedex?: string | null
           created_at?: string
           default_diameter_cm?: number | null
           default_height_cm?: number | null
@@ -54,6 +49,8 @@ export type Database = {
           default_weight_kg?: number | null
           default_width_cm?: number | null
           id?: number
+          melhor_envio_env?: string | null
+          melhor_envio_from_cep?: string | null
           public_base_url?: string | null
           updated_at?: string
         }

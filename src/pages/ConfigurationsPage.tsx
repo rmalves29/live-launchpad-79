@@ -11,9 +11,8 @@ import { Separator } from '@/components/ui/separator';
 interface AppSettings {
   id: number;
   public_base_url: string;
-  correios_origin_cep: string;
-  correios_service_pac: string;
-  correios_service_sedex: string;
+  melhor_envio_from_cep: string;
+  melhor_envio_env: string;
   default_weight_kg: number;
   default_length_cm: number;
   default_height_cm: number;
@@ -47,9 +46,8 @@ const ConfigurationsPage = () => {
         const defaultSettings = {
           id: 1,
           public_base_url: '',
-          correios_origin_cep: '',
-          correios_service_pac: '3298',
-          correios_service_sedex: '3220',
+          melhor_envio_from_cep: '31575060',
+          melhor_envio_env: 'sandbox',
           default_weight_kg: 0.3,
           default_length_cm: 20,
           default_height_cm: 2,
@@ -169,48 +167,45 @@ const ConfigurationsPage = () => {
         </CardContent>
       </Card>
 
-      {/* Correios Settings */}
+      {/* Melhor Envio Settings */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
             <Truck className="h-5 w-5 mr-2" />
-            Configurações dos Correios
+            Configurações do Melhor Envio
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="correios_origin_cep">CEP de Origem</Label>
+              <Label htmlFor="melhor_envio_from_cep">CEP de Origem</Label>
               <Input
-                id="correios_origin_cep"
-                value={settings?.correios_origin_cep || ''}
-                onChange={(e) => handleInputChange('correios_origin_cep', e.target.value)}
+                id="melhor_envio_from_cep"
+                value={settings?.melhor_envio_from_cep || ''}
+                onChange={(e) => handleInputChange('melhor_envio_from_cep', e.target.value)}
                 disabled={!isEditing}
-                placeholder="00000-000"
+                placeholder="31575-060"
               />
+              <p className="text-sm text-muted-foreground mt-1">
+                CEP de onde os produtos serão enviados
+              </p>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="correios_service_pac">Código Serviço PAC</Label>
-                <Input
-                  id="correios_service_pac"
-                  value={settings?.correios_service_pac || ''}
-                  onChange={(e) => handleInputChange('correios_service_pac', e.target.value)}
-                  disabled={!isEditing}
-                  placeholder="3298"
-                />
-              </div>
-              <div>
-                <Label htmlFor="correios_service_sedex">Código Serviço SEDEX</Label>
-                <Input
-                  id="correios_service_sedex"
-                  value={settings?.correios_service_sedex || ''}
-                  onChange={(e) => handleInputChange('correios_service_sedex', e.target.value)}
-                  disabled={!isEditing}
-                  placeholder="3220"
-                />
-              </div>
+            <div>
+              <Label htmlFor="melhor_envio_env">Ambiente</Label>
+              <select
+                id="melhor_envio_env"
+                value={settings?.melhor_envio_env || 'sandbox'}
+                onChange={(e) => handleInputChange('melhor_envio_env', e.target.value)}
+                disabled={!isEditing}
+                className="w-full p-2 border rounded"
+              >
+                <option value="sandbox">Sandbox (Testes)</option>
+                <option value="production">Produção</option>
+              </select>
+              <p className="text-sm text-muted-foreground mt-1">
+                Use Sandbox para testes e Produção para uso real
+              </p>
             </div>
           </div>
         </CardContent>
@@ -300,10 +295,10 @@ const ConfigurationsPage = () => {
           <div className="space-y-2 text-sm text-muted-foreground">
             <p><strong>URL Base:</strong> Deve ser configurada para o domínio de produção quando o app estiver em produção</p>
             <p><strong>CEP de Origem:</strong> CEP da sua empresa/loja para cálculo de frete</p>
-            <p><strong>Códigos de Serviço:</strong> PAC (3298) e SEDEX (3220) são os códigos padrão dos Correios</p>
+            <p><strong>Ambiente:</strong> Use Sandbox para testes e Produção quando estiver em funcionamento real</p>
             <p><strong>Dimensões Padrão:</strong> Usadas quando o produto não tem dimensões específicas cadastradas</p>
             <Separator className="my-3" />
-            <p className="text-xs"><strong>Nota:</strong> As credenciais dos Correios (código da empresa e senha) devem ser configuradas nos segredos do Supabase</p>
+            <p className="text-xs"><strong>Nota:</strong> O token de acesso do Melhor Envio deve ser configurado nos segredos do Supabase</p>
           </div>
         </CardContent>
       </Card>
