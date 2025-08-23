@@ -156,9 +156,9 @@ serve(async (req) => {
       service_name: 'Retirar na Fábrica',
       company: 'Retirada',
       price: 0,
-      delivery_time: 0,
+      delivery_time: 3,
       custom_price: 0,
-      custom_delivery_time: 0
+      custom_delivery_time: 3
     });
 
     return new Response(
