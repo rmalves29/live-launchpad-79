@@ -121,7 +121,6 @@ serve(async (req) => {
     const data = await response.json();
     console.log('Melhor Envio API response:', data);
 
-    // Filtrar apenas os serviços específicos: SEDEX, PAC e JeT Standard
     const allowedServices = [
       { id: 1, name: 'PAC', company: 'Correios' },
       { id: 2, name: 'SEDEX', company: 'Correios' },
@@ -150,6 +149,17 @@ serve(async (req) => {
         custom_price: parseFloat(option.custom_price || option.price) || 0,
         custom_delivery_time: option.custom_delivery_time || option.delivery_time || 0
       }));
+
+    // Adicionar opção de retirada na fábrica
+    formattedOptions.unshift({
+      service_id: 'retirada-fabrica',
+      service_name: 'Retirar na Fábrica',
+      company: 'Retirada',
+      price: 0,
+      delivery_time: 0,
+      custom_price: 0,
+      custom_delivery_time: 0
+    });
 
     return new Response(
       JSON.stringify({ shipping_options: formattedOptions }),
