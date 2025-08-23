@@ -94,6 +94,13 @@ const Checkout = () => {
     return digits;
   };
 
+  // Safe number parser for prices from API (strings)
+  const toNumber = (v: any): number => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    const n = parseFloat(String(v ?? '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+
   const loadCustomerData = async (phone: string): Promise<any | null> => {
     const normalizedPhone = normalizePhone(phone);
     setLoadingCustomer(true);
@@ -309,8 +316,8 @@ const Checkout = () => {
           cartItems: cart?.items || [],
           customerData,
           addressData,
-          shippingCost: selectedShipping.custom_price || selectedShipping.price,
-          total: (cart?.total || 0) + (selectedShipping.custom_price || selectedShipping.price),
+          shippingCost: toNumber(selectedShipping.custom_price ?? selectedShipping.price),
+          total: toNumber(cart?.total || 0) + toNumber(selectedShipping.custom_price ?? selectedShipping.price),
           cartId: cart?.id
         }
       });
@@ -420,8 +427,9 @@ const Checkout = () => {
   };
 
   const getTotalWithShipping = () => {
-    if (!cart || !selectedShipping) return cart?.total || 0;
-    return cart.total + (selectedShipping.custom_price || selectedShipping.price);
+    if (!cart) return 0;
+    const shipping = selectedShipping ? toNumber(selectedShipping.custom_price ?? selectedShipping.price) : 0;
+    return toNumber(cart.total) + shipping;
   };
 
   return (
@@ -604,7 +612,7 @@ const Checkout = () => {
                           </div>
                         </div>
                         <div className="font-medium">
-                          R$ {(option.custom_price || option.price).toFixed(2)}
+                          R$ {toNumber(option.custom_price ?? option.price).toFixed(2)}
                         </div>
                       </div>
                     </Label>
@@ -632,7 +640,7 @@ const Checkout = () => {
                 {selectedShipping && (
                   <div className="flex justify-between">
                     <span>Frete:</span>
-                    <span>R$ {(selectedShipping.custom_price || selectedShipping.price).toFixed(2)}</span>
+                    <span>R$ {toNumber(selectedShipping.custom_price ?? selectedShipping.price).toFixed(2)}</span>
                   </div>
                 )}
                 <Separator />
