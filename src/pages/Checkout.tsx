@@ -311,20 +311,36 @@ const Checkout = () => {
 
     setLoading(true);
     try {
-      // Simular geração de link de pagamento - implementar posteriormente
-      const mockPaymentLink = `https://checkout.com/pay/${Date.now()}`;
-      
-      setPaymentLink(mockPaymentLink);
-      
-      toast({
-        title: 'Checkout preparado',
-        description: 'Link de pagamento será implementado em breve'
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: {
+          cartItems: cart?.items || [],
+          customerData: {
+            ...customerData,
+            phone: normalizePhone(phone)
+          },
+          addressData,
+          shippingCost: toNumber(selectedShipping.custom_price ?? selectedShipping.price),
+          total: getTotalWithShipping()
+        }
       });
+
+      if (error) throw error;
+
+      if (data?.init_point) {
+        setPaymentLink(data.init_point);
+        // Open payment link in new tab
+        window.open(data.init_point, '_blank');
+        
+        toast({
+          title: 'Link de pagamento gerado',
+          description: 'O link foi aberto em uma nova aba'
+        });
+      }
     } catch (error) {
       console.error('Error generating payment link:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao preparar checkout',
+        description: 'Erro ao gerar link de pagamento',
         variant: 'destructive'
       });
     } finally {
