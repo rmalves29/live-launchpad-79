@@ -13,7 +13,6 @@ import Config from "./pages/Config";
 import Produtos from "./pages/Produtos";
 import Clientes from "./pages/Clientes";
 import WhatsApp from "./pages/WhatsApp";
-import ConfigurationsPage from "./pages/ConfigurationsPage";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import WhatsAppConnection from "./pages/WhatsAppConnection";
 import MpReturn from "./pages/MpReturn";
@@ -40,7 +39,6 @@ const App = () => (
           <Route path="/produtos" element={<Produtos />} />
           <Route path="/clientes" element={<Clientes />} />
           <Route path="/whatsapp" element={<WhatsApp />} />
-          <Route path="/configuracoes" element={<ConfigurationsPage />} />
           <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
           <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
           <Route path="/config-frete" element={<ConfigFrete />} />
