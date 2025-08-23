@@ -122,15 +122,17 @@ serve(async (req) => {
     console.log('Melhor Envio API response:', data);
 
     // Formatar resposta para o frontend
-    const formattedOptions = data.map((option: any) => ({
-      service_id: option.id,
-      service_name: option.name,
-      company: option.company.name,
-      price: option.price,
-      delivery_time: option.delivery_time,
-      custom_price: option.custom_price || option.price,
-      custom_delivery_time: option.custom_delivery_time || option.delivery_time
-    }));
+    const formattedOptions = data
+      .filter((option: any) => !option.error && option.price) // Filter out options with errors or no price
+      .map((option: any) => ({
+        service_id: option.id,
+        service_name: option.name,
+        company: option.company.name,
+        price: parseFloat(option.price) || 0,
+        delivery_time: option.delivery_time || 0,
+        custom_price: parseFloat(option.custom_price || option.price) || 0,
+        custom_delivery_time: option.custom_delivery_time || option.delivery_time || 0
+      }));
 
     return new Response(
       JSON.stringify({ shipping_options: formattedOptions }),
