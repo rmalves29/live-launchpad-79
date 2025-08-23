@@ -421,7 +421,7 @@ const Checkout = () => {
     }
 
     const shippingCost = toNumber(selectedShipping.price);
-    const finalTotal = (cart.total - couponDiscount) + shippingCost;
+    const finalTotal = getTotalWithShipping();
     
     setLoading(true);
     try {
