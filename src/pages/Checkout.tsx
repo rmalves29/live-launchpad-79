@@ -209,7 +209,7 @@ const Checkout = () => {
     setSearchingOrders(true);
     try {
       // Load customer data
-      await loadCustomerData(phone);
+      const customerData = await loadCustomerData(phone);
       
       // Search for open orders
       const { data: orders, error } = await supabase
@@ -262,6 +262,11 @@ const Checkout = () => {
 
       setOpenOrders(ordersWithItems);
       setSelectedOrders([]);
+      
+      // Auto-calculate shipping if customer has saved CEP
+      if (customerData && customerData.cep && isValidCep(customerData.cep)) {
+        await calculateShipping(normalizeCep(customerData.cep));
+      }
       
       if (ordersWithItems.length === 0) {
         toast({
@@ -407,6 +412,11 @@ const Checkout = () => {
       // Update available gifts when selection changes
       setTimeout(() => updateAvailableGifts(), 0);
       
+      // Check if shipping needs to be calculated when selecting orders
+      if (newSelection.length > 0 && addressData.cep && isValidCep(addressData.cep) && shippingOptions.length === 0) {
+        calculateShipping(normalizeCep(addressData.cep));
+      }
+      
       return newSelection;
     });
   };
@@ -478,10 +488,49 @@ const Checkout = () => {
       return;
     }
 
-    if (!customerData.name || !customerData.cpf || !addressData.street || !addressData.cep || !selectedShipping) {
+    // Validate customer data
+    if (!customerData.name || !customerData.cpf) {
       toast({
-        title: 'Dados incompletos',
-        description: 'Preencha todos os dados obrigatórios e selecione uma opção de frete',
+        title: 'Dados do cliente incompletos',
+        description: 'Preencha o nome e CPF do cliente',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate address data
+    if (!addressData.street || !addressData.number || !addressData.cep || !addressData.city || !addressData.state) {
+      toast({
+        title: 'Endereço incompleto',
+        description: 'Preencha todos os campos do endereço de entrega',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate shipping
+    if (!selectedShipping) {
+      if (!isValidCep(addressData.cep)) {
+        toast({
+          title: 'CEP inválido',
+          description: 'Preencha um CEP válido para calcular o frete',
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      if (shippingOptions.length === 0) {
+        toast({
+          title: 'Frete não calculado',
+          description: 'Aguarde o cálculo do frete ou verifique o CEP informado',
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      toast({
+        title: 'Selecione o frete',
+        description: 'Escolha uma opção de frete para prosseguir com o pagamento',
         variant: 'destructive'
       });
       return;
@@ -710,30 +759,32 @@ const Checkout = () => {
                       
                       {order.items.length > 0 && (
                         <div className="space-y-2 mt-3">
-                          <div className="text-sm font-medium">Produtos:</div>
-                          {order.items.map((item) => (
-                            <div key={item.id} className="flex items-center space-x-3 p-2 bg-muted/50 rounded">
-                              <div className="flex-shrink-0">
-                                <img 
-                                  src={item.image_url || '/placeholder.svg'} 
-                                  alt={item.product_name}
-                                  className="w-10 h-10 object-cover rounded border"
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <div className="flex items-center space-x-2">
-                                  <Badge variant="outline" className="text-xs">{item.product_code}</Badge>
-                                  <span className="text-sm font-medium">{item.product_name}</span>
+                          <div className="text-sm font-medium text-primary">Produtos do Pedido:</div>
+                          <div className="bg-background border rounded-lg p-3 space-y-2">
+                            {order.items.map((item) => (
+                              <div key={item.id} className="flex items-center space-x-3 p-2 hover:bg-muted/30 rounded">
+                                <div className="flex-shrink-0">
+                                  <img 
+                                    src={item.image_url || '/placeholder.svg'} 
+                                    alt={item.product_name}
+                                    className="w-12 h-12 object-cover rounded border"
+                                  />
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {item.qty}x R$ {item.unit_price.toFixed(2)}
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-2 mb-1">
+                                    <Badge variant="outline" className="text-xs">{item.product_code}</Badge>
+                                    <span className="text-sm font-medium">{item.product_name}</span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Quantidade: {item.qty} • Preço unitário: R$ {item.unit_price.toFixed(2)}
+                                  </div>
+                                </div>
+                                <div className="text-sm font-semibold text-primary">
+                                  R$ {(item.qty * item.unit_price).toFixed(2)}
                                 </div>
                               </div>
-                              <div className="text-sm font-medium">
-                                R$ {(item.qty * item.unit_price).toFixed(2)}
-                              </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -744,9 +795,26 @@ const Checkout = () => {
               {selectedOrders.length > 0 && (
                 <>
                   <Separator />
-                  <div className="flex justify-between items-center font-medium">
-                    <span>Total dos Pedidos Selecionados:</span>
-                    <span>R$ {getSelectedOrdersTotal().toFixed(2)}</span>
+                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+                    <div className="flex justify-between items-center font-semibold text-lg mb-2">
+                      <span>Total dos Pedidos Selecionados:</span>
+                      <span className="text-primary">R$ {getSelectedOrdersTotal().toFixed(2)}</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {selectedOrders.length} pedido{selectedOrders.length > 1 ? 's' : ''} selecionado{selectedOrders.length > 1 ? 's' : ''} • {getCombinedItems().length} produto{getCombinedItems().length > 1 ? 's' : ''} no total
+                    </div>
+                    
+                    {!isValidCep(addressData.cep) && (
+                      <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                        <div className="flex items-center text-yellow-800">
+                          <MapPin className="h-4 w-4 mr-2" />
+                          <span className="font-medium">Atenção!</span>
+                        </div>
+                        <div className="text-yellow-700 mt-1">
+                          Preencha os dados de envio abaixo e selecione uma opção de frete para finalizar o pedido.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
