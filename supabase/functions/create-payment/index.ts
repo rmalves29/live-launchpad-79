@@ -158,6 +158,7 @@ serve(async (req) => {
         failure: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=failure`,
         pending: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=pending`
       },
+      notification_url: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/mercadopago-webhook`,
       auto_return: 'approved',
       binary_mode: true,
       statement_descriptor: 'MANIA DEMULHER'

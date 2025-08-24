@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.melhor-envio-labels]
 verify_jwt = false
+
+[functions.mercadopago-webhook]
+verify_jwt = false
