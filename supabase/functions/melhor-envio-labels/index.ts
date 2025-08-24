@@ -89,8 +89,8 @@ serve(async (req) => {
         .limit(1)
         .single();
 
-      // Get freight quotation
-      const { data: cotacaoData, error: cotacaoError } = await supabase
+      // Get freight quotation or use default values
+      const { data: cotacaoData } = await supabase
         .from('frete_cotacoes')
         .select('*')
         .eq('pedido_id', order_id)
@@ -98,33 +98,40 @@ serve(async (req) => {
         .limit(1)
         .single();
 
-      if (cotacaoError || !cotacaoData) {
-        return new Response(
-          JSON.stringify({ error: 'Cotação de frete não encontrada para este pedido' }),
-          { 
-            status: 404, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
+      // Get app settings for default dimensions and weight
+      const { data: appSettings } = await supabase
+        .from('app_settings')
+        .select('*')
+        .single();
+
+      // Use cotacao data if available, otherwise use app settings defaults
+      const freight = cotacaoData || {
+        cep_destino: customerData?.cep || '01000000',
+        peso: appSettings?.default_weight_kg || 0.3,
+        altura: appSettings?.default_height_cm || 2,
+        largura: appSettings?.default_width_cm || 16,
+        comprimento: appSettings?.default_length_cm || 20,
+        valor_declarado: orderData.total_amount,
+        raw_response: { service_id: 1 } // Default PAC service
+      };
 
       // Create shipment payload
       const shipmentPayload = {
-        service: cotacaoData.raw_response?.service_id || 1,
+        service: freight.raw_response?.service_id || 1,
         from: {
-          name: configData.remetente_nome,
+          name: configData.remetente_nome || "Remetente",
           phone: "1199999999", // You might want to add this to config
           email: "contato@empresa.com", // You might want to add this to config
-          document: configData.remetente_documento,
-          company_document: configData.remetente_documento,
+          document: configData.remetente_documento || "00000000000",
+          company_document: configData.remetente_documento || "00000000000",
           state_register: "123456789",
-          postal_code: configData.cep_origem,
-          address: configData.remetente_endereco_rua,
-          number: configData.remetente_endereco_numero,
+          postal_code: configData.cep_origem || "31575060",
+          address: configData.remetente_endereco_rua || "Rua do Remetente",
+          number: configData.remetente_endereco_numero || "123",
           complement: configData.remetente_endereco_comp || "",
-          district: configData.remetente_bairro,
-          city: configData.remetente_cidade,
-          state_abbr: configData.remetente_uf,
+          district: configData.remetente_bairro || "Centro",
+          city: configData.remetente_cidade || "Belo Horizonte",
+          state_abbr: configData.remetente_uf || "MG",
           country_id: "BR"
         },
         to: {
@@ -132,7 +139,7 @@ serve(async (req) => {
           phone: customer_phone,
           email: "cliente@email.com", // You might want to get this from customer data
           document: customerData?.cpf || "00000000000",
-          postal_code: cotacaoData.cep_destino,
+          postal_code: freight.cep_destino,
           address: customerData?.street || "Rua do Cliente",
           number: customerData?.number || "123",
           complement: customerData?.complement || "",
@@ -143,22 +150,22 @@ serve(async (req) => {
         },
         products: [
           {
-            name: "Produto",
+            name: "Produto do Pedido #" + orderData.id,
             quantity: 1,
             unitary_value: orderData.total_amount,
-            weight: cotacaoData.peso
+            weight: freight.peso
           }
         ],
         volumes: [
           {
-            height: cotacaoData.altura,
-            width: cotacaoData.largura,
-            length: cotacaoData.comprimento,
-            weight: cotacaoData.peso
+            height: freight.altura,
+            width: freight.largura,
+            length: freight.comprimento,
+            weight: freight.peso
           }
         ],
         options: {
-          insurance_value: cotacaoData.valor_declarado || orderData.total_amount,
+          insurance_value: freight.valor_declarado || orderData.total_amount,
           receipt: false,
           own_hand: false,
           reverse: false,
@@ -171,7 +178,7 @@ serve(async (req) => {
 
       console.log('Creating shipment with payload:', JSON.stringify(shipmentPayload, null, 2));
 
-      const response = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
+      const response = await fetch(`${baseUrl}/v2/me/shipment/insert`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
