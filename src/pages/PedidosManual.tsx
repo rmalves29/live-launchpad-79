@@ -168,17 +168,20 @@ const PedidosManual = () => {
       const today = new Date().toISOString().split('T')[0];
       
       // Check for existing unpaid order for this phone and date
-      const { data: existingOrder, error: searchError } = await supabase
+      const { data: existingOrders, error: searchError } = await supabase
         .from('orders')
         .select('*')
         .eq('customer_phone', normalizedPhone)
         .eq('event_date', today)
         .eq('is_paid', false)
-        .maybeSingle();
+        .order('created_at', { ascending: false });
 
-      if (searchError && searchError.code !== 'PGRST116') {
+      if (searchError) {
         console.error('Error searching for existing order:', searchError);
+        throw searchError;
       }
+
+      const existingOrder = existingOrders && existingOrders.length > 0 ? existingOrders[0] : null;
 
       let orderId: number;
       let cartId: number | null = null;

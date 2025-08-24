@@ -74,16 +74,64 @@ serve(async (req) => {
     // Verificar se já existe pedido do cliente no mesmo dia
     const today = new Date().toISOString().split('T')[0];
     
-    const { data: existingOrder, error: orderSearchError } = await supabase
+    const { data: existingOrders, error: orderSearchError } = await supabase
       .from('orders')
       .select('*')
       .eq('customer_phone', customerData.phone)
       .eq('event_date', today)
       .eq('is_paid', false)
-      .maybeSingle();
+      .order('created_at', { ascending: false });
 
-    if (orderSearchError && orderSearchError.code !== 'PGRST116') {
+    if (orderSearchError) {
       console.error('Error searching for existing order:', orderSearchError);
+    }
+
+    const existingOrder = existingOrders && existingOrders.length > 0 ? existingOrders[0] : null;
+
+    // Se houver múltiplos pedidos não pagos do mesmo dia, consolidar em um só
+    if (existingOrders && existingOrders.length > 1) {
+      const mainOrder = existingOrders[0];
+      const ordersToMerge = existingOrders.slice(1);
+      
+      // Consolidar carrinho se existir
+      for (const order of ordersToMerge) {
+        if (order.cart_id && order.cart_id !== mainOrder.cart_id) {
+          // Move cart items to main cart
+          if (mainOrder.cart_id) {
+            await supabase
+              .from('cart_items')
+              .update({ cart_id: mainOrder.cart_id })
+              .eq('cart_id', order.cart_id);
+          }
+          
+          // Delete old cart
+          await supabase
+            .from('carts')
+            .delete()
+            .eq('id', order.cart_id);
+        }
+        
+        // Delete duplicate order
+        await supabase
+          .from('orders')
+          .delete()
+          .eq('id', order.id);
+      }
+      
+      // Update main order total
+      if (mainOrder.cart_id) {
+        const { data: cartItems } = await supabase
+          .from('cart_items')
+          .select('qty, unit_price')
+          .eq('cart_id', mainOrder.cart_id);
+        
+        const total = (cartItems || []).reduce((sum, item) => sum + (item.qty * item.unit_price), 0);
+        
+        await supabase
+          .from('orders')
+          .update({ total_amount: total })
+          .eq('id', mainOrder.id);
+      }
     }
 
     // Se total final for zero, cria ou atualiza pedido gratuito e não chama o Mercado Pago
