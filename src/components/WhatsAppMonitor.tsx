@@ -87,10 +87,215 @@ const WhatsAppMonitor = () => {
     const digits = number.replace(/\D/g, '');
     if (digits.length >= 11) {
       const ddd = digits.slice(-11, -9);
-      const phone = digits.slice(-9);
-      return `${ddd}${phone}`;
+      const nineDigit = '9';
+      const phone = digits.slice(-8);
+      return `${ddd}${nineDigit}${phone}`;
     }
     return number;
+  };
+
+  const normalizePhone = (phone: string) => {
+    return phone.replace(/\D/g, '');
+  };
+
+  const createAutomaticOrder = async (message: WhatsAppMessage) => {
+    if (!message.detectedProducts || message.detectedProducts.length === 0) {
+      return;
+    }
+
+    const normalizedPhone = normalizePhone(message.numero);
+    if (normalizedPhone.length < 12 || normalizedPhone.length > 15) {
+      console.error('Invalid phone number:', message.numero);
+      return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+      // Function to get or create order with retry logic
+      const getOrCreateOrder = async (): Promise<{ orderId: number; cartId: number | null; isNew: boolean }> => {
+        // First attempt: Check for existing unpaid order
+        const { data: existingOrders, error: searchError } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('customer_phone', normalizedPhone)
+          .eq('event_date', today)
+          .eq('is_paid', false)
+          .order('created_at', { ascending: false });
+
+        if (searchError) {
+          console.error('Error searching for existing order:', searchError);
+          throw searchError;
+        }
+
+        if (existingOrders && existingOrders.length > 0) {
+          return { 
+            orderId: existingOrders[0].id, 
+            cartId: existingOrders[0].cart_id, 
+            isNew: false 
+          };
+        }
+
+        // Try to create new order
+        try {
+          const totalAmount = message.detectedProducts!.reduce((sum, product) => sum + product.price, 0);
+          
+          const { data: newOrder, error: orderError } = await supabase
+            .from('orders')
+            .insert([{
+              customer_phone: normalizedPhone,
+              event_type: 'WHATSAPP',
+              event_date: today,
+              total_amount: totalAmount,
+              is_paid: false
+            }])
+            .select()
+            .single();
+
+          if (orderError) {
+            // If unique constraint violation, retry to find existing order
+            if (orderError.code === '23505') {
+              console.log('Unique constraint violation, retrying to find existing order...');
+              const { data: retryOrders, error: retryError } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('customer_phone', normalizedPhone)
+                .eq('event_date', today)
+                .eq('is_paid', false)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+              if (retryError) throw retryError;
+              if (retryOrders && retryOrders.length > 0) {
+                return { 
+                  orderId: retryOrders[0].id, 
+                  cartId: retryOrders[0].cart_id, 
+                  isNew: false 
+                };
+              }
+            }
+            throw orderError;
+          }
+
+          return { 
+            orderId: newOrder.id, 
+            cartId: null, 
+            isNew: true 
+          };
+        } catch (error) {
+          throw error;
+        }
+      };
+
+      const { orderId, cartId: initialCartId, isNew } = await getOrCreateOrder();
+      let cartId = initialCartId;
+
+      // Create cart if needed
+      if (!cartId) {
+        const { data: newCart, error: cartError } = await supabase
+          .from('carts')
+          .insert({
+            customer_phone: normalizedPhone,
+            event_type: 'WHATSAPP',
+            event_date: today,
+            status: 'OPEN'
+          })
+          .select()
+          .single();
+
+        if (cartError) throw cartError;
+        cartId = newCart.id;
+
+        // Update order with cart_id
+        await supabase
+          .from('orders')
+          .update({ cart_id: cartId })
+          .eq('id', orderId);
+      }
+
+      // Add all detected products to cart
+      let orderTotal = 0;
+      
+      for (const product of message.detectedProducts) {
+        // Check if product already exists in cart
+        const { data: existingCartItem, error: cartItemSearchError } = await supabase
+          .from('cart_items')
+          .select('*')
+          .eq('cart_id', cartId)
+          .eq('product_id', product.id)
+          .maybeSingle();
+
+        if (cartItemSearchError && cartItemSearchError.code !== 'PGRST116') {
+          throw cartItemSearchError;
+        }
+
+        if (existingCartItem) {
+          // Update quantity and price
+          const newQty = existingCartItem.qty + 1;
+          const { error: updateError } = await supabase
+            .from('cart_items')
+            .update({ 
+              qty: newQty,
+              unit_price: product.price 
+            })
+            .eq('id', existingCartItem.id);
+
+          if (updateError) throw updateError;
+          orderTotal += product.price;
+        } else {
+          // Create new cart item
+          const { error: cartItemError } = await supabase
+            .from('cart_items')
+            .insert({
+              cart_id: cartId,
+              product_id: product.id,
+              qty: 1,
+              unit_price: product.price
+            });
+
+          if (cartItemError) throw cartItemError;
+          orderTotal += product.price;
+        }
+      }
+
+      // Update order total if needed
+      if (orderTotal > 0) {
+        if (isNew) {
+          // Order was just created with correct total
+        } else {
+          // Update existing order total
+          const { data: currentOrder } = await supabase
+            .from('orders')
+            .select('total_amount')
+            .eq('id', orderId)
+            .single();
+
+          if (currentOrder) {
+            const newTotal = currentOrder.total_amount + orderTotal;
+            await supabase
+              .from('orders')
+              .update({ total_amount: newTotal })
+              .eq('id', orderId);
+          }
+        }
+      }
+
+      toast({
+        title: 'Pedido Criado',
+        description: `Pedido automático criado para ${formatPhoneNumber(message.numero)} - ${message.detectedProducts.length} produto(s)`,
+      });
+
+      // Reload orders to show the new one
+      loadOrders();
+
+    } catch (error) {
+      console.error('Error creating automatic order:', error);
+      toast({
+        title: 'Erro',
+        description: 'Falha ao criar pedido automático',
+        variant: 'destructive'
+      });
+    }
   };
 
   const detectProductCodes = (message: string): string[] => {
@@ -123,6 +328,18 @@ const WhatsAppMonitor = () => {
       const messagesWithValidProducts = messagesWithProducts.filter(
         (msg: WhatsAppMessage) => msg.detectedProducts && msg.detectedProducts.length > 0
       );
+
+      // Check for new messages and create orders automatically
+      const newMessages = messagesWithValidProducts.filter(msg => 
+        !messages.find(existingMsg => existingMsg.id === msg.id)
+      );
+
+      // Create automatic orders for new messages with detected products
+      for (const message of newMessages) {
+        if (message.detectedProducts && message.detectedProducts.length > 0) {
+          await createAutomaticOrder(message);
+        }
+      }
 
       setMessages(messagesWithValidProducts);
       setFilteredMessages(messagesWithValidProducts);
@@ -339,13 +556,13 @@ const WhatsAppMonitor = () => {
               ) : (
                 filteredMessages.map((message) => (
                   <div key={message.id} className="p-4 border rounded-lg bg-card space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div className="space-y-1">
-                        <div className="text-sm text-muted-foreground">
-                          {formatPhoneNumber(message.numero)} - {new Date(message.when).toLocaleString('pt-BR')}
-                        </div>
-                      </div>
-                    </div>
+                     <div className="flex justify-between items-start">
+                       <div className="space-y-1">
+                         <div className="text-sm text-muted-foreground">
+                           {message.numero} - {new Date(message.when).toLocaleString('pt-BR')}
+                         </div>
+                       </div>
+                     </div>
                     
                     <div className="bg-muted/30 p-3 rounded text-sm">
                       <div className="font-medium mb-1">Mensagem:</div>
@@ -400,7 +617,8 @@ const WhatsAppMonitor = () => {
             <p>• <strong>Filtro de Busca:</strong> Use o campo de busca para filtrar por número de telefone ou código de produto</p>
             <p>• <strong>Códigos de Produtos:</strong> O sistema detecta códigos no formato "C1231" nas mensagens do WhatsApp</p>
             <p>• <strong>Layout Otimizado:</strong> Informações exibidas no formato "C1231 - teste - R$2.00"</p>
-            <p>• <strong>Números Formatados:</strong> Telefones no padrão DDD + número (31992904210)</p>
+            <p>• <strong>Números Formatados:</strong> Telefones no padrão DDD + 9 + número (31992904210)</p>
+            <p>• <strong>Criação Automática:</strong> Pedidos são criados automaticamente quando códigos de produtos são detectados</p>
             <p>• <strong>Servidor WhatsApp:</strong> Certifique-se de que o servidor Node.js está rodando na porta 3000</p>
           </div>
         </CardContent>
