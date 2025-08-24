@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -61,13 +61,21 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
+  const [cartId, setCartId] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (open && order) {
-      loadProducts();
-      loadCartItems();
-    }
-  }, [open, order]);
+useEffect(() => {
+  if (open && order) {
+    setCartId(order.cart_id ?? null);
+    loadProducts();
+  }
+}, [open, order]);
+
+useEffect(() => {
+  if (open && cartId) {
+    loadCartItems(cartId);
+  }
+}, [open, cartId]);
+
 
   const loadProducts = async () => {
     try {
@@ -89,8 +97,9 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
     }
   };
 
-  const loadCartItems = async () => {
-    if (!order?.cart_id) return;
+  const loadCartItems = async (id?: number | null) => {
+    const effectiveId = id ?? cartId;
+    if (!effectiveId) return;
 
     try {
       const { data, error } = await supabase
@@ -99,7 +108,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
           *,
           product:products!cart_items_product_id_fkey (*)
         `)
-        .eq('cart_id', order.cart_id);
+        .eq('cart_id', effectiveId);
 
       if (error) throw error;
       setCartItems(data || []);
@@ -138,6 +147,10 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
 
       if (updateError) throw updateError;
 
+      // keep local state in sync
+      setCartId(data.id);
+      onOrderUpdated?.();
+
       return data.id;
     } catch (error) {
       console.error('Error creating cart:', error);
@@ -150,8 +163,8 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
 
     setLoading(true);
     try {
-      const cartId = await createCartIfNeeded();
-      if (!cartId) throw new Error('Não foi possível criar/obter carrinho');
+      const targetCartId = await createCartIfNeeded();
+      if (!targetCartId) throw new Error('Não foi possível criar/obter carrinho');
 
       // Check if product already exists in cart
       const existingItem = cartItems.find(item => item.product_id === selectedProduct.id);
@@ -172,7 +185,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
         const { error } = await supabase
           .from('cart_items')
           .insert({
-            cart_id: cartId,
+            cart_id: targetCartId,
             product_id: selectedProduct.id,
             qty: quantity,
             unit_price: unitPrice || selectedProduct.price
@@ -182,8 +195,8 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
       }
 
       // Reload cart items
-      await loadCartItems();
-      await updateOrderTotal();
+      await loadCartItems(targetCartId);
+      await updateOrderTotal(targetCartId);
 
       // Reset form
       setSelectedProduct(null);
@@ -215,8 +228,8 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
 
       if (error) throw error;
 
-      await loadCartItems();
-      await updateOrderTotal();
+      await loadCartItems(cartId);
+      await updateOrderTotal(cartId);
 
       toast({
         title: 'Sucesso',
@@ -243,8 +256,8 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
 
       if (error) throw error;
 
-      await loadCartItems();
-      await updateOrderTotal();
+      await loadCartItems(cartId);
+      await updateOrderTotal(cartId);
     } catch (error) {
       console.error('Error updating quantity:', error);
       toast({
@@ -255,14 +268,15 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
     }
   };
 
-  const updateOrderTotal = async () => {
-    if (!order?.cart_id) return;
+  const updateOrderTotal = async (id?: number | null) => {
+    const effectiveId = id ?? cartId;
+    if (!effectiveId || !order) return;
 
     try {
       const { data, error } = await supabase
         .from('cart_items')
         .select('qty, unit_price')
-        .eq('cart_id', order.cart_id);
+        .eq('cart_id', effectiveId);
 
       if (error) throw error;
 
@@ -291,6 +305,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar Pedido #{order?.id}</DialogTitle>
+          <DialogDescription>Gerencie itens, quantidades e valores do pedido.</DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
