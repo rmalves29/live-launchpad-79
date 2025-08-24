@@ -17,11 +17,30 @@ interface Order {
   created_at: string;
 }
 
+interface Product {
+  id: number;
+  code: string;
+  name: string;
+  price: number;
+}
+
+interface WhatsAppMessage {
+  numero: string;
+  body: string;
+  when: string;
+  id: string;
+  detectedProducts?: Product[];
+}
+
 const WhatsAppMonitor = () => {
   const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [monitoring, setMonitoring] = useState(false);
+  const [whatsappServerUrl, setWhatsappServerUrl] = useState('http://localhost:3000');
 
   const loadOrders = async () => {
     setLoading(true);
@@ -44,6 +63,74 @@ const WhatsAppMonitor = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, code, name, price')
+        .eq('is_active', true);
+
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (error) {
+      console.error('Error loading products:', error);
+    }
+  };
+
+  const formatPhoneNumber = (number: string) => {
+    const digits = number.replace(/\D/g, '');
+    if (digits.length >= 11) {
+      const ddd = digits.slice(-11, -9);
+      const phone = digits.slice(-9);
+      return `${ddd}${phone}`;
+    }
+    return number;
+  };
+
+  const detectProductCodes = (message: string): string[] => {
+    const codePattern = /C\d+/gi;
+    const matches = message.match(codePattern) || [];
+    return matches.map(code => code.toUpperCase());
+  };
+
+  const loadWhatsAppMessages = async () => {
+    setLoadingMessages(true);
+    try {
+      const response = await fetch(`${whatsappServerUrl}/messages?limit=100`);
+      if (!response.ok) throw new Error('Servidor WhatsApp não disponível');
+      
+      const result = await response.json();
+      const messagesWithProducts = result.data.map((msg: any) => {
+        const codes = detectProductCodes(msg.body);
+        const detectedProducts = products.filter(product => 
+          codes.includes(product.code.toUpperCase())
+        );
+        
+        return {
+          ...msg,
+          numero: formatPhoneNumber(msg.numero),
+          detectedProducts: detectedProducts.length > 0 ? detectedProducts : undefined
+        };
+      });
+
+      // Filtrar apenas mensagens com produtos detectados
+      const messagesWithValidProducts = messagesWithProducts.filter(
+        (msg: WhatsAppMessage) => msg.detectedProducts && msg.detectedProducts.length > 0
+      );
+
+      setMessages(messagesWithValidProducts);
+    } catch (error) {
+      console.error('Error loading WhatsApp messages:', error);
+      toast({
+        title: 'Erro',
+        description: 'Falha ao conectar com servidor WhatsApp. Verifique se está rodando na porta 3000.',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingMessages(false);
     }
   };
 
@@ -89,7 +176,14 @@ const WhatsAppMonitor = () => {
 
   useEffect(() => {
     loadOrders();
+    loadProducts();
   }, []);
+
+  useEffect(() => {
+    if (products.length > 0) {
+      loadWhatsAppMessages();
+    }
+  }, [products, whatsappServerUrl]);
 
   // Simulate monitoring toggle
   const toggleMonitoring = () => {
@@ -107,7 +201,7 @@ const WhatsAppMonitor = () => {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Monitor WhatsApp</h1>
         <div className="flex space-x-2">
-          <Button onClick={loadOrders} variant="outline" disabled={loading}>
+          <Button onClick={() => { loadOrders(); loadWhatsAppMessages(); }} variant="outline" disabled={loading || loadingMessages}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Atualizar
           </Button>
@@ -122,7 +216,7 @@ const WhatsAppMonitor = () => {
       </div>
 
       {/* Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Status</CardTitle>
@@ -136,6 +230,21 @@ const WhatsAppMonitor = () => {
             </div>
             <p className="text-xs text-muted-foreground">
               Monitor de grupos WhatsApp
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Mensagens c/ Produtos</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {messages.length}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Com códigos de produtos
             </p>
           </CardContent>
         </Card>
@@ -214,6 +323,66 @@ const WhatsAppMonitor = () => {
         </CardContent>
       </Card>
 
+      {/* Messages with Product Codes */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Mensagens com Códigos de Produtos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-96">
+            <div className="space-y-4">
+              {loadingMessages ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Carregando mensagens...
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhuma mensagem com códigos de produtos encontrada
+                </div>
+              ) : (
+                messages.map((message) => (
+                  <div key={message.id} className="p-4 border rounded space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="font-medium text-primary">
+                          +55 {message.numero}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {new Date(message.when).toLocaleString('pt-BR')}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-muted/30 p-3 rounded text-sm">
+                      {message.body}
+                    </div>
+
+                    {message.detectedProducts && message.detectedProducts.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Produtos Detectados:</div>
+                        <div className="space-y-2">
+                          {message.detectedProducts.map((product) => (
+                            <div key={product.id} className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded">
+                              <div>
+                                <div className="font-medium">{product.code}</div>
+                                <div className="text-sm text-muted-foreground">{product.name}</div>
+                              </div>
+                              <div className="font-medium text-green-700">
+                                R$ {product.price.toFixed(2)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
+
       {/* Recent Orders */}
       <Card>
         <CardHeader>
@@ -237,7 +406,7 @@ const WhatsAppMonitor = () => {
                         </Badge>
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {order.customer_phone} • {order.event_type}
+                        +55 {formatPhoneNumber(order.customer_phone)} • {order.event_type}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {new Date(order.created_at).toLocaleString('pt-BR')}
@@ -263,11 +432,11 @@ const WhatsAppMonitor = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm text-muted-foreground">
-            <p>• <strong>Monitor Ativo:</strong> Quando ativado, o sistema monitora grupos do WhatsApp em busca de pedidos</p>
-            <p>• <strong>Detecção Automática:</strong> Identifica mensagens com padrões de pedidos (quantidade, produto, preço)</p>
-            <p>• <strong>Criação de Clientes:</strong> Cria automaticamente clientes baseado no número do WhatsApp</p>
-            <p>• <strong>Produtos Dinâmicos:</strong> Cria produtos automaticamente se não existirem no catálogo</p>
-            <p>• <strong>Formato Esperado:</strong> "2x Produto R$20,00 - Nome: Cliente"</p>
+            <p>• <strong>Códigos de Produtos:</strong> O sistema detecta códigos no formato "C1231" nas mensagens do WhatsApp</p>
+            <p>• <strong>Detecção Automática:</strong> Busca produtos cadastrados que correspondem aos códigos encontrados</p>
+            <p>• <strong>Números Formatados:</strong> Mostra números no padrão DDD + telefone (+55 11999999999)</p>
+            <p>• <strong>Produtos Identificados:</strong> Exibe nome, código e preço dos produtos detectados nas mensagens</p>
+            <p>• <strong>Servidor WhatsApp:</strong> Certifique-se de que o servidor Node.js está rodando na porta 3000</p>
           </div>
         </CardContent>
       </Card>
