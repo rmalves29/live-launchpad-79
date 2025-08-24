@@ -167,55 +167,104 @@ const PedidosManual = () => {
       const subtotal = product.price * qty;
       const today = new Date().toISOString().split('T')[0];
       
-      // Check for existing unpaid order for this phone and date
-      const { data: existingOrders, error: searchError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('customer_phone', normalizedPhone)
-        .eq('event_date', today)
-        .eq('is_paid', false)
-        .order('created_at', { ascending: false });
-
-      if (searchError) {
-        console.error('Error searching for existing order:', searchError);
-        throw searchError;
-      }
-
-      const existingOrder = existingOrders && existingOrders.length > 0 ? existingOrders[0] : null;
-
-      let orderId: number;
-      let cartId: number | null = null;
-
-      if (existingOrder) {
-        // Update existing order total
-        orderId = existingOrder.id;
-        cartId = existingOrder.cart_id;
-        
-        const newTotal = existingOrder.total_amount + subtotal;
-        
-        const { error: updateError } = await supabase
+      // Function to get or create order with retry logic
+      const getOrCreateOrder = async (): Promise<{ orderId: number; cartId: number | null; isNew: boolean }> => {
+        // First attempt: Check for existing unpaid order
+        const { data: existingOrders, error: searchError } = await supabase
           .from('orders')
-          .update({ total_amount: newTotal })
-          .eq('id', orderId);
+          .select('*')
+          .eq('customer_phone', normalizedPhone)
+          .eq('event_date', today)
+          .eq('is_paid', false)
+          .order('created_at', { ascending: false });
 
-        if (updateError) throw updateError;
-      } else {
-        // Create new order
-        const { data: newOrder, error: orderError } = await supabase
-          .from('orders')
-          .insert([{
-            customer_phone: normalizedPhone,
-            event_type: 'MANUAL',
-            event_date: today,
-            total_amount: subtotal,
-            is_paid: false
-          }])
-          .select()
-          .single();
+        if (searchError) {
+          console.error('Error searching for existing order:', searchError);
+          throw searchError;
+        }
 
-        if (orderError) throw orderError;
-        orderId = newOrder.id;
-      }
+        if (existingOrders && existingOrders.length > 0) {
+          const existingOrder = existingOrders[0];
+          
+          // Update existing order total
+          const newTotal = existingOrder.total_amount + subtotal;
+          
+          const { error: updateError } = await supabase
+            .from('orders')
+            .update({ total_amount: newTotal })
+            .eq('id', existingOrder.id);
+
+          if (updateError) throw updateError;
+          
+          return { 
+            orderId: existingOrder.id, 
+            cartId: existingOrder.cart_id, 
+            isNew: false 
+          };
+        }
+
+        // Try to create new order
+        try {
+          const { data: newOrder, error: orderError } = await supabase
+            .from('orders')
+            .insert([{
+              customer_phone: normalizedPhone,
+              event_type: 'MANUAL',
+              event_date: today,
+              total_amount: subtotal,
+              is_paid: false
+            }])
+            .select()
+            .single();
+
+          if (orderError) {
+            // If unique constraint violation, retry to find existing order
+            if (orderError.code === '23505') {
+              console.log('Unique constraint violation, retrying to find existing order...');
+              const { data: retryOrders, error: retryError } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('customer_phone', normalizedPhone)
+                .eq('event_date', today)
+                .eq('is_paid', false)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+              if (retryError) throw retryError;
+              if (retryOrders && retryOrders.length > 0) {
+                const existingOrder = retryOrders[0];
+                
+                // Update total
+                const newTotal = existingOrder.total_amount + subtotal;
+                const { error: updateError } = await supabase
+                  .from('orders')
+                  .update({ total_amount: newTotal })
+                  .eq('id', existingOrder.id);
+
+                if (updateError) throw updateError;
+                
+                return { 
+                  orderId: existingOrder.id, 
+                  cartId: existingOrder.cart_id, 
+                  isNew: false 
+                };
+              }
+            }
+            throw orderError;
+          }
+
+          return { 
+            orderId: newOrder.id, 
+            cartId: null, 
+            isNew: true 
+          };
+        } catch (error) {
+          throw error;
+        }
+      };
+
+      const { orderId, cartId: initialCartId, isNew } = await getOrCreateOrder();
+      let cartId = initialCartId;
 
       // Create cart if needed
       if (!cartId) {
@@ -294,7 +343,7 @@ const PedidosManual = () => {
       
       toast({
         title: 'Sucesso',
-        description: existingOrder 
+        description: !isNew 
           ? `Produto adicionado ao pedido existente: ${product.code} x${qty}` 
           : `Novo pedido criado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
