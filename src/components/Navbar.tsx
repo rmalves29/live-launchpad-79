@@ -15,6 +15,7 @@ const Navbar = () => {
     { path: '/pedidos', label: 'Pedidos' },
     { path: '/whatsapp', label: 'WhatsApp' },
     { path: '/whatsapp-templates', label: 'Templates WPP' },
+    { path: '/whatsapp-integration', label: 'Integração WPP' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/config', label: 'Configurações' }
   ];

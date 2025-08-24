@@ -15,6 +15,7 @@ import Clientes from "./pages/Clientes";
 import WhatsApp from "./pages/WhatsApp";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import WhatsAppConnection from "./pages/WhatsAppConnection";
+import WhatsAppIntegration from "./pages/WhatsAppIntegration";
 import MpReturn from "./pages/MpReturn";
 import ConfigFrete from "./pages/ConfigFrete";
 import CotacaoFrete from "./pages/CotacaoFrete";
@@ -41,6 +42,7 @@ const App = () => (
           <Route path="/whatsapp" element={<WhatsApp />} />
           <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
           <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
+          <Route path="/whatsapp-integration" element={<WhatsAppIntegration />} />
           <Route path="/config-frete" element={<ConfigFrete />} />
           <Route path="/cotacao-frete" element={<CotacaoFrete />} />
           <Route path="/etiquetas" element={<Etiquetas />} />
