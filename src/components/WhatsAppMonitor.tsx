@@ -22,6 +22,7 @@ interface Product {
   code: string;
   name: string;
   price: number;
+  image_url?: string;
 }
 
 interface WhatsAppMessage {
@@ -70,7 +71,7 @@ const WhatsAppMonitor = () => {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('id, code, name, price')
+        .select('id, code, name, price, image_url')
         .eq('is_active', true);
 
       if (error) throw error;
@@ -290,31 +291,31 @@ const WhatsAppMonitor = () => {
         <CardContent>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Teste o processamento automático de mensagens do WhatsApp:
+              Teste o processamento automático de mensagens do WhatsApp com códigos de produtos:
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button 
-                onClick={() => processMessage("2x Vestido Floral R$45,90 cada - Nome: Maria Silva")}
+                onClick={() => processMessage("C001 C002 - Nome: Maria Silva")}
                 variant="outline"
                 className="h-auto p-4 text-left"
               >
                 <div>
-                  <div className="font-medium">Testar Pedido 1</div>
+                  <div className="font-medium">Testar com Códigos</div>
                   <div className="text-sm text-muted-foreground">
-                    "2x Vestido Floral R$45,90 cada - Nome: Maria Silva"
+                    "C001 C002 - Nome: Maria Silva"
                   </div>
                 </div>
               </Button>
               
               <Button 
-                onClick={() => processMessage("1x Calça Jeans R$79,90 - 1x Blusa Básica R$29,90 - Nome: Ana Costa")}
+                onClick={() => processMessage("1x C003 - Nome: Ana Costa")}
                 variant="outline" 
                 className="h-auto p-4 text-left"
               >
                 <div>
-                  <div className="font-medium">Testar Pedido 2</div>
+                  <div className="font-medium">Testar Código Único</div>
                   <div className="text-sm text-muted-foreground">
-                    "1x Calça Jeans R$79,90 - 1x Blusa Básica R$29,90 - Nome: Ana Costa"
+                    "1x C003 - Nome: Ana Costa"
                   </div>
                 </div>
               </Button>
@@ -326,10 +327,10 @@ const WhatsAppMonitor = () => {
       {/* Messages with Product Codes */}
       <Card>
         <CardHeader>
-          <CardTitle>Mensagens com Códigos de Produtos</CardTitle>
+          <CardTitle>Monitor de Pedidos - Mensagens com Produtos</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-96">
+          <ScrollArea className="h-[600px]">
             <div className="space-y-4">
               {loadingMessages ? (
                 <div className="text-center py-8 text-muted-foreground">
@@ -341,11 +342,11 @@ const WhatsAppMonitor = () => {
                 </div>
               ) : (
                 messages.map((message) => (
-                  <div key={message.id} className="p-4 border rounded space-y-3">
+                  <div key={message.id} className="p-6 border rounded-lg bg-card space-y-4">
                     <div className="flex justify-between items-start">
-                      <div className="space-y-1">
-                        <div className="font-medium text-primary">
-                          +55 {message.numero}
+                      <div className="space-y-2">
+                        <div className="font-bold text-lg text-primary">
+                          {formatPhoneNumber(message.numero)}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           {new Date(message.when).toLocaleString('pt-BR')}
@@ -353,70 +354,41 @@ const WhatsAppMonitor = () => {
                       </div>
                     </div>
                     
-                    <div className="bg-muted/30 p-3 rounded text-sm">
+                    <div className="bg-muted/30 p-4 rounded-lg text-sm">
+                      <div className="font-medium mb-2">Mensagem:</div>
                       {message.body}
                     </div>
 
                     {message.detectedProducts && message.detectedProducts.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-sm font-medium">Produtos Detectados:</div>
-                        <div className="space-y-2">
+                      <div className="space-y-3">
+                        <div className="text-sm font-bold">Produtos Detectados:</div>
+                        <div className="grid gap-4">
                           {message.detectedProducts.map((product) => (
-                            <div key={product.id} className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded">
-                              <div>
-                                <div className="font-medium">{product.code}</div>
-                                <div className="text-sm text-muted-foreground">{product.name}</div>
-                              </div>
-                              <div className="font-medium text-green-700">
-                                R$ {product.price.toFixed(2)}
+                            <div key={product.id} className="flex items-center gap-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                              {product.image_url ? (
+                                <img 
+                                  src={product.image_url} 
+                                  alt={product.name}
+                                  className="w-16 h-16 object-cover rounded-md border"
+                                />
+                              ) : (
+                                <div className="w-16 h-16 bg-gray-200 rounded-md flex items-center justify-center">
+                                  <Package className="w-8 h-8 text-gray-400" />
+                                </div>
+                              )}
+                              
+                              <div className="flex-1 space-y-1">
+                                <div className="font-bold text-lg">{product.code}</div>
+                                <div className="font-medium text-gray-700">{product.name}</div>
+                                <div className="font-bold text-green-700 text-lg">
+                                  R$ {product.price.toFixed(2)}
+                                </div>
                               </div>
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
-                  </div>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
-
-      {/* Recent Orders */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Pedidos Recentes</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-96">
-            <div className="space-y-4">
-              {orders.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Nenhum pedido encontrado
-                </div>
-              ) : (
-                orders.map((order) => (
-                  <div key={order.id} className="flex items-center justify-between p-4 border rounded">
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-medium">Pedido #{order.id}</span>
-                        <Badge variant={order.is_paid ? "default" : "secondary"}>
-                          {order.is_paid ? 'Pago' : 'Pendente'}
-                        </Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        +55 {formatPhoneNumber(order.customer_phone)} • {order.event_type}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(order.created_at).toLocaleString('pt-BR')}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-medium">
-                        R$ {order.total_amount.toFixed(2)}
-                      </div>
-                    </div>
                   </div>
                 ))
               )}
@@ -434,8 +406,8 @@ const WhatsAppMonitor = () => {
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>• <strong>Códigos de Produtos:</strong> O sistema detecta códigos no formato "C1231" nas mensagens do WhatsApp</p>
             <p>• <strong>Detecção Automática:</strong> Busca produtos cadastrados que correspondem aos códigos encontrados</p>
-            <p>• <strong>Números Formatados:</strong> Mostra números no padrão DDD + telefone (+55 11999999999)</p>
-            <p>• <strong>Produtos Identificados:</strong> Exibe nome, código e preço dos produtos detectados nas mensagens</p>
+            <p>• <strong>Números Formatados:</strong> Mostra números no padrão DDD + telefone (31992904210)</p>
+            <p>• <strong>Informações do Produto:</strong> Exibe código, nome, foto e preço dos produtos detectados</p>
             <p>• <strong>Servidor WhatsApp:</strong> Certifique-se de que o servidor Node.js está rodando na porta 3000</p>
           </div>
         </CardContent>
