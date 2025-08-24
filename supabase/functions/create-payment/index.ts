@@ -80,7 +80,7 @@ serve(async (req) => {
       .eq('customer_phone', customerData.phone)
       .eq('event_date', today)
       .eq('is_paid', false)
-      .single();
+      .maybeSingle();
 
     if (orderSearchError && orderSearchError.code !== 'PGRST116') {
       console.error('Error searching for existing order:', orderSearchError);

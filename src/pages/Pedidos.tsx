@@ -288,6 +288,34 @@ const Pedidos = () => {
     }
   };
 
+  const togglePrintedStatus = async (orderId: number, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ printed: !currentStatus })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      setOrders(prev => prev.map(order => 
+        order.id === orderId 
+          ? { ...order, printed: !currentStatus }
+          : order
+      ));
+
+      toast({
+        title: 'Sucesso',
+        description: `Pedido ${!currentStatus ? 'marcado como impresso' : 'desmarcado como impresso'}`
+      });
+    } catch (error) {
+      toast({
+        title: 'Erro',
+        description: 'Erro ao alterar status de impressão',
+        variant: 'destructive'
+      });
+    }
+  };
+
   const deleteSelectedOrders = async () => {
     if (selectedOrders.size === 0) {
       toast({
@@ -752,7 +780,7 @@ const Pedidos = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-2">
                           {order.printed ? (
                             <Badge variant="default" className="flex items-center">
                               <Check className="h-3 w-3 mr-1" />
@@ -761,6 +789,14 @@ const Pedidos = () => {
                           ) : (
                             <Badge variant="secondary">Não impresso</Badge>
                           )}
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            onClick={() => togglePrintedStatus(order.id, order.printed || false)}
+                            title={order.printed ? "Desmarcar como impresso" : "Marcar como impresso"}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
                         </div>
                       </TableCell>
                       <TableCell>

@@ -61,6 +61,7 @@ export type Database = {
           cart_id: number | null
           created_at: string | null
           id: number
+          printed: boolean
           product_id: number | null
           qty: number
           unit_price: number
@@ -69,6 +70,7 @@ export type Database = {
           cart_id?: number | null
           created_at?: string | null
           id?: number
+          printed?: boolean
           product_id?: number | null
           qty?: number
           unit_price: number
@@ -77,6 +79,7 @@ export type Database = {
           cart_id?: number | null
           created_at?: string | null
           id?: number
+          printed?: boolean
           product_id?: number | null
           qty?: number
           unit_price?: number

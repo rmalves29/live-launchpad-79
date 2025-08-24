@@ -165,19 +165,114 @@ const PedidosManual = () => {
 
     try {
       const subtotal = product.price * qty;
+      const today = new Date().toISOString().split('T')[0];
       
-      // Create order in database
-      const { error: orderError } = await supabase
+      // Check for existing unpaid order for this phone and date
+      const { data: existingOrder, error: searchError } = await supabase
         .from('orders')
-        .insert([{
-          customer_phone: normalizedPhone,
-          event_type: 'MANUAL',
-          event_date: new Date().toISOString().split('T')[0], // Today's date
-          total_amount: subtotal,
-          is_paid: false
-        }]);
+        .select('*')
+        .eq('customer_phone', normalizedPhone)
+        .eq('event_date', today)
+        .eq('is_paid', false)
+        .maybeSingle();
 
-      if (orderError) throw orderError;
+      if (searchError && searchError.code !== 'PGRST116') {
+        console.error('Error searching for existing order:', searchError);
+      }
+
+      let orderId: number;
+      let cartId: number | null = null;
+
+      if (existingOrder) {
+        // Update existing order total
+        orderId = existingOrder.id;
+        cartId = existingOrder.cart_id;
+        
+        const newTotal = existingOrder.total_amount + subtotal;
+        
+        const { error: updateError } = await supabase
+          .from('orders')
+          .update({ total_amount: newTotal })
+          .eq('id', orderId);
+
+        if (updateError) throw updateError;
+      } else {
+        // Create new order
+        const { data: newOrder, error: orderError } = await supabase
+          .from('orders')
+          .insert([{
+            customer_phone: normalizedPhone,
+            event_type: 'MANUAL',
+            event_date: today,
+            total_amount: subtotal,
+            is_paid: false
+          }])
+          .select()
+          .single();
+
+        if (orderError) throw orderError;
+        orderId = newOrder.id;
+      }
+
+      // Create cart if needed
+      if (!cartId) {
+        const { data: newCart, error: cartError } = await supabase
+          .from('carts')
+          .insert({
+            customer_phone: normalizedPhone,
+            event_type: 'MANUAL',
+            event_date: today,
+            status: 'OPEN'
+          })
+          .select()
+          .single();
+
+        if (cartError) throw cartError;
+        cartId = newCart.id;
+
+        // Update order with cart_id
+        await supabase
+          .from('orders')
+          .update({ cart_id: cartId })
+          .eq('id', orderId);
+      }
+
+      // Add product to cart
+      const { data: existingCartItem, error: cartItemSearchError } = await supabase
+        .from('cart_items')
+        .select('*')
+        .eq('cart_id', cartId)
+        .eq('product_id', product.id)
+        .maybeSingle();
+
+      if (cartItemSearchError && cartItemSearchError.code !== 'PGRST116') {
+        console.error('Error searching for existing cart item:', cartItemSearchError);
+      }
+
+      if (existingCartItem) {
+        // Update existing cart item
+        const { error: updateCartError } = await supabase
+          .from('cart_items')
+          .update({
+            qty: existingCartItem.qty + qty,
+            unit_price: product.price
+          })
+          .eq('id', existingCartItem.id);
+
+        if (updateCartError) throw updateCartError;
+      } else {
+        // Add new cart item
+        const { error: cartItemError } = await supabase
+          .from('cart_items')
+          .insert({
+            cart_id: cartId,
+            product_id: product.id,
+            qty: qty,
+            unit_price: product.price
+          });
+
+        if (cartItemError) throw cartItemError;
+      }
 
       // Update product stock in database
       const { error: stockError } = await supabase
@@ -196,7 +291,9 @@ const PedidosManual = () => {
       
       toast({
         title: 'Sucesso',
-        description: `Pedido criado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
+        description: existingOrder 
+          ? `Produto adicionado ao pedido existente: ${product.code} x${qty}` 
+          : `Novo pedido criado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
 
       // Clear inputs for this product
