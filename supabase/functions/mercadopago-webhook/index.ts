@@ -32,15 +32,21 @@ serve(async (req) => {
     console.log('Webhook received:', JSON.stringify(body, null, 2));
 
     // Mercado Pago webhook structure
-    const { action, data, type } = body;
+    const { action, data, type, resource, topic } = body;
 
-    // Only process payment notifications
-    if (type !== 'payment') {
+    // Accept both new (type) and old (topic) formats
+    const isPayment = type === 'payment' || topic === 'payment';
+    if (!isPayment) {
       console.log('Ignoring non-payment notification');
       return new Response('OK', { status: 200, headers: corsHeaders });
     }
 
-    const paymentId = data?.id;
+    // Determine payment id from data.id or resource (may be a URL or numeric string)
+    let paymentId = data?.id as string | number | undefined;
+    if (!paymentId && typeof resource === 'string') {
+      const parts = resource.split('/');
+      paymentId = parts[parts.length - 1];
+    }
     if (!paymentId) {
       console.error('No payment ID in webhook');
       return new Response('Invalid webhook data', { status: 400, headers: corsHeaders });
@@ -68,40 +74,58 @@ serve(async (req) => {
       return new Response('OK', { status: 200, headers: corsHeaders });
     }
 
-    // Find order by preference ID
-    const preferenceId = payment.additional_info?.external_reference || payment.external_reference;
-    if (!preferenceId) {
-      console.error('No preference ID found in payment');
-      return new Response('No preference ID', { status: 400, headers: corsHeaders });
+    // Prefer resolving order by external_reference (we set it to the order id)
+    const externalRef = payment.external_reference || payment.additional_info?.external_reference;
+
+    let order: any | null = null;
+    if (externalRef && !Number.isNaN(Number(externalRef))) {
+      const { data: o, error: byIdError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', Number(externalRef))
+        .eq('is_paid', false)
+        .maybeSingle();
+      if (byIdError) {
+        console.error('Error fetching order by id:', byIdError);
+        return new Response('Database error', { status: 500, headers: corsHeaders });
+      }
+      order = o;
     }
 
-    // Find order by preference ID in payment link
-    const { data: orders, error: fetchError } = await supabase
-      .from("orders")
-      .select("*")
-      .ilike("payment_link", `%${preferenceId}%`)
-      .eq("is_paid", false);
-
-    if (fetchError) {
-      console.error('Error fetching order:', fetchError);
-      return new Response('Database error', { status: 500, headers: corsHeaders });
+    // Fallback: try to match by preference id contained in the payment link if available
+    if (!order) {
+      const preferenceIdFromLink = payment?.point_of_interaction?.transaction_data?.qr_code?.match(/(\d{3,}-[\w-]+)/)?.[1] || null;
+      const preferenceId = preferenceIdFromLink; // best-effort
+      if (!preferenceId) {
+        console.error('No external_reference or preference id found to locate order');
+        return new Response('Unable to locate order', { status: 400, headers: corsHeaders });
+      }
+      const { data: orders, error: fetchError } = await supabase
+        .from('orders')
+        .select('*')
+        .ilike('payment_link', `%${preferenceId}%`)
+        .eq('is_paid', false);
+      if (fetchError) {
+        console.error('Error fetching order by preference link:', fetchError);
+        return new Response('Database error', { status: 500, headers: corsHeaders });
+      }
+      if (orders && orders.length > 0) {
+        order = orders[0];
+      }
     }
 
-    if (!orders || orders.length === 0) {
-      console.log(`No unpaid order found for preference ${preferenceId}`);
+    if (!order) {
+      console.log('No unpaid order found for this payment');
       return new Response('Order not found', { status: 404, headers: corsHeaders });
     }
-
-    const order = orders[0];
     
     // Update order status to paid
     const { error: updateError } = await supabase
-      .from("orders")
+      .from('orders')
       .update({ 
-        is_paid: true,
-        updated_at: new Date().toISOString()
+        is_paid: true
       })
-      .eq("id", order.id);
+      .eq('id', order.id);
 
     if (updateError) {
       console.error('Error updating order:', updateError);

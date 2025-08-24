@@ -138,6 +138,31 @@ serve(async (req) => {
       );
     }
 
+    // Ensure we have an order id to tie back via external_reference
+    let orderId = existingOrder?.id as number | undefined;
+    if (!orderId) {
+      const { data: newOrder, error: newOrderError } = await supabase
+        .from('orders')
+        .insert({
+          customer_phone: customerData.phone,
+          event_type: 'BAZAR',
+          event_date: today,
+          total_amount: parseFloat(total),
+          payment_link: null,
+          is_paid: false
+        })
+        .select()
+        .single();
+      if (newOrderError) {
+        console.error('Error creating order before preference:', newOrderError);
+        return new Response(
+          JSON.stringify({ error: 'Falha ao criar pedido' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      orderId = newOrder!.id;
+    }
+
     const preference = {
       items: items,
       payer: {
@@ -159,6 +184,7 @@ serve(async (req) => {
         pending: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=pending`
       },
       notification_url: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/mercadopago-webhook`,
+      external_reference: String(orderId),
       auto_return: 'approved',
       binary_mode: true,
       statement_descriptor: 'MANIA DEMULHER'
@@ -190,44 +216,22 @@ serve(async (req) => {
 
     // Save or update order in database
     try {
-      if (existingOrder) {
-        // Atualiza pedido existente
-        const { data: orderData, error: orderError } = await supabase
-          .from('orders')
-          .update({
-            total_amount: parseFloat(total),
-            payment_link: mpData.init_point,
-            is_paid: false
-          })
-          .eq('id', existingOrder.id)
-          .select()
-          .single();
+      const targetId = (existingOrder?.id ?? orderId)!;
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .update({
+          total_amount: parseFloat(total),
+          payment_link: mpData.init_point,
+          is_paid: false
+        })
+        .eq('id', targetId)
+        .select()
+        .single();
 
-        if (orderError) {
-          console.error('Error updating order:', orderError);
-        } else {
-          console.log('Order updated successfully:', orderData);
-        }
+      if (orderError) {
+        console.error('Error saving order:', orderError);
       } else {
-        // Cria novo pedido
-        const { data: orderData, error: orderError } = await supabase
-          .from('orders')
-          .insert({
-            customer_phone: customerData.phone,
-            event_type: 'BAZAR',
-            event_date: today,
-            total_amount: parseFloat(total),
-            payment_link: mpData.init_point,
-            is_paid: false
-          })
-          .select()
-          .single();
-
-        if (orderError) {
-          console.error('Error saving order:', orderError);
-        } else {
-          console.log('Order saved successfully:', orderData);
-        }
+        console.log('Order saved/updated successfully:', orderData);
       }
     } catch (error) {
       console.error('Error saving order:', error);
