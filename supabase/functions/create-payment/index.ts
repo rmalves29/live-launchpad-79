@@ -63,6 +63,45 @@ serve(async (req) => {
       });
     }
 
+    // Remove zero-priced items (Mercado Pago não aceita unit_price = 0)
+    items = items.filter((it: any) => Number(it.unit_price) > 0);
+
+    // Valor final após desconto e frete
+    const finalAmount = parseFloat(
+      items.reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.quantity), 0).toFixed(2)
+    );
+
+    // Se total final for zero, cria pedido gratuito e não chama o Mercado Pago
+    if (finalAmount <= 0) {
+      try {
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .insert({
+            customer_phone: customerData.phone,
+            event_type: 'BAZAR',
+            event_date: new Date().toISOString().split('T')[0],
+            total_amount: 0,
+            payment_link: null,
+            is_paid: true
+          })
+          .select()
+          .single();
+
+        if (orderError) {
+          console.error('Error saving free order:', orderError);
+        } else {
+          console.log('Free order saved successfully:', orderData);
+        }
+      } catch (error) {
+        console.error('Error saving free order:', error);
+      }
+
+      return new Response(
+        JSON.stringify({ free_order: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const preference = {
       items: items,
       payer: {

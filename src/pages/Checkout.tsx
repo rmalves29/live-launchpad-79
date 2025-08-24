@@ -443,6 +443,16 @@ const Checkout = () => {
 
       if (error) throw error;
 
+      // Pedido gratuito (total final = 0)
+      if (data?.free_order) {
+        setPaymentLink('');
+        toast({
+          title: 'Pedido gratuito confirmado',
+          description: 'O pedido foi registrado como pago (total R$ 0,00).'
+        });
+        return;
+      }
+
       if (data?.init_point) {
         setPaymentLink(data.init_point);
         // Open payment link in new tab
