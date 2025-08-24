@@ -37,11 +37,13 @@ const WhatsAppMonitor = () => {
   const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
+  const [filteredMessages, setFilteredMessages] = useState<WhatsAppMessage[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [monitoring, setMonitoring] = useState(false);
   const [whatsappServerUrl, setWhatsappServerUrl] = useState('http://localhost:3000');
+  const [searchFilter, setSearchFilter] = useState('');
 
   const loadOrders = async () => {
     setLoading(true);
@@ -123,6 +125,7 @@ const WhatsAppMonitor = () => {
       );
 
       setMessages(messagesWithValidProducts);
+      setFilteredMessages(messagesWithValidProducts);
     } catch (error) {
       console.error('Error loading WhatsApp messages:', error);
       toast({
@@ -133,6 +136,26 @@ const WhatsAppMonitor = () => {
     } finally {
       setLoadingMessages(false);
     }
+  };
+
+  const filterMessages = (filter: string) => {
+    setSearchFilter(filter);
+    if (!filter.trim()) {
+      setFilteredMessages(messages);
+      return;
+    }
+
+    const filtered = messages.filter(msg => {
+      const phoneMatch = msg.numero.includes(filter);
+      const productCodeMatch = msg.detectedProducts?.some(product => 
+        product.code.toLowerCase().includes(filter.toLowerCase())
+      );
+      const messageMatch = msg.body.toLowerCase().includes(filter.toLowerCase());
+      
+      return phoneMatch || productCodeMatch || messageMatch;
+    });
+
+    setFilteredMessages(filtered);
   };
 
   const processMessage = async (message: string) => {
@@ -186,6 +209,10 @@ const WhatsAppMonitor = () => {
     }
   }, [products, whatsappServerUrl]);
 
+  useEffect(() => {
+    filterMessages(searchFilter);
+  }, [messages]);
+
   // Simulate monitoring toggle
   const toggleMonitoring = () => {
     setMonitoring(!monitoring);
@@ -199,7 +226,7 @@ const WhatsAppMonitor = () => {
 
   return (
     <div className="container mx-auto py-6 max-w-6xl space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Monitor WhatsApp</h1>
         <div className="flex space-x-2">
           <Button onClick={() => { loadOrders(); loadWhatsAppMessages(); }} variant="outline" disabled={loading || loadingMessages}>
@@ -217,7 +244,7 @@ const WhatsAppMonitor = () => {
       </div>
 
       {/* Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Status</CardTitle>
@@ -252,74 +279,43 @@ const WhatsAppMonitor = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pedidos Hoje</CardTitle>
+            <CardTitle className="text-sm font-medium">Filtradas</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {orders.filter(order => 
-                new Date(order.created_at).toDateString() === new Date().toDateString()
-              ).length}
+              {filteredMessages.length}
             </div>
             <p className="text-xs text-muted-foreground">
-              Novos pedidos via WhatsApp
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Não Pagos</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {orders.filter(order => !order.is_paid).length}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Aguardando pagamento
+              Mensagens exibidas
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Test Message Processing */}
-      <Card>
+      {/* Search Filter */}
+      <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Teste de Processamento</CardTitle>
+          <CardTitle>Filtrar Mensagens</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Teste o processamento automático de mensagens do WhatsApp com códigos de produtos:
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Buscar por telefone ou código de produto..."
+              value={searchFilter}
+              onChange={(e) => filterMessages(e.target.value)}
+              className="flex-1 px-3 py-2 border border-input bg-background rounded-md text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+            {searchFilter && (
               <Button 
-                onClick={() => processMessage("C001 C002 - Nome: Maria Silva")}
-                variant="outline"
-                className="h-auto p-4 text-left"
-              >
-                <div>
-                  <div className="font-medium">Testar com Códigos</div>
-                  <div className="text-sm text-muted-foreground">
-                    "C001 C002 - Nome: Maria Silva"
-                  </div>
-                </div>
-              </Button>
-              
-              <Button 
-                onClick={() => processMessage("1x C003 - Nome: Ana Costa")}
                 variant="outline" 
-                className="h-auto p-4 text-left"
+                onClick={() => filterMessages('')}
+                className="px-3"
               >
-                <div>
-                  <div className="font-medium">Testar Código Único</div>
-                  <div className="text-sm text-muted-foreground">
-                    "1x C003 - Nome: Ana Costa"
-                  </div>
-                </div>
+                Limpar
               </Button>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -336,52 +332,49 @@ const WhatsAppMonitor = () => {
                 <div className="text-center py-8 text-muted-foreground">
                   Carregando mensagens...
                 </div>
-              ) : messages.length === 0 ? (
+              ) : filteredMessages.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  Nenhuma mensagem com códigos de produtos encontrada
+                  {searchFilter ? 'Nenhuma mensagem encontrada com o filtro aplicado' : 'Nenhuma mensagem com códigos de produtos encontrada'}
                 </div>
               ) : (
-                messages.map((message) => (
-                  <div key={message.id} className="p-6 border rounded-lg bg-card space-y-4">
+                filteredMessages.map((message) => (
+                  <div key={message.id} className="p-4 border rounded-lg bg-card space-y-3">
                     <div className="flex justify-between items-start">
-                      <div className="space-y-2">
-                        <div className="font-bold text-lg text-primary">
-                          {formatPhoneNumber(message.numero)}
-                        </div>
+                      <div className="space-y-1">
                         <div className="text-sm text-muted-foreground">
-                          {new Date(message.when).toLocaleString('pt-BR')}
+                          {formatPhoneNumber(message.numero)} - {new Date(message.when).toLocaleString('pt-BR')}
                         </div>
                       </div>
                     </div>
                     
-                    <div className="bg-muted/30 p-4 rounded-lg text-sm">
-                      <div className="font-medium mb-2">Mensagem:</div>
+                    <div className="bg-muted/30 p-3 rounded text-sm">
+                      <div className="font-medium mb-1">Mensagem:</div>
                       {message.body}
                     </div>
 
                     {message.detectedProducts && message.detectedProducts.length > 0 && (
-                      <div className="space-y-3">
-                        <div className="text-sm font-bold">Produtos Detectados:</div>
-                        <div className="grid gap-4">
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium">Produtos Detectados:</div>
+                        <div className="space-y-2">
                           {message.detectedProducts.map((product) => (
-                            <div key={product.id} className="flex items-center gap-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                              {product.image_url ? (
-                                <img 
-                                  src={product.image_url} 
-                                  alt={product.name}
-                                  className="w-16 h-16 object-cover rounded-md border"
-                                />
-                              ) : (
-                                <div className="w-16 h-16 bg-gray-200 rounded-md flex items-center justify-center">
-                                  <Package className="w-8 h-8 text-gray-400" />
-                                </div>
-                              )}
-                              
-                              <div className="flex-1 space-y-1">
-                                <div className="font-bold text-lg">{product.code}</div>
-                                <div className="font-medium text-gray-700">{product.name}</div>
-                                <div className="font-bold text-green-700 text-lg">
-                                  R$ {product.price.toFixed(2)}
+                            <div key={product.id} className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                {product.image_url ? (
+                                  <img 
+                                    src={product.image_url} 
+                                    alt={product.name}
+                                    className="w-12 h-12 object-cover rounded border"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
+                                    <Package className="w-6 h-6 text-gray-400" />
+                                  </div>
+                                )}
+                                
+                                <div>
+                                  <div className="font-bold text-green-700">
+                                    {product.code} - {product.name} - R$ {product.price.toFixed(2)}
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -404,10 +397,10 @@ const WhatsAppMonitor = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm text-muted-foreground">
+            <p>• <strong>Filtro de Busca:</strong> Use o campo de busca para filtrar por número de telefone ou código de produto</p>
             <p>• <strong>Códigos de Produtos:</strong> O sistema detecta códigos no formato "C1231" nas mensagens do WhatsApp</p>
-            <p>• <strong>Detecção Automática:</strong> Busca produtos cadastrados que correspondem aos códigos encontrados</p>
-            <p>• <strong>Números Formatados:</strong> Mostra números no padrão DDD + telefone (31992904210)</p>
-            <p>• <strong>Informações do Produto:</strong> Exibe código, nome, foto e preço dos produtos detectados</p>
+            <p>• <strong>Layout Otimizado:</strong> Informações exibidas no formato "C1231 - teste - R$2.00"</p>
+            <p>• <strong>Números Formatados:</strong> Telefones no padrão DDD + número (31992904210)</p>
             <p>• <strong>Servidor WhatsApp:</strong> Certifique-se de que o servidor Node.js está rodando na porta 3000</p>
           </div>
         </CardContent>
