@@ -1,9 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const MpReturn = () => {
   const [params] = useSearchParams();
   const status = (params.get("status") || "").toLowerCase();
+  const preferenceId = params.get("preference_id");
+  const [isUpdating, setIsUpdating] = useState(false);
+  const { toast } = useToast();
 
   const messageMap: Record<string, { title: string; desc: string; tone: "success" | "warning" | "error" }> = {
     success: {
@@ -29,6 +34,53 @@ const MpReturn = () => {
     tone: "warning" as const,
   };
 
+  const updateOrderStatus = async () => {
+    if (status !== "success" || !preferenceId || isUpdating) return;
+    
+    setIsUpdating(true);
+    try {
+      // Find order by preference ID in payment link
+      const { data: orders, error: fetchError } = await supabase
+        .from("orders")
+        .select("*")
+        .ilike("payment_link", `%${preferenceId}%`)
+        .eq("is_paid", false);
+
+      if (fetchError) {
+        console.error("Error fetching order:", fetchError);
+        return;
+      }
+
+      if (orders && orders.length > 0) {
+        const order = orders[0];
+        
+        // Update order status to paid
+        const { error: updateError } = await supabase
+          .from("orders")
+          .update({ is_paid: true })
+          .eq("id", order.id);
+
+        if (updateError) {
+          console.error("Error updating order:", updateError);
+          toast({
+            title: "Erro",
+            description: "Não foi possível atualizar o status do pedido.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Pagamento confirmado",
+            description: `Pedido #${order.id} marcado como pago.`,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error updating payment status:", error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   useEffect(() => {
     const title = `${info.title} | Mercado Pago`;
     const desc = "Status do pagamento Mercado Pago: aprovado, pendente ou não aprovado.";
@@ -52,7 +104,10 @@ const MpReturn = () => {
       document.head.appendChild(link);
     }
     link.setAttribute("href", canonicalHref);
-  }, [info.title]);
+
+    // Update order status if payment was successful
+    updateOrderStatus();
+  }, [info.title, status, preferenceId]);
 
   return (
     <div className="container mx-auto max-w-2xl py-10">
