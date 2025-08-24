@@ -85,17 +85,39 @@ const WhatsAppMonitor = () => {
 
   const formatPhoneNumber = (number: string) => {
     const digits = number.replace(/\D/g, '');
-    if (digits.length >= 11) {
-      const ddd = digits.slice(-11, -9);
-      const nineDigit = '9';
-      const phone = digits.slice(-8);
-      return `${ddd}${nineDigit}${phone}`;
+    // Remove country code 55 if present
+    const national = digits.startsWith('55') ? digits.slice(2) : digits;
+
+    if (national.length >= 10) {
+      const ddd = national.slice(0, 2);
+      let local = national.slice(2);
+      // Ensure 9th digit for mobile numbers if missing (8-digit local)
+      if (local.length === 8) {
+        local = '9' + local;
+      } else if (local.length > 9) {
+        local = local.slice(-9);
+      }
+      return `${ddd}${local}`;
     }
-    return number;
+    return national;
   };
 
   const normalizePhone = (phone: string) => {
-    return phone.replace(/\D/g, '');
+    const digits = phone.replace(/\D/g, '');
+    // Work with national number (strip country code if present)
+    let national = digits.startsWith('55') ? digits.slice(2) : digits;
+    if (national.length < 10) {
+      // Fallback: if too short, just prefix 55 to whatever we have
+      return digits.startsWith('55') ? digits : `55${national}`;
+    }
+    const ddd = national.slice(0, 2);
+    let local = national.slice(2);
+    if (local.length === 8) {
+      local = '9' + local; // ensure 9th digit
+    } else if (local.length > 9) {
+      local = local.slice(-9);
+    }
+    return `55${ddd}${local}`;
   };
 
   const createAutomaticOrder = async (message: WhatsAppMessage) => {
