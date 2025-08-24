@@ -10,12 +10,13 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import Navbar from '@/components/Navbar';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
+import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 
 interface Order {
   id: number;
@@ -64,6 +65,8 @@ const Pedidos = () => {
   const [observationText, setObservationText] = useState('');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editOrderOpen, setEditOrderOpen] = useState(false);
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+  const [viewOrderOpen, setViewOrderOpen] = useState(false);
 
   const loadOrders = async () => {
     try {
@@ -280,6 +283,63 @@ const Pedidos = () => {
       toast({
         title: 'Erro',
         description: 'Erro ao marcar pedidos como impressos',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const deleteSelectedOrders = async () => {
+    if (selectedOrders.size === 0) {
+      toast({
+        title: 'Aviso',
+        description: 'Selecione pelo menos um pedido para deletar',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!confirm(`Tem certeza que deseja deletar ${selectedOrders.size} pedido(s)? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    try {
+      // Delete cart items first if they exist
+      for (const orderId of selectedOrders) {
+        const order = orders.find(o => o.id === orderId);
+        if (order?.cart_id) {
+          await supabase
+            .from('cart_items')
+            .delete()
+            .eq('cart_id', order.cart_id);
+          
+          await supabase
+            .from('carts')
+            .delete()
+            .eq('id', order.cart_id);
+        }
+      }
+
+      // Delete orders
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .in('id', Array.from(selectedOrders));
+
+      if (error) throw error;
+
+      // Update local state
+      setOrders(prev => prev.filter(order => !selectedOrders.has(order.id)));
+      setSelectedOrders(new Set());
+
+      toast({
+        title: 'Sucesso',
+        description: `${selectedOrders.size} pedido(s) deletado(s) com sucesso`
+      });
+    } catch (error) {
+      console.error('Error deleting orders:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao deletar pedidos',
         variant: 'destructive'
       });
     }
@@ -522,6 +582,14 @@ const Pedidos = () => {
                 <Printer className="h-4 w-4 mr-2" />
                 Marcar como Impresso
               </Button>
+              <Button 
+                onClick={deleteSelectedOrders} 
+                variant="destructive"
+                disabled={selectedOrders.size === 0}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Deletar Selecionados ({selectedOrders.size})
+              </Button>
               <Button onClick={exportToCSV} variant="outline">
                 <Download className="h-4 w-4 mr-2" />
                 Exportar CSV
@@ -759,9 +827,16 @@ const Pedidos = () => {
                            >
                              <Edit className="h-4 w-4" />
                            </Button>
-                           <Button size="sm" variant="outline">
-                             <Eye className="h-4 w-4" />
-                           </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => {
+                                setViewingOrder(order);
+                                setViewOrderOpen(true);
+                              }}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
                          </div>
                        </TableCell>
                     </TableRow>
@@ -789,6 +864,12 @@ const Pedidos = () => {
         onOpenChange={setEditOrderOpen}
         order={editingOrder}
         onOrderUpdated={loadOrders}
+      />
+
+      <ViewOrderDialog 
+        open={viewOrderOpen}
+        onOpenChange={setViewOrderOpen}
+        order={viewingOrder}
       />
         </div>
       </div>
