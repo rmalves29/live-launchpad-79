@@ -13,9 +13,9 @@ serve(async (req) => {
   }
 
   try {
-    const { cartItems, customerData, addressData, shippingCost, total } = await req.json();
+    const { cartItems, customerData, addressData, shippingCost, total, coupon_discount } = await req.json();
 
-    console.log('Creating payment with data:', { cartItems, customerData, addressData, shippingCost, total });
+    console.log('Creating payment with data:', { cartItems, customerData, addressData, shippingCost, total, coupon_discount });
 
     const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
     if (!mpAccessToken) {
@@ -31,20 +31,34 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Create items for MercadoPago
-    const items = cartItems.map((item: any) => ({
+    // Create items for MercadoPago with coupon discount applied to products only
+    const subtotalProducts = (cartItems || []).reduce((sum: number, item: any) => sum + Number(item.unit_price) * Number(item.qty), 0);
+    const discountAmount = Math.min(Number(coupon_discount || 0), subtotalProducts);
+    const targetProductsTotal = Math.max(0, subtotalProducts - discountAmount);
+    const factor = subtotalProducts > 0 ? targetProductsTotal / subtotalProducts : 1;
+
+    let items = (cartItems || []).map((item: any) => ({
       title: item.product_name || `${item.product_code} Produto`,
-      quantity: item.qty,
-      unit_price: parseFloat(item.unit_price),
+      quantity: Number(item.qty),
+      unit_price: parseFloat((Number(item.unit_price) * factor).toFixed(2)),
       currency_id: 'BRL'
     }));
 
+    // Fix rounding differences by adjusting the last product unit_price if necessary
+    const currentProductsTotal = items.reduce((sum: number, it: any) => sum + it.unit_price * it.quantity, 0);
+    let diff = parseFloat((targetProductsTotal - currentProductsTotal).toFixed(2));
+    if (items.length > 0 && Math.abs(diff) >= 0.01) {
+      const last = items[items.length - 1];
+      const perUnitAdjustment = parseFloat((diff / last.quantity).toFixed(2));
+      last.unit_price = parseFloat((last.unit_price + perUnitAdjustment).toFixed(2));
+    }
+
     // Add shipping as item if cost > 0
-    if (shippingCost > 0) {
+    if (Number(shippingCost) > 0) {
       items.push({
         title: 'Frete',
         quantity: 1,
-        unit_price: parseFloat(shippingCost),
+        unit_price: parseFloat(Number(shippingCost).toFixed(2)),
         currency_id: 'BRL'
       });
     }
