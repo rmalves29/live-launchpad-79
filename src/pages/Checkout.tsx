@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Loader2, Copy, User, MapPin, Truck } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
-interface CartItem {
+interface OrderItem {
   id: number;
   product_name: string;
   product_code: string;
@@ -19,14 +20,13 @@ interface CartItem {
   image_url?: string;
 }
 
-interface Cart {
+interface Order {
   id: number;
-  customerPhone: string;
-  eventType: string;
-  eventDate: string;
-  items: CartItem[];
-  status: string;
-  total: number;
+  customer_phone: string;
+  event_type: string;
+  event_date: string;
+  total_amount: number;
+  items: OrderItem[];
 }
 
 interface ShippingOption {
@@ -56,6 +56,8 @@ interface AddressData {
 const Checkout = () => {
   const { toast } = useToast();
   const [phone, setPhone] = useState('');
+  const [openOrders, setOpenOrders] = useState<Order[]>([]);
+  const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
   const [customerData, setCustomerData] = useState<CustomerData>({ name: '', cpf: '' });
   const [addressData, setAddressData] = useState<AddressData>({
     street: '',
@@ -65,11 +67,11 @@ const Checkout = () => {
     state: '',
     cep: ''
   });
-  const [cart, setCart] = useState<Cart | null>(null);
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
   const [selectedShipping, setSelectedShipping] = useState<ShippingOption | null>(null);
   const [paymentLink, setPaymentLink] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [searchingOrders, setSearchingOrders] = useState(false);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
   const [calculatingShipping, setCalculatingShipping] = useState(false);
   
@@ -104,7 +106,7 @@ const Checkout = () => {
 
   // Apply coupon function
   const applyCoupon = async () => {
-    if (!couponCode.trim() || !cart) return;
+    if (!couponCode.trim() || selectedOrders.length === 0) return;
     
     setLoadingCoupon(true);
     try {
@@ -145,9 +147,10 @@ const Checkout = () => {
       }
 
       // Calculate discount
+      const ordersTotal = getSelectedOrdersTotal();
       let discount = 0;
       if (coupon.discount_type === 'percentage') {
-        discount = (cart.total * coupon.discount_value) / 100;
+        discount = (ordersTotal * coupon.discount_value) / 100;
       } else {
         discount = coupon.discount_value;
       }
@@ -182,14 +185,115 @@ const Checkout = () => {
     });
   };
 
-  // Load available gifts based on cart total
-  const loadAvailableGifts = async (cartTotal: number) => {
+  // Search for open orders
+  const searchOpenOrders = async () => {
+    if (!phone) {
+      toast({
+        title: 'Erro',
+        description: 'Informe o telefone do cliente',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+    if (normalizedPhone.length < 12 || normalizedPhone.length > 15) {
+      toast({
+        title: 'Erro',
+        description: 'Telefone inválido',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setSearchingOrders(true);
+    try {
+      // Load customer data
+      await loadCustomerData(phone);
+      
+      // Search for open orders
+      const { data: orders, error } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('customer_phone', normalizedPhone)
+        .eq('is_paid', false)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Load cart items for each order
+      const ordersWithItems = await Promise.all(
+        (orders || []).map(async (order) => {
+          if (!order.cart_id) {
+            return { ...order, items: [] };
+          }
+
+          const { data: cartItems, error: itemsError } = await supabase
+            .from('cart_items')
+            .select(`
+              id,
+              qty,
+              unit_price,
+              product:products!cart_items_product_id_fkey(
+                name,
+                code,
+                image_url
+              )
+            `)
+            .eq('cart_id', order.cart_id);
+
+          if (itemsError) {
+            console.error('Error loading cart items:', itemsError);
+            return { ...order, items: [] };
+          }
+
+          const items = (cartItems || []).map(item => ({
+            id: item.id,
+            product_name: item.product?.name || '',
+            product_code: item.product?.code || '',
+            qty: item.qty,
+            unit_price: Number(item.unit_price),
+            image_url: item.product?.image_url
+          }));
+
+          return { ...order, items };
+        })
+      );
+
+      setOpenOrders(ordersWithItems);
+      setSelectedOrders([]);
+      
+      if (ordersWithItems.length === 0) {
+        toast({
+          title: 'Nenhum pedido encontrado',
+          description: 'Não há pedidos em aberto para este telefone'
+        });
+      } else {
+        toast({
+          title: 'Pedidos encontrados',
+          description: `${ordersWithItems.length} pedido(s) em aberto encontrado(s)`
+        });
+      }
+    } catch (error) {
+      console.error('Error searching orders:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao buscar pedidos',
+        variant: 'destructive'
+      });
+    } finally {
+      setSearchingOrders(false);
+    }
+  };
+
+  // Load available gifts based on total amount
+  const loadAvailableGifts = async (totalAmount: number) => {
     try {
       const { data: gifts, error } = await supabase
         .from('gifts')
         .select('*')
         .eq('is_active', true)
-        .lte('minimum_purchase_amount', cartTotal)
+        .lte('minimum_purchase_amount', totalAmount)
         .order('minimum_purchase_amount', { ascending: false });
 
       if (error) throw error;
@@ -293,90 +397,44 @@ const Checkout = () => {
     }
   };
 
-  const loadCart = async () => {
-    if (!phone) {
-      toast({
-        title: 'Erro',
-        description: 'Informe o telefone do cliente',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    const normalizedPhone = normalizePhone(phone);
-    if (normalizedPhone.length < 12 || normalizedPhone.length > 15) {
-      toast({
-        title: 'Erro',
-        description: 'Telefone inválido',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    // Load customer data first
-    const customer = await loadCustomerData(phone);
-
-    setLoading(true);
-    try {
-      // Simulate API call - in real implementation, this would call GET /sales/preview
-      await new Promise(resolve => setTimeout(resolve, 1000));
+  // Toggle order selection
+  const toggleOrderSelection = (orderId: number) => {
+    setSelectedOrders(prev => {
+      const newSelection = prev.includes(orderId) 
+        ? prev.filter(id => id !== orderId)
+        : [...prev, orderId];
       
-      // Mock cart data
-      const mockCart: Cart = {
-        id: 1,
-        customerPhone: normalizedPhone,
-        eventType: 'BAZAR',
-        eventDate: '2025-08-16',
-        status: 'OPEN',
-        total: 89.70,
-        items: [
-          {
-            id: 1,
-            product_name: 'Produto Exemplo 1',
-            product_code: 'C001',
-            qty: 2,
-            unit_price: 29.90,
-            image_url: '/placeholder.svg'
-          },
-          {
-            id: 2,
-            product_name: 'Produto Exemplo 2',
-            product_code: 'C002',
-            qty: 1,
-            unit_price: 29.90,
-            image_url: '/placeholder.svg'
-          }
-        ]
-      };
+      // Update available gifts when selection changes
+      setTimeout(() => updateAvailableGifts(), 0);
+      
+      return newSelection;
+    });
+  };
 
-      console.log('Cart loaded:', mockCart);
-      setCart(mockCart);
-      
-      // Load available gifts based on cart total
-      await loadAvailableGifts(mockCart.total);
-      
-      // Auto ação: se há CEP válido no cadastro, dispara busca de endereço; senão foca no campo
-      const cepFromCustomer = normalizeCep((customer?.cep as string) || addressData.cep);
-      if (isValidCep(cepFromCustomer)) {
-        await handleCepChange(cepFromCustomer);
-      } else {
-        setTimeout(() => cepInputRef.current?.focus(), 0);
+  // Get selected orders total
+  const getSelectedOrdersTotal = () => {
+    return selectedOrders.reduce((total, orderId) => {
+      const order = openOrders.find(o => o.id === orderId);
+      return total + (order?.total_amount || 0);
+    }, 0);
+  };
+
+  // Get combined items from selected orders
+  const getCombinedItems = () => {
+    const items: OrderItem[] = [];
+    selectedOrders.forEach(orderId => {
+      const order = openOrders.find(o => o.id === orderId);
+      if (order) {
+        items.push(...order.items);
       }
-      
-      toast({
-        title: 'Sucesso',
-        description: 'Carrinho carregado com sucesso'
-      });
-    } catch (error) {
-      console.error('Error loading cart:', error);
-      toast({
-        title: 'Erro',
-        description: 'Erro ao carregar carrinho',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
-    }
+    });
+    return items;
+  };
+
+  // Load available gifts when orders are selected
+  const updateAvailableGifts = async () => {
+    const totalAmount = getSelectedOrdersTotal();
+    await loadAvailableGifts(totalAmount);
   };
 
   const calculateShipping = async (cep: string) => {
@@ -411,6 +469,15 @@ const Checkout = () => {
   };
 
   const generatePaymentLink = async () => {
+    if (selectedOrders.length === 0) {
+      toast({
+        title: 'Nenhum pedido selecionado',
+        description: 'Selecione pelo menos um pedido para prosseguir',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     if (!customerData.name || !customerData.cpf || !addressData.street || !addressData.cep || !selectedShipping) {
       toast({
         title: 'Dados incompletos',
@@ -427,7 +494,8 @@ const Checkout = () => {
     try {
       const { data, error } = await supabase.functions.invoke('create-payment', {
         body: {
-          cartItems: cart?.items || [],
+          orderIds: selectedOrders,
+          cartItems: getCombinedItems(),
           customerData: {
             ...customerData,
             phone: normalizePhone(phone)
@@ -448,7 +516,7 @@ const Checkout = () => {
         setPaymentLink('');
         toast({
           title: 'Pedido gratuito confirmado',
-          description: 'O pedido foi registrado como pago (total R$ 0,00).'
+          description: 'O(s) pedido(s) foram registrado(s) como pago(s) (total R$ 0,00).'
         });
         return;
       }
@@ -556,9 +624,9 @@ const Checkout = () => {
   };
 
   const getTotalWithShipping = () => {
-    if (!cart) return 0;
+    const ordersTotal = getSelectedOrdersTotal();
     const shipping = selectedShipping ? toNumber(selectedShipping.price) : 0;
-    return (cart.total - couponDiscount) + shipping;
+    return (ordersTotal - couponDiscount) + shipping;
   };
 
   return (
@@ -567,12 +635,12 @@ const Checkout = () => {
         <h1 className="text-3xl font-bold">Checkout</h1>
       </div>
 
-      {/* Customer Data */}
+      {/* Customer Search */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
-            <User className="h-5 w-5 mr-2" />
-            Dados do Cliente
+            <Search className="h-5 w-5 mr-2" />
+            Buscar Pedidos em Aberto
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -584,81 +652,111 @@ const Checkout = () => {
                 onChange={(e) => setPhone(e.target.value)}
                 className="flex-1"
               />
-              <Button onClick={loadCart} disabled={loading || loadingCustomer}>
-                {loading || loadingCustomer ? (
+              <Button onClick={searchOpenOrders} disabled={searchingOrders || loadingCustomer}>
+                {searchingOrders || loadingCustomer ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
-                Carregar Carrinho
+                ) : (
+                  <Search className="h-4 w-4 mr-2" />
+                )}
+                Buscar Pedidos
               </Button>
             </div>
             
-            {loadingCustomer && (
+            {(searchingOrders || loadingCustomer) && (
               <div className="flex items-center justify-center py-2">
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                <span className="text-sm text-muted-foreground">Buscando dados do cliente...</span>
+                <span className="text-sm text-muted-foreground">Buscando pedidos e dados do cliente...</span>
               </div>
             )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Cart Items */}
-      {cart && (
+      {/* Open Orders */}
+      {openOrders.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Itens do Carrinho</CardTitle>
+            <CardTitle className="flex items-center">
+              <ShoppingCart className="h-5 w-5 mr-2" />
+              Pedidos em Aberto ({openOrders.length})
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {cart.items.map((item) => (
-                <div key={item.id} className="flex items-center p-3 border rounded space-x-4">
-                  <div className="flex-shrink-0">
-                    <img 
-                      src={item.image_url || '/placeholder.svg'} 
-                      alt={item.product_name}
-                      className="w-16 h-16 object-cover rounded border"
+              {openOrders.map((order) => (
+                <div key={order.id} className="border rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <Checkbox
+                      checked={selectedOrders.includes(order.id)}
+                      onCheckedChange={() => toggleOrderSelection(order.id)}
+                      className="mt-1"
                     />
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <Badge variant="outline">{item.product_code}</Badge>
-                      <span className="font-medium">{item.product_name}</span>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <Badge variant="outline">#{order.id}</Badge>
+                            <Badge>{order.event_type}</Badge>
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            Data: {new Date(order.event_date).toLocaleDateString('pt-BR')}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-semibold">R$ {Number(order.total_amount).toFixed(2)}</div>
+                          <div className="text-sm text-muted-foreground">{order.items.length} item(ns)</div>
+                        </div>
+                      </div>
+                      
+                      {order.items.length > 0 && (
+                        <div className="space-y-2 mt-3">
+                          <div className="text-sm font-medium">Produtos:</div>
+                          {order.items.map((item) => (
+                            <div key={item.id} className="flex items-center space-x-3 p-2 bg-muted/50 rounded">
+                              <div className="flex-shrink-0">
+                                <img 
+                                  src={item.image_url || '/placeholder.svg'} 
+                                  alt={item.product_name}
+                                  className="w-10 h-10 object-cover rounded border"
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2">
+                                  <Badge variant="outline" className="text-xs">{item.product_code}</Badge>
+                                  <span className="text-sm font-medium">{item.product_name}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {item.qty}x R$ {item.unit_price.toFixed(2)}
+                                </div>
+                              </div>
+                              <div className="text-sm font-medium">
+                                R$ {(item.qty * item.unit_price).toFixed(2)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {item.qty}x R$ {item.unit_price.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="font-medium">
-                    R$ {(item.qty * item.unit_price).toFixed(2)}
                   </div>
                 </div>
               ))}
-              <Separator />
-              <div className="space-y-2">
-                {appliedCoupon && (
-                  <div className="flex justify-between items-center text-sm text-green-600">
-                    <span>Desconto ({appliedCoupon.code}):</span>
-                    <span>- R$ {couponDiscount.toFixed(2)}</span>
+              
+              {selectedOrders.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="flex justify-between items-center font-medium">
+                    <span>Total dos Pedidos Selecionados:</span>
+                    <span>R$ {getSelectedOrdersTotal().toFixed(2)}</span>
                   </div>
-                )}
-                {selectedShipping && (
-                  <div className="flex justify-between items-center text-sm">
-                    <span>Frete ({selectedShipping.service_name}):</span>
-                    <span>R$ {selectedShipping.price.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center font-medium text-lg">
-                  <span>Total:</span>
-                  <span>R$ {((cart.total - couponDiscount) + (selectedShipping?.price || 0)).toFixed(2)}</span>
-                </div>
-              </div>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* Coupon Section */}
-      {cart && (
+      {selectedOrders.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Cupom de Desconto</CardTitle>
@@ -702,7 +800,7 @@ const Checkout = () => {
       )}
 
       {/* Available Gifts */}
-      {cart && availableGifts.length > 0 && (
+      {selectedOrders.length > 0 && availableGifts.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -734,7 +832,7 @@ const Checkout = () => {
       )}
 
       {/* Address Information */}
-      {cart && (
+      {selectedOrders.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -851,7 +949,7 @@ const Checkout = () => {
       )}
 
       {/* Total and Payment */}
-      {cart && (
+      {selectedOrders.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Finalizar Pedido</CardTitle>
@@ -860,8 +958,8 @@ const Checkout = () => {
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>R$ {cart.total.toFixed(2)}</span>
+                  <span>Subtotal ({selectedOrders.length} pedido{selectedOrders.length > 1 ? 's' : ''}):</span>
+                  <span>R$ {getSelectedOrdersTotal().toFixed(2)}</span>
                 </div>
                  {selectedShipping && (
                    <div className="flex justify-between">
