@@ -10,11 +10,12 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import Navbar from '@/components/Navbar';
+import { EditOrderDialog } from '@/components/EditOrderDialog';
 
 interface Order {
   id: number;
@@ -61,6 +62,8 @@ const Pedidos = () => {
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
   const [editingObservation, setEditingObservation] = useState<number | null>(null);
   const [observationText, setObservationText] = useState('');
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editOrderOpen, setEditOrderOpen] = useState(false);
 
   const loadOrders = async () => {
     try {
@@ -744,11 +747,23 @@ const Pedidos = () => {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="outline">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
+                       <TableCell>
+                         <div className="flex items-center gap-2">
+                           <Button 
+                             size="sm" 
+                             variant="outline"
+                             onClick={() => {
+                               setEditingOrder(order);
+                               setEditOrderOpen(true);
+                             }}
+                           >
+                             <Edit className="h-4 w-4" />
+                           </Button>
+                           <Button size="sm" variant="outline">
+                             <Eye className="h-4 w-4" />
+                           </Button>
+                         </div>
+                       </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -768,6 +783,13 @@ const Pedidos = () => {
           )}
         </CardContent>
       </Card>
+
+      <EditOrderDialog 
+        open={editOrderOpen}
+        onOpenChange={setEditOrderOpen}
+        order={editingOrder}
+        onOrderUpdated={loadOrders}
+      />
         </div>
       </div>
     </div>

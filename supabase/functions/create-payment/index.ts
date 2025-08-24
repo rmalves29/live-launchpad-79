@@ -71,26 +71,62 @@ serve(async (req) => {
       items.reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.quantity), 0).toFixed(2)
     );
 
-    // Se total final for zero, cria pedido gratuito e não chama o Mercado Pago
+    // Verificar se já existe pedido do cliente no mesmo dia
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { data: existingOrder, error: orderSearchError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('customer_phone', customerData.phone)
+      .eq('event_date', today)
+      .eq('is_paid', false)
+      .single();
+
+    if (orderSearchError && orderSearchError.code !== 'PGRST116') {
+      console.error('Error searching for existing order:', orderSearchError);
+    }
+
+    // Se total final for zero, cria ou atualiza pedido gratuito e não chama o Mercado Pago
     if (finalAmount <= 0) {
       try {
-        const { data: orderData, error: orderError } = await supabase
-          .from('orders')
-          .insert({
-            customer_phone: customerData.phone,
-            event_type: 'BAZAR',
-            event_date: new Date().toISOString().split('T')[0],
-            total_amount: 0,
-            payment_link: null,
-            is_paid: true
-          })
-          .select()
-          .single();
+        if (existingOrder) {
+          // Atualiza pedido existente
+          const { data: orderData, error: orderError } = await supabase
+            .from('orders')
+            .update({
+              total_amount: 0,
+              payment_link: null,
+              is_paid: true
+            })
+            .eq('id', existingOrder.id)
+            .select()
+            .single();
 
-        if (orderError) {
-          console.error('Error saving free order:', orderError);
+          if (orderError) {
+            console.error('Error updating free order:', orderError);
+          } else {
+            console.log('Free order updated successfully:', orderData);
+          }
         } else {
-          console.log('Free order saved successfully:', orderData);
+          // Cria novo pedido
+          const { data: orderData, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+              customer_phone: customerData.phone,
+              event_type: 'BAZAR',
+              event_date: today,
+              total_amount: 0,
+              payment_link: null,
+              is_paid: true
+            })
+            .select()
+            .single();
+
+          if (orderError) {
+            console.error('Error saving free order:', orderError);
+          } else {
+            console.log('Free order saved successfully:', orderData);
+          }
         }
       } catch (error) {
         console.error('Error saving free order:', error);
@@ -151,25 +187,46 @@ serve(async (req) => {
     const mpData = await mpResponse.json();
     console.log('MP Response:', mpData);
 
-    // Save order in database
+    // Save or update order in database
     try {
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          customer_phone: customerData.phone,
-          event_type: 'BAZAR',
-          event_date: new Date().toISOString().split('T')[0],
-          total_amount: parseFloat(total),
-          payment_link: mpData.init_point,
-          is_paid: false
-        })
-        .select()
-        .single();
+      if (existingOrder) {
+        // Atualiza pedido existente
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .update({
+            total_amount: parseFloat(total),
+            payment_link: mpData.init_point,
+            is_paid: false
+          })
+          .eq('id', existingOrder.id)
+          .select()
+          .single();
 
-      if (orderError) {
-        console.error('Error saving order:', orderError);
+        if (orderError) {
+          console.error('Error updating order:', orderError);
+        } else {
+          console.log('Order updated successfully:', orderData);
+        }
       } else {
-        console.log('Order saved successfully:', orderData);
+        // Cria novo pedido
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .insert({
+            customer_phone: customerData.phone,
+            event_type: 'BAZAR',
+            event_date: today,
+            total_amount: parseFloat(total),
+            payment_link: mpData.init_point,
+            is_paid: false
+          })
+          .select()
+          .single();
+
+        if (orderError) {
+          console.error('Error saving order:', orderError);
+        } else {
+          console.log('Order saved successfully:', orderData);
+        }
       }
     } catch (error) {
       console.error('Error saving order:', error);
