@@ -100,7 +100,7 @@ const Pedidos = () => {
           .from('customers')
           .select('name, cpf, street, number, complement, city, state, cep')
           .eq('phone', order.customer_phone)
-          .single();
+          .maybeSingle();
 
         // Fetch cart items with products
         const { data: cartItemsData } = await supabase

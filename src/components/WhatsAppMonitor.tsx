@@ -307,8 +307,12 @@ const WhatsAppMonitor = () => {
         description: `Pedido automático criado para ${formatPhoneNumber(message.numero)} - ${message.detectedProducts.length} produto(s)`,
       });
 
-      // Reload orders to show the new one
-      loadOrders();
+      console.log('Automatic order created successfully for phone:', normalizedPhone);
+      
+      // Force reload orders to show the new one
+      setTimeout(() => {
+        loadOrders();
+      }, 1000);
 
     } catch (error) {
       console.error('Error creating automatic order:', error);
@@ -359,6 +363,7 @@ const WhatsAppMonitor = () => {
       // Create automatic orders for new messages with detected products
       for (const message of newMessages) {
         if (message.detectedProducts && message.detectedProducts.length > 0) {
+          console.log('Creating automatic order for message:', message.id, 'from:', message.numero);
           await createAutomaticOrder(message);
         }
       }
@@ -451,6 +456,17 @@ const WhatsAppMonitor = () => {
   useEffect(() => {
     filterMessages(searchFilter);
   }, [messages]);
+
+  // Auto-refresh every 2 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (products.length > 0) {
+        loadWhatsAppMessages();
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [products, whatsappServerUrl]);
 
   // Simulate monitoring toggle
   const toggleMonitoring = () => {
