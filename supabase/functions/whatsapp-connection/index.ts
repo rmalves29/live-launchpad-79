@@ -271,16 +271,44 @@ Obrigado pela preferência! 🙌`;
     if (!baseUrl) {
       console.warn('WHATSAPP_API_URL não configurada; pulando envio via API e registrando apenas no banco.');
     } else {
-      const resp = await fetch(`${baseUrl}/send-message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: data.phone, message })
-      });
-      if (resp.ok) {
-        console.log(`Mensagem enviada com sucesso para ${data.phone}`);
-      } else {
-        const text = await resp.text();
-        console.warn(`Falha ao enviar mensagem via WhatsApp API: ${resp.status} ${text}`);
+      const attempts = [
+        { path: '/send-message', body: { number: data.phone, message } },
+        { path: '/send-message', body: { to: data.phone, message } },
+        { path: '/send', body: { to: data.phone, message } },
+        { path: '/send', body: { number: data.phone, message } },
+      ];
+
+      let sent = false;
+      let lastStatus = 0;
+      let lastText = '';
+
+      for (const a of attempts) {
+        try {
+          const resp = await fetch(`${baseUrl}${a.path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(a.body),
+          });
+
+          lastStatus = resp.status;
+          try { lastText = await resp.text(); } catch (_) { lastText = ''; }
+
+          if (resp.ok) {
+            console.log(`Mensagem enviada com sucesso para ${data.phone} via ${a.path}`);
+            sent = true;
+            break;
+          } else {
+            console.warn(`Tentativa falhou (${a.path}): ${resp.status} ${lastText}`);
+            // Em caso de 404, tentamos o próximo endpoint
+            if (resp.status === 404) continue;
+          }
+        } catch (err) {
+          console.warn(`Erro ao tentar ${a.path}:`, err);
+        }
+      }
+
+      if (!sent) {
+        console.warn(`Falha ao enviar mensagem via WhatsApp API; última resposta: ${lastStatus} ${lastText}`);
       }
     }
   } catch (error) {
