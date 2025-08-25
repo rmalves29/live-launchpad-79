@@ -49,6 +49,9 @@ serve(async (req) => {
       case "get_messages":
         return await getMessages(supabase);
       
+      case "send_item_added":
+        return await sendItemAddedMessage(data, supabase);
+      
       default:
         throw new Error("Ação não reconhecida");
     }
@@ -240,6 +243,42 @@ async function getMessages(supabase: any) {
   }
 
   return new Response(JSON.stringify({ messages }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status: 200,
+  });
+}
+
+async function sendItemAddedMessage(data: any, supabase: any) {
+  // Substituir variáveis na mensagem
+  const message = `🛒 *Item Adicionado ao Carrinho*
+
+Olá ${data.customerName || 'Cliente'}! 
+
+✅ Produto: *${data.productName}*
+📦 Quantidade: *${data.quantity}*
+💰 Preço: *R$ ${data.price.toFixed(2)}*
+
+Seu item foi adicionado com sucesso ao carrinho! 🎉
+
+💬 Continue enviando códigos de produtos ou entre em contato para finalizar seu pedido.
+
+Obrigado pela preferência! 🙌`;
+
+  console.log(`Enviando confirmação de item adicionado para ${data.phone}:`, message);
+  
+  await supabase.from('whatsapp_messages').insert({
+    phone: data.phone,
+    message,
+    type: 'item_added',
+    product_name: data.productName,
+    amount: data.price,
+    sent_at: new Date().toISOString()
+  });
+
+  return new Response(JSON.stringify({ 
+    success: true, 
+    message: "Confirmação de item adicionado enviada com sucesso" 
+  }), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
     status: 200,
   });

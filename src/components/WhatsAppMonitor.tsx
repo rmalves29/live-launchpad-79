@@ -310,6 +310,11 @@ const WhatsAppMonitor = () => {
 
       console.log('Automatic order created successfully for phone:', normalizedPhone);
       
+      // Send automatic message for each added product
+      for (const product of message.detectedProducts) {
+        await sendItemAddedMessage(normalizedPhone, product.name, product.name, 1, product.price);
+      }
+      
       // Force reload orders to show the new one
       setTimeout(() => {
         loadOrders();
@@ -322,6 +327,25 @@ const WhatsAppMonitor = () => {
         description: 'Falha ao criar pedido automático',
         variant: 'destructive'
       });
+    }
+  };
+
+  const sendItemAddedMessage = async (phone: string, customerName: string, productName: string, quantity: number, price: number) => {
+    try {
+      await supabase.functions.invoke('whatsapp-connection', {
+        body: {
+          action: 'send_item_added',
+          data: {
+            phone,
+            customerName,
+            productName,
+            quantity,
+            price
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error sending item added message:', error);
     }
   };
 

@@ -352,6 +352,9 @@ const PedidosManual = () => {
       setPhones(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
       
+      // Send automatic message
+      await sendItemAddedMessage(normalizedPhone, 'Cliente', product.name, qty, product.price);
+      
       // Reload orders to show the new one
       loadOrders();
 
@@ -432,6 +435,25 @@ const PedidosManual = () => {
         description: 'Erro ao excluir pedido',
         variant: 'destructive'
       });
+    }
+  };
+
+  const sendItemAddedMessage = async (phone: string, customerName: string, productName: string, quantity: number, price: number) => {
+    try {
+      await supabase.functions.invoke('whatsapp-connection', {
+        body: {
+          action: 'send_item_added',
+          data: {
+            phone,
+            customerName,
+            productName,
+            quantity,
+            price
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error sending item added message:', error);
     }
   };
 
