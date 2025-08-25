@@ -457,16 +457,6 @@ const WhatsAppMonitor = () => {
     filterMessages(searchFilter);
   }, [messages]);
 
-  // Auto-refresh every 2 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (products.length > 0) {
-        loadWhatsAppMessages();
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [products, whatsappServerUrl]);
 
   // Simulate monitoring toggle
   const toggleMonitoring = () => {
