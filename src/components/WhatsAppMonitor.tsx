@@ -44,6 +44,7 @@ const WhatsAppMonitor = () => {
   const [monitoring, setMonitoring] = useState(false);
   const [whatsappServerUrl, setWhatsappServerUrl] = useState('http://localhost:3000');
   const [searchFilter, setSearchFilter] = useState('');
+  const [processedMessageIds, setProcessedMessageIds] = useState<Set<string>>(new Set());
 
   const loadOrders = async () => {
     setLoading(true);
@@ -355,9 +356,9 @@ const WhatsAppMonitor = () => {
         (msg: WhatsAppMessage) => msg.detectedProducts && msg.detectedProducts.length > 0
       );
 
-      // Check for new messages and create orders automatically
+      // Check for truly new messages that haven't been processed
       const newMessages = messagesWithValidProducts.filter(msg => 
-        !messages.find(existingMsg => existingMsg.id === msg.id)
+        !processedMessageIds.has(msg.id)
       );
 
       // Create automatic orders for new messages with detected products
@@ -365,6 +366,8 @@ const WhatsAppMonitor = () => {
         if (message.detectedProducts && message.detectedProducts.length > 0) {
           console.log('Creating automatic order for message:', message.id, 'from:', message.numero);
           await createAutomaticOrder(message);
+          // Mark message as processed
+          setProcessedMessageIds(prev => new Set(prev).add(message.id));
         }
       }
 
