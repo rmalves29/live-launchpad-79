@@ -267,25 +267,24 @@ Obrigado pela preferência! 🙌`;
   console.log(`Enviando confirmação de item adicionado para ${data.phone}:`, message);
   
   try {
-    // Tentar enviar via WhatsApp Web API local (se configurado)
-    const whatsappResponse = await fetch('http://localhost:3000/send-message', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        number: data.phone,
-        message: message
-      })
-    });
-
-    if (whatsappResponse.ok) {
-      console.log(`Mensagem enviada com sucesso para ${data.phone}`);
+    const baseUrl = (Deno.env.get('WHATSAPP_API_URL') || '').trim().replace(/\/$/, '');
+    if (!baseUrl) {
+      console.warn('WHATSAPP_API_URL não configurada; pulando envio via API e registrando apenas no banco.');
     } else {
-      console.warn(`Falha ao enviar mensagem via WhatsApp API: ${whatsappResponse.status}`);
+      const resp = await fetch(`${baseUrl}/send-message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: data.phone, message })
+      });
+      if (resp.ok) {
+        console.log(`Mensagem enviada com sucesso para ${data.phone}`);
+      } else {
+        const text = await resp.text();
+        console.warn(`Falha ao enviar mensagem via WhatsApp API: ${resp.status} ${text}`);
+      }
     }
   } catch (error) {
-    console.warn('WhatsApp API não disponível, salvando apenas no banco:', error);
+    console.warn('WhatsApp API indisponível; salvando apenas no banco:', error);
   }
   
   // Salvar no banco independentemente do envio
