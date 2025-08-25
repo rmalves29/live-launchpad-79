@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { MessageSquare, Users, Package, RefreshCw } from 'lucide-react';
+import { sendItemAddedMessage as sendItemAdded } from '@/lib/whatsapp';
 
 interface Order {
   id: number;
@@ -332,18 +333,7 @@ const WhatsAppMonitor = () => {
 
   const sendItemAddedMessage = async (phone: string, customerName: string, productName: string, quantity: number, price: number) => {
     try {
-      await supabase.functions.invoke('whatsapp-connection', {
-        body: {
-          action: 'send_item_added',
-          data: {
-            phone,
-            customerName,
-            productName,
-            quantity,
-            price
-          }
-        }
-      });
+      await sendItemAdded({ phone, customerName, productName, quantity, price });
     } catch (error) {
       console.error('Error sending item added message:', error);
     }
