@@ -457,6 +457,20 @@ const WhatsAppMonitor = () => {
     filterMessages(searchFilter);
   }, [messages]);
 
+  // Auto-refresh messages when monitoring is active
+  useEffect(() => {
+    if (!monitoring || products.length === 0) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await loadWhatsAppMessages();
+      } catch (error) {
+        console.error('Erro ao atualizar mensagens automaticamente:', error);
+      }
+    }, 5000); // Atualiza a cada 5 segundos
+
+    return () => clearInterval(interval);
+  }, [monitoring, products, whatsappServerUrl]);
 
   // Simulate monitoring toggle
   const toggleMonitoring = () => {
