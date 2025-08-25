@@ -484,20 +484,146 @@ const WhatsAppMonitor = () => {
     filterMessages(searchFilter);
   }, [messages]);
 
-  // Auto-refresh messages when monitoring is active
+  // Smart polling system state
+  const [lastDataHash, setLastDataHash] = useState<string>('');
+  const [pollInterval, setPollInterval] = useState(5000);
+  const [isTabVisible, setIsTabVisible] = useState(true);
+  const [errorCount, setErrorCount] = useState(0);
+  const [manualRefresh, setManualRefresh] = useState(0);
+
+  // Track tab visibility to pause polling when tab is inactive
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsTabVisible(!document.hidden);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // Fetch data without updating state (for comparison)
+  const fetchCurrentData = async () => {
+    try {
+      // Fetch messages
+      const response = await fetch(`${whatsappServerUrl}/messages?limit=100`);
+      if (!response.ok) throw new Error('Servidor WhatsApp não disponível');
+      const result = await response.json();
+      const rawMessages = result.data || [];
+
+      // Fetch orders
+      const { data } = await supabase.functions.invoke('whatsapp-monitor', {
+        body: { action: 'get_orders' }
+      });
+      const currentOrders = data?.orders || [];
+
+      return { rawMessages, currentOrders };
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Manual refresh function
+  const handleManualRefresh = () => {
+    setManualRefresh(prev => prev + 1);
+    setErrorCount(0);
+    setPollInterval(5000);
+  };
+
+  // Smart polling with change detection, backoff, and tab visibility
   useEffect(() => {
     if (!monitoring || products.length === 0) return;
 
-    const interval = setInterval(async () => {
+    const poll = async () => {
+      // Skip polling if tab is not visible and no errors to retry
+      if (!isTabVisible && errorCount === 0) return;
+
       try {
-        await loadWhatsAppMessages();
+        const { rawMessages, currentOrders } = await fetchCurrentData();
+        
+        // Process messages with products
+        const messagesWithProducts = rawMessages.map((msg: any) => {
+          const codes = detectProductCodes(msg.body);
+          const detectedProducts = products.filter(product => 
+            codes.includes(product.code.toUpperCase())
+          );
+          
+          return {
+            ...msg,
+            numero: formatPhoneNumber(msg.numero),
+            detectedProducts: detectedProducts.length > 0 ? detectedProducts : undefined
+          };
+        });
+
+        const messagesWithValidProducts = messagesWithProducts.filter(
+          (msg: WhatsAppMessage) => msg.detectedProducts && msg.detectedProducts.length > 0
+        );
+
+        // Create hash of current data to detect changes
+        const dataHash = JSON.stringify({ 
+          messages: messagesWithValidProducts.map(m => ({ id: m.id, body: m.body, numero: m.numero })),
+          orders: currentOrders.map((o: Order) => ({ id: o.id, total_amount: o.total_amount, created_at: o.created_at }))
+        });
+        
+        // Only update if data actually changed
+        if (dataHash !== lastDataHash) {
+          // Check for new messages to process automatically
+          const newMessages = messagesWithValidProducts.filter(msg => 
+            !processedMessageIds.has(msg.id)
+          );
+
+          // Process new messages
+          for (const message of newMessages) {
+            if (message.detectedProducts && message.detectedProducts.length > 0) {
+              console.log('Creating automatic order for message:', message.id, 'from:', message.numero);
+              await createAutomaticOrder(message);
+              setProcessedMessageIds(prev => new Set(prev).add(message.id));
+            }
+          }
+
+          // Update state only when there are changes
+          setMessages(messagesWithValidProducts);
+          setFilteredMessages(messagesWithValidProducts);
+          setOrders(currentOrders);
+          setLastDataHash(dataHash);
+          
+          // Reset error count on successful update
+          if (errorCount > 0) {
+            setErrorCount(0);
+            setPollInterval(5000);
+          }
+        }
       } catch (error) {
-        console.error('Erro ao atualizar mensagens automaticamente:', error);
+        console.error('Polling error:', error);
+        
+        // Exponential backoff on error
+        const newErrorCount = errorCount + 1;
+        setErrorCount(newErrorCount);
+        setPollInterval(Math.min(5000 * Math.pow(2, newErrorCount), 60000)); // Max 1 minute
+        
+        if (newErrorCount <= 3) {
+          toast({
+            title: 'Erro de conexão',
+            description: `Tentativa ${newErrorCount}/3. Próxima em ${Math.round(pollInterval/1000)}s`,
+            variant: 'destructive'
+          });
+        }
       }
-    }, 5000); // Atualiza a cada 5 segundos
+    };
+
+    // Initial poll or manual refresh trigger
+    poll();
+
+    // Set up interval - only poll if tab is visible or need to retry errors
+    const interval = setInterval(() => {
+      if (isTabVisible || errorCount > 0) {
+        poll();
+      }
+    }, pollInterval);
 
     return () => clearInterval(interval);
-  }, [monitoring, products, whatsappServerUrl]);
+  }, [monitoring, products, whatsappServerUrl, isTabVisible, lastDataHash, errorCount, pollInterval, manualRefresh, processedMessageIds]);
+
+  // Auto-refresh messages when monitoring is active - REPLACED BY SMART POLLING ABOVE
 
   // Simulate monitoring toggle
   const toggleMonitoring = () => {
@@ -515,9 +641,9 @@ const WhatsAppMonitor = () => {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Monitor WhatsApp</h1>
         <div className="flex space-x-2">
-          <Button onClick={() => { loadOrders(); loadWhatsAppMessages(); }} variant="outline" disabled={loading || loadingMessages}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Atualizar
+          <Button onClick={handleManualRefresh} variant="outline" disabled={loading || loadingMessages}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${(loading || loadingMessages) ? 'animate-spin' : ''}`} />
+            Atualizar Agora
           </Button>
           <Button 
             onClick={toggleMonitoring}
@@ -543,7 +669,9 @@ const WhatsAppMonitor = () => {
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Monitor de grupos WhatsApp
+              {!isTabVisible && monitoring ? '⏸️ Pausado (aba em segundo plano)' :
+               errorCount > 0 ? `⚠️ Erro ${errorCount}/3 - Tentando novamente` :
+               monitoring ? '✅ Monitoramento ativo' : 'Monitor de grupos WhatsApp'}
             </p>
           </CardContent>
         </Card>
