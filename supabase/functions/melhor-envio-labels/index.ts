@@ -7,6 +7,59 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Utils: sanitização e validação de CPF/CNPJ
+function onlyDigits(v: string | number | null | undefined): string {
+  return String(v ?? '').replace(/\D/g, '');
+}
+
+function isValidCPF(cpf: string): boolean {
+  const s = onlyDigits(cpf);
+  if (s.length !== 11 || /(\d)\1{10}/.test(s)) return false;
+  let sum = 0, rest;
+  for (let i = 1; i <= 9; i++) sum += parseInt(s.substring(i - 1, i), 10) * (11 - i);
+  rest = (sum * 10) % 11;
+  if (rest === 10 || rest === 11) rest = 0;
+  if (rest !== parseInt(s.substring(9, 10), 10)) return false;
+  sum = 0;
+  for (let i = 1; i <= 10; i++) sum += parseInt(s.substring(i - 1, i), 10) * (12 - i);
+  rest = (sum * 10) % 11;
+  if (rest === 10 || rest === 11) rest = 0;
+  return rest === parseInt(s.substring(10, 11), 10);
+}
+
+function isValidCNPJ(cnpj: string): boolean {
+  const s = onlyDigits(cnpj);
+  if (s.length !== 14 || /(\d)\1{13}/.test(s)) return false;
+  const calc = (base: number) => {
+    let pos = base - 7, sum = 0;
+    for (let i = 0; i < base; i++) {
+      sum += parseInt(s[i], 10) * pos--;
+      if (pos < 2) pos = 9;
+    }
+    const r = sum % 11;
+    return (r < 2) ? 0 : 11 - r;
+  };
+  if (calc(12) !== parseInt(s[12], 10)) return false;
+  if (calc(13) !== parseInt(s[13], 10)) return false;
+  return true;
+}
+
+function setDocumentFields(entity: any, raw: any) {
+  const digits = onlyDigits(raw);
+  delete (entity as any).document;
+  delete (entity as any).company_document;
+
+  if (digits.length === 11) {
+    if (!isValidCPF(digits)) throw new Error('CPF inválido');
+    (entity as any).document = digits;
+  } else if (digits.length === 14) {
+    if (!isValidCNPJ(digits)) throw new Error('CNPJ inválido');
+    (entity as any).company_document = digits;
+  } else {
+    throw new Error('Documento deve ter 11 (CPF) ou 14 (CNPJ) dígitos');
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -115,37 +168,66 @@ serve(async (req) => {
         raw_response: { service_id: 1 } // Default PAC service
       };
 
+      // Monta e valida documentos do remetente e destinatário
+      const fromEntity: any = {
+        name: configData.remetente_nome || "Remetente",
+        phone: configData.remetente_telefone || "1199999999",
+        email: configData.remetente_email || "contato@empresa.com",
+        address: configData.remetente_endereco_rua || "Rua do Remetente",
+        number: configData.remetente_endereco_numero || "123",
+        complement: configData.remetente_endereco_comp || "",
+        district: configData.remetente_bairro || "Centro",
+        city: configData.remetente_cidade || "Belo Horizonte",
+        state_abbr: configData.remetente_uf || "MG",
+        country_id: "BR",
+        postal_code: configData.cep_origem || "31575060"
+      };
+
+      try {
+        setDocumentFields(fromEntity, configData.remetente_documento);
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: 'Documento do remetente inválido', field: 'from', details: (e as Error).message }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const rawToDoc = (customerData?.cpf ?? (customerData as any)?.cnpj ?? (customerData as any)?.document ?? null);
+      if (!rawToDoc) {
+        return new Response(
+          JSON.stringify({ error: 'Documento do destinatário ausente', field: 'to' }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const toEntity: any = {
+        name: customerData?.name || "Cliente",
+        phone: customer_phone,
+        email: (customerData as any)?.email || "cliente@email.com",
+        address: customerData?.street || "Rua do Cliente",
+        number: customerData?.number || "123",
+        complement: customerData?.complement || "",
+        district: (customerData as any)?.neighborhood || "Centro",
+        city: customerData?.city || "São Paulo",
+        state_abbr: customerData?.state || "SP",
+        country_id: "BR",
+        postal_code: freight.cep_destino || customerData?.cep || "01000000"
+      };
+
+      try {
+        setDocumentFields(toEntity, rawToDoc);
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: 'Documento do destinatário inválido', field: 'to', details: (e as Error).message }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       // Create cart payload following Melhor Envio documentation
       const cartPayload = {
         service: freight.raw_response?.service_id || 1,
-        from: {
-          name: configData.remetente_nome || "Remetente",
-          company_document: configData.remetente_documento || "00000000000",
-          phone: configData.remetente_telefone || "1199999999",
-          email: configData.remetente_email || "contato@empresa.com",
-          address: configData.remetente_endereco_rua || "Rua do Remetente",
-          number: configData.remetente_endereco_numero || "123",
-          complement: configData.remetente_endereco_comp || "",
-          district: configData.remetente_bairro || "Centro",
-          city: configData.remetente_cidade || "Belo Horizonte",
-          state_abbr: configData.remetente_uf || "MG",
-          country_id: "BR",
-          postal_code: configData.cep_origem || "31575060"
-        },
-        to: {
-          name: customerData?.name || "Cliente",
-          document: customerData?.cpf || "00000000000",
-          phone: customer_phone,
-          email: customerData?.email || "cliente@email.com",
-          address: customerData?.street || "Rua do Cliente",
-          number: customerData?.number || "123",
-          complement: customerData?.complement || "",
-          district: customerData?.neighborhood || "Centro",
-          city: customerData?.city || "São Paulo",
-          state_abbr: customerData?.state || "SP",
-          country_id: "BR",
-          postal_code: freight.cep_destino || customerData?.cep || "01000000"
-        },
+        from: fromEntity,
+        to: toEntity,
         volumes: [
           {
             height: freight.altura || 4,
@@ -158,7 +240,7 @@ serve(async (req) => {
           insurance_value: freight.valor_declarado || orderData.total_amount,
           receipt: false,
           own_hand: false,
-          non_commercial: true, // Using true to avoid invoice key requirement for now
+          non_commercial: true, // evita exigir chave NFe
           platform: "SeuSistema",
           tags: [
             { 
