@@ -44,6 +44,19 @@ function isValidCNPJ(cnpj: string): boolean {
   return true;
 }
 
+// Guard to assert sender CNPJ only for PJ cases and log details
+function assertSenderCNPJ(fromObj: any) {
+  const raw = (fromObj as any).company_document ?? (fromObj as any).document;
+  const cnpj = onlyDigits(String(raw ?? ''));
+  console.log('[DEBUG] FROM.company_document raw =', String(raw));
+  console.log('[DEBUG] FROM.company_document sanitized =', cnpj, 'len=', cnpj.length);
+  if (!cnpj) throw new Error('from.company_document ausente');
+  if (!isValidCNPJ(cnpj)) throw new Error('from.company_document inválido (DV não confere)');
+  delete (fromObj as any).document;                // garantir que não enviamos CPF junto
+  (fromObj as any).company_document = String(cnpj); // garantir string sem máscara
+}
+
+// Existing helper: set CPF ou CNPJ conforme o tamanho
 function setDocumentFields(entity: any, raw: any) {
   const digits = onlyDigits(raw);
   delete (entity as any).document;
@@ -223,7 +236,7 @@ serve(async (req) => {
         );
       }
 
-      // Create cart payload following Melhor Envio documentation
+// Create cart payload following Melhor Envio documentation
       const cartPayload = {
         service: freight.raw_response?.service_id || 1,
         from: fromEntity,
@@ -249,9 +262,24 @@ serve(async (req) => {
             }
           ]
         }
-      };
+      } as any;
 
-      console.log('Adding to cart with payload:', JSON.stringify(cartPayload, null, 2));
+      // Mata-erro: garantimos que vamos enviar somente CNPJ válido do remetente
+      try {
+        assertSenderCNPJ(cartPayload.from);
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Documento do remetente inválido', 
+            field: 'from', 
+            details: (e as Error).message,
+            debug_from: cartPayload.from
+          }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('Adding to cart with payload (sanitized):', JSON.stringify(cartPayload, null, 2));
 
       // Step 1: Add to cart
       const cartResponse = await fetch(`${baseUrl}/v2/me/cart`, {
