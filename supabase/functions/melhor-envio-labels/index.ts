@@ -47,16 +47,49 @@ function isValidCNPJ(cnpj: string): boolean {
   return true;
 }
 
-// Guard to assert sender CNPJ only for PJ cases and log details
-function assertSenderCNPJ(fromObj: any) {
-  const raw = (fromObj as any).company_document ?? (fromObj as any).document;
-  const cnpj = onlyDigits(String(raw ?? ''));
-  console.log('[DEBUG] FROM.company_document raw =', String(raw));
-  console.log('[DEBUG] FROM.company_document sanitized =', cnpj, 'len=', cnpj.length);
-  if (!cnpj) throw new Error('from.company_document ausente');
-  if (!isValidCNPJ(cnpj)) throw new Error('from.company_document inválido (DV não confere)');
-  delete (fromObj as any).document;                // garantir que não enviamos CPF junto
-  (fromObj as any).company_document = String(cnpj); // garantir string sem máscara
+// Debug helpers and sender document handling (PF/PJ)
+function logBytes(label: string, value: any) {
+  const raw = String(value ?? '');
+  const bytes = new TextEncoder().encode(raw);
+  const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join(' ');
+  const digits = onlyDigits(raw);
+  console.log(`\n[DEBUG:${label}] raw="${raw}" len=${raw.length}`);
+  console.log(`[DEBUG:${label}] bytes(hex)= ${hex}`);
+  console.log(`[DEBUG:${label}] digits="${digits}" len=${digits.length}\n`);
+}
+
+function setSenderDocument(fromObj: any, rawDoc: any, mode: string = 'AUTO') {
+  const digits = onlyDigits(rawDoc);
+  delete (fromObj as any).document;
+  delete (fromObj as any).company_document;
+
+  const MODE = String(mode || 'AUTO').toUpperCase();
+  if (MODE === 'PF' || (MODE === 'AUTO' && digits.length === 11)) {
+    if (!isValidCPF(digits)) throw new Error('CPF do remetente inválido');
+    (fromObj as any).document = digits;
+  } else if (MODE === 'PJ' || (MODE === 'AUTO' && digits.length === 14)) {
+    if (!isValidCNPJ(digits)) throw new Error('CNPJ do remetente inválido');
+    (fromObj as any).company_document = digits;
+  } else {
+    throw new Error('Documento do remetente deve ter 11 (CPF) ou 14 (CNPJ) dígitos');
+  }
+}
+
+function assertSenderDocument(fromObj: any) {
+  const raw = (fromObj as any).company_document ?? (fromObj as any).document ?? '';
+  const digits = onlyDigits(raw);
+  logBytes('FROM_DOC_ASSERT', raw);
+  if ((fromObj as any).company_document) {
+    if (!isValidCNPJ(digits)) throw new Error('from.company_document inválido (CNPJ DV)');
+    (fromObj as any).company_document = String(digits);
+    delete (fromObj as any).document;
+  } else if ((fromObj as any).document) {
+    if (!isValidCPF(digits)) throw new Error('from.document inválido (CPF DV)');
+    (fromObj as any).document = String(digits);
+    delete (fromObj as any).company_document;
+  } else {
+    throw new Error('Remetente sem documento');
+  }
 }
 
 // Existing helper: set CPF ou CNPJ conforme o tamanho
@@ -275,9 +308,13 @@ serve(async (req) => {
         }
       } as any;
 
-      // Mata-erro: garantimos que vamos enviar somente CNPJ válido do remetente
+      // Documento remetente: PF/PJ com logs e modo opcional via env
+      const FROM_MODE = (Deno.env.get('ME_FROM_TYPE') || 'AUTO').toUpperCase();
+      console.log('[DEBUG] FROM_MODE =', FROM_MODE);
+      logBytes('FROM_DOC_RAW', configData.remetente_documento);
       try {
-        assertSenderCNPJ(cartPayload.from);
+        setSenderDocument(cartPayload.from, configData.remetente_documento, FROM_MODE);
+        assertSenderDocument(cartPayload.from);
       } catch (e) {
         return new Response(
           JSON.stringify({ 
@@ -290,6 +327,8 @@ serve(async (req) => {
         );
       }
 
+      console.log('[FINAL] from.document =', cartPayload.from.document ?? null);
+      console.log('[FINAL] from.company_document =', cartPayload.from.company_document ?? null);
       console.log('Adding to cart with payload (sanitized):', JSON.stringify(cartPayload, null, 2));
 
       // Step 1: Add to cart
