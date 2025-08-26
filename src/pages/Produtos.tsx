@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Plus, Edit2, Package, Upload, X, Trash2 } from 'lucide-react';
-import Navbar from '@/components/Navbar';
+
 
 interface Product {
   id: number;
@@ -313,7 +313,6 @@ const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
       <div className="p-6">
         <div className="container mx-auto max-w-7xl space-y-6">
       <div className="flex justify-between items-center">
