@@ -233,10 +233,12 @@ export type Database = {
           remetente_bairro: string | null
           remetente_cidade: string | null
           remetente_documento: string | null
+          remetente_email: string | null
           remetente_endereco_comp: string | null
           remetente_endereco_numero: string | null
           remetente_endereco_rua: string | null
           remetente_nome: string | null
+          remetente_telefone: string | null
           remetente_uf: string | null
           token_expires_at: string | null
           updated_at: string
@@ -255,10 +257,12 @@ export type Database = {
           remetente_bairro?: string | null
           remetente_cidade?: string | null
           remetente_documento?: string | null
+          remetente_email?: string | null
           remetente_endereco_comp?: string | null
           remetente_endereco_numero?: string | null
           remetente_endereco_rua?: string | null
           remetente_nome?: string | null
+          remetente_telefone?: string | null
           remetente_uf?: string | null
           token_expires_at?: string | null
           updated_at?: string
@@ -277,10 +281,12 @@ export type Database = {
           remetente_bairro?: string | null
           remetente_cidade?: string | null
           remetente_documento?: string | null
+          remetente_email?: string | null
           remetente_endereco_comp?: string | null
           remetente_endereco_numero?: string | null
           remetente_endereco_rua?: string | null
           remetente_nome?: string | null
+          remetente_telefone?: string | null
           remetente_uf?: string | null
           token_expires_at?: string | null
           updated_at?: string

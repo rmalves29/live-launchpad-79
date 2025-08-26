@@ -121,8 +121,8 @@ serve(async (req) => {
         from: {
           name: configData.remetente_nome || "Remetente",
           company_document: configData.remetente_documento || "00000000000",
-          phone: "1199999999", // You might want to add this to config
-          email: "contato@empresa.com", // You might want to add this to config
+          phone: configData.remetente_telefone || "1199999999",
+          email: configData.remetente_email || "contato@empresa.com",
           address: configData.remetente_endereco_rua || "Rua do Remetente",
           number: configData.remetente_endereco_numero || "123",
           complement: configData.remetente_endereco_comp || "",
