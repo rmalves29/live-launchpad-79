@@ -172,7 +172,7 @@ serve(async (req) => {
       console.log('Adding to cart with payload:', JSON.stringify(cartPayload, null, 2));
 
       // Step 1: Add to cart
-      const cartResponse = await fetch(`${baseUrl}/api/v2/me/cart`, {
+      const cartResponse = await fetch(`${baseUrl}/v2/me/cart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -207,7 +207,7 @@ serve(async (req) => {
       // Step 2: Checkout (purchase)
       console.log('Processing checkout for cart ID:', cartId);
       
-      const checkoutResponse = await fetch(`${baseUrl}/api/v2/me/shipment/checkout`, {
+      const checkoutResponse = await fetch(`${baseUrl}/v2/me/shipment/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -243,7 +243,7 @@ serve(async (req) => {
       if (shipmentId) {
         console.log('Generating label for shipment ID:', shipmentId);
         
-        const generateResponse = await fetch(`${baseUrl}/api/v2/me/shipment/generate`, {
+        const generateResponse = await fetch(`${baseUrl}/v2/me/shipment/generate`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
