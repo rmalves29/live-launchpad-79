@@ -9,7 +9,10 @@ const corsHeaders = {
 
 // Utils: sanitização e validação de CPF/CNPJ
 function onlyDigits(v: string | number | null | undefined): string {
-  return String(v ?? '').replace(/\D/g, '');
+  return String(v ?? '')
+    .normalize('NFKC')
+    .replace(/\s/g, '')
+    .replace(/\D/g, '');
 }
 
 function isValidCPF(cpf: string): boolean {
@@ -196,6 +199,10 @@ serve(async (req) => {
         postal_code: configData.cep_origem || "31575060"
       };
 
+      // Sanitize sender critical fields
+      fromEntity.phone = onlyDigits(fromEntity.phone);
+      fromEntity.postal_code = onlyDigits(fromEntity.postal_code);
+
       try {
         setDocumentFields(fromEntity, configData.remetente_documento);
       } catch (e) {
@@ -226,6 +233,10 @@ serve(async (req) => {
         country_id: "BR",
         postal_code: freight.cep_destino || customerData?.cep || "01000000"
       };
+
+      // Sanitize recipient critical fields
+      toEntity.phone = onlyDigits(toEntity.phone);
+      toEntity.postal_code = onlyDigits(toEntity.postal_code);
 
       try {
         setDocumentFields(toEntity, rawToDoc);
