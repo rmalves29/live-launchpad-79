@@ -115,70 +115,64 @@ serve(async (req) => {
         raw_response: { service_id: 1 } // Default PAC service
       };
 
-      // Create shipment payload
-      const shipmentPayload = {
+      // Create cart payload following Melhor Envio documentation
+      const cartPayload = {
         service: freight.raw_response?.service_id || 1,
         from: {
           name: configData.remetente_nome || "Remetente",
+          company_document: configData.remetente_documento || "00000000000",
           phone: "1199999999", // You might want to add this to config
           email: "contato@empresa.com", // You might want to add this to config
-          document: configData.remetente_documento || "00000000000",
-          company_document: configData.remetente_documento || "00000000000",
-          state_register: "123456789",
-          postal_code: configData.cep_origem || "31575060",
           address: configData.remetente_endereco_rua || "Rua do Remetente",
           number: configData.remetente_endereco_numero || "123",
           complement: configData.remetente_endereco_comp || "",
           district: configData.remetente_bairro || "Centro",
           city: configData.remetente_cidade || "Belo Horizonte",
           state_abbr: configData.remetente_uf || "MG",
-          country_id: "BR"
+          country_id: "BR",
+          postal_code: configData.cep_origem || "31575060"
         },
         to: {
           name: customerData?.name || "Cliente",
-          phone: customer_phone,
-          email: "cliente@email.com", // You might want to get this from customer data
           document: customerData?.cpf || "00000000000",
-          postal_code: freight.cep_destino,
+          phone: customer_phone,
+          email: customerData?.email || "cliente@email.com",
           address: customerData?.street || "Rua do Cliente",
           number: customerData?.number || "123",
           complement: customerData?.complement || "",
-          district: customerData?.city || "Centro",
+          district: customerData?.neighborhood || "Centro",
           city: customerData?.city || "São Paulo",
           state_abbr: customerData?.state || "SP",
-          country_id: "BR"
+          country_id: "BR",
+          postal_code: freight.cep_destino || customerData?.cep || "01000000"
         },
-        products: [
-          {
-            name: "Produto do Pedido #" + orderData.id,
-            quantity: 1,
-            unitary_value: orderData.total_amount,
-            weight: freight.peso
-          }
-        ],
         volumes: [
           {
-            height: freight.altura,
-            width: freight.largura,
-            length: freight.comprimento,
-            weight: freight.peso
+            height: freight.altura || 4,
+            width: freight.largura || 12,
+            length: freight.comprimento || 17,
+            weight: freight.peso || 0.3
           }
         ],
         options: {
           insurance_value: freight.valor_declarado || orderData.total_amount,
           receipt: false,
           own_hand: false,
-          reverse: false,
-          non_commercial: false,
-          invoice: {
-            key: `NFE${orderData.id}${Date.now()}`
-          }
+          non_commercial: true, // Using true to avoid invoice key requirement for now
+          platform: "SeuSistema",
+          tags: [
+            { 
+              tag: `PEDIDO-${orderData.id}`, 
+              url: `https://app/pedido/${orderData.id}` 
+            }
+          ]
         }
       };
 
-      console.log('Creating shipment with payload:', JSON.stringify(shipmentPayload, null, 2));
+      console.log('Adding to cart with payload:', JSON.stringify(cartPayload, null, 2));
 
-      const response = await fetch(`${baseUrl}/v2/me/shipment/insert`, {
+      // Step 1: Add to cart
+      const cartResponse = await fetch(`${baseUrl}/api/v2/me/cart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -186,33 +180,97 @@ serve(async (req) => {
           'Authorization': `Bearer ${accessToken}`,
           'User-Agent': 'FreteApp (contato@empresa.com)'
         },
-        body: JSON.stringify(shipmentPayload)
+        body: JSON.stringify(cartPayload)
       });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Shipment creation error:', response.status, errorData);
+      if (!cartResponse.ok) {
+        const errorData = await cartResponse.text();
+        console.error('Cart creation error:', cartResponse.status, errorData);
         
         return new Response(
           JSON.stringify({ 
-            error: 'Erro ao criar envio',
+            error: 'Erro ao adicionar ao carrinho',
             details: errorData 
           }),
           { 
-            status: response.status, 
+            status: cartResponse.status, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
           }
         );
       }
 
-      const responseData = await response.json();
-      console.log('Shipment created successfully:', responseData);
+      const cartData = await cartResponse.json();
+      console.log('Added to cart successfully:', cartData);
+      
+      const cartId = cartData.id;
+      
+      // Step 2: Checkout (purchase)
+      console.log('Processing checkout for cart ID:', cartId);
+      
+      const checkoutResponse = await fetch(`${baseUrl}/api/v2/me/shipment/checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': 'FreteApp (contato@empresa.com)'
+        },
+        body: JSON.stringify({ orders: [cartId] })
+      });
+
+      if (!checkoutResponse.ok) {
+        const errorData = await checkoutResponse.text();
+        console.error('Checkout error:', checkoutResponse.status, errorData);
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'Erro no checkout',
+            details: errorData 
+          }),
+          { 
+            status: checkoutResponse.status, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      const checkoutData = await checkoutResponse.json();
+      console.log('Checkout completed successfully:', checkoutData);
+      
+      const shipmentId = checkoutData.purchase?.id;
+      
+      // Step 3: Generate label
+      if (shipmentId) {
+        console.log('Generating label for shipment ID:', shipmentId);
+        
+        const generateResponse = await fetch(`${baseUrl}/api/v2/me/shipment/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'User-Agent': 'FreteApp (contato@empresa.com)'
+          },
+          body: JSON.stringify({ orders: [shipmentId] })
+        });
+
+        if (!generateResponse.ok) {
+          console.error('Label generation error:', generateResponse.status, await generateResponse.text());
+        } else {
+          const generateData = await generateResponse.json();
+          console.log('Label generated successfully:', generateData);
+        }
+      }
 
       return new Response(
         JSON.stringify({ 
           success: true,
-          shipment_id: responseData[0]?.id,
-          data: responseData
+          cart_id: cartId,
+          shipment_id: shipmentId,
+          data: {
+            cart: cartData,
+            checkout: checkoutData
+          }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
