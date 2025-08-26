@@ -289,9 +289,13 @@ export default function ConfigFrete() {
               <Label htmlFor="remetente_documento">CNPJ/CPF</Label>
               <Input
                 id="remetente_documento"
+                inputMode="numeric"
                 value={config.remetente_documento}
-                onChange={(e) => setConfig({...config, remetente_documento: e.target.value})}
-                placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                onChange={(e) => {
+                  const digits = String(e.target.value || '').replace(/\D/g, '').slice(0,14);
+                  setConfig({ ...config, remetente_documento: digits });
+                }}
+                placeholder="Somente números (CPF 11 / CNPJ 14)"
               />
             </div>
 

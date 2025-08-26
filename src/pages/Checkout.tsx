@@ -104,6 +104,47 @@ const Checkout = () => {
     return digits;
   };
 
+  // Document helpers (CPF/CNPJ)
+  const onlyDigits = (v: string): string => String(v || '').replace(/\D/g, '');
+
+  const isValidCPF = (cpf: string): boolean => {
+    const s = onlyDigits(cpf);
+    if (s.length !== 11 || /(\d)\1{10}/.test(s)) return false;
+    let sum = 0, rest;
+    for (let i = 1; i <= 9; i++) sum += parseInt(s.substring(i - 1, i), 10) * (11 - i);
+    rest = (sum * 10) % 11;
+    if (rest === 10 || rest === 11) rest = 0;
+    if (rest !== parseInt(s.substring(9, 10), 10)) return false;
+    sum = 0;
+    for (let i = 1; i <= 10; i++) sum += parseInt(s.substring(i - 1, i), 10) * (12 - i);
+    rest = (sum * 10) % 11;
+    if (rest === 10 || rest === 11) rest = 0;
+    return rest === parseInt(s.substring(10, 11), 10);
+  };
+
+  const isValidCNPJ = (cnpj: string): boolean => {
+    const s = onlyDigits(cnpj);
+    if (s.length !== 14 || /(\d)\1{13}/.test(s)) return false;
+    const calc = (base: number) => {
+      let pos = base - 7, sum = 0;
+      for (let i = 0; i < base; i++) {
+        sum += parseInt(s[i], 10) * pos--;
+        if (pos < 2) pos = 9;
+      }
+      const r = sum % 11;
+      return (r < 2) ? 0 : 11 - r;
+    };
+    if (calc(12) !== parseInt(s[12], 10)) return false;
+    if (calc(13) !== parseInt(s[13], 10)) return false;
+    return true;
+  };
+
+  const isValidDocument = (doc: string): boolean => {
+    const s = onlyDigits(doc);
+    if (s.length === 11) return isValidCPF(s);
+    if (s.length === 14) return isValidCNPJ(s);
+    return false;
+  };
   // Apply coupon function
   const applyCoupon = async () => {
     if (!couponCode.trim() || selectedOrders.length === 0) return;
@@ -373,7 +414,7 @@ const Checkout = () => {
       const customerPayload = {
         phone: normalizedPhone,
         name: customerData.name,
-        cpf: customerData.cpf,
+        cpf: onlyDigits(customerData.cpf),
         street: addressData.street,
         number: addressData.number,
         complement: addressData.complement,
@@ -489,10 +530,11 @@ const Checkout = () => {
     }
 
     // Validate customer data
-    if (!customerData.name || !customerData.cpf) {
+    const doc = customerData.cpf;
+    if (!customerData.name || !isValidDocument(doc)) {
       toast({
         title: 'Dados do cliente incompletos',
-        description: 'Preencha o nome e CPF do cliente',
+        description: 'Informe nome e um documento válido (CPF 11 ou CNPJ 14 dígitos).',
         variant: 'destructive'
       });
       return;
@@ -917,9 +959,10 @@ const Checkout = () => {
                   onChange={(e) => setCustomerData(prev => ({ ...prev, name: e.target.value }))}
                 />
                 <Input
-                  placeholder="CPF"
+                  placeholder="CPF ou CNPJ"
+                  inputMode="numeric"
                   value={customerData.cpf}
-                  onChange={(e) => setCustomerData(prev => ({ ...prev, cpf: e.target.value }))}
+                  onChange={(e) => setCustomerData(prev => ({ ...prev, cpf: onlyDigits(e.target.value).slice(0,14) }))}
                 />
               </div>
               
