@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2 } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -30,6 +30,8 @@ interface Order {
   cart_id?: number;
   printed?: boolean;
   observation?: string;
+  item_added_message_sent?: boolean;
+  payment_confirmation_sent?: boolean;
   customer?: {
     name?: string;
     cpf?: string;
@@ -145,10 +147,21 @@ const Pedidos = () => {
     setProcessingIds(prev => new Set(prev).add(orderId));
     
     try {
+      // Se o pedido foi marcado como pago, enviar mensagem automática
+      let messageSent = false;
+      if (!currentStatus) {
+        messageSent = await sendPaidOrderMessage(orderId);
+      }
+
       // Update payment status in database
+      const updateData: any = { is_paid: !currentStatus };
+      if (messageSent) {
+        updateData.payment_confirmation_sent = true;
+      }
+
       const { error } = await supabase
         .from('orders')
-        .update({ is_paid: !currentStatus })
+        .update(updateData)
         .eq('id', orderId);
 
       if (error) throw error;
@@ -156,14 +169,9 @@ const Pedidos = () => {
       // Update local state
       setOrders(prev => prev.map(order => 
         order.id === orderId 
-          ? { ...order, is_paid: !currentStatus }
+          ? { ...order, is_paid: !currentStatus, payment_confirmation_sent: messageSent }
           : order
       ));
-
-      // Se o pedido foi marcado como pago, enviar mensagem automática
-      if (!currentStatus) {
-        await sendPaidOrderMessage(orderId);
-      }
 
       toast({
         title: 'Sucesso',
@@ -188,7 +196,9 @@ const Pedidos = () => {
   const sendPaidOrderMessage = async (orderId: number) => {
     try {
       const order = orders.find(o => o.id === orderId);
-      if (!order) return;
+      if (!order) return false;
+
+      const customerName = order.customer?.name || order.customer_phone;
 
       await supabase.functions.invoke('whatsapp-connection', {
         body: {
@@ -197,12 +207,25 @@ const Pedidos = () => {
             phone: order.customer_phone,
             orderId: order.id,
             totalAmount: order.total_amount,
-            customerName: order.customer_phone // Poderia ser melhorado com nome real
+            customerName: customerName
           }
         }
       });
+
+      toast({
+        title: 'Mensagem Enviada',
+        description: 'Confirmação de pagamento enviada via WhatsApp'
+      });
+
+      return true;
     } catch (error) {
       console.error('Error sending paid order message:', error);
+      toast({
+        title: 'Erro ao Enviar Mensagem',
+        description: 'Não foi possível enviar a confirmação via WhatsApp',
+        variant: 'destructive'
+      });
+      return false;
     }
   };
 
@@ -732,6 +755,7 @@ const Pedidos = () => {
                   <TableHead>Impresso?</TableHead>
                   <TableHead>Tipo Evento</TableHead>
                   <TableHead>Data Evento</TableHead>
+                  <TableHead>Mensagens</TableHead>
                   <TableHead>Observação</TableHead>
                   <TableHead>Ações</TableHead>
                 </TableRow>
@@ -739,13 +763,13 @@ const Pedidos = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : orders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                       Nenhum pedido encontrado
                     </TableCell>
                   </TableRow>
@@ -804,6 +828,22 @@ const Pedidos = () => {
                       </TableCell>
                       <TableCell>
                         {format(new Date(order.event_date), 'dd/MM/yyyy')}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {/* Indicador de mensagem de item adicionado */}
+                          <div className="flex items-center gap-1" title="Mensagem de item adicionado">
+                            <MessageCircle className="h-3 w-3" />
+                            {order.item_added_message_sent ? '✅' : '☑️'}
+                          </div>
+                          {/* Indicador de confirmação de pagamento */}
+                          {order.is_paid && (
+                            <div className="flex items-center gap-1" title="Confirmação de pagamento enviada">
+                              <Send className="h-3 w-3" />
+                              {order.payment_confirmation_sent ? '✅' : '☑️'}
+                            </div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">

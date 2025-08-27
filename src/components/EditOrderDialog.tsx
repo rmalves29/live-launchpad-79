@@ -194,6 +194,9 @@ useEffect(() => {
         if (error) throw error;
       }
 
+      // Enviar mensagem de item adicionado
+      await sendItemAddedMessage();
+
       // Reload cart items
       await loadCartItems(targetCartId);
       await updateOrderTotal(targetCartId);
@@ -205,7 +208,7 @@ useEffect(() => {
 
       toast({
         title: 'Sucesso',
-        description: 'Produto adicionado ao pedido'
+        description: 'Produto adicionado e mensagem enviada'
       });
     } catch (error) {
       console.error('Error adding product:', error);
@@ -220,7 +223,17 @@ useEffect(() => {
   };
 
   const removeItem = async (itemId: number) => {
+    const item = cartItems.find(i => i.id === itemId);
+    if (!item) return;
+
+    // Confirmar cancelamento
+    const productName = item.product?.name || 'produto';
+    if (!confirm(`Tem certeza que deseja cancelar ${productName}? Uma mensagem será enviada ao cliente.`)) {
+      return;
+    }
+
     try {
+      // Remover item do carrinho
       const { error } = await supabase
         .from('cart_items')
         .delete()
@@ -228,18 +241,21 @@ useEffect(() => {
 
       if (error) throw error;
 
+      // Enviar mensagem de cancelamento
+      await sendCancellationMessage(item);
+
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
 
       toast({
-        title: 'Sucesso',
-        description: 'Produto removido do pedido'
+        title: 'Produto Cancelado',
+        description: 'Produto removido e mensagem de cancelamento enviada'
       });
     } catch (error) {
       console.error('Error removing item:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao remover produto',
+        description: 'Erro ao cancelar produto',
         variant: 'destructive'
       });
     }
@@ -290,6 +306,54 @@ useEffect(() => {
       if (updateError) throw updateError;
     } catch (error) {
       console.error('Error updating order total:', error);
+    }
+  };
+
+  const sendItemAddedMessage = async () => {
+    if (!selectedProduct || !order) return;
+    
+    try {
+      await supabase.functions.invoke('whatsapp-connection', {
+        body: {
+          action: 'send_item_added',
+          data: {
+            phone: order.customer_phone,
+            customerName: 'Cliente',
+            productName: selectedProduct.name,
+            quantity: quantity,
+            price: unitPrice || selectedProduct.price
+          }
+        }
+      });
+
+      // Marcar que mensagem foi enviada
+      await supabase
+        .from('orders')
+        .update({ item_added_message_sent: true })
+        .eq('id', order.id);
+
+    } catch (error) {
+      console.error('Error sending item added message:', error);
+    }
+  };
+
+  const sendCancellationMessage = async (item: CartItem) => {
+    if (!order) return;
+    
+    try {
+      await supabase.functions.invoke('whatsapp-connection', {
+        body: {
+          action: 'send_cancellation',
+          data: {
+            phone: order.customer_phone,
+            customerName: 'Cliente',
+            productName: item.product?.name || 'Produto',
+            orderId: order.id
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error sending cancellation message:', error);
     }
   };
 

@@ -419,7 +419,9 @@ export type Database = {
           event_type: string
           id: number
           is_paid: boolean
+          item_added_message_sent: boolean | null
           observation: string | null
+          payment_confirmation_sent: boolean | null
           payment_link: string | null
           printed: boolean | null
           total_amount: number
@@ -432,7 +434,9 @@ export type Database = {
           event_type: string
           id?: number
           is_paid?: boolean
+          item_added_message_sent?: boolean | null
           observation?: string | null
+          payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
           total_amount: number
@@ -445,7 +449,9 @@ export type Database = {
           event_type?: string
           id?: number
           is_paid?: boolean
+          item_added_message_sent?: boolean | null
           observation?: string | null
+          payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
           total_amount?: number
