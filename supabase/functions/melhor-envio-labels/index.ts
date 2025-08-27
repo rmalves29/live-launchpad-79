@@ -299,6 +299,34 @@ serve(async (req) => {
         );
       }
 
+      // Debug logs para comparar remetente e destinatário
+      console.log('[DEBUG] FROM entity:', {
+        address: fromEntity.address,
+        number: fromEntity.number,
+        postal_code: fromEntity.postal_code,
+        city: fromEntity.city
+      });
+      console.log('[DEBUG] TO entity:', {
+        address: toEntity.address,
+        number: toEntity.number,
+        postal_code: toEntity.postal_code,
+        city: toEntity.city
+      });
+
+      // Verificação se remetente e destinatário são iguais
+      const sameAddress = (
+        fromEntity.address === toEntity.address &&
+        fromEntity.number === toEntity.number &&
+        fromEntity.postal_code === toEntity.postal_code &&
+        fromEntity.city === toEntity.city
+      );
+
+      if (sameAddress) {
+        // Se os endereços são iguais, modificar o complemento do destinatário para diferenciá-los
+        toEntity.complement = (toEntity.complement || '') + ' - DESTINATARIO';
+        console.log('[DEBUG] Endereços iguais detectados, adicionado diferenciador no complemento do destinatário');
+      }
+
 // Create cart payload following Melhor Envio documentation
       const cartPayload = {
         service: freight.raw_response?.service_id || 1,
