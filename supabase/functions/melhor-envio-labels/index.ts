@@ -236,14 +236,8 @@ serve(async (req) => {
       fromEntity.phone = onlyDigits(fromEntity.phone);
       fromEntity.postal_code = onlyDigits(fromEntity.postal_code);
 
-      try {
-        setDocumentFields(fromEntity, configData.remetente_documento);
-      } catch (e) {
-        return new Response(
-          JSON.stringify({ error: 'Documento do remetente inválido', field: 'from', details: (e as Error).message }),
-          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      // Log raw sender document from DB (avoid early validation here)
+      console.log('[DEBUG] remetente_documento (raw do DB):', configData.remetente_documento);
 
       const rawToDoc = (customerData?.cpf ?? (customerData as any)?.cnpj ?? (customerData as any)?.document ?? null);
       if (!rawToDoc) {
