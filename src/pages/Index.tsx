@@ -2,7 +2,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { ShoppingCart, Package, List, Dice6, Settings, Plus } from 'lucide-react';
-import Navbar from '@/components/Navbar';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -54,8 +53,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      
       <main className="container mx-auto py-8 max-w-6xl">
         <div className="text-center mb-8">
           <h2 className="text-4xl font-bold mb-4">Sistema de Vendas</h2>

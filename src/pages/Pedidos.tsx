@@ -14,7 +14,6 @@ import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText,
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import Navbar from '@/components/Navbar';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 
@@ -760,7 +759,6 @@ for (const phone of uniquePhones) {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
       <div className="p-6">
         <div className="container mx-auto space-y-6">
           <div className="flex justify-between items-center">

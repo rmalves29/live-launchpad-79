@@ -10,7 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Search, RefreshCw, Edit, Trash2, Plus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import Navbar from '@/components/Navbar';
 import { sendItemAddedMessage as sendItemAdded } from '@/lib/whatsapp';
 
 interface Product {
@@ -458,7 +457,6 @@ const PedidosManual = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
       <div className="p-6">
         <div className="container mx-auto space-y-6">
           <div className="flex justify-between items-center">
