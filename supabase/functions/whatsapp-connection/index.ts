@@ -369,29 +369,52 @@ function extractOrderFromMessage(message: string): any {
 }
 
 async function sendBroadcastMessage(data: any, supabase: any) {
-  const { phone, message, customerName } = data;
+  const { phone, message } = data;
   
   console.log(`Sending broadcast message to ${phone}:`, message);
 
   try {
-    // Try to send via configured API URL first
-    const apiUrl = Deno.env.get('WHATSAPP_API_URL');
-    if (apiUrl) {
-      const response = await fetch(`${apiUrl}/send-message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          number: phone,
-          message: message
-        }),
-      });
+    const baseUrl = (Deno.env.get('WHATSAPP_API_URL') || '').trim().replace(/\/$/, '');
+    if (!baseUrl) {
+      console.warn('WHATSAPP_API_URL não configurada; pulando envio via API e registrando apenas no banco.');
+    } else {
+      const attempts = [
+        { path: '/send-message', body: { number: phone, message } },
+        { path: '/send-message', body: { to: phone, message } },
+        { path: '/send', body: { to: phone, message } },
+        { path: '/send', body: { number: phone, message } },
+      ];
 
-      if (response.ok) {
-        console.log(`Broadcast message sent successfully to ${phone}`);
-      } else {
-        console.log(`Failed to send broadcast message to ${phone} via API`);
+      let sent = false;
+      let lastStatus = 0;
+      let lastText = '';
+
+      for (const a of attempts) {
+        try {
+          const resp = await fetch(`${baseUrl}${a.path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(a.body),
+          });
+
+          lastStatus = resp.status;
+          try { lastText = await resp.text(); } catch (_) { lastText = ''; }
+
+          if (resp.ok) {
+            console.log(`Broadcast message sent successfully to ${phone} via ${a.path}`);
+            sent = true;
+            break;
+          } else {
+            console.warn(`Tentativa falhou (${a.path}): ${resp.status} ${lastText}`);
+            if (resp.status === 404) continue;
+          }
+        } catch (err) {
+          console.warn(`Erro ao tentar ${a.path}:`, err);
+        }
+      }
+
+      if (!sent) {
+        console.warn(`Falha ao enviar mensagem de broadcast; última resposta: ${lastStatus} ${lastText}`);
       }
     }
   } catch (error) {

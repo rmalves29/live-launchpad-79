@@ -70,6 +70,11 @@ const Pedidos = () => {
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [viewOrderOpen, setViewOrderOpen] = useState(false);
 
+  // Filtros específicos para Mensagem em Massa
+  const [broadcastPaid, setBroadcastPaid] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [broadcastDateMode, setBroadcastDateMode] = useState<'all' | 'specific'>('all');
+  const [broadcastDate, setBroadcastDate] = useState<Date | undefined>(undefined);
+
   const loadOrders = async () => {
     try {
       setLoading(true);
@@ -573,21 +578,46 @@ const Pedidos = () => {
   };
 
   const sendBroadcastMessage = async () => {
-    if (orders.length === 0) {
-      toast({
-        title: 'Aviso',
-        description: 'Nenhum pedido encontrado com os filtros atuais',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    if (!confirm(`Tem certeza que deseja enviar mensagem em massa para ${orders.length} cliente(s) dos pedidos filtrados?`)) {
-      return;
-    }
-
     try {
       setLoading(true);
+
+      // Montar consulta independente para o envio em massa (status + data)
+      let query = supabase
+        .from('orders')
+        .select('id, customer_phone, is_paid, event_date');
+
+      if (broadcastPaid === 'paid') {
+        query = query.eq('is_paid', true);
+      } else if (broadcastPaid === 'unpaid') {
+        query = query.eq('is_paid', false);
+      }
+
+      if (broadcastDateMode === 'specific') {
+        if (!broadcastDate) {
+          toast({
+            title: 'Aviso',
+            description: 'Selecione uma data para enviar as mensagens',
+            variant: 'destructive'
+          });
+          setLoading(false);
+          return;
+        }
+        const dateStr = format(broadcastDate, 'yyyy-MM-dd');
+        query = query.eq('event_date', dateStr);
+      }
+
+      const { data: ordersToSend, error: ordersError } = await query;
+      if (ordersError) throw ordersError;
+
+      if (!ordersToSend || ordersToSend.length === 0) {
+        toast({
+          title: 'Aviso',
+          description: 'Nenhum pedido encontrado com os filtros de mensagem',
+          variant: 'destructive'
+        });
+        setLoading(false);
+        return;
+      }
 
       // Buscar template BROADCAST
       const { data: template, error: templateError } = await supabase
@@ -596,35 +626,39 @@ const Pedidos = () => {
         .eq('type', 'BROADCAST')
         .single();
 
-      if (templateError) {
+      if (templateError || !template) {
         throw new Error('Template BROADCAST não encontrado');
       }
 
-      // Extrair telefones únicos dos pedidos filtrados
-      const uniquePhones = Array.from(new Set(orders.map(order => order.customer_phone)));
-      
+      const uniquePhones = Array.from(new Set((ordersToSend || []).map(o => o.customer_phone)));
+
+      if (uniquePhones.length === 0) {
+        toast({
+          title: 'Aviso',
+          description: 'Nenhum telefone encontrado para envio',
+          variant: 'destructive'
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (!confirm(`Tem certeza que deseja enviar mensagem em massa para ${uniquePhones.length} cliente(s)?`)) {
+        setLoading(false);
+        return;
+      }
+
       let successCount = 0;
       let errorCount = 0;
 
-      // Enviar mensagem para cada cliente único
       for (const phone of uniquePhones) {
         try {
-          // Buscar nome do cliente se disponível
-          const order = orders.find(o => o.customer_phone === phone);
-          const customerName = order?.customer?.name || 'Cliente';
-
-          // Personalizar template
+          const customerName = orders.find(o => o.customer_phone === phone)?.customer?.name || 'Cliente';
           const personalizedMessage = template.content.replace('{{nome_cliente}}', customerName);
 
-          // Enviar via edge function
           await supabase.functions.invoke('whatsapp-connection', {
             body: {
               action: 'send_broadcast',
-              data: {
-                phone: phone,
-                message: personalizedMessage,
-                customerName: customerName
-              }
+              data: { phone, message: personalizedMessage, customerName }
             }
           });
 
@@ -636,8 +670,8 @@ const Pedidos = () => {
       }
 
       toast({
-        title: 'Mensagem em Massa Enviada',
-        description: `${successCount} mensagem(s) enviada(s) com sucesso. ${errorCount > 0 ? `${errorCount} erro(s).` : ''}`,
+        title: 'Mensagem em Massa Concluída',
+        description: `${successCount} mensagem(s) enviada(s). ${errorCount > 0 ? `${errorCount} erro(s).` : ''}`,
         variant: successCount > 0 ? 'default' : 'destructive'
       });
 
@@ -811,6 +845,82 @@ const Pedidos = () => {
               <label className="text-sm font-medium invisible">Ações</label>
               <Button onClick={clearFilters} variant="outline" className="w-full">
                 Limpar Filtros
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <MessageCircle className="h-5 w-5 mr-2" />
+            Envio em Massa
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Status dos pedidos</label>
+              <Select value={broadcastPaid} onValueChange={(v) => setBroadcastPaid(v as 'all' | 'paid' | 'unpaid')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="paid">Pagos</SelectItem>
+                  <SelectItem value="unpaid">Não pagos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Data do pedido</label>
+              <Select value={broadcastDateMode} onValueChange={(v) => setBroadcastDateMode(v as 'all' | 'specific')}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as datas</SelectItem>
+                  <SelectItem value="specific">Apenas nesta data</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {broadcastDateMode === 'specific' && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Selecionar data</label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !broadcastDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {broadcastDate ? format(broadcastDate, "PPP", { locale: ptBR }) : "Selecionar data"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={broadcastDate}
+                      onSelect={setBroadcastDate}
+                      initialFocus
+                      className="pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium invisible">Enviar</label>
+              <Button onClick={sendBroadcastMessage} variant="default" disabled={loading}>
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Enviar Mensagem em Massa
               </Button>
             </div>
           </div>
