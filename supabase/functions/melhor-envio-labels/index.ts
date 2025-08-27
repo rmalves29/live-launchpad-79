@@ -190,13 +190,26 @@ serve(async (req) => {
         );
       }
 
-      // Get customer details (you might need to adapt this based on your customer data structure)
-      const { data: customerData, error: customerError } = await supabase
+      // 1) Normaliza telefone recebido
+      const phoneDigits = onlyDigits(customer_phone);
+
+      // 2) Busca cliente tentando variações
+      let { data: customerData } = await supabase
         .from('customers')
         .select('*')
-        .eq('phone', customer_phone)
+        .or(`phone.eq.${customer_phone},phone.eq.${phoneDigits},phone.ilike.%${phoneDigits}%`)
         .limit(1)
-        .single();
+        .maybeSingle();
+
+      // Fallbacks de busca por ID/email do pedido, se existir
+      if (!customerData && orderData?.customer_id) {
+        const { data } = await supabase.from('customers').select('*').eq('id', orderData.customer_id).maybeSingle();
+        customerData = data || customerData;
+      }
+      if (!customerData && orderData?.customer_email) {
+        const { data } = await supabase.from('customers').select('*').eq('email', orderData.customer_email).maybeSingle();
+        customerData = data || customerData;
+      }
 
       // Get freight quotation or use default values
       const { data: cotacaoData } = await supabase
@@ -264,34 +277,61 @@ serve(async (req) => {
         );
       }
 
-      const rawToDoc = (customerData?.cpf ?? (customerData as any)?.cnpj ?? (customerData as any)?.document ?? null);
+      // 3) Coleta candidatos de documento (cliente e pedido)
+      const docCandidatesRaw = [
+        customerData?.cpf,
+        customerData?.cnpj,
+        (customerData as any)?.cpf_cnpj,
+        (customerData as any)?.document,
+        (customerData as any)?.tax_id,
+        (customerData as any)?.doc,
+        orderData?.cpf,
+        orderData?.cnpj,
+        (orderData as any)?.cpf_cnpj,
+        (orderData as any)?.customer_tax_id,
+        (orderData as any)?.tax_id,
+        (orderData as any)?.destinatario_documento
+      ];
+
+      console.log('[DEBUG] docCandidatesRaw:', docCandidatesRaw);
+
+      const rawToDoc =
+        docCandidatesRaw
+          .map(v => onlyDigits(v || ''))
+          .find(d => d.length === 11 || d.length === 14) || null;
+
+      console.log('[DEBUG] chosen recipient doc:', rawToDoc);
+
+      // 4) Monta o destinatário e aplica o documento
+      const toEntity: any = {
+        name: customerData?.name || orderData?.customer_name || "Cliente",
+        phone: phoneDigits,
+        email: (customerData as any)?.email || orderData?.customer_email || "cliente@email.com",
+        address: customerData?.street || (orderData as any)?.shipping_street || "Rua do Cliente",
+        number: customerData?.number || (orderData as any)?.shipping_number || "123",
+        complement: customerData?.complement || (orderData as any)?.shipping_complement || "",
+        district: (customerData as any)?.neighborhood || (orderData as any)?.shipping_district || "Centro",
+        city: customerData?.city || (orderData as any)?.shipping_city || "São Paulo",
+        state_abbr: customerData?.state || (orderData as any)?.shipping_state || "SP",
+        country_id: "BR",
+        postal_code: onlyDigits(
+          (orderData as any)?.shipping_zip || customerData?.cep || customerData?.zip || '01000000'
+        )
+      };
+
       if (!rawToDoc) {
         return new Response(
-          JSON.stringify({ error: 'Documento do destinatário ausente', field: 'to' }),
+          JSON.stringify({
+            error: 'Documento do destinatário ausente',
+            field: 'to',
+            details: 'Inclua CPF (11) ou CNPJ (14) no cadastro do cliente ou no pedido.'
+          }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const toEntity: any = {
-        name: customerData?.name || "Cliente",
-        phone: customer_phone,
-        email: (customerData as any)?.email || "cliente@email.com",
-        address: customerData?.street || "Rua do Cliente",
-        number: customerData?.number || "123",
-        complement: customerData?.complement || "",
-        district: (customerData as any)?.neighborhood || "Centro",
-        city: customerData?.city || "São Paulo",
-        state_abbr: customerData?.state || "SP",
-        country_id: "BR",
-        postal_code: freight.cep_destino || customerData?.cep || "01000000"
-      };
-
-      // Sanitize recipient critical fields
-      toEntity.phone = onlyDigits(toEntity.phone);
-      toEntity.postal_code = onlyDigits(toEntity.postal_code);
-
       try {
-        setDocumentFields(toEntity, rawToDoc);
+        setDocumentFields(toEntity, rawToDoc); // usa teu validador e seta document/company_document
       } catch (e) {
         return new Response(
           JSON.stringify({ error: 'Documento do destinatário inválido', field: 'to', details: (e as Error).message }),
