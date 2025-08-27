@@ -650,24 +650,58 @@ const Pedidos = () => {
       let successCount = 0;
       let errorCount = 0;
 
-      for (const phone of uniquePhones) {
-        try {
-          const customerName = orders.find(o => o.customer_phone === phone)?.customer?.name || 'Cliente';
-          const personalizedMessage = template.content.replace('{{nome_cliente}}', customerName);
+for (const phone of uniquePhones) {
+  try {
+    const customerName = orders.find(o => o.customer_phone === phone)?.customer?.name || 'Cliente';
+    const personalizedMessage = template.content.replace('{{nome_cliente}}', customerName);
 
-          await supabase.functions.invoke('whatsapp-connection', {
-            body: {
-              action: 'send_broadcast',
-              data: { phone, message: personalizedMessage, customerName }
-            }
-          });
+    // Envia diretamente para o servidor WhatsApp (Node)
+    const getBaseUrl = () => {
+      const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
+      const base = (fromStorage || 'http://localhost:3000').trim();
+      return base.replace(/\/$/, '');
+    };
 
-          successCount++;
-        } catch (error) {
-          console.error(`Erro ao enviar para ${phone}:`, error);
-          errorCount++;
-        }
-      }
+    const baseUrl = getBaseUrl();
+    const attempts = [
+      { path: '/send-message', body: { number: phone, message: personalizedMessage } },
+      { path: '/send-message', body: { to: phone, message: personalizedMessage } },
+      { path: '/send', body: { to: phone, message: personalizedMessage } },
+      { path: '/send', body: { number: phone, message: personalizedMessage } },
+    ] as const;
+
+    let sent = false;
+    for (const a of attempts) {
+      try {
+        const resp = await fetch(`${baseUrl}${a.path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(a.body),
+        });
+        if (resp.ok) { sent = true; break; }
+        if (resp.status === 404) continue;
+      } catch (_) {}
+    }
+
+    // Registrar no banco independente do sucesso
+    await supabase.from('whatsapp_messages').insert({
+      phone,
+      message: personalizedMessage,
+      type: 'broadcast',
+      sent_at: new Date().toISOString(),
+    });
+
+    if (!sent) {
+      console.warn(`Falha ao enviar via WhatsApp API para ${phone}. Verifique o servidor.`);
+      errorCount++;
+    } else {
+      successCount++;
+    }
+  } catch (error) {
+    console.error(`Erro ao enviar para ${phone}:`, error);
+    errorCount++;
+  }
+}
 
       toast({
         title: 'Mensagem em Massa Concluída',
