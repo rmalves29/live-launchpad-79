@@ -22,6 +22,20 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(fileUpload()); // para upload opcional de imagem
 
+// Logger simples com timestamp
+const log = (...args) => console.log(new Date().toISOString(), '-', ...args);
+
+// Log básico de requisições (sem vazar o texto completo da mensagem)
+app.use((req, _res, next) => {
+  if (req.method !== 'GET') {
+    const body = req.body || {};
+    const msgLen = (body?.message || '').length;
+    const to = body?.to || body?.number || '(sem-destinatario)';
+    log(`[REQ] ${req.method} ${req.url}`, { state: connState, to, msgLen });
+  }
+  next();
+});
+
 // ===================== Estado simples =====================
 let connState = 'starting';
 let myNumber = null; // ex.: "5531999999999"
@@ -111,24 +125,40 @@ client.initialize().catch((e) => {
 
 // ===================== Helpers =====================
 function toWhatsId(raw) {
-  // Mantém apenas dígitos
-  const digits = String(raw || '').replace(/\D/g, '');
-  if (!digits) throw new Error('Número inválido');
-
-  // Se já começa com o DDI, mantém; caso contrário, prefixa com COUNTRY_CODE
+  const input = String(raw || '');
+  const digits = input.replace(/\D/g, '');
+  if (!digits) {
+    console.error('toWhatsId: número inválido recebido:', raw);
+    throw new Error('Número inválido');
+  }
   const withCountry = digits.startsWith(COUNTRY_CODE) ? digits : COUNTRY_CODE + digits;
-  return `${withCountry}@c.us`;
+  const chatId = `${withCountry}@c.us`;
+  log('[NUM] normalização', { raw, digits, withCountry, chatId });
+  return chatId;
 }
 
 async function sendTextOrImage({ to, message, imageTempPath }) {
-  const chatId = toWhatsId(to);
-  if (imageTempPath) {
-    const media = MessageMedia.fromFilePath(imageTempPath);
-    const sent = await client.sendMessage(chatId, media, { caption: message || '' });
-    return sent?.id?._serialized || null;
+  try {
+    const chatId = toWhatsId(to);
+    const msgLen = (message || '').length;
+    log('[SEND] preparando envio', { to, chatId, hasImage: !!imageTempPath, msgLen });
+
+    if (imageTempPath) {
+      const media = MessageMedia.fromFilePath(imageTempPath);
+      const sent = await client.sendMessage(chatId, media, { caption: message || '' });
+      const id = sent?.id?._serialized || null;
+      log('[SEND] imagem enviada', { chatId, id });
+      return id;
+    }
+
+    const sent = await client.sendMessage(chatId, message || '');
+    const id = sent?.id?._serialized || null;
+    log('[SEND] texto enviado', { chatId, id });
+    return id;
+  } catch (e) {
+    console.error('[SEND] erro no envio:', e.stack || e.message);
+    throw e;
   }
-  const sent = await client.sendMessage(chatId, message || '');
-  return sent?.id?._serialized || null;
 }
 
 // ===================== Rotas HTTP =====================
@@ -147,10 +177,25 @@ app.get('/messages', (req, res) => {
 app.post('/send', async (req, res) => {
   try {
     const isConnected = ['ready', 'connected', 'connected\n'].includes(connState);
-    if (!isConnected) return res.status(409).json({ ok: false, error: `Instância não conectada (${connState})` });
+    if (!isConnected) {
+      log('❌ /send: instância não conectada', connState);
+      return res.status(409).json({ ok: false, error: `Instância não conectada (${connState})` });
+    }
 
-    const { to, message } = req.body.to ? req.body : JSON.parse(req.body.data || '{}');
-    if (!to) return res.status(400).json({ ok: false, error: 'Campo "to" é obrigatório' });
+    let payload = {};
+    try {
+      payload = req.body?.to ? req.body : JSON.parse(req.body?.data || '{}');
+    } catch (err) {
+      console.warn('⚠️ /send: erro ao parsear body.data:', err?.message);
+      payload = req.body || {};
+    }
+
+    const toRaw = payload.to || payload.number;
+    const message = payload.message || '';
+    if (!toRaw) return res.status(400).json({ ok: false, error: 'Campo "to" ou "number" é obrigatório' });
+
+    const msgLen = message.length;
+    log('[SEND] recebida', { toRaw, msgLen, state: connState });
 
     let tempPath = null;
     if (req.files?.image) {
@@ -161,13 +206,14 @@ app.post('/send', async (req, res) => {
       await file.mv(tempPath);
     }
 
-    const id = await sendTextOrImage({ to, message, imageTempPath: tempPath });
+    const id = await sendTextOrImage({ to: toRaw, message, imageTempPath: tempPath });
 
     if (tempPath && fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    log('[SEND] sucesso', { id });
     return res.json({ ok: true, id });
   } catch (e) {
-    console.error('Erro /send:', e.message);
-    return res.status(500).json({ ok: false, error: e.message });
+    console.error('Erro /send:', e.stack || e.message);
+    return res.status(500).json({ ok: false, error: e.message, stack: e.stack });
   }
 });
 
@@ -176,27 +222,26 @@ app.post('/send-message', async (req, res) => {
   try {
     const isConnected = ['ready', 'connected', 'connected\n'].includes(connState);
     if (!isConnected) {
-      console.log(`❌ Instância não conectada (${connState})`);
+      log(`❌ Instância não conectada (${connState})`);
       return res.status(409).json({ 
         success: false, 
         error: `Instância não conectada (${connState})` 
       });
     }
 
-    const { to, message } = req.body;
-    if (!to || !message) {
+    const { to, number, message } = req.body || {};
+    const toRaw = to || number;
+    if (!toRaw || !message) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Campos "to" e "message" são obrigatórios' 
+        error: 'Campos "to"/"number" e "message" são obrigatórios' 
       });
     }
 
-    console.log(`📤 Enviando mensagem para ${to}:`, message.substring(0, 100) + '...');
-    
-    const id = await sendTextOrImage({ to, message });
-    
-    console.log(`✅ Mensagem enviada com sucesso. ID: ${id}`);
-    
+    const msgLen = (message || '').length;
+    log('📤 /send-message', { toRaw, msgLen, state: connState });
+    const id = await sendTextOrImage({ to: toRaw, message });
+    log('✅ /send-message OK', { id });
     return res.json({ 
       success: true, 
       message: 'Mensagem enviada com sucesso',
@@ -204,10 +249,11 @@ app.post('/send-message', async (req, res) => {
     });
     
   } catch (e) {
-    console.error('❌ Erro /send-message:', e.message);
+    console.error('❌ Erro /send-message:', e.stack || e.message);
     return res.status(500).json({ 
       success: false, 
-      error: e.message 
+      error: e.message,
+      stack: e.stack 
     });
   }
 });
