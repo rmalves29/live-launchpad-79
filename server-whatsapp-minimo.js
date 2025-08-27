@@ -41,6 +41,21 @@ let connState = 'starting';
 let myNumber = null; // ex.: "5531999999999"
 const receivedMessages = []; // armazena últimas N mensagens recebidas
 const MAX_MESSAGES = 500;
+let reinitScheduled = false;
+
+async function scheduleReinit(reason = 'unknown') {
+  if (reinitScheduled) return;
+  reinitScheduled = true;
+  log('🔄 Reinicializando WhatsApp (motivo):', reason);
+  connState = 'restarting';
+  try { await client.destroy(); } catch (_) {}
+  setTimeout(() => {
+    client.initialize().catch((e) => {
+      connState = 'init_error';
+      console.error('Erro ao inicializar WhatsApp (retry):', e.message);
+    }).finally(() => { reinitScheduled = false; });
+  }, 1500);
+}
 
 // ===================== Cliente WhatsApp =====================
 const client = new Client({
@@ -75,6 +90,7 @@ client.on('authenticated', () => {
 client.on('auth_failure', (msg) => {
   connState = 'auth_failure';
   console.error('❌ Falha de autenticação:', msg);
+  scheduleReinit('auth_failure');
 });
 
 client.on('ready', () => {
@@ -115,6 +131,7 @@ client.on('message', async (msg) => {
 client.on('disconnected', (reason) => {
   connState = 'disconnected';
   console.log('💀 Desconectado:', reason);
+  scheduleReinit(`disconnected: ${reason}`);
 });
 
 // Inicializa
@@ -156,7 +173,11 @@ async function sendTextOrImage({ to, message, imageTempPath }) {
     log('[SEND] texto enviado', { chatId, id });
     return id;
   } catch (e) {
-    console.error('[SEND] erro no envio:', e.stack || e.message);
+    const msg = String(e?.message || e);
+    console.error('[SEND] erro no envio:', e.stack || msg);
+    if (/Session closed|Target closed|Protocol error/i.test(msg)) {
+      scheduleReinit(msg);
+    }
     throw e;
   }
 }
@@ -256,6 +277,12 @@ app.post('/send-message', async (req, res) => {
       stack: e.stack 
     });
   }
+});
+
+// Reiniciar manualmente a instância
+app.post('/restart', async (_req, res) => {
+  await scheduleReinit('manual');
+  res.json({ ok: true, state: connState });
 });
 
 // ===================== Start HTTP =====================
