@@ -76,20 +76,27 @@ function setSenderDocument(fromObj: any, rawDoc: any, mode: string = 'AUTO') {
 }
 
 function assertSenderDocument(fromObj: any) {
-  const raw = (fromObj as any).company_document ?? (fromObj as any).document ?? '';
-  const digits = onlyDigits(raw);
-  logBytes('FROM_DOC_ASSERT', raw);
-  if ((fromObj as any).company_document) {
-    if (!isValidCNPJ(digits)) throw new Error('from.company_document inválido (CNPJ DV)');
-    (fromObj as any).company_document = String(digits);
+  const cpf  = onlyDigits((fromObj as any).document);
+  const cnpj = onlyDigits((fromObj as any).company_document);
+
+  console.log('[DEBUG] FROM.doc raw => document:', (fromObj as any).document,
+              ' | company_document:', (fromObj as any).company_document);
+  console.log('[DEBUG] FROM.doc sanitized => cpf:', cpf, 'len=', cpf.length,
+              ' | cnpj:', cnpj, 'len=', cnpj.length);
+
+  if (cnpj) {
+    if (!isValidCNPJ(cnpj)) throw new Error('CNPJ inválido');
     delete (fromObj as any).document;
-  } else if ((fromObj as any).document) {
-    if (!isValidCPF(digits)) throw new Error('from.document inválido (CPF DV)');
-    (fromObj as any).document = String(digits);
-    delete (fromObj as any).company_document;
-  } else {
-    throw new Error('Remetente sem documento');
+    (fromObj as any).company_document = cnpj;
+    return;
   }
+  if (cpf) {
+    if (!isValidCPF(cpf)) throw new Error('CPF inválido');
+    delete (fromObj as any).company_document;
+    (fromObj as any).document = cpf;
+    return;
+  }
+  throw new Error('Documento do remetente ausente');
 }
 
 // Existing helper: set CPF ou CNPJ conforme o tamanho
@@ -236,8 +243,26 @@ serve(async (req) => {
       fromEntity.phone = onlyDigits(fromEntity.phone);
       fromEntity.postal_code = onlyDigits(fromEntity.postal_code);
 
-      // Log raw sender document from DB (avoid early validation here)
-      console.log('[DEBUG] remetente_documento (raw do DB):', configData.remetente_documento);
+      // Additional diagnostics for sender document
+      console.log('[DEBUG] remetente_documento RAW:', configData.remetente_documento);
+      const senderDigits = onlyDigits(configData.remetente_documento || '');
+      console.log('[DEBUG] remetente_documento DIGITS:', senderDigits);
+
+      // Simple guard: ensure 11 or 14 digits and prefill fromEntity
+      if (senderDigits.length === 14) {
+        fromEntity.company_document = senderDigits; // PJ
+      } else if (senderDigits.length === 11) {
+        fromEntity.document = senderDigits; // PF
+      } else {
+        return new Response(
+          JSON.stringify({
+            error: 'Documento do remetente inválido',
+            field: 'from',
+            details: 'Documento deve ter 11 (CPF) ou 14 (CNPJ) dígitos'
+          }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       const rawToDoc = (customerData?.cpf ?? (customerData as any)?.cnpj ?? (customerData as any)?.document ?? null);
       if (!rawToDoc) {
