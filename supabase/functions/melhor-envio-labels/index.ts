@@ -211,7 +211,22 @@ serve(async (req) => {
         customerData = data || customerData;
       }
 
-      // Get freight quotation or use default values
+      // Get app settings for default dimensions and weight
+      const { data: appSettings } = await supabase
+        .from('app_settings')
+        .select('*')
+        .single();
+
+      // Prepare package dimensions and weight
+      const packageData = {
+        peso: appSettings?.default_weight_kg || 0.3,
+        altura: appSettings?.default_height_cm || 2,
+        largura: appSettings?.default_width_cm || 16,
+        comprimento: appSettings?.default_length_cm || 20,
+        valor_declarado: orderData.total_amount
+      };
+
+      // Check if there's a saved quotation for this order
       const { data: cotacaoData } = await supabase
         .from('frete_cotacoes')
         .select('*')
@@ -220,27 +235,18 @@ serve(async (req) => {
         .limit(1)
         .single();
 
-      // Get app settings for default dimensions and weight
-      const { data: appSettings } = await supabase
-        .from('app_settings')
-        .select('*')
-        .single();
+      if (cotacaoData) {
+        packageData.peso = cotacaoData.peso;
+        packageData.altura = cotacaoData.altura;
+        packageData.largura = cotacaoData.largura;
+        packageData.comprimento = cotacaoData.comprimento;
+        packageData.valor_declarado = cotacaoData.valor_declarado;
+      }
 
-      // Use cotacao data if available, otherwise use app settings defaults
-      const freight = cotacaoData || {
-        cep_destino: customerData?.cep || '01000000',
-        peso: appSettings?.default_weight_kg || 0.3,
-        altura: appSettings?.default_height_cm || 2,
-        largura: appSettings?.default_width_cm || 16,
-        comprimento: appSettings?.default_length_cm || 20,
-        valor_declarado: orderData.total_amount,
-        raw_response: { service_id: 1 } // Default PAC service
-      };
-
-      // Monta e valida documentos do remetente e destinatário
+      // Prepare sender and recipient entities
       const fromEntity: any = {
         name: configData.remetente_nome || "Remetente",
-        phone: configData.remetente_telefone || "1199999999",
+        phone: onlyDigits(configData.remetente_telefone || '1199999999'),
         email: configData.remetente_email || "contato@empresa.com",
         address: configData.remetente_endereco_rua || "Rua do Remetente",
         number: configData.remetente_endereco_numero || "123",
@@ -249,23 +255,18 @@ serve(async (req) => {
         city: configData.remetente_cidade || "Belo Horizonte",
         state_abbr: configData.remetente_uf || "MG",
         country_id: "BR",
-        postal_code: configData.cep_origem || "31575060"
+        postal_code: onlyDigits(configData.cep_origem || '31575060')
       };
 
-      // Sanitize sender critical fields
-      fromEntity.phone = onlyDigits(fromEntity.phone);
-      fromEntity.postal_code = onlyDigits(fromEntity.postal_code);
-
-      // Additional diagnostics for sender document
+      // Validate and set sender document
       console.log('[DEBUG] remetente_documento RAW:', configData.remetente_documento);
       const senderDigits = onlyDigits(configData.remetente_documento || '');
       console.log('[DEBUG] remetente_documento DIGITS:', senderDigits);
 
-      // Simple guard: ensure 11 or 14 digits and prefill fromEntity
       if (senderDigits.length === 14) {
-        fromEntity.company_document = senderDigits; // PJ
+        fromEntity.company_document = senderDigits;
       } else if (senderDigits.length === 11) {
-        fromEntity.document = senderDigits; // PF
+        fromEntity.document = senderDigits;
       } else {
         return new Response(
           JSON.stringify({
@@ -277,7 +278,7 @@ serve(async (req) => {
         );
       }
 
-      // 3) Coleta candidatos de documento (cliente e pedido)
+      // Get recipient document candidates
       const docCandidatesRaw = [
         customerData?.cpf,
         customerData?.cnpj,
@@ -293,16 +294,24 @@ serve(async (req) => {
         (orderData as any)?.destinatario_documento
       ];
 
-      console.log('[DEBUG] docCandidatesRaw:', docCandidatesRaw);
-
-      const rawToDoc =
-        docCandidatesRaw
-          .map(v => onlyDigits(v || ''))
-          .find(d => d.length === 11 || d.length === 14) || null;
+      const rawToDoc = docCandidatesRaw
+        .map(v => onlyDigits(v || ''))
+        .find(d => d.length === 11 || d.length === 14) || null;
 
       console.log('[DEBUG] chosen recipient doc:', rawToDoc);
 
-      // 4) Monta o destinatário e aplica o documento
+      if (!rawToDoc) {
+        return new Response(
+          JSON.stringify({
+            error: 'Documento do destinatário ausente',
+            field: 'to',
+            details: 'Inclua CPF (11) ou CNPJ (14) no cadastro do cliente ou no pedido.'
+          }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Prepare recipient entity
       const toEntity: any = {
         name: customerData?.name || orderData?.customer_name || "Cliente",
         phone: phoneDigits,
@@ -319,41 +328,21 @@ serve(async (req) => {
         )
       };
 
-      if (!rawToDoc) {
+      // Set recipient document
+      try {
+        setDocumentFields(toEntity, rawToDoc);
+      } catch (e) {
         return new Response(
-          JSON.stringify({
-            error: 'Documento do destinatário ausente',
-            field: 'to',
-            details: 'Inclua CPF (11) ou CNPJ (14) no cadastro do cliente ou no pedido.'
+          JSON.stringify({ 
+            error: 'Documento do destinatário inválido', 
+            field: 'to', 
+            details: (e as Error).message 
           }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      try {
-        setDocumentFields(toEntity, rawToDoc); // usa teu validador e seta document/company_document
-      } catch (e) {
-        return new Response(
-          JSON.stringify({ error: 'Documento do destinatário inválido', field: 'to', details: (e as Error).message }),
-          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Debug logs para comparar remetente e destinatário
-      console.log('[DEBUG] FROM entity:', {
-        address: fromEntity.address,
-        number: fromEntity.number,
-        postal_code: fromEntity.postal_code,
-        city: fromEntity.city
-      });
-      console.log('[DEBUG] TO entity:', {
-        address: toEntity.address,
-        number: toEntity.number,
-        postal_code: toEntity.postal_code,
-        city: toEntity.city
-      });
-
-      // Verificação se remetente e destinatário são iguais
+      // Check if sender and recipient addresses are the same
       const sameAddress = (
         fromEntity.address === toEntity.address &&
         fromEntity.number === toEntity.number &&
@@ -362,70 +351,107 @@ serve(async (req) => {
       );
 
       if (sameAddress) {
-        // Se os endereços são iguais, modificar o complemento do destinatário para diferenciá-los
         toEntity.complement = (toEntity.complement || '') + ' - DESTINATARIO';
-        console.log('[DEBUG] Endereços iguais detectados, adicionado diferenciador no complemento do destinatário');
+        console.log('[DEBUG] Same addresses detected, added differentiator to recipient complement');
       }
 
-// Create cart payload following Melhor Envio documentation
-      const cartPayload = {
-        service: freight.raw_response?.service_id || 1,
-        from: fromEntity,
-        to: toEntity,
-        volumes: [
-          {
-            height: freight.altura || 4,
-            width: freight.largura || 12,
-            length: freight.comprimento || 17,
-            weight: freight.peso || 0.3
-          }
-        ],
+      // STEP 1: Quote services (calculate shipping)
+      const quotePayload = {
+        from: { postal_code: fromEntity.postal_code },
+        to: { postal_code: toEntity.postal_code },
+        package: {
+          height: packageData.altura,
+          width: packageData.largura,
+          length: packageData.comprimento,
+          weight: packageData.peso
+        },
         options: {
-          insurance_value: freight.valor_declarado || orderData.total_amount,
+          insurance_value: packageData.valor_declarado,
           receipt: false,
-          own_hand: false,
-          non_commercial: true, // evita exigir chave NFe
-          platform: "SeuSistema",
-          tags: [
-            { 
-              tag: `PEDIDO-${orderData.id}`, 
-              url: `https://app/pedido/${orderData.id}` 
-            }
-          ]
+          own_hand: false
         }
-      } as any;
+      };
 
-      // Documento remetente: PF/PJ com logs e modo opcional via env
-      const FROM_MODE = (Deno.env.get('ME_FROM_TYPE') || 'AUTO').toUpperCase();
-      console.log('[DEBUG] FROM_MODE =', FROM_MODE);
-      logBytes('FROM_DOC_RAW', configData.remetente_documento);
-      try {
-        setSenderDocument(cartPayload.from, configData.remetente_documento, FROM_MODE);
-        assertSenderDocument(cartPayload.from);
-      } catch (e) {
+      console.log('Step 1: Quoting services with payload:', JSON.stringify(quotePayload, null, 2));
+
+      const quoteResponse = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'User-Agent': 'ManiaDeMulher-Sistema'
+        },
+        body: JSON.stringify(quotePayload)
+      });
+
+      if (!quoteResponse.ok) {
+        const errorData = await quoteResponse.text();
+        console.error('Quote error:', quoteResponse.status, errorData);
         return new Response(
           JSON.stringify({ 
-            error: 'Documento do remetente inválido', 
-            field: 'from', 
-            details: (e as Error).message,
-            debug_from: cartPayload.from
+            error: 'Erro na cotação de frete',
+            details: errorData 
+          }),
+          { status: quoteResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const quoteData = await quoteResponse.json();
+      console.log('Quote response:', JSON.stringify(quoteData, null, 2));
+
+      // Find the first available service without errors
+      const availableService = quoteData.find((service: any) => !service.error && service.id);
+      
+      if (!availableService) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Nenhum serviço de frete disponível',
+            details: 'Todas as opções retornaram erro na cotação'
           }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      console.log('[FINAL] from.document =', cartPayload.from.document ?? null);
-      console.log('[FINAL] from.company_document =', cartPayload.from.company_document ?? null);
-      console.log('Adding to cart with payload (sanitized):', JSON.stringify(cartPayload, null, 2));
+      console.log('Selected service:', availableService.id, availableService.name);
 
-      // Step 1: Add to cart
+      // STEP 2: Add to cart with the quoted service ID
+      const cartPayload = {
+        service: availableService.id,
+        from: fromEntity,
+        to: toEntity,
+        volumes: [
+          {
+            height: packageData.altura,
+            width: packageData.largura,
+            length: packageData.comprimento,
+            weight: packageData.peso
+          }
+        ],
+        options: {
+          insurance_value: packageData.valor_declarado,
+          receipt: false,
+          own_hand: false,
+          non_commercial: true,
+          platform: "ManiaDeMulher-Sistema",
+          tags: [
+            { 
+              tag: `PEDIDO-${orderData.id}`, 
+              url: `https://seusite/pedido/${orderData.id}` 
+            }
+          ]
+        }
+      };
+
+      console.log('Step 2: Adding to cart with payload:', JSON.stringify(cartPayload, null, 2));
+
       const cartResponse = await fetch(`${baseUrl}/v2/me/cart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
-          'User-Agent': 'FreteApp (contato@empresa.com)'
+          'User-Agent': 'ManiaDeMulher-Sistema'
         },
         body: JSON.stringify(cartPayload)
       });
@@ -451,8 +477,8 @@ serve(async (req) => {
       
       const cartId = cartData.id;
       
-      // Step 2: Checkout (purchase)
-      console.log('Processing checkout for cart ID:', cartId);
+      // STEP 3: Checkout (purchase)
+      console.log('Step 3: Processing checkout for cart ID:', cartId);
       
       const checkoutResponse = await fetch(`${baseUrl}/v2/me/shipment/checkout`, {
         method: 'POST',
@@ -460,7 +486,7 @@ serve(async (req) => {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
-          'User-Agent': 'FreteApp (contato@empresa.com)'
+          'User-Agent': 'ManiaDeMulher-Sistema'
         },
         body: JSON.stringify({ orders: [cartId] })
       });
@@ -482,13 +508,13 @@ serve(async (req) => {
       }
 
       const checkoutData = await checkoutResponse.json();
-      console.log('Checkout completed successfully:', checkoutData);
+      console.log('Step 3: Checkout completed successfully:', checkoutData);
       
       const shipmentId = checkoutData.purchase?.id;
       
-      // Step 3: Generate label
+      // STEP 4: Generate label
       if (shipmentId) {
-        console.log('Generating label for shipment ID:', shipmentId);
+        console.log('Step 4: Generating label for shipment ID:', shipmentId);
         
         const generateResponse = await fetch(`${baseUrl}/v2/me/shipment/generate`, {
           method: 'POST',
@@ -496,31 +522,95 @@ serve(async (req) => {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Authorization': `Bearer ${accessToken}`,
-            'User-Agent': 'FreteApp (contato@empresa.com)'
+            'User-Agent': 'ManiaDeMulher-Sistema'
           },
           body: JSON.stringify({ orders: [shipmentId] })
         });
 
         if (!generateResponse.ok) {
-          console.error('Label generation error:', generateResponse.status, await generateResponse.text());
+          const errorData = await generateResponse.text();
+          console.error('Label generation error:', generateResponse.status, errorData);
+          // Continue even if generation fails - can be done later
         } else {
           const generateData = await generateResponse.json();
-          console.log('Label generated successfully:', generateData);
+          console.log('Step 4: Label generated successfully:', generateData);
         }
-      }
 
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          cart_id: cartId,
-          shipment_id: shipmentId,
-          data: {
-            cart: cartData,
-            checkout: checkoutData
-          }
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+        // STEP 5: Get label URL for printing
+        console.log('Step 5: Getting label URL for shipment ID:', shipmentId);
+        
+        const printResponse = await fetch(`${baseUrl}/v2/me/shipment/${shipmentId}/print`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'User-Agent': 'ManiaDeMulher-Sistema'
+          },
+          body: JSON.stringify({})
+        });
+
+        let labelUrl = null;
+        if (printResponse.ok) {
+          const printData = await printResponse.json();
+          labelUrl = printData.url;
+          console.log('Step 5: Label URL obtained:', labelUrl);
+        } else {
+          console.error('Print URL error:', printResponse.status, await printResponse.text());
+        }
+
+        // Save shipping info to database
+        await supabase
+          .from('frete_envios')
+          .upsert({
+            pedido_id: order_id,
+            cart_id: cartId,
+            shipment_id: shipmentId,
+            service_id: availableService.id,
+            service_name: availableService.name,
+            price: availableService.price,
+            delivery_time: availableService.delivery_time,
+            label_url: labelUrl,
+            status: labelUrl ? 'ready' : 'generated',
+            raw_response: {
+              quote: availableService,
+              cart: cartData,
+              checkout: checkoutData
+            },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            message: 'Etiqueta criada com sucesso!',
+            cart_id: cartId,
+            shipment_id: shipmentId,
+            label_url: labelUrl,
+            service: {
+              id: availableService.id,
+              name: availableService.name,
+              price: availableService.price,
+              delivery_time: availableService.delivery_time
+            },
+            data: {
+              quote: availableService,
+              cart: cartData,
+              checkout: checkoutData
+            }
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        return new Response(
+          JSON.stringify({ 
+            error: 'ID do envio não encontrado após checkout',
+            details: 'Checkout realizado mas shipment_id não retornado'
+          }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     if (action === 'pay_shipment') {
