@@ -52,6 +52,9 @@ serve(async (req) => {
       case "send_item_added":
         return await sendItemAddedMessage(data, supabase);
       
+      case "send_broadcast":
+        return await sendBroadcastMessage(data, supabase);
+      
       default:
         throw new Error("Ação não reconhecida");
     }
@@ -363,4 +366,51 @@ function extractOrderFromMessage(message: string): any {
     customerPhone: phoneMatch ? phoneMatch[1] : null,
     customerName: nameMatch ? nameMatch[1].trim() : null
   };
+}
+
+async function sendBroadcastMessage(data: any, supabase: any) {
+  const { phone, message, customerName } = data;
+  
+  console.log(`Sending broadcast message to ${phone}:`, message);
+
+  try {
+    // Try to send via configured API URL first
+    const apiUrl = Deno.env.get('WHATSAPP_API_URL');
+    if (apiUrl) {
+      const response = await fetch(`${apiUrl}/send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          number: phone,
+          message: message
+        }),
+      });
+
+      if (response.ok) {
+        console.log(`Broadcast message sent successfully to ${phone}`);
+      } else {
+        console.log(`Failed to send broadcast message to ${phone} via API`);
+      }
+    }
+  } catch (error) {
+    console.error(`Error sending broadcast message to ${phone}:`, error);
+  }
+
+  // Log the message in the database
+  try {
+    await supabase.from('whatsapp_messages').insert({
+      phone: phone,
+      message: message,
+      type: 'broadcast',
+      sent_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error logging broadcast message:', error);
+  }
+
+  return new Response(JSON.stringify({ success: true }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }

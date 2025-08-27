@@ -572,6 +572,87 @@ const Pedidos = () => {
     }
   };
 
+  const sendBroadcastMessage = async () => {
+    if (orders.length === 0) {
+      toast({
+        title: 'Aviso',
+        description: 'Nenhum pedido encontrado com os filtros atuais',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!confirm(`Tem certeza que deseja enviar mensagem em massa para ${orders.length} cliente(s) dos pedidos filtrados?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Buscar template BROADCAST
+      const { data: template, error: templateError } = await supabase
+        .from('whatsapp_templates')
+        .select('content')
+        .eq('type', 'BROADCAST')
+        .single();
+
+      if (templateError) {
+        throw new Error('Template BROADCAST não encontrado');
+      }
+
+      // Extrair telefones únicos dos pedidos filtrados
+      const uniquePhones = Array.from(new Set(orders.map(order => order.customer_phone)));
+      
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Enviar mensagem para cada cliente único
+      for (const phone of uniquePhones) {
+        try {
+          // Buscar nome do cliente se disponível
+          const order = orders.find(o => o.customer_phone === phone);
+          const customerName = order?.customer?.name || 'Cliente';
+
+          // Personalizar template
+          const personalizedMessage = template.content.replace('{{nome_cliente}}', customerName);
+
+          // Enviar via edge function
+          await supabase.functions.invoke('whatsapp-connection', {
+            body: {
+              action: 'send_broadcast',
+              data: {
+                phone: phone,
+                message: personalizedMessage,
+                customerName: customerName
+              }
+            }
+          });
+
+          successCount++;
+        } catch (error) {
+          console.error(`Erro ao enviar para ${phone}:`, error);
+          errorCount++;
+        }
+      }
+
+      toast({
+        title: 'Mensagem em Massa Enviada',
+        description: `${successCount} mensagem(s) enviada(s) com sucesso. ${errorCount > 0 ? `${errorCount} erro(s).` : ''}`,
+        variant: successCount > 0 ? 'default' : 'destructive'
+      });
+
+    } catch (error) {
+      console.error('Error sending broadcast message:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao enviar mensagem em massa',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const exportToCSV = () => {
     const headers = ['Pedido', 'Telefone', 'Total', 'Pago', 'Tipo Evento', 'Data Evento', 'Criado em'];
     const csvContent = [
@@ -640,6 +721,14 @@ const Pedidos = () => {
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Deletar Selecionados ({selectedOrders.size})
+              </Button>
+              <Button 
+                onClick={sendBroadcastMessage} 
+                variant="outline"
+                disabled={loading || orders.length === 0}
+              >
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Mensagem em Massa ({orders.length})
               </Button>
               <Button onClick={exportToCSV} variant="outline">
                 <Download className="h-4 w-4 mr-2" />
