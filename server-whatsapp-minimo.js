@@ -182,10 +182,43 @@ async function sendTextOrImage({ to, message, imageTempPath }) {
   }
 }
 
+// ===== Health helpers =====
+async function getHealth() {
+  let waState = 'unknown';
+  try {
+    waState = await client.getState();
+  } catch (_) {}
+  const browserConnected = !!client?.pupBrowser?.isConnected?.();
+  const pageClosed = !!client?.pupPage?.isClosed?.();
+  return {
+    connState,
+    waState,
+    browserConnected,
+    pageClosed,
+    number: myNumber ? `+${myNumber}` : null,
+  };
+}
+
+function isUsable(h) {
+  return (
+    h?.waState === 'CONNECTED' &&
+    h?.connState === 'ready' &&
+    h?.browserConnected === true &&
+    h?.pageClosed === false
+  );
+}
+
 // ===================== Rotas HTTP =====================
 // Status básico
-app.get('/status', (_req, res) => {
-  res.json({ state: connState, number: myNumber ? `+${myNumber}` : null });
+app.get('/status', async (_req, res) => {
+  const health = await getHealth();
+  res.json({
+    ...health,
+    pid: process.pid,
+    uptime: process.uptime(),
+    headless: HEADLESS,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Últimas mensagens recebidas
@@ -197,10 +230,11 @@ app.get('/messages', (req, res) => {
 // Enviar mensagem (texto e/ou imagem) - endpoint original
 app.post('/send', async (req, res) => {
   try {
-    const isConnected = ['ready', 'connected', 'connected\n'].includes(connState);
-    if (!isConnected) {
-      log('❌ /send: instância não conectada', connState);
-      return res.status(409).json({ ok: false, error: `Instância não conectada (${connState})` });
+    const health = await getHealth();
+    if (!isUsable(health)) {
+      log('❌ /send: instância indisponível', health);
+      scheduleReinit('unusable_before_send');
+      return res.status(409).json({ ok: false, error: 'Instância indisponível', health });
     }
 
     let payload = {};
@@ -241,14 +275,17 @@ app.post('/send', async (req, res) => {
 // Enviar mensagem - endpoint compatível com o sistema Supabase
 app.post('/send-message', async (req, res) => {
   try {
-    const isConnected = ['ready', 'connected', 'connected\n'].includes(connState);
-    if (!isConnected) {
-      log(`❌ Instância não conectada (${connState})`);
+    const health = await getHealth();
+    if (!isUsable(health)) {
+      log('❌ /send-message: instância indisponível', health);
+      scheduleReinit('unusable_before_send_message');
       return res.status(409).json({ 
         success: false, 
-        error: `Instância não conectada (${connState})` 
+        error: 'Instância indisponível',
+        health
       });
     }
+
 
     const { to, number, message } = req.body || {};
     const toRaw = to || number;
@@ -298,6 +335,14 @@ app.listen(PORT, () => {
   console.log('   curl -X POST http://localhost:3000/send-message \\');
   console.log('   -H "Content-Type: application/json" \\');
   console.log('   -d \'{"to":"5531999999999","message":"Teste de mensagem"}\'');
+});
+
+// Diagnostic handlers
+process.on('unhandledRejection', (reason) => {
+  console.error('🔴 UNHANDLED_REJECTION:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('🔴 UNCAUGHT_EXCEPTION:', err?.stack || err?.message || err);
 });
 
 // ===================== Encerramento gracioso =====================
