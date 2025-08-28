@@ -144,29 +144,53 @@ const Relatorios = () => {
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       const startOfYear = new Date(today.getFullYear(), 0, 1);
 
-      // Vendas do dia
+      // Vendas do dia - apenas orders
       const dailyOrders = await supabase
         .from('orders')
-        .select('total_amount, cart_items!inner(qty)')
+        .select('total_amount, cart_id')
         .gte('created_at', today.toISOString().split('T')[0] + 'T00:00:00')
         .lt('created_at', today.toISOString().split('T')[0] + 'T23:59:59');
 
       // Vendas do mês
       const monthlyOrders = await supabase
         .from('orders')
-        .select('total_amount, cart_items!inner(qty)')
+        .select('total_amount, cart_id')
         .gte('created_at', startOfMonth.toISOString());
 
       // Vendas do ano
       const yearlyOrders = await supabase
         .from('orders')
-        .select('total_amount, cart_items!inner(qty)')
+        .select('total_amount, cart_id')
         .gte('created_at', startOfYear.toISOString());
 
-      const calculateStats = (orders: any[]): PeriodStats => {
+      // Helper function to get products count for given cart IDs
+      const getProductsCount = async (cartIds: number[]) => {
+        if (cartIds.length === 0) return [];
+        
+        const { data } = await supabase
+          .from('cart_items')
+          .select('qty')
+          .in('cart_id', cartIds);
+        
+        return data || [];
+      };
+
+      // Get cart IDs for each period
+      const dailyCartIds = (dailyOrders.data || []).map(o => o.cart_id).filter(Boolean);
+      const monthlyCartIds = (monthlyOrders.data || []).map(o => o.cart_id).filter(Boolean);
+      const yearlyCartIds = (yearlyOrders.data || []).map(o => o.cart_id).filter(Boolean);
+
+      // Get products for each period
+      const [dailyProducts, monthlyProducts, yearlyProducts] = await Promise.all([
+        getProductsCount(dailyCartIds),
+        getProductsCount(monthlyCartIds),
+        getProductsCount(yearlyCartIds)
+      ]);
+
+      const calculateStats = (orders: any[], products: any[]): PeriodStats => {
         const totalSales = orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
         const totalOrders = orders.length;
-        const totalProducts = orders.reduce((sum, o) => sum + (o.cart_items?.reduce((itemSum: number, item: any) => itemSum + item.qty, 0) || 0), 0);
+        const totalProducts = products.reduce((sum, item) => sum + item.qty, 0);
         const avgTicket = totalOrders > 0 ? totalSales / totalOrders : 0;
 
         return {
@@ -178,9 +202,9 @@ const Relatorios = () => {
       };
 
       setPeriodStats({
-        daily: calculateStats(dailyOrders.data || []),
-        monthly: calculateStats(monthlyOrders.data || []),
-        yearly: calculateStats(yearlyOrders.data || [])
+        daily: calculateStats(dailyOrders.data || [], dailyProducts),
+        monthly: calculateStats(monthlyOrders.data || [], monthlyProducts),
+        yearly: calculateStats(yearlyOrders.data || [], yearlyProducts)
       });
     } catch (error) {
       console.error('Error loading period stats:', error);
@@ -195,6 +219,7 @@ const Relatorios = () => {
   const loadTopProducts = async () => {
     try {
       let dateFilter = '';
+      let endDateFilter = '';
       const today = new Date();
       
       switch (selectedPeriod) {
@@ -211,34 +236,57 @@ const Relatorios = () => {
           break;
         case 'custom':
           if (!startDate || !endDate) return;
+          dateFilter = startDate;
+          endDateFilter = endDate;
           break;
       }
 
-      let query = supabase
+      // First, get orders in the date range
+      let ordersQuery = supabase
+        .from('orders')
+        .select('id, cart_id');
+
+      if (selectedPeriod === 'custom' && dateFilter && endDateFilter) {
+        ordersQuery = ordersQuery
+          .gte('created_at', `${dateFilter}T00:00:00`)
+          .lte('created_at', `${endDateFilter}T23:59:59`);
+      } else if (dateFilter) {
+        ordersQuery = ordersQuery.gte('created_at', `${dateFilter}T00:00:00`);
+      }
+
+      const { data: ordersData, error: ordersError } = await ordersQuery;
+      
+      if (ordersError) throw ordersError;
+
+      if (!ordersData || ordersData.length === 0) {
+        setTopProducts([]);
+        return;
+      }
+
+      // Get cart IDs from orders
+      const cartIds = ordersData.map(order => order.cart_id).filter(Boolean);
+
+      if (cartIds.length === 0) {
+        setTopProducts([]);
+        return;
+      }
+
+      // Now get cart items for these carts
+      const { data: cartItemsData, error: cartItemsError } = await supabase
         .from('cart_items')
         .select(`
           qty,
           unit_price,
-          products(name, code),
-          orders!inner(created_at)
-        `);
+          products(name, code)
+        `)
+        .in('cart_id', cartIds);
 
-      if (selectedPeriod === 'custom' && startDate && endDate) {
-        query = query
-          .gte('orders.created_at', `${startDate}T00:00:00`)
-          .lte('orders.created_at', `${endDate}T23:59:59`);
-      } else if (dateFilter) {
-        query = query.gte('orders.created_at', `${dateFilter}T00:00:00`);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
+      if (cartItemsError) throw cartItemsError;
 
       // Agrupar por produto
       const productMap = new Map<string, ProductSales>();
 
-      data?.forEach(item => {
+      cartItemsData?.forEach(item => {
         const productName = item.products?.name || 'Produto removido';
         const productCode = item.products?.code || 'N/A';
         const key = `${productName}-${productCode}`;
