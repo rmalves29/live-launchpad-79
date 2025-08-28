@@ -13,6 +13,7 @@ interface WhatsAppMessage {
   orderId?: number;
   productName?: string;
   amount?: number;
+  price?: number;
 }
 
 serve(async (req) => {
@@ -137,34 +138,76 @@ Após o pagamento, seu pedido será processado automaticamente! 📦`;
 }
 
 async function sendCancellation(data: WhatsAppMessage, supabase: any) {
-  const message = `❌ *Pedido Cancelado - #${data.orderId}*
+  try {
+    // Buscar template PRODUCT_CANCELED do banco
+    const { data: template, error: templateError } = await supabase
+      .from('whatsapp_templates')
+      .select('content')
+      .eq('type', 'PRODUCT_CANCELED')
+      .single();
 
-Olá! Informamos que seu pedido foi cancelado.
+    if (templateError) {
+      console.error('Erro ao buscar template PRODUCT_CANCELED:', templateError);
+      throw new Error('Template PRODUCT_CANCELED não encontrado');
+    }
 
-Se você tem alguma dúvida sobre o cancelamento, entre em contato conosco.
+    // Substituir variáveis do template
+    let message = template.content;
+    message = message.replace(/\{\{produto\}\}/g, data.productName || 'Produto');
+    message = message.replace(/\{\{preco\}\}/g, data.price ? `R$ ${data.price.toFixed(2)}` : 'N/A');
 
-🛍️ Continue navegando em nossos produtos:
-${Deno.env.get("PUBLIC_APP_URL")}
+    console.log(`Enviando mensagem de cancelamento para ${data.phone}: ${message}`);
 
-Obrigado! 🙏`;
+    // Tentar enviar via API do WhatsApp se disponível
+    const baseUrl = (Deno.env.get('WHATSAPP_API_URL') || '').trim().replace(/\/$/, '');
+    if (baseUrl) {
+      try {
+        const response = await fetch(`${baseUrl}/send-message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: data.phone, message })
+        });
 
-  console.log(`Enviando cancelamento para ${data.phone}:`, message);
-  
-  await supabase.from('whatsapp_messages').insert({
-    phone: data.phone,
-    message,
-    type: 'order_cancelled',
-    order_id: data.orderId,
-    sent_at: new Date().toISOString()
-  });
+        if (!response.ok) {
+          console.warn(`Falha ao enviar via API (${response.status}). Registrando apenas no banco.`);
+        } else {
+          console.log('Mensagem de cancelamento enviada via API com sucesso');
+        }
+      } catch (apiError) {
+        console.warn('Erro ao enviar via API:', apiError);
+      }
+    }
 
-  return new Response(JSON.stringify({ 
-    success: true, 
-    message: "Cancelamento enviado com sucesso" 
-  }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-    status: 200,
-  });
+    // Salvar mensagem no banco
+    await supabase.from('whatsapp_messages').insert({
+      phone: data.phone,
+      message: message,
+      type: 'product_cancelled',
+      order_id: data.orderId,
+      product_name: data.productName,
+      amount: data.price,
+      sent_at: new Date().toISOString()
+    });
+
+    console.log(`Mensagem de cancelamento salva no banco para ${data.phone}`);
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: "Cancelamento processado e mensagem enviada com sucesso" 
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+    });
+  } catch (error) {
+    console.error('Erro ao processar cancelamento:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message 
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+    });
+  }
 }
 
 async function sendPaidNotification(data: any, supabase: any) {

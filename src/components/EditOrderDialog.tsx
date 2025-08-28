@@ -348,7 +348,8 @@ useEffect(() => {
             phone: order.customer_phone,
             customerName: 'Cliente',
             productName: item.product?.name || 'Produto',
-            orderId: order.id
+            orderId: order.id,
+            price: item.unit_price
           }
         }
       });
