@@ -36,7 +36,7 @@ const Navbar = () => {
               <img 
                 src="/lovable-uploads/6cab2f0c-61fb-4bf3-a1d4-afffeafcefd9.png" 
                 alt="Mania de Mulher" 
-                className="h-[50px] w-[50px] object-contain"
+                className="h-[120px] w-[120px] object-contain"
               />
             </NavLink>
           </div>
