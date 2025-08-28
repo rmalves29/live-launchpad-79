@@ -56,6 +56,9 @@ serve(async (req) => {
       case "send_broadcast":
         return await sendBroadcastMessage(data, supabase);
       
+      case "get_profile_picture":
+        return await getProfilePicture(data, supabase);
+      
       default:
         throw new Error("Ação não reconhecida");
     }
@@ -487,6 +490,91 @@ function extractOrderFromMessage(message: string): any {
     customerPhone: phoneMatch ? phoneMatch[1] : null,
     customerName: nameMatch ? nameMatch[1].trim() : null
   };
+}
+
+async function getProfilePicture(data: { number: string }, supabase: any) {
+  try {
+    const { number } = data;
+    const cleanNumber = number.replace(/\D/g, ''); // Remove caracteres não numéricos
+    
+    console.log(`Buscando foto de perfil para ${cleanNumber}`);
+
+    // Tentar buscar foto via WhatsApp API
+    try {
+      const baseUrl = (Deno.env.get('WHATSAPP_API_URL') || '').trim().replace(/\/$/, '');
+      if (!baseUrl) {
+        console.warn('WHATSAPP_API_URL não configurada; retornando avatar gerado.');
+        throw new Error('WhatsApp API URL não configurada');
+      }
+
+      // Tentativas de diferentes endpoints para buscar foto de perfil
+      const attempts = [
+        { path: '/get-profile-picture', body: { number: cleanNumber } },
+        { path: '/profile-picture', body: { number: cleanNumber } },
+        { path: '/get-profile-pic', body: { phone: cleanNumber } },
+        { path: '/profile', body: { number: cleanNumber } },
+      ];
+
+      for (const attempt of attempts) {
+        try {
+          const resp = await fetch(`${baseUrl}${attempt.path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(attempt.body),
+          });
+
+          if (resp.ok) {
+            const result = await resp.json();
+            // Verificar diferentes possíveis chaves de resposta
+            const profilePicture = result.profilePicture || result.profile_picture || result.url || result.image;
+            
+            if (profilePicture) {
+              console.log(`Foto de perfil encontrada via ${attempt.path} para ${cleanNumber}`);
+              return new Response(JSON.stringify({ 
+                success: true, 
+                profilePicture 
+              }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 200,
+              });
+            }
+          } else {
+            console.warn(`Tentativa ${attempt.path} falhou: ${resp.status}`);
+          }
+        } catch (err) {
+          console.warn(`Erro ao tentar ${attempt.path}:`, err);
+        }
+      }
+
+      throw new Error('Nenhum endpoint de foto de perfil funcionou');
+      
+    } catch (whatsappError) {
+      console.log('WhatsApp API indisponível, gerando avatar:', whatsappError.message);
+      
+      // Fallback: gerar avatar baseado no número
+      const avatarUrl = `https://ui-avatars.com/api/?name=${cleanNumber}&background=random&size=256&format=png&rounded=true&bold=true`;
+      
+      return new Response(JSON.stringify({ 
+        success: true, 
+        profilePicture: avatarUrl,
+        fallback: true 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+  } catch (error) {
+    console.error('Erro ao buscar foto de perfil:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message,
+      profilePicture: null 
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+    });
+  }
 }
 
 async function sendBroadcastMessage(data: any, supabase: any) {

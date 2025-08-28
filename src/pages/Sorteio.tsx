@@ -29,12 +29,41 @@ const Sorteio = () => {
   const [loading, setLoading] = useState(false);
   const [eligibleCount, setEligibleCount] = useState<number>(0);
 
-  // Função para gerar avatar baseado no número de telefone
-  const getProfileImage = (phone: string) => {
-    // Remove todos os caracteres não numéricos
+  // Função para buscar foto de perfil do WhatsApp
+  const getWhatsAppProfilePicture = async (phone: string): Promise<string> => {
+    try {
+      // Tentar buscar a foto de perfil real do WhatsApp via edge function
+      const response = await fetch('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-connection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4`,
+        },
+        body: JSON.stringify({ 
+          action: 'get_profile_picture',
+          data: { number: phone } 
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.profilePicture) {
+          return data.profilePicture;
+        }
+      }
+    } catch (error) {
+      console.log('Erro ao buscar foto do WhatsApp:', error);
+    }
+
+    // Fallback: gerar avatar baseado no número
     const cleanPhone = phone.replace(/\D/g, '');
-    // Usa a API do UI Avatars para gerar um avatar baseado no telefone
-    return `https://ui-avatars.com/api/?name=${cleanPhone}&background=random&size=128&format=png`;
+    return `https://ui-avatars.com/api/?name=${cleanPhone}&background=random&size=256&format=png&rounded=true&bold=true`;
+  };
+
+  // Função para gerar avatar baseado no número de telefone (fallback)
+  const getProfileImage = (phone: string) => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    return `https://ui-avatars.com/api/?name=${cleanPhone}&background=random&size=256&format=png&rounded=true`;
   };
 
   const performRaffle = async () => {
@@ -80,13 +109,16 @@ const Sorteio = () => {
         .eq('phone', selectedOrder.customer_phone)
         .maybeSingle();
 
+      // Buscar foto de perfil real do WhatsApp
+      const profileImage = await getWhatsAppProfilePicture(selectedOrder.customer_phone);
+
       const winnerData: Winner = {
         order_id: selectedOrder.id,
         customer_phone: selectedOrder.customer_phone,
         customer_name: customerData?.name || 'Nome não informado',
         total_amount: Number(selectedOrder.total_amount),
         event_date: selectedOrder.event_date,
-        profile_image: getProfileImage(selectedOrder.customer_phone)
+        profile_image: profileImage
       };
 
       setWinner(winnerData);
