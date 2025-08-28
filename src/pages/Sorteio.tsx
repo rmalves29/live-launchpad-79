@@ -2,37 +2,46 @@ import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Loader2, CalendarIcon, Trophy, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Winner {
   order_id: number;
   customer_phone: string;
+  customer_name?: string;
   total_amount: number;
-  event_type: string;
   event_date: string;
+  profile_image?: string;
 }
 
 const Sorteio = () => {
   const { toast } = useToast();
   const [eventDate, setEventDate] = useState<Date | undefined>();
-  const [eventType, setEventType] = useState<string>('');
   const [winner, setWinner] = useState<Winner | null>(null);
   const [loading, setLoading] = useState(false);
   const [eligibleCount, setEligibleCount] = useState<number>(0);
 
+  // Função para gerar avatar baseado no número de telefone
+  const getProfileImage = (phone: string) => {
+    // Remove todos os caracteres não numéricos
+    const cleanPhone = phone.replace(/\D/g, '');
+    // Usa a API do UI Avatars para gerar um avatar baseado no telefone
+    return `https://ui-avatars.com/api/?name=${cleanPhone}&background=random&size=128&format=png`;
+  };
+
   const performRaffle = async () => {
-    if (!eventDate || !eventType) {
+    if (!eventDate) {
       toast({
         title: 'Erro',
-        description: 'Selecione a data e o tipo do evento',
+        description: 'Selecione a data do evento',
         variant: 'destructive'
       });
       return;
@@ -40,26 +49,52 @@ const Sorteio = () => {
 
     setLoading(true);
     try {
-      // Simulate API call - in real implementation, this would call POST /raffle
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const selectedDate = format(eventDate, 'yyyy-MM-dd');
       
-      // Mock raffle data
-      const mockWinner: Winner = {
-        order_id: Math.floor(Math.random() * 1000) + 1,
-        customer_phone: '5511999999999',
-        total_amount: 89.70,
-        event_type: eventType,
-        event_date: format(eventDate, 'yyyy-MM-dd')
+      // Buscar pedidos pagos da data selecionada
+      const { data: paidOrders, error } = await supabase
+        .from('orders')
+        .select('id, customer_phone, total_amount, event_date')
+        .eq('is_paid', true)
+        .eq('event_date', selectedDate);
+
+      if (error) throw error;
+
+      if (!paidOrders || paidOrders.length === 0) {
+        toast({
+          title: 'Nenhum Pedido Encontrado',
+          description: 'Não há pedidos pagos para a data selecionada',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Selecionar um vencedor aleatório
+      const randomIndex = Math.floor(Math.random() * paidOrders.length);
+      const selectedOrder = paidOrders[randomIndex];
+
+      // Buscar o nome do cliente usando o telefone
+      const { data: customerData } = await supabase
+        .from('customers')
+        .select('name')
+        .eq('phone', selectedOrder.customer_phone)
+        .maybeSingle();
+
+      const winnerData: Winner = {
+        order_id: selectedOrder.id,
+        customer_phone: selectedOrder.customer_phone,
+        customer_name: customerData?.name || 'Nome não informado',
+        total_amount: Number(selectedOrder.total_amount),
+        event_date: selectedOrder.event_date,
+        profile_image: getProfileImage(selectedOrder.customer_phone)
       };
 
-      const mockEligibleCount = Math.floor(Math.random() * 50) + 10;
-
-      setWinner(mockWinner);
-      setEligibleCount(mockEligibleCount);
+      setWinner(winnerData);
+      setEligibleCount(paidOrders.length);
 
       toast({
         title: 'Sorteio Realizado!',
-        description: `Vencedor selecionado entre ${mockEligibleCount} pedidos elegíveis`,
+        description: `Vencedor selecionado entre ${paidOrders.length} pedidos elegíveis`,
       });
     } catch (error) {
       console.error('Error performing raffle:', error);
@@ -77,7 +112,6 @@ const Sorteio = () => {
     setWinner(null);
     setEligibleCount(0);
     setEventDate(undefined);
-    setEventType('');
   };
 
   return (
@@ -98,52 +132,37 @@ const Sorteio = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Data do Evento</label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !eventDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {eventDate ? format(eventDate, "PPP", { locale: ptBR }) : "Selecionar data do evento"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={eventDate}
-                    onSelect={setEventDate}
-                    initialFocus
-                    className="pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Tipo do Evento</label>
-              <Select value={eventType} onValueChange={setEventType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecionar tipo do evento" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BAZAR">BAZAR</SelectItem>
-                  <SelectItem value="LIVE">LIVE</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Data do Evento</label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !eventDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {eventDate ? format(eventDate, "PPP", { locale: ptBR }) : "Selecionar data do evento"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={eventDate}
+                  onSelect={setEventDate}
+                  initialFocus
+                  className="pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="mt-6 flex space-x-4">
             <Button 
               onClick={performRaffle} 
-              disabled={loading || !eventDate || !eventType}
+              disabled={loading || !eventDate}
               className="flex-1"
               size="lg"
             >
@@ -181,10 +200,6 @@ const Sorteio = () => {
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-2 h-2 bg-primary rounded-full"></div>
-              <span>Pedidos devem ser do <strong>tipo de evento</strong> selecionado</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-primary rounded-full"></div>
               <span>A seleção é <strong>aleatória</strong> entre todos os pedidos elegíveis</span>
             </div>
           </div>
@@ -202,40 +217,43 @@ const Sorteio = () => {
           </CardHeader>
           <CardContent>
             <div className="text-center space-y-6">
-              <div className="bg-white/50 rounded-lg p-6 space-y-4">
-                <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">Pedido Vencedor</div>
-                  <Badge variant="default" className="text-lg px-4 py-2">
-                    #{winner.order_id}
-                  </Badge>
-                </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">Telefone</div>
-                    <div className="font-mono font-medium">{winner.customer_phone}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">Valor do Pedido</div>
-                    <div className="font-medium text-lg">R$ {winner.total_amount.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">Evento</div>
-                    <div className="space-y-1">
-                      <Badge variant="outline">{winner.event_type}</Badge>
-                      <div className="text-sm">{format(new Date(winner.event_date), 'dd/MM/yyyy')}</div>
+                <div className="bg-white/50 rounded-lg p-6 space-y-4">
+                  <div className="flex flex-col items-center space-y-4">
+                    <Avatar className="w-20 h-20 border-4 border-primary/20">
+                      <AvatarImage src={winner.profile_image} alt="Foto do vencedor" />
+                      <AvatarFallback className="bg-primary text-primary-foreground text-xl">
+                        {winner.customer_name?.charAt(0) || winner.customer_phone.slice(-2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="text-center">
+                      <div className="text-lg font-bold">{winner.customer_name}</div>
+                      <div className="text-sm text-muted-foreground">Pedido #{winner.order_id}</div>
                     </div>
                   </div>
-                </div>
 
-                <Separator />
+                  <Separator />
 
-                <div className="text-sm text-muted-foreground">
-                  Selecionado entre <strong>{eligibleCount}</strong> pedidos elegíveis
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Telefone</div>
+                      <div className="font-mono font-medium">{winner.customer_phone}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Valor do Pedido</div>
+                      <div className="font-medium text-lg text-green-600">R$ {winner.total_amount.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Data do Evento</div>
+                      <div className="font-medium">{format(new Date(winner.event_date), 'dd/MM/yyyy')}</div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="text-sm text-muted-foreground">
+                    Selecionado entre <strong>{eligibleCount}</strong> pedidos elegíveis
+                  </div>
                 </div>
-              </div>
 
               <div className="space-y-2">
                 <div className="text-sm text-muted-foreground">
@@ -257,19 +275,18 @@ const Sorteio = () => {
             <div className="space-y-4 text-sm text-muted-foreground">
               <p>
                 O sistema de sorteio seleciona automaticamente um pedido vencedor entre todos os pedidos 
-                <strong> pagos</strong> de uma data e tipo de evento específicos.
+                <strong> pagos</strong> de uma data específica.
               </p>
               <p>
                 Para realizar um sorteio:
               </p>
               <ol className="list-decimal list-inside space-y-1 ml-4">
                 <li>Selecione a <strong>data do evento</strong> que deseja sortear</li>
-                <li>Escolha o <strong>tipo de evento</strong> (BAZAR ou LIVE)</li>
                 <li>Clique em <strong>"Realizar Sorteio"</strong></li>
                 <li>O sistema irá selecionar aleatoriamente um vencedor entre os pedidos elegíveis</li>
               </ol>
               <p>
-                O vencedor será exibido com todas as informações necessárias para contato e verificação.
+                O vencedor será exibido com foto de perfil e todas as informações necessárias para contato.
               </p>
             </div>
           </CardContent>
