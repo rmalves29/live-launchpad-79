@@ -252,7 +252,13 @@ const Sorteio = () => {
                 <div className="bg-white/50 rounded-lg p-6 space-y-4">
                   <div className="flex flex-col items-center space-y-4">
                     <Avatar className="w-32 h-32 border-4 border-primary/20 shadow-lg">
-                      <AvatarImage src={winner.profile_image} alt="Foto do vencedor" />
+                      <AvatarImage 
+                        src={winner.profile_image || getProfileImage(winner.customer_phone)} 
+                        alt={`Foto de perfil do WhatsApp de ${winner.customer_name || winner.customer_phone}`} 
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = getProfileImage(winner.customer_phone);
+                        }}
+                      />
                       <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                         {winner.customer_name?.charAt(0) || winner.customer_phone.slice(-2)}
                       </AvatarFallback>
