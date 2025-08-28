@@ -219,28 +219,24 @@ const Sorteio = () => {
             <div className="text-center space-y-6">
                 <div className="bg-white/50 rounded-lg p-6 space-y-4">
                   <div className="flex flex-col items-center space-y-4">
-                    <Avatar className="w-20 h-20 border-4 border-primary/20">
+                    <Avatar className="w-32 h-32 border-4 border-primary/20 shadow-lg">
                       <AvatarImage src={winner.profile_image} alt="Foto do vencedor" />
-                      <AvatarFallback className="bg-primary text-primary-foreground text-xl">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
                         {winner.customer_name?.charAt(0) || winner.customer_phone.slice(-2)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="text-center">
-                      <div className="text-lg font-bold">{winner.customer_name}</div>
+                      <div className="text-xl font-bold">{winner.customer_name}</div>
                       <div className="text-sm text-muted-foreground">Pedido #{winner.order_id}</div>
                     </div>
                   </div>
 
                   <Separator />
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
                     <div>
                       <div className="text-sm text-muted-foreground mb-1">Telefone</div>
                       <div className="font-mono font-medium">{winner.customer_phone}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-1">Valor do Pedido</div>
-                      <div className="font-medium text-lg text-green-600">R$ {winner.total_amount.toFixed(2)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground mb-1">Data do Evento</div>
