@@ -27,6 +27,7 @@ interface DailySales {
   total_paid: number;
   total_unpaid: number;
   total_orders: number;
+  total_products: number;
   ticket_medio: number;
 }
 
@@ -102,7 +103,7 @@ const Relatorios = () => {
       
       let query = supabase
         .from('orders')
-        .select('total_amount, is_paid');
+        .select('total_amount, is_paid, cart_id');
 
       if (salesFilter === 'custom' && dateFilter && endDateFilter) {
         query = query
@@ -119,6 +120,20 @@ const Relatorios = () => {
       const totalPaid = orders?.filter(o => o.is_paid).reduce((sum, o) => sum + Number(o.total_amount), 0) || 0;
       const totalUnpaid = orders?.filter(o => !o.is_paid).reduce((sum, o) => sum + Number(o.total_amount), 0) || 0;
       const totalOrders = orders?.length || 0;
+      
+      // Get products count for these orders
+      const cartIds = orders?.map(o => o.cart_id).filter(Boolean) || [];
+      let totalProducts = 0;
+      
+      if (cartIds.length > 0) {
+        const { data: cartItems } = await supabase
+          .from('cart_items')
+          .select('qty')
+          .in('cart_id', cartIds);
+        
+        totalProducts = cartItems?.reduce((sum, item) => sum + item.qty, 0) || 0;
+      }
+      
       const ticketMedio = totalOrders > 0 ? (totalPaid + totalUnpaid) / totalOrders : 0;
 
       setTodaySales({
@@ -126,6 +141,7 @@ const Relatorios = () => {
         total_paid: totalPaid,
         total_unpaid: totalUnpaid,
         total_orders: totalOrders,
+        total_products: totalProducts,
         ticket_medio: ticketMedio
       });
     } catch (error) {
@@ -421,7 +437,7 @@ const Relatorios = () => {
                   <span>Carregando...</span>
                 </div>
               ) : todaySales ? (
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-600">
                       {formatCurrency(todaySales.total_paid)}
@@ -439,6 +455,12 @@ const Relatorios = () => {
                       {todaySales.total_orders}
                     </div>
                     <div className="text-sm text-muted-foreground">Total de Pedidos</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {todaySales.total_products}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Produtos Vendidos</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-purple-600">
