@@ -115,7 +115,7 @@ const Sorteio = () => {
       const winnerData: Winner = {
         order_id: selectedOrder.id,
         customer_phone: selectedOrder.customer_phone,
-        customer_name: customerData?.name || 'Nome não informado',
+        customer_name: customerData?.name || selectedOrder.customer_phone, // Usa telefone se nome não encontrado
         total_amount: Number(selectedOrder.total_amount),
         event_date: selectedOrder.event_date,
         profile_image: profileImage
