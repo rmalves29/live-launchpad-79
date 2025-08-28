@@ -159,23 +159,52 @@ async function sendCancellation(data: WhatsAppMessage, supabase: any) {
     console.log(`Enviando mensagem de cancelamento para ${data.phone}: ${message}`);
 
     // Tentar enviar via API do WhatsApp se disponível
-    const baseUrl = (Deno.env.get('WHATSAPP_API_URL') || '').trim().replace(/\/$/, '');
-    if (baseUrl) {
-      try {
-        const response = await fetch(`${baseUrl}/send-message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: data.phone, message })
-        });
+    try {
+      const baseUrl = (Deno.env.get('WHATSAPP_API_URL') || '').trim().replace(/\/$/, '');
+      if (!baseUrl) {
+        console.warn('WHATSAPP_API_URL não configurada; pulando envio via API e registrando apenas no banco.');
+      } else {
+        const attempts = [
+          { path: '/send-message', body: { number: data.phone, message } },
+          { path: '/send-message', body: { to: data.phone, message } },
+          { path: '/send', body: { to: data.phone, message } },
+          { path: '/send', body: { number: data.phone, message } },
+        ];
 
-        if (!response.ok) {
-          console.warn(`Falha ao enviar via API (${response.status}). Registrando apenas no banco.`);
-        } else {
-          console.log('Mensagem de cancelamento enviada via API com sucesso');
+        let sent = false;
+        let lastStatus = 0;
+        let lastText = '';
+
+        for (const a of attempts) {
+          try {
+            const resp = await fetch(`${baseUrl}${a.path}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(a.body),
+            });
+
+            lastStatus = resp.status;
+            try { lastText = await resp.text(); } catch (_) { lastText = ''; }
+
+            if (resp.ok) {
+              console.log(`Mensagem de cancelamento enviada para ${data.phone} via ${a.path}`);
+              sent = true;
+              break;
+            } else {
+              console.warn(`Tentativa falhou (${a.path}): ${resp.status} ${lastText}`);
+              if (resp.status === 404) continue;
+            }
+          } catch (err) {
+            console.warn(`Erro ao tentar ${a.path}:`, err);
+          }
         }
-      } catch (apiError) {
-        console.warn('Erro ao enviar via API:', apiError);
+
+        if (!sent) {
+          console.warn(`Falha ao enviar mensagem via WhatsApp API; última resposta: ${lastStatus} ${lastText}`);
+        }
       }
+    } catch (apiOuterError) {
+      console.warn('WhatsApp API indisponível; salvando apenas no banco:', apiOuterError);
     }
 
     // Salvar mensagem no banco
@@ -225,7 +254,56 @@ ${Deno.env.get("PUBLIC_APP_URL")}/pedidos
 Obrigado pela preferência! 😊`;
 
   console.log(`Enviando confirmação de pagamento para ${data.phone}:`, message);
-  
+
+  // Tentar envio via API do WhatsApp com múltiplas tentativas/endpoints
+  try {
+    const baseUrl = (Deno.env.get('WHATSAPP_API_URL') || '').trim().replace(/\/$/, '');
+    if (!baseUrl) {
+      console.warn('WHATSAPP_API_URL não configurada; pulando envio via API e registrando apenas no banco.');
+    } else {
+      const attempts = [
+        { path: '/send-message', body: { number: data.phone, message } },
+        { path: '/send-message', body: { to: data.phone, message } },
+        { path: '/send', body: { to: data.phone, message } },
+        { path: '/send', body: { number: data.phone, message } },
+      ];
+
+      let sent = false;
+      let lastStatus = 0;
+      let lastText = '';
+
+      for (const a of attempts) {
+        try {
+          const resp = await fetch(`${baseUrl}${a.path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(a.body),
+          });
+
+          lastStatus = resp.status;
+          try { lastText = await resp.text(); } catch (_) { lastText = ''; }
+
+          if (resp.ok) {
+            console.log(`Confirmação de pagamento enviada para ${data.phone} via ${a.path}`);
+            sent = true;
+            break;
+          } else {
+            console.warn(`Tentativa falhou (${a.path}): ${resp.status} ${lastText}`);
+            if (resp.status === 404) continue;
+          }
+        } catch (err) {
+          console.warn(`Erro ao tentar ${a.path}:`, err);
+        }
+      }
+
+      if (!sent) {
+        console.warn(`Falha ao enviar mensagem via WhatsApp API; última resposta: ${lastStatus} ${lastText}`);
+      }
+    }
+  } catch (error) {
+    console.warn('WhatsApp API indisponível; salvando apenas no banco:', error);
+  }
+
   await supabase.from('whatsapp_messages').insert({
     phone: data.phone,
     message,
