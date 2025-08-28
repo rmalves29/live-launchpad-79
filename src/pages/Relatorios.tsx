@@ -58,6 +58,9 @@ const Relatorios = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'month' | 'year' | 'custom'>('today');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [salesFilter, setSalesFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
+  const [salesStartDate, setSalesStartDate] = useState('');
+  const [salesEndDate, setSalesEndDate] = useState('');
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -72,13 +75,44 @@ const Relatorios = () => {
 
   const loadTodaySales = async () => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      let dateFilter = '';
+      let endDateFilter = '';
       
-      const { data: orders, error } = await supabase
+      switch (salesFilter) {
+        case 'today':
+          dateFilter = new Date().toISOString().split('T')[0];
+          break;
+        case 'month':
+          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+          dateFilter = startOfMonth.toISOString().split('T')[0];
+          break;
+        case 'year':
+          const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+          dateFilter = startOfYear.toISOString().split('T')[0];
+          break;
+        case 'custom':
+          if (!salesStartDate || !salesEndDate) return;
+          dateFilter = salesStartDate;
+          endDateFilter = salesEndDate;
+          break;
+        case 'all':
+          // No date filter
+          break;
+      }
+      
+      let query = supabase
         .from('orders')
-        .select('total_amount, is_paid')
-        .gte('created_at', `${today}T00:00:00`)
-        .lt('created_at', `${today}T23:59:59`);
+        .select('total_amount, is_paid');
+
+      if (salesFilter === 'custom' && dateFilter && endDateFilter) {
+        query = query
+          .gte('created_at', `${dateFilter}T00:00:00`)
+          .lte('created_at', `${endDateFilter}T23:59:59`);
+      } else if (dateFilter) {
+        query = query.gte('created_at', `${dateFilter}T00:00:00`);
+      }
+
+      const { data: orders, error } = await query;
 
       if (error) throw error;
 
@@ -88,7 +122,7 @@ const Relatorios = () => {
       const ticketMedio = totalOrders > 0 ? (totalPaid + totalUnpaid) / totalOrders : 0;
 
       setTodaySales({
-        date: today,
+        date: dateFilter || 'all',
         total_paid: totalPaid,
         total_unpaid: totalUnpaid,
         total_orders: totalOrders,
@@ -98,7 +132,7 @@ const Relatorios = () => {
       console.error('Error loading today sales:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar vendas de hoje',
+        description: 'Erro ao carregar vendas',
         variant: 'destructive'
       });
     }
@@ -265,6 +299,10 @@ const Relatorios = () => {
     loadTopProducts();
   }, [selectedPeriod, startDate, endDate]);
 
+  useEffect(() => {
+    loadTodaySales();
+  }, [salesFilter, salesStartDate, salesEndDate]);
+
   return (
     <div className="container mx-auto py-6 max-w-7xl space-y-6">
       <div className="flex justify-between items-center">
@@ -290,9 +328,42 @@ const Relatorios = () => {
           {/* Vendas de Hoje */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center">
-                <Calendar className="h-5 w-5 mr-2" />
-                Vendas de Hoje
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center">
+                  <Calendar className="h-5 w-5 mr-2" />
+                  Vendas por Período
+                </span>
+                <div className="flex items-center space-x-4">
+                  <Select value={salesFilter} onValueChange={(value: any) => setSalesFilter(value)}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Geral</SelectItem>
+                      <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="month">Este Mês</SelectItem>
+                      <SelectItem value="year">Este Ano</SelectItem>
+                      <SelectItem value="custom">Personalizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {salesFilter === 'custom' && (
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        type="date"
+                        value={salesStartDate}
+                        onChange={(e) => setSalesStartDate(e.target.value)}
+                        className="w-36"
+                      />
+                      <span>até</span>
+                      <Input
+                        type="date"
+                        value={salesEndDate}
+                        onChange={(e) => setSalesEndDate(e.target.value)}
+                        className="w-36"
+                      />
+                    </div>
+                  )}
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>
