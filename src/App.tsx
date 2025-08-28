@@ -13,6 +13,7 @@ import Sorteio from "./pages/Sorteio";
 import Config from "./pages/Config";
 import Produtos from "./pages/Produtos";
 import Clientes from "./pages/Clientes";
+import Relatorios from "./pages/Relatorios";
 import WhatsApp from "./pages/WhatsApp";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import WhatsAppConnection from "./pages/WhatsAppConnection";
@@ -41,6 +42,7 @@ const AppContent = () => {
         <Route path="/config" element={<Config />} />
         <Route path="/produtos" element={<Produtos />} />
         <Route path="/clientes" element={<Clientes />} />
+        <Route path="/relatorios" element={<Relatorios />} />
         <Route path="/whatsapp" element={<WhatsApp />} />
         <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
         <Route path="/whatsapp-connection" element={<WhatsAppConnection />} />
