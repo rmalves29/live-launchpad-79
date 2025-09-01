@@ -49,8 +49,12 @@ async function scheduleReinit(reason = 'unknown') {
   if (reinitScheduled) return;
   reinitScheduled = true;
   
-  connectionAttempts++;
+    connectionAttempts++;
   log(`🔄 Reinicializando WhatsApp (tentativa ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS}, motivo: ${reason})`);
+  
+  // Aguardar um pouco antes de cada tentativa para evitar loops muito rápidos
+  const waitTime = Math.min(connectionAttempts * 1000, 5000); // Máximo 5 segundos
+  log(`⏳ Aguardando ${waitTime}ms antes da tentativa ${connectionAttempts}...`);
   
   if (connectionAttempts >= MAX_CONNECTION_ATTEMPTS) {
     log('🚨 Máximo de tentativas atingido. Forçando reset completo...');
@@ -85,12 +89,14 @@ async function scheduleReinit(reason = 'unknown') {
   
   connState = 'restarting';
   try { await client.destroy(); } catch (_) {}
+  
   setTimeout(() => {
+    log('🔄 Iniciando tentativa de reconexão...');
     client.initialize().catch((e) => {
       connState = 'init_error';
       console.error('Erro ao inicializar WhatsApp (retry):', e.message);
     }).finally(() => { reinitScheduled = false; });
-  }, 1500);
+  }, waitTime || 1500);
 }
 
 // ===================== Cliente WhatsApp =====================

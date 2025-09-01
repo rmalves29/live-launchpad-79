@@ -50,20 +50,34 @@ async function trySendViaNode(phone: string, message: string) {
 
     for (const a of attempts) {
       try {
+        console.log(`Tentando enviar para ${baseUrl}${a.path}`, { phone, messageLength: message.length });
+        
         const resp = await fetch(`${baseUrl}${a.path}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(a.body),
         });
-        if (resp.ok) return true;
-        // If 404 try next attempt
-        if (resp.status === 404) continue;
-      } catch (_) {
-        // try next attempt
+        
+        if (resp.ok) {
+          console.log(`Mensagem enviada com sucesso via ${a.path}`, { phone });
+          return true;
+        }
+        
+        // Se o servidor está reiniciando, aguardar um pouco antes de tentar novamente
+        const errorText = await resp.text().catch(() => '');
+        if (errorText.includes('restarting') || errorText.includes('indisponível')) {
+          console.log('Servidor reiniciando, aguardando 3 segundos...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } else if (resp.status !== 404) {
+          console.warn(`Tentativa falhou (${a.path}):`, resp.status, errorText);
+        }
+        
+      } catch (error) {
+        console.warn(`Erro na tentativa (${a.path}):`, error);
       }
     }
-  } catch (_) {
-    // ignore
+  } catch (error) {
+    console.warn('Erro geral no trySendViaNode:', error);
   }
   return false;
 }

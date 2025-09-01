@@ -671,16 +671,41 @@ for (const phone of uniquePhones) {
     ] as const;
 
     let sent = false;
-    for (const a of attempts) {
-      try {
-        const resp = await fetch(`${baseUrl}${a.path}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(a.body),
-        });
-        if (resp.ok) { sent = true; break; }
-        if (resp.status === 404) continue;
-      } catch (_) {}
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (!sent && retryCount < maxRetries) {
+      for (const a of attempts) {
+        try {
+          const resp = await fetch(`${baseUrl}${a.path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(a.body),
+          });
+          
+          if (resp.ok) { 
+            sent = true; 
+            break; 
+          }
+          
+          // Se o servidor está reiniciando, aguardar antes de tentar novamente
+          const errorText = await resp.text().catch(() => '');
+          if (errorText.includes('restarting') || errorText.includes('indisponível')) {
+            console.log(`Servidor WhatsApp reiniciando para ${phone}, aguardando 3 segundos...`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            break; // Sair do loop de attempts e tentar novamente
+          }
+          
+          if (resp.status === 404) continue;
+        } catch (error) {
+          console.warn(`Erro na tentativa de envio para ${phone}:`, error);
+        }
+      }
+      retryCount++;
+      if (!sent && retryCount < maxRetries) {
+        console.log(`Tentativa ${retryCount} falhou para ${phone}, aguardando antes da próxima...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
     }
 
     // Registrar no banco independente do sucesso
@@ -692,7 +717,7 @@ for (const phone of uniquePhones) {
     });
 
     if (!sent) {
-      console.warn(`Falha ao enviar via WhatsApp API para ${phone}. Verifique o servidor.`);
+      console.warn(`Falha ao enviar via WhatsApp API para ${phone} após ${maxRetries} tentativas. Verifique o servidor.`);
       errorCount++;
     } else {
       successCount++;
