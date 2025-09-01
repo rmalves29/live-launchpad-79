@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Edit2, Package, Upload, X, Trash2 } from 'lucide-react';
+import { Plus, Edit2, Package, Upload, X, Trash2, ArrowLeft, BarChart3, TrendingUp, AlertTriangle } from 'lucide-react';
 
 
 interface Product {
@@ -28,6 +28,7 @@ const Produtos = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
   const { toast } = useToast();
 
   const [formData, setFormData] = useState({
@@ -311,17 +312,32 @@ const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     );
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="p-6">
-        <div className="container mx-auto max-w-7xl space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold flex items-center">
-          <Package className="h-8 w-8 mr-3" />
-          Gerenciar Produtos
-        </h1>
-        
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+  if (activeView === 'management') {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center">
+                <Package className="h-8 w-8 mr-3 text-primary" />
+                Gerenciar Produtos
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                Cadastre, edite e gerencie o catálogo de produtos
+              </p>
+            </div>
+            <Button 
+              onClick={() => setActiveView('dashboard')} 
+              variant="outline"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar ao Dashboard
+            </Button>
+          </div>
+
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={resetForm}>
               <Plus className="h-4 w-4 mr-2" />
@@ -470,11 +486,11 @@ const [previewUrl, setPreviewUrl] = useState<string | null>(null);
                 </Button>
               </div>
             </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </DialogContent>
+          </Dialog>
+        </div>
 
-      <Card>
+        <Card>
         <CardHeader>
           <CardTitle>Lista de Produtos</CardTitle>
           <CardDescription>
@@ -593,9 +609,169 @@ const [previewUrl, setPreviewUrl] = useState<string | null>(null);
             <div className="text-center py-8 text-muted-foreground">
               {searchTerm ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado'}
             </div>
-          )}
-        </CardContent>
-      </Card>
+            )}
+          </CardContent>
+        </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const activeProducts = products.filter(p => p.is_active);
+  const lowStockProducts = products.filter(p => p.stock <= 5);
+  const totalValue = products.reduce((sum, p) => sum + (p.price * p.stock), 0);
+
+  const statisticsCards = [
+    {
+      title: 'Total de Produtos',
+      value: products.length.toString(),
+      description: 'Produtos cadastrados',
+      icon: Package,
+      color: 'text-blue-600'
+    },
+    {
+      title: 'Produtos Ativos',
+      value: activeProducts.length.toString(),
+      description: 'Disponíveis para venda',
+      icon: TrendingUp,
+      color: 'text-green-600'
+    },
+    {
+      title: 'Estoque Baixo',
+      value: lowStockProducts.length.toString(),
+      description: 'Produtos com estoque ≤ 5',
+      icon: AlertTriangle,
+      color: 'text-red-600'
+    },
+    {
+      title: 'Valor Total',
+      value: `R$ ${totalValue.toFixed(2)}`,
+      description: 'Valor total do estoque',
+      icon: BarChart3,
+      color: 'text-purple-600'
+    }
+  ];
+
+  const dashboardItems = [
+    {
+      title: 'Gerenciar Produtos',
+      description: 'Visualizar, editar e excluir produtos do catálogo',
+      icon: Package,
+      action: () => setActiveView('management'),
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200'
+    },
+    {
+      title: 'Cadastrar Produto',
+      description: 'Adicionar novo produto ao catálogo',
+      icon: Plus,
+      action: () => {
+        resetForm();
+        setIsDialogOpen(true);
+      },
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-200'
+    },
+    {
+      title: 'Controle de Estoque',
+      description: 'Visualizar e gerenciar níveis de estoque',
+      icon: AlertTriangle,
+      action: () => setActiveView('management'),
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-orange-200'
+    },
+    {
+      title: 'Relatórios',
+      description: 'Análises e estatísticas dos produtos',
+      icon: BarChart3,
+      action: () => toast({
+        title: 'Em desenvolvimento',
+        description: 'Funcionalidade em breve'
+      }),
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50',
+      borderColor: 'border-purple-200'
+    }
+  ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">Carregando produtos...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold mb-4 flex items-center justify-center">
+            <Package className="h-10 w-10 mr-3 text-primary" />
+            Centro de Controle - Produtos
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Gerencie todo o catálogo de produtos e estoque
+          </p>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {statisticsCards.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={stat.title} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {stat.title}
+                  </CardTitle>
+                  <Icon className={`h-4 w-4 ${stat.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {stat.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Main Dashboard Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {dashboardItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Card 
+                key={item.title} 
+                className={`cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${item.borderColor} ${item.bgColor} border-2`}
+                onClick={item.action}
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center text-xl">
+                    <div className={`p-3 rounded-lg ${item.bgColor} mr-4`}>
+                      <Icon className={`h-8 w-8 ${item.color}`} />
+                    </div>
+                    {item.title}
+                  </CardTitle>
+                  <CardDescription className="text-base">
+                    {item.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button className="w-full">
+                    Acessar
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift, Save, Edit, Package } from 'lucide-react';
+import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift, Save, Edit, Package, ArrowLeft, BarChart3, TrendingUp } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { useToast } from '@/hooks/use-toast';
@@ -39,6 +39,7 @@ const Config = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [activeView, setActiveView] = useState<'dashboard' | 'config'>('dashboard');
 
   const loadSettings = async () => {
     setLoadingSettings(true);
@@ -227,40 +228,55 @@ const Config = () => {
     }
   };
 
-  return (
-    <div className="container mx-auto py-6 max-w-6xl space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold flex items-center">
-          <Settings className="h-8 w-8 mr-3" />
-          Configurações do Sistema
-        </h1>
-      </div>
+  if (activeView === 'config') {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center">
+                <Settings className="h-8 w-8 mr-3 text-primary" />
+                Configurações do Sistema
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                Configure integrações, cupons, brindes e parâmetros do sistema
+              </p>
+            </div>
+            <Button 
+              onClick={() => setActiveView('dashboard')} 
+              variant="outline"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar ao Dashboard
+            </Button>
+          </div>
 
-      <Tabs defaultValue="config" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="config" className="flex items-center">
-            <Settings className="h-4 w-4 mr-2" />
-            Configurações
-          </TabsTrigger>
-          <TabsTrigger value="system" className="flex items-center">
-            <Database className="h-4 w-4 mr-2" />
-            Sistema
-          </TabsTrigger>
-          <TabsTrigger value="coupons" className="flex items-center">
-            <Percent className="h-4 w-4 mr-2" />
-            Cupons
-          </TabsTrigger>
-          <TabsTrigger value="gifts" className="flex items-center">
-            <Gift className="h-4 w-4 mr-2" />
-            Brindes
-          </TabsTrigger>
-          <TabsTrigger value="integrations" className="flex items-center">
-            <Truck className="h-4 w-4 mr-2" />
-            Integrações
-          </TabsTrigger>
-        </TabsList>
+        <div className="space-y-6">
+          <Tabs defaultValue="config" className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="config" className="flex items-center">
+                <Settings className="h-4 w-4 mr-2" />
+                Configurações
+              </TabsTrigger>
+              <TabsTrigger value="system" className="flex items-center">
+                <Database className="h-4 w-4 mr-2" />
+                Sistema
+              </TabsTrigger>
+              <TabsTrigger value="coupons" className="flex items-center">
+                <Percent className="h-4 w-4 mr-2" />
+                Cupons
+              </TabsTrigger>
+              <TabsTrigger value="gifts" className="flex items-center">
+                <Gift className="h-4 w-4 mr-2" />
+                Brindes
+              </TabsTrigger>
+              <TabsTrigger value="integrations" className="flex items-center">
+                <Truck className="h-4 w-4 mr-2" />
+                Integrações
+              </TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="config" className="space-y-6 mt-6">
+            <TabsContent value="config" className="space-y-6 mt-6">
 
       {/* Current Configuration */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -678,8 +694,152 @@ const Config = () => {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+            </TabsContent>
+          </Tabs>
+        </div>
+        </div>
+      </div>
+    );
+  }
+
+  const statisticsCards = [
+    {
+      title: 'Integrações Ativas',
+      value: '3',
+      description: 'Mercado Pago, Melhor Envio, WhatsApp',
+      icon: Settings,
+      color: 'text-blue-600'
+    },
+    {
+      title: 'Cupons Ativos',
+      value: '0',
+      description: 'Cupons de desconto disponíveis',
+      icon: Percent,
+      color: 'text-green-600'
+    },
+    {
+      title: 'Brindes Configurados',
+      value: '0',
+      description: 'Brindes automáticos cadastrados',
+      icon: Gift,
+      color: 'text-purple-600'
+    },
+    {
+      title: 'Status Geral',
+      value: 'Configurado',
+      description: 'Sistema operacional',
+      icon: TrendingUp,
+      color: 'text-orange-600'
+    }
+  ];
+
+  const dashboardItems = [
+    {
+      title: 'Configurações Gerais',
+      description: 'Parâmetros do sistema e integrações',
+      icon: Settings,
+      action: () => setActiveView('config'),
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200'
+    },
+    {
+      title: 'Cupons de Desconto',
+      description: 'Criar e gerenciar cupons promocionais',
+      icon: Percent,
+      action: () => setActiveView('config'),
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-200'
+    },
+    {
+      title: 'Brindes e Promoções',
+      description: 'Configurar brindes automáticos',
+      icon: Gift,
+      action: () => setActiveView('config'),
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50',
+      borderColor: 'border-purple-200'
+    },
+    {
+      title: 'Integrações',
+      description: 'Mercado Pago, Melhor Envio e WhatsApp',
+      icon: Database,
+      action: () => setActiveView('config'),
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-orange-200'
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold mb-4 flex items-center justify-center">
+            <Settings className="h-10 w-10 mr-3 text-primary" />
+            Centro de Controle - Configurações
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Configure e personalize o sistema completo
+          </p>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {statisticsCards.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={stat.title} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {stat.title}
+                  </CardTitle>
+                  <Icon className={`h-4 w-4 ${stat.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {stat.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Main Dashboard Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {dashboardItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Card 
+                key={item.title} 
+                className={`cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${item.borderColor} ${item.bgColor} border-2`}
+                onClick={item.action}
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center text-xl">
+                    <div className={`p-3 rounded-lg ${item.bgColor} mr-4`}>
+                      <Icon className={`h-8 w-8 ${item.color}`} />
+                    </div>
+                    {item.title}
+                  </CardTitle>
+                  <CardDescription className="text-base">
+                    {item.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button className="w-full">
+                    Acessar
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 };

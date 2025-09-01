@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar } from 'lucide-react';
+import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Customer {
@@ -59,6 +59,7 @@ const Clientes = () => {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
 
   const normalizePhone = (phone: string): string => {
     const digits = phone.replace(/[^0-9]/g, '');
@@ -348,16 +349,31 @@ const Clientes = () => {
     }
   };
 
-  return (
-    <div className="container mx-auto py-6 max-w-6xl space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold flex items-center">
-          <Users className="h-8 w-8 mr-3 text-primary" />
-          Clientes
-        </h1>
-      </div>
+  if (activeView === 'management') {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center">
+                <Users className="h-8 w-8 mr-3 text-primary" />
+                Gerenciar Clientes
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                Cadastre, edite e visualize informações dos clientes
+              </p>
+            </div>
+            <Button 
+              onClick={() => setActiveView('dashboard')} 
+              variant="outline"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar ao Dashboard
+            </Button>
+          </div>
 
-      <Tabs defaultValue="list" className="space-y-6">
+          <div className="space-y-6">
+            <Tabs defaultValue="list" className="space-y-6">
         <TabsList>
           <TabsTrigger value="list" className="flex items-center">
             <Users className="h-4 w-4 mr-2" />
@@ -748,10 +764,158 @@ const Clientes = () => {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const statisticsCards = [
+    {
+      title: 'Total de Clientes',
+      value: customers.length.toString(),
+      description: 'Clientes cadastrados',
+      icon: Users,
+      color: 'text-blue-600'
+    },
+    {
+      title: 'Clientes Ativos',
+      value: customers.filter(c => c.total_orders > 0).length.toString(),
+      description: 'Com pedidos realizados',
+      icon: TrendingUp,
+      color: 'text-green-600'
+    },
+    {
+      title: 'Receita Total',
+      value: `R$ ${customers.reduce((sum, c) => sum + c.total_spent, 0).toFixed(2)}`,
+      description: 'Faturamento dos clientes',
+      icon: DollarSign,
+      color: 'text-purple-600'
+    },
+    {
+      title: 'Ticket Médio',
+      value: customers.length > 0 ? `R$ ${(customers.reduce((sum, c) => sum + c.total_spent, 0) / customers.filter(c => c.total_orders > 0).length || 0).toFixed(2)}` : 'R$ 0,00',
+      description: 'Valor médio por cliente',
+      icon: BarChart3,
+      color: 'text-orange-600'
+    }
+  ];
+
+  const dashboardItems = [
+    {
+      title: 'Gerenciar Clientes',
+      description: 'Visualizar, cadastrar e editar informações dos clientes',
+      icon: Users,
+      action: () => setActiveView('management'),
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200'
+    },
+    {
+      title: 'Cadastrar Cliente',
+      description: 'Adicionar novo cliente ao sistema',
+      icon: UserPlus,
+      action: () => {
+        setActiveView('management');
+        // Will auto-switch to create tab
+      },
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-200'
+    },
+    {
+      title: 'Relatórios',
+      description: 'Análises e estatísticas dos clientes',
+      icon: BarChart3,
+      action: () => toast({
+        title: 'Em desenvolvimento',
+        description: 'Funcionalidade em breve'
+      }),
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50',
+      borderColor: 'border-purple-200'
+    },
+    {
+      title: 'Histórico de Pedidos',
+      description: 'Visualizar pedidos por cliente',
+      icon: ShoppingBag,
+      action: () => setActiveView('management'),
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-orange-200'
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold mb-4 flex items-center justify-center">
+            <Users className="h-10 w-10 mr-3 text-primary" />
+            Centro de Controle - Clientes
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Gerencie todos os clientes e suas informações
+          </p>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {statisticsCards.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={stat.title} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {stat.title}
+                  </CardTitle>
+                  <Icon className={`h-4 w-4 ${stat.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {stat.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Main Dashboard Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {dashboardItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Card 
+                key={item.title} 
+                className={`cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${item.borderColor} ${item.bgColor} border-2`}
+                onClick={item.action}
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center text-xl">
+                    <div className={`p-3 rounded-lg ${item.bgColor} mr-4`}>
+                      <Icon className={`h-8 w-8 ${item.color}`} />
+                    </div>
+                    {item.title}
+                  </CardTitle>
+                  <CardDescription className="text-base">
+                    {item.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button className="w-full">
+                    Acessar
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 };
-
-export default Clientes;

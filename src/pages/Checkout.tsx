@@ -2,13 +2,14 @@ import { useState, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Percent } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart } from 'lucide-react';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, TrendingUp, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface OrderItem {
@@ -74,6 +75,7 @@ const Checkout = () => {
   const [searchingOrders, setSearchingOrders] = useState(false);
   const [loadingCustomer, setLoadingCustomer] = useState(false);
   const [calculatingShipping, setCalculatingShipping] = useState(false);
+  const [activeView, setActiveView] = useState<'dashboard' | 'checkout'>('dashboard');
   
   // Coupon and gifts state
   const [couponCode, setCouponCode] = useState('');
@@ -747,48 +749,67 @@ const Checkout = () => {
     return (ordersTotal - couponDiscount) + shipping;
   };
 
-  return (
-    <div className="container mx-auto py-6 max-w-4xl space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Checkout</h1>
-      </div>
-
-      {/* Customer Search */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Search className="h-5 w-5 mr-2" />
-            Buscar Pedidos em Aberto
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex space-x-4">
-              <Input
-                placeholder="Telefone do cliente"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="flex-1"
-              />
-              <Button onClick={searchOpenOrders} disabled={searchingOrders || loadingCustomer}>
-                {searchingOrders || loadingCustomer ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Search className="h-4 w-4 mr-2" />
-                )}
-                Buscar Pedidos
-              </Button>
+  if (activeView === 'checkout') {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center">
+                <CreditCard className="h-8 w-8 mr-3 text-primary" />
+                Finalizar Checkout
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                Processe pagamentos e finalize pedidos
+              </p>
             </div>
-            
-            {(searchingOrders || loadingCustomer) && (
-              <div className="flex items-center justify-center py-2">
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                <span className="text-sm text-muted-foreground">Buscando pedidos e dados do cliente...</span>
-              </div>
-            )}
+            <Button 
+              onClick={() => setActiveView('dashboard')} 
+              variant="outline"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar ao Dashboard
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Search className="h-5 w-5 mr-2" />
+                  Buscar Pedidos em Aberto
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex space-x-4">
+                    <Input
+                      placeholder="Telefone do cliente"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button onClick={searchOpenOrders} disabled={searchingOrders || loadingCustomer}>
+                      {searchingOrders || loadingCustomer ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Search className="h-4 w-4 mr-2" />
+                      )}
+                      Buscar Pedidos
+                    </Button>
+                  </div>
+                  
+                  {(searchingOrders || loadingCustomer) && (
+                    <div className="flex items-center justify-center py-2">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <span className="text-sm text-muted-foreground">Buscando pedidos e dados do cliente...</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ... continue with existing checkout functionality ... */}
 
       {/* Open Orders */}
       {openOrders.length > 0 && (
@@ -1148,6 +1169,152 @@ const Checkout = () => {
           </CardContent>
         </Card>
       )}
+        </div>
+      </div>
+    );
+  }
+
+  const statisticsCards = [
+    {
+      title: 'Pedidos Abertos',
+      value: openOrders.length.toString(),
+      description: 'Aguardando finalização',
+      icon: ShoppingCart,
+      color: 'text-blue-600'
+    },
+    {
+      title: 'Total a Receber',
+      value: `R$ ${getSelectedOrdersTotal().toFixed(2)}`,
+      description: 'Valor dos pedidos selecionados',
+      icon: TrendingUp,
+      color: 'text-green-600'
+    },
+    {
+      title: 'Produtos',
+      value: getCombinedItems().length.toString(),
+      description: 'Itens nos pedidos selecionados',
+      icon: Package,
+      color: 'text-purple-600'
+    },
+    {
+      title: 'Status',
+      value: paymentLink ? 'Link Gerado' : 'Pendente',
+      description: 'Status do checkout',
+      icon: CreditCard,
+      color: paymentLink ? 'text-green-600' : 'text-orange-600'
+    }
+  ];
+
+  const dashboardItems = [
+    {
+      title: 'Processar Checkout',
+      description: 'Buscar pedidos e processar pagamentos',
+      icon: CreditCard,
+      action: () => setActiveView('checkout'),
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200'
+    },
+    {
+      title: 'Cupons de Desconto',
+      description: 'Aplicar cupons e descontos especiais',
+      icon: Percent,
+      action: () => setActiveView('checkout'),
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+      borderColor: 'border-green-200'
+    },
+    {
+      title: 'Calcular Frete',
+      description: 'Opções de entrega e cálculo de frete',
+      icon: Truck,
+      action: () => setActiveView('checkout'),
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-orange-200'
+    },
+    {
+      title: 'Histórico',
+      description: 'Ver checkouts finalizados anteriormente',
+      icon: BarChart3,
+      action: () => toast({
+        title: 'Em desenvolvimento',
+        description: 'Funcionalidade em breve'
+      }),
+      color: 'text-purple-600',
+      bgColor: 'bg-purple-50',
+      borderColor: 'border-purple-200'
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold mb-4 flex items-center justify-center">
+            <CreditCard className="h-10 w-10 mr-3 text-primary" />
+            Centro de Controle - Checkout
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Finalize pedidos e processe pagamentos
+          </p>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {statisticsCards.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={stat.title} className="hover:shadow-lg transition-shadow">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {stat.title}
+                  </CardTitle>
+                  <Icon className={`h-4 w-4 ${stat.color}`} />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stat.value}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {stat.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Main Dashboard Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {dashboardItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Card 
+                key={item.title} 
+                className={`cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${item.borderColor} ${item.bgColor} border-2`}
+                onClick={item.action}
+              >
+                <CardHeader>
+                  <CardTitle className="flex items-center text-xl">
+                    <div className={`p-3 rounded-lg ${item.bgColor} mr-4`}>
+                      <Icon className={`h-8 w-8 ${item.color}`} />
+                    </div>
+                    {item.title}
+                  </CardTitle>
+                  <CardDescription className="text-base">
+                    {item.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button className="w-full">
+                    Acessar
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 };
