@@ -1,19 +1,20 @@
-# 📱 Servidor WhatsApp Otimizado - Guia de Instalação
+# 📱 Servidor WhatsApp Otimizado - Guia Completo
 
-## 🚀 Nova Versão com Múltiplas Instâncias
+## 🚀 Funcionalidades Implementadas
 
-O novo servidor WhatsApp foi otimizado com os seguintes recursos:
+### ✅ **Processamento Automático de Códigos**
+- **Detecção inteligente**: C111, P999, A123, etc.
+- **Busca no Supabase**: Produtos em tempo real
+- **Resposta automática**: Mensagem formatada com detalhes
+- **Tag "APP"**: Adicionada automaticamente aos clientes
+- **Integração carrinho**: Via Edge Functions do Supabase
 
-### ✨ Principais Melhorias
-
+### 🔄 **Múltiplas Instâncias WhatsApp**
 - **6 instâncias simultâneas** (instancia1 a instancia6)
 - **Sistema round-robin** para distribuição de envios
 - **Anti-duplicata inteligente** (10 minutos de proteção)
 - **Sistema de retry automático** para mensagens falhadas
 - **Controle de pausa/retomada** de envios
-- **Envio em massa otimizado** com configurações avançadas
-- **Sistema de etiquetas automático** (tag "app")
-- **Múltiplas tentativas de envio** por instância
 
 ## 📋 Pré-requisitos
 
@@ -33,23 +34,186 @@ O novo servidor WhatsApp foi otimizado com os seguintes recursos:
    ```bash
    mv server-whatsapp-minimo.js server-whatsapp-minimo-backup.js
    ```
-3. **Copiar** os novos arquivos:
-   - `server-whatsapp-otimizado.js` → Servidor principal
-   - `retry-system.js` → Sistema de retry
+3. **Executar** o servidor otimizado:
+   ```bash
+   node server-whatsapp-otimizado.js
+   ```
 
-### 2. Iniciar o Novo Servidor
-
-```bash
-node server-whatsapp-otimizado.js
-```
-
-### 3. Configurar Instâncias
+### 2. Configurar Instâncias
 
 O servidor iniciará automaticamente **6 instâncias** do WhatsApp:
 
 1. **Escaneie os QR codes** que aparecerão no terminal
 2. **Conecte cada instância** com um número diferente do WhatsApp
 3. **Aguarde** todas as instâncias ficarem "online"
+
+## 🤖 Processamento Automático de Códigos
+
+### Como Funciona
+
+1. **Cliente envia código**: "C111"
+2. **Sistema detecta padrão**: Regex `/^([CPA]\d{2,4})\s*$/i`
+3. **Busca produto no Supabase**: Automaticamente
+4. **Envia resposta formatada**: Com detalhes do produto
+5. **Adiciona tag "APP"**: No WhatsApp Business
+6. **Atualiza carrinho**: Via Edge Function
+
+### Exemplo de Resposta Automática
+
+```
+🛒 *Item Adicionado ao Carrinho*
+
+Olá João Silva! 
+
+✅ Produto: *Calça Jeans*
+📦 Quantidade: *1*
+💰 Preço: *R$ 79,90*
+🏷️ Código: *C111*
+📦 Estoque: 15 unidades
+
+Seu item foi adicionado com sucesso ao carrinho! 🎉
+
+💬 Continue enviando códigos de produtos ou entre em contato para finalizar seu pedido.
+
+Obrigado pela preferência! 🙌
+```
+
+## 🌐 Nova API - Porta 3333
+
+### 📊 Endpoints Principais
+
+#### Status das Instâncias
+```bash
+GET http://localhost:3333/api/status
+```
+
+#### Envio em Massa Otimizado
+```bash
+POST http://localhost:3333/api/send-config
+Content-Type: application/json
+
+{
+  "data": "{\"numeros\":[\"5531999999999\"],\"mensagens\":[\"Sua mensagem\"],\"interval\":2000,\"batchSize\":5,\"batchDelay\":3000}"
+}
+```
+
+#### Envio Individual (Compatibilidade)
+```bash
+POST http://localhost:3333/send-message
+{
+  "number": "5531999999999",
+  "message": "Sua mensagem"
+}
+```
+
+#### Adicionar Etiqueta
+```bash
+POST http://localhost:3333/add-label
+{
+  "phone": "5531999999999",
+  "label": "app"
+}
+```
+
+#### Mensagens Recebidas (Novo)
+```bash
+GET http://localhost:3333/api/client-responses
+```
+
+## 🔍 Monitoramento e Logs
+
+### Logs em Tempo Real
+```bash
+GET http://localhost:3333/api/logs
+```
+
+### Tipos de Eventos
+- `codigo_detectado`: Código válido detectado
+- `produto_processado`: Produto encontrado e processado
+- `produto_nao_encontrado`: Código não existe no catálogo
+- `label_adicionada`: Tag adicionada ao cliente
+- `envio_finalizado`: Lote de mensagens concluído
+
+### Exemplo de Log
+```json
+{
+  "data": "2025-01-09T14:30:00.000Z",
+  "evento": "produto_processado",
+  "codigo": "C111",
+  "produto": "Calça Jeans",
+  "cliente": "João Silva",
+  "numero": "5531999999999"
+}
+```
+
+## 🚦 Controle de Envios
+
+### Pausar/Retomar Envios
+```bash
+POST http://localhost:3333/api/pause-sending    # Pausar
+POST http://localhost:3333/api/resume-sending   # Retomar
+GET http://localhost:3333/api/sending-status    # Status
+```
+
+## 🛠️ Solução de Problemas
+
+### ❌ Códigos não são processados
+1. **Formato correto**: C111, P999, A123 (sem espaços extras)
+2. **Produto existe**: Verificar no Supabase
+3. **Credenciais**: Confirmar tokens do Supabase
+4. **Ver logs**: `GET /api/logs` para detalhes
+
+### ❌ "Nenhuma instância disponível"
+- Verifique se pelo menos 1 instância está "online"
+- Escaneie novamente os QR codes se necessário
+- Aguarde a reconexão automática
+
+### ❌ Instância desconectada
+- O sistema tentará reconectar automaticamente
+- Monitore os logs para acompanhar
+- Reconecte manualmente se necessário
+
+## 📱 Configuração no Frontend
+
+Configure a URL do servidor no localStorage:
+
+```javascript
+localStorage.setItem('whatsapp_api_url', 'http://localhost:3333');
+```
+
+## ⚙️ Configurações do Sistema
+
+### Configurações de Envio
+- **Intervalo entre mensagens**: 2000ms (2 segundos)
+- **Tamanho do lote**: 5 mensagens
+- **Pausa entre lotes**: 3000ms (3 segundos)
+- **Máximo processos simultâneos**: 1
+
+### Sistema Anti-Duplicata
+- **Proteção**: 10 minutos
+- **Baseado em**: Número + hash da mensagem
+- **Limpeza automática**: A cada 4000 mensagens
+
+## 🎯 Teste Rápido do Sistema
+
+1. **Conectar instâncias**: Escanear todos os QR codes
+2. **Verificar status**: `curl http://localhost:3333/api/status`
+3. **Testar código**: Enviar "C111" via WhatsApp
+4. **Verificar logs**: `curl http://localhost:3333/api/logs`
+5. **Confirmar carrinho**: Verificar no app se produto foi adicionado
+
+## 📈 Benefícios da Nova Versão
+
+- **6x mais capacidade** de envio
+- **Processamento automático** de códigos de produtos
+- **Maior confiabilidade** com múltiplas instâncias
+- **Tags automáticas** para organização
+- **Integração completa** com Supabase
+- **Monitoramento em tempo real**
+
+---
+
+**🔄 Para voltar ao servidor antigo**: Renomeie `server-whatsapp-minimo-backup.js` para `server-whatsapp-minimo.js` e execute com `node server-whatsapp-minimo.js`
 
 ## 🌐 Nova API - Porta 3333
 
