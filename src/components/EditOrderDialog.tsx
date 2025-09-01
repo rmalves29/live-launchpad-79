@@ -357,13 +357,6 @@ useEffect(() => {
     if (!order) return;
     
     try {
-      // Enviar mensagem de cancelamento usando a mesma lógica de envio
-      const getBaseUrl = () => {
-        const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
-        const base = (fromStorage || 'http://localhost:3000').trim();
-        return base.replace(/\/$/, '');
-      };
-
       // Buscar template de cancelamento
       const { data: template } = await supabase
         .from('whatsapp_templates')
@@ -375,31 +368,48 @@ useEffect(() => {
         ? template.content.replace('{{produto}}', item.product?.name || 'Produto')
         : `❌ *Produto Cancelado*\n\nO produto "${item.product?.name || 'Produto'}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
 
-      const baseUrl = getBaseUrl();
-      const attempts = [
-        { path: '/send-message', body: { number: order.customer_phone, message } },
-        { path: '/send-message', body: { to: order.customer_phone, message } },
-        { path: '/send', body: { to: order.customer_phone, message } },
-        { path: '/send', body: { number: order.customer_phone, message } },
-      ];
-
-      let sent = false;
-      for (const a of attempts) {
+      // Usar a função de envio otimizada
+      const sent = await (async () => {
+        const baseUrl = 'http://localhost:3333';
         try {
-          const resp = await fetch(`${baseUrl}${a.path}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(a.body),
-          });
-          
-          if (resp.ok) {
-            sent = true;
-            break;
+          const attempts = [
+            { path: '/send-message', body: { number: order.customer_phone, message } },
+            { path: '/send-message', body: { to: order.customer_phone, message } },
+            { path: '/send', body: { to: order.customer_phone, message } },
+            { path: '/send', body: { number: order.customer_phone, message } },
+          ];
+
+          for (const a of attempts) {
+            try {
+              const resp = await fetch(`${baseUrl}${a.path}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(a.body),
+              });
+              
+              if (resp.ok) {
+                // Adicionar tag "app" ao cliente
+                try {
+                  await fetch(`${baseUrl}/add-label`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: order.customer_phone, label: 'app' }),
+                  });
+                } catch (labelError) {
+                  console.warn('Erro ao adicionar tag "app":', labelError);
+                }
+                return true;
+              }
+            } catch (error) {
+              console.warn(`Erro na tentativa (${a.path}):`, error);
+            }
           }
+          return false;
         } catch (error) {
-          console.warn(`Erro na tentativa (${a.path}):`, error);
+          console.warn('Erro geral no envio:', error);
+          return false;
         }
-      }
+      })();
 
       // Registrar no banco
       await supabase.from('whatsapp_messages').insert({

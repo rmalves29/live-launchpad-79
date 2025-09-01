@@ -155,72 +155,42 @@ const WhatsAppTemplates = () => {
       let successCount = 0;
       let errorCount = 0;
 
-      // Enviar mensagem para cada cliente
-      for (const phone of uniquePhones) {
-        try {
-          // Personalizar mensagem se necessário
-          const personalizedMessage = broadcastTemplate.content;
+      // Usar envio em massa otimizado para todos os clientes de uma vez
+      try {
+        const { sendBulkMessages } = await import('@/lib/whatsapp');
+        const sent = await sendBulkMessages(uniquePhones, broadcastTemplate.content);
 
-          // Usar a mesma lógica da lib/whatsapp.ts
-          const getBaseUrl = () => {
-            const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
-            const base = (fromStorage || 'http://localhost:3000').trim();
-            return base.replace(/\/$/, '');
-          };
-
-          const baseUrl = getBaseUrl();
-          const attempts = [
-            { path: '/send-message', body: { number: phone, message: personalizedMessage } },
-            { path: '/send-message', body: { to: phone, message: personalizedMessage } },
-            { path: '/send', body: { to: phone, message: personalizedMessage } },
-            { path: '/send', body: { number: phone, message: personalizedMessage } },
-          ];
-
-          let sent = false;
-          for (const a of attempts) {
+        if (sent) {
+          successCount = uniquePhones.length;
+          
+          // Registrar todas as mensagens no banco para histórico
+          for (const phone of uniquePhones) {
             try {
-              const resp = await fetch(`${baseUrl}${a.path}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(a.body),
+              await supabase.from('whatsapp_messages').insert({
+                phone,
+                message: broadcastTemplate.content,
+                type: 'broadcast',
+                sent_at: new Date().toISOString(),
               });
-              
-              if (resp.ok) {
-                sent = true;
-                break;
-              }
-              
-              // Se o servidor está reiniciando, aguardar um pouco
-              const errorText = await resp.text().catch(() => '');
-              if (errorText.includes('restarting') || errorText.includes('indisponível')) {
-                console.log('Servidor reiniciando, aguardando 3 segundos...');
-                await new Promise(resolve => setTimeout(resolve, 3000));
-              } else if (resp.status !== 404) {
-                console.warn(`Tentativa falhou (${a.path}):`, resp.status, errorText);
-              }
-            } catch (error) {
-              console.warn(`Erro na tentativa (${a.path}):`, error);
+            } catch (dbError) {
+              console.warn(`Erro ao registrar mensagem no banco para ${phone}:`, dbError);
             }
           }
 
-          // Registrar no banco (isso vai acionar a etiqueta "APP" automaticamente)
-          await supabase.from('whatsapp_messages').insert({
-            phone,
-            message: personalizedMessage,
-            type: 'broadcast',
-            sent_at: new Date().toISOString(),
-          });
-
-          if (!sent) {
-            console.warn(`Falha ao enviar via WhatsApp API para ${phone}. Verifique o servidor.`);
-            errorCount++;
-          } else {
-            successCount++;
+          // Adicionar tag "app" para todos os clientes que receberam a mensagem em massa
+          try {
+            await supabase.functions.invoke('whatsapp-add-label-bulk', {
+              body: { phones: uniquePhones, label: 'app' }
+            });
+          } catch (labelError) {
+            console.warn('Erro ao adicionar tags "app":', labelError);
           }
-        } catch (error) {
-          console.error(`Erro ao enviar para ${phone}:`, error);
-          errorCount++;
+        } else {
+          errorCount = uniquePhones.length;
         }
+      } catch (error) {
+        console.error('Erro no envio em massa:', error);
+        errorCount = uniquePhones.length;
       }
 
       toast({

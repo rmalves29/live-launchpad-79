@@ -7,13 +7,44 @@ import { supabase } from '@/integrations/supabase/client';
 // 2) Log every outgoing message in the database (whatsapp_messages)
 // 3) Optional fallback: invoke the Supabase Edge Function to keep previous behavior/logs
 
-const DEFAULT_WA_BASE = 'http://localhost:3000';
+const DEFAULT_WA_BASE = 'http://localhost:3333';
 
 function getBaseUrl(): string {
   // Allow override via localStorage
   const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
   const base = (fromStorage || DEFAULT_WA_BASE).trim();
   return base.replace(/\/$/, ''); // remove trailing slash
+}
+
+// Nova função para envios em massa usando a API otimizada
+export async function sendBulkMessages(phoneNumbers: string[], message: string) {
+  const baseUrl = getBaseUrl();
+  
+  try {
+    const response = await fetch(`${baseUrl}/api/send-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data: JSON.stringify({
+          numeros: phoneNumbers,
+          mensagens: [message],
+          interval: 2000,
+          batchSize: 5,
+          batchDelay: 3000
+        })
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro no servidor: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return result.sucesso;
+  } catch (error) {
+    console.error('Erro ao enviar mensagens em massa:', error);
+    return false;
+  }
 }
 
 function buildItemAddedMessage(args: {
@@ -60,6 +91,19 @@ async function trySendViaNode(phone: string, message: string) {
         
         if (resp.ok) {
           console.log(`Mensagem enviada com sucesso via ${a.path}`, { phone });
+          
+          // Adicionar tag "app" ao cliente após envio bem-sucedido
+          try {
+            await fetch(`${baseUrl}/add-label`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone, label: 'app' }),
+            });
+            console.log(`Tag "app" adicionada ao cliente ${phone}`);
+          } catch (labelError) {
+            console.warn(`Erro ao adicionar tag "app" ao cliente ${phone}:`, labelError);
+          }
+          
           return true;
         }
         
