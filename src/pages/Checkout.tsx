@@ -583,13 +583,40 @@ const Checkout = () => {
     
     setLoading(true);
     try {
+      // Save/update customer data first
+      const normalizedPhone = normalizePhone(phone);
+      const { error: customerError } = await supabase
+        .from('customers')
+        .upsert({
+          phone: normalizedPhone,
+          name: customerData.name,
+          cpf: customerData.cpf,
+          street: addressData.street,
+          number: addressData.number,
+          complement: addressData.complement || null,
+          city: addressData.city,
+          state: addressData.state,
+          cep: addressData.cep
+        }, {
+          onConflict: 'phone'
+        });
+
+      if (customerError) {
+        console.error('Error saving customer data:', customerError);
+        toast({
+          title: 'Erro ao salvar dados',
+          description: 'Erro ao salvar dados do cliente. Tentando continuar...',
+          variant: 'destructive'
+        });
+      }
+
       const { data, error } = await supabase.functions.invoke('create-payment', {
         body: {
           orderIds: selectedOrders,
           cartItems: getCombinedItems(),
           customerData: {
             ...customerData,
-            phone: normalizePhone(phone)
+            phone: normalizedPhone
           },
           addressData,
           shippingCost,
