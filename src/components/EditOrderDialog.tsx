@@ -313,17 +313,15 @@ useEffect(() => {
     if (!selectedProduct || !order) return;
     
     try {
-      await supabase.functions.invoke('whatsapp-connection', {
-        body: {
-          action: 'send_item_added',
-          data: {
-            phone: order.customer_phone,
-            customerName: 'Cliente',
-            productName: selectedProduct.name,
-            quantity: quantity,
-            price: unitPrice || selectedProduct.price
-          }
-        }
+      // Usar a função da lib/whatsapp.ts que já tem lógica de retry
+      const { sendItemAddedMessage: sendItemAdded } = await import('@/lib/whatsapp');
+      
+      const success = await sendItemAdded({
+        phone: order.customer_phone,
+        customerName: 'Cliente',
+        productName: selectedProduct.name,
+        quantity: quantity,
+        price: unitPrice || selectedProduct.price
       });
 
       // Marcar que mensagem foi enviada
@@ -332,8 +330,26 @@ useEffect(() => {
         .update({ item_added_message_sent: true })
         .eq('id', order.id);
 
+      if (success) {
+        toast({
+          title: 'Sucesso',
+          description: 'Mensagem de item adicionado enviada'
+        });
+      } else {
+        toast({
+          title: 'Aviso',
+          description: 'Mensagem registrada, mas pode não ter sido entregue via WhatsApp',
+          variant: 'destructive'
+        });
+      }
+
     } catch (error) {
       console.error('Error sending item added message:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao enviar mensagem de item adicionado',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -341,20 +357,78 @@ useEffect(() => {
     if (!order) return;
     
     try {
-      await supabase.functions.invoke('whatsapp-connection', {
-        body: {
-          action: 'send_cancellation',
-          data: {
-            phone: order.customer_phone,
-            customerName: 'Cliente',
-            productName: item.product?.name || 'Produto',
-            orderId: order.id,
-            price: item.unit_price
+      // Enviar mensagem de cancelamento usando a mesma lógica de envio
+      const getBaseUrl = () => {
+        const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
+        const base = (fromStorage || 'http://localhost:3000').trim();
+        return base.replace(/\/$/, '');
+      };
+
+      // Buscar template de cancelamento
+      const { data: template } = await supabase
+        .from('whatsapp_templates')
+        .select('content')
+        .eq('type', 'PRODUCT_CANCELED')
+        .single();
+
+      const message = template?.content 
+        ? template.content.replace('{{produto}}', item.product?.name || 'Produto')
+        : `❌ *Produto Cancelado*\n\nO produto "${item.product?.name || 'Produto'}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
+
+      const baseUrl = getBaseUrl();
+      const attempts = [
+        { path: '/send-message', body: { number: order.customer_phone, message } },
+        { path: '/send-message', body: { to: order.customer_phone, message } },
+        { path: '/send', body: { to: order.customer_phone, message } },
+        { path: '/send', body: { number: order.customer_phone, message } },
+      ];
+
+      let sent = false;
+      for (const a of attempts) {
+        try {
+          const resp = await fetch(`${baseUrl}${a.path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(a.body),
+          });
+          
+          if (resp.ok) {
+            sent = true;
+            break;
           }
+        } catch (error) {
+          console.warn(`Erro na tentativa (${a.path}):`, error);
         }
+      }
+
+      // Registrar no banco
+      await supabase.from('whatsapp_messages').insert({
+        phone: order.customer_phone,
+        message,
+        type: 'product_canceled',
+        sent_at: new Date().toISOString(),
       });
+
+      if (sent) {
+        toast({
+          title: 'Sucesso',
+          description: 'Mensagem de cancelamento enviada'
+        });
+      } else {
+        toast({
+          title: 'Aviso',
+          description: 'Mensagem registrada, mas pode não ter sido entregue via WhatsApp',
+          variant: 'destructive'
+        });
+      }
+
     } catch (error) {
       console.error('Error sending cancellation message:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao enviar mensagem de cancelamento',
+        variant: 'destructive'
+      });
     }
   };
 

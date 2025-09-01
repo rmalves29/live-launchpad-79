@@ -161,23 +161,46 @@ const WhatsAppTemplates = () => {
           // Personalizar mensagem se necessário
           const personalizedMessage = broadcastTemplate.content;
 
-          // Tentar enviar via APIs do WhatsApp
-          let sent = false;
-          const whatsappApis = [
-            'http://localhost:8080/send-message',
-            'http://localhost:3001/send-message'
+          // Usar a mesma lógica da lib/whatsapp.ts
+          const getBaseUrl = () => {
+            const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
+            const base = (fromStorage || 'http://localhost:3000').trim();
+            return base.replace(/\/$/, '');
+          };
+
+          const baseUrl = getBaseUrl();
+          const attempts = [
+            { path: '/send-message', body: { number: phone, message: personalizedMessage } },
+            { path: '/send-message', body: { to: phone, message: personalizedMessage } },
+            { path: '/send', body: { to: phone, message: personalizedMessage } },
+            { path: '/send', body: { number: phone, message: personalizedMessage } },
           ];
 
-          for (const apiUrl of whatsappApis) {
+          let sent = false;
+          for (const a of attempts) {
             try {
-              const resp = await fetch(apiUrl, {
+              const resp = await fetch(`${baseUrl}${a.path}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone, message: personalizedMessage })
+                body: JSON.stringify(a.body),
               });
-              if (resp.ok) { sent = true; break; }
-              if (resp.status === 404) continue;
-            } catch (_) {}
+              
+              if (resp.ok) {
+                sent = true;
+                break;
+              }
+              
+              // Se o servidor está reiniciando, aguardar um pouco
+              const errorText = await resp.text().catch(() => '');
+              if (errorText.includes('restarting') || errorText.includes('indisponível')) {
+                console.log('Servidor reiniciando, aguardando 3 segundos...');
+                await new Promise(resolve => setTimeout(resolve, 3000));
+              } else if (resp.status !== 404) {
+                console.warn(`Tentativa falhou (${a.path}):`, resp.status, errorText);
+              }
+            } catch (error) {
+              console.warn(`Erro na tentativa (${a.path}):`, error);
+            }
           }
 
           // Registrar no banco (isso vai acionar a etiqueta "APP" automaticamente)
