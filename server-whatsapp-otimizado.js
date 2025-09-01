@@ -1,6 +1,3 @@
-// server.js — versão otimizada
-// Requisitos: node 18+, whatsapp-web.js, express, express-fileupload, cors, qrcode-terminal
-
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const express = require('express');
 const fileUpload = require('express-fileupload');
@@ -17,25 +14,35 @@ app.use(fileUpload());
 app.use(express.static('public'));
 app.use(cors());
 
-const INSTANCES = ['instancia1','instancia2','instancia3','instancia4','instancia5','instancia6'];
+// >>> NOVO: variáveis de ambiente
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+const BROADCAST_SECRET = process.env.BROADCAST_SECRET || 'troque-este-segredo';
+const WEBHOOK_SECRET   = process.env.WEBHOOK_SECRET   || 'troque-este-segredo';
+
+const INSTANCES = ['instancia1'];
 const STATE = {
-  clients: {},           // nome -> Client
-  status: {},            // nome -> 'offline' | 'qr_code' | 'authenticated' | 'online' | 'auth_failure'
-  numbers: {},           // nome -> '553199...' (sem @c.us)
-  logs: [],              // eventos curtos
-  messageStatus: [],     // {messageId, numero, status, instancia, timestamp}
-  clientResponses: [],   // inbound recentes
-  blockedNumbers: new Set(),
-  rrIndex: 0,            // round-robin
+  clients: {}, status: {}, numbers: {}, logs: [],
+  messageStatus: [], clientResponses: [], blockedNumbers: new Set(),
+  rrIndex: 0
 };
 const LIMIT = { LOGS: 1000, MSG_STATUS: 1000 };
 const SEND_RULES = { interval: 2000, batchSize: 5, batchDelay: 3000, maxConcurrent: 1 };
 let activeSenders = 0;
 
+// >>> NOVO: tag automática quando envio em massa
+let MASS_TAG_LABEL = null;
+
 // ========================== UTILITÁRIOS ==========================
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const nowISO = () => new Date().toISOString();
 const cap = (arr, n) => { if (arr.length > n) arr.splice(n); };
+const digits = (s) => String(s||'').replace(/\D/g,'');
+
+function requireSecret(req, envSecret) {
+  const key = req.get('x-api-key') || req.query.key || (req.body && req.body.key);
+  if (!key || key !== envSecret) throw new Error('unauthorized');
+}
 
 // Resolve executável do Chrome/Edge se existir
 function resolveBrowserExecutable() {
@@ -45,8 +52,7 @@ function resolveBrowserExecutable() {
     'C:\\\\Program Files (x86)\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe',
     'C:\\\\Program Files\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe',
     'C:\\\\Program Files (x86)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome','/usr/bin/chromium-browser',
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ].filter(Boolean);
   for (const p of list) { try { if (fs.existsSync(p)) return p; } catch {} }
@@ -74,7 +80,6 @@ class SafeLocalAuth extends LocalAuth {
     }
   }
 }
-// Ignora EBUSY/EPERM globais do LocalAuth
 for (const evt of ['uncaughtException','unhandledRejection']) {
   process.on(evt, (err) => {
     const e = err?.reason || err;
@@ -98,22 +103,21 @@ function getAvailableInstance() {
 // ========================== DUPLICIDADE ==========================
 const DUP = { sent: new Map(), queue: new Set(), ttl: 10 * 60 * 1000 }; // 10min
 const keyFor = (numero, mensagem) => {
-  const n = numero.replace(/\D/g,'');
-  const h = Buffer.from(mensagem.trim().toLowerCase()).toString('base64');
+  const n = digits(numero);
+  const h = Buffer.from(String(mensagem).trim().toLowerCase()).toString('base64');
   return `${n}-${h}`;
 };
 function isDuplicate(numero, mensagem) {
   const k = keyFor(numero, mensagem); const now = Date.now();
-  if (DUP.queue.has(k)) return true;                 // na fila
+  if (DUP.queue.has(k)) return true;
   const last = DUP.sent.get(k);
-  if (last && now - last < DUP.ttl) return true;     // recente
+  if (last && now - last < DUP.ttl) return true;
   DUP.queue.add(k);
   return false;
 }
 function markSent(numero, mensagem) {
   const k = keyFor(numero, mensagem); const now = Date.now();
   DUP.sent.set(k, now); DUP.queue.delete(k);
-  // limpeza simples
   if (DUP.sent.size > 4000) {
     const cutoff = now - DUP.ttl;
     for (const [kk, ts] of DUP.sent) if (ts < cutoff) DUP.sent.delete(kk);
@@ -134,47 +138,31 @@ function createClient(name) {
     takeoverOnConflict: true
   });
 
-  // Eventos essenciais
   client.on('qr', (qr) => {
     STATE.status[name] = 'qr_code';
     qrcode.generate(qr, { small: true });
     pushLog({ instancia: name, evento: 'qr_code' });
   });
-
-  client.on('authenticated', () => {
-    STATE.status[name] = 'authenticated';
-    pushLog({ instancia: name, evento: 'authenticated' });
-  });
-
-  client.on('auth_failure', (msg) => {
-    STATE.status[name] = 'auth_failure';
-    pushLog({ instancia: name, evento: 'auth_failure', msg });
-  });
-
+  client.on('authenticated', () => { STATE.status[name] = 'authenticated'; pushLog({ instancia: name, evento: 'authenticated' }); });
+  client.on('auth_failure', (msg) => { STATE.status[name] = 'auth_failure'; pushLog({ instancia: name, evento: 'auth_failure', msg }); });
   client.on('change_state', (st) => {
     if (st === 'CONNECTED') {
       STATE.status[name] = 'online';
-      const num = client?.info?.wid?.user;
-      if (num) STATE.numbers[name] = num;
+      const num = client?.info?.wid?.user; if (num) STATE.numbers[name] = num;
     }
   });
-
   client.on('ready', () => {
     STATE.status[name] = 'online';
-    const num = client?.info?.wid?.user || null;
-    if (num) STATE.numbers[name] = num;
+    const num = client?.info?.wid?.user || null; if (num) STATE.numbers[name] = num;
     pushLog({ instancia: name, evento: 'ready', numero: num || 'indefinido' });
   });
-
   client.on('disconnected', (reason) => {
-    STATE.status[name] = 'offline';
-    STATE.numbers[name] = null;
+    STATE.status[name] = 'offline'; STATE.numbers[name] = null;
     try { client.destroy(); } catch {}
     delete STATE.clients[name];
     pushLog({ instancia: name, evento: 'disconnected', motivo: reason });
   });
 
-  // Confirmações de envio
   client.on('message_ack', (msg, ack) => {
     const map = {0:'pendente',1:'enviado',2:'entregue',3:'lido',4:'visualizado'};
     const status = map[ack] || 'desconhecido';
@@ -183,27 +171,19 @@ function createClient(name) {
     cap(STATE.messageStatus, LIMIT.MSG_STATUS);
   });
 
-  // Mensagens recebidas (2 dias) + Processamento automático
+  // Entrada de mensagens de clientes (mantido)
   client.on('message', async (msg) => {
     if (msg.fromMe) return;
     const dt = new Date(msg.timestamp * 1000);
     if (Date.now() - dt.getTime() > 2*24*60*60*1000) return;
-    
+
     const contact = await msg.getContact().catch(() => null);
     const numero = contact?.number || msg.from.replace('@c.us','');
     const mensagem = (msg.body || '').trim();
-    
-    // Armazenar mensagem recebida
-    STATE.clientResponses.unshift({ 
-      numero, 
-      mensagem, 
-      instancia: name, 
-      data: dt.toISOString(),
-      processado: false
-    });
+
+    STATE.clientResponses.unshift({ numero, mensagem, instancia: name, data: dt.toISOString(), processado: false });
     cap(STATE.clientResponses, LIMIT.LOGS);
-    
-    // Processar códigos de produtos automaticamente
+
     await processProductCode(client, numero, mensagem, name, contact);
   });
 
@@ -214,76 +194,64 @@ function createClient(name) {
 for (const name of INSTANCES) {
   try {
     const c = createClient(name);
-    STATE.clients[name] = c;
-    STATE.status[name] = 'offline';
-    c.initialize().catch(err => {
-      STATE.status[name] = 'offline';
-      pushLog({ instancia: name, evento: 'init_error', msg: err.message });
-    });
+    STATE.clients[name] = c; STATE.status[name] = 'offline';
+    c.initialize().catch(err => { STATE.status[name] = 'offline'; pushLog({ instancia: name, evento: 'init_error', msg: err.message }); });
 
-    // Reconciliação leve: detecta CONNECTED
     const t = setInterval(async () => {
       if (!STATE.clients[name]) return clearInterval(t);
       if (STATE.status[name] === 'online') return clearInterval(t);
       const s = await STATE.clients[name].getState().catch(() => null);
       if (s === 'CONNECTED') {
         STATE.status[name] = 'online';
-        const num = STATE.clients[name]?.info?.wid?.user;
-        if (num) STATE.numbers[name] = num;
+        const num = STATE.clients[name]?.info?.wid?.user; if (num) STATE.numbers[name] = num;
         pushLog({ instancia: name, evento: 'reconciled', numero: num || null });
         clearInterval(t);
       }
     }, 5000);
-  } catch (e) {
-    pushLog({ instancia: name, evento: 'factory_error', msg: e.message });
-  }
+  } catch (e) { pushLog({ instancia: name, evento: 'factory_error', msg: e.message }); }
 }
 
 // ========================== PROCESSAMENTO DE CÓDIGOS ==========================
 async function processProductCode(client, numero, mensagem, instancia, contact) {
   try {
-    // Detectar códigos de produtos (formato: C### ou P### ou A###)
     const codigoMatch = mensagem.match(/^([CPA]\d{2,4})\s*$/i);
     if (!codigoMatch) return;
-    
+
     const codigo = codigoMatch[1].toUpperCase();
     pushLog({ evento: 'codigo_detectado', codigo, numero, instancia });
-    
-    // Buscar produto no Supabase (simulação - você precisa ajustar a URL da sua API)
+
     try {
-      const response = await fetch('https://hxtbsieodbtzgcvvkeqx.supabase.co/rest/v1/products?select=id,name,price,stock,code,image_url&code=eq.' + codigo, {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/products?select=id,name,price,stock,code,image_url&code=eq.${codigo}`, {
         headers: {
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
           'Content-Type': 'application/json'
         }
       });
-      
+
       if (!response.ok) {
         console.warn(`Erro ao buscar produto ${codigo}: ${response.status}`);
         return;
       }
-      
+
       const products = await response.json();
       if (!products || products.length === 0) {
-        // Produto não encontrado
         const notFoundMsg = `❌ *Produto não encontrado*\n\nO código *${codigo}* não existe em nosso catálogo.\n\nPor favor, verifique o código e tente novamente.`;
         await wppSend(client, numero, notFoundMsg);
         pushLog({ evento: 'produto_nao_encontrado', codigo, numero });
         return;
       }
-      
+
       const produto = products[0];
       
-      // Buscar cliente na base
-      const customerResponse = await fetch(`https://hxtbsieodbtzgcvvkeqx.supabase.co/rest/v1/customers?select=*&phone=eq.${numero}`, {
+      const customerResponse = await fetch(`${SUPABASE_URL}/rest/v1/customers?select=*&phone=eq.${numero}`, {
         headers: {
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
           'Content-Type': 'application/json'
         }
       });
-      
+
       let clienteNome = 'Cliente';
       if (customerResponse.ok) {
         const customers = await customerResponse.json();
@@ -291,8 +259,7 @@ async function processProductCode(client, numero, mensagem, instancia, contact) 
           clienteNome = customers[0].name || clienteNome;
         }
       }
-      
-      // Construir mensagem do produto
+
       const produtoMsg = `🛒 *Item Adicionado ao Carrinho*
 
 Olá ${clienteNome}! 
@@ -308,20 +275,15 @@ Seu item foi adicionado com sucesso ao carrinho! 🎉
 
 Obrigado pela preferência! 🙌`;
 
-      // Enviar mensagem do produto
       await wppSend(client, numero, produtoMsg);
-      
-      // Adicionar tag "app" ao cliente
+
       try {
         await addLabelToClient(client, numero, 'APP');
       } catch (e) {
         console.warn('Erro ao adicionar tag APP:', e.message);
       }
-      
-      // Criar carrinho, item e pedido diretamente no Supabase
+
       try {
-        const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
         const commonHeaders = {
           'apikey': SUPABASE_KEY,
           'Authorization': `Bearer ${SUPABASE_KEY}`,
@@ -329,7 +291,6 @@ Obrigado pela preferência! 🙌`;
           'Prefer': 'return=representation'
         };
 
-        // Garantir cliente
         try {
           const custCheck = await fetch(`${SUPABASE_URL}/rest/v1/customers?select=id&phone=eq.${numero}`, { headers: commonHeaders });
           const custArr = await custCheck.json().catch(() => []);
@@ -344,7 +305,6 @@ Obrigado pela preferência! 🙌`;
           console.warn('Aviso: falha ao garantir cliente:', e.message);
         }
 
-        // Criar carrinho
         const hoje = new Date().toISOString().slice(0, 10);
         const cartResp = await fetch(`${SUPABASE_URL}/rest/v1/carts`, {
           method: 'POST',
@@ -367,7 +327,6 @@ Obrigado pela preferência! 🙌`;
           return;
         }
 
-        // Adicionar item ao carrinho
         const itemResp = await fetch(`${SUPABASE_URL}/rest/v1/cart_items`, {
           method: 'POST',
           headers: commonHeaders,
@@ -382,7 +341,6 @@ Obrigado pela preferência! 🙌`;
           console.warn('Erro ao inserir item no carrinho:', await itemResp.text());
         }
 
-        // Criar pedido para aparecer em /pedidos
         const orderResp = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
           method: 'POST',
           headers: commonHeaders,
@@ -404,49 +362,41 @@ Obrigado pela preferência! 🙌`;
         console.warn('Erro ao registrar carrinho/pedido:', e.message);
       }
       pushLog({ evento: 'produto_processado', codigo, produto: produto.name, cliente: clienteNome, numero });
-      
+
     } catch (error) {
       console.error('Erro ao processar produto:', error);
       const errorMsg = `❌ *Erro interno*\n\nOcorreu um erro ao processar o código ${codigo}.\n\nTente novamente em alguns instantes.`;
       await wppSend(client, numero, errorMsg);
     }
-    
-    // Marcar mensagem como processada
+
     const msgIndex = STATE.clientResponses.findIndex(r => 
       r.numero === numero && r.mensagem === mensagem && !r.processado
     );
     if (msgIndex >= 0) {
       STATE.clientResponses[msgIndex].processado = true;
     }
-    
+
   } catch (error) {
     console.error('Erro geral no processamento de código:', error);
   }
 }
 
+// ========================== FUNÇÕES WHATSAPP ==========================
 async function addLabelToClient(client, numero, labelName) {
   try {
-    const chatId = `${numero.replace(/\D/g, '')}@c.us`;
-    
-    // Buscar ou criar label
+    const chatId = `${digits(numero)}@c.us`;
     const labels = await client.getLabels();
-    let targetLabel = labels.find(l => l.name === labelName);
-    
-    if (!targetLabel) {
-      targetLabel = await client.createLabel(labelName);
-    }
-    
+    let target = labels.find(l => l.name === labelName);
+    if (!target) target = await client.createLabel(labelName);
     const chat = await client.getChatById(chatId);
-    await chat.addLabel(targetLabel.id);
-    
+    await chat.addLabel(target.id);
     pushLog({ evento: 'label_adicionada', numero, label: labelName });
-  } catch (error) {
-    console.warn(`Erro ao adicionar label ${labelName} para ${numero}:`, error.message);
-  }
+  } catch (error) { console.warn(`Erro ao adicionar label ${labelName} para ${numero}:`, error.message); }
 }
-const retrySystem = new RetrySystem(); // Integração preservada
+const retrySystem = new RetrySystem();
+
 async function wppSend(client, numero, texto, imgPath) {
-  const toId = `${numero.replace(/\D/g,'')}@c.us`;
+  const toId = `${digits(numero)}@c.us`;
   if (imgPath && fs.existsSync(imgPath)) {
     const media = MessageMedia.fromFilePath(imgPath);
     return client.sendMessage(toId, media, { caption: texto });
@@ -459,17 +409,21 @@ async function trySendThrough(instanceName, numero, mensagem, imgPath, messageId
   if (!client || STATE.status[instanceName] !== 'online' || !STATE.numbers[instanceName]) throw new Error('instancia_indisponivel');
   try {
     await wppSend(client, numero, mensagem, imgPath);
-  } catch (e) {
-    // Tenta sem o nono dígito (BR)
-    const sem9 = numero.replace(/^(\d{2})(\d{2})9(\d{8})$/, '$1$2$3');
+  } catch {
+    const sem9 = String(numero).replace(/^(\d{2})(\d{2})9(\d{8})$/, '$1$2$3');
     if (sem9 !== numero) await wppSend(client, sem9, mensagem, imgPath);
   }
-  // Sucesso
   STATE.messageStatus.push({ messageId, numero, status: 'enviado', instancia: instanceName, timestamp: nowISO() });
   cap(STATE.messageStatus, LIMIT.MSG_STATUS);
   retrySystem.addMessageForRetry(messageId, numero, mensagem, instanceName, imgPath);
+
+  // >>> NOVO: marca tag APP quando envio em massa estiver ativo
+  if (MASS_TAG_LABEL) {
+    try { await addLabelToClient(client, numero, MASS_TAG_LABEL); } catch {}
+  }
 }
 
+// ========================== ENVIO (LOTE) ==========================
 async function processSend({ numeros, mensagens, interval, batchSize, batchDelay, imgPath }) {
   let idxMsg = 0, lote = 0, ok = 0, dup = 0, err = 0;
   for (let i = 0; i < numeros.length; i++) {
@@ -490,10 +444,7 @@ async function processSend({ numeros, mensagens, interval, batchSize, batchDelay
         markSent(numero, msg);
         ok++; sent = true;
         await sleep(interval);
-      } catch (e) {
-        if (String(e.message).includes('instancia_indisponivel')) await sleep(1500);
-        else await sleep(1500);
-      }
+      } catch { await sleep(1500); }
     }
     if (!sent) {
       err++;
@@ -509,28 +460,155 @@ async function processSend({ numeros, mensagens, interval, batchSize, batchDelay
   pushLog({ evento: 'envio_finalizado', ok, duplicatas: dup, erros: err });
 }
 
-// Controle de pausa
+// ========================== SUPABASE (leitura) ==========================
+// >>> NOVO: util para consultar telefones por status de pedidos
+async function supa(path, init) {
+  const url = `${SUPABASE_URL.replace(/\/+$/,'')}/rest/v1${path}`;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json'
+  };
+  const res = await fetch(url, { ...init, headers: { ...headers, ...(init && init.headers) } });
+  if (!res.ok) throw new Error(`Supabase ${res.status} ${path} ${await res.text()}`);
+  return res.json();
+}
+
+async function getPhonesByOrderStatus(status /* 'paid' | 'unpaid' | 'all' */) {
+  let qs = '/orders?select=customer_phone,is_paid&customer_phone=not.is.null';
+  if (status === 'paid') qs += '&is_paid=eq.true';
+  if (status === 'unpaid') qs += '&is_paid=eq.false';
+  const rows = await supa(qs);
+  const set = new Set(rows.map(r => digits(r.customer_phone)).filter(Boolean));
+  return Array.from(set);
+}
+
+// ========================== WEBHOOKS (PEDIDOS) ==========================
+// >>> NOVO: mensagens automáticas ao criar pedido / item adicionado / item cancelado
+function composeOrderCreated(body) {
+  const nome = body.customer_name || 'Cliente';
+  const id   = body.order_id || '';
+  const valor = Number(body.total_amount||0).toFixed(2);
+  return `🧾 *Pedido criado*\n\nOlá ${nome}! Seu pedido *#${id}* foi criado.\n💰 Total: *R$ ${valor}*\nAssim que for confirmado, avisaremos aqui.`;
+}
+function composeItemAdded(body) {
+  const p = body.product||{};
+  return `🛒 *Item adicionado*\n\n${p.name || 'Produto'}\n🔖 Código: *${p.code || '-'}*\n📦 Qtde: *${p.qty||1}*\n💰 Unit.: *R$ ${Number(p.price||0).toFixed(2)}*`;
+}
+function composeItemCanceled(body) {
+  const p = body.product||{};
+  return `❌ *Item cancelado*\n\n${p.name || 'Produto'}\n🔖 Código: *${p.code || '-'}*\nQtde: *${p.qty||1}*`;
+}
+
+async function sendOne(phone, text, tagApp = false) {
+  const inst = getAvailableInstance();
+  if (!inst) throw new Error('Nenhuma instância disponível');
+  const prev = MASS_TAG_LABEL;
+  MASS_TAG_LABEL = tagApp ? 'APP' : null;
+  try {
+    const messageId = `${inst}-${phone}-${Date.now()}`;
+    await trySendThrough(inst, phone, text, null, messageId);
+  } finally {
+    MASS_TAG_LABEL = prev;
+  }
+}
+
+// Webhook guard
+function verifyWebhook(req) {
+  const h = req.get('x-webhook-secret') || req.query.secret || (req.body && req.body.secret);
+  if (h !== WEBHOOK_SECRET) throw new Error('unauthorized');
+}
+
+app.post('/webhooks/order-created', async (req, res) => {
+  try {
+    verifyWebhook(req);
+    const body = req.body || {};
+    const phone = digits(body.customer_phone || '');
+    if (!phone) return res.status(400).json({ error: 'phone ausente' });
+    await sendOne(phone, composeOrderCreated(body), true);
+    res.json({ ok: true });
+  } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
+});
+
+app.post('/webhooks/order-item-added', async (req, res) => {
+  try {
+    verifyWebhook(req);
+    const body = req.body || {};
+    const phone = digits(body.customer_phone || '');
+    if (!phone) return res.status(400).json({ error: 'phone ausente' });
+    await sendOne(phone, composeItemAdded(body), true);
+    res.json({ ok: true });
+  } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
+});
+
+app.post('/webhooks/order-item-cancelled', async (req, res) => {
+  try {
+    verifyWebhook(req);
+    const body = req.body || {};
+    const phone = digits(body.customer_phone || '');
+    if (!phone) return res.status(400).json({ error: 'phone ausente' });
+    await sendOne(phone, composeItemCanceled(body), true);
+    res.json({ ok: true });
+  } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
+});
+
+// ========================== BROADCAST POR STATUS ==========================
+// >>> NOVO: envia para clientes com pedidos pagos/não pagos/todos e marca TAG "APP"
+app.post('/api/broadcast/orders', async (req, res) => {
+  try {
+    requireSecret(req, BROADCAST_SECRET);
+    const { status = 'all', message, interval, batchSize, batchDelay, image } = req.body || {};
+    if (!message) return res.status(400).json({ error: 'message obrigatório' });
+
+    const phones = await getPhonesByOrderStatus(status); // array único
+    if (!phones.length) return res.json({ ok: true, total: 0 });
+
+    const imgPath = null; // (opcional: aceite base64/file e salve em public/)
+    MASS_TAG_LABEL = 'APP';
+    activeSenders++;
+
+    res.json({ ok: true, total: phones.length });
+
+    (async () => {
+      try {
+        await processSend({
+          numeros: phones,
+          mensagens: [message],
+          interval: Math.max(500, interval || SEND_RULES.interval),
+          batchSize: Math.max(1, Math.min(50, batchSize || SEND_RULES.batchSize)),
+          batchDelay: Math.max(1000, batchDelay || SEND_RULES.batchDelay),
+          imgPath
+        });
+      } finally {
+        MASS_TAG_LABEL = null;
+        activeSenders = Math.max(0, activeSenders - 1);
+      }
+    })();
+  } catch (e) {
+    res.status(e.message==='unauthorized'?401:500).json({ error: e.message });
+  }
+});
+
+// ========================== ROTAS PRINCIPAIS ==========================
 const SEND_CTRL = { paused: false };
 app.post('/api/pause-sending', (_,res)=>{ SEND_CTRL.paused=true; res.json({success:true}); });
 app.post('/api/resume-sending',(_,res)=>{ SEND_CTRL.paused=false; res.json({success:true}); });
 app.get('/api/sending-status',(_,res)=>{ res.json({ success:true, paused:SEND_CTRL.paused, ativos: activeSenders }); });
 
-// Endpoint de envio
 app.post('/api/send-config', async (req, res) => {
   try {
     if (activeSenders >= SEND_RULES.maxConcurrent) {
       return res.status(429).json({ sucesso:false, erro:`Máximo de ${SEND_RULES.maxConcurrent} processo(s) simultâneo(s)` });
     }
-    const data = req.body?.data ? JSON.parse(req.body.data) : null;
-    if (!data) return res.status(400).json({ sucesso:false, erro:'payload inválido' });
-
-    const numeros = (data.numeros||[]).map(n=>String(n)).filter(Boolean);
-    const mensagens = (data.mensagens||[]).map(m=>String(m)).filter(Boolean);
+    const data = req.body?.data ? JSON.parse(req.body.data) : req.body?.data || null;
+    const payload = data || req.body || {};
+    const numeros = (payload.numeros||[]).map(n=>String(n)).filter(Boolean);
+    const mensagens = (payload.mensagens||[]).map(m=>String(m)).filter(Boolean);
     if (!numeros.length || !mensagens.length) return res.status(400).json({ sucesso:false, erro:'números e mensagens são obrigatórios' });
 
-    const interval = Math.max(500, data.interval || SEND_RULES.interval);
-    const batchSize = Math.max(1, Math.min(50, data.batchSize || SEND_RULES.batchSize));
-    const batchDelay = Math.max(1000, data.batchDelay || SEND_RULES.batchDelay);
+    const interval = Math.max(500, payload.interval || SEND_RULES.interval);
+    const batchSize = Math.max(1, Math.min(50, payload.batchSize || SEND_RULES.batchSize));
+    const batchDelay = Math.max(1000, payload.batchDelay || SEND_RULES.batchDelay);
 
     const image = req.files?.imagem;
     const imgPath = image ? path.join(__dirname,'public',image.name) : null;
@@ -539,7 +617,6 @@ app.post('/api/send-config', async (req, res) => {
     activeSenders++;
     res.json({ sucesso:true, mensagem:'Processo iniciado', configuracoes:{ interval, batchSize, batchDelay } });
 
-    // Loop respeitando pausa
     (async () => {
       try {
         while (SEND_CTRL.paused) await sleep(1000);
@@ -556,242 +633,63 @@ app.post('/api/send-config', async (req, res) => {
   }
 });
 
-// Endpoints de envio individual (compatibilidade)
 app.post('/send-message', async (req, res) => {
   try {
     const { number, to, message } = req.body;
     const phone = number || to;
-    
     const inst = getAvailableInstance();
     if (!inst) return res.status(503).json({ success: false, error: 'Nenhuma instância disponível' });
-    
     const messageId = `${inst}-${phone}-${Date.now()}`;
     await trySendThrough(inst, phone, message, null, messageId);
-    
     res.json({ success: true, instanceUsed: inst });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 app.post('/send', async (req, res) => {
   try {
     const { number, to, message } = req.body;
     const phone = number || to;
-    
     const inst = getAvailableInstance();
     if (!inst) return res.status(503).json({ success: false, error: 'Nenhuma instância disponível' });
-    
     const messageId = `${inst}-${phone}-${Date.now()}`;
     await trySendThrough(inst, phone, message, null, messageId);
-    
     res.json({ success: true, instanceUsed: inst });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// Adicionar etiqueta (compatibilidade)
 app.post('/add-label', async (req, res) => {
   try {
     const { phone, label } = req.body;
-    
     const inst = getAvailableInstance();
     if (!inst) return res.status(503).json({ success: false, error: 'Nenhuma instância disponível' });
-    
     const client = STATE.clients[inst];
-    const chatId = `${phone.replace(/\D/g, '')}@c.us`;
-    
-    // Buscar ou criar label
+    const chatId = `${digits(phone)}@c.us`;
     const labels = await client.getLabels();
     let targetLabel = labels.find(l => l.name === label);
-    
-    if (!targetLabel) {
-      targetLabel = await client.createLabel(label);
-    }
-    
+    if (!targetLabel) targetLabel = await client.createLabel(label);
     const chat = await client.getChatById(chatId);
     await chat.addLabel(targetLabel.id);
-    
     res.json({ success: true, label: targetLabel.name });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// Listar etiquetas
 app.get('/labels', async (req, res) => {
   try {
     const inst = getAvailableInstance();
     if (!inst) return res.status(503).json({ success: false, error: 'Nenhuma instância disponível' });
-    
     const client = STATE.clients[inst];
     const labels = await client.getLabels();
-    
-    res.json({ 
-      success: true, 
-      labels: labels.map(l => ({ id: l.id, name: l.name }))
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+    res.json({ success: true, labels: labels.map(l => ({ id: l.id, name: l.name })) });
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-// ========================== WARMUP (SIMPLIFICADO) ==========================
-const WARM = { active:false, i1:300000, i2:120000, curI:300000, cycle:1, msgs:[], timer:null };
-async function warmupCycle() {
-  const online = INSTANCES.filter(n => STATE.status[n]==='online' && STATE.clients[n] && STATE.numbers[n]);
-  if (online.length < 2) return;
-  for (let s=0;s<online.length;s++){
-    const sender = online[s]; const c = STATE.clients[sender];
-    for (let r=0;r<online.length;r++){
-      if (r===s) continue;
-      const receiver = `${STATE.numbers[online[r]]}@c.us`;
-      const text = WARM.msgs[Math.floor(Math.random()*WARM.msgs.length)] || '👋';
-      try { await c.sendMessage(receiver, text); await sleep(800); } catch {}
-    }
-    await sleep(1200);
-  }
-  WARM.cycle = WARM.cycle===1 ? 2 : 1;
-  WARM.curI = WARM.cycle===1 ? WARM.i1 : WARM.i2;
-}
-function startWarmup(i1,i2,msgs){
-  stopWarmup();
-  WARM.active = true; WARM.i1=i1; WARM.i2=i2; WARM.curI=i1; WARM.cycle=1; WARM.msgs=msgs||['👋'];
-  const loop = async () => { if (!WARM.active) return; await warmupCycle(); WARM.timer = setTimeout(loop, WARM.curI); };
-  WARM.timer = setTimeout(loop, WARM.curI);
-}
-function stopWarmup(){ WARM.active=false; if (WARM.timer) clearTimeout(WARM.timer); WARM.timer=null; }
-app.get('/api/warmup/status',(_,res)=> res.json({ active:WARM.active, cycle:WARM.cycle, interval:WARM.curI, msgs:WARM.msgs.length }));
-app.post('/api/warmup/start',(req,res)=>{
-  const { interval1, interval2, messages } = req.body||{};
-  if (!interval1 || !interval2 || !Array.isArray(messages) || !messages.length) return res.status(400).json({ sucesso:false, erro:'intervalos e mensagens são obrigatórios' });
-  startWarmup(interval1, interval2, messages);
-  res.json({ sucesso:true });
-});
-app.post('/api/warmup/stop',(_,res)=>{ stopWarmup(); res.json({ sucesso:true }); });
-
-// ========================== GRUPOS (ROTAÇÃO/ADMIN) ==========================
-const groupConfig = new Map(); // groupId -> { instances:[], ptr:0 }
-function nextGroupInstance(groupId) {
-  const cfg = groupConfig.get(groupId);
-  if (!cfg || !cfg.instances.length) return getAvailableInstance();
-  const online = cfg.instances.filter(n => STATE.status[n]==='online');
-  if (!online.length) return getAvailableInstance();
-  const pick = online[cfg.ptr % online.length];
-  cfg.ptr = (cfg.ptr + 1) % online.length;
-  return pick;
-}
-
-async function addContactsToGroup(numbers, groupId) {
-  const chatId = groupId.includes('@g.us') ? groupId : `${groupId}@g.us`;
-  const result = [];
-  for (let i=0;i<numbers.length;i++){
-    const num = String(numbers[i]).replace(/\D/g,'');
-    const inst = nextGroupInstance(groupId);
-    if (!inst) { result.push({ participant:num, success:false, error:'sem_instancia' }); continue; }
-    const client = STATE.clients[inst];
-    try {
-      const chat = await client.getChatById(chatId);
-      const me = client.info.wid._serialized;
-      const isAdmin = chat.participants?.some(p => p.id._serialized===me && p.isAdmin);
-      if (!isAdmin) throw new Error('instancia_sem_admin');
-      // msg prévia (best-effort)
-      try { await client.sendMessage(`${num}@c.us`, 'Olá! 👋'); await sleep(1000); } catch {}
-      await chat.addParticipants([`${num}@c.us`]);
-      result.push({ participant: num, success: true, instancia: inst });
-      await sleep(1000);
-    } catch (e) {
-      result.push({ participant: num, success: false, instancia: inst, error: e.message });
-    }
-  }
-  return result;
-}
-
-app.get('/api/groups', async (_req,res)=>{
-  const inst = getAvailableInstance();
-  if (!inst) return res.status(503).json({ success:false, error:'Nenhuma instância disponível' });
-  const c = STATE.clients[inst];
-  try {
-    const chats = await c.getChats();
-    const groups = chats.filter(x=>x.isGroup).map(g=>({
-      id: g.id._serialized, name: g.name, participantsCount: g.participants?.length||0,
-      isAdmin: !!g.participants?.find(p=>p.id._serialized===c.info.wid._serialized)?.isAdmin
-    }));
-    res.json({ success:true, groups, instanceUsed: inst });
-  } catch (e) {
-    res.status(500).json({ success:false, error:e.message });
-  }
-});
-
-app.post('/api/group/add', async (req,res)=>{
-  const { numeros, groupId } = req.body||{};
-  if (!Array.isArray(numeros) || !groupId) return res.status(400).json({ success:false, error:'números (array) e groupId são obrigatórios' });
-  try {
-    const r = await addContactsToGroup(numeros, groupId);
-    const ok = r.filter(x=>x.success).length;
-    res.json({ success:true, added: ok, total: numeros.length, result: r });
-  } catch (e) {
-    res.status(500).json({ success:false, error:e.message });
-  }
-});
-
-app.post('/api/group/add-rotative', async (req,res)=>{
-  const { numeros, groupId, delayBetweenContacts = 3 } = req.body||{};
-  if (!Array.isArray(numeros) || !groupId) return res.status(400).json({ success:false, error:'payload inválido' });
-  try {
-    const out = [];
-    for (let i=0;i<numeros.length;i++){
-      const r = await addContactsToGroup([numeros[i]], groupId);
-      out.push(r[0]); if (i < numeros.length-1) await sleep(delayBetweenContacts*1000);
-    }
-    const ok = out.filter(x=>x.success).length;
-    res.json({ success:true, added: ok, total: numeros.length, result: out });
-  } catch (e) {
-    res.status(500).json({ success:false, error:e.message });
-  }
-});
-
-app.post('/api/group/config', (req,res)=>{
-  const { groupId, instances } = req.body||{};
-  if (!groupId || !Array.isArray(instances) || !instances.length) return res.status(400).json({ success:false, error:'groupId e instances obrigatórios' });
-  const valid = instances.filter(n => INSTANCES.includes(n));
-  if (!valid.length) return res.status(400).json({ success:false, error:'nenhuma instância válida' });
-  groupConfig.set(groupId, { instances: valid, ptr: 0 });
-  res.json({ success:true, groupId, instances: valid });
-});
-app.get('/api/group/config', (_req,res)=>{
-  const cfg = {};
-  for (const [gid, val] of groupConfig.entries()) cfg[gid] = { instances: val.instances, currentRotation: val.ptr };
-  res.json({ success:true, configurations: cfg });
-});
-
-// ========================== ENVIO DE MENSAGENS ==========================
-app.get('/api/status', (_,res)=>{
-  const inst = INSTANCES.map(n => ({ nome:n, status: STATE.status[n]||'offline', numero: STATE.numbers[n]||null }));
-  res.json({ instancias: inst });
-});
-app.get('/api/logs', (_,res)=> res.json({ logs: STATE.logs }));
+app.get('/api/status', (_,res)=>{ const inst = INSTANCES.map(n => ({ nome:n, status: STATE.status[n]||'offline', numero: STATE.numbers[n]||null })); res.json({ instancias: inst }); });
+app.get('/api/logs',   (_,res)=> res.json({ logs: STATE.logs }));
 app.get('/api/message-status', (_,res)=> res.json({ messageStatus: STATE.messageStatus }));
 app.get('/api/client-responses', (_,res)=> res.json({ responses: STATE.clientResponses }));
-app.get('/api/retry-stats', (_,res)=> res.json({ success:true, stats: retrySystem.getStats() }));
 app.get('/api/blocked-numbers',(_,res)=> res.json({ blockedNumbers: Array.from(STATE.blockedNumbers||new Set()), count: (STATE.blockedNumbers||new Set()).size }));
 
-// Status (compatibilidade)
-app.get('/status', (req, res) => {
-  const onlineCount = INSTANCES.filter(n => STATE.status[n] === 'online').length;
-  res.json({
-    status: onlineCount > 0 ? 'ready' : 'offline',
-    instances: INSTANCES.map(n => ({
-      name: n,
-      status: STATE.status[n] || 'offline',
-      number: STATE.numbers[n] || null
-    }))
-  });
-});
-
-// ========================== START ==========================
 app.listen(3333, () => {
-  console.log('🟢 SERVIDOR WHATSAPP (otimizado) em http://localhost:3333');
-  console.log('🔁 6 instâncias, round-robin, anti-duplicata 10min, warmup simples, grupos com rotação/admin.');
+  console.log('🟢 SERVIDOR WHATSAPP em http://localhost:3333');
+  console.log('📦 Broadcast por status + Webhooks de pedidos habilitados.');
 });
