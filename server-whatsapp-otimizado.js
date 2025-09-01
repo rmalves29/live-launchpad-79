@@ -318,32 +318,91 @@ Obrigado pela preferência! 🙌`;
         console.warn('Erro ao adicionar tag APP:', e.message);
       }
       
-      // Criar/atualizar carrinho no Supabase (chamada à Edge Function)
+      // Criar carrinho, item e pedido diretamente no Supabase
       try {
-        const cartResponse = await fetch('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-connection', {
+        const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+        const commonHeaders = {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        };
+
+        // Garantir cliente
+        try {
+          const custCheck = await fetch(`${SUPABASE_URL}/rest/v1/customers?select=id&phone=eq.${numero}`, { headers: commonHeaders });
+          const custArr = await custCheck.json().catch(() => []);
+          if (!Array.isArray(custArr) || custArr.length === 0) {
+            await fetch(`${SUPABASE_URL}/rest/v1/customers`, {
+              method: 'POST',
+              headers: commonHeaders,
+              body: JSON.stringify({ phone: numero, name: clienteNome })
+            });
+          }
+        } catch (e) {
+          console.warn('Aviso: falha ao garantir cliente:', e.message);
+        }
+
+        // Criar carrinho
+        const hoje = new Date().toISOString().slice(0, 10);
+        const cartResp = await fetch(`${SUPABASE_URL}/rest/v1/carts`, {
           method: 'POST',
-          headers: {
-            'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4',
-            'Content-Type': 'application/json'
-          },
+          headers: commonHeaders,
           body: JSON.stringify({
-            action: 'process_product_code',
-            data: {
-              phone: numero,
-              productCode: codigo,
-              customerName: clienteNome,
-              productData: produto
-            }
+            customer_phone: numero,
+            event_date: hoje,
+            event_type: 'MANUAL',
+            status: 'OPEN'
           })
         });
-        
-        if (!cartResponse.ok) {
-          console.warn('Erro ao processar carrinho:', await cartResponse.text());
+        if (!cartResp.ok) {
+          console.warn('Erro ao criar carrinho:', await cartResp.text());
+          return;
+        }
+        const cartArr = await cartResp.json();
+        const cart = Array.isArray(cartArr) ? cartArr[0] : null;
+        if (!cart || !cart.id) {
+          console.warn('Carrinho não retornado');
+          return;
+        }
+
+        // Adicionar item ao carrinho
+        const itemResp = await fetch(`${SUPABASE_URL}/rest/v1/cart_items`, {
+          method: 'POST',
+          headers: commonHeaders,
+          body: JSON.stringify({
+            cart_id: cart.id,
+            product_id: produto.id,
+            qty: 1,
+            unit_price: Number(produto.price || 0)
+          })
+        });
+        if (!itemResp.ok) {
+          console.warn('Erro ao inserir item no carrinho:', await itemResp.text());
+        }
+
+        // Criar pedido para aparecer em /pedidos
+        const orderResp = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
+          method: 'POST',
+          headers: commonHeaders,
+          body: JSON.stringify({
+            cart_id: cart.id,
+            customer_phone: numero,
+            event_type: 'MANUAL',
+            event_date: hoje,
+            total_amount: Number(produto.price || 0),
+            is_paid: false
+          })
+        });
+        if (!orderResp.ok) {
+          console.warn('Erro ao criar pedido:', await orderResp.text());
+        } else {
+          pushLog({ evento: 'pedido_criado', numero, codigo, cart_id: cart.id });
         }
       } catch (e) {
-        console.warn('Erro ao chamar edge function:', e.message);
+        console.warn('Erro ao registrar carrinho/pedido:', e.message);
       }
-      
       pushLog({ evento: 'produto_processado', codigo, produto: produto.name, cliente: clienteNome, numero });
       
     } catch (error) {
