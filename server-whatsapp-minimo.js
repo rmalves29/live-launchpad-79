@@ -356,6 +356,119 @@ app.post('/send-message', async (req, res) => {
   }
 });
 
+// Adicionar etiqueta a um contato
+app.post('/add-label', async (req, res) => {
+  try {
+    const health = await getHealth();
+    if (!isUsable(health)) {
+      log('❌ /add-label: instância indisponível', health);
+      return res.status(409).json({ 
+        success: false, 
+        error: 'Instância indisponível',
+        health
+      });
+    }
+
+    const { phone, label } = req.body || {};
+    if (!phone || !label) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Campos "phone" e "label" são obrigatórios' 
+      });
+    }
+
+    const chatId = toWhatsId(phone);
+    log('🏷️ Adicionando label', { phone, chatId, label });
+
+    // Obter o contato
+    const contact = await client.getContactById(chatId);
+    if (!contact) {
+      return res.status(404).json({
+        success: false,
+        error: 'Contato não encontrado'
+      });
+    }
+
+    // Verificar se já tem a label
+    const existingLabels = await contact.getLabels();
+    const hasLabel = existingLabels.some(l => l.name === label);
+    
+    if (hasLabel) {
+      log('🏷️ Label já existe no contato', { phone, label });
+      return res.json({
+        success: true,
+        message: 'Label já existe no contato',
+        labels: existingLabels.map(l => l.name)
+      });
+    }
+
+    // Buscar ou criar a label
+    const allLabels = await client.getLabels();
+    let targetLabel = allLabels.find(l => l.name === label);
+    
+    if (!targetLabel) {
+      log('🏷️ Criando nova label', { label });
+      targetLabel = await client.getChatLabels();
+      // Note: whatsapp-web.js pode ter limitações na criação de labels
+      // Pode ser necessário criar manualmente no WhatsApp primeiro
+    }
+
+    if (targetLabel) {
+      await contact.addLabel(targetLabel.id);
+      log('✅ Label adicionada com sucesso', { phone, label });
+      
+      const updatedLabels = await contact.getLabels();
+      return res.json({
+        success: true,
+        message: 'Label adicionada com sucesso',
+        labels: updatedLabels.map(l => l.name)
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: `Label "${label}" não encontrada. Crie a label manualmente no WhatsApp primeiro.`
+      });
+    }
+
+  } catch (e) {
+    console.error('❌ Erro /add-label:', e.stack || e.message);
+    return res.status(500).json({ 
+      success: false, 
+      error: e.message,
+      stack: e.stack 
+    });
+  }
+});
+
+// Listar labels disponíveis
+app.get('/labels', async (_req, res) => {
+  try {
+    const health = await getHealth();
+    if (!isUsable(health)) {
+      return res.status(409).json({ 
+        success: false, 
+        error: 'Instância indisponível',
+        health
+      });
+    }
+
+    const labels = await client.getLabels();
+    log('📋 Listando labels', { count: labels.length });
+    
+    return res.json({
+      success: true,
+      labels: labels.map(l => ({ id: l.id, name: l.name }))
+    });
+
+  } catch (e) {
+    console.error('❌ Erro /labels:', e.stack || e.message);
+    return res.status(500).json({ 
+      success: false, 
+      error: e.message 
+    });
+  }
+});
+
 // Reiniciar manualmente a instância
 app.post('/restart', async (_req, res) => {
   await scheduleReinit('manual');
@@ -368,8 +481,10 @@ app.listen(PORT, () => {
   console.log('📋 Rotas disponíveis:');
   console.log('   GET  /status - Status da conexão WhatsApp');
   console.log('   GET  /messages?limit=50 - Últimas mensagens recebidas');
+  console.log('   GET  /labels - Listar labels disponíveis');
   console.log('   POST /send - Enviar mensagem (formato original)');
   console.log('   POST /send-message - Enviar mensagem (compatível com Supabase)');
+  console.log('   POST /add-label - Adicionar label a um contato');
   console.log('');
   console.log('💡 Para testar o envio:');
   console.log('   curl -X POST http://localhost:3000/send-message \\');
