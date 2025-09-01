@@ -205,24 +205,45 @@ const Pedidos = () => {
 
       const customerName = order.customer?.name || order.customer_phone;
 
-      await supabase.functions.invoke('whatsapp-connection', {
-        body: {
-          action: 'send_paid_notification',
-          data: {
-            phone: order.customer_phone,
-            orderId: order.id,
-            totalAmount: order.total_amount,
-            customerName: customerName
-          }
-        }
+      // Construir mensagem de pagamento confirmado
+      const message = `🎉 *Pagamento Confirmado!*
+
+Olá ${customerName}!
+
+✅ Seu pagamento foi confirmado com sucesso!
+📄 Pedido: #${order.id}
+💰 Valor: R$ ${order.total_amount.toFixed(2)}
+📅 Data: ${format(new Date(), 'dd/MM/yyyy \'às\' HH:mm')}
+
+Seu pedido já está sendo preparado para o envio! 📦
+
+Obrigado pela confiança! 🙌`;
+
+      // Enviar usando o servidor otimizado
+      const baseUrl = 'http://localhost:3333';
+      const response = await fetch(`${baseUrl}/api/send-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: JSON.stringify({
+            numeros: [order.customer_phone],
+            mensagens: [message],
+            interval: 2000,
+            batchSize: 1,
+            batchDelay: 1000
+          })
+        })
       });
 
-      toast({
-        title: 'Mensagem Enviada',
-        description: 'Confirmação de pagamento enviada via WhatsApp'
-      });
-
-      return true;
+      if (response.ok) {
+        toast({
+          title: 'Mensagem Enviada',
+          description: 'Confirmação de pagamento enviada via WhatsApp'
+        });
+        return true;
+      } else {
+        throw new Error('Falha na resposta do servidor');
+      }
     } catch (error) {
       console.error('Error sending paid order message:', error);
       toast({
@@ -647,86 +668,49 @@ const Pedidos = () => {
         return;
       }
 
-      let successCount = 0;
-      let errorCount = 0;
+      // Preparar mensagens personalizadas
+      const messages = uniquePhones.map(phone => {
+        const customerName = orders.find(o => o.customer_phone === phone)?.customer?.name || 'Cliente';
+        return template.content.replace('{{nome_cliente}}', customerName);
+      });
 
-for (const phone of uniquePhones) {
-  try {
-    const customerName = orders.find(o => o.customer_phone === phone)?.customer?.name || 'Cliente';
-    const personalizedMessage = template.content.replace('{{nome_cliente}}', customerName);
+      // Usar o sistema de envio em massa otimizado
+      const baseUrl = 'http://localhost:3333';
+      const response = await fetch(`${baseUrl}/api/send-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: JSON.stringify({
+            numeros: uniquePhones,
+            mensagens: messages,
+            interval: 3000,  // 3 segundos entre mensagens
+            batchSize: 3,    // 3 mensagens por lote
+            batchDelay: 5000 // 5 segundos entre lotes
+          })
+        })
+      });
 
-    // Envia diretamente para o servidor WhatsApp (Node)
-    const getBaseUrl = () => {
-      const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
-      const base = (fromStorage || 'http://localhost:3000').trim();
-      return base.replace(/\/$/, '');
-    };
-
-    const baseUrl = getBaseUrl();
-    const attempts = [
-      { path: '/send-message', body: { number: phone, message: personalizedMessage } },
-      { path: '/send-message', body: { to: phone, message: personalizedMessage } },
-      { path: '/send', body: { to: phone, message: personalizedMessage } },
-      { path: '/send', body: { number: phone, message: personalizedMessage } },
-    ] as const;
-
-    let sent = false;
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    while (!sent && retryCount < maxRetries) {
-      for (const a of attempts) {
-        try {
-          const resp = await fetch(`${baseUrl}${a.path}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(a.body),
-          });
-          
-          if (resp.ok) { 
-            sent = true; 
-            break; 
-          }
-          
-          // Se o servidor está reiniciando, aguardar antes de tentar novamente
-          const errorText = await resp.text().catch(() => '');
-          if (errorText.includes('restarting') || errorText.includes('indisponível')) {
-            console.log(`Servidor WhatsApp reiniciando para ${phone}, aguardando 3 segundos...`);
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            break; // Sair do loop de attempts e tentar novamente
-          }
-          
-          if (resp.status === 404) continue;
-        } catch (error) {
-          console.warn(`Erro na tentativa de envio para ${phone}:`, error);
-        }
+      if (!response.ok) {
+        throw new Error(`Erro no servidor: ${response.status}`);
       }
-      retryCount++;
-      if (!sent && retryCount < maxRetries) {
-        console.log(`Tentativa ${retryCount} falhou para ${phone}, aguardando antes da próxima...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const result = await response.json();
+      
+      // Registrar no banco independente do sucesso
+      for (let i = 0; i < uniquePhones.length; i++) {
+        const phone = uniquePhones[i];
+        const message = messages[i % messages.length];
+        
+        await supabase.from('whatsapp_messages').insert({
+          phone,
+          message,
+          type: 'broadcast',
+          sent_at: new Date().toISOString(),
+        });
       }
-    }
 
-    // Registrar no banco independente do sucesso
-    await supabase.from('whatsapp_messages').insert({
-      phone,
-      message: personalizedMessage,
-      type: 'broadcast',
-      sent_at: new Date().toISOString(),
-    });
-
-    if (!sent) {
-      console.warn(`Falha ao enviar via WhatsApp API para ${phone} após ${maxRetries} tentativas. Verifique o servidor.`);
-      errorCount++;
-    } else {
-      successCount++;
-    }
-  } catch (error) {
-    console.error(`Erro ao enviar para ${phone}:`, error);
-    errorCount++;
-  }
-}
+      const successCount = result.sucesso ? uniquePhones.length : 0;
+      const errorCount = result.sucesso ? 0 : uniquePhones.length;
 
       toast({
         title: 'Mensagem em Massa Concluída',
