@@ -28,11 +28,18 @@ let myNumber = null; // ex.: "5531999999999"
 const receivedMessages = []; // armazena últimas N mensagens recebidas
 const MAX_MESSAGES = 500;
 
+// ===================== Limpar sessão anterior =====================
+const authDir = path.join(__dirname, '.wwebjs_auth');
+if (fs.existsSync(authDir)) {
+  console.log('🧹 Limpando sessão anterior...');
+  fs.rmSync(authDir, { recursive: true, force: true });
+}
+
 // ===================== Cliente WhatsApp =====================
 const client = new Client({
   authStrategy: new LocalAuth({
     clientId: 'instancia-unica',
-    dataPath: path.join(__dirname, '.wwebjs_auth'),
+    dataPath: authDir,
   }),
   puppeteer: {
     headless: HEADLESS,
