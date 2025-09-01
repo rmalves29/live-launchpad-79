@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, TrendingUp, CreditCard } from 'lucide-react';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, TrendingUp, CreditCard, Package } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface OrderItem {
@@ -1171,9 +1171,11 @@ const Checkout = () => {
       )}
         </div>
       </div>
-    );
+    </div>
+  );
+  
   }
-
+  
   const statisticsCards = [
     {
       title: 'Pedidos Abertos',
