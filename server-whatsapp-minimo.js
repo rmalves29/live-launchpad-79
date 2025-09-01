@@ -42,11 +42,47 @@ let myNumber = null; // ex.: "5531999999999"
 const receivedMessages = []; // armazena últimas N mensagens recebidas
 const MAX_MESSAGES = 500;
 let reinitScheduled = false;
+let connectionAttempts = 0;
+const MAX_CONNECTION_ATTEMPTS = 5;
 
 async function scheduleReinit(reason = 'unknown') {
   if (reinitScheduled) return;
   reinitScheduled = true;
-  log('🔄 Reinicializando WhatsApp (motivo):', reason);
+  
+  connectionAttempts++;
+  log(`🔄 Reinicializando WhatsApp (tentativa ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS}, motivo: ${reason})`);
+  
+  if (connectionAttempts >= MAX_CONNECTION_ATTEMPTS) {
+    log('🚨 Máximo de tentativas atingido. Forçando reset completo...');
+    connState = 'force_reset';
+    connectionAttempts = 0;
+    
+    try {
+      await client.destroy();
+    } catch (_) {}
+    
+    // Remove dados de autenticação para forçar novo QR
+    const authPath = path.join(__dirname, '.wwebjs_auth');
+    if (fs.existsSync(authPath)) {
+      try {
+        fs.rmSync(authPath, { recursive: true, force: true });
+        log('🗑️ Dados de autenticação removidos');
+      } catch (e) {
+        console.error('Erro ao remover dados de auth:', e.message);
+      }
+    }
+    
+    setTimeout(() => {
+      log('🔄 Iniciando nova instância após reset...');
+      client.initialize().catch((e) => {
+        connState = 'init_error';
+        console.error('Erro ao inicializar WhatsApp após reset:', e.message);
+      }).finally(() => { reinitScheduled = false; });
+    }, 3000);
+    
+    return;
+  }
+  
   connState = 'restarting';
   try { await client.destroy(); } catch (_) {}
   setTimeout(() => {
@@ -84,7 +120,9 @@ client.on('qr', (qr) => {
 
 client.on('authenticated', () => {
   connState = 'authenticated';
+  connectionAttempts = 0; // Reset contador ao autenticar
   console.log('🔐 Autenticado');
+  log('🔄 Contador de tentativas resetado - autenticado');
 });
 
 client.on('auth_failure', (msg) => {
@@ -95,10 +133,12 @@ client.on('auth_failure', (msg) => {
 
 client.on('ready', () => {
   connState = 'ready';
+  connectionAttempts = 0; // Reset contador ao conectar com sucesso
   try {
     const wid = client?.info?.wid?.user || null; // apenas dígitos
     myNumber = wid ? `${wid}` : null;
     console.log('✅ WhatsApp pronto. Meu número:', myNumber ? `+${myNumber}` : 'N/D');
+    log('🔄 Contador de tentativas resetado - conexão estabelecida');
   } catch {
     myNumber = null;
   }
