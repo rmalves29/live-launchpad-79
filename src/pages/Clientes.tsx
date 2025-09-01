@@ -8,6 +8,8 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -54,6 +56,7 @@ const Clientes = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [newCustomer, setNewCustomer] = useState({ phone: '', name: '' });
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
@@ -197,6 +200,53 @@ const Clientes = () => {
         description: 'Erro ao excluir cliente',
         variant: 'destructive'
       });
+    }
+  };
+
+  const updateCustomer = async () => {
+    if (!editingCustomer || !editingCustomer.name || !editingCustomer.phone) {
+      toast({
+        title: 'Erro',
+        description: 'Nome e telefone são obrigatórios',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({
+          name: editingCustomer.name,
+          cpf: editingCustomer.cpf || null,
+          street: editingCustomer.street || null,
+          number: editingCustomer.number || null,
+          complement: editingCustomer.complement || null,
+          city: editingCustomer.city || null,
+          state: editingCustomer.state || null,
+          cep: editingCustomer.cep || null,
+        })
+        .eq('id', editingCustomer.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Cliente atualizado com sucesso'
+      });
+      
+      setEditingCustomer(null);
+      loadCustomers();
+    } catch (error) {
+      console.error('Error updating customer:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao atualizar cliente',
+        variant: 'destructive'
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -397,153 +447,301 @@ const Clientes = () => {
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader>
-                       <TableRow>
-                           <TableHead>Nome</TableHead>
-                           <TableHead>Telefone</TableHead>
-                           <TableHead>Pedidos</TableHead>
-                           <TableHead>Total Gasto</TableHead>
-                           <TableHead>Último Pedido</TableHead>
-                           <TableHead>Cadastrado</TableHead>
-                           <TableHead className="text-right">Ações</TableHead>
-                         </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                         {filteredCustomers.map((customer) => (
-                           <TableRow key={customer.id}>
-                             <TableCell className="font-medium">
-                               <div className="flex flex-col">
-                                 <span>{customer.name}</span>
-                                 <span className="text-sm text-muted-foreground font-mono">
-                                   {formatPhone(customer.phone)}
-                                 </span>
-                               </div>
-                             </TableCell>
-                             <TableCell className="font-mono">
-                               {customer.cpf ? (
-                                 <Badge variant="outline">{customer.cpf}</Badge>
-                               ) : (
-                                 <span className="text-muted-foreground">-</span>
-                               )}
-                             </TableCell>
-                             <TableCell>
-                               <div className="flex items-center">
-                                 <ShoppingBag className="h-4 w-4 mr-1 text-muted-foreground" />
-                                 <span className="font-semibold">{customer.total_orders}</span>
-                               </div>
-                             </TableCell>
-                             <TableCell>
-                               <div className="flex items-center">
-                                 <DollarSign className="h-4 w-4 mr-1 text-muted-foreground" />
-                                 <span className="font-semibold text-green-600">
-                                   {formatCurrency(customer.total_spent)}
-                                 </span>
-                               </div>
-                             </TableCell>
-                             <TableCell>
-                               {customer.last_order_date ? (
-                                 <div className="flex items-center">
-                                   <Calendar className="h-4 w-4 mr-1 text-muted-foreground" />
-                                   <span>{formatDate(customer.last_order_date)}</span>
-                                 </div>
-                               ) : (
-                                 <span className="text-muted-foreground">Nunca</span>
-                               )}
-                             </TableCell>
-                             <TableCell>{formatDate(customer.created_at)}</TableCell>
-                             <TableCell className="text-right">
-                               <div className="flex justify-end space-x-2">
-                                 <Dialog>
-                                   <DialogTrigger asChild>
-                                     <Button
-                                       onClick={() => loadCustomerOrders(customer)}
-                                       size="sm"
-                                       variant="outline"
-                                     >
-                                       <Eye className="h-4 w-4" />
-                                     </Button>
-                                   </DialogTrigger>
-                                   <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                                     <DialogHeader>
-                                       <DialogTitle>
-                                         Pedidos de {selectedCustomer?.name}
-                                       </DialogTitle>
-                                     </DialogHeader>
-                                     <div className="space-y-4">
-                                       {loadingOrders ? (
-                                         <div className="flex items-center justify-center py-8">
-                                           <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                                           <span>Carregando pedidos...</span>
-                                         </div>
-                                       ) : customerOrders.length === 0 ? (
-                                         <div className="text-center py-8 text-muted-foreground">
-                                           Nenhum pedido encontrado para este cliente.
-                                         </div>
-                                       ) : (
-                                         <div className="space-y-4">
-                                           {customerOrders.map((order) => (
-                                             <Card key={order.id}>
-                                               <CardHeader className="pb-3">
-                                                 <div className="flex justify-between items-start">
-                                                   <div>
-                                                     <CardTitle className="text-lg">
-                                                       Pedido #{order.id}
-                                                     </CardTitle>
-                                                     <p className="text-sm text-muted-foreground">
-                                                       {order.event_type} - {formatDate(order.event_date)}
-                                                     </p>
-                                                   </div>
-                                                   <div className="text-right">
-                                                     <div className="text-lg font-bold text-green-600">
-                                                       {formatCurrency(order.total_amount)}
-                                                     </div>
-                                                     <Badge variant={order.is_paid ? "default" : "secondary"}>
-                                                       {order.is_paid ? "Pago" : "Pendente"}
-                                                     </Badge>
-                                                   </div>
-                                                 </div>
-                                               </CardHeader>
-                                               <CardContent>
-                                                 <div className="space-y-2">
-                                                   <h4 className="font-semibold">Itens:</h4>
-                                                   {order.cart_items.map((item, index) => (
-                                                     <div key={index} className="flex justify-between items-center py-2 border-b last:border-b-0">
-                                                       <div>
-                                                         <span className="font-medium">{item.product.name}</span>
-                                                         <span className="text-sm text-muted-foreground ml-2">
-                                                           ({item.product.code})
-                                                         </span>
-                                                       </div>
-                                                       <div className="text-right">
-                                                         <div>{item.qty}x {formatCurrency(item.unit_price)}</div>
-                                                         <div className="font-semibold">
-                                                           {formatCurrency(item.qty * item.unit_price)}
-                                                         </div>
-                                                       </div>
-                                                     </div>
-                                                   ))}
-                                                 </div>
-                                               </CardContent>
-                                             </Card>
-                                           ))}
-                                         </div>
-                                       )}
-                                     </div>
-                                   </DialogContent>
-                                 </Dialog>
-                                 <Button
-                                   onClick={() => deleteCustomer(customer.id)}
-                                   size="sm"
-                                   variant="outline"
-                                   className="text-destructive hover:text-destructive"
-                                 >
-                                   <Trash2 className="h-4 w-4" />
-                                 </Button>
-                               </div>
-                             </TableCell>
-                           </TableRow>
-                         ))}
-                      </TableBody>
+                       <TableHeader>
+                        <TableRow>
+                            <TableHead>Nome</TableHead>
+                            <TableHead>Telefone</TableHead>
+                            <TableHead className="text-right">Ações</TableHead>
+                          </TableRow>
+                       </TableHeader>
+                       <TableBody>
+                          {filteredCustomers.map((customer) => (
+                            <TableRow key={customer.id}>
+                              <TableCell className="font-medium">
+                                {customer.name}
+                              </TableCell>
+                              <TableCell className="font-mono">
+                                {formatPhone(customer.phone)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end space-x-2">
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button
+                                        onClick={() => loadCustomerOrders(customer)}
+                                        size="sm"
+                                        variant="outline"
+                                        title="Ver dados"
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                                      <DialogHeader>
+                                        <DialogTitle>
+                                          Dados de {selectedCustomer?.name}
+                                        </DialogTitle>
+                                      </DialogHeader>
+                                      <div className="space-y-4">
+                                        <Card>
+                                          <CardHeader>
+                                            <CardTitle>Informações Pessoais</CardTitle>
+                                          </CardHeader>
+                                          <CardContent className="grid grid-cols-2 gap-4">
+                                            <div>
+                                              <Label className="text-sm font-medium">Nome</Label>
+                                              <p className="text-sm">{selectedCustomer?.name}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">Telefone</Label>
+                                              <p className="text-sm font-mono">{selectedCustomer ? formatPhone(selectedCustomer.phone) : ''}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">CPF</Label>
+                                              <p className="text-sm">{selectedCustomer?.cpf || '-'}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">Cadastrado em</Label>
+                                              <p className="text-sm">{selectedCustomer ? formatDate(selectedCustomer.created_at) : ''}</p>
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                          <CardHeader>
+                                            <CardTitle>Endereço</CardTitle>
+                                          </CardHeader>
+                                          <CardContent className="grid grid-cols-2 gap-4">
+                                            <div>
+                                              <Label className="text-sm font-medium">Rua</Label>
+                                              <p className="text-sm">{selectedCustomer?.street || '-'}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">Número</Label>
+                                              <p className="text-sm">{selectedCustomer?.number || '-'}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">Complemento</Label>
+                                              <p className="text-sm">{selectedCustomer?.complement || '-'}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">CEP</Label>
+                                              <p className="text-sm">{selectedCustomer?.cep || '-'}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">Cidade</Label>
+                                              <p className="text-sm">{selectedCustomer?.city || '-'}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">Estado</Label>
+                                              <p className="text-sm">{selectedCustomer?.state || '-'}</p>
+                                            </div>
+                                          </CardContent>
+                                        </Card>
+
+                                        <Card>
+                                          <CardHeader>
+                                            <CardTitle>Histórico de Pedidos</CardTitle>
+                                          </CardHeader>
+                                          <CardContent>
+                                            {loadingOrders ? (
+                                              <div className="flex items-center justify-center py-8">
+                                                <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                                                <span>Carregando pedidos...</span>
+                                              </div>
+                                            ) : customerOrders.length === 0 ? (
+                                              <div className="text-center py-8 text-muted-foreground">
+                                                Nenhum pedido encontrado para este cliente.
+                                              </div>
+                                            ) : (
+                                              <div className="space-y-4">
+                                                {customerOrders.map((order) => (
+                                                  <Card key={order.id}>
+                                                    <CardHeader className="pb-3">
+                                                      <div className="flex justify-between items-start">
+                                                        <div>
+                                                          <CardTitle className="text-lg">
+                                                            Pedido #{order.id}
+                                                          </CardTitle>
+                                                          <p className="text-sm text-muted-foreground">
+                                                            {order.event_type} - {formatDate(order.event_date)}
+                                                          </p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                          <div className="text-lg font-bold text-green-600">
+                                                            {formatCurrency(order.total_amount)}
+                                                          </div>
+                                                          <Badge variant={order.is_paid ? "default" : "secondary"}>
+                                                            {order.is_paid ? "Pago" : "Pendente"}
+                                                          </Badge>
+                                                        </div>
+                                                      </div>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                      <div className="space-y-2">
+                                                        <h4 className="font-semibold">Itens:</h4>
+                                                        {order.cart_items.map((item, index) => (
+                                                          <div key={index} className="flex justify-between items-center py-2 border-b last:border-b-0">
+                                                            <div>
+                                                              <span className="font-medium">{item.product.name}</span>
+                                                              <span className="text-sm text-muted-foreground ml-2">
+                                                                ({item.product.code})
+                                                              </span>
+                                                            </div>
+                                                            <div className="text-right">
+                                                              <div>{item.qty}x {formatCurrency(item.unit_price)}</div>
+                                                              <div className="font-semibold">
+                                                                {formatCurrency(item.qty * item.unit_price)}
+                                                              </div>
+                                                            </div>
+                                                          </div>
+                                                        ))}
+                                                      </div>
+                                                    </CardContent>
+                                                  </Card>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </CardContent>
+                                        </Card>
+                                      </div>
+                                    </DialogContent>
+                                  </Dialog>
+                                  
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button
+                                        onClick={() => setEditingCustomer(customer)}
+                                        size="sm"
+                                        variant="outline"
+                                        title="Editar cliente"
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="max-w-2xl">
+                                      <DialogHeader>
+                                        <DialogTitle>
+                                          Editar Cliente
+                                        </DialogTitle>
+                                      </DialogHeader>
+                                      {editingCustomer && (
+                                        <div className="space-y-4">
+                                          <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                              <Label htmlFor="name">Nome *</Label>
+                                              <Input
+                                                id="name"
+                                                value={editingCustomer.name}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, name: e.target.value} : null)}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor="phone">Telefone *</Label>
+                                              <Input
+                                                id="phone"
+                                                value={editingCustomer.phone}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, phone: e.target.value} : null)}
+                                                disabled
+                                                className="bg-muted"
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor="cpf">CPF</Label>
+                                              <Input
+                                                id="cpf"
+                                                value={editingCustomer.cpf || ''}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, cpf: e.target.value} : null)}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor="cep">CEP</Label>
+                                              <Input
+                                                id="cep"
+                                                value={editingCustomer.cep || ''}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, cep: e.target.value} : null)}
+                                              />
+                                            </div>
+                                            <div className="col-span-2">
+                                              <Label htmlFor="street">Rua/Avenida</Label>
+                                              <Input
+                                                id="street"
+                                                value={editingCustomer.street || ''}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, street: e.target.value} : null)}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor="number">Número</Label>
+                                              <Input
+                                                id="number"
+                                                value={editingCustomer.number || ''}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, number: e.target.value} : null)}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor="complement">Complemento</Label>
+                                              <Input
+                                                id="complement"
+                                                value={editingCustomer.complement || ''}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, complement: e.target.value} : null)}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor="city">Cidade</Label>
+                                              <Input
+                                                id="city"
+                                                value={editingCustomer.city || ''}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, city: e.target.value} : null)}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label htmlFor="state">Estado</Label>
+                                              <Input
+                                                id="state"
+                                                value={editingCustomer.state || ''}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, state: e.target.value} : null)}
+                                              />
+                                            </div>
+                                          </div>
+                                          
+                                          <div className="flex justify-end space-x-2">
+                                            <Button 
+                                              variant="outline" 
+                                              onClick={() => setEditingCustomer(null)}
+                                            >
+                                              Cancelar
+                                            </Button>
+                                            <Button 
+                                              onClick={updateCustomer} 
+                                              disabled={saving}
+                                            >
+                                              {saving ? (
+                                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                              ) : (
+                                                <Edit className="h-4 w-4 mr-2" />
+                                              )}
+                                              Salvar
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </DialogContent>
+                                  </Dialog>
+
+                                  <Button
+                                    onClick={() => deleteCustomer(customer.id)}
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-destructive hover:text-destructive"
+                                    title="Excluir cliente"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                       </TableBody>
                     </Table>
                   </div>
                 )}
