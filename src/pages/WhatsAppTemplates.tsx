@@ -148,11 +148,62 @@ const WhatsAppTemplates = () => {
         return;
       }
 
-      // Here you would integrate with WhatsApp API to send messages
-      // For now, we'll just show a success message
+      if (!confirm(`Tem certeza que deseja enviar mensagem em massa para ${uniquePhones.length} cliente(s)?`)) {
+        return;
+      }
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Enviar mensagem para cada cliente
+      for (const phone of uniquePhones) {
+        try {
+          // Personalizar mensagem se necessário
+          const personalizedMessage = broadcastTemplate.content;
+
+          // Tentar enviar via APIs do WhatsApp
+          let sent = false;
+          const whatsappApis = [
+            'http://localhost:8080/send-message',
+            'http://localhost:3001/send-message'
+          ];
+
+          for (const apiUrl of whatsappApis) {
+            try {
+              const resp = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, message: personalizedMessage })
+              });
+              if (resp.ok) { sent = true; break; }
+              if (resp.status === 404) continue;
+            } catch (_) {}
+          }
+
+          // Registrar no banco (isso vai acionar a etiqueta "APP" automaticamente)
+          await supabase.from('whatsapp_messages').insert({
+            phone,
+            message: personalizedMessage,
+            type: 'broadcast',
+            sent_at: new Date().toISOString(),
+          });
+
+          if (!sent) {
+            console.warn(`Falha ao enviar via WhatsApp API para ${phone}. Verifique o servidor.`);
+            errorCount++;
+          } else {
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`Erro ao enviar para ${phone}:`, error);
+          errorCount++;
+        }
+      }
+
       toast({
-        title: 'Mensagem Enviada',
-        description: `Mensagem enviada para ${uniquePhones.length} clientes`,
+        title: 'Mensagem em Massa Concluída',
+        description: `${successCount} mensagem(s) enviada(s). ${errorCount > 0 ? `${errorCount} erro(s).` : ''} Etiqueta "APP" adicionada aos clientes.`,
+        variant: successCount > 0 ? 'default' : 'destructive'
       });
 
     } catch (error) {

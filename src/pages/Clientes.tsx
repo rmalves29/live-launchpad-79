@@ -29,6 +29,11 @@ interface Customer {
   total_orders: number;
   total_spent: number;
   last_order_date?: string;
+  tags?: Array<{
+    id: number;
+    name: string;
+    color: string;
+  }>;
 }
 
 interface Order {
@@ -79,22 +84,33 @@ const Clientes = () => {
 
       if (customersError) throw customersError;
 
-      // Get order statistics for each customer
+      // Get order statistics and tags for each customer
       const customersWithStats = await Promise.all(
         (customersData || []).map(async (customer) => {
+          // Load orders
           const { data: orders, error: ordersError } = await supabase
             .from('orders')
             .select('total_amount, is_paid, created_at')
             .eq('customer_phone', customer.phone);
 
+          // Load customer tags
+          const { data: customerTags, error: tagsError } = await supabase
+            .from('customer_tag_assignments')
+            .select(`
+              customer_tags(
+                id,
+                name,
+                color
+              )
+            `)
+            .eq('customer_id', customer.id);
+
           if (ordersError) {
             console.error('Error loading orders for customer:', customer.phone, ordersError);
-            return {
-              ...customer,
-              total_orders: 0,
-              total_spent: 0,
-              last_order_date: undefined
-            };
+          }
+
+          if (tagsError) {
+            console.error('Error loading tags for customer:', customer.id, tagsError);
           }
 
           const totalOrders = orders?.length || 0;
@@ -103,11 +119,14 @@ const Clientes = () => {
             ? orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
             : undefined;
 
+          const tags = customerTags?.map(ct => ct.customer_tags).filter(Boolean) || [];
+
           return {
             ...customer,
             total_orders: totalOrders,
             total_spent: totalSpent,
-            last_order_date: lastOrderDate
+            last_order_date: lastOrderDate,
+            tags
           };
         })
       );
@@ -472,10 +491,29 @@ const Clientes = () => {
                        </TableHeader>
                        <TableBody>
                           {filteredCustomers.map((customer) => (
-                            <TableRow key={customer.id}>
-                              <TableCell className="font-medium">
-                                {customer.name}
-                              </TableCell>
+                             <TableRow key={customer.id}>
+                               <TableCell className="font-medium">
+                                 <div className="flex flex-col space-y-1">
+                                   <span>{customer.name}</span>
+                                   {customer.tags && customer.tags.length > 0 && (
+                                     <div className="flex flex-wrap gap-1">
+                                       {customer.tags.map((tag) => (
+                                         <Badge 
+                                           key={tag.id} 
+                                           variant="outline" 
+                                           className="text-xs"
+                                           style={{ 
+                                             borderColor: tag.color, 
+                                             color: tag.color 
+                                           }}
+                                         >
+                                           {tag.name}
+                                         </Badge>
+                                       ))}
+                                     </div>
+                                   )}
+                                 </div>
+                               </TableCell>
                               <TableCell className="font-mono">
                                 {formatPhone(customer.phone)}
                               </TableCell>
