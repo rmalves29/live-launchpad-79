@@ -338,9 +338,11 @@ async function sendSingleMessage(instanceName, client, numero, mensagem, imgPath
   const state = await client.getState().catch(()=>null);
   if (state !== 'CONNECTED') throw new Error('CLIENTE_NAO_CONECTADO');
 
-  // garantia extra: injeção do WA Web carregada
-  const injected = await ensureWAInjected(client, 20000);
-  if (!injected) throw new Error('WA_INJECTION_NOT_READY');
+  // garantia extra: injeção do WA Web carregada (não bloquear envio se não ficar pronta)
+  const injected = await ensureWAInjected(client, 20000).catch(() => false);
+  if (!injected) {
+    console.warn('WA injection not ready, tentando envio mesmo assim...');
+  }
 
   const toWid = await getWidOrNull(client, numero);
   if (!toWid) throw new Error('NUMERO_NAO_WHATSAPP');
@@ -437,6 +439,38 @@ app.get('/api/status', (_req,res)=> {
 app.get('/api/logs',   (_req,res)=> res.json({ logs }));
 app.get('/api/message-status', (_req,res)=> res.json({ messageStatus }));
 app.get('/api/client-responses', (_req,res)=> res.json({ responses: clientResponses }));
+
+// Compat: recebe payload anterior do front { data: stringifiedJSON }
+app.post('/api/send-config', async (req, res) => {
+  try {
+    const payload = typeof req.body?.data === 'string' ? JSON.parse(req.body.data) : (req.body?.data || req.body || {});
+    const { numeros = [], mensagens = [], interval = 2000, batchSize = 5, batchDelay = 3000, key } = payload;
+
+    // autorização opcional (usa o mesmo segredo do broadcast se enviado)
+    const k = req.get('x-api-key') || key || req.body?.key;
+    if (k && k !== BROADCAST_SECRET) return res.status(401).json({ error: 'unauthorized' });
+
+    const nums = (numeros || []).map(digits).filter(Boolean);
+    const msgs = (mensagens || []).filter(Boolean);
+    if (!nums.length || !msgs.length) return res.status(400).json({ error: 'numeros[] e mensagens[] são obrigatórios' });
+
+    CURRENT_MASS_LABEL = MASS_BROADCAST_LABEL;
+    res.json({ ok: true, total: nums.length });
+
+    (async () => {
+      try {
+        await processBatch({
+          numeros: nums,
+          mensagens: msgs,
+          interval: Math.max(500, interval),
+          batchSize: Math.max(1, Math.min(50, batchSize)),
+          batchDelay: Math.max(1000, batchDelay),
+          imgPath: null
+        });
+      } finally { CURRENT_MASS_LABEL = null; }
+    })();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 /* ============================ API — Broadcast ============================ */
 // 1) por lista de telefones
