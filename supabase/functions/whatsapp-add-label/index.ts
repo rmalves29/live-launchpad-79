@@ -33,6 +33,7 @@ serve(async (req) => {
 
     // Lista de APIs do WhatsApp para tentar adicionar a etiqueta
     const whatsappApis = [
+      'http://localhost:3333/add-label',
       'http://localhost:3000/add-label',
       'http://localhost:8080/add-label',
       'http://localhost:3001/add-label'

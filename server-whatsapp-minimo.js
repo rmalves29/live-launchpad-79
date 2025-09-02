@@ -1368,6 +1368,102 @@ app.get('/api/group/config', async (req, res) => {
 
 // ==================== FIM DO SISTEMA DE GRUPOS ====================
 
+// Endpoint para adicionar etiquetas aos contatos
+app.post('/add-label', async (req, res) => {
+    try {
+        const { phone, label } = req.body;
+        
+        if (!phone || !label) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Phone and label are required' 
+            });
+        }
+
+        const instanceName = getAvailableInstance();
+        if (!instanceName) {
+            return res.status(503).json({ 
+                success: false, 
+                error: 'Nenhuma instância disponível' 
+            });
+        }
+
+        const client = clients[instanceName];
+        const isFunctional = await verificarInstanciaFuncional(instanceName, client);
+        
+        if (!isFunctional) {
+            return res.status(503).json({ 
+                success: false, 
+                error: 'Instância não está funcional' 
+            });
+        }
+
+        const numeroLimpo = phone.replace(/\D/g, '');
+        const chatId = `${numeroLimpo}@c.us`;
+        
+        console.log(`🏷️ Tentando adicionar etiqueta "${label}" para ${phone} via ${instanceName}`);
+
+        try {
+            // Obter todas as etiquetas disponíveis
+            const labels = await client.getLabels();
+            
+            // Procurar se a etiqueta já existe
+            let targetLabel = labels.find(l => l.name === label);
+            
+            // Se não existe, criar a etiqueta
+            if (!targetLabel) {
+                console.log(`🆕 Criando nova etiqueta: ${label}`);
+                targetLabel = await client.createLabel(label);
+            }
+            
+            // Obter o chat/contato
+            const chat = await client.getChatById(chatId);
+            
+            // Adicionar a etiqueta ao chat
+            await chat.addLabel(targetLabel.id);
+            
+            console.log(`✅ Etiqueta "${label}" adicionada com sucesso para ${phone}`);
+            
+            logs.unshift({
+                instancia: instanceName,
+                numero: phone,
+                mensagem: `Etiqueta "${label}" adicionada`,
+                status: 'sucesso',
+                data: new Date().toISOString()
+            });
+
+            res.json({ 
+                success: true, 
+                message: `Label "${label}" added to ${phone}`,
+                instanceUsed: instanceName
+            });
+            
+        } catch (error) {
+            console.error(`❌ Erro ao adicionar etiqueta "${label}" para ${phone}:`, error.message);
+            
+            logs.unshift({
+                instancia: instanceName,
+                numero: phone,
+                mensagem: `Erro ao adicionar etiqueta "${label}": ${error.message}`,
+                status: 'erro',
+                data: new Date().toISOString()
+            });
+            
+            res.status(500).json({ 
+                success: false, 
+                error: error.message 
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro no endpoint /add-label:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
 app.listen(3333, () => {
     console.log('🟢 ==== SERVIDOR WHATSAPP SEM RECONEXÃO AUTOMÁTICA ====');
     console.log('🌐 URL: http://localhost:3333');
@@ -1379,6 +1475,7 @@ app.listen(3333, () => {
     console.log('🚫 NOVO: Instâncias desconectadas NÃO reconectam automaticamente');
     console.log('⚡ Recursos: Fila + redistribuição SEM reconexão automática');
     console.log('👥 Sistema: Rotação de instâncias por grupo ativo');
+    console.log('🏷️ Sistema: Suporte a etiquetas do WhatsApp ativo');
     initializeGroupConfigurations();
     console.log('========================================');
 });
