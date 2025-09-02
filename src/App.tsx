@@ -15,6 +15,7 @@ import Produtos from "./pages/Produtos";
 import Clientes from "./pages/Clientes";
 import Relatorios from "./pages/Relatorios";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
+import WhatsAppIntegration from "./components/WhatsAppIntegration";
 import MpReturn from "./pages/MpReturn";
 import ConfigFrete from "./pages/ConfigFrete";
 import CotacaoFrete from "./pages/CotacaoFrete";
@@ -41,6 +42,7 @@ const AppContent = () => {
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/relatorios" element={<Relatorios />} />
         <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
+        <Route path="/whatsapp-integration" element={<WhatsAppIntegration />} />
         <Route path="/config-frete" element={<ConfigFrete />} />
         <Route path="/cotacao-frete" element={<CotacaoFrete />} />
         <Route path="/etiquetas" element={<Etiquetas />} />

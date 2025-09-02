@@ -439,8 +439,24 @@ const PedidosManual = () => {
   };
 
   const sendItemAddedMessage = async (phone: string, customerName: string, productName: string, quantity: number, price: number) => {
-    // Mock function - substituir pela nova implementação WhatsApp
-    console.log('WhatsApp message would be sent:', { phone, customerName, productName, quantity, price });
+    try {
+      const { whatsappService } = await import('@/lib/whatsapp-service');
+      await whatsappService.sendItemAdded({
+        customer_phone: phone,
+        customer_name: customerName,
+        product: {
+          name: productName,
+          code: '',
+          qty: quantity,
+          price: price
+        }
+      });
+      
+      console.log('WhatsApp message sent successfully:', { phone, customerName, productName, quantity, price });
+    } catch (error) {
+      console.warn('Failed to send WhatsApp message:', error);
+      // Não exibe erro para não interromper o fluxo principal
+    }
   };
 
   const fillDefaultPhone = () => {
