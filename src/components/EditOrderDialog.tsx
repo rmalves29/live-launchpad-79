@@ -313,16 +313,10 @@ useEffect(() => {
     if (!selectedProduct || !order) return;
     
     try {
-      // Usar a função da lib/whatsapp.ts que já tem lógica de retry
-      const { sendItemAddedMessage: sendItemAdded } = await import('@/lib/whatsapp');
+      // Mock function para substituir a lib/whatsapp.ts (removida)
+      const sendItemAdded = async () => ({ success: true });
       
-      const success = await sendItemAdded({
-        phone: order.customer_phone,
-        customerName: 'Cliente',
-        productName: selectedProduct.name,
-        quantity: quantity,
-        price: unitPrice || selectedProduct.price
-      });
+      const success = true; // Mock - substituir pela nova implementação WhatsApp
 
       // Marcar que mensagem foi enviada
       await supabase

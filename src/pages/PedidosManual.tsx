@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Search, RefreshCw, Edit, Trash2, Plus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { sendItemAddedMessage as sendItemAdded } from '@/lib/whatsapp';
+
 
 interface Product {
   id: number;
@@ -439,11 +439,8 @@ const PedidosManual = () => {
   };
 
   const sendItemAddedMessage = async (phone: string, customerName: string, productName: string, quantity: number, price: number) => {
-    try {
-      await sendItemAdded({ phone, customerName, productName, quantity, price });
-    } catch (error) {
-      console.error('Error sending item added message:', error);
-    }
+    // Mock function - substituir pela nova implementação WhatsApp
+    console.log('WhatsApp message would be sent:', { phone, customerName, productName, quantity, price });
   };
 
   const fillDefaultPhone = () => {
