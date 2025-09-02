@@ -8,7 +8,7 @@ import { Menu } from 'lucide-react';
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const location = useLocation();
-  const isWhatsAppActive = ['/whatsapp', '/whatsapp-templates', '/whatsapp-integration'].includes(location.pathname);
+  const isWhatsAppActive = ['/whatsapp-templates'].includes(location.pathname);
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
@@ -17,14 +17,12 @@ const Navbar = () => {
     { path: '/clientes', label: 'Clientes' },
     { path: '/pedidos', label: 'Pedidos' },
     { path: '/relatorios', label: 'Relatórios' },
-    { path: '/whatsapp', label: 'WhatsApp' },
     { path: '/whatsapp-templates', label: 'Templates WPP' },
-    { path: '/whatsapp-integration', label: 'Integração WPP' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/config', label: 'Configurações' }
   ];
 
-  const whatsappItems = ['/whatsapp', '/whatsapp-templates', '/whatsapp-integration'];
+  const whatsappItems = ['/whatsapp-templates'];
   const filteredNavItems = navItems.filter((item) => !whatsappItems.includes(item.path));
 
   return (
@@ -74,13 +72,7 @@ const Navbar = () => {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
-                  <NavLink to="/whatsapp">Monitor</NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
                   <NavLink to="/whatsapp-templates">Templates WPP</NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <NavLink to="/whatsapp-integration">Integração WPP</NavLink>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -117,19 +109,6 @@ const Navbar = () => {
                     <div className="px-3 pb-1 text-xs uppercase text-muted-foreground">WhatsApp</div>
                     <div className="flex flex-col space-y-2">
                       <NavLink
-                        to="/whatsapp"
-                        onClick={() => setOpen(false)}
-                        className={({ isActive }) =>
-                          `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                            isActive
-                              ? 'bg-primary text-primary-foreground'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                          }`
-                        }
-                      >
-                        Monitor
-                      </NavLink>
-                      <NavLink
                         to="/whatsapp-templates"
                         onClick={() => setOpen(false)}
                         className={({ isActive }) =>
@@ -141,19 +120,6 @@ const Navbar = () => {
                         }
                       >
                         Templates WPP
-                      </NavLink>
-                      <NavLink
-                        to="/whatsapp-integration"
-                        onClick={() => setOpen(false)}
-                        className={({ isActive }) =>
-                          `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                            isActive
-                              ? 'bg-primary text-primary-foreground'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                          }`
-                        }
-                      >
-                        Integração WPP
                       </NavLink>
                     </div>
                   </div>
