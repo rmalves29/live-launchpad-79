@@ -9,40 +9,48 @@ import { supabase } from '@/integrations/supabase/client';
 
 const DEFAULT_WA_BASE = 'http://localhost:3333';
 
+// Helper function to get the base URL for WhatsApp API
 function getBaseUrl(): string {
-  // Allow override via localStorage
-  const fromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
-  const base = (fromStorage || DEFAULT_WA_BASE).trim();
-  return base.replace(/\/$/, ''); // remove trailing slash
+  // Check if there's a custom URL in localStorage first
+  const customUrl = localStorage.getItem('whatsapp_server_url');
+  if (customUrl) {
+    return customUrl.replace(/\/+$/, ''); // Remove trailing slashes
+  }
+  
+  return 'http://localhost:3333';
 }
 
-// Nova função para envios em massa usando a API otimizada
-export async function sendBulkMessages(phoneNumbers: string[], message: string) {
-  const baseUrl = getBaseUrl();
-  
+// Function to send bulk messages using the new optimized endpoint
+export async function sendBulkMessages(phoneNumbers: string[], message: string): Promise<boolean> {
   try {
+    const baseUrl = getBaseUrl();
+    
     const response = await fetch(`${baseUrl}/api/send-config`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         data: JSON.stringify({
           numeros: phoneNumbers,
           mensagens: [message],
-          interval: 2000,
-          batchSize: 5,
-          batchDelay: 3000
+          interval: 3000,
+          batchSize: 3,
+          batchDelay: 5000
         })
-      })
+      }),
     });
 
     if (!response.ok) {
-      throw new Error(`Erro no servidor: ${response.status}`);
+      console.error('Failed to send bulk messages:', response.statusText);
+      return false;
     }
 
     const result = await response.json();
-    return result.sucesso;
+    console.log('✅ Bulk messages initiated:', result);
+    return true;
   } catch (error) {
-    console.error('Erro ao enviar mensagens em massa:', error);
+    console.error('Error sending bulk messages:', error);
     return false;
   }
 }
@@ -69,110 +77,107 @@ Seu item foi adicionado com sucesso ao carrinho! 🎉
 Obrigado pela preferência! 🙌`;
 }
 
-async function trySendViaNode(phone: string, message: string) {
-  const preferredBase = getBaseUrl();
-  // Tentar múltiplas bases conhecidas para evitar erro de configuração
-  const bases = Array.from(new Set([
-    preferredBase,
-    'http://localhost:3333',
-    'http://127.0.0.1:3333',
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-  ]));
-
+// Function that tries to send via Node.js server first, trying multiple bases and message formats
+async function trySendViaNode(phone: string, message: string): Promise<boolean> {
+  const baseUrl = getBaseUrl();
+  
   try {
-    const attempts = [
-      { path: '/send-message', body: { number: phone, message } },
-      { path: '/send-message', body: { to: phone, message } },
-      { path: '/send', body: { to: phone, message } },
-      { path: '/send', body: { number: phone, message } },
-    ];
+    console.log(`🔄 Tentativa de envio direto via ${baseUrl}...`);
+    
+    // Try sending message
+    const sendResponse = await fetch(`${baseUrl}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number: phone, message }),
+    });
 
-    for (const baseUrl of bases) {
-      for (const a of attempts) {
-        try {
-          console.log(`Tentando enviar para ${baseUrl}${a.path}`, { phone, messageLength: message.length });
-          const resp = await fetch(`${baseUrl}${a.path}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(a.body),
-          });
-
-          if (resp.ok) {
-            console.log(`Mensagem enviada com sucesso via ${baseUrl}${a.path}`, { phone });
-
-            // Adicionar tag "APP" ao cliente após envio bem-sucedido (compatível com servidor)
-            try {
-              await fetch(`${baseUrl}/add-label`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone, label: 'APP' }),
-              });
-              console.log(`Etiqueta "APP" adicionada ao cliente ${phone} via ${baseUrl}`);
-            } catch (labelError) {
-              console.warn(`Erro ao adicionar etiqueta ao cliente ${phone} via ${baseUrl}:`, labelError);
-            }
-
-            return true;
-          }
-
-          // Se o servidor está reiniciando, aguardar um pouco antes de tentar novamente
-          const errorText = await resp.text().catch(() => '');
-          if (errorText.includes('restarting') || errorText.includes('indisponível')) {
-            console.log('Servidor reiniciando, aguardando 3 segundos...');
-            await new Promise(resolve => setTimeout(resolve, 3000));
-          } else if (resp.status !== 404) {
-            console.warn(`Tentativa falhou (${baseUrl}${a.path}):`, resp.status, errorText);
-          }
-
-        } catch (error) {
-          console.warn(`Erro na tentativa (${baseUrl}${a.path}):`, error);
+    if (sendResponse.ok) {
+      const result = await sendResponse.json();
+      console.log(`✅ Mensagem enviada com sucesso via ${baseUrl}:`, result);
+      
+      // Try to add label after successful send
+      try {
+        const labelResponse = await fetch(`${baseUrl}/add-label`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, label: 'APP' }),
+        });
+        
+        if (labelResponse.ok) {
+          console.log(`✅ Label "APP" adicionada com sucesso para ${phone}`);
+        } else {
+          console.warn(`⚠️ Falha ao adicionar label para ${phone}:`, labelResponse.statusText);
         }
+      } catch (labelError) {
+        console.warn(`⚠️ Erro ao tentar adicionar label:`, labelError);
       }
+      
+      return true;
+    } else {
+      console.log(`❌ Falha no envio via ${baseUrl}:`, sendResponse.statusText);
     }
   } catch (error) {
-    console.warn('Erro geral no trySendViaNode:', error);
+    console.log(`❌ Erro na tentativa ${baseUrl}:`, error);
   }
+
   return false;
 }
 
+// Function to send item added messages with automatic webhook format
 export async function sendItemAddedMessage(args: {
   phone: string;
   customerName?: string;
   productName: string;
   quantity: number;
   price: number;
-}) {
+}): Promise<boolean> {
   const { phone, customerName, productName, quantity, price } = args;
-  const message = buildItemAddedMessage({ customerName, productName, quantity, price });
-
-  // 1) Try Node server first
-  const sent = await trySendViaNode(phone, message);
-
-  // 2) Log to DB regardless
+  
   try {
-    await supabase.from('whatsapp_messages').insert({
-      phone,
-      message,
-      type: 'item_added',
-      product_name: productName,
-      amount: price,
-      sent_at: new Date().toISOString(),
+    const baseUrl = getBaseUrl();
+    
+    // Use the new webhook endpoint for item added
+    const response = await fetch(`${baseUrl}/api/test/item-added`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone,
+        customer_name: customerName,
+        product: {
+          name: productName,
+          qty: quantity,
+          price: price
+        }
+      }),
     });
-  } catch (_) {
-    // ignore log errors
-  }
 
-  // 3) Fallback to edge function (keeps current behavior) if not sent
-  if (!sent) {
-    try {
-      await supabase.functions.invoke('whatsapp-connection', {
-        body: { action: 'send_item_added', data: { phone, customerName, productName, quantity, price } },
-      });
-    } catch (_) {
-      // ignore
+    if (response.ok) {
+      console.log('✅ Item added message sent successfully');
+      
+      // Log to database
+      try {
+        await supabase.from('whatsapp_messages').insert({
+          phone,
+          message: `Item adicionado: ${productName}`,
+          type: 'item_added',
+          product_name: productName,
+          amount: price,
+          sent_at: new Date().toISOString(),
+        });
+      } catch (logError) {
+        console.warn('Failed to log message to database:', logError);
+      }
+      
+      return true;
+    } else {
+      console.error('Failed to send item added message:', response.statusText);
+      return false;
     }
+  } catch (error) {
+    console.error('Error sending item added message:', error);
+    
+    // Fallback to original function
+    const message = buildItemAddedMessage({ customerName, productName, quantity, price });
+    return await trySendViaNode(phone, message);
   }
-
-  return sent;
 }
