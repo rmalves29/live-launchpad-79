@@ -177,14 +177,22 @@ const WhatsAppTemplates = () => {
             }
           }
 
-          // Adicionar tag "app" para todos os clientes que receberam a mensagem em massa
-          try {
-            await supabase.functions.invoke('whatsapp-add-label-bulk', {
-              body: { phones: uniquePhones, label: 'app' }
-            });
-          } catch (labelError) {
-            console.warn('Erro ao adicionar tags "app":', labelError);
-          }
+// Adicionar tag "APP" para todos os clientes que receberam a mensagem em massa (direto no servidor local)
+try {
+  const baseFromStorage = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_api_url') : null;
+  const baseUrl = (baseFromStorage || 'http://localhost:3333').replace(/\/$/, '');
+  await Promise.allSettled(
+    uniquePhones.map((phone) =>
+      fetch(`${baseUrl}/add-label`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, label: 'APP' })
+      })
+    )
+  );
+} catch (labelError) {
+  console.warn('Erro ao adicionar etiquetas localmente:', labelError);
+}
         } else {
           errorCount = uniquePhones.length;
         }

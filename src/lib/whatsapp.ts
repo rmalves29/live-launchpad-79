@@ -70,7 +70,16 @@ Obrigado pela preferência! 🙌`;
 }
 
 async function trySendViaNode(phone: string, message: string) {
-  const baseUrl = getBaseUrl();
+  const preferredBase = getBaseUrl();
+  // Tentar múltiplas bases conhecidas para evitar erro de configuração
+  const bases = Array.from(new Set([
+    preferredBase,
+    'http://localhost:3333',
+    'http://127.0.0.1:3333',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ]));
+
   try {
     const attempts = [
       { path: '/send-message', body: { number: phone, message } },
@@ -79,45 +88,46 @@ async function trySendViaNode(phone: string, message: string) {
       { path: '/send', body: { number: phone, message } },
     ];
 
-    for (const a of attempts) {
-      try {
-        console.log(`Tentando enviar para ${baseUrl}${a.path}`, { phone, messageLength: message.length });
-        
-        const resp = await fetch(`${baseUrl}${a.path}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(a.body),
-        });
-        
-        if (resp.ok) {
-          console.log(`Mensagem enviada com sucesso via ${a.path}`, { phone });
-          
-          // Adicionar tag "app" ao cliente após envio bem-sucedido
-          try {
-            await fetch(`${baseUrl}/add-label`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ phone, label: 'app' }),
-            });
-            console.log(`Tag "app" adicionada ao cliente ${phone}`);
-          } catch (labelError) {
-            console.warn(`Erro ao adicionar tag "app" ao cliente ${phone}:`, labelError);
+    for (const baseUrl of bases) {
+      for (const a of attempts) {
+        try {
+          console.log(`Tentando enviar para ${baseUrl}${a.path}`, { phone, messageLength: message.length });
+          const resp = await fetch(`${baseUrl}${a.path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(a.body),
+          });
+
+          if (resp.ok) {
+            console.log(`Mensagem enviada com sucesso via ${baseUrl}${a.path}`, { phone });
+
+            // Adicionar tag "APP" ao cliente após envio bem-sucedido (compatível com servidor)
+            try {
+              await fetch(`${baseUrl}/add-label`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, label: 'APP' }),
+              });
+              console.log(`Etiqueta "APP" adicionada ao cliente ${phone} via ${baseUrl}`);
+            } catch (labelError) {
+              console.warn(`Erro ao adicionar etiqueta ao cliente ${phone} via ${baseUrl}:`, labelError);
+            }
+
+            return true;
           }
-          
-          return true;
+
+          // Se o servidor está reiniciando, aguardar um pouco antes de tentar novamente
+          const errorText = await resp.text().catch(() => '');
+          if (errorText.includes('restarting') || errorText.includes('indisponível')) {
+            console.log('Servidor reiniciando, aguardando 3 segundos...');
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          } else if (resp.status !== 404) {
+            console.warn(`Tentativa falhou (${baseUrl}${a.path}):`, resp.status, errorText);
+          }
+
+        } catch (error) {
+          console.warn(`Erro na tentativa (${baseUrl}${a.path}):`, error);
         }
-        
-        // Se o servidor está reiniciando, aguardar um pouco antes de tentar novamente
-        const errorText = await resp.text().catch(() => '');
-        if (errorText.includes('restarting') || errorText.includes('indisponível')) {
-          console.log('Servidor reiniciando, aguardando 3 segundos...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        } else if (resp.status !== 404) {
-          console.warn(`Tentativa falhou (${a.path}):`, resp.status, errorText);
-        }
-        
-      } catch (error) {
-        console.warn(`Erro na tentativa (${a.path}):`, error);
       }
     }
   } catch (error) {
