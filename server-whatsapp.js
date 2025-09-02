@@ -204,6 +204,135 @@ async function getPhonesByStatus(status) {
   return Array.from(out);
 }
 
+// ========================== Supabase domain helpers ==========================
+function dbPhoneFormat(num) {
+  const n = digits(num);
+  return n.startsWith('55') ? n : `55${n}`;
+}
+
+async function findProductByCode(raw) {
+  const code = String(raw || '').trim().toUpperCase();
+  const numeric = code.replace(/^C/i, '');
+  const or = encodeURIComponent(`code.eq.${code},code.eq.${numeric}`);
+  const rows = await supa(`/products?select=id,code,name,price,stock,is_active&is_active=eq.true&or=(${or})&limit=1`);
+  return rows?.[0] || null;
+}
+
+async function getOrCreateCartAndOrder(phone, eventDate, eventType = 'Manual') {
+  // 1) Buscar pedido em aberto (não pago) do dia
+  const q = `/${ORDERS_TABLE}?select=id,cart_id,total_amount&${ORDER_PHONE_FIELD}=eq.${phone}&event_date=eq.${eventDate}&is_paid=eq.false&limit=1`;
+  const existing = await supa(q);
+  let order = existing?.[0] || null;
+  let cart = null;
+
+  if (order) {
+    // Garantir cart
+    if (!order.cart_id) {
+      const createdCart = await supa('/carts', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ event_date: eventDate, customer_phone: phone, event_type: eventType, status: 'OPEN' })
+      });
+      cart = createdCart?.[0] || null;
+      const upd = await supa(`/orders?id=eq.${order.id}`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ cart_id: cart?.id })
+      });
+      order = upd?.[0] || order;
+    } else {
+      const foundCart = await supa(`/carts?id=eq.${order.cart_id}&select=id,event_date,customer_phone,event_type,status&limit=1`);
+      cart = foundCart?.[0] || null;
+    }
+  } else {
+    // Criar cart e pedido
+    const createdCart = await supa('/carts', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ event_date: eventDate, customer_phone: phone, event_type: eventType, status: 'OPEN' })
+    });
+    cart = createdCart?.[0] || null;
+
+    const createdOrder = await supa('/orders', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ cart_id: cart?.id || null, event_date: eventDate, total_amount: 0, is_paid: false, [ORDER_PHONE_FIELD]: phone, event_type: eventType })
+    });
+    order = createdOrder?.[0] || null;
+  }
+
+  if (!order) throw new Error('FALHA_CRIAR_PEDIDO');
+  if (!cart) {
+    const found = await supa(`/carts?id=eq.${order.cart_id}&select=id&limit=1`);
+    cart = found?.[0] || null;
+  }
+  return { order, cart };
+}
+
+async function addOrUpdateCartItem(cartId, productId, qty, unitPrice) {
+  const exists = await supa(`/cart_items?select=id,qty&cart_id=eq.${cartId}&product_id=eq.${productId}&limit=1`);
+  if (exists?.[0]) {
+    const id = exists[0].id;
+    const newQty = Number(exists[0].qty || 0) + Number(qty || 1);
+    const upd = await supa(`/cart_items?id=eq.${id}`, {
+      method: 'PATCH', headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ qty: newQty })
+    });
+    return upd?.[0] || { id };
+  }
+  const ins = await supa('/cart_items', {
+    method: 'POST', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ cart_id: cartId, product_id: productId, qty: qty || 1, unit_price: unitPrice, printed: false })
+  });
+  return ins?.[0];
+}
+
+async function updateProductStock(productId, currentStock, qty) {
+  const newStock = Math.max(0, Number(currentStock || 0) - Number(qty || 1));
+  await supa(`/products?id=eq.${productId}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ stock: newStock })
+  });
+  return newStock;
+}
+
+async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, qty = 1) {
+  const phone = dbPhoneFormat(phoneRaw);
+  const product = await findProductByCode(codeRaw);
+  if (!product) throw new Error(`PRODUTO_NAO_ENCONTRADO_${codeRaw}`);
+
+  const eventDate = new Date().toISOString().slice(0,10);
+  const { order, cart } = await getOrCreateCartAndOrder(phone, eventDate, 'Manual');
+
+  // adicionar item
+  await addOrUpdateCartItem(cart.id, product.id, qty, product.price);
+
+  // atualizar total do pedido
+  const novoTotal = Number(order.total_amount || 0) + Number(product.price || 0) * Number(qty || 1);
+  await supa(`/orders?id=eq.${order.id}`, {
+    method: 'PATCH', headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ total_amount: novoTotal })
+  });
+
+  // atualizar estoque
+  await updateProductStock(product.id, product.stock, qty);
+
+  // log opcional em whatsapp_messages
+  try {
+    await supa('/whatsapp_messages', {
+      method: 'POST', headers: { Prefer: 'return=representation' },
+      body: JSON.stringify({ phone, message: `Item ${product.name} (${product.code}) adicionado automaticamente`, type: 'item_added', order_id: order.id, product_name: product.name, amount: product.price })
+    });
+  } catch {}
+
+  // enviar confirmação ao cliente
+  const text = composeItemAdded({ product: { name: product.name, code: product.code, qty, price: Number(product.price || 0) } });
+  const messageId = `${instName}-${phone}-${Date.now()}`;
+  await sendSingleMessage(instName, client, phone, text, null, messageId);
+
+  return { orderId: order.id, cartId: cart.id, product };
+}
+
 /* ============================ WhatsApp client factory ============================ */
 function createClient(name) {
   const cfg = {
@@ -285,7 +414,26 @@ function onIncoming(instName, client) {
 
     pushLog(clientResponses, { numero, mensagem: texto, instancia: instName, when: dt.toISOString() });
 
-    // Aqui você pode processar códigos do tipo "C123" se quiser.
+    // Processar códigos de produto no formato C123 (case-insensitive)
+    const tokens = Array.from(new Set((texto.match(/c\d+/gi) || []).map(t => t.toUpperCase())));
+    if (!tokens.length) return;
+
+    for (const token of tokens) {
+      try {
+        await processProductCodeForPhone(instName, client, numero, token, 1);
+      } catch (e) {
+        console.warn('auto-venda erro', token, e.message);
+        try {
+          const wid = await getWidOrNull(client, numero);
+          if (wid) {
+            const friendly = String(e?.message||'')?.startsWith('PRODUTO_NAO_ENCONTRADO')
+              ? `Não encontrei o produto ${token}. Verifique o código.`
+              : `Não consegui lançar o item ${token} agora. Tente novamente em instantes.`;
+            await client.sendMessage(wid, friendly);
+          }
+        } catch {}
+      }
+    }
   };
 }
 
