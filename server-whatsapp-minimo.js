@@ -1368,6 +1368,157 @@ app.get('/api/group/config', async (req, res) => {
 
 // ==================== FIM DO SISTEMA DE GRUPOS ====================
 
+// Endpoints simples para envio de mensagens (compatibilidade com sistema atual)
+app.post('/send-message', async (req, res) => {
+    try {
+        const { number, to, message } = req.body;
+        const phone = number || to;
+        
+        if (!phone || !message) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Phone and message are required' 
+            });
+        }
+
+        if (isMessageDuplicate(phone, message)) {
+            console.log(`🚫 DUPLICATA DETECTADA: ${phone}`);
+            return res.status(409).json({ 
+                success: false, 
+                error: 'Duplicate message blocked' 
+            });
+        }
+
+        const instanceName = getAvailableInstance();
+        if (!instanceName) {
+            return res.status(503).json({ 
+                success: false, 
+                error: 'Nenhuma instância disponível' 
+            });
+        }
+
+        const client = clients[instanceName];
+        const isFunctional = await verificarInstanciaFuncional(instanceName, client);
+        
+        if (!isFunctional) {
+            return res.status(503).json({ 
+                success: false, 
+                error: 'Instância não está funcional' 
+            });
+        }
+
+        const messageId = `${instanceName}-${phone}-${Date.now()}`;
+        
+        try {
+            console.log(`📤 Enviando mensagem via ${instanceName} para ${phone}`);
+            await sendSingleMessage(instanceName, client, phone, message, null, messageId);
+            markMessageAsSent(phone, message);
+            
+            console.log(`✅ Mensagem enviada com sucesso para ${phone}`);
+            
+            res.json({ 
+                success: true, 
+                message: 'Message sent successfully',
+                instanceUsed: instanceName
+            });
+            
+        } catch (error) {
+            console.error(`❌ Erro ao enviar mensagem para ${phone}:`, error.message);
+            
+            // Remover da fila se houver erro
+            const controlKey = createMessageControlKey(phone, message);
+            messageQueue.delete(controlKey);
+            
+            res.status(500).json({ 
+                success: false, 
+                error: error.message 
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro no endpoint /send-message:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
+app.post('/send', async (req, res) => {
+    try {
+        const { number, to, message } = req.body;
+        const phone = number || to;
+        
+        if (!phone || !message) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Phone and message are required' 
+            });
+        }
+
+        if (isMessageDuplicate(phone, message)) {
+            console.log(`🚫 DUPLICATA DETECTADA: ${phone}`);
+            return res.status(409).json({ 
+                success: false, 
+                error: 'Duplicate message blocked' 
+            });
+        }
+
+        const instanceName = getAvailableInstance();
+        if (!instanceName) {
+            return res.status(503).json({ 
+                success: false, 
+                error: 'Nenhuma instância disponível' 
+            });
+        }
+
+        const client = clients[instanceName];
+        const isFunctional = await verificarInstanciaFuncional(instanceName, client);
+        
+        if (!isFunctional) {
+            return res.status(503).json({ 
+                success: false, 
+                error: 'Instância não está funcional' 
+            });
+        }
+
+        const messageId = `${instanceName}-${phone}-${Date.now()}`;
+        
+        try {
+            console.log(`📤 Enviando mensagem via ${instanceName} para ${phone}`);
+            await sendSingleMessage(instanceName, client, phone, message, null, messageId);
+            markMessageAsSent(phone, message);
+            
+            console.log(`✅ Mensagem enviada com sucesso para ${phone}`);
+            
+            res.json({ 
+                success: true, 
+                message: 'Message sent successfully',
+                instanceUsed: instanceName
+            });
+            
+        } catch (error) {
+            console.error(`❌ Erro ao enviar mensagem para ${phone}:`, error.message);
+            
+            // Remover da fila se houver erro
+            const controlKey = createMessageControlKey(phone, message);
+            messageQueue.delete(controlKey);
+            
+            res.status(500).json({ 
+                success: false, 
+                error: error.message 
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Erro no endpoint /send:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
 // Endpoint para adicionar etiquetas aos contatos
 app.post('/add-label', async (req, res) => {
     try {
