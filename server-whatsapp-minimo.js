@@ -7,11 +7,14 @@ const cors = require('cors');
 const RetrySystem = require('./retry-system');
 const qrcode = require('qrcode-terminal'); // 🔹 QR no terminal (fallback)
 
-// ===================== Limpar sessão anterior =====================
+// ===================== Manter sessão entre reinícios (não limpar por padrão) =====================
 const authDir = path.join(__dirname, '.wwebjs_auth');
-if (fs.existsSync(authDir)) {
-  console.log('🧹 Limpando sessão anterior...');
+const wipeSession = process.env.WIPE_WWEB_SESSION === 'true';
+if (wipeSession && fs.existsSync(authDir)) {
+  console.log('🧹 Limpando sessão anterior por WIPE_WWEB_SESSION=true...');
   fs.rmSync(authDir, { recursive: true, force: true });
+} else {
+  console.log('🔐 Mantendo sessão do WhatsApp (para evitar re-login a cada reinício). Defina WIPE_WWEB_SESSION=true para limpar.');
 }
 
 // Tenta descobrir o executável do navegador no Windows/Linux/Mac
