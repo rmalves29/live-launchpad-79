@@ -466,6 +466,11 @@ function onIncoming(instName, client) {
 
     let numero = (msg.from||'').replace('@c.us','');
     try { const c = await msg.getContact(); numero = c?.number || numero; } catch {}
+    
+    // Ignorar mensagens da própria instância conectada (553182558687)
+    const normalizedNumber = normalizeDDD(numero);
+    if (normalizedNumber === '553182558687') return;
+    
     const texto = String(msg.body||'').trim();
 
     pushLog(clientResponses, { numero, mensagem: texto, instancia: instName, when: dt.toISOString() });
