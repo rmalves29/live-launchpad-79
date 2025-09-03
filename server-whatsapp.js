@@ -389,7 +389,6 @@ function createClient(name) {
 
   // recebidas confiáveis
   client.on('message', onIncoming(name, client));
-  client.on('message_create', (msg) => { if (!msg.fromMe) client.emit('message', msg); });
 
   client.on('message_ack', (msg, ack) => {
     const map = {0:'pendente',1:'enviado',2:'entregue',3:'lido',4:'visualizado'};
