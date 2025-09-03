@@ -468,8 +468,8 @@ function onIncoming(instName, client) {
     try { const c = await msg.getContact(); numero = c?.number || numero; } catch {}
     
     // Ignorar mensagens da própria instância conectada (553182558687)
-    const normalizedNumber = normalizeDDD(numero);
-    if (normalizedNumber === '553182558687') return;
+    const cleanNumber = numero.replace(/\D/g, '');
+    if (cleanNumber === '553182558687' || cleanNumber === '5531982558687') return;
     
     const texto = String(msg.body||'').trim();
 
