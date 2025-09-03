@@ -53,6 +53,34 @@ const digits = (s) => String(s || '').replace(/\D/g, '');
 function withBR(s) { const n = digits(s); return n.startsWith('55') ? n : `55${n}`; }
 function fmtMoney(v) { return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`; }
 
+// Normalização de DDD: se DDD < 31 adiciona 9, se >= 31 remove 9
+function normalizeDDD(phone) {
+  if (!phone) return phone;
+  
+  // Remove todos os caracteres não numéricos
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  // Se não tem código do país, adiciona 55
+  let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+  
+  // Extrai DDD (após o 55)
+  if (normalizedPhone.length >= 4) {
+    const ddd = parseInt(normalizedPhone.substring(2, 4));
+    const restOfNumber = normalizedPhone.substring(4);
+    
+    // Se DDD < 31, adiciona o 9 se não existir e o número tem 8 dígitos após DDD
+    if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
+      normalizedPhone = normalizedPhone.substring(0, 4) + '9' + normalizedPhone.substring(4);
+    }
+    // Se DDD >= 31, remove o 9 se existir na posição seguinte
+    else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
+      normalizedPhone = normalizedPhone.substring(0, 4) + normalizedPhone.substring(5);
+    }
+  }
+  
+  return normalizedPhone;
+}
+
 // log curto
 const LOGS_LIMIT = 1000;
 const MSG_STATUS_LIMIT = 1000;
@@ -236,8 +264,7 @@ async function getPhonesByStatus(status) {
 
 // ========================== Supabase domain helpers ==========================
 function dbPhoneFormat(num) {
-  const n = digits(num);
-  return n.startsWith('55') ? n : `55${n}`;
+  return normalizeDDD(num);
 }
 
 async function findProductByCode(raw) {
@@ -457,8 +484,10 @@ function onIncoming(instName, client) {
           if (wid) {
             const friendly = String(e?.message||'')?.startsWith('PRODUTO_NAO_ENCONTRADO')
               ? `Não encontrei o produto ${token}. Verifique o código.`
-              : `Não consegui lançar o item ${token} agora. Tente novamente em instantes.`;
-            await client.sendMessage(wid, friendly);
+              : ''; // Removendo mensagem de erro genérica
+            if (friendly) {
+              await client.sendMessage(wid, friendly);
+            }
           }
         } catch {}
       }
@@ -490,9 +519,8 @@ INSTANCE_NAMES.forEach(name => {
 
 /* ============================ Helpers de envio ============================ */
 async function getWidOrNull(client, numero) {
-  const n = digits(numero);
-  let wid = await client.getNumberId(n).catch(()=>null);
-  if (!wid && !n.startsWith('55')) wid = await client.getNumberId(`55${n}`).catch(()=>null);
+  const normalizedNumber = normalizeDDD(numero);
+  let wid = await client.getNumberId(normalizedNumber).catch(()=>null);
   return wid && wid._serialized ? wid._serialized : null;
 }
 
@@ -521,7 +549,8 @@ async function sendSingleMessage(instanceName, client, numero, mensagem, imgPath
     console.warn('WA injection not ready, tentando envio mesmo assim...');
   }
 
-  const toWid = await getWidOrNull(client, numero);
+  const normalizedNumber = normalizeDDD(numero);
+  const toWid = await getWidOrNull(client, normalizedNumber);
   if (!toWid) throw new Error('NUMERO_NAO_WHATSAPP');
 
   try {
@@ -545,22 +574,7 @@ async function sendSingleMessage(instanceName, client, numero, mensagem, imgPath
       }
       await addLabelIfNeeded(client, toWid, CURRENT_MASS_LABEL);
     } else {
-      // fallback BR sem nono dígito
-      const n = digits(numero);
-      const sem9 = n.replace(/^(\d{2})(\d{2})9(\d{8})$/, '$1$2$3');
-      if (sem9 !== n) {
-        const wid2 = await getWidOrNull(client, sem9);
-        if (!wid2) throw err;
-        if (imgPath && fs.existsSync(imgPath)) {
-          const media = MessageMedia.fromFilePath(imgPath);
-          await client.sendMessage(wid2, media, { caption: mensagem });
-        } else {
-          await client.sendMessage(wid2, mensagem);
-        }
-        await addLabelIfNeeded(client, wid2, CURRENT_MASS_LABEL);
-      } else {
-        throw err;
-      }
+      throw err;
     }
   }
 
