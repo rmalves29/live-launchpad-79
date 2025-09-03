@@ -194,6 +194,36 @@ async function supa(pathname, init) {
   if (!res.ok) throw new Error(`Supabase ${res.status} ${pathname} ${await res.text()}`);
   return res.json();
 }
+
+/* ============================ Templates WhatsApp ============================ */
+let whatsappTemplatesCache = {};
+let templatesCacheTime = 0;
+
+async function getWhatsAppTemplate(type) {
+  const now = Date.now();
+  // Cache por 5 minutos
+  if (now - templatesCacheTime > 300000) {
+    try {
+      const templates = await supa('/whatsapp_templates?select=*');
+      whatsappTemplatesCache = {};
+      templates.forEach(t => whatsappTemplatesCache[t.type] = t);
+      templatesCacheTime = now;
+    } catch (e) {
+      console.error('Erro ao buscar templates:', e.message);
+    }
+  }
+  return whatsappTemplatesCache[type] || null;
+}
+
+function replaceTemplateVariables(template, variables) {
+  if (!template) return '';
+  let result = template;
+  Object.keys(variables).forEach(key => {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    result = result.replace(regex, variables[key] || '');
+  });
+  return result;
+}
 async function getPhonesByStatus(status) {
   // status: 'paid' | 'unpaid' | 'all'
   let qs = `/${ORDERS_TABLE}?select=${ORDER_PHONE_FIELD},${ORDER_PAID_FIELD}&${ORDER_PHONE_FIELD}=not.is.null`;
@@ -326,7 +356,7 @@ async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, q
   } catch {}
 
   // enviar confirmação ao cliente
-  const text = composeItemAdded({ product: { name: product.name, code: product.code, qty, price: Number(product.price || 0) } });
+  const text = await composeItemAdded({ product: { name: product.name, code: product.code, qty, price: Number(product.price || 0) } });
   const messageId = `${instName}-${phone}-${Date.now()}`;
   await sendSingleMessage(instName, client, phone, text, null, messageId);
 
@@ -656,25 +686,34 @@ app.post('/api/broadcast/orders', async (req, res) => {
     if (key !== BROADCAST_SECRET) return res.status(401).json({ error: 'unauthorized' });
 
     const { status='all', message, interval, batchSize, batchDelay } = req.body || {};
-    if (!message) return res.status(400).json({ error: 'message é obrigatório' });
+    
+    let finalMessage = message;
+    // Se não foi fornecida uma mensagem, usar template BROADCAST
+    if (!message) {
+      const template = await getWhatsAppTemplate('BROADCAST');
+      if (template) {
+        finalMessage = template.content;
+      } else {
+        return res.status(400).json({ error: 'message é obrigatório e template BROADCAST não encontrado' });
+      }
+    }
 
     const phones = await getPhonesByStatus(status);
     if (!phones.length) return res.json({ ok: true, total: 0, note: 'nenhum telefone encontrado' });
 
     CURRENT_MASS_LABEL = MASS_BROADCAST_LABEL;
-    res.json({ ok: true, total: phones.length, status });
-
     (async () => {
       try {
         await processBatch({
-          numeros: phones, mensagens: [message],
-          interval: Math.max(500, interval || 2000),
-          batchSize: Math.max(1, Math.min(50, batchSize || 5)),
-          batchDelay: Math.max(1000, batchDelay || 3000),
+          numeros: phones, mensagens: [finalMessage],
+          interval: Number(interval) || 2000,
+          batchSize: Number(batchSize) || 5,
+          batchDelay: Number(batchDelay) || 3000,
           imgPath: null
         });
       } finally { CURRENT_MASS_LABEL = null; }
     })();
+    res.json({ ok: true, total: phones.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -683,13 +722,29 @@ function verifyWebhook(req) {
   const h = req.get('x-webhook-secret') || req.query.secret || req.body?.secret;
   if (h !== WEBHOOK_SECRET) throw new Error('unauthorized');
 }
-function composeOrderCreated(b) {
+async function composeOrderCreated(b) {
+  const template = await getWhatsAppTemplate('BROADCAST'); // Usando BROADCAST como padrão
+  if (template) {
+    return template.content;
+  }
+  // Fallback se não houver template
   const nome = b?.customer_name || 'Cliente';
   const total = fmtMoney(b?.total_amount);
   const id = b?.order_id || b?.id || '';
   return `🧾 *Pedido criado!*\n\nOlá ${nome} 👋\nSeu pedido *#${id}* foi registrado com sucesso.\n\nTotal: *${total}*\n\nQualquer dúvida é só responder aqui.`;
 }
-function composeItemAdded(b) {
+async function composeItemAdded(b) {
+  const template = await getWhatsAppTemplate('ITEM_ADDED');
+  if (template) {
+    const p = b?.product || {};
+    return replaceTemplateVariables(template.content, {
+      produto: p?.name || 'Item',
+      quantidade: p?.qty || 1,
+      preco: fmtMoney(p?.price),
+      total: fmtMoney((p?.price || 0) * (p?.qty || 1))
+    });
+  }
+  // Fallback se não houver template
   const p = b?.product || {};
   const nome = p?.name || 'Item';
   const cod = p?.code ? ` (${p.code})` : '';
@@ -697,12 +752,35 @@ function composeItemAdded(b) {
   const price = fmtMoney(p?.price);
   return `🛒 *Item adicionado ao pedido*\n\n✅ ${nome}${cod}\nQtd: *${qty}*\nPreço: *${price}*`;
 }
-function composeItemCancelled(b) {
+async function composeItemCancelled(b) {
+  const template = await getWhatsAppTemplate('PRODUCT_CANCELED');
+  if (template) {
+    const p = b?.product || {};
+    return replaceTemplateVariables(template.content, {
+      produto: p?.name || 'Item',
+      valor: fmtMoney(p?.price)
+    });
+  }
+  // Fallback se não houver template
   const p = b?.product || {};
   const nome = p?.name || 'Item';
   const cod = p?.code ? ` (${p.code})` : '';
   const qty = p?.qty || 1;
   return `❌ *Item cancelado*\n\n${nome}${cod}\nQtd: *${qty}* foi removido do seu pedido.`;
+}
+
+async function composePaidOrder(b) {
+  const template = await getWhatsAppTemplate('PAID_ORDER');
+  if (template) {
+    return replaceTemplateVariables(template.content, {
+      order_id: b?.order_id || b?.id || '',
+      total_amount: fmtMoney(b?.total_amount)
+    });
+  }
+  // Fallback se não houver template
+  const total = fmtMoney(b?.total_amount);
+  const id = b?.order_id || b?.id || '';
+  return `🎉 *Pedido Confirmado - #${id}*\n\nSeu pagamento foi confirmado com sucesso! ✅\n\n💰 Valor pago: ${total}\n\n📦 Seu pedido está sendo preparado e em breve entraremos em contato com as informações de entrega.`;
 }
 
 async function sendOne(phone, text) {
@@ -718,7 +796,7 @@ app.post('/webhooks/order-created', async (req,res) => {
   try { verifyWebhook(req);
     const phone = digits(req.body?.customer_phone||req.body?.phone||'');
     if (!phone) return res.status(400).json({ error: 'phone ausente' });
-    await sendOne(phone, composeOrderCreated(req.body));
+    await sendOne(phone, await composeOrderCreated(req.body));
     res.json({ ok: true });
   } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
 });
@@ -726,7 +804,7 @@ app.post('/webhooks/order-item-added', async (req,res) => {
   try { verifyWebhook(req);
     const phone = digits(req.body?.customer_phone||req.body?.phone||'');
     if (!phone) return res.status(400).json({ error: 'phone ausente' });
-    await sendOne(phone, composeItemAdded(req.body));
+    await sendOne(phone, await composeItemAdded(req.body));
     res.json({ ok: true });
   } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
 });
@@ -734,22 +812,22 @@ app.post('/webhooks/order-item-cancelled', async (req,res) => {
   try { verifyWebhook(req);
     const phone = digits(req.body?.customer_phone||req.body?.phone||'');
     if (!phone) return res.status(400).json({ error: 'phone ausente' });
-    await sendOne(phone, composeItemCancelled(req.body));
+    await sendOne(phone, await composeItemCancelled(req.body));
     res.json({ ok: true });
   } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
 });
 
 // rotas de teste (sem secret) — para validar integração
 app.post('/api/test/order-created', async (req,res)=> {
-  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, composeOrderCreated(req.body)); res.json({ok:true}); }
+  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, await composeOrderCreated(req.body)); res.json({ok:true}); }
   catch(e){ res.status(500).json({error:e.message}); }
 });
 app.post('/api/test/item-added', async (req,res)=> {
-  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, composeItemAdded(req.body)); res.json({ok:true}); }
+  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, await composeItemAdded(req.body)); res.json({ok:true}); }
   catch(e){ res.status(500).json({error:e.message}); }
 });
 app.post('/api/test/item-cancelled', async (req,res)=> {
-  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, composeItemCancelled(req.body)); res.json({ok:true}); }
+  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, await composeItemCancelled(req.body)); res.json({ok:true}); }
   catch(e){ res.status(500).json({error:e.message}); }
 });
 
