@@ -285,12 +285,18 @@ const Clientes = () => {
   };
 
   const formatPhone = (phone: string) => {
-    // Remove country code and format as (XX) XXXXX-XXXX
-    const cleanPhone = phone.replace('55', '');
-    if (cleanPhone.length === 11) {
-      return `(${cleanPhone.slice(0, 2)}) ${cleanPhone.slice(2, 7)}-${cleanPhone.slice(7)}`;
+    // Display complete number without DDD adjustments - format as +55 (XX) XXXXX-XXXX
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('55') && digits.length >= 12) {
+      const ddd = digits.slice(2, 4);
+      const number = digits.slice(4);
+      if (number.length === 9) {
+        return `+55 (${ddd}) ${number.slice(0, 5)}-${number.slice(5)}`;
+      } else if (number.length === 8) {
+        return `+55 (${ddd}) ${number.slice(0, 4)}-${number.slice(4)}`;
+      }
     }
-    return phone;
+    return phone; // Return original if doesn't match expected format
   };
 
   const formatCurrency = (value: number) => {
