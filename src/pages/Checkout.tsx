@@ -41,6 +41,7 @@ const Checkout = () => {
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
   const [activeView, setActiveView] = useState<'dashboard' | 'history' | 'checkout'>('dashboard');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [showOrderSelection, setShowOrderSelection] = useState(false);
   const [customerData, setCustomerData] = useState({
     name: '',
     cpf: '',
@@ -484,19 +485,102 @@ const Checkout = () => {
 
       {/* Área de pedidos encontrados */}
       <div className="mt-8">        
-        {/* Lista de pedidos em aberto */}
-        {openOrders.length > 0 ? (
-          <div className="space-y-4">
-            {openOrders.map((order) => (
-              <Card key={order.id} className="hover:shadow-lg transition-shadow border-2 border-orange-200">
+        {/* Seleção de pedidos quando há múltiplos pedidos */}
+        {openOrders.length > 1 && !selectedOrder && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <ShoppingCart className="h-5 w-5 mr-2" />
+                Selecione o Pedido para Finalizar
+              </CardTitle>
+              <CardDescription>
+                Este cliente possui {openOrders.length} pedidos em aberto. Selecione qual deseja finalizar:
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {openOrders.map((order) => (
+                  <div key={order.id} className="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors" 
+                       onClick={() => setSelectedOrder(order)}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="flex-shrink-0">
+                          <input
+                            type="radio"
+                            name="order-selection"
+                            id={`order-${order.id}`}
+                            value={order.id}
+                            onChange={() => setSelectedOrder(order)}
+                            className="h-4 w-4 text-primary"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center">
+                            <h3 className="text-lg font-medium">Pedido #{order.id}</h3>
+                            <Badge variant="outline" className="ml-2 bg-orange-100 text-orange-800 border-orange-200">
+                              {order.event_type}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-600">
+                            Data: {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.items.length} item(ns)
+                          </p>
+                          <div className="mt-1">
+                            <p className="text-sm text-gray-500">
+                              Produtos: {order.items.map(item => `${item.product_code} - ${item.product_name}`).join(', ')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-primary">R$ {Number(order.total_amount).toFixed(2)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="mt-6 flex justify-end space-x-4">
+                <Button variant="outline" onClick={() => setOpenOrders([])}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={() => selectedOrder && setSelectedOrder(selectedOrder)} 
+                  disabled={!selectedOrder}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Finalizar Pedido Selecionado
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* Checkout único pedido ou pedido selecionado */}
+        {((openOrders.length === 1 && !selectedOrder) || selectedOrder) && (
+          (() => {
+            const order = selectedOrder || openOrders[0];
+            return (
+              <Card className="hover:shadow-lg transition-shadow border-2 border-orange-200">
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle className="text-lg flex items-center">
                         Pedido #{order.id}
                         <Badge variant="outline" className="ml-2 bg-orange-100 text-orange-800 border-orange-200">
-                          MANUAL
+                          {order.event_type}
                         </Badge>
+                        {openOrders.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedOrder(null)}
+                            className="ml-4"
+                          >
+                            <ArrowLeft className="h-4 w-4 mr-1" />
+                            Voltar
+                          </Button>
+                        )}
                       </CardTitle>
                       <CardDescription>
                         Data: {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
@@ -531,222 +615,225 @@ const Checkout = () => {
                     </div>
                   </div>
                 </CardHeader>
-                 <CardContent>
-                   {/* Dados do Cliente */}
-                   <div className="mb-6">
-                     <h4 className="font-medium mb-4 flex items-center">
-                       <User className="h-4 w-4 mr-2" />
-                       Dados do Cliente
-                     </h4>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                       <div>
-                         <label className="text-sm font-medium mb-1 block">Nome Completo *</label>
-                         <Input
-                           placeholder="Nome completo do cliente"
-                           value={customerData.name}
-                           onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
-                         />
-                       </div>
-                       <div>
-                         <label className="text-sm font-medium mb-1 block">CPF *</label>
-                         <Input
-                           placeholder="000.000.000-00"
-                           value={customerData.cpf}
-                           onChange={(e) => setCustomerData({...customerData, cpf: e.target.value})}
-                         />
-                       </div>
-                     </div>
-                   </div>
+                <CardContent>
+                  {/* Dados do Cliente */}
+                  <div className="mb-6">
+                    <h4 className="font-medium mb-4 flex items-center">
+                      <User className="h-4 w-4 mr-2" />
+                      Dados do Cliente
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Nome Completo *</label>
+                        <Input
+                          placeholder="Nome completo do cliente"
+                          value={customerData.name}
+                          onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">CPF *</label>
+                        <Input
+                          placeholder="000.000.000-00"
+                          value={customerData.cpf}
+                          onChange={(e) => setCustomerData({...customerData, cpf: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                   {/* Endereço de Entrega */}
-                   <div className="mb-6">
-                     <h4 className="font-medium mb-4 flex items-center">
-                       <MapPin className="h-4 w-4 mr-2" />
-                       Endereço de Entrega
-                     </h4>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                       <div className="md:col-span-1">
-                         <label className="text-sm font-medium mb-1 block">CEP</label>
-                         <div className="flex gap-2">
-                           <Input
-                             placeholder="00000-000"
-                             value={customerData.cep}
-                             onChange={(e) => {
-                               const newCep = e.target.value;
-                               setCustomerData({...customerData, cep: newCep});
-                               if (newCep.replace(/[^0-9]/g, '').length === 8) {
-                                 calculateShipping(newCep, order);
-                               }
-                             }}
-                           />
-                           <Button 
-                             variant="outline" 
-                             size="sm"
-                             onClick={() => calculateShipping(customerData.cep, order)}
-                             disabled={loadingShipping}
-                           >
-                             {loadingShipping ? (
-                               <Loader2 className="h-4 w-4 animate-spin" />
-                             ) : (
-                               <Truck className="h-4 w-4" />
-                             )}
-                           </Button>
-                         </div>
-                       </div>
-                       <div>
-                         <label className="text-sm font-medium mb-1 block">Rua</label>
-                         <Input
-                           placeholder="Nome da rua"
-                           value={customerData.street}
-                           onChange={(e) => setCustomerData({...customerData, street: e.target.value})}
-                         />
-                       </div>
-                       <div>
-                         <label className="text-sm font-medium mb-1 block">Número</label>
-                         <Input
-                           placeholder="123"
-                           value={customerData.number}
-                           onChange={(e) => setCustomerData({...customerData, number: e.target.value})}
-                         />
-                       </div>
-                       <div>
-                         <label className="text-sm font-medium mb-1 block">Complemento</label>
-                         <Input
-                           placeholder="Apto, bloco, etc."
-                           value={customerData.complement}
-                           onChange={(e) => setCustomerData({...customerData, complement: e.target.value})}
-                         />
-                       </div>
-                       <div>
-                         <label className="text-sm font-medium mb-1 block">Cidade</label>
-                         <Input
-                           placeholder="Cidade"
-                           value={customerData.city}
-                           onChange={(e) => setCustomerData({...customerData, city: e.target.value})}
-                         />
-                       </div>
-                       <div>
-                         <label className="text-sm font-medium mb-1 block">Estado</label>
-                         <Input
-                           placeholder="UF"
-                           value={customerData.state}
-                           onChange={(e) => setCustomerData({...customerData, state: e.target.value})}
-                         />
-                       </div>
-                     </div>
-                   </div>
+                  {/* Endereço de Entrega */}
+                  <div className="mb-6">
+                    <h4 className="font-medium mb-4 flex items-center">
+                      <MapPin className="h-4 w-4 mr-2" />
+                      Endereço de Entrega
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-1">
+                        <label className="text-sm font-medium mb-1 block">CEP</label>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="00000-000"
+                            value={customerData.cep}
+                            onChange={(e) => {
+                              const newCep = e.target.value;
+                              setCustomerData({...customerData, cep: newCep});
+                              if (newCep.replace(/[^0-9]/g, '').length === 8) {
+                                calculateShipping(newCep, order);
+                              }
+                            }}
+                          />
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => calculateShipping(customerData.cep, order)}
+                            disabled={loadingShipping}
+                          >
+                            {loadingShipping ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Truck className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Rua</label>
+                        <Input
+                          placeholder="Nome da rua"
+                          value={customerData.street}
+                          onChange={(e) => setCustomerData({...customerData, street: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Número</label>
+                        <Input
+                          placeholder="123"
+                          value={customerData.number}
+                          onChange={(e) => setCustomerData({...customerData, number: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Complemento</label>
+                        <Input
+                          placeholder="Apto, bloco, etc."
+                          value={customerData.complement}
+                          onChange={(e) => setCustomerData({...customerData, complement: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Cidade</label>
+                        <Input
+                          placeholder="Cidade"
+                          value={customerData.city}
+                          onChange={(e) => setCustomerData({...customerData, city: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Estado</label>
+                        <Input
+                          placeholder="UF"
+                          value={customerData.state}
+                          onChange={(e) => setCustomerData({...customerData, state: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                   {/* Opções de Frete */}
-                   <div className="mb-6">
-                     <h4 className="font-medium mb-4 flex items-center">
-                       <Truck className="h-4 w-4 mr-2" />
-                       Opções de Frete
-                     </h4>
-                     
-                     <div className="space-y-2">
-                       {shippingOptions.length > 0 ? shippingOptions.map((option) => (
-                         <div key={option.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                           <div>
-                             <input 
-                               type="radio" 
-                               id={`${option.id}-${order.id}`} 
-                               name={`frete-${order.id}`} 
-                               value={option.id}
-                               checked={selectedShipping === option.id}
-                               onChange={(e) => setSelectedShipping(e.target.value)}
-                               className="mr-3" 
-                             />
-                             <label htmlFor={`${option.id}-${order.id}`} className="font-medium">
-                               {option.name}
-                             </label>
-                             <p className="text-sm text-muted-foreground ml-6">
-                               {option.company} - Entrega em até {option.delivery_time} dias úteis
-                             </p>
-                           </div>
-                           <span className="font-bold">
-                             R$ {parseFloat(option.custom_price || option.price).toFixed(2)}
-                           </span>
-                         </div>
-                       )) : (
-                         <div className="flex items-center justify-between p-3 border rounded-lg">
-                           <div>
-                             <input 
-                               type="radio" 
-                               id={`retirada-${order.id}`} 
-                               name={`frete-${order.id}`} 
-                               value="retirada"
-                               checked={selectedShipping === 'retirada'}
-                               onChange={(e) => setSelectedShipping(e.target.value)}
-                               className="mr-3" 
-                             />
-                             <label htmlFor={`retirada-${order.id}`} className="font-medium">
-                               Retirada - Retirar na Fábrica
-                             </label>
-                             <p className="text-sm text-muted-foreground ml-6">Entrega em até 3 dias úteis</p>
-                           </div>
-                           <span className="font-bold">R$ 0,00</span>
-                         </div>
-                       )}
-                     </div>
+                  {/* Opções de Frete */}
+                  <div className="mb-6">
+                    <h4 className="font-medium mb-4 flex items-center">
+                      <Truck className="h-4 w-4 mr-2" />
+                      Opções de Frete
+                    </h4>
+                    
+                    <div className="space-y-2">
+                      {shippingOptions.length > 0 ? shippingOptions.map((option) => (
+                        <div key={option.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                          <div>
+                            <input 
+                              type="radio" 
+                              id={`${option.id}-${order.id}`} 
+                              name={`frete-${order.id}`} 
+                              value={option.id}
+                              checked={selectedShipping === option.id}
+                              onChange={(e) => setSelectedShipping(e.target.value)}
+                              className="mr-3" 
+                            />
+                            <label htmlFor={`${option.id}-${order.id}`} className="font-medium">
+                              {option.name}
+                            </label>
+                            <p className="text-sm text-muted-foreground ml-6">
+                              {option.company} - Entrega em até {option.delivery_time} dias úteis
+                            </p>
+                          </div>
+                          <span className="font-bold">
+                            R$ {parseFloat(option.custom_price || option.price).toFixed(2)}
+                          </span>
+                        </div>
+                      )) : (
+                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                          <div>
+                            <input 
+                              type="radio" 
+                              id={`retirada-${order.id}`} 
+                              name={`frete-${order.id}`} 
+                              value="retirada"
+                              checked={selectedShipping === 'retirada'}
+                              onChange={(e) => setSelectedShipping(e.target.value)}
+                              className="mr-3" 
+                            />
+                            <label htmlFor={`retirada-${order.id}`} className="font-medium">
+                              Retirada - Retirar na Fábrica
+                            </label>
+                            <p className="text-sm text-muted-foreground ml-6">Entrega em até 3 dias úteis</p>
+                          </div>
+                          <span className="font-bold">R$ 0,00</span>
+                        </div>
+                      )}
+                    </div>
 
-                     {customerData.cep && shippingOptions.length === 0 && (
-                       <p className="text-sm text-muted-foreground mt-2">
-                         Insira um CEP válido para calcular as opções de frete
-                       </p>
-                     )}
-                   </div>
+                    {customerData.cep && shippingOptions.length === 0 && (
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Insira um CEP válido para calcular as opções de frete
+                      </p>
+                    )}
+                  </div>
 
-                   {/* Resumo e Finalização */}
-                   <div className="border-t pt-4">
-                     <div className="flex justify-between items-center mb-4">
-                       <span className="text-lg font-medium">Total do Pedido:</span>
-                       <span className="text-xl font-bold">R$ {Number(order.total_amount).toFixed(2)}</span>
-                     </div>
-                     
-                     {selectedShipping !== 'retirada' && (
-                       <div className="flex justify-between items-center mb-4">
-                         <span className="text-lg font-medium">Frete:</span>
-                         <span className="text-xl font-bold">
-                           R$ {(() => {
-                             const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
-                             return selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price).toFixed(2) : '0.00';
-                           })()}
-                         </span>
-                       </div>
-                     )}
+                  {/* Resumo e Finalização */}
+                  <div className="border-t pt-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-lg font-medium">Total do Pedido:</span>
+                      <span className="text-xl font-bold">R$ {Number(order.total_amount).toFixed(2)}</span>
+                    </div>
+                    
+                    {selectedShipping !== 'retirada' && (
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="text-lg font-medium">Frete:</span>
+                        <span className="text-xl font-bold">
+                          R$ {(() => {
+                            const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
+                            return selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price).toFixed(2) : '0.00';
+                          })()}
+                        </span>
+                      </div>
+                    )}
 
-                     <div className="flex justify-between items-center mb-6 text-xl font-bold border-t pt-4">
-                       <span>Total Geral:</span>
-                       <span className="text-green-600">
-                         R$ {(() => {
-                           let total = Number(order.total_amount);
-                           if (selectedShipping !== 'retirada') {
-                             const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
-                             total += selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
-                           }
-                           return total.toFixed(2);
-                         })()}
-                       </span>
-                     </div>
+                    <div className="flex justify-between items-center mb-6 text-xl font-bold border-t pt-4">
+                      <span>Total Geral:</span>
+                      <span className="text-green-600">
+                        R$ {(() => {
+                          let total = Number(order.total_amount);
+                          if (selectedShipping !== 'retirada') {
+                            const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
+                            total += selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
+                          }
+                          return total.toFixed(2);
+                        })()}
+                      </span>
+                    </div>
 
-                     <Button 
-                       className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 text-lg"
-                       onClick={() => processPayment(order)}
-                       disabled={loadingPayment}
-                     >
-                       {loadingPayment ? (
-                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                       ) : (
-                         <CreditCard className="h-4 w-4 mr-2" />
-                       )}
-                       Finalizar Pedido - Mercado Pago
-                     </Button>
-                   </div>
-                 </CardContent>
+                    <Button 
+                      className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 text-lg"
+                      onClick={() => processPayment(order)}
+                      disabled={loadingPayment}
+                    >
+                      {loadingPayment ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <CreditCard className="h-4 w-4 mr-2" />
+                      )}
+                      Finalizar Pedido - Mercado Pago
+                    </Button>
+                  </div>
+                </CardContent>
               </Card>
-            ))}
-          </div>
-        ) : (
+            );
+          })()
+        )}
+        
+        {/* Mensagem quando não há pedidos */}
+        {openOrders.length === 0 && (
           <div className="text-center py-8 text-muted-foreground">
             Use a busca acima para encontrar pedidos em aberto
           </div>
