@@ -37,7 +37,7 @@ const Checkout = () => {
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
-  const [activeView, setActiveView] = useState<'dashboard' | 'history'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'history' | 'checkout'>('dashboard');
 
   const loadCustomerHistory = async () => {
     if (!phone) {
@@ -121,6 +121,43 @@ const Checkout = () => {
       setLoadingHistory(false);
     }
   };
+
+  const renderCheckoutView = () => (
+    <div className="max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold">Finalizar Checkout</h2>
+        <Button onClick={() => setActiveView('dashboard')} variant="outline">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Voltar ao Dashboard
+        </Button>
+      </div>
+      
+      <p className="text-muted-foreground mb-6">Processe pagamentos e finalize pedidos</p>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Search className="h-5 w-5 mr-2" />
+            Buscar Pedidos em Aberto
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4">
+            <Input
+              placeholder="Telefone do cliente"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="flex-1"
+            />
+            <Button onClick={() => toast({ title: 'Em desenvolvimento', description: 'Funcionalidade em breve' })}>
+              <Search className="h-4 w-4 mr-2" />
+              Buscar Pedidos
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 
   const renderHistoryView = () => (
     <div className="max-w-4xl mx-auto">
@@ -250,6 +287,16 @@ const Checkout = () => {
     </div>
   );
 
+  if (activeView === 'checkout') {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-6">
+          {renderCheckoutView()}
+        </div>
+      </div>
+    );
+  }
+
   if (activeView === 'history') {
     return (
       <div className="min-h-screen bg-background">
@@ -276,7 +323,7 @@ const Checkout = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
           <Card 
             className="cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 bg-blue-50 border-blue-200"
-            onClick={() => toast({ title: 'Em desenvolvimento', description: 'Funcionalidade em breve' })}
+            onClick={() => setActiveView('checkout')}
           >
             <CardHeader>
               <CardTitle className="flex items-center text-xl">
