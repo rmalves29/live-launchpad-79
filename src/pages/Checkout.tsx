@@ -262,7 +262,7 @@ const Checkout = () => {
     setLoadingPayment(true);
 
     try {
-      // Calcular valor total (produtos + frete)
+      // Calcular valor do frete
       let shippingCost = 0;
       if (selectedShipping !== 'retirada') {
         const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
@@ -271,49 +271,83 @@ const Checkout = () => {
 
       const totalAmount = Number(order.total_amount) + shippingCost;
 
+      // Preparar dados no formato esperado pela edge function
+      const paymentData = {
+        cartItems: order.items.map(item => ({
+          product_name: item.product_name,
+          product_code: item.product_code,
+          qty: item.qty,
+          unit_price: item.unit_price
+        })),
+        customerData: {
+          name: customerData.name,
+          phone: order.customer_phone
+        },
+        addressData: {
+          cep: customerData.cep,
+          street: customerData.street,
+          number: customerData.number,
+          complement: customerData.complement,
+          city: customerData.city,
+          state: customerData.state
+        },
+        shippingCost: shippingCost,
+        total: totalAmount.toString(),
+        coupon_discount: 0 // Por enquanto sem cupom de desconto
+      };
+
+      console.log('Calling create-payment with data:', paymentData);
+
       // Criar pagamento no Mercado Pago
       const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: {
-          order_id: order.id,
-          amount: totalAmount,
-          description: `Pedido #${order.id} - ${order.items.map(item => item.product_name).join(', ')}`,
-          customer: {
-            name: customerData.name,
-            cpf: customerData.cpf,
-            phone: order.customer_phone,
-            address: selectedShipping === 'retirada' ? null : {
-              street: customerData.street,
-              number: customerData.number,
-              complement: customerData.complement,
-              city: customerData.city,
-              state: customerData.state,
-              postal_code: customerData.cep
-            }
-          },
-          shipping: {
-            type: selectedShipping,
-            cost: shippingCost
-          }
-        }
+        body: paymentData
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Payment error:', error);
+        throw error;
+      }
 
-      if (data && data.payment_url) {
+      console.log('Payment response:', data);
+
+      if (data && (data.init_point || data.sandbox_init_point)) {
         // Abrir pagamento em nova aba
-        window.open(data.payment_url, '_blank');
+        const paymentUrl = data.init_point || data.sandbox_init_point;
+        window.open(paymentUrl, '_blank');
         
         toast({
           title: 'Redirecionando para pagamento',
           description: 'Uma nova aba foi aberta com o pagamento do Mercado Pago'
         });
+
+        // Limpar dados após criar o pagamento
+        setCustomerData({
+          name: '',
+          cpf: '',
+          cep: '',
+          street: '',
+          number: '',
+          complement: '',
+          city: '',
+          state: ''
+        });
+        setShippingOptions([]);
+        setSelectedShipping('retirada');
+
+      } else if (data && data.free_order) {
+        toast({
+          title: 'Pedido confirmado',
+          description: 'Pedido gratuito processado com sucesso!'
+        });
+      } else {
+        throw new Error('Resposta inválida do servidor');
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing payment:', error);
       toast({
         title: 'Erro no pagamento',
-        description: 'Não foi possível processar o pagamento. Tente novamente.',
+        description: error.message || 'Não foi possível processar o pagamento. Tente novamente.',
         variant: 'destructive'
       });
     } finally {
