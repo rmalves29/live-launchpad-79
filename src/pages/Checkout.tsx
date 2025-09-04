@@ -40,6 +40,21 @@ const Checkout = () => {
   const [openOrders, setOpenOrders] = useState<Order[]>([]);
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
   const [activeView, setActiveView] = useState<'dashboard' | 'history' | 'checkout'>('dashboard');
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [customerData, setCustomerData] = useState({
+    name: '',
+    cpf: '',
+    cep: '',
+    street: '',
+    number: '',
+    complement: '',
+    city: '',
+    state: ''
+  });
+  const [shippingOptions, setShippingOptions] = useState<any[]>([]);
+  const [selectedShipping, setSelectedShipping] = useState('retirada');
+  const [loadingShipping, setLoadingShipping] = useState(false);
+  const [loadingPayment, setLoadingPayment] = useState(false);
 
   const loadOpenOrders = async () => {
     if (!phone) {
@@ -120,6 +135,143 @@ const Checkout = () => {
       });
     } finally {
       setLoadingOpenOrders(false);
+    }
+  };
+
+  const calculateShipping = async (cep: string, order: Order) => {
+    if (!cep || cep.replace(/[^0-9]/g, '').length !== 8) return;
+    
+    setLoadingShipping(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
+        body: {
+          to_postal_code: cep.replace(/[^0-9]/g, ''),
+          products: order.items.map(item => ({
+            id: item.id.toString(),
+            width: 16,
+            height: 2,
+            length: 20,
+            weight: 0.3,
+            insurance_value: item.unit_price,
+            quantity: item.qty
+          }))
+        }
+      });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const options = data.map((option: any) => ({
+          id: option.id,
+          name: option.name,
+          company: option.company.name,
+          price: option.price,
+          delivery_time: option.delivery_time,
+          custom_price: option.custom_price
+        }));
+        
+        // Adicionar opção de retirada
+        options.unshift({
+          id: 'retirada',
+          name: 'Retirada - Retirar na Fábrica',
+          company: 'Retirada',
+          price: '0.00',
+          delivery_time: 3,
+          custom_price: '0.00'
+        });
+
+        setShippingOptions(options);
+      }
+    } catch (error) {
+      console.error('Error calculating shipping:', error);
+      toast({
+        title: 'Erro no cálculo de frete',
+        description: 'Não foi possível calcular o frete para este CEP',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingShipping(false);
+    }
+  };
+
+  const processPayment = async (order: Order) => {
+    if (!customerData.name || !customerData.cpf) {
+      toast({
+        title: 'Dados obrigatórios',
+        description: 'Nome e CPF são obrigatórios para finalizar o pedido',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (selectedShipping !== 'retirada' && (!customerData.cep || !customerData.street)) {
+      toast({
+        title: 'Endereço obrigatório',
+        description: 'Endereço completo é obrigatório para entrega',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setLoadingPayment(true);
+
+    try {
+      // Calcular valor total (produtos + frete)
+      let shippingCost = 0;
+      if (selectedShipping !== 'retirada') {
+        const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
+        shippingCost = selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
+      }
+
+      const totalAmount = Number(order.total_amount) + shippingCost;
+
+      // Criar pagamento no Mercado Pago
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: {
+          order_id: order.id,
+          amount: totalAmount,
+          description: `Pedido #${order.id} - ${order.items.map(item => item.product_name).join(', ')}`,
+          customer: {
+            name: customerData.name,
+            cpf: customerData.cpf,
+            phone: order.customer_phone,
+            address: selectedShipping === 'retirada' ? null : {
+              street: customerData.street,
+              number: customerData.number,
+              complement: customerData.complement,
+              city: customerData.city,
+              state: customerData.state,
+              postal_code: customerData.cep
+            }
+          },
+          shipping: {
+            type: selectedShipping,
+            cost: shippingCost
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      if (data && data.payment_url) {
+        // Abrir pagamento em nova aba
+        window.open(data.payment_url, '_blank');
+        
+        toast({
+          title: 'Redirecionando para pagamento',
+          description: 'Uma nova aba foi aberta com o pagamento do Mercado Pago'
+        });
+      }
+
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      toast({
+        title: 'Erro no pagamento',
+        description: 'Não foi possível processar o pagamento. Tente novamente.',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingPayment(false);
     }
   };
 
@@ -251,11 +403,7 @@ const Checkout = () => {
       </Card>
 
       {/* Área de pedidos encontrados */}
-      <div className="mt-8">
-        <p className="text-lg font-bold text-red-600 mb-4">
-          SELECIONE O PEDIDO PARA FINALIZAR
-        </p>
-        
+      <div className="mt-8">        
         {/* Lista de pedidos em aberto */}
         {openOrders.length > 0 ? (
           <div className="space-y-4">
@@ -303,48 +451,218 @@ const Checkout = () => {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="mt-4">
-                    <h4 className="font-medium mb-2">Opções de Frete</h4>
-                    
-                    <div className="space-y-2 mb-4">
-                      <div className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <input type="radio" id={`retirada-${order.id}`} name={`frete-${order.id}`} className="mr-3" defaultChecked />
-                          <label htmlFor={`retirada-${order.id}`} className="font-medium">Retirada - Retirar na Fábrica</label>
-                          <p className="text-sm text-muted-foreground ml-6">Entrega em até 3 dias úteis</p>
-                        </div>
-                        <span className="font-bold">R$ 0,00</span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <input type="radio" id={`pac-${order.id}`} name={`frete-${order.id}`} className="mr-3" />
-                          <label htmlFor={`pac-${order.id}`} className="font-medium">Correios - PAC</label>
-                          <p className="text-sm text-muted-foreground ml-6">Entrega em até 10 dias úteis</p>
-                        </div>
-                        <span className="font-bold">R$ 29,56</span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <input type="radio" id={`sedex-${order.id}`} name={`frete-${order.id}`} className="mr-3" />
-                          <label htmlFor={`sedex-${order.id}`} className="font-medium">Correios - SEDEX</label>
-                          <p className="text-sm text-muted-foreground ml-6">Entrega em até 6 dias úteis</p>
-                        </div>
-                        <span className="font-bold">R$ 56,91</span>
-                      </div>
-                    </div>
+                 <CardContent>
+                   {/* Dados do Cliente */}
+                   <div className="mb-6">
+                     <h4 className="font-medium mb-4 flex items-center">
+                       <User className="h-4 w-4 mr-2" />
+                       Dados do Cliente
+                     </h4>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div>
+                         <label className="text-sm font-medium mb-1 block">Nome Completo *</label>
+                         <Input
+                           placeholder="Nome completo do cliente"
+                           value={customerData.name}
+                           onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
+                         />
+                       </div>
+                       <div>
+                         <label className="text-sm font-medium mb-1 block">CPF *</label>
+                         <Input
+                           placeholder="000.000.000-00"
+                           value={customerData.cpf}
+                           onChange={(e) => setCustomerData({...customerData, cpf: e.target.value})}
+                         />
+                       </div>
+                     </div>
+                   </div>
 
-                    <Button 
-                      className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3"
-                      onClick={() => finalizarPedido(order.id)}
-                    >
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Finalizar Pedido
-                    </Button>
-                  </div>
-                </CardContent>
+                   {/* Endereço de Entrega */}
+                   <div className="mb-6">
+                     <h4 className="font-medium mb-4 flex items-center">
+                       <MapPin className="h-4 w-4 mr-2" />
+                       Endereço de Entrega
+                     </h4>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <div className="md:col-span-1">
+                         <label className="text-sm font-medium mb-1 block">CEP</label>
+                         <div className="flex gap-2">
+                           <Input
+                             placeholder="00000-000"
+                             value={customerData.cep}
+                             onChange={(e) => {
+                               const newCep = e.target.value;
+                               setCustomerData({...customerData, cep: newCep});
+                               if (newCep.replace(/[^0-9]/g, '').length === 8) {
+                                 calculateShipping(newCep, order);
+                               }
+                             }}
+                           />
+                           <Button 
+                             variant="outline" 
+                             size="sm"
+                             onClick={() => calculateShipping(customerData.cep, order)}
+                             disabled={loadingShipping}
+                           >
+                             {loadingShipping ? (
+                               <Loader2 className="h-4 w-4 animate-spin" />
+                             ) : (
+                               <Truck className="h-4 w-4" />
+                             )}
+                           </Button>
+                         </div>
+                       </div>
+                       <div>
+                         <label className="text-sm font-medium mb-1 block">Rua</label>
+                         <Input
+                           placeholder="Nome da rua"
+                           value={customerData.street}
+                           onChange={(e) => setCustomerData({...customerData, street: e.target.value})}
+                         />
+                       </div>
+                       <div>
+                         <label className="text-sm font-medium mb-1 block">Número</label>
+                         <Input
+                           placeholder="123"
+                           value={customerData.number}
+                           onChange={(e) => setCustomerData({...customerData, number: e.target.value})}
+                         />
+                       </div>
+                       <div>
+                         <label className="text-sm font-medium mb-1 block">Complemento</label>
+                         <Input
+                           placeholder="Apto, bloco, etc."
+                           value={customerData.complement}
+                           onChange={(e) => setCustomerData({...customerData, complement: e.target.value})}
+                         />
+                       </div>
+                       <div>
+                         <label className="text-sm font-medium mb-1 block">Cidade</label>
+                         <Input
+                           placeholder="Cidade"
+                           value={customerData.city}
+                           onChange={(e) => setCustomerData({...customerData, city: e.target.value})}
+                         />
+                       </div>
+                       <div>
+                         <label className="text-sm font-medium mb-1 block">Estado</label>
+                         <Input
+                           placeholder="UF"
+                           value={customerData.state}
+                           onChange={(e) => setCustomerData({...customerData, state: e.target.value})}
+                         />
+                       </div>
+                     </div>
+                   </div>
+
+                   {/* Opções de Frete */}
+                   <div className="mb-6">
+                     <h4 className="font-medium mb-4 flex items-center">
+                       <Truck className="h-4 w-4 mr-2" />
+                       Opções de Frete
+                     </h4>
+                     
+                     <div className="space-y-2">
+                       {shippingOptions.length > 0 ? shippingOptions.map((option) => (
+                         <div key={option.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                           <div>
+                             <input 
+                               type="radio" 
+                               id={`${option.id}-${order.id}`} 
+                               name={`frete-${order.id}`} 
+                               value={option.id}
+                               checked={selectedShipping === option.id}
+                               onChange={(e) => setSelectedShipping(e.target.value)}
+                               className="mr-3" 
+                             />
+                             <label htmlFor={`${option.id}-${order.id}`} className="font-medium">
+                               {option.name}
+                             </label>
+                             <p className="text-sm text-muted-foreground ml-6">
+                               {option.company} - Entrega em até {option.delivery_time} dias úteis
+                             </p>
+                           </div>
+                           <span className="font-bold">
+                             R$ {parseFloat(option.custom_price || option.price).toFixed(2)}
+                           </span>
+                         </div>
+                       )) : (
+                         <div className="flex items-center justify-between p-3 border rounded-lg">
+                           <div>
+                             <input 
+                               type="radio" 
+                               id={`retirada-${order.id}`} 
+                               name={`frete-${order.id}`} 
+                               value="retirada"
+                               checked={selectedShipping === 'retirada'}
+                               onChange={(e) => setSelectedShipping(e.target.value)}
+                               className="mr-3" 
+                             />
+                             <label htmlFor={`retirada-${order.id}`} className="font-medium">
+                               Retirada - Retirar na Fábrica
+                             </label>
+                             <p className="text-sm text-muted-foreground ml-6">Entrega em até 3 dias úteis</p>
+                           </div>
+                           <span className="font-bold">R$ 0,00</span>
+                         </div>
+                       )}
+                     </div>
+
+                     {customerData.cep && shippingOptions.length === 0 && (
+                       <p className="text-sm text-muted-foreground mt-2">
+                         Insira um CEP válido para calcular as opções de frete
+                       </p>
+                     )}
+                   </div>
+
+                   {/* Resumo e Finalização */}
+                   <div className="border-t pt-4">
+                     <div className="flex justify-between items-center mb-4">
+                       <span className="text-lg font-medium">Total do Pedido:</span>
+                       <span className="text-xl font-bold">R$ {Number(order.total_amount).toFixed(2)}</span>
+                     </div>
+                     
+                     {selectedShipping !== 'retirada' && (
+                       <div className="flex justify-between items-center mb-4">
+                         <span className="text-lg font-medium">Frete:</span>
+                         <span className="text-xl font-bold">
+                           R$ {(() => {
+                             const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
+                             return selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price).toFixed(2) : '0.00';
+                           })()}
+                         </span>
+                       </div>
+                     )}
+
+                     <div className="flex justify-between items-center mb-6 text-xl font-bold border-t pt-4">
+                       <span>Total Geral:</span>
+                       <span className="text-green-600">
+                         R$ {(() => {
+                           let total = Number(order.total_amount);
+                           if (selectedShipping !== 'retirada') {
+                             const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
+                             total += selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
+                           }
+                           return total.toFixed(2);
+                         })()}
+                       </span>
+                     </div>
+
+                     <Button 
+                       className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 text-lg"
+                       onClick={() => processPayment(order)}
+                       disabled={loadingPayment}
+                     >
+                       {loadingPayment ? (
+                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                       ) : (
+                         <CreditCard className="h-4 w-4 mr-2" />
+                       )}
+                       Finalizar Pedido - Mercado Pago
+                     </Button>
+                   </div>
+                 </CardContent>
               </Card>
             ))}
           </div>
