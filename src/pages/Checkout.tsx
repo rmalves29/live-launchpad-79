@@ -143,6 +143,26 @@ const Checkout = () => {
     
     setLoadingShipping(true);
     try {
+      // Buscar endereço pelo CEP (ViaCEP)
+      if (cep.replace(/[^0-9]/g, '').length === 8) {
+        try {
+          const cepResponse = await fetch(`https://viacep.com.br/ws/${cep.replace(/[^0-9]/g, '')}/json/`);
+          const cepData = await cepResponse.json();
+          
+          if (!cepData.erro) {
+            setCustomerData(prev => ({
+              ...prev,
+              street: cepData.logradouro || prev.street,
+              city: cepData.localidade || prev.city,
+              state: cepData.uf || prev.state
+            }));
+          }
+        } catch (error) {
+          console.error('Error fetching address:', error);
+        }
+      }
+
+      // Calcular frete
       const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
@@ -160,33 +180,59 @@ const Checkout = () => {
 
       if (error) throw error;
 
-      if (data && data.length > 0) {
-        const options = data.map((option: any) => ({
-          id: option.id,
-          name: option.name,
-          company: option.company.name,
-          price: option.price,
-          delivery_time: option.delivery_time,
-          custom_price: option.custom_price
-        }));
+      if (data && data.shipping_options && data.shipping_options.length > 0) {
+        // Mapear as opções de frete da resposta do Melhor Envio
+        const options = data.shipping_options
+          .filter((option: any) => !option.error) // Filtrar opções com erro
+          .map((option: any) => ({
+            id: option.service_id.toString(),
+            name: option.service_name,
+            company: option.company,
+            price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
+            delivery_time: option.delivery_time || option.custom_delivery_time,
+            custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
+          }));
+
+        setShippingOptions(options);
         
-        // Adicionar opção de retirada
-        options.unshift({
+        if (options.length > 0) {
+          toast({
+            title: 'Frete calculado',
+            description: `${options.length} opções de frete encontradas`
+          });
+        }
+      } else {
+        // Se não houver opções, mostrar apenas retirada
+        setShippingOptions([{
           id: 'retirada',
           name: 'Retirada - Retirar na Fábrica',
           company: 'Retirada',
           price: '0.00',
           delivery_time: 3,
           custom_price: '0.00'
+        }]);
+        
+        toast({
+          title: 'Frete não disponível',
+          description: 'Apenas retirada disponível para este CEP'
         });
-
-        setShippingOptions(options);
       }
     } catch (error) {
       console.error('Error calculating shipping:', error);
+      
+      // Fallback para retirada apenas
+      setShippingOptions([{
+        id: 'retirada',
+        name: 'Retirada - Retirar na Fábrica', 
+        company: 'Retirada',
+        price: '0.00',
+        delivery_time: 3,
+        custom_price: '0.00'
+      }]);
+      
       toast({
         title: 'Erro no cálculo de frete',
-        description: 'Não foi possível calcular o frete para este CEP',
+        description: 'Não foi possível calcular o frete. Retirada disponível.',
         variant: 'destructive'
       });
     } finally {
