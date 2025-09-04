@@ -156,6 +156,18 @@ const Checkout = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Área de pedidos encontrados */}
+      <div className="mt-8">
+        <p className="text-lg font-bold text-red-600 mb-4">
+          SELECIONE O PEDIDO PARA FINALIZAR
+        </p>
+        
+        {/* Lista de pedidos será renderizada aqui */}
+        <div className="text-center py-8 text-muted-foreground">
+          Use a busca acima para encontrar pedidos em aberto
+        </div>
+      </div>
     </div>
   );
 
