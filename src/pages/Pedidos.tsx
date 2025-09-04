@@ -109,8 +109,8 @@ const Pedidos = () => {
           .eq('phone', order.customer_phone)
           .maybeSingle();
 
-        // Fetch cart items with products (only if cart_id exists)
-        let cartItemsData = [];
+        // Fetch cart items with products. If cart_id is missing, try to infer the most recent cart for this cliente
+        let cartItemsData: any[] = [];
         if (order.cart_id) {
           const { data } = await supabase
             .from('cart_items')
@@ -126,6 +126,43 @@ const Pedidos = () => {
             `)
             .eq('cart_id', order.cart_id);
           cartItemsData = data || [];
+        } else {
+          // Fallback: buscar um carrinho recente do mesmo telefone (útil para pedidos antigos sem vínculo)
+          const { data: candidateCarts } = await supabase
+            .from('carts')
+            .select('id, event_date, created_at')
+            .eq('customer_phone', order.customer_phone)
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+          let resolvedCartId: number | null = null;
+          if (candidateCarts && candidateCarts.length > 0) {
+            // tentar casar por proximidade da data do evento (±2 dias)
+            const oEvent = new Date(order.event_date);
+            const byDate = candidateCarts.find((c: any) => {
+              const cEvent = new Date(c.event_date);
+              const diffDays = Math.abs((cEvent.getTime() - oEvent.getTime()) / (1000 * 60 * 60 * 24));
+              return diffDays <= 2;
+            });
+            resolvedCartId = (byDate || candidateCarts[0])?.id ?? null;
+          }
+
+          if (resolvedCartId) {
+            const { data } = await supabase
+              .from('cart_items')
+              .select(`
+                id,
+                qty,
+                unit_price,
+                product:products!cart_items_product_id_fkey (
+                  name,
+                  code,
+                  image_url
+                )
+              `)
+              .eq('cart_id', resolvedCartId);
+            cartItemsData = data || [];
+          }
         }
 
         return {
