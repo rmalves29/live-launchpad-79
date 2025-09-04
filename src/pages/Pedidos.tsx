@@ -109,25 +109,29 @@ const Pedidos = () => {
           .eq('phone', order.customer_phone)
           .maybeSingle();
 
-        // Fetch cart items with products
-        const { data: cartItemsData } = await supabase
-          .from('cart_items')
-          .select(`
-            id,
-            qty,
-            unit_price,
-            product:products!cart_items_product_id_fkey (
-              name,
-              code,
-              image_url
-            )
-          `)
-          .eq('cart_id', order.cart_id || 0);
+        // Fetch cart items with products (only if cart_id exists)
+        let cartItemsData = [];
+        if (order.cart_id) {
+          const { data } = await supabase
+            .from('cart_items')
+            .select(`
+              id,
+              qty,
+              unit_price,
+              product:products!cart_items_product_id_fkey (
+                name,
+                code,
+                image_url
+              )
+            `)
+            .eq('cart_id', order.cart_id);
+          cartItemsData = data || [];
+        }
 
         return {
           ...order,
           customer: customerData || undefined,
-          cart_items: cartItemsData || []
+          cart_items: cartItemsData
         };
       }));
 
