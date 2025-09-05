@@ -353,7 +353,7 @@ async function updateProductStock(productId, currentStock, qty) {
   return newStock;
 }
 
-async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, qty = 1) {
+async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, qty = 1, groupName = null) {
   const phone = dbPhoneFormat(phoneRaw);
   const product = await findProductByCode(codeRaw);
   if (!product) throw new Error(`PRODUTO_NAO_ENCONTRADO_${codeRaw}`);
@@ -368,17 +368,28 @@ async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, q
   const novoTotal = Number(order.total_amount || 0) + Number(product.price || 0) * Number(qty || 1);
   await supa(`/orders?id=eq.${order.id}`, {
     method: 'PATCH', headers: { Prefer: 'return=representation' },
-    body: JSON.stringify({ total_amount: novoTotal })
+    body: JSON.stringify({ total_amount: novoTotal, whatsapp_group_name: groupName || null })
   });
 
   // atualizar estoque
   await updateProductStock(product.id, product.stock, qty);
 
+  // registrar grupo do cliente (upsert)
+  try {
+    if (groupName) {
+      await supa('/customer_whatsapp_groups', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation,resolution=merge-duplicates' },
+        body: JSON.stringify({ customer_phone: phone, whatsapp_group_name: groupName })
+      });
+    }
+  } catch {}
+
   // log opcional em whatsapp_messages
   try {
     await supa('/whatsapp_messages', {
       method: 'POST', headers: { Prefer: 'return=representation' },
-      body: JSON.stringify({ phone, message: `Item ${product.name} (${product.code}) adicionado automaticamente`, type: 'item_added', order_id: order.id, product_name: product.name, amount: product.price })
+      body: JSON.stringify({ phone, message: `Item ${product.name} (${product.code}) adicionado automaticamente`, type: 'item_added', order_id: order.id, product_name: product.name, amount: product.price, whatsapp_group_name: groupName || null })
     });
   } catch {}
 
@@ -479,9 +490,18 @@ function onIncoming(instName, client) {
     const tokens = Array.from(new Set((texto.match(/c\d+/gi) || []).map(t => t.toUpperCase())));
     if (!tokens.length) return;
 
+    // Tentar obter nome do grupo (se a mensagem veio de um grupo)
+    let groupName = null;
+    try {
+      const chat = await msg.getChat();
+      if (chat && chat.isGroup && chat.name) {
+        groupName = String(chat.name);
+      }
+    } catch {}
+
     for (const token of tokens) {
       try {
-        await processProductCodeForPhone(instName, client, numero, token, 1);
+        await processProductCodeForPhone(instName, client, numero, token, 1, groupName);
       } catch (e) {
         console.warn('auto-venda erro', token, e.message);
         try {

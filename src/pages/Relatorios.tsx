@@ -358,78 +358,59 @@ const Relatorios = () => {
 
   const loadWhatsAppGroupStats = async () => {
     try {
-      // Buscar todos os pedidos com informações de grupo de WhatsApp usando LEFT JOIN manual
+      // Buscar pedidos com info básica
       const { data: orders, error } = await supabase
         .from('orders')
-        .select(`
-          id, 
-          total_amount, 
-          is_paid, 
-          cart_id,
-          customer_phone
-        `);
+        .select('id, total_amount, is_paid, cart_id, customer_phone, whatsapp_group_name');
 
       if (error) throw error;
 
-      // Buscar mapeamento de clientes para grupos
+      // Buscar mapeamento expresso (cliente -> grupo real)
       const { data: customerGroups, error: groupsError } = await supabase
         .from('customer_whatsapp_groups')
-        .select('customer_phone, whatsapp_group_name, customer_name');
+        .select('customer_phone, whatsapp_group_name');
 
       if (groupsError) throw groupsError;
 
-      // Criar um mapa de telefone para grupo
       const phoneToGroupMap = new Map<string, string>();
-      customerGroups?.forEach(mapping => {
-        phoneToGroupMap.set(mapping.customer_phone, mapping.whatsapp_group_name);
-      });
+      customerGroups?.forEach(m => phoneToGroupMap.set(m.customer_phone, m.whatsapp_group_name));
 
-      // Buscar todos os cart_ids únicos
-      const cartIds = orders?.map(o => o.cart_id).filter(Boolean) || [];
-      
-      // Buscar todos os items dos carrinhos
+      // Coletar cart items
+      const cartIds = orders?.map(o => o.cart_id).filter(Boolean) as number[];
       let cartItemsMap = new Map<number, any[]>();
       if (cartIds.length > 0) {
         const { data: cartItems } = await supabase
           .from('cart_items')
           .select('cart_id, qty')
           .in('cart_id', cartIds);
-        
-        // Agrupar items por cart_id
         cartItems?.forEach(item => {
-          if (!cartItemsMap.has(item.cart_id)) {
-            cartItemsMap.set(item.cart_id, []);
-          }
+          if (!cartItemsMap.has(item.cart_id)) cartItemsMap.set(item.cart_id, []);
           cartItemsMap.get(item.cart_id)!.push(item);
         });
       }
 
-      // Agrupar por grupo de WhatsApp
       const groupMap = new Map<string, WhatsAppGroupStats>();
 
       orders?.forEach(order => {
-        // Pegar o nome do grupo real usando o mapeamento
-        const groupName = phoneToGroupMap.get(order.customer_phone) || 'Sem Grupo Definido';
+        // Prioridade: tabela de mapeamento -> campo no pedido -> Sem Grupo
+        const groupName = phoneToGroupMap.get(order.customer_phone) || order.whatsapp_group_name || 'Sem Grupo Definido';
         const amount = Number(order.total_amount);
-        
-        // Calcular quantidade de produtos neste pedido
-        const cartItems = cartItemsMap.get(order.cart_id) || [];
-        const productsCount = cartItems.reduce((sum, item) => sum + item.qty, 0);
-        
+        const items = cartItemsMap.get(order.cart_id) || [];
+        const productsCount = items.reduce((sum, it) => sum + it.qty, 0);
+
         if (groupMap.has(groupName)) {
-          const existing = groupMap.get(groupName)!;
-          existing.total_orders += 1;
-          existing.total_revenue += amount;
-          existing.total_products += productsCount;
-          
+          const g = groupMap.get(groupName)!;
+          g.total_orders += 1;
+          g.total_revenue += amount;
+          g.total_products += productsCount;
           if (order.is_paid) {
-            existing.paid_orders += 1;
-            existing.paid_revenue += amount;
-            existing.paid_products += productsCount;
+            g.paid_orders += 1;
+            g.paid_revenue += amount;
+            g.paid_products += productsCount;
           } else {
-            existing.unpaid_orders += 1;
-            existing.unpaid_revenue += amount;
-            existing.unpaid_products += productsCount;
+            g.unpaid_orders += 1;
+            g.unpaid_revenue += amount;
+            g.unpaid_products += productsCount;
           }
         } else {
           groupMap.set(groupName, {
@@ -447,18 +428,11 @@ const Relatorios = () => {
         }
       });
 
-      // Converter para array e ordenar por total de pedidos
-      const groupsArray = Array.from(groupMap.values())
-        .sort((a, b) => b.total_orders - a.total_orders);
-
+      const groupsArray = Array.from(groupMap.values()).sort((a,b) => b.total_orders - a.total_orders);
       setWhatsappGroupStats(groupsArray);
     } catch (error) {
       console.error('Error loading WhatsApp group stats:', error);
-      toast({
-        title: 'Erro',
-        description: 'Erro ao carregar estatísticas por grupo de WhatsApp',
-        variant: 'destructive'
-      });
+      toast({ title: 'Erro', description: 'Erro ao carregar estatísticas por grupo de WhatsApp', variant: 'destructive' });
     }
   };
 
