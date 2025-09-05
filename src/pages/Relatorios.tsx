@@ -51,6 +51,9 @@ interface WhatsAppGroupStats {
   total_orders: number;
   paid_orders: number;
   unpaid_orders: number;
+  total_products: number;
+  paid_products: number;
+  unpaid_products: number;
   total_revenue: number;
   paid_revenue: number;
   unpaid_revenue: number;
@@ -355,12 +358,32 @@ const Relatorios = () => {
 
   const loadWhatsAppGroupStats = async () => {
     try {
-      // Buscar todos os pedidos agrupados por grupo de WhatsApp
+      // Buscar todos os pedidos com informações de carrinho
       const { data: orders, error } = await supabase
         .from('orders')
-        .select('whatsapp_group_name, total_amount, is_paid');
+        .select('id, whatsapp_group_name, total_amount, is_paid, cart_id');
 
       if (error) throw error;
+
+      // Buscar todos os cart_ids únicos
+      const cartIds = orders?.map(o => o.cart_id).filter(Boolean) || [];
+      
+      // Buscar todos os items dos carrinhos
+      let cartItemsMap = new Map<number, any[]>();
+      if (cartIds.length > 0) {
+        const { data: cartItems } = await supabase
+          .from('cart_items')
+          .select('cart_id, qty')
+          .in('cart_id', cartIds);
+        
+        // Agrupar items por cart_id
+        cartItems?.forEach(item => {
+          if (!cartItemsMap.has(item.cart_id)) {
+            cartItemsMap.set(item.cart_id, []);
+          }
+          cartItemsMap.get(item.cart_id)!.push(item);
+        });
+      }
 
       // Agrupar por grupo de WhatsApp
       const groupMap = new Map<string, WhatsAppGroupStats>();
@@ -369,17 +392,24 @@ const Relatorios = () => {
         const groupName = order.whatsapp_group_name || 'Sem Grupo';
         const amount = Number(order.total_amount);
         
+        // Calcular quantidade de produtos neste pedido
+        const cartItems = cartItemsMap.get(order.cart_id) || [];
+        const productsCount = cartItems.reduce((sum, item) => sum + item.qty, 0);
+        
         if (groupMap.has(groupName)) {
           const existing = groupMap.get(groupName)!;
           existing.total_orders += 1;
           existing.total_revenue += amount;
+          existing.total_products += productsCount;
           
           if (order.is_paid) {
             existing.paid_orders += 1;
             existing.paid_revenue += amount;
+            existing.paid_products += productsCount;
           } else {
             existing.unpaid_orders += 1;
             existing.unpaid_revenue += amount;
+            existing.unpaid_products += productsCount;
           }
         } else {
           groupMap.set(groupName, {
@@ -387,6 +417,9 @@ const Relatorios = () => {
             total_orders: 1,
             paid_orders: order.is_paid ? 1 : 0,
             unpaid_orders: order.is_paid ? 0 : 1,
+            total_products: productsCount,
+            paid_products: order.is_paid ? productsCount : 0,
+            unpaid_products: order.is_paid ? 0 : productsCount,
             total_revenue: amount,
             paid_revenue: order.is_paid ? amount : 0,
             unpaid_revenue: order.is_paid ? 0 : amount
@@ -761,7 +794,9 @@ const Relatorios = () => {
                         <TableHead>Grupo</TableHead>
                         <TableHead className="text-center">Total Pedidos</TableHead>
                         <TableHead className="text-center">Pedidos Pagos</TableHead>
-                        <TableHead className="text-center">Pedidos Pendentes</TableHead>
+                        <TableHead className="text-center">Total Produtos</TableHead>
+                        <TableHead className="text-center">Produtos Pagos</TableHead>
+                        <TableHead className="text-center">Produtos Pendentes</TableHead>
                         <TableHead className="text-right">Receita Paga</TableHead>
                         <TableHead className="text-right">Receita Pendente</TableHead>
                         <TableHead className="text-right">Receita Total</TableHead>
@@ -780,9 +815,17 @@ const Relatorios = () => {
                               {group.paid_orders}
                             </Badge>
                           </TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {group.total_products}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="default" className="bg-green-100 text-green-800">
+                              {group.paid_products}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-center">
                             <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                              {group.unpaid_orders}
+                              {group.unpaid_products}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-semibold text-green-600">
