@@ -230,6 +230,33 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_whatsapp_groups: {
+        Row: {
+          created_at: string | null
+          customer_name: string | null
+          customer_phone: string
+          id: number
+          updated_at: string | null
+          whatsapp_group_name: string
+        }
+        Insert: {
+          created_at?: string | null
+          customer_name?: string | null
+          customer_phone: string
+          id?: number
+          updated_at?: string | null
+          whatsapp_group_name: string
+        }
+        Update: {
+          created_at?: string | null
+          customer_name?: string | null
+          customer_phone?: string
+          id?: number
+          updated_at?: string | null
+          whatsapp_group_name?: string
+        }
+        Relationships: []
+      }
       customers: {
         Row: {
           cep: string | null

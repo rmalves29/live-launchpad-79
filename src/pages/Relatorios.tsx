@@ -358,12 +358,31 @@ const Relatorios = () => {
 
   const loadWhatsAppGroupStats = async () => {
     try {
-      // Buscar todos os pedidos com informações de carrinho
+      // Buscar todos os pedidos com informações de grupo de WhatsApp usando LEFT JOIN manual
       const { data: orders, error } = await supabase
         .from('orders')
-        .select('id, whatsapp_group_name, total_amount, is_paid, cart_id');
+        .select(`
+          id, 
+          total_amount, 
+          is_paid, 
+          cart_id,
+          customer_phone
+        `);
 
       if (error) throw error;
+
+      // Buscar mapeamento de clientes para grupos
+      const { data: customerGroups, error: groupsError } = await supabase
+        .from('customer_whatsapp_groups')
+        .select('customer_phone, whatsapp_group_name, customer_name');
+
+      if (groupsError) throw groupsError;
+
+      // Criar um mapa de telefone para grupo
+      const phoneToGroupMap = new Map<string, string>();
+      customerGroups?.forEach(mapping => {
+        phoneToGroupMap.set(mapping.customer_phone, mapping.whatsapp_group_name);
+      });
 
       // Buscar todos os cart_ids únicos
       const cartIds = orders?.map(o => o.cart_id).filter(Boolean) || [];
@@ -389,7 +408,8 @@ const Relatorios = () => {
       const groupMap = new Map<string, WhatsAppGroupStats>();
 
       orders?.forEach(order => {
-        const groupName = order.whatsapp_group_name || 'Sem Grupo';
+        // Pegar o nome do grupo real usando o mapeamento
+        const groupName = phoneToGroupMap.get(order.customer_phone) || 'Sem Grupo Definido';
         const amount = Number(order.total_amount);
         
         // Calcular quantidade de produtos neste pedido
