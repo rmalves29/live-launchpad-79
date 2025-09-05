@@ -6,10 +6,19 @@ verify_jwt = false
 [functions.create-pix-payment]
 verify_jwt = false
 
+[functions.get-integration-settings]
+verify_jwt = false
+
+[functions.save-integration-settings]
+verify_jwt = false
+
 [functions.melhor-envio-shipping]
 verify_jwt = false
 
 [functions.melhor-envio-labels]
+verify_jwt = false
+
+[functions.melhor-envio-oauth]
 verify_jwt = false
 
 [functions.mercadopago-webhook]

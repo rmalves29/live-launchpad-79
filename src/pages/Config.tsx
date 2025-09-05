@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift, Save, Edit, Package, ArrowLeft, BarChart3, TrendingUp } from 'lucide-react';
+import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift, Save, Edit, Package, ArrowLeft, BarChart3, TrendingUp, Eye, EyeOff } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { useToast } from '@/hooks/use-toast';
@@ -32,18 +32,51 @@ interface AppSettings {
   default_diameter_cm: number;
 }
 
+interface IntegrationSettings {
+  melhor_envio: {
+    client_id: string;
+    client_secret: string;
+    access_token: string;
+    from_cep: string;
+    env: string;
+  };
+  mercado_pago: {
+    access_token: string;
+    client_id: string;
+    client_secret: string;
+    public_key: string;
+  };
+}
+
 const Config = () => {
   const { toast } = useToast();
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [integrationSettings, setIntegrationSettings] = useState<IntegrationSettings>({
+    melhor_envio: {
+      client_id: '',
+      client_secret: '',
+      access_token: '',
+      from_cep: '',
+      env: 'sandbox'
+    },
+    mercado_pago: {
+      access_token: '',
+      client_id: '',
+      client_secret: '',
+      public_key: ''
+    }
+  });
   const [isEditing, setIsEditing] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeView, setActiveView] = useState<'dashboard' | 'config'>('dashboard');
+  const [showSecrets, setShowSecrets] = useState<{[key: string]: boolean}>({});
 
   const loadSettings = async () => {
     setLoadingSettings(true);
     try {
+      // Load app settings
       const { data, error } = await supabase
         .from('app_settings')
         .select('*')
@@ -70,6 +103,9 @@ const Config = () => {
         };
         setSettings(defaultSettings);
       }
+
+      // Load integration settings from Supabase secrets (edge function)
+      await loadIntegrationSettings();
     } catch (error) {
       console.error('Error loading settings:', error);
       toast({
@@ -82,16 +118,46 @@ const Config = () => {
     }
   };
 
+  const loadIntegrationSettings = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('get-integration-settings');
+      
+      if (!error && data) {
+        setIntegrationSettings({
+          melhor_envio: {
+            client_id: data.melhor_envio?.client_id || '',
+            client_secret: data.melhor_envio?.client_secret || '',
+            access_token: data.melhor_envio?.access_token || '',
+            from_cep: data.melhor_envio?.from_cep || '31575060',
+            env: data.melhor_envio?.env || 'sandbox'
+          },
+          mercado_pago: {
+            access_token: data.mercado_pago?.access_token || '',
+            client_id: data.mercado_pago?.client_id || '',
+            client_secret: data.mercado_pago?.client_secret || '',
+            public_key: data.mercado_pago?.public_key || ''
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error loading integration settings:', error);
+    }
+  };
+
   const saveSettings = async () => {
     if (!settings) return;
 
     setSaving(true);
     try {
+      // Save app settings
       const { error } = await supabase
         .from('app_settings')
         .upsert(settings, { onConflict: 'id' });
 
       if (error) throw error;
+
+      // Save integration settings
+      await saveIntegrationSettings();
 
       toast({
         title: 'Sucesso',
@@ -110,9 +176,36 @@ const Config = () => {
     }
   };
 
+  const saveIntegrationSettings = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('save-integration-settings', {
+        body: integrationSettings
+      });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error saving integration settings:', error);
+      throw error;
+    }
+  };
+
   const handleInputChange = (field: keyof AppSettings, value: string | number) => {
     if (!settings) return;
     setSettings({ ...settings, [field]: value });
+  };
+
+  const handleIntegrationChange = (integration: 'melhor_envio' | 'mercado_pago', field: string, value: string) => {
+    setIntegrationSettings(prev => ({
+      ...prev,
+      [integration]: {
+        ...prev[integration],
+        [field]: value
+      }
+    }));
+  };
+
+  const toggleSecretVisibility = (field: string) => {
+    setShowSecrets(prev => ({ ...prev, [field]: !prev[field] }));
   };
 
   useEffect(() => {
@@ -461,37 +554,198 @@ const Config = () => {
                     <Truck className="h-5 w-5 mr-2" />
                     Configurações do Melhor Envio
                   </CardTitle>
+                  <CardDescription>
+                    Configure sua integração com o Melhor Envio para cálculo de frete e geração de etiquetas
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="melhor_envio_client_id">Client ID</Label>
+                        <Input
+                          id="melhor_envio_client_id"
+                          value={integrationSettings.melhor_envio.client_id}
+                          onChange={(e) => handleIntegrationChange('melhor_envio', 'client_id', e.target.value)}
+                          disabled={!isEditing}
+                          placeholder="Seu Client ID do Melhor Envio"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="melhor_envio_client_secret">Client Secret</Label>
+                        <div className="relative">
+                          <Input
+                            id="melhor_envio_client_secret"
+                            type={showSecrets['melhor_envio_client_secret'] ? 'text' : 'password'}
+                            value={integrationSettings.melhor_envio.client_secret}
+                            onChange={(e) => handleIntegrationChange('melhor_envio', 'client_secret', e.target.value)}
+                            disabled={!isEditing}
+                            placeholder="Seu Client Secret do Melhor Envio"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 top-0 h-full px-3"
+                            onClick={() => toggleSecretVisibility('melhor_envio_client_secret')}
+                          >
+                            {showSecrets['melhor_envio_client_secret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
                     <div>
-                      <Label htmlFor="melhor_envio_from_cep">CEP de Origem</Label>
-                      <Input
-                        id="melhor_envio_from_cep"
-                        value={settings?.melhor_envio_from_cep || ''}
-                        onChange={(e) => handleInputChange('melhor_envio_from_cep', e.target.value)}
-                        disabled={!isEditing}
-                        placeholder="31575-060"
-                      />
+                      <Label htmlFor="melhor_envio_access_token">Access Token</Label>
+                      <div className="relative">
+                        <Input
+                          id="melhor_envio_access_token"
+                          type={showSecrets['melhor_envio_access_token'] ? 'text' : 'password'}
+                          value={integrationSettings.melhor_envio.access_token}
+                          onChange={(e) => handleIntegrationChange('melhor_envio', 'access_token', e.target.value)}
+                          disabled={!isEditing}
+                          placeholder="Token de acesso obtido via OAuth"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3"
+                          onClick={() => toggleSecretVisibility('melhor_envio_access_token')}
+                        >
+                          {showSecrets['melhor_envio_access_token'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
                       <p className="text-sm text-muted-foreground mt-1">
-                        CEP de onde os produtos serão enviados
+                        Token obtido após autorização OAuth no Melhor Envio
                       </p>
                     </div>
-                    
-                    <div>
-                      <Label htmlFor="melhor_envio_env">Ambiente</Label>
-                      <select
-                        id="melhor_envio_env"
-                        value={settings?.melhor_envio_env || 'sandbox'}
-                        onChange={(e) => handleInputChange('melhor_envio_env', e.target.value)}
-                        disabled={!isEditing}
-                        className="w-full p-2 border rounded"
-                      >
-                        <option value="sandbox">Sandbox (Testes)</option>
-                        <option value="production">Produção</option>
-                      </select>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Use Sandbox para testes e Produção para uso real
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="melhor_envio_from_cep">CEP de Origem</Label>
+                        <Input
+                          id="melhor_envio_from_cep"
+                          value={integrationSettings.melhor_envio.from_cep}
+                          onChange={(e) => handleIntegrationChange('melhor_envio', 'from_cep', e.target.value)}
+                          disabled={!isEditing}
+                          placeholder="31575-060"
+                        />
+                        <p className="text-sm text-muted-foreground mt-1">
+                          CEP de onde os produtos serão enviados
+                        </p>
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="melhor_envio_env">Ambiente</Label>
+                        <select
+                          id="melhor_envio_env"
+                          value={integrationSettings.melhor_envio.env}
+                          onChange={(e) => handleIntegrationChange('melhor_envio', 'env', e.target.value)}
+                          disabled={!isEditing}
+                          className="w-full p-2 border rounded"
+                        >
+                          <option value="sandbox">Sandbox (Testes)</option>
+                          <option value="production">Produção</option>
+                        </select>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Use Sandbox para testes e Produção para uso real
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Mercado Pago Settings */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <CreditCard className="h-5 w-5 mr-2" />
+                    Configurações do Mercado Pago
+                  </CardTitle>
+                  <CardDescription>
+                    Configure sua integração com o Mercado Pago para processamento de pagamentos
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="mp_access_token">Access Token</Label>
+                        <div className="relative">
+                          <Input
+                            id="mp_access_token"
+                            type={showSecrets['mp_access_token'] ? 'text' : 'password'}
+                            value={integrationSettings.mercado_pago.access_token}
+                            onChange={(e) => handleIntegrationChange('mercado_pago', 'access_token', e.target.value)}
+                            disabled={!isEditing}
+                            placeholder="APP_USR-..."
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 top-0 h-full px-3"
+                            onClick={() => toggleSecretVisibility('mp_access_token')}
+                          >
+                            {showSecrets['mp_access_token'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        <Label htmlFor="mp_public_key">Public Key</Label>
+                        <Input
+                          id="mp_public_key"
+                          value={integrationSettings.mercado_pago.public_key}
+                          onChange={(e) => handleIntegrationChange('mercado_pago', 'public_key', e.target.value)}
+                          disabled={!isEditing}
+                          placeholder="APP_USR-..."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="mp_client_id">Client ID</Label>
+                        <Input
+                          id="mp_client_id"
+                          value={integrationSettings.mercado_pago.client_id}
+                          onChange={(e) => handleIntegrationChange('mercado_pago', 'client_id', e.target.value)}
+                          disabled={!isEditing}
+                          placeholder="Seu Client ID"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="mp_client_secret">Client Secret</Label>
+                        <div className="relative">
+                          <Input
+                            id="mp_client_secret"
+                            type={showSecrets['mp_client_secret'] ? 'text' : 'password'}
+                            value={integrationSettings.mercado_pago.client_secret}
+                            onChange={(e) => handleIntegrationChange('mercado_pago', 'client_secret', e.target.value)}
+                            disabled={!isEditing}
+                            placeholder="Seu Client Secret"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 top-0 h-full px-3"
+                            onClick={() => toggleSecretVisibility('mp_client_secret')}
+                          >
+                            {showSecrets['mp_client_secret'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-muted/30 rounded-lg">
+                      <p className="text-sm text-muted-foreground">
+                        <strong>Como obter as credenciais:</strong><br />
+                        1. Acesse o painel do desenvolvedor do Mercado Pago<br />
+                        2. Crie uma aplicação ou use uma existente<br />
+                        3. Copie as credenciais de produção ou teste conforme necessário
                       </p>
                     </div>
                   </div>
@@ -579,13 +833,35 @@ const Config = () => {
                   <CardTitle>Informações Importantes</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <p><strong>URL Base:</strong> Deve ser configurada para o domínio de produção quando o app estiver em produção</p>
-                    <p><strong>CEP de Origem:</strong> CEP da sua empresa/loja para cálculo de frete</p>
-                    <p><strong>Ambiente:</strong> Use Sandbox para testes e Produção quando estiver em funcionamento real</p>
-                    <p><strong>Dimensões Padrão:</strong> Usadas quando o produto não tem dimensões específicas cadastradas</p>
-                    <Separator className="my-3" />
-                    <p className="text-xs"><strong>Nota:</strong> O token de acesso do Melhor Envio deve ser configurado nos segredos do Supabase</p>
+                  <div className="space-y-3 text-sm text-muted-foreground">
+                    <div>
+                      <p><strong>URL Base:</strong> Deve ser configurada para o domínio de produção quando o app estiver em produção</p>
+                      <p><strong>Dimensões Padrão:</strong> Usadas quando o produto não tem dimensões específicas cadastradas</p>
+                    </div>
+                    
+                    <Separator />
+                    
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-2">Melhor Envio</h4>
+                      <p><strong>Client ID/Secret:</strong> Obtidos no painel do desenvolvedor do Melhor Envio</p>
+                      <p><strong>Access Token:</strong> Gerado via OAuth após autorização da aplicação</p>
+                      <p><strong>Ambiente:</strong> Use Sandbox para testes e Produção para uso real</p>
+                    </div>
+                    
+                    <Separator />
+                    
+                    <div>
+                      <h4 className="font-semibold text-foreground mb-2">Mercado Pago</h4>
+                      <p><strong>Access Token:</strong> Token para realizar transações (formato APP_USR-...)</p>
+                      <p><strong>Public Key:</strong> Chave pública para o frontend</p>
+                      <p><strong>Client ID/Secret:</strong> Para integrações avançadas e webhooks</p>
+                    </div>
+                    
+                    <Separator />
+                    
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+                      <p className="text-yellow-800"><strong>⚠️ Segurança:</strong> Todas as credenciais são armazenadas de forma segura nos segredos do Supabase</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
