@@ -28,6 +28,11 @@ const ORDERS_TABLE = 'orders';
 const ORDER_PHONE_FIELD = 'customer_phone';
 const ORDER_PAID_FIELD = 'is_paid';
 
+// Multi-tenant configuration
+let tenantsCache = {};
+let tenantsCacheTime = 0;
+const TENANTS_CACHE_TTL = 60000; // 1 minute
+
 // segredos
 const BROADCAST_SECRET = process.env.BROADCAST_SECRET || 'whatsapp-broadcast-2024';
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'whatsapp-webhook-2024';
@@ -141,6 +146,9 @@ app.use(fileUpload());
 app.use(express.static('public'));
 app.use(cors());
 
+// Apply tenant middleware to all routes
+app.use(tenantMiddleware);
+
 /* ============================ Estado ============================ */
 const clients = {};                 // name -> Client
 const instStatus = {};              // name -> 'offline'|'qr_code'|'authenticated'|'online'|'auth_failure'
@@ -210,8 +218,57 @@ function isGetChatInjectionError(err) {
   return msg.includes('getChat') || msg.includes('pptr://__puppeteer_evaluation_script__');
 }
 
+/* ============================ Multi-tenant helpers ============================ */
+async function loadTenants() {
+  const now = Date.now();
+  if (now - tenantsCacheTime < TENANTS_CACHE_TTL && Object.keys(tenantsCache).length > 0) {
+    return tenantsCache;
+  }
+
+  try {
+    const tenants = await supaRaw('/tenants?select=id,slug,whatsapp_api_url,is_active&is_active=eq.true');
+    tenantsCache = {};
+    tenants.forEach(tenant => {
+      if (tenant.whatsapp_api_url) {
+        // Extract path from WhatsApp API URL to use as identifier
+        const url = new URL(tenant.whatsapp_api_url);
+        const pathKey = url.pathname.replace(/^\/+|\/+$/g, '') || tenant.slug;
+        tenantsCache[pathKey] = tenant;
+      }
+    });
+    tenantsCacheTime = now;
+    console.log('🏢 Tenants carregados:', Object.keys(tenantsCache));
+    return tenantsCache;
+  } catch (error) {
+    console.error('❌ Erro ao carregar tenants:', error);
+    return tenantsCache; // Return cached version on error
+  }
+}
+
+function getTenantFromRequest(req) {
+  // Extract tenant from URL path (e.g., /tenant1/api/send -> tenant1)
+  const pathParts = req.path.split('/').filter(Boolean);
+  if (pathParts.length > 0) {
+    const tenantKey = pathParts[0];
+    return tenantsCache[tenantKey] || null;
+  }
+  return null;
+}
+
+// Middleware to identify tenant and attach to request
+async function tenantMiddleware(req, res, next) {
+  try {
+    await loadTenants();
+    req.tenant = getTenantFromRequest(req);
+    next();
+  } catch (error) {
+    console.error('❌ Erro no middleware tenant:', error);
+    next(); // Continue without tenant for backward compatibility
+  }
+}
+
 /* ============================ Supabase helper ============================ */
-async function supa(pathname, init) {
+async function supaRaw(pathname, init) {
   const url = `${SUPABASE_URL.replace(/\/+$/,'')}/rest/v1${pathname}`;
   const headers = {
     'apikey': SUPABASE_KEY,
@@ -223,24 +280,34 @@ async function supa(pathname, init) {
   return res.json();
 }
 
+async function supa(pathname, init, tenantId = null) {
+  // Add tenant filter if tenant is provided
+  if (tenantId) {
+    const separator = pathname.includes('?') ? '&' : '?';
+    pathname += `${separator}tenant_id=eq.${tenantId}`;
+  }
+  return supaRaw(pathname, init);
+}
+
 /* ============================ Templates WhatsApp ============================ */
 let whatsappTemplatesCache = {};
 let templatesCacheTime = 0;
 
-async function getWhatsAppTemplate(type) {
+async function getWhatsAppTemplate(type, tenantId = null) {
+  const cacheKey = `${type}-${tenantId || 'default'}`;
   const now = Date.now();
   // Cache por 5 minutos
   if (now - templatesCacheTime > 300000) {
     try {
-      const templates = await supa('/whatsapp_templates?select=*');
+      const templates = await supa('/whatsapp_templates?select=*', null, tenantId);
       whatsappTemplatesCache = {};
-      templates.forEach(t => whatsappTemplatesCache[t.type] = t);
+      templates.forEach(t => whatsappTemplatesCache[`${t.type}-${t.tenant_id || 'default'}`] = t);
       templatesCacheTime = now;
     } catch (e) {
       console.error('Erro ao buscar templates:', e.message);
     }
   }
-  return whatsappTemplatesCache[type] || null;
+  return whatsappTemplatesCache[cacheKey] || null;
 }
 
 function replaceTemplateVariables(template, variables) {
@@ -252,12 +319,12 @@ function replaceTemplateVariables(template, variables) {
   });
   return result;
 }
-async function getPhonesByStatus(status) {
+async function getPhonesByStatus(status, tenantId = null) {
   // status: 'paid' | 'unpaid' | 'all'
   let qs = `/${ORDERS_TABLE}?select=${ORDER_PHONE_FIELD},${ORDER_PAID_FIELD}&${ORDER_PHONE_FIELD}=not.is.null`;
   if (status === 'paid')   qs += `&${ORDER_PAID_FIELD}=eq.true`;
   if (status === 'unpaid') qs += `&${ORDER_PAID_FIELD}=eq.false`;
-  const rows = await supa(qs);
+  const rows = await supa(qs, null, tenantId);
   const out = new Set(rows.map(r => digits(r[ORDER_PHONE_FIELD])).filter(Boolean));
   return Array.from(out);
 }
@@ -267,18 +334,18 @@ function dbPhoneFormat(num) {
   return normalizeDDD(num);
 }
 
-async function findProductByCode(raw) {
+async function findProductByCode(raw, tenantId = null) {
   const code = String(raw || '').trim().toUpperCase();
   const numeric = code.replace(/^C/i, '');
   const or = encodeURIComponent(`code.eq.${code},code.eq.${numeric}`);
-  const rows = await supa(`/products?select=id,code,name,price,stock,is_active&is_active=eq.true&or=(${or})&limit=1`);
+  const rows = await supa(`/products?select=id,code,name,price,stock,is_active&is_active=eq.true&or=(${or})&limit=1`, null, tenantId);
   return rows?.[0] || null;
 }
 
-async function getOrCreateCartAndOrder(phone, eventDate, eventType = 'Manual') {
+async function getOrCreateCartAndOrder(phone, eventDate, eventType = 'Manual', tenantId = null) {
   // 1) Buscar pedido em aberto (não pago) do dia
   const q = `/${ORDERS_TABLE}?select=id,cart_id,total_amount&${ORDER_PHONE_FIELD}=eq.${phone}&event_date=eq.${eventDate}&is_paid=eq.false&limit=1`;
-  const existing = await supa(q);
+  const existing = await supa(q, null, tenantId);
   let order = existing?.[0] || null;
   let cart = null;
 
@@ -288,17 +355,17 @@ async function getOrCreateCartAndOrder(phone, eventDate, eventType = 'Manual') {
       const createdCart = await supa('/carts', {
         method: 'POST',
         headers: { Prefer: 'return=representation' },
-        body: JSON.stringify({ event_date: eventDate, customer_phone: phone, event_type: eventType, status: 'OPEN' })
-      });
+        body: JSON.stringify({ event_date: eventDate, customer_phone: phone, event_type: eventType, status: 'OPEN', tenant_id: tenantId })
+      }, tenantId);
       cart = createdCart?.[0] || null;
       const upd = await supa(`/orders?id=eq.${order.id}`, {
         method: 'PATCH',
         headers: { Prefer: 'return=representation' },
         body: JSON.stringify({ cart_id: cart?.id })
-      });
+      }, tenantId);
       order = upd?.[0] || order;
     } else {
-      const foundCart = await supa(`/carts?id=eq.${order.cart_id}&select=id,event_date,customer_phone,event_type,status&limit=1`);
+      const foundCart = await supa(`/carts?id=eq.${order.cart_id}&select=id,event_date,customer_phone,event_type,status&limit=1`, null, tenantId);
       cart = foundCart?.[0] || null;
     }
   } else {
@@ -306,73 +373,73 @@ async function getOrCreateCartAndOrder(phone, eventDate, eventType = 'Manual') {
     const createdCart = await supa('/carts', {
       method: 'POST',
       headers: { Prefer: 'return=representation' },
-      body: JSON.stringify({ event_date: eventDate, customer_phone: phone, event_type: eventType, status: 'OPEN' })
-    });
+      body: JSON.stringify({ event_date: eventDate, customer_phone: phone, event_type: eventType, status: 'OPEN', tenant_id: tenantId })
+    }, tenantId);
     cart = createdCart?.[0] || null;
 
     const createdOrder = await supa('/orders', {
       method: 'POST',
       headers: { Prefer: 'return=representation' },
-      body: JSON.stringify({ cart_id: cart?.id || null, event_date: eventDate, total_amount: 0, is_paid: false, [ORDER_PHONE_FIELD]: phone, event_type: eventType })
-    });
+      body: JSON.stringify({ cart_id: cart?.id || null, event_date: eventDate, total_amount: 0, is_paid: false, [ORDER_PHONE_FIELD]: phone, event_type: eventType, tenant_id: tenantId })
+    }, tenantId);
     order = createdOrder?.[0] || null;
   }
 
   if (!order) throw new Error('FALHA_CRIAR_PEDIDO');
   if (!cart) {
-    const found = await supa(`/carts?id=eq.${order.cart_id}&select=id&limit=1`);
+    const found = await supa(`/carts?id=eq.${order.cart_id}&select=id&limit=1`, null, tenantId);
     cart = found?.[0] || null;
   }
   return { order, cart };
 }
 
-async function addOrUpdateCartItem(cartId, productId, qty, unitPrice) {
-  const exists = await supa(`/cart_items?select=id,qty&cart_id=eq.${cartId}&product_id=eq.${productId}&limit=1`);
+async function addOrUpdateCartItem(cartId, productId, qty, unitPrice, tenantId = null) {
+  const exists = await supa(`/cart_items?select=id,qty&cart_id=eq.${cartId}&product_id=eq.${productId}&limit=1`, null, tenantId);
   if (exists?.[0]) {
     const id = exists[0].id;
     const newQty = Number(exists[0].qty || 0) + Number(qty || 1);
     const upd = await supa(`/cart_items?id=eq.${id}`, {
       method: 'PATCH', headers: { Prefer: 'return=representation' },
       body: JSON.stringify({ qty: newQty })
-    });
+    }, tenantId);
     return upd?.[0] || { id };
   }
   const ins = await supa('/cart_items', {
     method: 'POST', headers: { Prefer: 'return=representation' },
-    body: JSON.stringify({ cart_id: cartId, product_id: productId, qty: qty || 1, unit_price: unitPrice, printed: false })
-  });
+    body: JSON.stringify({ cart_id: cartId, product_id: productId, qty: qty || 1, unit_price: unitPrice, printed: false, tenant_id: tenantId })
+  }, tenantId);
   return ins?.[0];
 }
 
-async function updateProductStock(productId, currentStock, qty) {
+async function updateProductStock(productId, currentStock, qty, tenantId = null) {
   const newStock = Math.max(0, Number(currentStock || 0) - Number(qty || 1));
   await supa(`/products?id=eq.${productId}`, {
     method: 'PATCH', headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ stock: newStock })
-  });
+  }, tenantId);
   return newStock;
 }
 
-async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, qty = 1, groupName = null) {
+async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, qty = 1, groupName = null, tenantId = null) {
   const phone = dbPhoneFormat(phoneRaw);
-  const product = await findProductByCode(codeRaw);
+  const product = await findProductByCode(codeRaw, tenantId);
   if (!product) throw new Error(`PRODUTO_NAO_ENCONTRADO_${codeRaw}`);
 
   const eventDate = new Date().toISOString().slice(0,10);
-  const { order, cart } = await getOrCreateCartAndOrder(phone, eventDate, 'Manual');
+  const { order, cart } = await getOrCreateCartAndOrder(phone, eventDate, 'Manual', tenantId);
 
   // adicionar item
-  await addOrUpdateCartItem(cart.id, product.id, qty, product.price);
+  await addOrUpdateCartItem(cart.id, product.id, qty, product.price, tenantId);
 
   // atualizar total do pedido
   const novoTotal = Number(order.total_amount || 0) + Number(product.price || 0) * Number(qty || 1);
   await supa(`/orders?id=eq.${order.id}`, {
     method: 'PATCH', headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ total_amount: novoTotal, whatsapp_group_name: groupName || null })
-  });
+  }, tenantId);
 
   // atualizar estoque
-  await updateProductStock(product.id, product.stock, qty);
+  await updateProductStock(product.id, product.stock, qty, tenantId);
 
   // registrar grupo do cliente (upsert)
   try {
@@ -380,8 +447,8 @@ async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, q
       await supa('/customer_whatsapp_groups', {
         method: 'POST',
         headers: { Prefer: 'return=representation,resolution=merge-duplicates' },
-        body: JSON.stringify({ customer_phone: phone, whatsapp_group_name: groupName })
-      });
+        body: JSON.stringify({ customer_phone: phone, whatsapp_group_name: groupName, tenant_id: tenantId })
+      }, tenantId);
     }
   } catch {}
 
@@ -389,12 +456,12 @@ async function processProductCodeForPhone(instName, client, phoneRaw, codeRaw, q
   try {
     await supa('/whatsapp_messages', {
       method: 'POST', headers: { Prefer: 'return=representation' },
-      body: JSON.stringify({ phone, message: `Item ${product.name} (${product.code}) adicionado automaticamente`, type: 'item_added', order_id: order.id, product_name: product.name, amount: product.price, whatsapp_group_name: groupName || null })
-    });
+      body: JSON.stringify({ phone, message: `Item ${product.name} (${product.code}) adicionado automaticamente`, type: 'item_added', order_id: order.id, product_name: product.name, amount: product.price, whatsapp_group_name: groupName || null, tenant_id: tenantId })
+    }, tenantId);
   } catch {}
 
   // enviar confirmação ao cliente
-  const text = await composeItemAdded({ product: { name: product.name, code: product.code, qty, price: Number(product.price || 0) } });
+  const text = await composeItemAdded({ product: { name: product.name, code: product.code, qty, price: Number(product.price || 0) } }, tenantId);
   const messageId = `${instName}-${phone}-${Date.now()}`;
   await sendSingleMessage(instName, client, phone, text, null, messageId);
 
@@ -725,11 +792,12 @@ app.post('/api/broadcast/orders', async (req, res) => {
     if (key !== BROADCAST_SECRET) return res.status(401).json({ error: 'unauthorized' });
 
     const { status='all', message, interval, batchSize, batchDelay } = req.body || {};
+    const tenantId = req.tenant?.id || null;
     
     let finalMessage = message;
     // Se não foi fornecida uma mensagem, usar template BROADCAST
     if (!message) {
-      const template = await getWhatsAppTemplate('BROADCAST');
+      const template = await getWhatsAppTemplate('BROADCAST', tenantId);
       if (template) {
         finalMessage = template.content;
       } else {
@@ -737,7 +805,7 @@ app.post('/api/broadcast/orders', async (req, res) => {
       }
     }
 
-    const phones = await getPhonesByStatus(status);
+    const phones = await getPhonesByStatus(status, tenantId);
     if (!phones.length) return res.json({ ok: true, total: 0, note: 'nenhum telefone encontrado' });
 
     CURRENT_MASS_LABEL = MASS_BROADCAST_LABEL;
@@ -761,8 +829,8 @@ function verifyWebhook(req) {
   const h = req.get('x-webhook-secret') || req.query.secret || req.body?.secret;
   if (h !== WEBHOOK_SECRET) throw new Error('unauthorized');
 }
-async function composeOrderCreated(b) {
-  const template = await getWhatsAppTemplate('BROADCAST'); // Usando BROADCAST como padrão
+async function composeOrderCreated(b, tenantId = null) {
+  const template = await getWhatsAppTemplate('BROADCAST', tenantId); // Usando BROADCAST como padrão
   if (template) {
     return template.content;
   }
@@ -772,8 +840,8 @@ async function composeOrderCreated(b) {
   const id = b?.order_id || b?.id || '';
   return `🧾 *Pedido criado!*\n\nOlá ${nome} 👋\nSeu pedido *#${id}* foi registrado com sucesso.\n\nTotal: *${total}*\n\nQualquer dúvida é só responder aqui.`;
 }
-async function composeItemAdded(b) {
-  const template = await getWhatsAppTemplate('ITEM_ADDED');
+async function composeItemAdded(b, tenantId = null) {
+  const template = await getWhatsAppTemplate('ITEM_ADDED', tenantId);
   if (template) {
     const p = b?.product || {};
     return replaceTemplateVariables(template.content, {
@@ -791,12 +859,13 @@ async function composeItemAdded(b) {
   const price = fmtMoney(p?.price);
   return `🛒 *Item adicionado ao pedido*\n\n✅ ${nome}${cod}\nQtd: *${qty}*\nPreço: *${price}*`;
 }
-async function composeItemCancelled(b) {
-  const template = await getWhatsAppTemplate('PRODUCT_CANCELED');
+async function composeItemCancelled(b, tenantId = null) {
+  const template = await getWhatsAppTemplate('PRODUCT_CANCELED', tenantId);
   if (template) {
     const p = b?.product || {};
     return replaceTemplateVariables(template.content, {
       produto: p?.name || 'Item',
+      quantidade: p?.qty || 1,
       valor: fmtMoney(p?.price)
     });
   }
@@ -808,8 +877,8 @@ async function composeItemCancelled(b) {
   return `❌ *Item cancelado*\n\n${nome}${cod}\nQtd: *${qty}* foi removido do seu pedido.`;
 }
 
-async function composePaidOrder(b) {
-  const template = await getWhatsAppTemplate('PAID_ORDER');
+async function composePaidOrder(b, tenantId = null) {
+  const template = await getWhatsAppTemplate('PAID_ORDER', tenantId);
   if (template) {
     return replaceTemplateVariables(template.content, {
       order_id: b?.order_id || b?.id || '',
@@ -822,7 +891,7 @@ async function composePaidOrder(b) {
   return `🎉 *Pedido Confirmado - #${id}*\n\nSeu pagamento foi confirmado com sucesso! ✅\n\n💰 Valor pago: ${total}\n\n📦 Seu pedido está sendo preparado e em breve entraremos em contato com as informações de entrega.`;
 }
 
-async function sendOne(phone, text) {
+async function sendOne(phone, text, tenantId = null) {
   const inst = await waitUntilOnline(30000);
   if (!inst) throw new Error('no_instance_online');
   const client = clients[inst];
@@ -835,7 +904,8 @@ app.post('/webhooks/order-created', async (req,res) => {
   try { verifyWebhook(req);
     const phone = digits(req.body?.customer_phone||req.body?.phone||'');
     if (!phone) return res.status(400).json({ error: 'phone ausente' });
-    await sendOne(phone, await composeOrderCreated(req.body));
+    const tenantId = req.tenant?.id || null;
+    await sendOne(phone, await composeOrderCreated(req.body, tenantId), tenantId);
     res.json({ ok: true });
   } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
 });
@@ -843,7 +913,8 @@ app.post('/webhooks/order-item-added', async (req,res) => {
   try { verifyWebhook(req);
     const phone = digits(req.body?.customer_phone||req.body?.phone||'');
     if (!phone) return res.status(400).json({ error: 'phone ausente' });
-    await sendOne(phone, await composeItemAdded(req.body));
+    const tenantId = req.tenant?.id || null;
+    await sendOne(phone, await composeItemAdded(req.body, tenantId), tenantId);
     res.json({ ok: true });
   } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
 });
@@ -851,22 +922,41 @@ app.post('/webhooks/order-item-cancelled', async (req,res) => {
   try { verifyWebhook(req);
     const phone = digits(req.body?.customer_phone||req.body?.phone||'');
     if (!phone) return res.status(400).json({ error: 'phone ausente' });
-    await sendOne(phone, await composeItemCancelled(req.body));
+    const tenantId = req.tenant?.id || null;
+    await sendOne(phone, await composeItemCancelled(req.body, tenantId), tenantId);
     res.json({ ok: true });
   } catch (e) { res.status(e.message==='unauthorized'?401:500).json({ error: e.message }); }
 });
 
 // rotas de teste (sem secret) — para validar integração
 app.post('/api/test/order-created', async (req,res)=> {
-  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, await composeOrderCreated(req.body)); res.json({ok:true}); }
+  try { 
+    const phone = digits(req.body?.phone||''); 
+    if(!phone) return res.status(400).json({error:'phone'}); 
+    const tenantId = req.tenant?.id || null;
+    await sendOne(phone, await composeOrderCreated(req.body, tenantId), tenantId); 
+    res.json({ok:true}); 
+  }
   catch(e){ res.status(500).json({error:e.message}); }
 });
 app.post('/api/test/item-added', async (req,res)=> {
-  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, await composeItemAdded(req.body)); res.json({ok:true}); }
+  try { 
+    const phone = digits(req.body?.phone||''); 
+    if(!phone) return res.status(400).json({error:'phone'}); 
+    const tenantId = req.tenant?.id || null;
+    await sendOne(phone, await composeItemAdded(req.body, tenantId), tenantId); 
+    res.json({ok:true}); 
+  }
   catch(e){ res.status(500).json({error:e.message}); }
 });
 app.post('/api/test/item-cancelled', async (req,res)=> {
-  try { const phone = digits(req.body?.phone||''); if(!phone) return res.status(400).json({error:'phone'}); await sendOne(phone, await composeItemCancelled(req.body)); res.json({ok:true}); }
+  try { 
+    const phone = digits(req.body?.phone||''); 
+    if(!phone) return res.status(400).json({error:'phone'}); 
+    const tenantId = req.tenant?.id || null;
+    await sendOne(phone, await composeItemCancelled(req.body, tenantId), tenantId); 
+    res.json({ok:true}); 
+  }
   catch(e){ res.status(500).json({error:e.message}); }
 });
 
