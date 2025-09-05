@@ -29,7 +29,17 @@ interface TenantContextType {
   refreshProfile: () => Promise<void>;
 }
 
-const TenantContext = createContext<TenantContextType | undefined>(undefined);
+const defaultContextValue: TenantContextType = {
+  currentTenant: null,
+  userProfile: null,
+  isLoading: true,
+  isMaster: false,
+  isAdmin: false,
+  user: null,
+  refreshProfile: async () => {},
+};
+
+const TenantContext = createContext<TenantContextType>(defaultContextValue);
 
 export const TenantProvider = ({ children }: { children: ReactNode }) => {
   const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
@@ -116,9 +126,5 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useTenant = () => {
-  const context = useContext(TenantContext);
-  if (context === undefined) {
-    throw new Error("useTenant must be used within a TenantProvider");
-  }
-  return context;
+  return useContext(TenantContext);
 };
