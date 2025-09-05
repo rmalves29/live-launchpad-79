@@ -107,6 +107,15 @@ export const TenantProvider = ({ children }: { children: ReactNode }) => {
 
   const isMaster = userProfile?.tenant_role === 'master';
   const isAdmin = userProfile?.tenant_role === 'admin' || isMaster;
+  
+  // Debug para verificar o status do usuário
+  console.log('TenantContext Debug:', {
+    user: user?.email,
+    userProfile,
+    isMaster,
+    isAdmin,
+    isLoading
+  });
 
   return (
     <TenantContext.Provider

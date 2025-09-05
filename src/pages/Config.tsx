@@ -52,7 +52,10 @@ interface IntegrationSettings {
 
 const Config = () => {
   const { toast } = useToast();
-  const { isMaster } = useTenant();
+  const { isMaster, userProfile, isLoading } = useTenant();
+  
+  // Debug para verificar se o usuário master está sendo reconhecido
+  console.log('Config Page Debug - isMaster:', isMaster, 'userProfile:', userProfile, 'isLoading:', isLoading);
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [integrationSettings, setIntegrationSettings] = useState<IntegrationSettings>({
