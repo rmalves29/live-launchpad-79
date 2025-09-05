@@ -9,8 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift, Save, Edit, Package, ArrowLeft, BarChart3, TrendingUp, Eye, EyeOff } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
+import { TenantsManager } from '@/components/TenantsManager';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useTenant } from '@/hooks/useTenant';
 
 interface SystemConfig {
   event_date: string;
@@ -50,6 +52,7 @@ interface IntegrationSettings {
 
 const Config = () => {
   const { toast } = useToast();
+  const { isMaster } = useTenant();
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [integrationSettings, setIntegrationSettings] = useState<IntegrationSettings>({
@@ -346,7 +349,7 @@ const Config = () => {
 
         <div className="space-y-6">
           <Tabs defaultValue="config" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className={`grid w-full ${isMaster ? 'grid-cols-6' : 'grid-cols-5'}`}>
               <TabsTrigger value="config" className="flex items-center">
                 <Settings className="h-4 w-4 mr-2" />
                 Configurações
@@ -367,6 +370,12 @@ const Config = () => {
                 <Truck className="h-4 w-4 mr-2" />
                 Integrações
               </TabsTrigger>
+              {isMaster && (
+                <TabsTrigger value="tenants" className="flex items-center">
+                  <Package className="h-4 w-4 mr-2" />
+                  Empresas
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="config" className="space-y-6 mt-6">
@@ -918,59 +927,13 @@ const Config = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
 
-          {/* Environment Variables Documentation */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Variáveis de Ambiente (Backend)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm text-muted-foreground mb-4">
-                As seguintes variáveis devem ser configuradas no arquivo <code>.env</code> do backend Node.js:
-              </div>
-              
-              <div className="space-y-4">
-                {['WhatsApp', 'Evento', 'Supabase', 'Mercado Pago', 'Melhor Envio', 'Dimensões Padrão'].map((category) => (
-                  <div key={category}>
-                    <h4 className="font-medium mb-2 text-primary">{category}</h4>
-                    <div className="space-y-2 ml-4">
-                      {envVariables
-                        .filter(variable => {
-                          switch (category) {
-                            case 'WhatsApp': return variable.name.includes('GROUP_ID');
-                            case 'Evento': return variable.name.includes('EVENT_');
-                            case 'Supabase': return variable.name.includes('SUPABASE_');
-                            case 'Mercado Pago': return variable.name.includes('MP_') || variable.name.includes('PUBLIC_BASE_URL');
-                            case 'Melhor Envio': return variable.name.includes('MELHOR_ENVIO_');
-                            case 'Dimensões Padrão': return variable.name.includes('DEFAULT_');
-                            default: return false;
-                          }
-                        })
-                        .map((variable) => (
-                          <div key={variable.name} className="flex flex-col space-y-1">
-                            <code className="text-sm bg-muted px-2 py-1 rounded font-mono w-fit">
-                              {variable.name}
-                            </code>
-                            <span className="text-xs text-muted-foreground">
-                              {variable.description}
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-                    <Separator className="my-3" />
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 p-4 bg-muted/30 rounded-lg">
-                <div className="text-sm">
-                  <strong>Nota:</strong> Essas configurações são gerenciadas no backend Node.js que 
-                  já está fornecido. O frontend Lovable consome os dados através das APIs REST.
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-            </TabsContent>
+        {isMaster && (
+          <TabsContent value="tenants" className="space-y-6 mt-6">
+            <TenantsManager />
+          </TabsContent>
+        )}
           </Tabs>
         </div>
         </div>
