@@ -46,6 +46,16 @@ interface PeriodStats {
   avg_ticket: number;
 }
 
+interface WhatsAppGroupStats {
+  group_name: string;
+  total_orders: number;
+  paid_orders: number;
+  unpaid_orders: number;
+  total_revenue: number;
+  paid_revenue: number;
+  unpaid_revenue: number;
+}
+
 const Relatorios = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -56,6 +66,7 @@ const Relatorios = () => {
     yearly: PeriodStats;
   } | null>(null);
   const [topProducts, setTopProducts] = useState<ProductSales[]>([]);
+  const [whatsappGroupStats, setWhatsappGroupStats] = useState<WhatsAppGroupStats[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'month' | 'year' | 'custom'>('today');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -342,13 +353,70 @@ const Relatorios = () => {
     }
   };
 
+  const loadWhatsAppGroupStats = async () => {
+    try {
+      // Buscar todos os pedidos agrupados por grupo de WhatsApp
+      const { data: orders, error } = await supabase
+        .from('orders')
+        .select('whatsapp_group_name, total_amount, is_paid');
+
+      if (error) throw error;
+
+      // Agrupar por grupo de WhatsApp
+      const groupMap = new Map<string, WhatsAppGroupStats>();
+
+      orders?.forEach(order => {
+        const groupName = order.whatsapp_group_name || 'Sem Grupo';
+        const amount = Number(order.total_amount);
+        
+        if (groupMap.has(groupName)) {
+          const existing = groupMap.get(groupName)!;
+          existing.total_orders += 1;
+          existing.total_revenue += amount;
+          
+          if (order.is_paid) {
+            existing.paid_orders += 1;
+            existing.paid_revenue += amount;
+          } else {
+            existing.unpaid_orders += 1;
+            existing.unpaid_revenue += amount;
+          }
+        } else {
+          groupMap.set(groupName, {
+            group_name: groupName,
+            total_orders: 1,
+            paid_orders: order.is_paid ? 1 : 0,
+            unpaid_orders: order.is_paid ? 0 : 1,
+            total_revenue: amount,
+            paid_revenue: order.is_paid ? amount : 0,
+            unpaid_revenue: order.is_paid ? 0 : amount
+          });
+        }
+      });
+
+      // Converter para array e ordenar por total de pedidos
+      const groupsArray = Array.from(groupMap.values())
+        .sort((a, b) => b.total_orders - a.total_orders);
+
+      setWhatsappGroupStats(groupsArray);
+    } catch (error) {
+      console.error('Error loading WhatsApp group stats:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao carregar estatísticas por grupo de WhatsApp',
+        variant: 'destructive'
+      });
+    }
+  };
+
   const loadAllReports = async () => {
     setLoading(true);
     try {
       await Promise.all([
         loadTodaySales(),
         loadPeriodStats(),
-        loadTopProducts()
+        loadTopProducts(),
+        loadWhatsAppGroupStats()
       ]);
     } finally {
       setLoading(false);
@@ -386,6 +454,7 @@ const Relatorios = () => {
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="products">Produtos Mais Vendidos</TabsTrigger>
+          <TabsTrigger value="whatsapp">Grupos WhatsApp</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -655,6 +724,83 @@ const Relatorios = () => {
                           </TableCell>
                           <TableCell className="text-right">
                             {formatCurrency(product.avg_price)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="whatsapp" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Users className="h-5 w-5 mr-2" />
+                Relatório por Grupos de WhatsApp
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span>Carregando...</span>
+                </div>
+              ) : whatsappGroupStats.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhum dado disponível por grupo de WhatsApp
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Grupo</TableHead>
+                        <TableHead className="text-center">Total Pedidos</TableHead>
+                        <TableHead className="text-center">Pedidos Pagos</TableHead>
+                        <TableHead className="text-center">Pedidos Pendentes</TableHead>
+                        <TableHead className="text-right">Receita Paga</TableHead>
+                        <TableHead className="text-right">Receita Pendente</TableHead>
+                        <TableHead className="text-right">Receita Total</TableHead>
+                        <TableHead className="text-center">Taxa Conversão</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {whatsappGroupStats.map((group, index) => (
+                        <TableRow key={group.group_name}>
+                          <TableCell className="font-medium">{group.group_name}</TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {group.total_orders}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="default" className="bg-green-100 text-green-800">
+                              {group.paid_orders}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                              {group.unpaid_orders}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold text-green-600">
+                            {formatCurrency(group.paid_revenue)}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold text-yellow-600">
+                            {formatCurrency(group.unpaid_revenue)}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            {formatCurrency(group.total_revenue)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge 
+                              variant={group.paid_orders / group.total_orders >= 0.5 ? "default" : "secondary"}
+                              className={group.paid_orders / group.total_orders >= 0.5 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
+                            >
+                              {((group.paid_orders / group.total_orders) * 100).toFixed(1)}%
+                            </Badge>
                           </TableCell>
                         </TableRow>
                       ))}

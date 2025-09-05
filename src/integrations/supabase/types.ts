@@ -485,6 +485,7 @@ export type Database = {
           payment_link: string | null
           printed: boolean | null
           total_amount: number
+          whatsapp_group_name: string | null
         }
         Insert: {
           cart_id?: number | null
@@ -500,6 +501,7 @@ export type Database = {
           payment_link?: string | null
           printed?: boolean | null
           total_amount: number
+          whatsapp_group_name?: string | null
         }
         Update: {
           cart_id?: number | null
@@ -515,6 +517,7 @@ export type Database = {
           payment_link?: string | null
           printed?: boolean | null
           total_amount?: number
+          whatsapp_group_name?: string | null
         }
         Relationships: [
           {
@@ -594,6 +597,7 @@ export type Database = {
           sent_at: string | null
           type: string
           updated_at: string
+          whatsapp_group_name: string | null
         }
         Insert: {
           amount?: number | null
@@ -608,6 +612,7 @@ export type Database = {
           sent_at?: string | null
           type: string
           updated_at?: string
+          whatsapp_group_name?: string | null
         }
         Update: {
           amount?: number | null
@@ -622,6 +627,7 @@ export type Database = {
           sent_at?: string | null
           type?: string
           updated_at?: string
+          whatsapp_group_name?: string | null
         }
         Relationships: []
       }
