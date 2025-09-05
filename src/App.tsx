@@ -21,6 +21,8 @@ import MpReturn from "./pages/MpReturn";
 import ConfigFrete from "./pages/ConfigFrete";
 import CotacaoFrete from "./pages/CotacaoFrete";
 import Etiquetas from "./pages/Etiquetas";
+import Auth from "./pages/Auth";
+import RequireAuth from "./components/RequireAuth";
 
 const queryClient = new QueryClient();
 
@@ -33,12 +35,13 @@ const AppContent = () => {
       {showNavbar && <Navbar />}
       <Routes>
         <Route path="/" element={<Index />} />
+        <Route path="/auth" element={<Auth />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/mp/return" element={<MpReturn />} />
         <Route path="/pedidos-manual" element={<PedidosManual />} />
         <Route path="/pedidos" element={<Pedidos />} />
         <Route path="/sorteio" element={<Sorteio />} />
-        <Route path="/config" element={<Config />} />
+        <Route path="/config" element={<RequireAuth><Config /></RequireAuth>} />
         <Route path="/produtos" element={<Produtos />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/relatorios" element={<Relatorios />} />

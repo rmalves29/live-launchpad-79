@@ -4,11 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Menu } from 'lucide-react';
+import { useTenant } from '@/hooks/useTenant';
+import { supabase } from '@/integrations/supabase/client';
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const isWhatsAppActive = ['/whatsapp-templates', '/whatsapp-integration'].includes(location.pathname);
+  const { user } = useTenant();
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
@@ -79,6 +82,17 @@ const Navbar = () => {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {user ? (
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-muted-foreground hidden lg:inline">{user.email}</span>
+                <Button variant="outline" size="sm" onClick={() => supabase.auth.signOut()}>Sair</Button>
+              </div>
+            ) : (
+              <NavLink to="/auth">
+                <Button size="sm">Entrar</Button>
+              </NavLink>
+            )}
           </div>
 
           {/* Mobile Navigation */}

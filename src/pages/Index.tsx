@@ -2,9 +2,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { ShoppingCart, Package, List, Dice6, Settings, Plus } from 'lucide-react';
+import { useTenant } from '@/hooks/useTenant';
 
 const Index = () => {
   const navigate = useNavigate();
+  const { user } = useTenant();
 
   const dashboardItems = [
     {
@@ -57,6 +59,11 @@ const Index = () => {
         <div className="text-center mb-8">
           <h2 className="text-4xl font-bold mb-4">Sistema de Vendas</h2>
           <p className="text-xl text-muted-foreground">Sistema operacional para lançamento de pedidos</p>
+          {!user && (
+            <div className="mt-4">
+              <Button onClick={() => navigate('/auth')}>Entrar</Button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
