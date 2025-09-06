@@ -55,6 +55,28 @@ export default function Auth() {
     }
   };
 
+  // Ajuda de emergência: redefine a senha no servidor (apenas para o e-mail master permitido)
+  const handleForceReset = async () => {
+    try {
+      setLoading(true);
+      const newPassword = password || "mulher2020*";
+      const { error } = await supabase.functions.invoke("admin-set-password", {
+        body: { email, newPassword },
+      });
+      if (error) throw error;
+      toast({ title: "Senha redefinida", description: "Tentando entrar..." });
+
+      const { error: loginError } = await supabase.auth.signInWithPassword({ email, password: newPassword });
+      if (loginError) throw loginError;
+
+      navigate(from, { replace: true });
+    } catch (err: any) {
+      toast({ title: "Falha ao corrigir login", description: err.message || "Tente novamente.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <main className="w-full max-w-md p-4">
@@ -75,9 +97,21 @@ export default function Auth() {
             </div>
 
             {mode === "login" ? (
-              <Button className="w-full" onClick={handleLogin} disabled={loading}>
-                {loading ? "Entrando..." : "Entrar"}
-              </Button>
+              <>
+                <Button className="w-full" onClick={handleLogin} disabled={loading}>
+                  {loading ? "Entrando..." : "Entrar"}
+                </Button>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={handleForceReset}
+                    className="text-xs underline text-muted-foreground mt-2"
+                    disabled={loading || !email}
+                  >
+                    Problemas para entrar? Corrigir automaticamente
+                  </button>
+                </div>
+              </>
             ) : (
               <Button className="w-full" onClick={handleSignup} disabled={loading}>
                 {loading ? "Criando..." : "Criar conta"}
