@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,58 +42,56 @@ export default serve(async (req) => {
       });
     }
 
-    // 1) Buscar usuário por e-mail via GoTrue Admin API
-    const adminUsersUrl = `${SUPABASE_URL}/auth/v1/admin/users?email=${encodeURIComponent(email)}`;
-    const findRes = await fetch(adminUsersUrl, {
-      method: "GET",
-      headers: {
-        apikey: SERVICE_ROLE_KEY!,
-        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
+    const supabaseAdmin = createClient(SUPABASE_URL!, SERVICE_ROLE_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    if (!findRes.ok) {
-      const text = await findRes.text();
-      return new Response(JSON.stringify({ error: `Failed to fetch user: ${text}` }), {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
-    }
-
-    const users = (await findRes.json()) as { users: Array<{ id: string; email: string }> } | Array<{ id: string; email: string }>;
-
-    const list = Array.isArray(users) ? users : users.users;
-    const user = list?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-
-    if (!user) {
-      return new Response(JSON.stringify({ error: "User not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
-    }
-
-    // 2) Atualizar senha do usuário
-    const updateUrl = `${SUPABASE_URL}/auth/v1/admin/users/${user.id}`;
-    const updateRes = await fetch(updateUrl, {
-      method: "PATCH",
-      headers: {
-        apikey: SERVICE_ROLE_KEY!,
-        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ password: newPassword }),
+    // Tenta criar o usuário já confirmado; se já existir, seguimos para atualizar
+    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: newPassword,
+      email_confirm: true,
     });
 
-    if (!updateRes.ok) {
-      const text = await updateRes.text();
-      return new Response(JSON.stringify({ error: `Failed to update password: ${text}` }), {
-        status: 500,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
+    let userId = created?.user?.id as string | undefined;
+
+    if (createErr && !userId) {
+      // Usuário pode já existir; vamos procurar e atualizar
+      // listUsers não filtra por email, mas é suficiente para bases pequenas
+      let foundId: string | undefined;
+      let page = 1;
+      const perPage = 200;
+      for (;;) {
+        const { data: list, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+        if (listErr) throw listErr;
+        const match = list?.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+        if (match) {
+          foundId = match.id;
+          break;
+        }
+        if (!list || list.users.length < perPage) break; // terminou
+        page += 1;
+      }
+      if (!foundId) {
+        throw new Error(createErr.message || "Failed to create or find user");
+      }
+      userId = foundId;
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    // Atualiza senha e garante email confirmado
+    const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(userId!, {
+      password: newPassword,
+      email_confirm: true,
+    });
+    if (updErr) throw updErr;
+
+    // Garante perfil com role master
+    const { error: upsertErr } = await supabaseAdmin
+      .from("profiles")
+      .upsert({ id: userId!, email, tenant_role: "master" }, { onConflict: "id" });
+    if (upsertErr) throw upsertErr;
+
+    return new Response(JSON.stringify({ success: true, userId }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
