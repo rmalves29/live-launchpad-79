@@ -42,6 +42,8 @@ export default serve(async (req) => {
       });
     }
 
+    console.log("[admin-set-password] Starting for", email);
+
     const supabaseAdmin = createClient(SUPABASE_URL!, SERVICE_ROLE_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -55,9 +57,14 @@ export default serve(async (req) => {
 
     let userId = created?.user?.id as string | undefined;
 
-    if (createErr && !userId) {
+    if (createErr) {
+      console.warn("[admin-set-password] createUser error:", createErr.message);
+    }
+
+    if (!userId) {
       // Usuário pode já existir; vamos procurar e atualizar
       // listUsers não filtra por email, mas é suficiente para bases pequenas
+      console.log("[admin-set-password] Looking up user by email");
       let foundId: string | undefined;
       let page = 1;
       const perPage = 200;
@@ -73,7 +80,7 @@ export default serve(async (req) => {
         page += 1;
       }
       if (!foundId) {
-        throw new Error(createErr.message || "Failed to create or find user");
+        throw new Error(createErr?.message || "Failed to create or find user");
       }
       userId = foundId;
     }
@@ -83,19 +90,28 @@ export default serve(async (req) => {
       password: newPassword,
       email_confirm: true,
     });
-    if (updErr) throw updErr;
+    if (updErr) {
+      console.error("[admin-set-password] updateUserById error:", updErr.message);
+      throw updErr;
+    }
 
     // Garante perfil com role master
     const { error: upsertErr } = await supabaseAdmin
       .from("profiles")
       .upsert({ id: userId!, email, tenant_role: "master" }, { onConflict: "id" });
-    if (upsertErr) throw upsertErr;
+    if (upsertErr) {
+      console.error("[admin-set-password] profiles upsert error:", upsertErr.message);
+      throw upsertErr;
+    }
+
+    console.log("[admin-set-password] Success for", email, "user:", userId);
 
     return new Response(JSON.stringify({ success: true, userId }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (error: any) {
+    console.error("[admin-set-password] Unexpected error:", error?.message || error);
     return new Response(JSON.stringify({ error: error?.message || "Unknown error" }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...corsHeaders },
