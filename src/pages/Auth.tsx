@@ -30,7 +30,17 @@ export default function Auth() {
       toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
       navigate(from, { replace: true });
     } catch (err: any) {
-      toast({ title: "Erro ao entrar", description: err.message || "Verifique suas credenciais.", variant: "destructive" });
+      const msg = (err?.message || '').toLowerCase();
+      const isInvalidCreds = msg.includes('invalid login credentials') || msg.includes('invalid login');
+      const isMasterEmail = email.trim().toLowerCase() === 'rmalves21@hotmail.com';
+
+      if (isInvalidCreds && isMasterEmail) {
+        toast({ title: 'Corrigindo acesso...', description: 'Detectamos erro de credenciais. Vamos ajustar seu usuário master automaticamente.' });
+        await handleForceReset();
+        return;
+      }
+
+      toast({ title: 'Erro ao entrar', description: err.message || 'Verifique suas credenciais.', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
