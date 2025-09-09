@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Edit, Trash2, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 interface WhatsAppTemplate {
   id: number;
@@ -21,11 +22,12 @@ interface WhatsAppTemplate {
 }
 
 const WhatsAppTemplates = () => {
+  const { toast } = useToast();
+  const { profile } = useAuth();
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingTemplate, setEditingTemplate] = useState<WhatsAppTemplate | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const { toast } = useToast();
 
   // Form states
   const [formData, setFormData] = useState({
@@ -35,14 +37,10 @@ const WhatsAppTemplates = () => {
   });
 
   const templateTypes = [
-    { value: 'welcome', label: 'Boas-vindas' },
-    { value: 'order_created', label: 'Pedido Criado' },
-    { value: 'item_added', label: 'Item Adicionado' },
-    { value: 'item_cancelled', label: 'Item Cancelado' },
-    { value: 'payment_confirmed', label: 'Pagamento Confirmado' },
-    { value: 'shipping_info', label: 'Informações de Envio' },
-    { value: 'promotional', label: 'Promocional' },
-    { value: 'custom', label: 'Personalizado' }
+    { value: 'BROADCAST', label: 'Broadcast' },
+    { value: 'ITEM_ADDED', label: 'Item Adicionado' },
+    { value: 'PRODUCT_CANCELED', label: 'Produto Cancelado' },
+    { value: 'PAID_ORDER', label: 'Pedido Pago' }
   ];
 
   useEffect(() => {
@@ -85,9 +83,10 @@ const WhatsAppTemplates = () => {
 
     try {
       const templateData = {
-        type: formData.type,
+        type: formData.type as 'BROADCAST' | 'ITEM_ADDED' | 'PRODUCT_CANCELED' | 'PAID_ORDER',
         title: formData.title || null,
         content: formData.content,
+        tenant_id: profile?.tenant_id || ''
       };
 
       if (editingTemplate) {
