@@ -18,7 +18,7 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   console.error("Missing Supabase env vars in edge function");
 }
 
-const ALLOWED_EMAIL = "rmalves21@hotmail.com"; // Restrito por segurança
+const ALLOWED_EMAILS = ["rmalves21@hotmail.com", "suporte.biquinidathay@gmail.com"]; // Whitelist temporária
 
 export default serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -35,7 +35,7 @@ export default serve(async (req) => {
       });
     }
 
-    if (email.toLowerCase() !== ALLOWED_EMAIL.toLowerCase()) {
+    if (!ALLOWED_EMAILS.map(e => e.toLowerCase()).includes(email.toLowerCase())) {
       return new Response(JSON.stringify({ error: "Email not allowed" }), {
         status: 403,
         headers: { "Content-Type": "application/json", ...corsHeaders },
@@ -95,10 +95,10 @@ export default serve(async (req) => {
       throw updErr;
     }
 
-    // Garante perfil com role master
+    // Garante perfil com role super_admin no schema atual
     const { error: upsertErr } = await supabaseAdmin
       .from("profiles")
-      .upsert({ id: userId!, email, tenant_role: "master" }, { onConflict: "id" });
+      .upsert({ id: userId!, email, role: "super_admin", tenant_id: null }, { onConflict: "id" });
     if (upsertErr) {
       console.error("[admin-set-password] profiles upsert error:", upsertErr.message);
       throw upsertErr;
