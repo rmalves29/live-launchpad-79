@@ -14,6 +14,7 @@ interface Tenant {
   id: string;
   name: string;
   slug: string;
+  tenant_key: string;
   is_active: boolean;
   created_at: string;
   whatsapp_api_url?: string;
@@ -79,6 +80,7 @@ export const TenantsManager = () => {
           .update({
             name: formData.name,
             slug: formData.slug,
+            tenant_key: formData.slug,
             whatsapp_api_url: formData.whatsapp_api_url || null,
             melhor_envio_from_cep: formData.melhor_envio_from_cep,
             melhor_envio_env: formData.melhor_envio_env,
@@ -97,6 +99,7 @@ export const TenantsManager = () => {
           .insert({
             name: formData.name,
             slug: formData.slug,
+            tenant_key: formData.slug,
             whatsapp_api_url: formData.whatsapp_api_url || null,
             melhor_envio_from_cep: formData.melhor_envio_from_cep,
             melhor_envio_env: formData.melhor_envio_env,

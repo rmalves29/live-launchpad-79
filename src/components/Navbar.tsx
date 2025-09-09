@@ -11,7 +11,7 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const isWhatsAppActive = ['/whatsapp-templates', '/whatsapp-integration'].includes(location.pathname);
-  const { user } = useTenant();
+  const { user, isAdmin, isMaster } = useTenant();
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
@@ -22,6 +22,8 @@ const Navbar = () => {
     { path: '/relatorios', label: 'Relatórios' },
     { path: '/whatsapp-templates', label: 'Templates WPP' },
     { path: '/sorteio', label: 'Sorteio' },
+    ...(isAdmin || isMaster ? [{ path: '/integrations', label: 'Integrações' }] : []),
+    ...(isMaster ? [{ path: '/dashboard', label: 'Dashboard' }] : []),
     { path: '/config', label: 'Configurações' }
   ];
 

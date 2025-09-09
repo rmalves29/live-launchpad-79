@@ -23,6 +23,8 @@ import CotacaoFrete from "./pages/CotacaoFrete";
 import Etiquetas from "./pages/Etiquetas";
 import Auth from "./pages/Auth";
 import RequireAuth from "./components/RequireAuth";
+import Integrations from "./pages/Integrations";
+import Dashboard from "./pages/Dashboard";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +44,8 @@ const AppContent = () => {
         <Route path="/pedidos" element={<Pedidos />} />
         <Route path="/sorteio" element={<Sorteio />} />
         <Route path="/config" element={<RequireAuth><Config /></RequireAuth>} />
+        <Route path="/integrations" element={<RequireAuth><Integrations /></RequireAuth>} />
+        <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/produtos" element={<Produtos />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/relatorios" element={<Relatorios />} />

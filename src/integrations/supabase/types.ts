@@ -616,6 +616,147 @@ export type Database = {
           },
         ]
       }
+      integration_me: {
+        Row: {
+          access_token: string | null
+          account_id: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string | null
+          id: string
+          redirect_uri: string | null
+          refresh_token: string | null
+          tenant_id: string
+          updated_at: string | null
+          webhook_secret: string
+        }
+        Insert: {
+          access_token?: string | null
+          account_id?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          redirect_uri?: string | null
+          refresh_token?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          webhook_secret?: string
+        }
+        Update: {
+          access_token?: string | null
+          account_id?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          redirect_uri?: string | null
+          refresh_token?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          webhook_secret?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_me_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_mp: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string | null
+          id: string
+          public_base_url: string | null
+          public_key: string | null
+          redirect_uri: string | null
+          tenant_id: string
+          updated_at: string | null
+          webhook_secret: string
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          public_base_url?: string | null
+          public_key?: string | null
+          redirect_uri?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          webhook_secret?: string
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          public_base_url?: string | null
+          public_key?: string | null
+          redirect_uri?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          webhook_secret?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_mp_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_wpp: {
+        Row: {
+          business_phone: string
+          created_at: string | null
+          id: string
+          instance_name: string
+          session_status: string | null
+          tenant_id: string
+          updated_at: string | null
+          webhook_secret: string
+        }
+        Insert: {
+          business_phone: string
+          created_at?: string | null
+          id?: string
+          instance_name: string
+          session_status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          webhook_secret?: string
+        }
+        Update: {
+          business_phone?: string
+          created_at?: string | null
+          id?: string
+          instance_name?: string
+          session_status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          webhook_secret?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_wpp_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           cart_id: number | null
@@ -773,6 +914,7 @@ export type Database = {
           melhor_envio_from_cep: string | null
           name: string
           slug: string
+          tenant_key: string
           updated_at: string
           whatsapp_api_url: string | null
         }
@@ -784,6 +926,7 @@ export type Database = {
           melhor_envio_from_cep?: string | null
           name: string
           slug: string
+          tenant_key: string
           updated_at?: string
           whatsapp_api_url?: string | null
         }
@@ -795,10 +938,52 @@ export type Database = {
           melhor_envio_from_cep?: string | null
           name?: string
           slug?: string
+          tenant_key?: string
           updated_at?: string
           whatsapp_api_url?: string | null
         }
         Relationships: []
+      }
+      webhook_logs: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string
+          payload: Json | null
+          response: string | null
+          status_code: number
+          tenant_id: string
+          webhook_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          payload?: Json | null
+          response?: string | null
+          status_code: number
+          tenant_id: string
+          webhook_type: string
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          payload?: Json | null
+          response?: string | null
+          status_code?: number
+          tenant_id?: string
+          webhook_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_messages: {
         Row: {

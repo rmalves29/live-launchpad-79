@@ -29,3 +29,12 @@ verify_jwt = false
 
 [functions.admin-set-password]
 verify_jwt = false
+
+[functions.webhook-mercadopago]
+verify_jwt = false
+
+[functions.webhook-whatsapp]
+verify_jwt = false
+
+[functions.webhook-melhorenvio]
+verify_jwt = false
