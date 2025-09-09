@@ -56,32 +56,83 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_logs: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          created_at: string | null
+          entity: string
+          entity_id: string | null
+          id: string
+          meta: Json | null
+          tenant_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          created_at?: string | null
+          entity: string
+          entity_id?: string | null
+          id?: string
+          meta?: Json | null
+          tenant_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          created_at?: string | null
+          entity?: string
+          entity_id?: string | null
+          id?: string
+          meta?: Json | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_logs_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cart_items: {
         Row: {
-          cart_id: number | null
+          cart_id: number
           created_at: string | null
           id: number
           printed: boolean
-          product_id: number | null
+          product_id: number
           qty: number
+          tenant_id: string
           unit_price: number
         }
         Insert: {
-          cart_id?: number | null
+          cart_id: number
           created_at?: string | null
           id?: number
           printed?: boolean
-          product_id?: number | null
+          product_id: number
           qty?: number
+          tenant_id: string
           unit_price: number
         }
         Update: {
-          cart_id?: number | null
+          cart_id?: number
           created_at?: string | null
           id?: number
           printed?: boolean
-          product_id?: number | null
+          product_id?: number
           qty?: number
+          tenant_id?: string
           unit_price?: number
         }
         Relationships: [
@@ -99,6 +150,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cart_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       carts: {
@@ -109,7 +167,8 @@ export type Database = {
           event_date: string
           event_type: string
           id: number
-          status: string
+          status: Database["public"]["Enums"]["cart_status"]
+          tenant_id: string
         }
         Insert: {
           created_at?: string | null
@@ -118,7 +177,8 @@ export type Database = {
           event_date: string
           event_type: string
           id?: number
-          status?: string
+          status?: Database["public"]["Enums"]["cart_status"]
+          tenant_id: string
         }
         Update: {
           created_at?: string | null
@@ -127,9 +187,18 @@ export type Database = {
           event_date?: string
           event_type?: string
           id?: number
-          status?: string
+          status?: Database["public"]["Enums"]["cart_status"]
+          tenant_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "carts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       coupons: {
         Row: {
@@ -191,13 +260,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "customer_tag_assignments_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "customer_tag_assignments_tag_id_fkey"
             columns: ["tag_id"]
             isOneToOne: false
@@ -236,6 +298,7 @@ export type Database = {
           customer_name: string | null
           customer_phone: string
           id: number
+          tenant_id: string
           updated_at: string | null
           whatsapp_group_name: string
         }
@@ -244,6 +307,7 @@ export type Database = {
           customer_name?: string | null
           customer_phone: string
           id?: number
+          tenant_id: string
           updated_at?: string | null
           whatsapp_group_name: string
         }
@@ -252,10 +316,19 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string
           id?: number
+          tenant_id?: string
           updated_at?: string | null
           whatsapp_group_name?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customer_whatsapp_groups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       customers: {
         Row: {
@@ -270,8 +343,8 @@ export type Database = {
           phone: string
           state: string | null
           street: string | null
+          tenant_id: string
           updated_at: string | null
-          user_id: string | null
         }
         Insert: {
           cep?: string | null
@@ -285,8 +358,8 @@ export type Database = {
           phone: string
           state?: string | null
           street?: string | null
+          tenant_id: string
           updated_at?: string | null
-          user_id?: string | null
         }
         Update: {
           cep?: string | null
@@ -300,10 +373,18 @@ export type Database = {
           phone?: string
           state?: string | null
           street?: string | null
+          tenant_id?: string
           updated_at?: string | null
-          user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "customers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       frete_config: {
         Row: {
@@ -497,6 +578,47 @@ export type Database = {
         }
         Relationships: []
       }
+      integration_whatsapp: {
+        Row: {
+          api_url: string | null
+          created_at: string | null
+          id: string
+          instance_name: string
+          is_active: boolean
+          tenant_id: string
+          updated_at: string | null
+          webhook_secret: string
+        }
+        Insert: {
+          api_url?: string | null
+          created_at?: string | null
+          id?: string
+          instance_name: string
+          is_active?: boolean
+          tenant_id: string
+          updated_at?: string | null
+          webhook_secret: string
+        }
+        Update: {
+          api_url?: string | null
+          created_at?: string | null
+          id?: string
+          instance_name?: string
+          is_active?: boolean
+          tenant_id?: string
+          updated_at?: string | null
+          webhook_secret?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_whatsapp_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           cart_id: number | null
@@ -511,6 +633,7 @@ export type Database = {
           payment_confirmation_sent: boolean | null
           payment_link: string | null
           printed: boolean | null
+          tenant_id: string
           total_amount: number
           whatsapp_group_name: string | null
         }
@@ -527,6 +650,7 @@ export type Database = {
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
+          tenant_id: string
           total_amount: number
           whatsapp_group_name?: string | null
         }
@@ -543,6 +667,7 @@ export type Database = {
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
+          tenant_id?: string
           total_amount?: number
           whatsapp_group_name?: string | null
         }
@@ -554,37 +679,111 @@ export type Database = {
             referencedRelation: "carts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_integrations: {
+        Row: {
+          access_token: string
+          client_id: string | null
+          client_secret: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean
+          provider: string
+          public_key: string | null
+          tenant_id: string
+          updated_at: string | null
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token: string
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          provider?: string
+          public_key?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          provider?: string
+          public_key?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_integrations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
         ]
       }
       products: {
         Row: {
           code: string
+          created_at: string | null
           id: number
           image_url: string | null
           is_active: boolean
           name: string
           price: number
           stock: number
+          tenant_id: string
+          updated_at: string | null
         }
         Insert: {
           code: string
+          created_at?: string | null
           id?: number
           image_url?: string | null
           is_active?: boolean
           name: string
           price: number
           stock?: number
+          tenant_id: string
+          updated_at?: string | null
         }
         Update: {
           code?: string
+          created_at?: string | null
           id?: number
           image_url?: string | null
           is_active?: boolean
           name?: string
           price?: number
           stock?: number
+          tenant_id?: string
+          updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -592,6 +791,7 @@ export type Database = {
           email: string | null
           id: string
           role: Database["public"]["Enums"]["user_role"]
+          tenant_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -599,6 +799,7 @@ export type Database = {
           email?: string | null
           id: string
           role?: Database["public"]["Enums"]["user_role"]
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -606,7 +807,96 @@ export type Database = {
           email?: string | null
           id?: string
           role?: Database["public"]["Enums"]["user_role"]
+          tenant_id?: string | null
           updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shipping_integrations: {
+        Row: {
+          access_token: string
+          client_id: string | null
+          client_secret: string | null
+          created_at: string | null
+          from_cep: string | null
+          id: string
+          is_active: boolean
+          provider: string
+          sandbox: boolean
+          tenant_id: string
+          updated_at: string | null
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token: string
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          from_cep?: string | null
+          id?: string
+          is_active?: boolean
+          provider?: string
+          sandbox?: boolean
+          tenant_id: string
+          updated_at?: string | null
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          from_cep?: string | null
+          id?: string
+          is_active?: boolean
+          provider?: string
+          sandbox?: boolean
+          tenant_id?: string
+          updated_at?: string | null
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_integrations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenants: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -618,6 +908,7 @@ export type Database = {
           payload: Json | null
           response: string | null
           status_code: number
+          tenant_id: string | null
           webhook_type: string
         }
         Insert: {
@@ -627,6 +918,7 @@ export type Database = {
           payload?: Json | null
           response?: string | null
           status_code: number
+          tenant_id?: string | null
           webhook_type: string
         }
         Update: {
@@ -636,14 +928,23 @@ export type Database = {
           payload?: Json | null
           response?: string | null
           status_code?: number
+          tenant_id?: string | null
           webhook_type?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "webhook_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_messages: {
         Row: {
           amount: number | null
-          created_at: string
+          created_at: string | null
           id: number
           message: string
           order_id: number | null
@@ -652,13 +953,14 @@ export type Database = {
           product_name: string | null
           received_at: string | null
           sent_at: string | null
-          type: string
-          updated_at: string
+          tenant_id: string
+          type: Database["public"]["Enums"]["whatsapp_message_type"]
+          updated_at: string | null
           whatsapp_group_name: string | null
         }
         Insert: {
           amount?: number | null
-          created_at?: string
+          created_at?: string | null
           id?: number
           message: string
           order_id?: number | null
@@ -667,13 +969,14 @@ export type Database = {
           product_name?: string | null
           received_at?: string | null
           sent_at?: string | null
-          type: string
-          updated_at?: string
+          tenant_id: string
+          type: Database["public"]["Enums"]["whatsapp_message_type"]
+          updated_at?: string | null
           whatsapp_group_name?: string | null
         }
         Update: {
           amount?: number | null
-          created_at?: string
+          created_at?: string | null
           id?: number
           message?: string
           order_id?: number | null
@@ -682,38 +985,65 @@ export type Database = {
           product_name?: string | null
           received_at?: string | null
           sent_at?: string | null
-          type?: string
-          updated_at?: string
+          tenant_id?: string
+          type?: Database["public"]["Enums"]["whatsapp_message_type"]
+          updated_at?: string | null
           whatsapp_group_name?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_templates: {
         Row: {
           content: string
-          created_at: string
+          created_at: string | null
           id: number
+          tenant_id: string
           title: string | null
-          type: string
-          updated_at: string
+          type: Database["public"]["Enums"]["whatsapp_template_type"]
+          updated_at: string | null
         }
         Insert: {
           content: string
-          created_at?: string
+          created_at?: string | null
           id?: number
+          tenant_id: string
           title?: string | null
-          type: string
-          updated_at?: string
+          type: Database["public"]["Enums"]["whatsapp_template_type"]
+          updated_at?: string | null
         }
         Update: {
           content?: string
-          created_at?: string
+          created_at?: string | null
           id?: number
+          tenant_id?: string
           title?: string | null
-          type?: string
-          updated_at?: string
+          type?: Database["public"]["Enums"]["whatsapp_template_type"]
+          updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -724,9 +1054,9 @@ export type Database = {
         Args: { data: string }
         Returns: string
       }
-      get_user_role: {
-        Args: { user_id: string }
-        Returns: Database["public"]["Enums"]["user_role"]
+      get_current_tenant_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       http: {
         Args: { request: Database["public"]["CompositeTypes"]["http_request"] }
@@ -779,6 +1109,10 @@ export type Database = {
         Args: { curlopt: string; value: string }
         Returns: boolean
       }
+      is_super_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       text_to_bytea: {
         Args: { data: string }
         Returns: string
@@ -789,7 +1123,18 @@ export type Database = {
       }
     }
     Enums: {
-      user_role: "admin" | "customer"
+      cart_status: "OPEN" | "CLOSED"
+      user_role: "super_admin" | "tenant_admin" | "staff"
+      whatsapp_message_type:
+        | "incoming"
+        | "outgoing"
+        | "broadcast"
+        | "system_log"
+      whatsapp_template_type:
+        | "BROADCAST"
+        | "ITEM_ADDED"
+        | "PRODUCT_CANCELED"
+        | "PAID_ORDER"
     }
     CompositeTypes: {
       http_header: {
@@ -933,7 +1278,20 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      user_role: ["admin", "customer"],
+      cart_status: ["OPEN", "CLOSED"],
+      user_role: ["super_admin", "tenant_admin", "staff"],
+      whatsapp_message_type: [
+        "incoming",
+        "outgoing",
+        "broadcast",
+        "system_log",
+      ],
+      whatsapp_template_type: [
+        "BROADCAST",
+        "ITEM_ADDED",
+        "PRODUCT_CANCELED",
+        "PAID_ORDER",
+      ],
     },
   },
 } as const
