@@ -56,6 +56,32 @@ export const TenantsManager = () => {
     }
   };
 
+  const generateUniqueSlug = async (baseSlug: string): Promise<string> => {
+    let slug = baseSlug;
+    let counter = 1;
+    
+    while (true) {
+      const { data, error } = await supabase
+        .from("tenants")
+        .select("slug")
+        .eq("slug", slug)
+        .single();
+      
+      if (error && error.code === 'PGRST116') {
+        // Não encontrou duplicata, pode usar este slug
+        return slug;
+      }
+      
+      if (data) {
+        // Encontrou duplicata, tentar próximo
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+      } else {
+        return slug;
+      }
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.name || !formData.slug) {
       toast({
@@ -84,15 +110,32 @@ export const TenantsManager = () => {
           description: "Empresa atualizada com sucesso",
         });
       } else {
-        const { error } = await supabase
+        // Gerar slug único
+        const uniqueSlug = await generateUniqueSlug(formData.slug);
+        
+        const { data: newTenant, error } = await supabase
           .from("tenants")
           .insert({
             name: formData.name,
-            slug: formData.slug,
+            slug: uniqueSlug,
             is_active: true
-          });
+          })
+          .select()
+          .single();
 
         if (error) throw error;
+
+        // Vincular usuário atual à nova empresa
+        if (newTenant) {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .update({ tenant_id: newTenant.id })
+            .eq("id", (await supabase.auth.getUser()).data.user?.id);
+
+          if (profileError) {
+            console.warn("Erro ao vincular usuário à empresa:", profileError);
+          }
+        }
 
         toast({
           title: "Sucesso",
