@@ -8,6 +8,7 @@ import { Badge } from "./ui/badge";
 import { Switch } from "./ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "./ui/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { Plus, Edit, Users } from "lucide-react";
 
 interface Tenant {
@@ -20,6 +21,7 @@ interface Tenant {
 }
 
 export const TenantsManager = () => {
+  const { user } = useAuth();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -126,11 +128,11 @@ export const TenantsManager = () => {
         if (error) throw error;
 
         // Vincular usuário atual à nova empresa
-        if (newTenant) {
+        if (newTenant && user) {
           const { error: profileError } = await supabase
             .from("profiles")
             .update({ tenant_id: newTenant.id })
-            .eq("id", (await supabase.auth.getUser()).data.user?.id);
+            .eq("id", user.id);
 
           if (profileError) {
             console.warn("Erro ao vincular usuário à empresa:", profileError);
