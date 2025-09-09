@@ -56,7 +56,7 @@ export default function Auth() {
         options: { emailRedirectTo: redirectUrl },
       });
       if (error) throw error;
-      toast({ title: "Cadastro iniciado", description: "Verifique seu e-mail para confirmar o cadastro." });
+      toast({ title: "Cadastro realizado!", description: "Você já pode fazer login com suas credenciais." });
       setMode("login");
     } catch (err: any) {
       toast({ title: "Erro no cadastro", description: err.message || "Tente novamente mais tarde.", variant: "destructive" });
