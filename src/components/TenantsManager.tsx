@@ -9,7 +9,7 @@ import { Switch } from "./ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "./ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Edit, Users, Mail } from "lucide-react";
+import { Plus, Edit, Users, Mail, Trash2 } from "lucide-react";
 
 interface Tenant {
   id: string;
@@ -247,6 +247,40 @@ export const TenantsManager = () => {
     setDialogOpen(true);
   };
 
+  const handleDelete = async (tenant: Tenant) => {
+    const confirmDelete = window.confirm(
+      `Tem certeza que deseja excluir a empresa "${tenant.name}"? Esta ação não pode ser desfeita.`
+    );
+
+    if (!confirmDelete) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("tenants")
+        .delete()
+        .eq("id", tenant.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso",
+        description: "Empresa excluída com sucesso",
+      });
+
+      loadTenants();
+    } catch (error) {
+      console.error("Erro ao excluir empresa:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir a empresa",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -357,6 +391,13 @@ export const TenantsManager = () => {
                     onClick={() => openEditDialog(tenant)}
                   >
                     <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleDelete(tenant)}
+                  >
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
