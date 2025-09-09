@@ -9,7 +9,7 @@ import { Switch } from "./ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "./ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Edit, Users } from "lucide-react";
+import { Plus, Edit, Users, Mail } from "lucide-react";
 
 interface Tenant {
   id: string;
@@ -28,7 +28,9 @@ export const TenantsManager = () => {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [formData, setFormData] = useState({
     name: "",
-    slug: ""
+    slug: "",
+    adminEmail: "",
+    adminPassword: ""
   });
   const { toast } = useToast();
 
@@ -94,6 +96,15 @@ export const TenantsManager = () => {
       return;
     }
 
+    if (!editingTenant && (!formData.adminEmail || !formData.adminPassword)) {
+      toast({
+        title: "Erro",
+        description: "Email e senha do administrador são obrigatórios para nova empresa",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       if (editingTenant) {
@@ -127,15 +138,38 @@ export const TenantsManager = () => {
 
         if (error) throw error;
 
-        // Vincular usuário atual à nova empresa
-        if (newTenant && user) {
-          const { error: profileError } = await supabase
-            .from("profiles")
-            .update({ tenant_id: newTenant.id })
-            .eq("id", user.id);
+        // Criar usuário administrador para a nova empresa
+        if (newTenant) {
+          try {
+            const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+              email: formData.adminEmail,
+              password: formData.adminPassword,
+              email_confirm: true
+            });
 
-          if (profileError) {
-            console.warn("Erro ao vincular usuário à empresa:", profileError);
+            if (authError) throw authError;
+
+            // Atualizar perfil do usuário com dados da empresa
+            const { error: profileError } = await supabase
+              .from("profiles")
+              .update({
+                tenant_id: newTenant.id,
+                role: 'tenant_admin'
+              })
+              .eq("id", authData.user.id);
+
+            if (profileError) {
+              console.warn("Erro ao configurar perfil do usuário:", profileError);
+            } else {
+              console.log("✅ Usuário administrador criado com sucesso para empresa:", newTenant.name);
+            }
+          } catch (userError) {
+            console.error("Erro ao criar usuário administrador:", userError);
+            toast({
+              title: "Aviso",
+              description: "Empresa criada, mas houve erro ao criar o usuário administrador",
+              variant: "destructive",
+            });
           }
         }
 
@@ -149,7 +183,9 @@ export const TenantsManager = () => {
       setEditingTenant(null);
       setFormData({
         name: "",
-        slug: ""
+        slug: "",
+        adminEmail: "",
+        adminPassword: ""
       });
       loadTenants();
     } catch (error) {
@@ -193,7 +229,9 @@ export const TenantsManager = () => {
     setEditingTenant(tenant);
     setFormData({
       name: tenant.name,
-      slug: tenant.slug
+      slug: tenant.slug,
+      adminEmail: "",
+      adminPassword: ""
     });
     setDialogOpen(true);
   };
@@ -202,7 +240,9 @@ export const TenantsManager = () => {
     setEditingTenant(null);
     setFormData({
       name: "",
-      slug: ""
+      slug: "",
+      adminEmail: "",
+      adminPassword: ""
     });
     setDialogOpen(true);
   };
@@ -250,6 +290,32 @@ export const TenantsManager = () => {
                   placeholder="ex: minha-empresa"
                 />
               </div>
+
+              {!editingTenant && (
+                <>
+                  <div>
+                    <Label htmlFor="adminEmail">Email do Administrador</Label>
+                    <Input
+                      id="adminEmail"
+                      type="email"
+                      value={formData.adminEmail}
+                      onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
+                      placeholder="admin@empresa.com"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="adminPassword">Senha do Administrador</Label>
+                    <Input
+                      id="adminPassword"
+                      type="password"
+                      value={formData.adminPassword}
+                      onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="flex justify-end space-x-2">
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
