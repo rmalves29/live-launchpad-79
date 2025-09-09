@@ -25,19 +25,27 @@ import Auth from "./pages/Auth";
 import RequireAuth from "./components/RequireAuth";
 import Integrations from "./pages/Integrations";
 import Dashboard from "./pages/Dashboard";
+import TenantLogin from "./pages/TenantLogin";
+import TenantDashboard from "./pages/TenantDashboard";
+import TenantSelector from "./pages/TenantSelector";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
   const location = useLocation();
-  const showNavbar = location.pathname !== '/checkout';
+  const showNavbar = location.pathname !== '/checkout' && 
+                    !location.pathname.startsWith('/empresa/') &&
+                    location.pathname !== '/';
 
   return (
     <>
       {showNavbar && <Navbar />}
       <Routes>
-        <Route path="/" element={<Index />} />
+        <Route path="/" element={<TenantSelector />} />
+        <Route path="/admin" element={<Index />} />
         <Route path="/auth" element={<Auth />} />
+        <Route path="/empresa/:tenantSlug/login" element={<TenantLogin />} />
+        <Route path="/empresa/:tenantSlug/dashboard" element={<TenantDashboard />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/mp/return" element={<MpReturn />} />
         <Route path="/pedidos-manual" element={<PedidosManual />} />
