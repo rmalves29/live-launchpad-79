@@ -39,6 +39,8 @@ const Produtos = () => {
     image_url: '',
     is_active: true
   });
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -76,13 +78,31 @@ const Produtos = () => {
       return;
     }
 
+    if (!profile?.tenant_id) {
+      toast({
+        title: 'Erro',
+        description: 'Usuário não vinculado a uma empresa. Faça logout e login novamente.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
+      setUploading(true);
+      
+      let imageUrl = formData.image_url || null;
+      
+      // Upload new image if selected
+      if (selectedFile) {
+        imageUrl = await uploadImage(selectedFile);
+      }
+
       const productData = {
         code: formData.code,
         name: formData.name,
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock) || 0,
-        image_url: formData.image_url || null,
+        image_url: imageUrl,
         is_active: formData.is_active
       };
 
@@ -103,7 +123,7 @@ const Produtos = () => {
           .from('products')
           .insert([{
             ...productData,
-            tenant_id: profile?.tenant_id || ''
+            tenant_id: profile.tenant_id
           }]);
 
         if (error) throw error;
@@ -124,6 +144,7 @@ const Produtos = () => {
         image_url: '',
         is_active: true
       });
+      setSelectedFile(null);
       loadProducts();
     } catch (error: any) {
       console.error('Error saving product:', error);
@@ -132,6 +153,58 @@ const Produtos = () => {
         description: error.message || 'Erro ao salvar produto',
         variant: 'destructive'
       });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: 'Erro',
+          description: 'Arquivo muito grande. Máximo 5MB.',
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: 'Erro',
+          description: 'Selecione apenas arquivos de imagem.',
+          variant: 'destructive'
+        });
+        return;
+      }
+      
+      setSelectedFile(file);
+    }
+  };
+
+  const uploadImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `products/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('product-images')
+        .upload(filePath, file);
+
+      if (error) throw error;
+
+      const { data: urlData } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(filePath);
+
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      throw error;
     }
   };
 
@@ -145,6 +218,7 @@ const Produtos = () => {
       image_url: product.image_url || '',
       is_active: product.is_active
     });
+    setSelectedFile(null);
     setIsDialogOpen(true);
   };
 
@@ -263,13 +337,43 @@ const Produtos = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="image_url">URL da Imagem</Label>
-                  <Input
-                    id="image_url"
-                    value={formData.image_url}
-                    onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                    placeholder="https://..."
-                  />
+                  <Label htmlFor="image">Imagem do Produto</Label>
+                  <div className="space-y-2">
+                    <Input
+                      id="image"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="cursor-pointer"
+                    />
+                    {selectedFile && (
+                      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                        <Upload className="h-4 w-4" />
+                        <span>{selectedFile.name}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedFile(null)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                    {formData.image_url && !selectedFile && (
+                      <div className="flex items-center space-x-2">
+                        <img 
+                          src={formData.image_url} 
+                          alt="Preview" 
+                          className="h-10 w-10 object-cover rounded"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                        <span className="text-sm text-muted-foreground">Imagem atual</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center space-x-2">
@@ -285,8 +389,15 @@ const Produtos = () => {
                   <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button onClick={handleSave}>
-                    {editingProduct ? 'Atualizar' : 'Cadastrar'}
+                  <Button onClick={handleSave} disabled={uploading}>
+                    {uploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        {selectedFile ? 'Enviando...' : 'Salvando...'}
+                      </>
+                    ) : (
+                      editingProduct ? 'Atualizar' : 'Cadastrar'
+                    )}
                   </Button>
                 </div>
               </div>
@@ -321,51 +432,68 @@ const Produtos = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Código</TableHead>
-                      <TableHead>Nome</TableHead>
-                      <TableHead>Preço</TableHead>
-                      <TableHead>Estoque</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredProducts.map((product) => (
-                      <TableRow key={product.id}>
-                        <TableCell className="font-mono">{product.code}</TableCell>
-                        <TableCell>{product.name}</TableCell>
-                        <TableCell>{formatCurrency(product.price)}</TableCell>
-                        <TableCell>{product.stock}</TableCell>
-                        <TableCell>
-                          <Badge variant={product.is_active ? 'default' : 'secondary'}>
-                            {product.is_active ? 'Ativo' : 'Inativo'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end space-x-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEdit(product)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDelete(product.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Imagem</TableHead>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Preço</TableHead>
+                        <TableHead>Estoque</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredProducts.map((product) => (
+                        <TableRow key={product.id}>
+                          <TableCell>
+                            {product.image_url ? (
+                              <img 
+                                src={product.image_url} 
+                                alt={product.name}
+                                className="h-12 w-12 object-cover rounded"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <div className="h-12 w-12 bg-muted rounded flex items-center justify-center">
+                                <Package className="h-6 w-6 text-muted-foreground" />
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-mono">{product.code}</TableCell>
+                          <TableCell>{product.name}</TableCell>
+                          <TableCell>{formatCurrency(product.price)}</TableCell>
+                          <TableCell>{product.stock}</TableCell>
+                          <TableCell>
+                            <Badge variant={product.is_active ? 'default' : 'secondary'}>
+                              {product.is_active ? 'Ativo' : 'Inativo'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEdit(product)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDelete(product.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
               </div>
             )}
           </CardContent>
