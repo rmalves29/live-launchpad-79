@@ -20,8 +20,8 @@ import {
 import TenantProducts from '@/components/tenant/TenantProducts';
 import TenantCustomers from '@/components/tenant/TenantCustomers';
 import TenantOrders from '@/components/tenant/TenantOrders';
-import TenantIntegrations from '@/components/tenant/TenantIntegrations';
-import TenantMessages from '@/components/tenant/TenantMessages';
+import { TenantIntegrations } from '@/components/tenant/TenantIntegrations';
+import { TenantMessages } from '@/components/tenant/TenantMessages';
 
 interface DashboardStats {
   todayOrders: number;

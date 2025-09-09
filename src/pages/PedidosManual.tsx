@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Search, RefreshCw, Edit, Trash2, Plus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useAuth } from '@/hooks/useAuth';
 
 
 interface Product {
@@ -34,6 +35,7 @@ interface Order {
 
 const PedidosManual = () => {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,7 +214,8 @@ const PedidosManual = () => {
               event_type: 'MANUAL',
               event_date: today,
               total_amount: subtotal,
-              is_paid: false
+              is_paid: false,
+              tenant_id: profile?.tenant_id || ''
             }])
             .select()
             .single();
@@ -274,7 +277,8 @@ const PedidosManual = () => {
             customer_phone: normalizedPhone,
             event_type: 'MANUAL',
             event_date: today,
-            status: 'OPEN'
+            status: 'OPEN',
+            tenant_id: profile?.tenant_id || ''
           })
           .select()
           .single();
@@ -320,7 +324,8 @@ const PedidosManual = () => {
             cart_id: cartId,
             product_id: product.id,
             qty: qty,
-            unit_price: product.price
+            unit_price: product.price,
+            tenant_id: profile?.tenant_id || ''
           });
 
         if (cartItemError) throw cartItemError;

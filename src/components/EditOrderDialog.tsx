@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { Loader2, Plus, Trash2, Search } from 'lucide-react';
 
 interface Product {
@@ -54,6 +55,7 @@ interface EditOrderDialogProps {
 
 export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: EditOrderDialogProps) => {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -132,7 +134,8 @@ useEffect(() => {
           customer_phone: order?.customer_phone || '',
           event_type: order?.event_type || 'BAZAR',
           event_date: order?.event_date || new Date().toISOString().split('T')[0],
-          status: 'OPEN'
+          status: 'OPEN',
+          tenant_id: profile?.tenant_id || ''
         })
         .select()
         .single();
@@ -188,7 +191,8 @@ useEffect(() => {
             cart_id: targetCartId,
             product_id: selectedProduct.id,
             qty: quantity,
-            unit_price: unitPrice || selectedProduct.price
+            unit_price: unitPrice || selectedProduct.price,
+            tenant_id: profile?.tenant_id || ''
           });
 
         if (error) throw error;
@@ -409,8 +413,9 @@ useEffect(() => {
       await supabase.from('whatsapp_messages').insert({
         phone: order.customer_phone,
         message,
-        type: 'product_canceled',
+        type: 'system_log',
         sent_at: new Date().toISOString(),
+        tenant_id: profile?.tenant_id || ''
       });
 
       if (sent) {

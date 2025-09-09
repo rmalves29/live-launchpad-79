@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Customer {
   id: number;
@@ -55,6 +56,7 @@ interface Order {
 
 const Clientes = () => {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -170,7 +172,8 @@ const Clientes = () => {
         .from('customers')
         .insert({
           phone: normalizedPhone,
-          name: newCustomer.name
+          name: newCustomer.name,
+          tenant_id: profile?.tenant_id || ''
         });
 
       if (error) throw error;

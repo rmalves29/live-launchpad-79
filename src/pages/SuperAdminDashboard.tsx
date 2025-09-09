@@ -75,7 +75,10 @@ export default function SuperAdminDashboard() {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      setUsers(data || []);
+      const filteredData = (data || []).filter(user => 
+        user.role !== 'super_admin' && user.tenant_id
+      ) as TenantUser[];
+      setUsers(filteredData);
     } catch (error) {
       toast({
         title: 'Erro',

@@ -16,6 +16,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Order {
   id: number;
@@ -55,6 +56,7 @@ interface Order {
 
 const Pedidos = () => {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterPaid, setFilterPaid] = useState<boolean | null>(null);
@@ -742,12 +744,13 @@ Obrigado pela confiança! 🙌`;
         const phone = uniquePhones[i];
         const message = messages[i % messages.length];
         
-        await supabase.from('whatsapp_messages').insert({
-          phone,
-          message,
-          type: 'broadcast',
-          sent_at: new Date().toISOString(),
-        });
+         await supabase.from('whatsapp_messages').insert({
+           phone,
+           message,
+           type: 'broadcast',
+           sent_at: new Date().toISOString(),
+           tenant_id: profile?.tenant_id || ''
+         });
       }
 
       const successCount = result.sucesso ? uniquePhones.length : 0;

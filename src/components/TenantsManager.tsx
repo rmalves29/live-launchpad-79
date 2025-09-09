@@ -14,12 +14,9 @@ interface Tenant {
   id: string;
   name: string;
   slug: string;
-  tenant_key: string;
   is_active: boolean;
   created_at: string;
-  whatsapp_api_url?: string;
-  melhor_envio_from_cep?: string;
-  melhor_envio_env?: string;
+  updated_at: string;
 }
 
 export const TenantsManager = () => {
@@ -29,10 +26,7 @@ export const TenantsManager = () => {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [formData, setFormData] = useState({
     name: "",
-    slug: "",
-    whatsapp_api_url: "",
-    melhor_envio_from_cep: "31575060",
-    melhor_envio_env: "sandbox"
+    slug: ""
   });
   const { toast } = useToast();
 
@@ -79,11 +73,7 @@ export const TenantsManager = () => {
           .from("tenants")
           .update({
             name: formData.name,
-            slug: formData.slug,
-            tenant_key: formData.slug,
-            whatsapp_api_url: formData.whatsapp_api_url || null,
-            melhor_envio_from_cep: formData.melhor_envio_from_cep,
-            melhor_envio_env: formData.melhor_envio_env,
+            slug: formData.slug
           })
           .eq("id", editingTenant.id);
 
@@ -99,11 +89,7 @@ export const TenantsManager = () => {
           .insert({
             name: formData.name,
             slug: formData.slug,
-            tenant_key: formData.slug,
-            whatsapp_api_url: formData.whatsapp_api_url || null,
-            melhor_envio_from_cep: formData.melhor_envio_from_cep,
-            melhor_envio_env: formData.melhor_envio_env,
-            is_active: true,
+            is_active: true
           });
 
         if (error) throw error;
@@ -118,10 +104,7 @@ export const TenantsManager = () => {
       setEditingTenant(null);
       setFormData({
         name: "",
-        slug: "",
-        whatsapp_api_url: "",
-        melhor_envio_from_cep: "31575060",
-        melhor_envio_env: "sandbox"
+        slug: ""
       });
       loadTenants();
     } catch (error) {
@@ -165,10 +148,7 @@ export const TenantsManager = () => {
     setEditingTenant(tenant);
     setFormData({
       name: tenant.name,
-      slug: tenant.slug,
-      whatsapp_api_url: tenant.whatsapp_api_url || "",
-      melhor_envio_from_cep: tenant.melhor_envio_from_cep || "31575060",
-      melhor_envio_env: tenant.melhor_envio_env || "sandbox"
+      slug: tenant.slug
     });
     setDialogOpen(true);
   };
@@ -177,10 +157,7 @@ export const TenantsManager = () => {
     setEditingTenant(null);
     setFormData({
       name: "",
-      slug: "",
-      whatsapp_api_url: "",
-      melhor_envio_from_cep: "31575060",
-      melhor_envio_env: "sandbox"
+      slug: ""
     });
     setDialogOpen(true);
   };
@@ -229,39 +206,6 @@ export const TenantsManager = () => {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="whatsapp_api_url">URL da API do WhatsApp</Label>
-                <Input
-                  id="whatsapp_api_url"
-                  value={formData.whatsapp_api_url}
-                  onChange={(e) => setFormData({ ...formData, whatsapp_api_url: e.target.value })}
-                  placeholder="https://api.whatsapp.com..."
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="melhor_envio_from_cep">CEP de Origem (Melhor Envio)</Label>
-                <Input
-                  id="melhor_envio_from_cep"
-                  value={formData.melhor_envio_from_cep}
-                  onChange={(e) => setFormData({ ...formData, melhor_envio_from_cep: e.target.value })}
-                  placeholder="31575060"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="melhor_envio_env">Ambiente Melhor Envio</Label>
-                <select
-                  id="melhor_envio_env"
-                  value={formData.melhor_envio_env}
-                  onChange={(e) => setFormData({ ...formData, melhor_envio_env: e.target.value })}
-                  className="w-full px-3 py-2 border border-input rounded-md"
-                >
-                  <option value="sandbox">Sandbox</option>
-                  <option value="production">Produção</option>
-                </select>
-              </div>
-
               <div className="flex justify-end space-x-2">
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancelar
@@ -308,11 +252,6 @@ export const TenantsManager = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-2 text-sm">
-                {tenant.whatsapp_api_url && (
-                  <p><strong>WhatsApp API:</strong> {tenant.whatsapp_api_url}</p>
-                )}
-                <p><strong>CEP Origem:</strong> {tenant.melhor_envio_from_cep}</p>
-                <p><strong>Ambiente:</strong> {tenant.melhor_envio_env}</p>
                 <p className="text-muted-foreground">
                   Criada em: {new Date(tenant.created_at).toLocaleDateString('pt-BR')}
                 </p>
