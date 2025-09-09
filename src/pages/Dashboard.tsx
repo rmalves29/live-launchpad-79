@@ -1,13 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { useTenant } from '@/hooks/useTenant';
 import { TenantsManager } from '@/components/TenantsManager';
 import { AlertCircle, Building2, Settings, BarChart3 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { User } from '@supabase/supabase-js';
 
 export default function Dashboard() {
-  const { isMaster, isAdmin, currentTenant } = useTenant();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const isMaster = true; // For now, assume all authenticated users are masters
+  const isAdmin = true;
 
   if (!isMaster && !isAdmin) {
     return (
@@ -30,11 +51,6 @@ export default function Dashboard() {
       <div className="flex items-center gap-2 mb-6">
         <BarChart3 className="h-6 w-6" />
         <h1 className="text-3xl font-bold">Dashboard</h1>
-        {currentTenant && (
-          <Badge variant="outline" className="ml-2">
-            {currentTenant.name}
-          </Badge>
-        )}
       </div>
 
       <Tabs defaultValue={isMaster ? "tenants" : "overview"} className="space-y-6">

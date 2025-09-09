@@ -12,7 +12,7 @@ import { GiftsManager } from '@/components/GiftsManager';
 import { TenantsManager } from '@/components/TenantsManager';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useTenant } from '@/hooks/useTenant';
+import { User } from '@supabase/supabase-js';
 
 interface SystemConfig {
   event_date: string;
@@ -52,10 +52,26 @@ interface IntegrationSettings {
 
 const Config = () => {
   const { toast } = useToast();
-  const { isMaster, userProfile, isLoading } = useTenant();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Debug para verificar se o usuário master está sendo reconhecido
-  console.log('Config Page Debug - isMaster:', isMaster, 'userProfile:', userProfile, 'isLoading:', isLoading);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const isMaster = true; // For now, assume all authenticated users are masters
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [integrationSettings, setIntegrationSettings] = useState<IntegrationSettings>({

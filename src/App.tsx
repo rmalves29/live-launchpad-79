@@ -3,7 +3,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { TenantProvider } from "./hooks/useTenant";
 import Navbar from "./components/Navbar";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -23,37 +22,25 @@ import CotacaoFrete from "./pages/CotacaoFrete";
 import Etiquetas from "./pages/Etiquetas";
 import Auth from "./pages/Auth";
 import RequireAuth from "./components/RequireAuth";
-import Integrations from "./pages/Integrations";
-import Dashboard from "./pages/Dashboard";
-import TenantLogin from "./pages/TenantLogin";
-import TenantDashboard from "./pages/TenantDashboard";
-import TenantSelector from "./pages/TenantSelector";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
   const location = useLocation();
-  const showNavbar = location.pathname !== '/checkout' && 
-                    !location.pathname.startsWith('/empresa/') &&
-                    location.pathname !== '/';
+  const showNavbar = location.pathname !== '/checkout';
 
   return (
     <>
       {showNavbar && <Navbar />}
       <Routes>
-        <Route path="/" element={<TenantSelector />} />
-        <Route path="/admin" element={<Index />} />
+        <Route path="/" element={<Index />} />
         <Route path="/auth" element={<Auth />} />
-        <Route path="/empresa/:tenantSlug/login" element={<TenantLogin />} />
-        <Route path="/empresa/:tenantSlug/dashboard" element={<TenantDashboard />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/mp/return" element={<MpReturn />} />
         <Route path="/pedidos-manual" element={<PedidosManual />} />
         <Route path="/pedidos" element={<Pedidos />} />
         <Route path="/sorteio" element={<Sorteio />} />
         <Route path="/config" element={<RequireAuth><Config /></RequireAuth>} />
-        <Route path="/integrations" element={<RequireAuth><Integrations /></RequireAuth>} />
-        <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/produtos" element={<Produtos />} />
         <Route path="/clientes" element={<Clientes />} />
         <Route path="/relatorios" element={<Relatorios />} />
@@ -74,9 +61,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <TenantProvider>
-          <AppContent />
-        </TenantProvider>
+        <AppContent />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
