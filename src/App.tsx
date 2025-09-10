@@ -23,6 +23,9 @@ import CotacaoFrete from "./pages/CotacaoFrete";
 import Etiquetas from "./pages/Etiquetas";
 import Auth from "./pages/Auth";
 import RequireAuth from "./components/RequireAuth";
+import { TenantProvider } from "@/contexts/TenantContext";
+import { TenantLoader } from "@/components/TenantLoader";
+import { TenantLinkHelper } from "@/components/TenantLinkHelper";
 
 const queryClient = new QueryClient();
 
@@ -59,13 +62,20 @@ const AppContent = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
-      </TooltipProvider>
+      <TenantProvider>
+        <TenantLoader>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <div className="min-h-screen">
+                <TenantLinkHelper />
+                <AppContent />
+              </div>
+            </BrowserRouter>
+          </TooltipProvider>
+        </TenantLoader>
+      </TenantProvider>
     </AuthProvider>
   </QueryClientProvider>
 );
