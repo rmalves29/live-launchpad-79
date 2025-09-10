@@ -96,10 +96,10 @@ export const TenantsManager = () => {
       return;
     }
 
-    if (!editingTenant && (!formData.adminEmail || !formData.adminPassword)) {
+    if (!editingTenant && (!formData.adminEmail)) {
       toast({
         title: "Erro",
-        description: "Email e senha do administrador são obrigatórios para nova empresa",
+        description: "Email do administrador é obrigatório para nova empresa",
         variant: "destructive",
       });
       return;
@@ -141,18 +141,45 @@ export const TenantsManager = () => {
         // Criar usuário administrador para a nova empresa via Edge Function (confirmado automaticamente)
         if (newTenant) {
           try {
-            const { error: fnError } = await supabase.functions.invoke('tenant-create-user', {
+            // Gera senha aleatória se não informada (para permitir login por link mágico)
+            const generatedPassword = !formData.adminPassword
+              ? Math.random().toString(36).slice(-10) +
+                Math.random().toString(36).toUpperCase().slice(-4) +
+                "!#"
+              : formData.adminPassword;
+
+            const { error: createErr } = await supabase.functions.invoke('tenant-create-user', {
               body: {
                 email: formData.adminEmail,
-                password: formData.adminPassword,
+                password: generatedPassword,
                 tenant_id: newTenant.id,
                 role: 'tenant_admin',
               },
             });
 
-            if (fnError) throw fnError;
+            if (createErr) throw createErr;
 
             console.log("✅ Usuário administrador criado via edge function para empresa:", newTenant.name);
+
+            // Se não informamos senha, gera e abre um link mágico de acesso imediato
+            if (!formData.adminPassword) {
+              const { data: linkData, error: linkErr } = await supabase.functions.invoke('tenant-generate-login-link', {
+                body: {
+                  email: formData.adminEmail,
+                  tenant_id: newTenant.id,
+                },
+              });
+
+              if (linkErr) {
+                console.warn("Não foi possível gerar link de acesso automático:", linkErr);
+              } else if (linkData?.action_link) {
+                window.open(linkData.action_link, "_blank");
+                toast({
+                  title: "Link de acesso criado",
+                  description: "Abrimos o acesso do admin em uma nova aba.",
+                });
+              }
+            }
           } catch (userError) {
             console.error("Erro ao criar usuário administrador:", userError);
             toast({
@@ -329,13 +356,13 @@ export const TenantsManager = () => {
                   </div>
                   
                   <div>
-                    <Label htmlFor="adminPassword">Senha do Administrador</Label>
+                    <Label htmlFor="adminPassword">Senha do Administrador (opcional)</Label>
                     <Input
                       id="adminPassword"
                       type="password"
                       value={formData.adminPassword}
                       onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
-                      placeholder="••••••••"
+                      placeholder="Deixe em branco para enviar link de acesso"
                     />
                   </div>
                 </>
