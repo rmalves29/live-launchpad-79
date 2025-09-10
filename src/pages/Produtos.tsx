@@ -11,7 +11,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
-import { TenantLinkHelper } from '@/components/TenantLinkHelper';
 
 interface Product {
   id: number;

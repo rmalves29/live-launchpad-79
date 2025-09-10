@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Badge } from "./ui/badge";
 import { Switch } from "./ui/switch";
+import { Checkbox } from "./ui/checkbox";
+import { Separator } from "./ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "./ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { Plus, Edit, Users, Mail, Trash2 } from "lucide-react";
+import { Plus, Edit, Users, Mail, Trash2, UserCheck } from "lucide-react";
 
 interface Tenant {
   id: string;
@@ -20,9 +22,17 @@ interface Tenant {
   updated_at: string;
 }
 
+interface AvailableUser {
+  id: string;
+  email: string;
+  created_at: string;
+}
+
 export const TenantsManager = () => {
   const { user } = useAuth();
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);  
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
@@ -36,7 +46,24 @@ export const TenantsManager = () => {
 
   useEffect(() => {
     loadTenants();
+    loadAvailableUsers();
   }, []);
+
+  const loadAvailableUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, email, created_at")
+        .is("tenant_id", null)
+        .neq("role", "super_admin")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setAvailableUsers(data || []);
+    } catch (error) {
+      console.error("Erro ao carregar usuários:", error);
+    }
+  };
 
   const loadTenants = async () => {
     setLoading(true);
@@ -194,10 +221,38 @@ export const TenantsManager = () => {
           title: "Sucesso",
           description: "Empresa criada com sucesso",
         });
+
+        // Vincular usuários selecionados à nova empresa
+        if (selectedUsers.length > 0 && newTenant) {
+          try {
+            const { error: linkError } = await supabase
+              .from("profiles")
+              .update({ 
+                tenant_id: newTenant.id,
+                role: 'staff'
+              })
+              .in('id', selectedUsers);
+
+            if (linkError) throw linkError;
+
+            toast({
+              title: "Usuários vinculados",
+              description: `${selectedUsers.length} usuário(s) foram vinculados à empresa`,
+            });
+          } catch (linkError) {
+            console.error("Erro ao vincular usuários:", linkError);
+            toast({
+              title: "Aviso",
+              description: "Empresa criada, mas houve erro ao vincular alguns usuários",
+              variant: "destructive",
+            });
+          }
+        }
       }
 
       setDialogOpen(false);
       setEditingTenant(null);
+      setSelectedUsers([]);
       setFormData({
         name: "",
         slug: "",
@@ -205,6 +260,7 @@ export const TenantsManager = () => {
         adminPassword: ""
       });
       loadTenants();
+      loadAvailableUsers();
     } catch (error) {
       console.error("Erro ao salvar empresa:", error);
       toast({
@@ -255,6 +311,7 @@ export const TenantsManager = () => {
 
   const openCreateDialog = () => {
     setEditingTenant(null);
+    setSelectedUsers([]);
     setFormData({
       name: "",
       slug: "",
@@ -365,6 +422,46 @@ export const TenantsManager = () => {
                       placeholder="Deixe em branco para enviar link de acesso"
                     />
                   </div>
+
+                  {availableUsers.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <Label className="flex items-center gap-2 mb-3">
+                          <UserCheck className="h-4 w-4" />
+                          Vincular Usuários Existentes
+                        </Label>
+                        <div className="max-h-32 overflow-y-auto space-y-2 border rounded p-3">
+                          {availableUsers.map((user) => (
+                            <div key={user.id} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`user-${user.id}`}
+                                checked={selectedUsers.includes(user.id)}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedUsers([...selectedUsers, user.id]);
+                                  } else {
+                                    setSelectedUsers(selectedUsers.filter(id => id !== user.id));
+                                  }
+                                }}
+                              />
+                              <Label htmlFor={`user-${user.id}`} className="text-sm flex-1 cursor-pointer">
+                                {user.email}
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  (Cadastrado em {new Date(user.created_at).toLocaleDateString('pt-BR')})
+                                </span>
+                              </Label>
+                            </div>
+                          ))}
+                        </div>
+                        {selectedUsers.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {selectedUsers.length} usuário(s) selecionado(s) para vincular à empresa
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 

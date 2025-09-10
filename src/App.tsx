@@ -25,7 +25,6 @@ import Auth from "./pages/Auth";
 import RequireAuth from "./components/RequireAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
-import { TenantLinkHelper } from "@/components/TenantLinkHelper";
 
 const queryClient = new QueryClient();
 
@@ -68,10 +67,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <BrowserRouter>
-              <div className="min-h-screen">
-                <TenantLinkHelper />
-                <AppContent />
-              </div>
+              <AppContent />
             </BrowserRouter>
           </TooltipProvider>
         </TenantLoader>
