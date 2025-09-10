@@ -465,6 +465,74 @@ export const TenantsManager = () => {
                 </>
               )}
 
+              {editingTenant && (
+                <>
+                  <Separator />
+                  <div>
+                    <Label className="mb-2">Acesso do Administrador</Label>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <Label htmlFor="adminEmailEdit">Email do Administrador</Label>
+                        <Input
+                          id="adminEmailEdit"
+                          type="email"
+                          value={formData.adminEmail}
+                          onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
+                          placeholder="admin@empresa.com"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="adminPasswordEdit">Nova Senha</Label>
+                        <Input
+                          id="adminPasswordEdit"
+                          type="password"
+                          value={formData.adminPassword}
+                          onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
+                          placeholder="Defina uma nova senha"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end mt-3">
+                      <Button
+                        variant="secondary"
+                        disabled={!formData.adminEmail || !formData.adminPassword || loading}
+                        onClick={async () => {
+                          if (!editingTenant) return;
+                          try {
+                            setLoading(true);
+                            const { error } = await supabase.functions.invoke('tenant-reset-password', {
+                              body: {
+                                email: formData.adminEmail,
+                                new_password: formData.adminPassword,
+                                tenant_id: editingTenant.id,
+                                role: 'tenant_admin',
+                              },
+                            });
+                            if (error) throw error;
+                            toast({
+                              title: 'Acesso atualizado',
+                              description: 'Senha do administrador atualizada/criada com sucesso.',
+                            });
+                            setFormData({ ...formData, adminPassword: '' });
+                          } catch (err: any) {
+                            console.error('Erro ao atualizar acesso do admin:', err);
+                            toast({
+                              title: 'Erro',
+                              description: err?.message || 'Falha ao atualizar o acesso do administrador.',
+                              variant: 'destructive',
+                            });
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                      >
+                        Atualizar acesso do admin
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="flex justify-end space-x-2">
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancelar
