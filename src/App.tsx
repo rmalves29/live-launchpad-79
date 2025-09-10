@@ -41,6 +41,17 @@ const AppContent = () => {
   // Se estamos em um subdomínio de tenant, usar autenticação específica
   const TenantAuthComponent = tenant ? TenantAuth : Auth;
 
+  // Componente para restringir acesso apenas a super_admin
+  const SuperAdminOnly = ({ children }: { children: ReactNode }) => {
+    const { profile } = useAuth();
+    
+    if (profile?.role !== 'super_admin') {
+      return <Navigate to="/" replace />;
+    }
+    
+    return <>{children}</>;
+  };
+
   return (
     <>
       {showNavbar && <Navbar />}
@@ -115,16 +126,6 @@ const AppContent = () => {
   );
 };
 
-// Componente para restringir acesso apenas a super_admin
-const SuperAdminOnly = ({ children }: { children: ReactNode }) => {
-  const { profile } = useAuth();
-  
-  if (profile?.role !== 'super_admin') {
-    return <Navigate to="/" replace />;
-  }
-  
-  return <>{children}</>;
-};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
