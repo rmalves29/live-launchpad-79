@@ -10,6 +10,7 @@ import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Per
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { TenantsManager } from '@/components/TenantsManager';
+import { TenantSimulator } from '@/components/TenantSimulator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -950,7 +951,14 @@ const Config = () => {
 
         {isMaster && (
           <TabsContent value="tenants" className="space-y-6 mt-6">
-            <TenantsManager />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <TenantsManager />
+              </div>
+              <div>
+                <TenantSimulator />
+              </div>
+            </div>
           </TabsContent>
         )}
           </Tabs>
