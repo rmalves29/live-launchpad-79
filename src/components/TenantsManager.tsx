@@ -185,12 +185,14 @@ export const TenantsManager = () => {
               },
             });
             
-            if (!createErr && createdResp?.user_id) {
+            // Tentativa de corrigir o user_id/userId das respostas das funções
+            const userId = createdResp?.user_id || createdResp?.userId;
+            if (!createErr && userId) {
               await supabase
                 .from("tenants")
                 .update({
                   admin_email: formData.adminEmail,
-                  admin_user_id: createdResp.user_id,
+                  admin_user_id: userId,
                 })
                 .eq("id", newTenant.id);
             }
@@ -520,11 +522,13 @@ export const TenantsManager = () => {
                               },
                             });
                             if (error) throw error;
+                            // Tentativa de corrigir o user_id/userId das respostas das funções
+                            const userId = resetResp?.user_id || resetResp?.userId;
                             await supabase
                               .from("tenants")
                               .update({
                                 admin_email: formData.adminEmail,
-                                admin_user_id: resetResp?.user_id || null,
+                                admin_user_id: userId || null,
                               })
                               .eq("id", editingTenant.id);
                             toast({
