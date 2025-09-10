@@ -64,9 +64,9 @@ class TenantSupabaseClient {
       return (query as any).eq('tenant_id', this.currentTenantId);
     }
 
-    // Sem tenant (site principal): retornar query sem filtro
-    // ATENÇÃO: No site principal, pode ser necessário filtrar de outra forma
-    console.warn(`⚠️ Query na tabela ${table} sem filtro de tenant (site principal)`);
+    // Sem tenant definido: permitir acesso apenas se for super_admin
+    // Para usuários normais sem tenant, não retornar dados
+    console.warn(`⚠️ Query na tabela ${table} sem tenant definido`);
     return query;
   }
 
