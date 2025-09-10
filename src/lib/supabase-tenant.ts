@@ -22,6 +22,11 @@ class TenantSupabaseClient {
     console.log('🏢 Tenant ID definido:', tenantId);
   }
 
+  // Obter tenant atual (útil para inserts no preview ou simulação)
+  getTenantId() {
+    return this.currentTenantId;
+  }
+
   // Getter para acessar o cliente original (para casos especiais)
   get raw() {
     return this.client;

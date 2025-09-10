@@ -78,10 +78,13 @@ const Produtos = () => {
       return;
     }
 
-    if (!profile?.tenant_id) {
+    // Determinar o tenant para a operação
+    const effectiveTenantId = (profile?.tenant_id as string | null) ?? (supabaseTenant as any).getTenantId?.();
+
+    if (!effectiveTenantId) {
       toast({
-        title: 'Erro',
-        description: 'Usuário não vinculado a uma empresa. Faça logout e login novamente.',
+        title: 'Defina a empresa',
+        description: 'Selecione um tenant no domínio da empresa ou use o simulador em Configurações.',
         variant: 'destructive'
       });
       return;
@@ -123,7 +126,7 @@ const Produtos = () => {
           .from('products')
           .insert([{
             ...productData,
-            tenant_id: profile.tenant_id
+            tenant_id: effectiveTenantId
           }]);
 
         if (error) throw error;
