@@ -42,9 +42,12 @@ export const useTenant = (): UseTenantReturn => {
         // Lógica para extrair slug do subdomínio
         let slug: string | null = null;
 
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-          // Desenvolvimento: sem tenant (site principal)
-          console.log('🏠 Modo desenvolvimento - sem tenant');
+        const isDevHost = hostname === 'localhost' || hostname === '127.0.0.1';
+        const isLovablePreview = hostname.endsWith('.sandbox.lovable.dev') || hostname.endsWith('.lovable.dev') || hostname.endsWith('.lovable.app');
+
+        if (isDevHost || isLovablePreview) {
+          // Ambiente de desenvolvimento/preview: sem tenant (site principal)
+          console.log(isLovablePreview ? '🧪 Preview Lovable - sem tenant' : '🏠 Modo desenvolvimento - sem tenant');
           setIsValidSubdomain(true);
           setTenant(null);
           return;
