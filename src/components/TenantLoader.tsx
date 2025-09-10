@@ -17,9 +17,11 @@ interface TenantLoaderProps {
 export const TenantLoader = ({ children }: TenantLoaderProps) => {
   const { tenant, loading, error, isValidSubdomain, tenantId, isMainSite } = useTenantContext();
 
-  // Configurar o cliente Supabase com o tenant atual
+  // Configurar o cliente Supabase com o tenant atual (com fallback de preview)
   useEffect(() => {
-    supabaseTenant.setTenantId(tenantId);
+    const previewId = localStorage.getItem('previewTenantId');
+    const effective = tenantId ?? previewId ?? null;
+    supabaseTenant.setTenantId(effective);
   }, [tenantId]);
 
   // Loading state

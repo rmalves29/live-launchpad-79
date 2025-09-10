@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Menu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
+import { TenantSwitcher } from '@/components/TenantSwitcher';
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
@@ -73,6 +74,8 @@ const Navbar = () => {
                 {item.label}
               </NavLink>
             ))}
+
+            <TenantSwitcher />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
