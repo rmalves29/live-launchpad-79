@@ -68,7 +68,7 @@ const AppContent = () => {
         } />
         
         {/* Auth genérico para site principal */}
-        <Route path="/auth" element={<Auth />} />
+        <Route path="/auth" element={<TenantAuthComponent />} />
         
         {/* Callback do Mercado Pago */}
         <Route path="/mp/callback" element={<MercadoPagoCallback />} />

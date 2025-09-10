@@ -19,7 +19,7 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
 
   // Se não há usuário logado, redireciona para login do tenant
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   // Se estamos no site principal (sem tenant), permite acesso
@@ -45,7 +45,7 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     }
     
     // Usuário não tem permissão para este tenant
-    return <Navigate to="/" replace />;
+    return <Navigate to="/auth" replace />;
   }
 
   return <>{children}</>;
