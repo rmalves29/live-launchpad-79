@@ -875,6 +875,8 @@ export type Database = {
       }
       tenants: {
         Row: {
+          admin_email: string | null
+          admin_user_id: string | null
           created_at: string
           id: string
           is_active: boolean
@@ -883,6 +885,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          admin_email?: string | null
+          admin_user_id?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -891,6 +895,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          admin_email?: string | null
+          admin_user_id?: string | null
           created_at?: string
           id?: string
           is_active?: boolean

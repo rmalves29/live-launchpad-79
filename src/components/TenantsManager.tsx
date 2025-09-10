@@ -158,7 +158,8 @@ export const TenantsManager = () => {
           .insert({
             name: formData.name,
             slug: uniqueSlug,
-            is_active: true
+            is_active: true,
+            admin_email: formData.adminEmail || null
           })
           .select()
           .single();
@@ -175,7 +176,7 @@ export const TenantsManager = () => {
                 "!#"
               : formData.adminPassword;
 
-            const { error: createErr } = await supabase.functions.invoke('tenant-create-user', {
+            const { data: createdResp, error: createErr } = await supabase.functions.invoke('tenant-create-user', {
               body: {
                 email: formData.adminEmail,
                 password: generatedPassword,
@@ -183,6 +184,16 @@ export const TenantsManager = () => {
                 role: 'tenant_admin',
               },
             });
+            
+            if (!createErr && createdResp?.user_id) {
+              await supabase
+                .from("tenants")
+                .update({
+                  admin_email: formData.adminEmail,
+                  admin_user_id: createdResp.user_id,
+                })
+                .eq("id", newTenant.id);
+            }
 
             if (createErr) throw createErr;
 
@@ -500,7 +511,7 @@ export const TenantsManager = () => {
                           if (!editingTenant) return;
                           try {
                             setLoading(true);
-                            const { error } = await supabase.functions.invoke('tenant-reset-password', {
+                            const { data: resetResp, error } = await supabase.functions.invoke('tenant-reset-password', {
                               body: {
                                 email: formData.adminEmail,
                                 new_password: formData.adminPassword,
@@ -509,6 +520,13 @@ export const TenantsManager = () => {
                               },
                             });
                             if (error) throw error;
+                            await supabase
+                              .from("tenants")
+                              .update({
+                                admin_email: formData.adminEmail,
+                                admin_user_id: resetResp?.user_id || null,
+                              })
+                              .eq("id", editingTenant.id);
                             toast({
                               title: 'Acesso atualizado',
                               description: 'Senha do administrador atualizada/criada com sucesso.',
