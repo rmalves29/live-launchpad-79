@@ -138,31 +138,21 @@ export const TenantsManager = () => {
 
         if (error) throw error;
 
-        // Criar usuário administrador para a nova empresa
+        // Criar usuário administrador para a nova empresa via Edge Function (confirmado automaticamente)
         if (newTenant) {
           try {
-            const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-              email: formData.adminEmail,
-              password: formData.adminPassword,
-              email_confirm: true
+            const { error: fnError } = await supabase.functions.invoke('tenant-create-user', {
+              body: {
+                email: formData.adminEmail,
+                password: formData.adminPassword,
+                tenant_id: newTenant.id,
+                role: 'tenant_admin',
+              },
             });
 
-            if (authError) throw authError;
+            if (fnError) throw fnError;
 
-            // Atualizar perfil do usuário com dados da empresa
-            const { error: profileError } = await supabase
-              .from("profiles")
-              .update({
-                tenant_id: newTenant.id,
-                role: 'tenant_admin'
-              })
-              .eq("id", authData.user.id);
-
-            if (profileError) {
-              console.warn("Erro ao configurar perfil do usuário:", profileError);
-            } else {
-              console.log("✅ Usuário administrador criado com sucesso para empresa:", newTenant.name);
-            }
+            console.log("✅ Usuário administrador criado via edge function para empresa:", newTenant.name);
           } catch (userError) {
             console.error("Erro ao criar usuário administrador:", userError);
             toast({
