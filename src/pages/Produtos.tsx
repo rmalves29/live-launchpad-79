@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 
 interface Product {
@@ -49,7 +49,7 @@ const Produtos = () => {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('products')
         .select('*')
         .order('created_at', { ascending: false });
@@ -107,7 +107,7 @@ const Produtos = () => {
       };
 
       if (editingProduct) {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('products')
           .update(productData)
           .eq('id', editingProduct.id);
@@ -119,7 +119,7 @@ const Produtos = () => {
           description: `${productData.code} foi atualizado com sucesso`,
         });
       } else {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('products')
           .insert([{
             ...productData,
@@ -191,13 +191,13 @@ const Produtos = () => {
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `products/${fileName}`;
 
-      const { data, error } = await supabase.storage
+      const { data, error } = await supabaseTenant.storage
         .from('product-images')
         .upload(filePath, file);
 
       if (error) throw error;
 
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = supabaseTenant.storage
         .from('product-images')
         .getPublicUrl(filePath);
 
@@ -226,7 +226,7 @@ const Produtos = () => {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('products')
         .delete()
         .eq('id', id);

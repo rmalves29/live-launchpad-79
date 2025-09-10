@@ -4,7 +4,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { TenantsManager } from '@/components/TenantsManager';
 import { AlertCircle, Building2, Settings, BarChart3 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
+import { useTenantContext } from '@/contexts/TenantContext';
+import { TenantInfo } from '@/components/TenantInfo';
+import { MultiDomainDemo } from '@/components/MultiDomainDemo';
 import { User } from '@supabase/supabase-js';
 
 export default function Dashboard() {
@@ -12,12 +15,12 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabaseTenant.raw.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setIsLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = supabaseTenant.raw.auth.onAuthStateChange(
       (event, session) => {
         setUser(session?.user ?? null);
         setIsLoading(false);
