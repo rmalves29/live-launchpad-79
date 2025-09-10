@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift, Save, Edit, Package, ArrowLeft, BarChart3, TrendingUp, Eye, EyeOff } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
-import { TenantsManager } from '@/components/TenantsManager';
+import TenantsManager from '@/components/TenantsManager';
 import { TenantSimulator } from '@/components/TenantSimulator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
