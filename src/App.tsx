@@ -2,8 +2,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { AuthProvider } from "@/hooks/useAuth";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
+import { ReactNode } from "react";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Navbar from "./components/Navbar";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -22,40 +23,107 @@ import ConfigFrete from "./pages/ConfigFrete";
 import CotacaoFrete from "./pages/CotacaoFrete";
 import Etiquetas from "./pages/Etiquetas";
 import Auth from "./pages/Auth";
+import TenantAuth from "./pages/TenantAuth";
+import MercadoPagoCallback from "./pages/MercadoPagoCallback";
 import RequireAuth from "./components/RequireAuth";
+import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
+import { useTenantContext } from "@/contexts/TenantContext";
 
 const queryClient = new QueryClient();
 
 const AppContent = () => {
   const location = useLocation();
-  const showNavbar = location.pathname !== '/checkout';
+  const { tenant, isMainSite } = useTenantContext();
+  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback';
+
+  // Se estamos em um subdomínio de tenant, usar autenticação específica
+  const TenantAuthComponent = tenant ? TenantAuth : Auth;
 
   return (
     <>
       {showNavbar && <Navbar />}
       <Routes>
-        <Route path="/" element={<Index />} />
+        {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
+        <Route path="/" element={
+          tenant ? (
+            // Se há tenant, sempre mostrar auth primeiro, Index será protegido
+            <RequireTenantAuth><Index /></RequireTenantAuth>
+          ) : (
+            // Site principal
+            <Index />
+          )
+        } />
+        
+        {/* Auth genérico para site principal */}
         <Route path="/auth" element={<Auth />} />
-        <Route path="/checkout" element={<Checkout />} />
+        
+        {/* Callback do Mercado Pago */}
+        <Route path="/mp/callback" element={<MercadoPagoCallback />} />
         <Route path="/mp/return" element={<MpReturn />} />
-        <Route path="/pedidos-manual" element={<PedidosManual />} />
-        <Route path="/pedidos" element={<Pedidos />} />
-        <Route path="/sorteio" element={<Sorteio />} />
-        <Route path="/config" element={<RequireAuth><Config /></RequireAuth>} />
-        <Route path="/produtos" element={<Produtos />} />
-        <Route path="/clientes" element={<Clientes />} />
-        <Route path="/relatorios" element={<Relatorios />} />
-        <Route path="/whatsapp-templates" element={<WhatsAppTemplates />} />
-        <Route path="/whatsapp-integration" element={<WhatsAppIntegration />} />
-        <Route path="/config-frete" element={<ConfigFrete />} />
-        <Route path="/cotacao-frete" element={<CotacaoFrete />} />
-        <Route path="/etiquetas" element={<Etiquetas />} />
+        
+        {/* Rotas protegidas */}
+        <Route path="/checkout" element={<Checkout />} />
+        <Route path="/pedidos-manual" element={
+          <RequireTenantAuth><PedidosManual /></RequireTenantAuth>
+        } />
+        <Route path="/pedidos" element={
+          <RequireTenantAuth><Pedidos /></RequireTenantAuth>
+        } />
+        <Route path="/sorteio" element={
+          <RequireTenantAuth><Sorteio /></RequireTenantAuth>
+        } />
+        
+        {/* Configurações apenas para super_admin */}
+        <Route path="/config" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <Config />
+            </SuperAdminOnly>
+          </RequireAuth>
+        } />
+        
+        <Route path="/produtos" element={
+          <RequireTenantAuth><Produtos /></RequireTenantAuth>
+        } />
+        <Route path="/clientes" element={
+          <RequireTenantAuth><Clientes /></RequireTenantAuth>
+        } />
+        <Route path="/relatorios" element={
+          <RequireTenantAuth><Relatorios /></RequireTenantAuth>
+        } />
+        <Route path="/whatsapp-templates" element={
+          <RequireTenantAuth><WhatsAppTemplates /></RequireTenantAuth>
+        } />
+        <Route path="/whatsapp-integration" element={
+          <RequireTenantAuth><WhatsAppIntegration /></RequireTenantAuth>
+        } />
+        <Route path="/config-frete" element={
+          <RequireTenantAuth><ConfigFrete /></RequireTenantAuth>
+        } />
+        <Route path="/cotacao-frete" element={
+          <RequireTenantAuth><CotacaoFrete /></RequireTenantAuth>
+        } />
+        <Route path="/etiquetas" element={
+          <RequireTenantAuth><Etiquetas /></RequireTenantAuth>
+        } />
+        
         <Route path="*" element={<NotFound />} />
       </Routes>
     </>
   );
+};
+
+// Componente para restringir acesso apenas a super_admin
+const SuperAdminOnly = ({ children }: { children: ReactNode }) => {
+  const { profile } = useAuth();
+  
+  if (profile?.role !== 'super_admin') {
+    return <Navigate to="/" replace />;
+  }
+  
+  return <>{children}</>;
 };
 
 const App = () => (

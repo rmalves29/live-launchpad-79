@@ -1,32 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Menu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { User } from '@supabase/supabase-js';
+import { useAuth } from '@/hooks/useAuth';
 import { TenantSwitcher } from '@/components/TenantSwitcher';
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const { user, profile } = useAuth();
   const location = useLocation();
   const isWhatsAppActive = ['/whatsapp-templates', '/whatsapp-integration'].includes(location.pathname);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setUser(session?.user ?? null);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
@@ -37,7 +23,7 @@ const Navbar = () => {
     { path: '/relatorios', label: 'Relatórios' },
     { path: '/whatsapp-templates', label: 'Templates WPP' },
     { path: '/sorteio', label: 'Sorteio' },
-    { path: '/config', label: 'Configurações' }
+    ...(profile?.role === 'super_admin' ? [{ path: '/config', label: 'Configurações' }] : [])
   ];
 
   const whatsappItems = ['/whatsapp-templates', '/whatsapp-integration'];
