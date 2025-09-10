@@ -13,9 +13,12 @@ interface UseTenantReturn {
   loading: boolean;
   error: string | null;
   isValidSubdomain: boolean;
-}
-
-/**
+ }
+ 
+ const PREVIEW_TENANT_KEY = 'previewTenantId';
+ 
+ /**
+  * Hook para detectar e carregar tenant baseado no subdomínio
  * Hook para detectar e carregar tenant baseado no subdomínio
  * 
  * Exemplos:
@@ -43,10 +46,33 @@ export const useTenant = (): UseTenantReturn => {
         let slug: string | null = null;
 
         const isDevHost = hostname === 'localhost' || hostname === '127.0.0.1';
-        const isLovablePreview = hostname.endsWith('.sandbox.lovable.dev') || hostname.endsWith('.lovable.dev') || hostname.endsWith('.lovable.app');
+        const isLovablePreview =
+          hostname.endsWith('.sandbox.lovable.dev') ||
+          hostname.endsWith('.lovable.dev') ||
+          hostname.endsWith('.lovable.app') ||
+          hostname.endsWith('.lovableproject.com');
 
         if (isDevHost || isLovablePreview) {
-          // Ambiente de desenvolvimento/preview: sem tenant (site principal)
+          // Ambiente de desenvolvimento/preview
+          const previewTenantId = localStorage.getItem(PREVIEW_TENANT_KEY);
+          if (previewTenantId) {
+            console.log('🧪 Preview - usando tenant selecionado:', previewTenantId);
+            const { data: previewTenant, error: previewErr } = await supabase
+              .from('tenants')
+              .select('*')
+              .eq('id', previewTenantId)
+              .eq('is_active', true)
+              .maybeSingle();
+
+            if (!previewErr && previewTenant) {
+              setTenant(previewTenant);
+              setIsValidSubdomain(true);
+              return;
+            }
+
+            console.warn('Preview tenant inválido ou não encontrado:', previewErr);
+          }
+
           console.log(isLovablePreview ? '🧪 Preview Lovable - sem tenant' : '🏠 Modo desenvolvimento - sem tenant');
           setIsValidSubdomain(true);
           setTenant(null);
