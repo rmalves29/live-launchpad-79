@@ -67,23 +67,45 @@ serve(async (req) => {
       .from('profiles')
       .select('id, role, tenant_id')
       .eq('id', userData.user.id)
-      .single()
+      .maybeSingle()
 
-    if (profileErr || !callerProfile) {
-      return new Response(JSON.stringify({ error: 'Perfil não encontrado' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    // Se não tem perfil, criar um (pode ser um usuário órfão)
+    if (!callerProfile) {
+      await supabaseAdmin
+        .from('profiles')
+        .upsert({ id: userData.user.id, email: userData.user.email, role: 'staff', tenant_id: null })
     }
 
-    const isSuperAdmin = callerProfile.role === 'super_admin'
-    const isTenantAdmin = callerProfile.role === 'tenant_admin' && callerProfile.tenant_id === tenant_id
+    // Verificar se existe algum super_admin no sistema
+    const { data: superAdmins } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('role', 'super_admin')
+      .limit(1)
 
-    if (!isSuperAdmin && !isTenantAdmin) {
-      return new Response(JSON.stringify({ error: 'Acesso negado' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    // Modo bootstrap: se não existir super_admin, permitir que qualquer usuário crie tenants
+    const isBootstrapMode = !superAdmins || superAdmins.length === 0
+    
+    if (isBootstrapMode) {
+      console.log("🚀 Modo bootstrap ativo: permitindo criação sem verificação de permissões")
+    } else {
+      // Modo normal: verificar permissões
+      const profile = callerProfile || await supabaseAdmin
+        .from('profiles')
+        .select('id, role, tenant_id')
+        .eq('id', userData.user.id)
+        .single()
+        .then(({ data }) => data)
+
+      const isSuperAdmin = profile?.role === 'super_admin'
+      const isTenantAdmin = profile?.role === 'tenant_admin' && profile.tenant_id === tenant_id
+
+      if (!isSuperAdmin && !isTenantAdmin) {
+        return new Response(JSON.stringify({ error: 'Acesso negado' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     // Cria usuário já confirmado
