@@ -226,14 +226,16 @@ async function loadTenants() {
   }
 
   try {
-    const tenants = await supaRaw('/tenants?select=id,slug,whatsapp_api_url,is_active&is_active=eq.true');
+    const integrations = await supaRaw('/integration_whatsapp?select=tenant_id,api_url,is_active&is_active=eq.true');
     tenantsCache = {};
-    tenants.forEach(tenant => {
-      if (tenant.whatsapp_api_url) {
+    integrations.forEach(row => {
+      if (row.api_url) {
         // Extract path from WhatsApp API URL to use as identifier
-        const url = new URL(tenant.whatsapp_api_url);
-        const pathKey = url.pathname.replace(/^\/+|\/+$/g, '') || tenant.slug;
-        tenantsCache[pathKey] = tenant;
+        const url = new URL(row.api_url);
+        const pathKey = url.pathname.replace(/^\/+|\/+$/g, '');
+        if (pathKey) {
+          tenantsCache[pathKey] = { id: row.tenant_id, slug: pathKey, api_url: row.api_url };
+        }
       }
     });
     tenantsCacheTime = now;
