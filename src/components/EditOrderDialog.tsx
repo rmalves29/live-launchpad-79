@@ -325,16 +325,16 @@ useEffect(() => {
         .limit(1)
         .maybeSingle();
 
-      const quantity = Number(quantity) || 1;
+      const qty = Number(quantity) || 1;
       const unitValue = Number(unitPrice || selectedProduct.price) || 0;
-      const totalValue = quantity * unitValue;
+      const totalValue = qty * unitValue;
 
       const baseMessage = template?.content ||
         `🛒 Item adicionado ao pedido\n\nProduto: {{produto}}\nQtd: {{quantidade}}\nValor: R$ {{valor}}\nVariação 1: {{variacao1}}\nVariação 2: {{variacao2}}`;
 
       const message = baseMessage
         .replace(/{{produto}}/g, selectedProduct.name)
-        .replace(/{{quantidade}}/g, String(quantity))
+        .replace(/{{quantidade}}/g, String(qty))
         .replace(/{{valor}}/g, totalValue.toFixed(2))
         .replace(/{{variacao1}}/g, '-')
         .replace(/{{variacao2}}/g, '-');
