@@ -1185,6 +1185,7 @@ export type Database = {
         | "ITEM_ADDED"
         | "PRODUCT_CANCELED"
         | "PAID_ORDER"
+        | "FINALIZAR"
     }
     CompositeTypes: {
       http_header: {
@@ -1341,6 +1342,7 @@ export const Constants = {
         "ITEM_ADDED",
         "PRODUCT_CANCELED",
         "PAID_ORDER",
+        "FINALIZAR",
       ],
     },
   },
