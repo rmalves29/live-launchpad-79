@@ -170,6 +170,8 @@ client.on('auth_failure', () => console.log('❌ Falha na autenticação do What
 client.on('message', async (msg) => {
   try {
     console.log(`📨 Mensagem recebida de ${msg.from}: ${msg.body}`);
+    
+    // Salvar mensagem no banco
     await supa('/whatsapp_messages', {
       method: 'POST',
       body: JSON.stringify({
@@ -182,11 +184,19 @@ client.on('message', async (msg) => {
     });
 
     const text = String(msg.body || '').trim().toUpperCase();
+    console.log(`🔍 Texto processado: "${text}"`);
+    
     const match = text.match(/^(?:[CPA]\s*)?(\d{1,6})$/);
+    console.log(`🎯 Match encontrado:`, match);
+    
     if (match) {
       const numeric = match[1];
       const candidates = [`C${numeric}`, `P${numeric}`, `A${numeric}`, numeric];
+      console.log(`🔍 Buscando produtos com códigos:`, candidates);
+      
       const products = await supa(`/products?select=*&is_active=eq.true&code=in.(${candidates.map(c => `"${c}"`).join(',')})`);
+      console.log(`📦 Produtos encontrados:`, products?.length || 0);
+      
       const product = products?.[0];
       if (product) {
         console.log(`🎯 Produto encontrado: ${product.name} (${product.code})`);
@@ -194,10 +204,15 @@ client.on('message', async (msg) => {
         const message = await composeItemAdded(product);
         await client.sendMessage(msg.from, message);
         console.log(`✅ Confirmação enviada para ${msg.from}`);
+      } else {
+        console.log(`❌ Nenhum produto encontrado para os códigos:`, candidates);
       }
+    } else {
+      console.log(`❌ Mensagem não corresponde ao padrão de código: "${text}"`);
     }
   } catch (error) {
     console.error('❌ Erro ao processar mensagem:', error);
+    console.error('Stack trace:', error.stack);
   }
 });
 
