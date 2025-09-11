@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,7 +53,7 @@ const PedidosManual = () => {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      let query = supabase
+      let query = supabaseTenant
         .from('products')
         .select('*')
         .eq('is_active', true)
@@ -89,7 +89,7 @@ const PedidosManual = () => {
   const loadOrders = async () => {
     try {
       setOrdersLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('orders')
         .select('*')
         .eq('event_type', 'MANUAL')
@@ -172,7 +172,7 @@ const PedidosManual = () => {
       // Function to get or create order with retry logic
       const getOrCreateOrder = async (): Promise<{ orderId: number; cartId: number | null; isNew: boolean }> => {
         // First attempt: Check for existing unpaid order
-        const { data: existingOrders, error: searchError } = await supabase
+        const { data: existingOrders, error: searchError } = await supabaseTenant
           .from('orders')
           .select('*')
           .eq('customer_phone', normalizedPhone)
@@ -191,7 +191,7 @@ const PedidosManual = () => {
           // Update existing order total
           const newTotal = existingOrder.total_amount + subtotal;
           
-          const { error: updateError } = await supabase
+          const { error: updateError } = await supabaseTenant
             .from('orders')
             .update({ total_amount: newTotal })
             .eq('id', existingOrder.id);
@@ -207,15 +207,14 @@ const PedidosManual = () => {
 
         // Try to create new order
         try {
-          const { data: newOrder, error: orderError } = await supabase
+          const { data: newOrder, error: orderError } = await supabaseTenant
             .from('orders')
             .insert([{
               customer_phone: normalizedPhone,
               event_type: 'MANUAL',
               event_date: today,
               total_amount: subtotal,
-              is_paid: false,
-              tenant_id: profile?.tenant_id || ''
+              is_paid: false
             }])
             .select()
             .single();
@@ -224,7 +223,7 @@ const PedidosManual = () => {
             // If unique constraint violation, retry to find existing order
             if (orderError.code === '23505') {
               console.log('Unique constraint violation, retrying to find existing order...');
-              const { data: retryOrders, error: retryError } = await supabase
+              const { data: retryOrders, error: retryError } = await supabaseTenant
                 .from('orders')
                 .select('*')
                 .eq('customer_phone', normalizedPhone)
@@ -239,7 +238,7 @@ const PedidosManual = () => {
                 
                 // Update total
                 const newTotal = existingOrder.total_amount + subtotal;
-                const { error: updateError } = await supabase
+                const { error: updateError } = await supabaseTenant
                   .from('orders')
                   .update({ total_amount: newTotal })
                   .eq('id', existingOrder.id);
@@ -271,14 +270,13 @@ const PedidosManual = () => {
 
       // Create cart if needed
       if (!cartId) {
-        const { data: newCart, error: cartError } = await supabase
+        const { data: newCart, error: cartError } = await supabaseTenant
           .from('carts')
           .insert({
             customer_phone: normalizedPhone,
             event_type: 'MANUAL',
             event_date: today,
-            status: 'OPEN',
-            tenant_id: profile?.tenant_id || ''
+            status: 'OPEN'
           })
           .select()
           .single();
@@ -287,14 +285,14 @@ const PedidosManual = () => {
         cartId = newCart.id;
 
         // Update order with cart_id
-        await supabase
+        await supabaseTenant
           .from('orders')
           .update({ cart_id: cartId })
           .eq('id', orderId);
       }
 
       // Add product to cart
-      const { data: existingCartItem, error: cartItemSearchError } = await supabase
+      const { data: existingCartItem, error: cartItemSearchError } = await supabaseTenant
         .from('cart_items')
         .select('*')
         .eq('cart_id', cartId)
@@ -307,7 +305,7 @@ const PedidosManual = () => {
 
       if (existingCartItem) {
         // Update existing cart item
-        const { error: updateCartError } = await supabase
+        const { error: updateCartError } = await supabaseTenant
           .from('cart_items')
           .update({
             qty: existingCartItem.qty + qty,
@@ -318,21 +316,20 @@ const PedidosManual = () => {
         if (updateCartError) throw updateCartError;
       } else {
         // Add new cart item
-        const { error: cartItemError } = await supabase
+        const { error: cartItemError } = await supabaseTenant
           .from('cart_items')
           .insert({
             cart_id: cartId,
             product_id: product.id,
             qty: qty,
-            unit_price: product.price,
-            tenant_id: profile?.tenant_id || ''
+            unit_price: product.price
           });
 
         if (cartItemError) throw cartItemError;
       }
 
       // Update product stock in database
-      const { error: stockError } = await supabase
+      const { error: stockError } = await supabaseTenant
         .from('products')
         .update({ stock: product.stock - qty })
         .eq('id', product.id);
@@ -389,7 +386,7 @@ const PedidosManual = () => {
     if (!editingOrder) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('orders')
         .update({
           customer_phone: editPhone,
@@ -420,7 +417,7 @@ const PedidosManual = () => {
     if (!confirm('Tem certeza que deseja excluir este pedido?')) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('orders')
         .delete()
         .eq('id', orderId);
