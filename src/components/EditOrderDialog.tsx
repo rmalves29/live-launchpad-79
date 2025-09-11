@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
+import { whatsappService } from '@/lib/whatsapp-service';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2, Plus, Trash2, Search } from 'lucide-react';
 
@@ -81,14 +82,14 @@ useEffect(() => {
 
   const loadProducts = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('products')
         .select('*')
         .eq('is_active', true)
         .order('name');
 
       if (error) throw error;
-      setProducts(data || []);
+      setProducts((data as any) || []);
     } catch (error) {
       console.error('Error loading products:', error);
       toast({
@@ -104,7 +105,7 @@ useEffect(() => {
     if (!effectiveId) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('cart_items')
         .select(`
           *,
@@ -113,7 +114,7 @@ useEffect(() => {
         .eq('cart_id', effectiveId);
 
       if (error) throw error;
-      setCartItems(data || []);
+      setCartItems((data as any) || []);
     } catch (error) {
       console.error('Error loading cart items:', error);
       toast({
@@ -128,14 +129,13 @@ useEffect(() => {
     if (order?.cart_id) return order.cart_id;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('carts')
         .insert({
           customer_phone: order?.customer_phone || '',
           event_type: order?.event_type || 'BAZAR',
           event_date: order?.event_date || new Date().toISOString().split('T')[0],
-          status: 'OPEN',
-          tenant_id: profile?.tenant_id || ''
+          status: 'OPEN'
         })
         .select()
         .single();
@@ -143,7 +143,7 @@ useEffect(() => {
       if (error) throw error;
 
       // Update order with cart_id
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseTenant
         .from('orders')
         .update({ cart_id: data.id })
         .eq('id', order?.id || 0);
@@ -174,7 +174,7 @@ useEffect(() => {
 
       if (existingItem) {
         // Update existing item
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('cart_items')
           .update({
             qty: existingItem.qty + quantity,
@@ -185,14 +185,13 @@ useEffect(() => {
         if (error) throw error;
       } else {
         // Add new item
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('cart_items')
           .insert({
             cart_id: targetCartId,
             product_id: selectedProduct.id,
             qty: quantity,
-            unit_price: unitPrice || selectedProduct.price,
-            tenant_id: profile?.tenant_id || ''
+            unit_price: unitPrice || selectedProduct.price
           });
 
         if (error) throw error;
@@ -238,7 +237,7 @@ useEffect(() => {
 
     try {
       // Remover item do carrinho
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('cart_items')
         .delete()
         .eq('id', itemId);
@@ -269,7 +268,7 @@ useEffect(() => {
     if (newQty <= 0) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('cart_items')
         .update({ qty: newQty })
         .eq('id', itemId);
@@ -293,16 +292,16 @@ useEffect(() => {
     if (!effectiveId || !order) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('cart_items')
         .select('qty, unit_price')
         .eq('cart_id', effectiveId);
 
       if (error) throw error;
 
-      const total = (data || []).reduce((sum, item) => sum + (item.qty * item.unit_price), 0);
+      const total = (data || []).reduce((sum: number, item: any) => sum + (item.qty * item.unit_price), 0);
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseTenant
         .from('orders')
         .update({ total_amount: total })
         .eq('id', order.id);
@@ -317,28 +316,41 @@ useEffect(() => {
     if (!selectedProduct || !order) return;
     
     try {
-      // Mock function para substituir a lib/whatsapp.ts (removida)
-      const sendItemAdded = async () => ({ success: true });
-      
-      const success = true; // Mock - substituir pela nova implementação WhatsApp
+      // Buscar template (prioriza PRODUCT_ADDED, senão ITEM_ADDED)
+      const { data: template } = await supabaseTenant
+        .from('whatsapp_templates')
+        .select('content')
+        .in('type', ['PRODUCT_ADDED', 'ITEM_ADDED'] as any)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      // Marcar que mensagem foi enviada
-      await supabase
+      const quantity = Number(quantity) || 1;
+      const unitValue = Number(unitPrice || selectedProduct.price) || 0;
+      const totalValue = quantity * unitValue;
+
+      const baseMessage = template?.content ||
+        `🛒 Item adicionado ao pedido\n\nProduto: {{produto}}\nQtd: {{quantidade}}\nValor: R$ {{valor}}\nVariação 1: {{variacao1}}\nVariação 2: {{variacao2}}`;
+
+      const message = baseMessage
+        .replace(/{{produto}}/g, selectedProduct.name)
+        .replace(/{{quantidade}}/g, String(quantity))
+        .replace(/{{valor}}/g, totalValue.toFixed(2))
+        .replace(/{{variacao1}}/g, '-')
+        .replace(/{{variacao2}}/g, '-');
+
+      const resp = await whatsappService.sendSimpleMessage(order.customer_phone, message);
+
+      // Marcar que mensagem foi enviada (independente do sucesso externo, registramos tentativa)
+      await supabaseTenant
         .from('orders')
         .update({ item_added_message_sent: true })
         .eq('id', order.id);
 
-      if (success) {
-        toast({
-          title: 'Sucesso',
-          description: 'Mensagem de item adicionado enviada'
-        });
+      if (resp?.success) {
+        toast({ title: 'Sucesso', description: 'Mensagem enviada ao cliente' });
       } else {
-        toast({
-          title: 'Aviso',
-          description: 'Mensagem registrada, mas pode não ter sido entregue via WhatsApp',
-          variant: 'destructive'
-        });
+        toast({ title: 'Aviso', description: 'Mensagem registrada, mas pode não ter sido entregue', variant: 'destructive' });
       }
 
     } catch (error) {
@@ -356,11 +368,11 @@ useEffect(() => {
     
     try {
       // Buscar template de cancelamento
-      const { data: template } = await supabase
+      const { data: template } = await supabaseTenant
         .from('whatsapp_templates')
         .select('content')
         .eq('type', 'PRODUCT_CANCELED')
-        .single();
+        .maybeSingle();
 
       const message = template?.content 
         ? template.content.replace('{{produto}}', item.product?.name || 'Produto')
@@ -410,12 +422,11 @@ useEffect(() => {
       })();
 
       // Registrar no banco
-      await supabase.from('whatsapp_messages').insert({
+      await supabaseTenant.from('whatsapp_messages').insert({
         phone: order.customer_phone,
         message,
         type: 'system_log',
-        sent_at: new Date().toISOString(),
-        tenant_id: profile?.tenant_id || ''
+        sent_at: new Date().toISOString()
       });
 
       if (sent) {
