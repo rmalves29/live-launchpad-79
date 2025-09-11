@@ -110,10 +110,11 @@ const Produtos = () => {
       };
 
       if (editingProduct) {
-        const { error } = await supabaseTenant
+        const { error } = await supabaseTenant.raw
           .from('products')
           .update(productData)
-          .eq('id', editingProduct.id);
+          .eq('id', editingProduct.id)
+          .eq('tenant_id', effectiveTenantId);
 
         if (error) throw error;
 
@@ -229,10 +230,11 @@ const Produtos = () => {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
 
     try {
-      const { error } = await supabaseTenant
+      const { error } = await supabaseTenant.raw
         .from('products')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .eq('tenant_id', (profile?.tenant_id as string | null) ?? (supabaseTenant as any).getTenantId?.());
 
       if (error) throw error;
 

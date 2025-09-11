@@ -72,7 +72,7 @@ const Config = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const isMaster = true; // For now, assume all authenticated users are masters
+  const isMaster = user?.email === 'rmalves21@hotmail.com';
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [integrationSettings, setIntegrationSettings] = useState<IntegrationSettings>({

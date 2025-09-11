@@ -30,7 +30,7 @@ export default function Dashboard() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const isMaster = true; // For now, assume all authenticated users are masters
+  const isMaster = user?.email === 'rmalves21@hotmail.com';
   const isAdmin = true;
 
   if (!isMaster && !isAdmin) {
