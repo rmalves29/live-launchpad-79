@@ -325,7 +325,7 @@ useEffect(() => {
         .limit(1)
         .maybeSingle();
 
-      const qty = Number(quantity) || 1;
+      const qty = quantity || 1;
       const unitValue = Number(unitPrice || selectedProduct.price) || 0;
       const totalValue = qty * unitValue;
 

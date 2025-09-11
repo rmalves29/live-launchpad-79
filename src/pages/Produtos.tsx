@@ -18,6 +18,8 @@ interface Product {
   name: string;
   price: number;
   stock: number;
+  color?: string;
+  size?: string;
   image_url?: string;
   is_active: boolean;
 }
@@ -36,6 +38,8 @@ const Produtos = () => {
     name: '',
     price: '',
     stock: '',
+    color: '',
+    size: '',
     image_url: '',
     is_active: true
   });
@@ -104,6 +108,8 @@ const Produtos = () => {
         name: formData.name,
         price: parseFloat(formData.price),
         stock: parseInt(formData.stock) || 0,
+        color: formData.color || null,
+        size: formData.size || null,
         image_url: imageUrl,
         is_active: formData.is_active
       };
@@ -140,6 +146,8 @@ const Produtos = () => {
         name: '',
         price: '',
         stock: '',
+        color: '',
+        size: '',
         image_url: '',
         is_active: true
       });
@@ -210,12 +218,14 @@ const Produtos = () => {
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
     setFormData({
-      code: product.code,
-      name: product.name,
-      price: product.price.toString(),
-      stock: product.stock.toString(),
-      image_url: product.image_url || '',
-      is_active: product.is_active
+        code: product.code,
+        name: product.name,
+        price: product.price.toString(),
+        stock: product.stock.toString(),
+        color: product.color || '',
+        size: product.size || '',
+        image_url: product.image_url || '',
+        is_active: product.is_active
     });
     setSelectedFile(null);
     setIsDialogOpen(true);
@@ -335,6 +345,28 @@ const Produtos = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="color">Variação 1 (Cor)</Label>
+                    <Input
+                      id="color"
+                      value={formData.color}
+                      onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                      placeholder="Ex: Azul"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="size">Variação 2 (Tamanho)</Label>
+                    <Input
+                      id="size"
+                      value={formData.size}
+                      onChange={(e) => setFormData({ ...formData, size: e.target.value })}
+                      placeholder="Ex: M"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <Label htmlFor="image">Imagem do Produto</Label>
                   <div className="space-y-2">
@@ -437,6 +469,7 @@ const Produtos = () => {
                         <TableHead>Imagem</TableHead>
                         <TableHead>Código</TableHead>
                         <TableHead>Nome</TableHead>
+                        <TableHead>Variações</TableHead>
                         <TableHead>Preço</TableHead>
                         <TableHead>Estoque</TableHead>
                         <TableHead>Status</TableHead>
@@ -464,6 +497,13 @@ const Produtos = () => {
                           </TableCell>
                           <TableCell className="font-mono">{product.code}</TableCell>
                           <TableCell>{product.name}</TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {product.color && <div>Cor: {product.color}</div>}
+                              {product.size && <div>Tam: {product.size}</div>}
+                              {!product.color && !product.size && <div className="text-muted-foreground">-</div>}
+                            </div>
+                          </TableCell>
                           <TableCell>{formatCurrency(product.price)}</TableCell>
                           <TableCell>{product.stock}</TableCell>
                           <TableCell>

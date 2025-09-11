@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -80,7 +80,7 @@ const Pedidos = () => {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      let query = supabase
+      let query = supabaseTenant
         .from('orders')
         .select('*')
         .order('created_at', { ascending: false });
@@ -105,7 +105,7 @@ const Pedidos = () => {
       // Fetch customer and cart items data for each order
       const ordersWithDetails = await Promise.all((orderData || []).map(async (order) => {
         // Fetch customer data
-        const { data: customerData } = await supabase
+        const { data: customerData } = await supabaseTenant
           .from('customers')
           .select('name, cpf, street, number, complement, city, state, cep')
           .eq('phone', order.customer_phone)
@@ -114,7 +114,7 @@ const Pedidos = () => {
         // Fetch cart items with products. If cart_id is missing, try to infer the most recent cart for this cliente
         let cartItemsData: any[] = [];
         if (order.cart_id) {
-          const { data } = await supabase
+          const { data } = await supabaseTenant
             .from('cart_items')
             .select(`
               id,
@@ -130,7 +130,7 @@ const Pedidos = () => {
           cartItemsData = data || [];
         } else {
           // Fallback: buscar um carrinho recente do mesmo telefone (útil para pedidos antigos sem vínculo)
-          const { data: candidateCarts } = await supabase
+          const { data: candidateCarts } = await supabaseTenant
             .from('carts')
             .select('id, event_date, created_at')
             .eq('customer_phone', order.customer_phone)
@@ -150,7 +150,7 @@ const Pedidos = () => {
           }
 
           if (resolvedCartId) {
-            const { data } = await supabase
+            const { data } = await supabaseTenant
               .from('cart_items')
               .select(`
                 id,
@@ -207,7 +207,7 @@ const Pedidos = () => {
         updateData.payment_confirmation_sent = true;
       }
 
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('orders')
         .update(updateData)
         .eq('id', orderId);
@@ -300,7 +300,7 @@ Obrigado pela confiança! 🙌`;
 
   const saveObservation = async (orderId: number) => {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('orders')
         .update({ observation: observationText })
         .eq('id', orderId);
@@ -352,7 +352,7 @@ Obrigado pela confiança! 🙌`;
     }
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('orders')
         .update({ printed: true })
         .in('id', Array.from(selectedOrders));
@@ -382,7 +382,7 @@ Obrigado pela confiança! 🙌`;
 
   const togglePrintedStatus = async (orderId: number, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('orders')
         .update({ printed: !currentStatus })
         .eq('id', orderId);
@@ -427,12 +427,12 @@ Obrigado pela confiança! 🙌`;
       for (const orderId of selectedOrders) {
         const order = orders.find(o => o.id === orderId);
         if (order?.cart_id) {
-          await supabase
+          await supabaseTenant
             .from('cart_items')
             .delete()
             .eq('cart_id', order.cart_id);
           
-          await supabase
+          await supabaseTenant
             .from('carts')
             .delete()
             .eq('id', order.cart_id);
@@ -440,7 +440,7 @@ Obrigado pela confiança! 🙌`;
       }
 
       // Delete orders
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('orders')
         .delete()
         .in('id', Array.from(selectedOrders));
@@ -646,7 +646,7 @@ Obrigado pela confiança! 🙌`;
       setLoading(true);
 
       // Montar consulta independente para o envio em massa (status + data)
-      let query = supabase
+      let query = supabaseTenant
         .from('orders')
         .select('id, customer_phone, is_paid, event_date');
 
@@ -684,7 +684,7 @@ Obrigado pela confiança! 🙌`;
       }
 
       // Buscar template BROADCAST
-      const { data: template, error: templateError } = await supabase
+      const { data: template, error: templateError } = await supabaseTenant
         .from('whatsapp_templates')
         .select('content')
         .eq('type', 'BROADCAST')
@@ -744,7 +744,7 @@ Obrigado pela confiança! 🙌`;
         const phone = uniquePhones[i];
         const message = messages[i % messages.length];
         
-         await supabase.from('whatsapp_messages').insert({
+         await supabaseTenant.from('whatsapp_messages').insert({
            phone,
            message,
            type: 'broadcast',

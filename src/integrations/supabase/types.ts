@@ -741,36 +741,42 @@ export type Database = {
       products: {
         Row: {
           code: string
+          color: string | null
           created_at: string | null
           id: number
           image_url: string | null
           is_active: boolean
           name: string
           price: number
+          size: string | null
           stock: number
           tenant_id: string
           updated_at: string | null
         }
         Insert: {
           code: string
+          color?: string | null
           created_at?: string | null
           id?: number
           image_url?: string | null
           is_active?: boolean
           name: string
           price: number
+          size?: string | null
           stock?: number
           tenant_id: string
           updated_at?: string | null
         }
         Update: {
           code?: string
+          color?: string | null
           created_at?: string | null
           id?: number
           image_url?: string | null
           is_active?: boolean
           name?: string
           price?: number
+          size?: string | null
           stock?: number
           tenant_id?: string
           updated_at?: string | null

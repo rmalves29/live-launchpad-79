@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 
 interface OrderItem {
   id: number;
@@ -71,7 +71,7 @@ const Checkout = () => {
     setLoadingOpenOrders(true);
     
     try {
-      const { data: orders, error } = await supabase
+      const { data: orders, error } = await supabaseTenant
         .from('orders')
         .select('*')
         .eq('customer_phone', normalizedPhone)
@@ -87,7 +87,7 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          const { data: cartItems, error: itemsError } = await supabase
+          const { data: cartItems, error: itemsError } = await supabaseTenant
             .from('cart_items')
             .select(`
               id,
@@ -164,7 +164,7 @@ const Checkout = () => {
       }
 
       // Calcular frete
-      const { data, error } = await supabase.functions.invoke('melhor-envio-shipping', {
+      const { data, error } = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
           products: order.items.map(item => ({
@@ -300,7 +300,7 @@ const Checkout = () => {
       console.log('Calling create-payment with data:', paymentData);
 
       // Criar pagamento no Mercado Pago
-      const { data, error } = await supabase.functions.invoke('create-payment', {
+      const { data, error } = await supabaseTenant.raw.functions.invoke('create-payment', {
         body: paymentData
       });
 
@@ -375,7 +375,7 @@ const Checkout = () => {
     setLoadingHistory(true);
     
     try {
-      const { data: orders, error } = await supabase
+      const { data: orders, error } = await supabaseTenant
         .from('orders')
         .select('*')
         .eq('customer_phone', normalizedPhone)
@@ -391,7 +391,7 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          const { data: cartItems, error: itemsError } = await supabase
+          const { data: cartItems, error: itemsError } = await supabaseTenant
             .from('cart_items')
             .select(`
               id,
