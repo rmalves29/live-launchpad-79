@@ -165,7 +165,7 @@ client.on('message', async (msg) => {
         tenant_id: TENANT_ID,
         phone: msg.from,
         message: msg.body,
-        type: 'received',
+        type: 'incoming',
         received_at: new Date().toISOString()
       })
     });
@@ -295,7 +295,7 @@ app.post('/send', async (req, res) => {
         tenant_id: TENANT_ID,
         phone: normalizedNumber,
         message: message,
-        type: 'sent',
+        type: 'outgoing',
         sent_at: new Date().toISOString()
       })
     });
