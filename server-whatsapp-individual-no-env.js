@@ -147,6 +147,17 @@ async function composeItemAdded(product) {
   return `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *1*\nPreço: *${price}*`;
 }
 
+// Mensagem para finalizar compra
+async function composeFinalize() {
+  const template = await getTemplate('FINALIZAR');
+  if (template) return template.content;
+  return (
+    'Perfeita a sua escolha! 💖 Já deixei separada.\n' +
+    'Para pagar agora: clique no link, coloque o seu telefone.\n' +
+    '👉 https://app.orderzaps.com/checkout'
+  );
+}
+
 /* ============================ WHATSAPP CLIENT ============================ */
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: TENANT_SLUG }),
@@ -183,8 +194,16 @@ client.on('message', async (msg) => {
       })
     });
 
-    const text = String(msg.body || '').trim().toUpperCase();
+const text = String(msg.body || '').trim().toUpperCase();
     console.log(`🔍 Texto processado: "${text}"`);
+    
+    // Se o cliente digitar apenas "finalizar", responder com o template FINALIZAR
+    if (text === 'FINALIZAR') {
+      const message = await composeFinalize();
+      await client.sendMessage(msg.from, message);
+      console.log(`✅ Mensagem FINALIZAR enviada para ${msg.from}`);
+      return;
+    }
     
     const match = text.match(/^(?:[CPA]\s*)?(\d{1,6})$/);
     console.log(`🎯 Match encontrado:`, match);
@@ -215,6 +234,47 @@ client.on('message', async (msg) => {
     console.error('Stack trace:', error.stack);
   }
 });
+
+async function upsertOrderForCart(cart, customerPhone, eventDate) {
+  try {
+    const items = await supa(`/cart_items?select=qty,unit_price&cart_id=eq.${cart.id}`);
+    const total = Array.isArray(items)
+      ? items.reduce((sum, it) => sum + Number(it.unit_price || 0) * Number(it.qty || 1), 0)
+      : 0;
+
+    const existing = await supa(`/orders?select=*&cart_id=eq.${cart.id}`);
+    let order = existing?.[0];
+
+    if (!order) {
+      const inserted = await supa('/orders', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({
+          tenant_id: TENANT_ID,
+          cart_id: cart.id,
+          event_date: eventDate,
+          total_amount: total,
+          is_paid: false,
+          customer_phone: customerPhone,
+          event_type: 'whatsapp'
+        })
+      });
+      order = inserted?.[0];
+      console.log(`🧾 Pedido criado automaticamente: #${order?.id || 'N/A'} (total ${fmtMoney(total)})`);
+    } else {
+      await supa(`/orders?id=eq.${order.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ total_amount: total })
+      });
+      console.log(`🧾 Pedido atualizado (#${order.id}) total ${fmtMoney(total)}`);
+    }
+
+    return order;
+  } catch (err) {
+    console.error('❌ Erro ao criar/atualizar pedido:', err);
+    return null;
+  }
+}
 
 async function processProductCode(phone, product) {
   const normalizedPhone = normalizeDDD(phone);
@@ -255,6 +315,9 @@ async function processProductCode(phone, product) {
         })
       });
       console.log(`🛒 Produto ${product.code} adicionado ao carrinho do cliente ${normalizedPhone}`);
+
+      // Criar/atualizar pedido automaticamente vinculado ao carrinho
+      await upsertOrderForCart(cart, normalizedPhone, today);
     }
   } catch (error) {
     console.error('❌ Erro ao processar código do produto:', error);
