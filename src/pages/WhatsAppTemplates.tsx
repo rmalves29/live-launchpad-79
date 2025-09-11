@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Edit, Trash2, Plus } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -40,7 +40,8 @@ const WhatsAppTemplates = () => {
     { value: 'BROADCAST', label: 'Broadcast' },
     { value: 'ITEM_ADDED', label: 'Item Adicionado' },
     { value: 'PRODUCT_CANCELED', label: 'Produto Cancelado' },
-    { value: 'PAID_ORDER', label: 'Pedido Pago' }
+    { value: 'PAID_ORDER', label: 'Pedido Pago' },
+    { value: 'FINALIZAR', label: 'Finalizar Compra' }
   ];
 
   useEffect(() => {
@@ -50,7 +51,7 @@ const WhatsAppTemplates = () => {
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('whatsapp_templates')
         .select('*')
         .order('created_at', { ascending: false });
@@ -83,14 +84,13 @@ const WhatsAppTemplates = () => {
 
     try {
       const templateData = {
-        type: formData.type as 'BROADCAST' | 'ITEM_ADDED' | 'PRODUCT_CANCELED' | 'PAID_ORDER',
+        type: formData.type as 'BROADCAST' | 'ITEM_ADDED' | 'PRODUCT_CANCELED' | 'PAID_ORDER' | 'FINALIZAR',
         title: formData.title || null,
-        content: formData.content,
-        tenant_id: profile?.tenant_id || ''
+        content: formData.content
       };
 
       if (editingTemplate) {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('whatsapp_templates')
           .update(templateData)
           .eq('id', editingTemplate.id);
@@ -101,7 +101,7 @@ const WhatsAppTemplates = () => {
           description: "Template atualizado com sucesso",
         });
       } else {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('whatsapp_templates')
           .insert([templateData]);
 
@@ -129,7 +129,7 @@ const WhatsAppTemplates = () => {
     if (!confirm('Tem certeza que deseja excluir este template?')) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('whatsapp_templates')
         .delete()
         .eq('id', templateId);
