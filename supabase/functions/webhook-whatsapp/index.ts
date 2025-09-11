@@ -165,6 +165,54 @@ Deno.serve(async (req) => {
                 });
 
               console.log(`Added product ${product.code} to cart for ${phone} in tenant ${tenantKey}`);
+
+              // Send automatic message using template
+              try {
+                // Get WhatsApp integration for this tenant to send message
+                const { data: whatsappIntegration } = await supabase
+                  .from('integration_whatsapp')
+                  .select('api_url')
+                  .eq('tenant_id', tenant.id)
+                  .eq('is_active', true)
+                  .maybeSingle();
+
+                if (whatsappIntegration?.api_url) {
+                  // Get template for item added
+                  const { data: template } = await supabase
+                    .from('whatsapp_templates')
+                    .select('content')
+                    .eq('tenant_id', tenant.id)
+                    .eq('type', 'ITEM_ADDED')
+                    .maybeSingle();
+
+                  let messageText;
+                  if (template) {
+                    // Replace template variables
+                    messageText = template.content
+                      .replace(/{{produto}}/g, product.name)
+                      .replace(/{{quantidade}}/g, '1')
+                      .replace(/{{preco}}/g, `R$ ${Number(product.price).toFixed(2).replace('.', ',')}`)
+                      .replace(/{{total}}/g, `R$ ${Number(product.price).toFixed(2).replace('.', ',')}`);
+                  } else {
+                    // Fallback message
+                    messageText = `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name} (${product.code})\nQtd: *1*\nPreço: *R$ ${Number(product.price).toFixed(2).replace('.', ',')}*`;
+                  }
+
+                  // Send message via WhatsApp server
+                  await fetch(whatsappIntegration.api_url + '/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      number: phone,
+                      message: messageText
+                    })
+                  });
+
+                  console.log(`Sent confirmation message to ${phone} for product ${product.code}`);
+                }
+              } catch (msgError) {
+                console.error('Error sending confirmation message:', msgError);
+              }
             }
           }
         }

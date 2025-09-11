@@ -36,5 +36,5 @@ verify_jwt = false
 [functions.webhook-whatsapp]
 verify_jwt = false
 
-[functions.webhook-melhorenvio]
+[functions.whatsapp-multitenant]
 verify_jwt = false

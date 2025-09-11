@@ -831,17 +831,21 @@ function verifyWebhook(req) {
   const h = req.get('x-webhook-secret') || req.query.secret || req.body?.secret;
   if (h !== WEBHOOK_SECRET) throw new Error('unauthorized');
 }
-async function composeOrderCreated(b, tenantId = null) {
-  const template = await getWhatsAppTemplate('BROADCAST', tenantId); // Usando BROADCAST como padrão
-  if (template) {
-    return template.content;
+  async function composeOrderCreated(b, tenantId = null) {
+    const template = await getWhatsAppTemplate('ORDER_CREATED', tenantId);
+    if (template) {
+      return replaceTemplateVariables(template.content, {
+        customer_name: b?.customer_name || 'Cliente',
+        order_id: b?.order_id || b?.id || '',
+        total_amount: fmtMoney(b?.total_amount)
+      });
+    }
+    // Fallback se não houver template
+    const nome = b?.customer_name || 'Cliente';
+    const total = fmtMoney(b?.total_amount);
+    const id = b?.order_id || b?.id || '';
+    return `🧾 *Pedido criado!*\n\nOlá ${nome} 👋\nSeu pedido *#${id}* foi registrado com sucesso.\n\nTotal: *${total}*\n\nQualquer dúvida é só responder aqui.`;
   }
-  // Fallback se não houver template
-  const nome = b?.customer_name || 'Cliente';
-  const total = fmtMoney(b?.total_amount);
-  const id = b?.order_id || b?.id || '';
-  return `🧾 *Pedido criado!*\n\nOlá ${nome} 👋\nSeu pedido *#${id}* foi registrado com sucesso.\n\nTotal: *${total}*\n\nQualquer dúvida é só responder aqui.`;
-}
 async function composeItemAdded(b, tenantId = null) {
   const template = await getWhatsAppTemplate('ITEM_ADDED', tenantId);
   if (template) {
