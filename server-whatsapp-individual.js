@@ -17,18 +17,26 @@ if (typeof fetch !== 'function') {
 /* ============================ CONFIG ============================ */
 const PORT = process.env.PORT || 3333;
 const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY 
-  || process.env.SUPABASE_SERVICE_ROLE_KEY 
-  || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+const SUPABASE_SERVICE_ROLE =
+  process.env.SUPABASE_SERVICE_ROLE ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_KEY;
+
+if (!SUPABASE_SERVICE_ROLE) {
+  console.error('❌ [FATAL] SUPABASE_SERVICE_ROLE (ou SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SERVICE_KEY) não configurado. Configure a service role para evitar erros 401/42501 (RLS).');
+  process.exit(1);
+}
+
+const SUPABASE_KEY = SUPABASE_SERVICE_ROLE;
 
 // Configuração do tenant (definir manualmente para cada empresa)
 const TENANT_ID = process.env.TENANT_ID || '08f2b1b9-3988-489e-8186-c60f0c0b0622';
 const TENANT_SLUG = process.env.TENANT_SLUG || 'app';
 
-const USING_SERVICE_ROLE = !!(process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+const USING_SERVICE_ROLE = true;
 
 console.log(`🏢 Inicializando servidor para tenant: ${TENANT_SLUG} (${TENANT_ID})`);
-console.log(`🔐 Modo Supabase: ${USING_SERVICE_ROLE ? 'service_role (RLS ignorada no servidor)' : 'anon (RLS aplicada - pode causar 401/42501)'}`);
+console.log(`🔐 Modo Supabase: service_role (RLS ignorada no servidor)`);
 
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
