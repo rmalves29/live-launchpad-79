@@ -47,27 +47,42 @@ class TenantSupabaseClient {
     return this.client.storage;
   }
 
-  // Tabelas COM filtro automático por tenant
+  // Tabelas COM filtro automático por tenant (aplica filtro após select/update/delete)
   from(table: keyof Database['public']['Tables']) {
-    const query = this.client.from(table);
+    const base = this.client.from(table);
 
     // Tabelas que NÃO devem ser filtradas por tenant
     const globalTables = ['tenants', 'profiles', 'app_settings', 'audit_logs', 'webhook_logs'];
-    
+
     if (globalTables.includes(table)) {
-      return query;
+      return base;
     }
 
-    // Se temos tenant_id, aplicar filtro automaticamente
-    if (this.currentTenantId) {
-      console.log(`🔍 Aplicando filtro tenant_id=${this.currentTenantId} na tabela ${table}`);
-      return (query as any).eq('tenant_id', this.currentTenantId);
+    const tenantId = this.currentTenantId;
+    if (!tenantId) {
+      console.warn(`⚠️ Query na tabela ${table} sem tenant definido`);
+      return base;
     }
 
-    // Sem tenant definido: permitir acesso apenas se for super_admin
-    // Para usuários normais sem tenant, não retornar dados
-    console.warn(`⚠️ Query na tabela ${table} sem tenant definido`);
-    return query;
+    console.log(`🔍 Aplicando filtro tenant_id=${tenantId} na tabela ${table}`);
+
+    const wrapped: any = {
+      select: (columns?: any, options?: any) => (base as any).select(columns ?? '*', options).eq('tenant_id', tenantId),
+      update: (values: any) => (base as any).update(values).eq('tenant_id', tenantId),
+      delete: () => (base as any).delete().eq('tenant_id', tenantId),
+      upsert: (values: any) => {
+        const arr = Array.isArray(values) ? values : [values];
+        const withTenant = arr.map((v) => ({ tenant_id: tenantId, ...v }));
+        return (base as any).upsert(withTenant);
+      },
+      insert: (values: any) => {
+        const arr = Array.isArray(values) ? values : [values];
+        const withTenant = arr.map((v) => ({ tenant_id: tenantId, ...v }));
+        return (base as any).insert(withTenant);
+      },
+    };
+
+    return wrapped;
   }
 
   // Método para queries que precisam ignorar o filtro de tenant

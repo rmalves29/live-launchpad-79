@@ -23,7 +23,7 @@ const Navbar = () => {
     { path: '/relatorios', label: 'Relatórios' },
     { path: '/whatsapp-templates', label: 'Templates WPP' },
     { path: '/sorteio', label: 'Sorteio' },
-    ...(profile?.role === 'super_admin' ? [{ path: '/config', label: 'Configurações' }] : [])
+    ...(user?.email === 'rmalves21@hotmail.com' ? [{ path: '/config', label: 'Configurações' }] : [])
   ];
 
   const whatsappItems = ['/whatsapp-templates', '/whatsapp-integration'];
