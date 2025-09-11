@@ -14,5 +14,5 @@ if (!process.env.SUPABASE_SERVICE_KEY) {
 console.log('🚀 Iniciando servidor WhatsApp...');
 console.log(`📊 Status: http://localhost:${process.env.PORT}/status`);
 
-// Importar o servidor correto (sem .js duplicado)
+// Importar o servidor correto
 require('./server-whatsapp-individual-no-env');

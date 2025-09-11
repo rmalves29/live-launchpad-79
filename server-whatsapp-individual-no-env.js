@@ -1,7 +1,7 @@
 /**
  * server-whatsapp-individual-no-env.js — Servidor WhatsApp por empresa (sem .env)
- * Baseado no server-whatsapp.js original mas com suporte completo a templates
- * Uso: $env:SUPABASE_SERVICE_ROLE="..."; $env:TENANT_ID="..."; node server-whatsapp-individual-no-env.js
+ * Uso (PowerShell):
+ * $env:SUPABASE_SERVICE_ROLE="eyJhbGciOiJI..."; $env:TENANT_ID="08f2b1b9-3988-489e-8186-c60f0c0b0622"; $env:TENANT_SLUG="app"; node server-whatsapp-individual-no-env.js
  */
 
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
@@ -9,7 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
 
-// fetch (fallback para ambientes sem global)
+// fetch (fallback)
 if (typeof fetch !== 'function') {
   global.fetch = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
 }
@@ -18,13 +18,12 @@ if (typeof fetch !== 'function') {
 const PORT = process.env.PORT || 3333;
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 
-// lê a service role de forma robusta (NUNCA cole a key no código)
+// service_role obrigatória
 const SUPABASE_SERVICE_ROLE =
   process.env.SUPABASE_SERVICE_ROLE ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_SERVICE_KEY || '';
 
-// trava se não tiver a key (evita cair no modo anon e tomar 401/42501)
 if (!SUPABASE_SERVICE_ROLE) {
   console.error('❌ [FATAL] Configure SUPABASE_SERVICE_ROLE no PowerShell:');
   console.error('   $env:SUPABASE_SERVICE_ROLE="eyJhbGciOiJI...SUA_SERVICE_ROLE_AQUI"');
@@ -33,54 +32,45 @@ if (!SUPABASE_SERVICE_ROLE) {
   console.error('   node server-whatsapp-individual-no-env.js');
   process.exit(1);
 }
-
 const SUPABASE_KEY = SUPABASE_SERVICE_ROLE;
 
-// Configuração do tenant (definir manualmente para cada empresa)
+// Tenant
 const TENANT_ID = process.env.TENANT_ID || '08f2b1b9-3988-489e-8186-c60f0c0b0622';
 const TENANT_SLUG = process.env.TENANT_SLUG || 'app';
 
 console.log(`🏢 Inicializando servidor para tenant: ${TENANT_SLUG} (${TENANT_ID})`);
 console.log(`🔐 Modo Supabase: service_role (RLS ignorada no servidor)`);
 
-// Diagnóstico rápido do token (não imprime o token, só o claim)
+// Diagnóstico do JWT (não imprime o token)
 try {
   const payload = (SUPABASE_KEY || '').split('.')[1];
   const claims = payload ? JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) : null;
   console.log(`🧪 JWT role: ${claims?.role || 'N/A'} | exp: ${claims?.exp ? new Date(claims.exp * 1000).toISOString() : 'N/A'}`);
   if (claims?.role !== 'service_role') {
-    console.error('⚠️  ATENÇÃO: Token não é service_role! Pode causar erros 401/42501.');
+    console.error('⚠️  Token não é service_role! Verifique se colou a Service Role completa.');
   }
-} catch (e) {
+} catch {
   console.log('⚠️ Não foi possível decodificar o JWT de SUPABASE_SERVICE_ROLE.');
 }
 
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
-
-function fmtMoney(v) { 
-  return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`;
-}
+function fmtMoney(v) { return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`; }
 
 // Normalização de DDD: se DDD < 31 adiciona 9, se >= 31 remove 9
 function normalizeDDD(phone) {
   if (!phone) return phone;
-  
   const cleanPhone = phone.replace(/\D/g, '');
   let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-  
   if (normalizedPhone.length >= 4) {
     const ddd = parseInt(normalizedPhone.substring(2, 4));
     const restOfNumber = normalizedPhone.substring(4);
-    
     if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
       normalizedPhone = normalizedPhone.substring(0, 4) + '9' + normalizedPhone.substring(4);
-    }
-    else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
+    } else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
       normalizedPhone = normalizedPhone.substring(0, 4) + normalizedPhone.substring(5);
     }
   }
-  
   return normalizedPhone;
 }
 
@@ -96,16 +86,12 @@ async function supaRaw(pathname, init) {
   if ((finalInit.method || '').toUpperCase() === 'POST' && !('Prefer' in finalInit.headers)) {
     finalInit.headers.Prefer = 'return=representation';
   }
-  
-  console.log(`🔗 ${finalInit.method || 'GET'} ${pathname}`);
   const res = await fetch(url, finalInit);
   const text = await res.text();
-  
   if (!res.ok) {
     console.error(`❌ Supabase ${res.status} ${pathname}: ${text}`);
     throw new Error(`Supabase ${res.status} ${pathname} ${text}`);
   }
-  
   return text ? JSON.parse(text) : null;
 }
 
@@ -121,7 +107,7 @@ let templatesCacheTime = 0;
 
 async function getTemplate(type) {
   const now = Date.now();
-  if (now - templatesCacheTime > 300000) { // 5 minutos
+  if (now - templatesCacheTime > 300000) { // 5 min
     try {
       const templates = await supa('/whatsapp_templates?select=*');
       templatesCache = {};
@@ -156,8 +142,6 @@ async function composeItemAdded(product) {
       total: fmtMoney(product.price)
     });
   }
-  
-  // Fallback
   const productCode = product.code ? ` (${product.code})` : '';
   const price = fmtMoney(product.price);
   return `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *1*\nPreço: *${price}*`;
@@ -168,11 +152,7 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: TENANT_SLUG }),
   puppeteer: {
     headless: false,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
-    ]
+    args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']
   }
 });
 
@@ -183,24 +163,13 @@ client.on('qr', (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', () => {
-  console.log('✅ WhatsApp conectado!');
-  clientReady = true;
-});
-
-client.on('authenticated', () => {
-  console.log('🔑 WhatsApp autenticado!');
-});
-
-client.on('auth_failure', () => {
-  console.log('❌ Falha na autenticação do WhatsApp');
-});
+client.on('ready', () => { console.log('✅ WhatsApp conectado!'); clientReady = true; });
+client.on('authenticated', () => console.log('🔑 WhatsApp autenticado!'));
+client.on('auth_failure', () => console.log('❌ Falha na autenticação do WhatsApp'));
 
 client.on('message', async (msg) => {
   try {
     console.log(`📨 Mensagem recebida de ${msg.from}: ${msg.body}`);
-    
-    // Salvar mensagem no banco
     await supa('/whatsapp_messages', {
       method: 'POST',
       body: JSON.stringify({
@@ -212,30 +181,19 @@ client.on('message', async (msg) => {
       })
     });
 
-    // Detectar códigos de produto
     const text = String(msg.body || '').trim().toUpperCase();
     const match = text.match(/^(?:[CPA]\s*)?(\d{1,6})$/);
-    
     if (match) {
       const numeric = match[1];
       const candidates = [`C${numeric}`, `P${numeric}`, `A${numeric}`, numeric];
-
-      // Buscar produto
       const products = await supa(`/products?select=*&is_active=eq.true&code=in.(${candidates.map(c => `"${c}"`).join(',')})`);
-      const product = products[0];
-
+      const product = products?.[0];
       if (product) {
         console.log(`🎯 Produto encontrado: ${product.name} (${product.code})`);
-        
-        // Processar pedido automaticamente
         await processProductCode(msg.from, product);
-        
-        // Enviar confirmação
         const message = await composeItemAdded(product);
         await client.sendMessage(msg.from, message);
         console.log(`✅ Confirmação enviada para ${msg.from}`);
-      } else {
-        console.log(`❓ Produto não encontrado para: ${text}`);
       }
     }
   } catch (error) {
@@ -248,57 +206,39 @@ async function processProductCode(phone, product) {
   const today = new Date().toISOString().split('T')[0];
 
   try {
-    // Buscar ou criar cliente
     let customers = await supa(`/customers?select=*&phone=eq.${normalizedPhone}`);
-    let customer = customers[0];
+    let customer = customers?.[0];
 
     if (!customer) {
       const newCustomers = await supa('/customers', {
         method: 'POST',
         headers: { Prefer: 'return=representation' },
-        body: JSON.stringify({
-          tenant_id: TENANT_ID,
-          phone: normalizedPhone,
-          name: normalizedPhone
-        })
+        body: JSON.stringify({ tenant_id: TENANT_ID, phone: normalizedPhone, name: normalizedPhone })
       });
-      customer = newCustomers[0];
-      console.log(`👤 Cliente criado: ${normalizedPhone}`);
+      customer = newCustomers?.[0];
     }
 
-    // Buscar ou criar carrinho aberto
     let carts = await supa(`/carts?select=*&customer_phone=eq.${normalizedPhone}&event_date=eq.${today}&status=eq.OPEN`);
-    let cart = carts[0];
+    let cart = carts?.[0];
 
     if (!cart) {
       const newCarts = await supa('/carts', {
         method: 'POST',
         headers: { Prefer: 'return=representation' },
         body: JSON.stringify({
-          tenant_id: TENANT_ID,
-          customer_phone: normalizedPhone,
-          event_date: today,
-          event_type: 'whatsapp',
-          status: 'OPEN'
+          tenant_id: TENANT_ID, customer_phone: normalizedPhone, event_date: today, event_type: 'whatsapp', status: 'OPEN'
         })
       });
-      cart = newCarts[0];
-      console.log(`🛒 Carrinho criado para: ${normalizedPhone}`);
+      cart = newCarts?.[0];
     }
 
-    // Adicionar item ao carrinho
     if (cart) {
       await supa('/cart_items', {
         method: 'POST',
         body: JSON.stringify({
-          tenant_id: TENANT_ID,
-          cart_id: cart.id,
-          product_id: product.id,
-          qty: 1,
-          unit_price: product.price
+          tenant_id: TENANT_ID, cart_id: cart.id, product_id: product.id, qty: 1, unit_price: product.price
         })
       });
-
       console.log(`🛒 Produto ${product.code} adicionado ao carrinho do cliente ${normalizedPhone}`);
     }
   } catch (error) {
@@ -316,7 +256,7 @@ app.get('/status', (req, res) => {
   res.json({
     tenant: { id: TENANT_ID, slug: TENANT_SLUG },
     whatsapp: { ready: clientReady },
-    supabase: { 
+    supabase: {
       url: SUPABASE_URL,
       hasServiceRole: !!SUPABASE_SERVICE_ROLE,
       keyPreview: SUPABASE_SERVICE_ROLE ? `${SUPABASE_SERVICE_ROLE.substring(0, 20)}...` : 'N/A'
@@ -327,27 +267,17 @@ app.get('/status', (req, res) => {
 
 app.post('/send', async (req, res) => {
   try {
-    if (!clientReady) {
-      return res.status(503).json({ error: 'WhatsApp não está conectado' });
-    }
-
+    if (!clientReady) return res.status(503).json({ error: 'WhatsApp não está conectado' });
     const { number, message } = req.body;
-    if (!number || !message) {
-      return res.status(400).json({ error: 'Número e mensagem são obrigatórios' });
-    }
+    if (!number || !message) return res.status(400).json({ error: 'Número e mensagem são obrigatórios' });
 
     const normalizedNumber = normalizeDDD(number);
     await client.sendMessage(`${normalizedNumber}@c.us`, message);
 
-    // Log da mensagem enviada
     await supa('/whatsapp_messages', {
       method: 'POST',
       body: JSON.stringify({
-        tenant_id: TENANT_ID,
-        phone: normalizedNumber,
-        message: message,
-        type: 'outgoing',
-        sent_at: new Date().toISOString()
+        tenant_id: TENANT_ID, phone: normalizedNumber, message, type: 'outgoing', sent_at: new Date().toISOString()
       })
     });
 
@@ -373,9 +303,7 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
-  if (clientReady) {
-    await client.destroy();
-  }
+  if (clientReady) await client.destroy();
   process.exit();
 });
 
