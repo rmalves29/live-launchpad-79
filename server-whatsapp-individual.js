@@ -8,6 +8,7 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
+require('dotenv').config();
 
 // fetch (fallback para ambientes sem global)
 if (typeof fetch !== 'function') {
@@ -16,7 +17,7 @@ if (typeof fetch !== 'function') {
 
 /* ============================ CONFIG ============================ */
 const PORT = process.env.PORT || 3333;
-const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 const SUPABASE_SERVICE_ROLE =
   process.env.SUPABASE_SERVICE_ROLE ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -37,6 +38,15 @@ const USING_SERVICE_ROLE = true;
 
 console.log(`🏢 Inicializando servidor para tenant: ${TENANT_SLUG} (${TENANT_ID})`);
 console.log(`🔐 Modo Supabase: service_role (RLS ignorada no servidor)`);
+
+// Diagnóstico rápido do token (não imprime o token, só o claim)
+try {
+  const payload = (SUPABASE_KEY || '').split('.')[1];
+  const claims = payload ? JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) : null;
+  console.log(`🧪 JWT role: ${claims?.role || 'N/A'} | exp: ${claims?.exp ? new Date(claims.exp * 1000).toISOString() : 'n/a'}`);
+} catch (e) {
+  console.log('⚠️ Não foi possível decodificar o JWT de SUPABASE_SERVICE_ROLE.');
+}
 
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -70,12 +80,16 @@ function normalizeDDD(phone) {
 /* ============================ SUPABASE ============================ */
 async function supaRaw(pathname, init) {
   const url = `${SUPABASE_URL.replace(/\/+$/,'')}/rest/v1${pathname}`;
-  const headers = {
-    'apikey': SUPABASE_KEY,
-    'Authorization': `Bearer ${SUPABASE_KEY}`,
-    'Content-Type': 'application/json'
+  const baseHeaders = {
+    apikey: SUPABASE_KEY,
+    Authorization: `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json',
   };
-  const res = await fetch(url, { ...init, headers: { ...headers, ...(init && init.headers) } });
+  const finalInit = { ...(init || {}), headers: { ...baseHeaders, ...((init && init.headers) || {}) } };
+  if ((finalInit.method || '').toUpperCase() === 'POST' && !('Prefer' in finalInit.headers)) {
+    finalInit.headers.Prefer = 'return=representation';
+  }
+  const res = await fetch(url, finalInit);
   const text = await res.text();
   if (!res.ok) throw new Error(`Supabase ${res.status} ${pathname} ${text}`);
   return text ? JSON.parse(text) : null;
