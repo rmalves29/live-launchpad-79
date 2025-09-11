@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Plus, Edit, Trash2, Package } from 'lucide-react';
@@ -57,10 +57,9 @@ export default function TenantProducts() {
     if (!profile?.tenant_id) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('products')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -107,7 +106,6 @@ export default function TenantProducts() {
 
     try {
       const productData = {
-        tenant_id: profile.tenant_id,
         code: formData.code.toUpperCase(),
         name: formData.name,
         price: parseFloat(formData.price),
@@ -116,7 +114,7 @@ export default function TenantProducts() {
       };
 
       if (editingProduct) {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('products')
           .update(productData)
           .eq('id', editingProduct.id);
@@ -128,9 +126,9 @@ export default function TenantProducts() {
           description: 'Produto atualizado com sucesso!'
         });
       } else {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('products')
-          .insert(productData);
+          .insert([productData]);
 
         if (error) throw error;
         
@@ -156,7 +154,7 @@ export default function TenantProducts() {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('products')
         .delete()
         .eq('id', productId);
@@ -180,7 +178,7 @@ export default function TenantProducts() {
 
   const toggleProductActive = async (productId: number, isActive: boolean) => {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('products')
         .update({ is_active: isActive })
         .eq('id', productId);

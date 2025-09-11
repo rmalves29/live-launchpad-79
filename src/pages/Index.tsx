@@ -83,7 +83,9 @@ const Index = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {dashboardItems.map((item) => (
+          {dashboardItems
+            .filter((item) => !(item.path === '/config' && user?.email !== 'rmalves21@hotmail.com'))
+            .map((item) => (
             <Card 
               key={item.path}
               className="hover:shadow-lg transition-shadow cursor-pointer"

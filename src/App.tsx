@@ -43,9 +43,9 @@ const AppContent = () => {
 
   // Componente para restringir acesso apenas a super_admin
   const SuperAdminOnly = ({ children }: { children: ReactNode }) => {
-    const { profile } = useAuth();
+    const { user } = useAuth();
     
-    if (profile?.role !== 'super_admin') {
+    if (user?.email !== 'rmalves21@hotmail.com') {
       return <Navigate to="/" replace />;
     }
     

@@ -78,13 +78,12 @@ const Produtos = () => {
       return;
     }
 
-    // Determinar o tenant para a operação
-    const effectiveTenantId = (profile?.tenant_id as string | null) ?? (supabaseTenant as any).getTenantId?.();
-
-    if (!effectiveTenantId) {
+    // Garantir que um tenant esteja definido no cliente multi-tenant
+    const currentTenantId = (supabaseTenant as any).getTenantId?.();
+    if (!currentTenantId) {
       toast({
         title: 'Defina a empresa',
-        description: 'Selecione um tenant no domínio da empresa ou use o simulador em Configurações.',
+        description: 'Acesse pelo subdomínio da empresa ou selecione um tenant no simulador.',
         variant: 'destructive'
       });
       return;
@@ -110,11 +109,10 @@ const Produtos = () => {
       };
 
       if (editingProduct) {
-        const { error } = await supabaseTenant.raw
+        const { error } = await supabaseTenant
           .from('products')
           .update(productData)
-          .eq('id', editingProduct.id)
-          .eq('tenant_id', effectiveTenantId);
+          .eq('id', editingProduct.id);
 
         if (error) throw error;
 
@@ -125,10 +123,7 @@ const Produtos = () => {
       } else {
         const { error } = await supabaseTenant
           .from('products')
-          .insert([{
-            ...productData,
-            tenant_id: effectiveTenantId
-          }]);
+          .insert([productData]);
 
         if (error) throw error;
 
@@ -230,11 +225,10 @@ const Produtos = () => {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
 
     try {
-      const { error } = await supabaseTenant.raw
+      const { error } = await supabaseTenant
         .from('products')
         .delete()
-        .eq('id', id)
-        .eq('tenant_id', (profile?.tenant_id as string | null) ?? (supabaseTenant as any).getTenantId?.());
+        .eq('id', id);
 
       if (error) throw error;
 
