@@ -22,7 +22,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.s
 const SUPABASE_SERVICE_ROLE =
   process.env.SUPABASE_SERVICE_ROLE ||
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY || '';
+  process.env.SUPABASE_SERVICE_KEY || 
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
 
 if (!SUPABASE_SERVICE_ROLE) {
   console.error('❌ [FATAL] Configure SUPABASE_SERVICE_ROLE no PowerShell:');
@@ -385,6 +386,6 @@ process.on('SIGINT', async () => {
   process.exit();
 });
 
-console.log('\n📖 COMANDO PARA EXECUTAR (PowerShell):');
-console.log('$env:SUPABASE_SERVICE_ROLE="COLE_SUA_SERVICE_ROLE_AQUI"; $env:TENANT_ID="08f2b1b9-3988-489e-8186-c60f0c0b0622"; $env:TENANT_SLUG="app"; node server-whatsapp-individual-no-env.js');
-console.log('\n✅ Sistema pronto para detectar códigos automaticamente!');
+console.log('\n📖 COMANDO PARA EXECUTAR:');
+console.log('node server1.js');
+console.log('\n✅ Service Role Key já está configurada! Sistema pronto para detectar códigos automaticamente!');
