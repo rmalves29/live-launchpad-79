@@ -12,8 +12,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
-
+import { useTenantContext } from '@/contexts/TenantContext';
 interface Customer {
   id: number;
   phone: string;
@@ -57,6 +58,7 @@ interface Order {
 const Clientes = () => {
   const { toast } = useToast();
   const { profile } = useAuth();
+  const { tenantId } = useTenantContext();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,7 +81,7 @@ const Clientes = () => {
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const { data: customersData, error: customersError } = await supabase
+      const { data: customersData, error: customersError } = await supabaseTenant
         .from('customers')
         .select('*')
         .order('created_at', { ascending: false });
@@ -90,22 +92,22 @@ const Clientes = () => {
       const customersWithStats = await Promise.all(
         (customersData || []).map(async (customer) => {
           // Load orders
-          const { data: orders, error: ordersError } = await supabase
-            .from('orders')
-            .select('total_amount, is_paid, created_at')
-            .eq('customer_phone', customer.phone);
+            const { data: orders, error: ordersError } = await supabaseTenant
+              .from('orders')
+              .select('total_amount, is_paid, created_at')
+              .eq('customer_phone', customer.phone);
 
           // Load customer tags
-          const { data: customerTags, error: tagsError } = await supabase
-            .from('customer_tag_assignments')
-            .select(`
-              customer_tags(
-                id,
-                name,
-                color
-              )
-            `)
-            .eq('customer_id', customer.id);
+            const { data: customerTags, error: tagsError } = await supabaseTenant
+              .fromGlobal('customer_tag_assignments')
+              .select(`
+                customer_tags(
+                  id,
+                  name,
+                  color
+                )
+              `)
+              .eq('customer_id', customer.id);
 
           if (ordersError) {
             console.error('Error loading orders for customer:', customer.phone, ordersError);
@@ -168,12 +170,11 @@ const Clientes = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('customers')
         .insert({
           phone: normalizedPhone,
           name: newCustomer.name,
-          tenant_id: profile?.tenant_id || ''
         });
 
       if (error) throw error;
@@ -203,7 +204,7 @@ const Clientes = () => {
     if (!confirm('Tem certeza que deseja excluir este cliente?')) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('customers')
         .delete()
         .eq('id', id);
@@ -238,7 +239,7 @@ const Clientes = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('customers')
         .update({
           name: editingCustomer.name,
@@ -274,8 +275,10 @@ const Clientes = () => {
   };
 
   useEffect(() => {
-    loadCustomers();
-  }, []);
+    if (tenantId) {
+      loadCustomers();
+    }
+  }, [tenantId]);
 
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -314,7 +317,7 @@ const Clientes = () => {
     setSelectedCustomer(customer);
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('orders')
         .select(`
           id,
@@ -333,7 +336,7 @@ const Clientes = () => {
       // Get cart items for each order
       const ordersWithItems = await Promise.all(
         (data || []).map(async (order) => {
-          const { data: cartItems, error: itemsError } = await supabase
+          const { data: cartItems, error: itemsError } = await supabaseTenant
             .from('cart_items')
             .select(`
               qty,

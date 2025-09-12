@@ -11,7 +11,8 @@ import { Loader2, CalendarIcon, Trophy, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
+import { useTenantContext } from '@/contexts/TenantContext';
 
 interface Winner {
   order_id: number;
@@ -24,6 +25,7 @@ interface Winner {
 
 const Sorteio = () => {
   const { toast } = useToast();
+  const { tenantId } = useTenantContext();
   const [eventDate, setEventDate] = useState<Date | undefined>();
   const [winner, setWinner] = useState<Winner | null>(null);
   const [loading, setLoading] = useState(false);
@@ -81,7 +83,7 @@ const Sorteio = () => {
       const selectedDate = format(eventDate, 'yyyy-MM-dd');
       
       // Buscar pedidos pagos da data selecionada
-      const { data: paidOrders, error } = await supabase
+      const { data: paidOrders, error } = await supabaseTenant
         .from('orders')
         .select('id, customer_phone, total_amount, event_date')
         .eq('is_paid', true)
@@ -103,7 +105,7 @@ const Sorteio = () => {
       const selectedOrder = paidOrders[randomIndex];
 
       // Buscar o nome do cliente usando o telefone
-      const { data: customerData } = await supabase
+      const { data: customerData } = await supabaseTenant
         .from('customers')
         .select('name')
         .eq('phone', selectedOrder.customer_phone)

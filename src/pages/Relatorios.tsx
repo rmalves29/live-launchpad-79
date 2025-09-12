@@ -20,7 +20,8 @@ import {
   Calendar,
   Target
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
+import { useTenantContext } from '@/contexts/TenantContext';
 
 interface DailySales {
   date: string;
@@ -61,6 +62,7 @@ interface WhatsAppGroupStats {
 
 const Relatorios = () => {
   const { toast } = useToast();
+  const { tenantId } = useTenantContext();
   const [loading, setLoading] = useState(false);
   const [todaySales, setTodaySales] = useState<DailySales | null>(null);
   const [periodStats, setPeriodStats] = useState<{
@@ -115,7 +117,7 @@ const Relatorios = () => {
           break;
       }
       
-      let query = supabase
+      let query = supabaseTenant
         .from('orders')
         .select('total_amount, is_paid, cart_id');
 
@@ -140,7 +142,7 @@ const Relatorios = () => {
       let totalProducts = 0;
       
       if (cartIds.length > 0) {
-        const { data: cartItems } = await supabase
+        const { data: cartItems } = await supabaseTenant
           .from('cart_items')
           .select('qty')
           .in('cart_id', cartIds);
@@ -175,20 +177,20 @@ const Relatorios = () => {
       const startOfYear = new Date(today.getFullYear(), 0, 1);
 
       // Vendas do dia - apenas orders
-      const dailyOrders = await supabase
+      const dailyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id')
         .gte('created_at', today.toISOString().split('T')[0] + 'T00:00:00')
         .lt('created_at', today.toISOString().split('T')[0] + 'T23:59:59');
 
       // Vendas do mês
-      const monthlyOrders = await supabase
+      const monthlyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id')
         .gte('created_at', startOfMonth.toISOString());
 
       // Vendas do ano
-      const yearlyOrders = await supabase
+      const yearlyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id')
         .gte('created_at', startOfYear.toISOString());
@@ -197,7 +199,7 @@ const Relatorios = () => {
       const getProductsCount = async (cartIds: number[]) => {
         if (cartIds.length === 0) return [];
         
-        const { data } = await supabase
+        const { data } = await supabaseTenant
           .from('cart_items')
           .select('qty')
           .in('cart_id', cartIds);
@@ -272,7 +274,7 @@ const Relatorios = () => {
       }
 
       // First, get orders in the date range
-      let ordersQuery = supabase
+      let ordersQuery = supabaseTenant
         .from('orders')
         .select('id, cart_id');
 
@@ -302,7 +304,7 @@ const Relatorios = () => {
       }
 
       // Now get cart items for these carts
-      const { data: cartItemsData, error: cartItemsError } = await supabase
+      const { data: cartItemsData, error: cartItemsError } = await supabaseTenant
         .from('cart_items')
         .select(`
           qty,
@@ -359,14 +361,14 @@ const Relatorios = () => {
   const loadWhatsAppGroupStats = async () => {
     try {
       // Buscar pedidos com info básica
-      const { data: orders, error } = await supabase
+      const { data: orders, error } = await supabaseTenant
         .from('orders')
         .select('id, total_amount, is_paid, cart_id, customer_phone, whatsapp_group_name');
 
       if (error) throw error;
 
       // Buscar mapeamento expresso (cliente -> grupo real)
-      const { data: customerGroups, error: groupsError } = await supabase
+      const { data: customerGroups, error: groupsError } = await supabaseTenant
         .from('customer_whatsapp_groups')
         .select('customer_phone, whatsapp_group_name');
 
@@ -379,7 +381,7 @@ const Relatorios = () => {
       const cartIds = orders?.map(o => o.cart_id).filter(Boolean) as number[];
       let cartItemsMap = new Map<number, any[]>();
       if (cartIds.length > 0) {
-        const { data: cartItems } = await supabase
+        const { data: cartItems } = await supabaseTenant
           .from('cart_items')
           .select('cart_id, qty')
           .in('cart_id', cartIds);
@@ -451,8 +453,10 @@ const Relatorios = () => {
   };
 
   useEffect(() => {
-    loadAllReports();
-  }, []);
+    if (tenantId) {
+      loadAllReports();
+    }
+  }, [tenantId]);
 
   useEffect(() => {
     loadTopProducts();
