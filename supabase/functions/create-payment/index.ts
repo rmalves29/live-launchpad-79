@@ -13,9 +13,9 @@ serve(async (req) => {
   }
 
   try {
-    const { cartItems, customerData, addressData, shippingCost, total, coupon_discount } = await req.json();
+    const { cartItems, customerData, addressData, shippingCost, total, coupon_discount, tenant_id } = await req.json();
 
-    console.log('Creating payment with data:', { cartItems, customerData, addressData, shippingCost, total, coupon_discount });
+    console.log('Creating payment with data:', { cartItems, customerData, addressData, shippingCost, total, coupon_discount, tenant_id });
 
     const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
     if (!mpAccessToken) {
@@ -160,6 +160,7 @@ serve(async (req) => {
           const { data: orderData, error: orderError } = await supabase
             .from('orders')
             .insert({
+              tenant_id: tenant_id,
               customer_phone: customerData.phone,
               event_type: 'BAZAR',
               event_date: today,
@@ -192,6 +193,7 @@ serve(async (req) => {
       const { data: newOrder, error: newOrderError } = await supabase
         .from('orders')
         .insert({
+          tenant_id: tenant_id,
           customer_phone: customerData.phone,
           event_type: 'BAZAR',
           event_date: today,

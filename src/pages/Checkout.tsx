@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useTenantContext } from '@/contexts/TenantContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +34,7 @@ interface CustomerData {
 
 const Checkout = () => {
   const { toast } = useToast();
+  const { tenantId } = useTenantContext();
   const [phone, setPhone] = useState('');
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -62,6 +64,15 @@ const Checkout = () => {
       toast({
         title: 'Erro',
         description: 'Informe o telefone do cliente',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!tenantId) {
+      toast({
+        title: 'Erro',
+        description: 'Tenant não identificado',
         variant: 'destructive'
       });
       return;
@@ -126,6 +137,9 @@ const Checkout = () => {
           title: 'Nenhum pedido encontrado',
           description: 'Este cliente não possui pedidos em aberto'
         });
+      } else {
+        // Carregar dados salvos do cliente quando encontrar pedidos
+        await loadCustomerData(normalizedPhone);
       }
     } catch (error) {
       console.error('Error loading open orders:', error);
@@ -241,7 +255,86 @@ const Checkout = () => {
     }
   };
 
+  const saveCustomerData = async (customerPhone: string, data: any) => {
+    try {
+      // Salvar no banco de dados
+      const customerRecord = {
+        phone: customerPhone,
+        name: data.name,
+        cpf: data.cpf,
+        cep: data.cep,
+        street: data.street,
+        number: data.number,
+        complement: data.complement,
+        city: data.city,
+        state: data.state,
+      };
+
+      await supabaseTenant
+        .from('customers')
+        .upsert(customerRecord, { onConflict: 'phone' });
+
+      // Salvar no localStorage
+      localStorage.setItem(`customer_${customerPhone}`, JSON.stringify(data));
+      
+      toast({
+        title: 'Dados salvos',
+        description: 'Dados do cliente salvos com sucesso'
+      });
+    } catch (error) {
+      console.error('Error saving customer data:', error);
+    }
+  };
+
+  const loadCustomerData = async (customerPhone: string) => {
+    try {
+      // Tentar carregar do banco primeiro
+      const { data: customer } = await supabaseTenant
+        .from('customers')
+        .select('*')
+        .eq('phone', customerPhone)
+        .single();
+
+      if (customer) {
+        setCustomerData({
+          name: customer.name || '',
+          cpf: customer.cpf || '',
+          cep: customer.cep || '',
+          street: customer.street || '',
+          number: customer.number || '',
+          complement: customer.complement || '',
+          city: customer.city || '',
+          state: customer.state || ''
+        });
+        return;
+      }
+
+      // Se não encontrou no banco, tentar localStorage
+      const savedData = localStorage.getItem(`customer_${customerPhone}`);
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+        setCustomerData(parsedData);
+      }
+    } catch (error) {
+      // Se deu erro, tentar localStorage
+      const savedData = localStorage.getItem(`customer_${customerPhone}`);
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+        setCustomerData(parsedData);
+      }
+    }
+  };
+
   const processPayment = async (order: Order) => {
+    if (!tenantId) {
+      toast({
+        title: 'Erro',
+        description: 'Tenant não identificado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     if (!customerData.name || !customerData.cpf) {
       toast({
         title: 'Dados obrigatórios',
@@ -259,6 +352,9 @@ const Checkout = () => {
       });
       return;
     }
+
+    // Salvar dados do cliente
+    await saveCustomerData(order.customer_phone, customerData);
 
     setLoadingPayment(true);
 
@@ -294,7 +390,8 @@ const Checkout = () => {
         },
         shippingCost: shippingCost,
         total: totalAmount.toString(),
-        coupon_discount: 0 // Por enquanto sem cupom de desconto
+        coupon_discount: 0, // Por enquanto sem cupom de desconto
+        tenant_id: tenantId
       };
 
       console.log('Calling create-payment with data:', paymentData);
@@ -589,13 +686,19 @@ const Checkout = () => {
                         <p className="text-sm font-medium">Produtos do Pedido:</p>
                         {order.items.map((item, index) => (
                           <div key={index} className="flex items-center mt-2 p-2 bg-gray-50 rounded">
-                            {item.image_url && (
-                              <img 
-                                src={item.image_url} 
-                                alt={item.product_name}
-                                className="w-10 h-10 object-cover rounded mr-3"
-                              />
-                            )}
+                            <div className="w-10 h-10 mr-3 flex-shrink-0">
+                              {item.image_url ? (
+                                <img 
+                                  src={item.image_url} 
+                                  alt={item.product_name}
+                                  className="w-10 h-10 object-cover rounded"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center">
+                                  <ShoppingCart className="h-5 w-5 text-gray-400" />
+                                </div>
+                              )}
+                            </div>
                             <div className="flex-1">
                               <p className="text-sm font-medium">{item.product_code} - {item.product_name}</p>
                               <p className="text-xs text-muted-foreground">
@@ -628,7 +731,10 @@ const Checkout = () => {
                         <Input
                           placeholder="Nome completo do cliente"
                           value={customerData.name}
-                          onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
+                          onChange={(e) => {
+                            const newData = {...customerData, name: e.target.value};
+                            setCustomerData(newData);
+                          }}
                         />
                       </div>
                       <div>
@@ -636,7 +742,10 @@ const Checkout = () => {
                         <Input
                           placeholder="000.000.000-00"
                           value={customerData.cpf}
-                          onChange={(e) => setCustomerData({...customerData, cpf: e.target.value})}
+                          onChange={(e) => {
+                            const newData = {...customerData, cpf: e.target.value};
+                            setCustomerData(newData);
+                          }}
                         />
                       </div>
                     </div>
@@ -934,19 +1043,25 @@ const Checkout = () => {
             <div className="space-y-4">
               {selectedHistoryOrder.items.map((item, index) => (
                 <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    {item.image_url && (
-                      <img 
-                        src={item.image_url} 
-                        alt={item.product_name}
-                        className="w-16 h-16 object-cover rounded"
-                      />
-                    )}
-                    <div>
-                      <h4 className="font-medium">{item.product_name}</h4>
-                      <p className="text-sm text-muted-foreground">Código: {item.product_code}</p>
+                    <div className="flex items-center space-x-4">
+                      <div className="w-16 h-16 flex-shrink-0">
+                        {item.image_url ? (
+                          <img 
+                            src={item.image_url} 
+                            alt={item.product_name}
+                            className="w-16 h-16 object-cover rounded"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center">
+                            <ShoppingCart className="h-8 w-8 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="font-medium">{item.product_name}</h4>
+                        <p className="text-sm text-muted-foreground">Código: {item.product_code}</p>
+                      </div>
                     </div>
-                  </div>
                   <div className="text-right">
                     <div className="font-medium">
                       {item.qty}x R$ {Number(item.unit_price).toFixed(2)}
