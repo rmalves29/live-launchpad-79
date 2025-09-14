@@ -619,6 +619,42 @@ export type Database = {
           },
         ]
       }
+      mkt_mm: {
+        Row: {
+          created_at: string
+          id: string
+          is_cancelled: boolean
+          last_message_status: string
+          last_response_at: string | null
+          last_sent_at: string | null
+          phone: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_cancelled?: boolean
+          last_message_status?: string
+          last_response_at?: string | null
+          last_sent_at?: string | null
+          phone: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_cancelled?: boolean
+          last_message_status?: string
+          last_response_at?: string | null
+          last_sent_at?: string | null
+          phone?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           cart_id: number | null
