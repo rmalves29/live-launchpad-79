@@ -46,6 +46,16 @@ export const TenantIntegrations = () => {
     is_active: false
   });
 
+  // Bling Integration State
+  const [blingConfig, setBlingConfig] = useState({
+    client_id: '',
+    client_secret: '',
+    access_token: '',
+    refresh_token: '',
+    environment: 'sandbox',
+    is_active: false
+  });
+
   useEffect(() => {
     if (profile?.tenant_id) {
       loadIntegrations();
@@ -111,6 +121,24 @@ export const TenantIntegrations = () => {
         });
       }
 
+      // Load Bling integration
+      const { data: bling } = await supabase
+        .from('bling_integrations')
+        .select('*')
+        .eq('tenant_id', profile.tenant_id)
+        .maybeSingle();
+
+      if (bling) {
+        setBlingConfig({
+          client_id: bling.client_id || '',
+          client_secret: bling.client_secret || '',
+          access_token: bling.access_token || '',
+          refresh_token: bling.refresh_token || '',
+          environment: bling.environment || 'sandbox',
+          is_active: bling.is_active
+        });
+      }
+
     } catch (error) {
       console.error('Error loading integrations:', error);
       toast({
@@ -147,6 +175,114 @@ export const TenantIntegrations = () => {
       toast({
         title: 'Erro',
         description: 'Erro ao salvar configuração WhatsApp',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const savePaymentIntegration = async () => {
+    if (!profile?.tenant_id) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('payment_integrations')
+        .upsert({
+          tenant_id: profile.tenant_id,
+          provider: paymentConfig.provider,
+          access_token: paymentConfig.access_token,
+          public_key: paymentConfig.public_key,
+          client_id: paymentConfig.client_id,
+          client_secret: paymentConfig.client_secret,
+          webhook_secret: paymentConfig.webhook_secret,
+          is_active: paymentConfig.is_active
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Configuração Mercado Pago salva com sucesso'
+      });
+    } catch (error) {
+      console.error('Error saving payment integration:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao salvar configuração Mercado Pago',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveShippingIntegration = async () => {
+    if (!profile?.tenant_id) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('shipping_integrations')
+        .upsert({
+          tenant_id: profile.tenant_id,
+          provider: shippingConfig.provider,
+          access_token: shippingConfig.access_token,
+          client_id: shippingConfig.client_id,
+          client_secret: shippingConfig.client_secret,
+          webhook_secret: shippingConfig.webhook_secret,
+          from_cep: shippingConfig.from_cep,
+          sandbox: shippingConfig.sandbox,
+          is_active: shippingConfig.is_active
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Configuração Melhor Envio salva com sucesso'
+      });
+    } catch (error) {
+      console.error('Error saving shipping integration:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao salvar configuração Melhor Envio',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveBlingIntegration = async () => {
+    if (!profile?.tenant_id) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('bling_integrations')
+        .upsert({
+          tenant_id: profile.tenant_id,
+          client_id: blingConfig.client_id,
+          client_secret: blingConfig.client_secret,
+          access_token: blingConfig.access_token,
+          refresh_token: blingConfig.refresh_token,
+          environment: blingConfig.environment,
+          is_active: blingConfig.is_active
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Configuração Bling salva com sucesso'
+      });
+    } catch (error) {
+      console.error('Error saving bling integration:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao salvar configuração Bling',
         variant: 'destructive'
       });
     } finally {
@@ -240,7 +376,7 @@ export const TenantIntegrations = () => {
               placeholder="APP_USR-xxx"
             />
           </div>
-          <Button onClick={() => {/* TODO: Implement save payment */}} disabled={loading}>
+          <Button onClick={savePaymentIntegration} disabled={loading}>
             Salvar Mercado Pago
           </Button>
         </CardContent>
@@ -288,8 +424,68 @@ export const TenantIntegrations = () => {
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={() => {/* TODO: Implement save shipping */}} disabled={loading}>
+          <Button onClick={saveShippingIntegration} disabled={loading}>
             Salvar Melhor Envio
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Bling Integration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            ERP (Bling)
+            <Switch
+              checked={blingConfig.is_active}
+              onCheckedChange={(checked) => 
+                setBlingConfig(prev => ({ ...prev, is_active: checked }))
+              }
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="bling-client-id">Client ID</Label>
+            <Input
+              id="bling-client-id"
+              value={blingConfig.client_id}
+              onChange={(e) => 
+                setBlingConfig(prev => ({ ...prev, client_id: e.target.value }))
+              }
+              placeholder="Seu Client ID do Bling"
+            />
+          </div>
+          <div>
+            <Label htmlFor="bling-client-secret">Client Secret</Label>
+            <Input
+              id="bling-client-secret"
+              type="password"
+              value={blingConfig.client_secret}
+              onChange={(e) => 
+                setBlingConfig(prev => ({ ...prev, client_secret: e.target.value }))
+              }
+              placeholder="Seu Client Secret do Bling"
+            />
+          </div>
+          <div>
+            <Label htmlFor="bling-environment">Ambiente</Label>
+            <Select
+              value={blingConfig.environment}
+              onValueChange={(value) => 
+                setBlingConfig(prev => ({ ...prev, environment: value }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sandbox">Sandbox</SelectItem>
+                <SelectItem value="production">Produção</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={saveBlingIntegration} disabled={loading}>
+            Salvar Bling
           </Button>
         </CardContent>
       </Card>

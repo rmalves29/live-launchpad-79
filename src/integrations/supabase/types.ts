@@ -104,6 +104,45 @@ export type Database = {
           },
         ]
       }
+      bling_integrations: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string | null
+          environment: string
+          id: string
+          is_active: boolean
+          refresh_token: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          environment?: string
+          id?: string
+          is_active?: boolean
+          refresh_token?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string | null
+          environment?: string
+          id?: string
+          is_active?: boolean
+          refresh_token?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       cart_items: {
         Row: {
           cart_id: number

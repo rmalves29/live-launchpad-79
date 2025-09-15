@@ -293,7 +293,7 @@ const Checkout = () => {
         .from('customers')
         .select('*')
         .eq('phone', customerPhone)
-        .single();
+        .maybeSingle();
 
       if (customer) {
         setCustomerData({
@@ -596,40 +596,30 @@ const Checkout = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {openOrders.map((order) => (
-                  <div key={order.id} className="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors" 
+                 {openOrders.map((order) => (
+                  <div key={order.id} className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors" 
                        onClick={() => setSelectedOrder(order)}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <div className="flex-shrink-0">
-                          <input
-                            type="radio"
-                            name="order-selection"
-                            id={`order-${order.id}`}
-                            value={order.id}
-                            onChange={() => setSelectedOrder(order)}
-                            className="h-4 w-4 text-primary"
-                          />
+                    <div className="flex justify-between items-center">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <Badge variant="secondary">Pedido #{order.id}</Badge>
+                          <Badge variant="outline">{order.event_type}</Badge>
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center">
-                            <h3 className="text-lg font-medium">Pedido #{order.id}</h3>
-                            <Badge variant="outline" className="ml-2 bg-orange-100 text-orange-800 border-orange-200">
-                              {order.event_type}
-                            </Badge>
+                        <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                          <div>
+                            <span className="font-medium">Data:</span> {new Date(order.event_date).toLocaleDateString('pt-BR')}
                           </div>
-                          <p className="text-sm text-gray-600">
-                            Data: {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.items.length} item(ns)
-                          </p>
-                          <div className="mt-1">
-                            <p className="text-sm text-gray-500">
-                              Produtos: {order.items.map(item => `${item.product_code} - ${item.product_name}`).join(', ')}
-                            </p>
+                          <div>
+                            <span className="font-medium">Total:</span> R$ {Number(order.total_amount).toFixed(2)}
                           </div>
+                        </div>
+                        <div className="text-sm">
+                          <span className="font-medium">Items:</span> {order.items.length} produto(s)
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-xl font-bold text-primary">R$ {Number(order.total_amount).toFixed(2)}</div>
+                        <div className="text-lg font-bold text-primary">R$ {Number(order.total_amount).toFixed(2)}</div>
+                        <div className="text-sm text-muted-foreground">{order.items.length} item(s)</div>
                       </div>
                     </div>
                   </div>
