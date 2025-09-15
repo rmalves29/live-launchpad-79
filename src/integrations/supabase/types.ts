@@ -278,59 +278,6 @@ export type Database = {
         }
         Relationships: []
       }
-      customer_tag_assignments: {
-        Row: {
-          assigned_at: string | null
-          customer_id: number
-          id: number
-          tag_id: number
-        }
-        Insert: {
-          assigned_at?: string | null
-          customer_id: number
-          id?: number
-          tag_id: number
-        }
-        Update: {
-          assigned_at?: string | null
-          customer_id?: number
-          id?: number
-          tag_id?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "customer_tag_assignments_tag_id_fkey"
-            columns: ["tag_id"]
-            isOneToOne: false
-            referencedRelation: "customer_tags"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      customer_tags: {
-        Row: {
-          color: string | null
-          created_at: string | null
-          id: number
-          name: string
-          updated_at: string | null
-        }
-        Insert: {
-          color?: string | null
-          created_at?: string | null
-          id?: number
-          name: string
-          updated_at?: string | null
-        }
-        Update: {
-          color?: string | null
-          created_at?: string | null
-          id?: number
-          name?: string
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
       customer_whatsapp_groups: {
         Row: {
           created_at: string | null
@@ -657,42 +604,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      mkt_mm: {
-        Row: {
-          created_at: string
-          id: string
-          is_cancelled: boolean
-          last_message_status: string
-          last_response_at: string | null
-          last_sent_at: string | null
-          phone: string
-          tenant_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          is_cancelled?: boolean
-          last_message_status?: string
-          last_response_at?: string | null
-          last_sent_at?: string | null
-          phone: string
-          tenant_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          is_cancelled?: boolean
-          last_message_status?: string
-          last_response_at?: string | null
-          last_sent_at?: string | null
-          phone?: string
-          tenant_id?: string | null
-          updated_at?: string
-        }
-        Relationships: []
       }
       orders: {
         Row: {
