@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { action, order_id, customer_phone } = await req.json();
+    const { action, order_id, customer_phone, tenant_id } = await req.json();
     
     console.log('Bling integration action:', action);
 
@@ -23,11 +23,26 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get Bling credentials from environment
-    const blingClientId = Deno.env.get('BLING_CLIENT_ID');
-    const blingClientSecret = Deno.env.get('BLING_CLIENT_SECRET');
+    // Get Bling integration configuration from database
+    const { data: blingConfig, error: configError } = await supabase
+      .from('bling_integrations')
+      .select('*')
+      .eq('tenant_id', tenant_id)
+      .eq('is_active', true)
+      .maybeSingle();
 
-    if (!blingClientId || !blingClientSecret) {
+    if (configError || !blingConfig) {
+      console.error('Bling config not found:', configError);
+      return new Response(
+        JSON.stringify({ error: 'Configuração do Bling não encontrada' }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!blingConfig.client_id || !blingConfig.client_secret) {
       return new Response(
         JSON.stringify({ error: 'Credenciais do Bling não configuradas' }),
         { 
@@ -36,6 +51,11 @@ serve(async (req) => {
         }
       );
     }
+
+    console.log('Using Bling config:', { 
+      environment: blingConfig.environment, 
+      has_client_id: !!blingConfig.client_id 
+    });
 
     if (action === 'create_order') {
       if (!order_id || !customer_phone) {
@@ -53,9 +73,11 @@ serve(async (req) => {
         .from('orders')
         .select('*')
         .eq('id', order_id)
+        .eq('tenant_id', tenant_id)
         .single();
 
       if (orderError || !orderData) {
+        console.error('Order not found:', orderError);
         return new Response(
           JSON.stringify({ error: 'Pedido não encontrado' }),
           { 
@@ -70,6 +92,7 @@ serve(async (req) => {
       let { data: customerData } = await supabase
         .from('customers')
         .select('*')
+        .eq('tenant_id', tenant_id)
         .or(`phone.eq.${customer_phone},phone.eq.${phoneDigits},phone.ilike.%${phoneDigits}%`)
         .limit(1)
         .maybeSingle();
@@ -85,6 +108,7 @@ serve(async (req) => {
             price
           )
         `)
+        .eq('tenant_id', tenant_id)
         .eq('cart_id', orderData.cart_id || 0);
 
       // Prepare Bling order payload
@@ -118,14 +142,19 @@ serve(async (req) => {
 
       console.log('Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
 
+      // Determine API URL based on environment
+      const apiUrl = blingConfig.environment === 'production' 
+        ? 'https://bling.com.br/Api/v2/pedido/json/'
+        : 'https://sandbox.bling.com.br/Api/v2/pedido/json/';
+
       // Send order to Bling API
-      const blingResponse = await fetch('https://bling.com.br/Api/v2/pedido/json/', {
+      const blingResponse = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          apikey: blingClientId,
+          apikey: blingConfig.client_id,
           xml: JSON.stringify(blingOrder)
         })
       });
@@ -149,6 +178,7 @@ serve(async (req) => {
       await supabase
         .from('webhook_logs')
         .insert({
+          tenant_id: tenant_id,
           webhook_type: 'bling_order_created',
           status_code: 200,
           payload: {

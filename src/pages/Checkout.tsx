@@ -181,6 +181,7 @@ const Checkout = () => {
       const { data, error } = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
+          tenant_id: tenantId,
           products: order.items.map(item => ({
             id: item.id.toString(),
             width: 16,

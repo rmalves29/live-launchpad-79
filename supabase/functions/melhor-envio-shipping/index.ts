@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { to_postal_code, weight, height, width, length, insurance_value } = await req.json();
+    const { to_postal_code, products, tenant_id } = await req.json();
     
     if (!to_postal_code) {
       return new Response(
@@ -31,17 +31,18 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get configuration from database
-    const { data: configData, error: configError } = await supabase
-      .from('frete_config')
+    // Get shipping integration configuration from database
+    const { data: shippingConfig, error: configError } = await supabase
+      .from('shipping_integrations')
       .select('*')
-      .limit(1)
-      .single();
+      .eq('tenant_id', tenant_id)
+      .eq('is_active', true)
+      .maybeSingle();
 
-    if (configError || !configData) {
-      console.error('Frete config not found:', configError);
+    if (configError || !shippingConfig) {
+      console.error('Shipping config not found:', configError);
       return new Response(
-        JSON.stringify({ error: 'Configuração de frete não encontrada' }), 
+        JSON.stringify({ error: 'Configuração de envio não encontrada' }), 
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -49,11 +50,9 @@ serve(async (req) => {
       );
     }
 
-    console.log('Using config - API Base URL:', configData.api_base_url);
-    console.log('Using config - CEP Origin:', configData.cep_origem);
-    console.log('Access token exists:', !!configData.access_token);
+    console.log('Using shipping config:', shippingConfig);
 
-    if (!configData.access_token) {
+    if (!shippingConfig.access_token) {
       console.error('MELHOR_ENVIO_ACCESS_TOKEN not found in config');
       return new Response(
         JSON.stringify({ error: 'Token de acesso do Melhor Envio não configurado' }), 
@@ -64,30 +63,30 @@ serve(async (req) => {
       );
     }
 
-    const baseUrl = configData.api_base_url;
+    const baseUrl = shippingConfig.sandbox ? 
+      'https://sandbox.melhorenvio.com.br/api' : 
+      'https://melhorenvio.com.br/api';
 
     // Payload para cotação
     const payload = {
       from: {
-        postal_code: configData.cep_origem
+        postal_code: shippingConfig.from_cep
       },
       to: {
         postal_code: to_postal_code.replace(/\D/g, '')
       },
-      package: {
-        height: height || 2,
-        width: width || 16,
-        length: length || 20,
-        weight: weight || 0.3
-      }
+      products: products || [
+        {
+          id: "1",
+          width: 16,
+          height: 2,
+          length: 20,
+          weight: 0.3,
+          insurance_value: 50,
+          quantity: 1
+        }
+      ]
     };
-
-    // Add insurance value if provided
-    if (insurance_value) {
-      payload.options = {
-        insurance_value: insurance_value
-      };
-    }
 
     console.log('Calling Melhor Envio API:', `${baseUrl}/v2/me/shipment/calculate`, payload);
 
@@ -96,7 +95,7 @@ serve(async (req) => {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${configData.access_token}`,
+        'Authorization': `Bearer ${shippingConfig.access_token}`,
         'User-Agent': 'FreteApp (contato@empresa.com)'
       },
       body: JSON.stringify(payload)
