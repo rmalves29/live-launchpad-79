@@ -307,6 +307,11 @@ const Checkout = () => {
           city: customer.city || '',
           state: customer.state || ''
         });
+        
+        toast({
+          title: 'Dados carregados',
+          description: 'Dados salvos do cliente foram carregados automaticamente'
+        });
         return;
       }
 
@@ -315,13 +320,24 @@ const Checkout = () => {
       if (savedData) {
         const parsedData = JSON.parse(savedData);
         setCustomerData(parsedData);
+        
+        toast({
+          title: 'Dados carregados',
+          description: 'Dados locais do cliente foram carregados automaticamente'
+        });
       }
     } catch (error) {
+      console.error('Error loading customer data:', error);
       // Se deu erro, tentar localStorage
       const savedData = localStorage.getItem(`customer_${customerPhone}`);
       if (savedData) {
         const parsedData = JSON.parse(savedData);
         setCustomerData(parsedData);
+        
+        toast({
+          title: 'Dados carregados',
+          description: 'Dados locais do cliente foram carregados automaticamente'
+        });
       }
     }
   };
