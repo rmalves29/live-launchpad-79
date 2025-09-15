@@ -468,6 +468,30 @@ export const TenantIntegrations = () => {
             />
           </div>
           <div>
+            <Label htmlFor="bling-access-token">Access Token</Label>
+            <Input
+              id="bling-access-token"
+              type="password"
+              value={blingConfig.access_token}
+              onChange={(e) => 
+                setBlingConfig(prev => ({ ...prev, access_token: e.target.value }))
+              }
+              placeholder="Token de acesso do Bling"
+            />
+          </div>
+          <div>
+            <Label htmlFor="bling-refresh-token">Refresh Token</Label>
+            <Input
+              id="bling-refresh-token"
+              type="password"
+              value={blingConfig.refresh_token}
+              onChange={(e) => 
+                setBlingConfig(prev => ({ ...prev, refresh_token: e.target.value }))
+              }
+              placeholder="Token de renovação do Bling"
+            />
+          </div>
+          <div>
             <Label htmlFor="bling-environment">Ambiente</Label>
             <Select
               value={blingConfig.environment}
