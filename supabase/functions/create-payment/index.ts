@@ -22,15 +22,10 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get tenant information and MP integration
+    // Get tenant information
     const { data: tenantData, error: tenantError } = await supabase
       .from('tenants')
-      .select(`
-        tenant_key,
-        integration_mp (
-          access_token
-        )
-      `)
+      .select('tenant_key')
       .eq('id', tenant_id)
       .single();
 
@@ -44,12 +39,12 @@ serve(async (req) => {
 
     const tenantKey = tenantData.tenant_key;
 
-    // Use tenant-specific access token if available, otherwise fallback to global
-    const mpAccessToken = tenantData.integration_mp?.access_token || Deno.env.get('MP_ACCESS_TOKEN');
+    // Use global MP access token (tenant-specific tokens can be added later if needed)
+    const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
     if (!mpAccessToken) {
-      console.error('MP_ACCESS_TOKEN not found for tenant');
+      console.error('MP_ACCESS_TOKEN not found');
       return new Response(
-        JSON.stringify({ error: 'Mercado Pago não configurado para este tenant' }),
+        JSON.stringify({ error: 'Mercado Pago não configurado' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

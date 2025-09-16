@@ -37,17 +37,9 @@ serve(async (req) => {
     // Get tenant and MP integration config
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
-      .select(`
-        id,
-        integration_mp!inner (
-          access_token,
-          webhook_secret,
-          is_active
-        )
-      `)
+      .select('id')
       .eq('tenant_key', tenantKey)
       .eq('is_active', true)
-      .eq('integration_mp.is_active', true)
       .single();
 
     if (tenantError) {
@@ -60,13 +52,8 @@ serve(async (req) => {
       return new Response('Tenant not found', { status: 404, headers: corsHeaders });
     }
 
-    if (!tenant.integration_mp?.access_token) {
-      console.log(`Tenant ${tenantKey} has no MP integration configured`);
-      return new Response('MP integration not configured', { status: 404, headers: corsHeaders });
-    }
-
-    // Use tenant-specific access token, with fallback to global env variable
-    const mpAccessToken = tenant.integration_mp.access_token || Deno.env.get('MP_ACCESS_TOKEN');
+    // Use global MP access token (tenant-specific tokens can be added later if needed)
+    const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
     if (!mpAccessToken) {
       console.error('No MP access token available');
       return new Response('MP not configured', { status: 500, headers: corsHeaders });
