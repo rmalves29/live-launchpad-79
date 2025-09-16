@@ -139,7 +139,17 @@ const Checkout = () => {
         });
       } else {
         // Carregar dados salvos do cliente quando encontrar pedidos
-        await loadCustomerData(normalizedPhone);
+        const loadedCustomerData = await loadCustomerData(normalizedPhone);
+        
+        // Se carregou dados do cliente com CEP válido, calcular frete automaticamente
+        if (loadedCustomerData && loadedCustomerData.cep && loadedCustomerData.cep.replace(/[^0-9]/g, '').length === 8) {
+          // Se há apenas um pedido, calcular frete automaticamente
+          if (ordersWithItems.length === 1) {
+            setTimeout(() => {
+              calculateShipping(loadedCustomerData.cep, ordersWithItems[0]);
+            }, 500); // Pequeno delay para garantir que o estado foi atualizado
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading open orders:', error);
@@ -297,7 +307,7 @@ const Checkout = () => {
         .maybeSingle();
 
       if (customer) {
-        setCustomerData({
+        const customerDataLoaded = {
           name: customer.name || '',
           cpf: customer.cpf || '',
           cep: customer.cep || '',
@@ -306,13 +316,16 @@ const Checkout = () => {
           complement: customer.complement || '',
           city: customer.city || '',
           state: customer.state || ''
-        });
+        };
+        
+        setCustomerData(customerDataLoaded);
         
         toast({
           title: 'Dados carregados',
           description: 'Dados salvos do cliente foram carregados automaticamente'
         });
-        return;
+        
+        return customerDataLoaded;
       }
 
       // Se não encontrou no banco, tentar localStorage
@@ -325,7 +338,11 @@ const Checkout = () => {
           title: 'Dados carregados',
           description: 'Dados locais do cliente foram carregados automaticamente'
         });
+        
+        return parsedData;
       }
+      
+      return null;
     } catch (error) {
       console.error('Error loading customer data:', error);
       // Se deu erro, tentar localStorage
@@ -338,7 +355,11 @@ const Checkout = () => {
           title: 'Dados carregados',
           description: 'Dados locais do cliente foram carregados automaticamente'
         });
+        
+        return parsedData;
       }
+      
+      return null;
     }
   };
 
