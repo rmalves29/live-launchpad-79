@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-key',
 };
 
-// Utils: sanitização e validação de CPF/CNPJ
+// Utils: sanitização e validação
 function onlyDigits(v: string | number | null | undefined): string {
   return String(v ?? '')
     .normalize('NFKC')
@@ -67,47 +67,31 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get tenant information
+    // Get tenant information and ME integration
     let tenantData = null;
-    if (tenantKey) {
-      const { data } = await supabase
+    let meIntegration = null;
+    
+    if (tenant_id) {
+      const { data: tenant } = await supabase
         .from('tenants')
-        .select('*')
-        .eq('tenant_key', tenantKey)
-        .eq('is_active', true)
-        .single();
-      tenantData = data;
-    } else if (tenant_id) {
-      const { data } = await supabase
-        .from('tenants')
-        .select('*')
+        .select(`
+          *,
+          integration_me!inner(*)
+        `)
         .eq('id', tenant_id)
         .eq('is_active', true)
+        .eq('integration_me.is_active', true)
         .single();
-      tenantData = data;
+      
+      if (tenant && tenant.integration_me && tenant.integration_me.length > 0) {
+        tenantData = tenant;
+        meIntegration = tenant.integration_me[0];
+      }
     }
 
-    if (!tenantData) {
+    if (!tenantData || !meIntegration) {
       return new Response(
-        JSON.stringify({ error: 'Tenant não encontrado ou inativo' }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Get Melhor Envio integration config for tenant
-    const { data: meIntegration, error: meError } = await supabase
-      .from('integration_me')
-      .select('*')
-      .eq('tenant_id', tenantData.id)
-      .eq('is_active', true)
-      .single();
-
-    if (meError || !meIntegration) {
-      return new Response(
-        JSON.stringify({ error: 'Integração Melhor Envio não configurada para este tenant' }),
+        JSON.stringify({ error: 'Tenant ou integração Melhor Envio não encontrada' }),
         { 
           status: 404, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -125,7 +109,7 @@ serve(async (req) => {
       );
     }
 
-    const baseUrl = meIntegration.env === 'sandbox' 
+    const baseUrl = meIntegration.environment === 'sandbox' 
       ? 'https://sandbox.melhorenvio.com.br/api' 
       : 'https://melhorenvio.com.br/api';
     const accessToken = meIntegration.access_token;
@@ -150,6 +134,7 @@ serve(async (req) => {
         .single();
 
       if (orderError || !orderData) {
+        console.error('Order not found:', orderError);
         return new Response(
           JSON.stringify({ error: 'Pedido não encontrado' }),
           { 
@@ -165,102 +150,113 @@ serve(async (req) => {
         .select('*')
         .single();
 
-      // Prepare sender data from tenant integration config
+      // Validate required order data
+      if (!orderData.customer_name || !orderData.customer_cep || !orderData.customer_street || !orderData.customer_city) {
+        console.error('Order missing required address data:', orderData);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Dados de endereço do cliente incompletos',
+            details: 'Nome, CEP, rua e cidade são obrigatórios'
+          }),
+          { 
+            status: 422, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // Prepare sender data (from integration config)
       const fromEntity = {
-        name: meIntegration.from_name || "Remetente",
-        phone: onlyDigits(meIntegration.from_phone || '1199999999'),
-        email: meIntegration.from_email || "contato@empresa.com",
+        name: meIntegration.from_name || "Mania de Mulher",
+        phone: onlyDigits(meIntegration.from_phone || '31999999999'),
+        email: meIntegration.from_email || "contato@maniadmulher.com",
         document: null as string | null,
         company_document: null as string | null,
-        address: meIntegration.from_address || "Rua do Remetente",
-        complement: meIntegration.from_complement || "",
+        address: meIntegration.from_address || "Rua das Flores",
+        complement: meIntegration.from_complement || "Sala 101",
         number: meIntegration.from_number || "123",
         district: meIntegration.from_district || "Centro",
         city: meIntegration.from_city || "Belo Horizonte",
         state_abbr: meIntegration.from_state || "MG",
-        postal_code: onlyDigits(meIntegration.from_cep || '31575060')
+        postal_code: onlyDigits(meIntegration.from_cep || '30110000')
       };
 
-      // Validate and set sender document
-      const senderDoc = onlyDigits(meIntegration.from_document || '');
+      // Set sender document (CPF or CNPJ)
+      const senderDoc = onlyDigits(meIntegration.from_document || '12345678000199');
       if (senderDoc.length === 14 && isValidCNPJ(senderDoc)) {
         fromEntity.company_document = senderDoc;
-        delete fromEntity.document;
       } else if (senderDoc.length === 11 && isValidCPF(senderDoc)) {
         fromEntity.document = senderDoc;
-        delete fromEntity.company_document;
       } else {
         return new Response(
           JSON.stringify({
             error: 'Documento do remetente inválido',
-            details: 'Configure um CPF (11 dígitos) ou CNPJ (14 dígitos) válido nas configurações do Melhor Envio'
+            details: 'Configure um CPF (11 dígitos) ou CNPJ (14 dígitos) válido'
           }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Prepare recipient data from order
-      const recipientCep = onlyDigits(orderData.customer_cep || '01000000');
+      // Prepare recipient data (from order)
+      const recipientCep = onlyDigits(orderData.customer_cep);
       
       if (recipientCep.length !== 8) {
-        console.error(`Invalid recipient CEP: ${recipientCep} (length: ${recipientCep.length})`);
+        console.error(`Invalid recipient CEP: ${recipientCep}`);
         return new Response(
           JSON.stringify({
             error: 'CEP de destino inválido',
-            details: `CEP deve ter 8 dígitos. Encontrado: ${recipientCep}. Verifique o endereço do cliente.`
+            details: `CEP deve ter 8 dígitos. CEP informado: ${recipientCep}`
           }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       const toEntity = {
-        name: orderData.customer_name || "Cliente",
-        phone: onlyDigits(orderData.customer_phone || ''),
-        email: `${onlyDigits(orderData.customer_phone || '')}@checkout.com`,
-        document: "00000000000", // Default CPF for cases where document is not required
-        address: orderData.customer_street || "Rua do Cliente",
-        complement: orderData.customer_complement || "",
-        number: orderData.customer_number || "100",
+        name: orderData.customer_name,
+        phone: onlyDigits(orderData.customer_phone),
+        email: `${onlyDigits(orderData.customer_phone)}@checkout.com`,
+        document: "00000000000", // CPF padrão quando não obrigatório
+        address: orderData.customer_street,
+        complement: orderData.customer_complement || "Casa",
+        number: orderData.customer_number || "S/N",
         district: orderData.customer_neighborhood || "Centro",
-        city: orderData.customer_city || "São Paulo",
-        state_abbr: orderData.customer_state || "SP",
+        city: orderData.customer_city,
+        state_abbr: orderData.customer_state || "MG",
         postal_code: recipientCep
       };
 
-      // Prepare packages according to Melhor Envio format
+      // Prepare packages (exact format from user example)
       const packages = [
         {
-          weight: Math.max((appSettings?.default_weight_kg || 0.3) * 1000, 100), // Convert to grams, min 100g
-          width: appSettings?.default_width_cm || 16,
-          height: appSettings?.default_height_cm || 2,
-          length: appSettings?.default_length_cm || 20,
-          insurance_value: orderData.total_amount || 10.00,
+          weight: Math.max((appSettings?.default_weight_kg || 0.3) * 1000, 100), // Convert to grams
+          width: appSettings?.default_width_cm || 20,
+          height: appSettings?.default_height_cm || 10,
+          length: appSettings?.default_length_cm || 30,
+          insurance_value: orderData.total_amount || 200.00,
           quantity: 1
         }
       ];
 
-      // Create the shipment payload according to Melhor Envio API
-      const shipmentPayload = {
-        from: fromEntity,
-        to: toEntity,
-        packages: packages,
-        service: 1, // Default to PAC (service ID 1)
-        agency: null,
-        options: {
-          receipt: false,
-          own_hand: false,
-          reverse: false,
-          non_commercial: false
+      // STEP 1: Quote services first to find available service
+      const quotePayload = {
+        from: { postal_code: fromEntity.postal_code },
+        to: { postal_code: toEntity.postal_code },
+        package: {
+          height: packages[0].height,
+          width: packages[0].width,
+          length: packages[0].length,
+          weight: packages[0].weight / 1000 // Convert to kg for quote
         },
-        payment: {
-          method: "wallet"
+        options: {
+          insurance_value: packages[0].insurance_value,
+          receipt: false,
+          own_hand: false
         }
       };
 
-      console.log('Creating shipment with payload:', JSON.stringify(shipmentPayload, null, 2));
+      console.log('Step 1: Quoting services with payload:', JSON.stringify(quotePayload, null, 2));
 
-      // Create shipment in Melhor Envio
-      const shipmentResponse = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
+      const quoteResponse = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -268,23 +264,13 @@ serve(async (req) => {
           'Authorization': `Bearer ${accessToken}`,
           'User-Agent': 'Sistema-Multitenant'
         },
-        body: JSON.stringify({
-          from: { postal_code: fromEntity.postal_code },
-          to: { postal_code: toEntity.postal_code },
-          package: {
-            height: packages[0].height,
-            width: packages[0].width,
-            length: packages[0].length,
-            weight: packages[0].weight / 1000 // Convert back to kg for calculation
-          }
-        })
+        body: JSON.stringify(quotePayload)
       });
 
-      if (!shipmentResponse.ok) {
-        const errorData = await shipmentResponse.text();
-        console.error('Shipment calculation error:', shipmentResponse.status, errorData);
+      if (!quoteResponse.ok) {
+        const errorData = await quoteResponse.text();
+        console.error('Quote error:', quoteResponse.status, errorData);
         
-        // Log error to frete_envios table
         await supabase
           .from('frete_envios')
           .insert({
@@ -303,18 +289,24 @@ serve(async (req) => {
             error: 'Erro na cotação de frete',
             details: errorData 
           }),
-          { status: shipmentResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: quoteResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const calculationData = await shipmentResponse.json();
-      console.log('Calculation response:', JSON.stringify(calculationData, null, 2));
+      const quoteData = await quoteResponse.json();
+      console.log('Quote response:', JSON.stringify(quoteData, null, 2));
 
-      // Find available service
-      const availableService = calculationData.find((service: any) => !service.error && service.id);
+      // Find available service (prefer SEDEX id=2, then PAC id=1, then any available)
+      let availableService = quoteData.find((service: any) => !service.error && service.id === 2); // SEDEX
+      if (!availableService) {
+        availableService = quoteData.find((service: any) => !service.error && service.id === 1); // PAC
+      }
+      if (!availableService) {
+        availableService = quoteData.find((service: any) => !service.error && service.id); // Any available
+      }
       
       if (!availableService) {
-        const errorDetails = calculationData.map((s: any) => s.error).filter(Boolean).join('; ');
+        const errorDetails = quoteData.map((s: any) => s.error).filter(Boolean).join('; ');
         
         await supabase
           .from('frete_envios')
@@ -338,15 +330,29 @@ serve(async (req) => {
         );
       }
 
-      // Now create the actual shipment with the selected service
-      const finalShipmentPayload = {
-        ...shipmentPayload,
-        service: availableService.id
+      console.log('Selected service:', availableService.id, availableService.name);
+
+      // STEP 2: Create shipment using the exact payload format from user example
+      const shipmentPayload = {
+        from: fromEntity,
+        to: toEntity,
+        packages: packages,
+        service: availableService.id,
+        agency: null,
+        options: {
+          receipt: false,
+          own_hand: false,
+          reverse: false,
+          non_commercial: false
+        },
+        payment: {
+          method: "wallet"
+        }
       };
 
-      console.log('Creating actual shipment with payload:', JSON.stringify(finalShipmentPayload, null, 2));
+      console.log('Step 2: Creating shipment with payload:', JSON.stringify(shipmentPayload, null, 2));
 
-      const createShipmentResponse = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
+      const shipmentResponse = await fetch(`${baseUrl}/v2/me/cart`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -354,12 +360,12 @@ serve(async (req) => {
           'Authorization': `Bearer ${accessToken}`,
           'User-Agent': 'Sistema-Multitenant'
         },
-        body: JSON.stringify(finalShipmentPayload)
+        body: JSON.stringify(shipmentPayload)
       });
 
-      if (!createShipmentResponse.ok) {
-        const errorData = await createShipmentResponse.text();
-        console.error('Shipment creation error:', createShipmentResponse.status, errorData);
+      if (!shipmentResponse.ok) {
+        const errorData = await shipmentResponse.text();
+        console.error('Shipment creation error:', shipmentResponse.status, errorData);
         
         await supabase
           .from('frete_envios')
@@ -368,7 +374,7 @@ serve(async (req) => {
             status: 'error',
             raw_response: { 
               error: JSON.stringify({
-                error: 'Erro ao criar envio',
+                error: 'Erro ao adicionar ao carrinho',
                 details: errorData 
               })
             }
@@ -376,18 +382,84 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ 
-            error: 'Erro ao criar envio',
+            error: 'Erro ao adicionar ao carrinho',
             details: errorData 
           }),
-          { status: createShipmentResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: shipmentResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const shipmentData = await createShipmentResponse.json();
+      const shipmentData = await shipmentResponse.json();
       console.log('Shipment created:', JSON.stringify(shipmentData, null, 2));
 
-      // Save successful shipment to database
-      const { error: insertError } = await supabase
+      // STEP 3: Purchase the shipment to generate label
+      if (shipmentData.id) {
+        const purchaseResponse = await fetch(`${baseUrl}/v2/me/shipment/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'User-Agent': 'Sistema-Multitenant'
+          },
+          body: JSON.stringify({
+            orders: [shipmentData.id]
+          })
+        });
+
+        if (purchaseResponse.ok) {
+          const purchaseData = await purchaseResponse.json();
+          console.log('Purchase response:', JSON.stringify(purchaseData, null, 2));
+          
+          // Save successful shipment with label
+          await supabase
+            .from('frete_envios')
+            .insert({
+              pedido_id: order_id,
+              shipment_id: shipmentData.id,
+              status: 'purchased',
+              service_price: availableService.price,
+              label_url: purchaseData.digitable || null,
+              tracking_code: shipmentData.tracking || null,
+              raw_response: { success: shipmentData, purchase: purchaseData }
+            });
+
+          return new Response(JSON.stringify({
+            success: true,
+            shipment: shipmentData,
+            purchase: purchaseData,
+            service: availableService
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        } else {
+          const purchaseError = await purchaseResponse.text();
+          console.error('Purchase error:', purchaseResponse.status, purchaseError);
+          
+          // Save shipment created but purchase failed
+          await supabase
+            .from('frete_envios')
+            .insert({
+              pedido_id: order_id,
+              shipment_id: shipmentData.id,
+              status: 'created_purchase_failed',
+              service_price: availableService.price,
+              raw_response: { success: shipmentData, purchase_error: purchaseError }
+            });
+
+          return new Response(JSON.stringify({
+            success: true,
+            shipment: shipmentData,
+            service: availableService,
+            warning: 'Envio criado mas falhou ao gerar etiqueta: ' + purchaseError
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+      }
+
+      // Save successful shipment creation
+      await supabase
         .from('frete_envios')
         .insert({
           pedido_id: order_id,
@@ -396,10 +468,6 @@ serve(async (req) => {
           service_price: availableService.price,
           raw_response: { success: shipmentData }
         });
-
-      if (insertError) {
-        console.error('Error saving shipment to database:', insertError);
-      }
 
       return new Response(JSON.stringify({
         success: true,
@@ -410,7 +478,7 @@ serve(async (req) => {
       });
     }
 
-    // Handle other actions (like getting labels, tracking, etc.)
+    // Handle other actions
     return new Response(JSON.stringify({ error: 'Ação não implementada' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

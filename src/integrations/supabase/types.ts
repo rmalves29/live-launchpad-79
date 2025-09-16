@@ -573,6 +573,136 @@ export type Database = {
         }
         Relationships: []
       }
+      integration_me: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          environment: string
+          from_address: string | null
+          from_cep: string | null
+          from_city: string | null
+          from_complement: string | null
+          from_district: string | null
+          from_document: string | null
+          from_email: string | null
+          from_name: string | null
+          from_number: string | null
+          from_phone: string | null
+          from_state: string | null
+          id: string
+          is_active: boolean
+          refresh_token: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          environment?: string
+          from_address?: string | null
+          from_cep?: string | null
+          from_city?: string | null
+          from_complement?: string | null
+          from_district?: string | null
+          from_document?: string | null
+          from_email?: string | null
+          from_name?: string | null
+          from_number?: string | null
+          from_phone?: string | null
+          from_state?: string | null
+          id?: string
+          is_active?: boolean
+          refresh_token?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          environment?: string
+          from_address?: string | null
+          from_cep?: string | null
+          from_city?: string | null
+          from_complement?: string | null
+          from_district?: string | null
+          from_document?: string | null
+          from_email?: string | null
+          from_name?: string | null
+          from_number?: string | null
+          from_phone?: string | null
+          from_state?: string | null
+          id?: string
+          is_active?: boolean
+          refresh_token?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_me_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_mp: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          environment: string
+          id: string
+          is_active: boolean
+          public_key: string | null
+          tenant_id: string
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          public_key?: string | null
+          tenant_id: string
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          public_key?: string | null
+          tenant_id?: string
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_mp_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_whatsapp: {
         Row: {
           api_url: string | null
