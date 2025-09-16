@@ -49,8 +49,8 @@ export const CompanySettings = () => {
 
   const loadCompanyData = async () => {
     try {
-      const { data, error } = await supabaseTenant
-        .fromGlobal('tenants')
+      const { data, error } = await supabaseTenant.raw
+        .from('tenants')
         .select('company_name, company_document, company_email, company_phone, company_address, company_number, company_complement, company_district, company_city, company_state, company_cep')
         .eq('id', tenantId)
         .single();
@@ -85,8 +85,8 @@ export const CompanySettings = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabaseTenant
-        .fromGlobal('tenants')
+      const { error } = await supabaseTenant.raw
+        .from('tenants')
         .update(formData)
         .eq('id', tenantId);
 
