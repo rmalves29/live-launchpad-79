@@ -30,6 +30,18 @@ interface OrderWithItems extends Order {
     qty: number;
     unit_price: number;
   }[];
+  frete_info?: {
+    transportadora?: string;
+    servico_escolhido?: string;
+    valor_frete?: number;
+    prazo?: number;
+  };
+  envio_info?: {
+    status?: string;
+    tracking_code?: string;
+    label_url?: string;
+    shipment_id?: string;
+  };
 }
 
 export default function TenantOrders() {
@@ -90,6 +102,36 @@ export default function TenantOrders() {
           qty: item.qty,
           unit_price: item.unit_price
         })) || [];
+      }
+
+      // Carregar informações de frete
+      try {
+        const { data: freteData } = await supabase
+          .from('frete_cotacoes')
+          .select('transportadora, servico_escolhido, valor_frete, prazo')
+          .eq('pedido_id', order.id)
+          .maybeSingle();
+        
+        if (freteData) {
+          orderWithItems.frete_info = freteData;
+        }
+      } catch (freteError) {
+        console.error('Error loading frete info:', freteError);
+      }
+
+      // Carregar informações de envio
+      try {
+        const { data: envioData } = await supabase
+          .from('frete_envios')
+          .select('status, tracking_code, label_url, shipment_id')
+          .eq('pedido_id', order.id)
+          .maybeSingle();
+        
+        if (envioData) {
+          orderWithItems.envio_info = envioData;
+        }
+      } catch (envioError) {
+        console.error('Error loading envio info:', envioError);
       }
 
       setSelectedOrder(orderWithItems);
@@ -329,6 +371,56 @@ export default function TenantOrders() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Informações de Frete e Envio */}
+                {(selectedOrder.frete_info || selectedOrder.envio_info) && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Informações de Frete e Envio</h4>
+                    <div className="space-y-3">
+                      {selectedOrder.frete_info && (
+                        <div className="p-3 bg-muted rounded-lg">
+                          <h5 className="font-medium mb-2">Dados de Frete</h5>
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            {selectedOrder.frete_info.servico_escolhido && (
+                              <div><strong>Serviço:</strong> {selectedOrder.frete_info.servico_escolhido}</div>
+                            )}
+                            {selectedOrder.frete_info.transportadora && (
+                              <div><strong>Transportadora:</strong> {selectedOrder.frete_info.transportadora}</div>
+                            )}
+                            {selectedOrder.frete_info.valor_frete && (
+                              <div><strong>Valor:</strong> R$ {Number(selectedOrder.frete_info.valor_frete).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                            )}
+                            {selectedOrder.frete_info.prazo && (
+                              <div><strong>Prazo:</strong> {selectedOrder.frete_info.prazo} dias úteis</div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {selectedOrder.envio_info && (
+                        <div className="p-3 bg-muted rounded-lg">
+                          <h5 className="font-medium mb-2">Status do Envio</h5>
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div><strong>Status:</strong> <Badge variant={selectedOrder.envio_info.status === 'created' ? 'default' : 'secondary'}>{selectedOrder.envio_info.status || 'Pendente'}</Badge></div>
+                            {selectedOrder.envio_info.tracking_code && (
+                              <div><strong>Código de Rastreio:</strong> {selectedOrder.envio_info.tracking_code}</div>
+                            )}
+                            {selectedOrder.envio_info.shipment_id && (
+                              <div><strong>ID do Envio:</strong> {selectedOrder.envio_info.shipment_id}</div>
+                            )}
+                            {selectedOrder.envio_info.label_url && (
+                              <div className="col-span-2">
+                                <a href={selectedOrder.envio_info.label_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                  <strong>Baixar Etiqueta</strong>
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
