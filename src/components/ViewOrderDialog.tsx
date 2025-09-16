@@ -3,6 +3,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect } from 'react';
 
 interface Order {
   id: number;
@@ -12,6 +14,7 @@ interface Order {
   total_amount: number;
   is_paid: boolean;
   created_at: string;
+  observation?: string;
   customer?: {
     name?: string;
     cpf?: string;
@@ -34,6 +37,13 @@ interface Order {
   }[];
 }
 
+interface FreteInfo {
+  transportadora?: string;
+  servico_escolhido?: string;
+  valor_frete?: number;
+  prazo?: number;
+}
+
 interface ViewOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -41,6 +51,32 @@ interface ViewOrderDialogProps {
 }
 
 export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogProps) => {
+  const [freteInfo, setFreteInfo] = useState<FreteInfo | null>(null);
+
+  useEffect(() => {
+    if (order?.id) {
+      loadFreteInfo(order.id);
+    }
+  }, [order?.id]);
+
+  const loadFreteInfo = async (orderId: number) => {
+    try {
+      const { data, error } = await supabase
+        .from('frete_cotacoes')
+        .select('transportadora, servico_escolhido, valor_frete, prazo')
+        .eq('pedido_id', orderId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error loading frete info:', error);
+      } else if (data) {
+        setFreteInfo(data);
+      }
+    } catch (error) {
+      console.error('Error loading frete info:', error);
+    }
+  };
+
   if (!order) return null;
 
   const customerName = order.customer?.name || 'Cliente não identificado';
@@ -86,7 +122,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
           <Card>
             <CardContent className="p-4">
               <h3 className="text-lg font-semibold mb-3">Resumo do Pedido</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
                   <strong>Total:</strong> R$ {order.total_amount.toFixed(2)}
                 </div>
@@ -97,15 +133,42 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                   </Badge>
                 </div>
                 <div>
-                  <strong>Tipo:</strong> 
-                  <Badge variant="outline" className="ml-2">{order.event_type}</Badge>
-                </div>
-                <div>
-                  <strong>Data:</strong> {format(new Date(order.event_date), 'dd/MM/yyyy')}
+                  <strong>Data:</strong> {format(new Date(order.created_at), 'dd/MM/yyyy')}
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Shipping Info */}
+          {freteInfo && (
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="text-lg font-semibold mb-3">Informações de Frete</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  {freteInfo.transportadora && (
+                    <div>
+                      <strong>Transportadora:</strong> {freteInfo.transportadora}
+                    </div>
+                  )}
+                  {freteInfo.servico_escolhido && (
+                    <div>
+                      <strong>Serviço:</strong> {freteInfo.servico_escolhido}
+                    </div>
+                  )}
+                  {freteInfo.valor_frete && (
+                    <div>
+                      <strong>Valor do Frete:</strong> R$ {Number(freteInfo.valor_frete).toFixed(2)}
+                    </div>
+                  )}
+                  {freteInfo.prazo && (
+                    <div>
+                      <strong>Prazo:</strong> {freteInfo.prazo} dias úteis
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Products */}
           <Card>
@@ -165,14 +228,22 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
             </CardContent>
           </Card>
 
-          {/* Order Timeline */}
+          {/* Order Timeline and Observations */}
           <Card>
             <CardContent className="p-4">
               <h3 className="text-lg font-semibold mb-3">Informações Adicionais</h3>
-              <div className="text-sm text-muted-foreground">
+              <div className="space-y-2 text-sm">
                 <div>
                   <strong>Pedido criado em:</strong> {format(new Date(order.created_at), 'dd/MM/yyyy \'às\' HH:mm', { locale: ptBR })}
                 </div>
+                {order.observation && (
+                  <div>
+                    <strong>Observações:</strong>
+                    <div className="mt-1 p-2 bg-muted rounded text-muted-foreground">
+                      {order.observation}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

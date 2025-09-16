@@ -22,6 +22,23 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Get tenant information for webhook URL
+    const { data: tenantData, error: tenantError } = await supabase
+      .from('tenants')
+      .select('tenant_key')
+      .eq('id', tenant_id)
+      .single();
+
+    if (tenantError || !tenantData?.tenant_key) {
+      console.error('Error fetching tenant:', tenantError);
+      return new Response(
+        JSON.stringify({ error: 'Tenant não encontrado' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const tenantKey = tenantData.tenant_key;
+
     const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
     if (!mpAccessToken) {
       console.error('MP_ACCESS_TOKEN not found');
@@ -298,7 +315,7 @@ serve(async (req) => {
         failure: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=failure`,
         pending: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=pending`
       },
-      notification_url: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/mercadopago-webhook`,
+      notification_url: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/mercadopago-webhook/${tenantKey}`,
       external_reference: String(orderId),
       auto_return: 'approved',
       binary_mode: true,
