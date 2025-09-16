@@ -11,6 +11,7 @@ import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import TenantsManager from '@/components/TenantsManager';
 import { TenantSimulator } from '@/components/TenantSimulator';
+import { TenantIntegrations } from '@/components/tenant/TenantIntegrations';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -907,46 +908,7 @@ const Config = () => {
         </TabsContent>
 
         <TabsContent value="integrations" className="space-y-6 mt-6">
-          {/* Integration Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Status das Integrações</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {integrationDocs.map((integration) => (
-                  <div 
-                    key={integration.title}
-                    className="p-4 border rounded-lg hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="flex items-center space-x-3 mb-2">
-                      <integration.icon className="h-5 w-5 text-primary" />
-                      <div className="font-medium">{integration.title}</div>
-                    </div>
-                    <div className="text-sm text-muted-foreground mb-3">
-                      {integration.description}
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Badge variant="outline" className="text-xs">
-                        {integration.status}
-                      </Badge>
-                      <Button asChild size="sm" variant="ghost">
-                        <a 
-                          href={integration.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="flex items-center"
-                        >
-                          Docs
-                          <ExternalLink className="h-3 w-3 ml-1" />
-                        </a>
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <TenantIntegrations />
         </TabsContent>
 
         {isMaster && (
