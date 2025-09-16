@@ -1043,6 +1043,17 @@ export type Database = {
         Row: {
           admin_email: string | null
           admin_user_id: string | null
+          company_address: string | null
+          company_cep: string | null
+          company_city: string | null
+          company_complement: string | null
+          company_district: string | null
+          company_document: string | null
+          company_email: string | null
+          company_name: string | null
+          company_number: string | null
+          company_phone: string | null
+          company_state: string | null
           created_at: string
           id: string
           is_active: boolean
@@ -1054,6 +1065,17 @@ export type Database = {
         Insert: {
           admin_email?: string | null
           admin_user_id?: string | null
+          company_address?: string | null
+          company_cep?: string | null
+          company_city?: string | null
+          company_complement?: string | null
+          company_district?: string | null
+          company_document?: string | null
+          company_email?: string | null
+          company_name?: string | null
+          company_number?: string | null
+          company_phone?: string | null
+          company_state?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
@@ -1065,6 +1087,17 @@ export type Database = {
         Update: {
           admin_email?: string | null
           admin_user_id?: string | null
+          company_address?: string | null
+          company_cep?: string | null
+          company_city?: string | null
+          company_complement?: string | null
+          company_district?: string | null
+          company_document?: string | null
+          company_email?: string | null
+          company_name?: string | null
+          company_number?: string | null
+          company_phone?: string | null
+          company_state?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
