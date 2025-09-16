@@ -48,7 +48,9 @@ serve(async (req) => {
       };
 
       // Criar Basic Auth header com client_id e client_secret
-      const basicAuth = btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`);
+      const encoder = new TextEncoder();
+      const data = encoder.encode(`${blingConfig.client_id}:${blingConfig.client_secret}`);
+      const basicAuth = btoa(String.fromCharCode(...new Uint8Array(data)));
 
       console.log('Requesting Bling token with:', {
         url: tokenUrl,
@@ -169,7 +171,9 @@ serve(async (req) => {
       };
 
       // Criar Basic Auth header com client_id e client_secret
-      const basicAuth = btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`);
+      const encoder = new TextEncoder();
+      const refreshAuthData = encoder.encode(`${blingConfig.client_id}:${blingConfig.client_secret}`);
+      const basicAuth = btoa(String.fromCharCode(...new Uint8Array(refreshAuthData)));
 
       const refreshResponse = await fetch(refreshUrl, {
         method: 'POST',

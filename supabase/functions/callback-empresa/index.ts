@@ -93,8 +93,11 @@ serve(async (req) => {
               }
             });
 
+            console.log('OAuth response status:', oauthResponse.error ? 'ERROR' : 'SUCCESS');
+            console.log('OAuth response error:', oauthResponse.error);
+            console.log('OAuth response data:', oauthResponse.data);
+
             const oauthResult = oauthResponse.data;
-            console.log('OAuth exchange result:', oauthResponse.status, JSON.stringify(oauthResult));
 
             // Log do resultado
             const oauthLogData = {
@@ -104,7 +107,8 @@ serve(async (req) => {
                 code: code,
                 state: state,
                 oauth_status: oauthResponse.error ? 'error' : 'success',
-                oauth_response: oauthResult
+                oauth_response: oauthResult,
+                oauth_error: oauthResponse.error
               },
               status_code: oauthResponse.error ? 500 : 200,
               response: `OAuth exchange: ${JSON.stringify(oauthResult)}`,
