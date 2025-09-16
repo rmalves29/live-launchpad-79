@@ -381,6 +381,17 @@ export const TenantIntegrations = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
+            <Label htmlFor="mp-public-key">Public Key</Label>
+            <Input
+              id="mp-public-key"
+              value={paymentConfig.public_key}
+              onChange={(e) => 
+                setPaymentConfig(prev => ({ ...prev, public_key: e.target.value }))
+              }
+              placeholder="APP_USR_1ff4d53c-b702-49b9-8ecc-ec86c10b4b39"
+            />
+          </div>
+          <div>
             <Label htmlFor="mp-access-token">Access Token</Label>
             <Input
               id="mp-access-token"
@@ -389,18 +400,30 @@ export const TenantIntegrations = () => {
               onChange={(e) => 
                 setPaymentConfig(prev => ({ ...prev, access_token: e.target.value }))
               }
-              placeholder="APP_USR-xxx"
+              placeholder="APP_USR_8967294933250718-f12515-..."
             />
           </div>
           <div>
-            <Label htmlFor="mp-public-key">Public Key</Label>
+            <Label htmlFor="mp-client-id">Client ID</Label>
             <Input
-              id="mp-public-key"
-              value={paymentConfig.public_key}
+              id="mp-client-id"
+              value={paymentConfig.client_id}
               onChange={(e) => 
-                setPaymentConfig(prev => ({ ...prev, public_key: e.target.value }))
+                setPaymentConfig(prev => ({ ...prev, client_id: e.target.value }))
               }
-              placeholder="APP_USR-xxx"
+              placeholder="8967294933250718"
+            />
+          </div>
+          <div>
+            <Label htmlFor="mp-client-secret">Client Secret</Label>
+            <Input
+              id="mp-client-secret"
+              type="password"
+              value={paymentConfig.client_secret}
+              onChange={(e) => 
+                setPaymentConfig(prev => ({ ...prev, client_secret: e.target.value }))
+              }
+              placeholder="6Umfiabw1AhBWR8TylqKoggfxQln2kIK"
             />
           </div>
           <Button onClick={savePaymentIntegration} disabled={loading}>
