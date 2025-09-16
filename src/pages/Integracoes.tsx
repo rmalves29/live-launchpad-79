@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, ExternalLink, AlertCircle, CheckCircle, Clock, X } from "lucide-react";
+import { CallbackInfo } from "@/components/CallbackInfo";
 
 interface WebhookLog {
   id: string;
@@ -187,11 +188,16 @@ export default function Integracoes() {
         </Button>
       </div>
 
-      <Tabs defaultValue="orders" className="space-y-4">
+      <Tabs defaultValue="callbacks" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="callbacks">URLs de Callback</TabsTrigger>
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
           <TabsTrigger value="logs">Logs Detalhados</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="callbacks">
+          <CallbackInfo />
+        </TabsContent>
 
         <TabsContent value="orders">
           <Card>

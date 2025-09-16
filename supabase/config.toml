@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.bling-integration]
 verify_jwt = false
+
+[functions.callback-empresa]
+verify_jwt = false
