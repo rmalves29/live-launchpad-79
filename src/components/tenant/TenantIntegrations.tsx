@@ -68,87 +68,57 @@ export const TenantIntegrations = () => {
     if (!profile?.id) return;
 
     try {
-      // Get current tenant ID
-      const currentTenantId = profile.role === 'super_admin' 
-        ? (tenant?.id || null)  // Use selected tenant for super_admin
-        : profile.tenant_id;     // Use user's tenant_id for regular users
+      console.log('Loading integrations via edge function');
 
-      console.log('Loading integrations for tenant:', currentTenantId);
-
-      // Load WhatsApp integration
-      const { data: whatsapp } = await supabaseTenant.raw
-        .from('integration_whatsapp')
-        .select('*')
-        .eq('tenant_id', currentTenantId)
-        .maybeSingle();
-
-      if (whatsapp) {
-        console.log('WhatsApp integration loaded:', whatsapp);
+      // Use the same edge function as Config page
+      const { data, error } = await supabaseTenant.raw.functions.invoke('get-integration-settings');
+      
+      if (!error && data) {
+        console.log('Integration data loaded:', data);
+        
+        // Set WhatsApp config (may not be in edge function, so keep default)
         setWhatsappConfig({
-          api_url: whatsapp.api_url || '',
-          instance_name: whatsapp.instance_name || '',
-          webhook_secret: whatsapp.webhook_secret || '',
-          is_active: whatsapp.is_active
+          api_url: '',
+          instance_name: '',
+          webhook_secret: '',
+          is_active: false
         });
-      }
 
-      // Load Payment integration
-      const { data: payment } = await supabaseTenant.raw
-        .from('payment_integrations')
-        .select('*')
-        .eq('tenant_id', currentTenantId)
-        .maybeSingle();
+        // Set Payment config from edge function
+        if (data.mercado_pago) {
+          setPaymentConfig({
+            provider: 'mercado_pago',
+            access_token: data.mercado_pago.access_token || '',
+            public_key: data.mercado_pago.public_key || '',
+            client_id: data.mercado_pago.client_id || '',
+            client_secret: data.mercado_pago.client_secret || '',
+            webhook_secret: '',
+            is_active: !!(data.mercado_pago.access_token)
+          });
+        }
 
-      if (payment) {
-        console.log('Payment integration loaded:', payment);
-        setPaymentConfig({
-          provider: payment.provider,
-          access_token: payment.access_token || '',
-          public_key: payment.public_key || '',
-          client_id: payment.client_id || '',
-          client_secret: payment.client_secret || '',
-          webhook_secret: payment.webhook_secret || '',
-          is_active: payment.is_active
-        });
-      }
+        // Set Shipping config from edge function
+        if (data.melhor_envio) {
+          setShippingConfig({
+            provider: 'melhor_envio',
+            access_token: data.melhor_envio.access_token || '',
+            client_id: data.melhor_envio.client_id || '',
+            client_secret: data.melhor_envio.client_secret || '',
+            webhook_secret: '',
+            from_cep: data.melhor_envio.from_cep || '31575060',
+            sandbox: data.melhor_envio.env === 'sandbox',
+            is_active: !!(data.melhor_envio.client_id)
+          });
+        }
 
-      // Load Shipping integration
-      const { data: shipping } = await supabaseTenant.raw
-        .from('shipping_integrations')
-        .select('*')
-        .eq('tenant_id', currentTenantId)
-        .maybeSingle();
-
-      if (shipping) {
-        console.log('Shipping integration loaded:', shipping);
-        setShippingConfig({
-          provider: shipping.provider,
-          access_token: shipping.access_token || '',
-          client_id: shipping.client_id || '',
-          client_secret: shipping.client_secret || '',
-          webhook_secret: shipping.webhook_secret || '',
-          from_cep: shipping.from_cep || '31575060',
-          sandbox: shipping.sandbox,
-          is_active: shipping.is_active
-        });
-      }
-
-      // Load Bling integration
-      const { data: bling } = await supabaseTenant.raw
-        .from('bling_integrations')
-        .select('*')
-        .eq('tenant_id', currentTenantId)
-        .maybeSingle();
-
-      if (bling) {
-        console.log('Bling integration loaded:', bling);
+        // Set Bling config (may not be in edge function, so keep default)
         setBlingConfig({
-          client_id: bling.client_id || '',
-          client_secret: bling.client_secret || '',
-          access_token: bling.access_token || '',
-          refresh_token: bling.refresh_token || '',
-          environment: bling.environment || 'sandbox',
-          is_active: bling.is_active
+          client_id: '',
+          client_secret: '',
+          access_token: '',
+          refresh_token: '',
+          environment: 'sandbox',
+          is_active: false
         });
       }
 
@@ -207,25 +177,19 @@ export const TenantIntegrations = () => {
 
     setLoading(true);
     try {
-      // Get current tenant ID
-      const currentTenantId = profile.role === 'super_admin' 
-        ? (tenant?.id || null)  // Use selected tenant for super_admin
-        : profile.tenant_id;     // Use user's tenant_id for regular users
+      console.log('Saving Payment integration via edge function');
 
-      console.log('Saving Payment integration for tenant:', currentTenantId);
-
-      const { error } = await supabaseTenant.raw
-        .from('payment_integrations')
-        .upsert({
-          tenant_id: currentTenantId,
-          provider: paymentConfig.provider,
-          access_token: paymentConfig.access_token,
-          public_key: paymentConfig.public_key,
-          client_id: paymentConfig.client_id,
-          client_secret: paymentConfig.client_secret,
-          webhook_secret: paymentConfig.webhook_secret,
-          is_active: paymentConfig.is_active
-        });
+      // Use edge function to save integration settings
+      const { error } = await supabaseTenant.raw.functions.invoke('save-integration-settings', {
+        body: {
+          mercado_pago: {
+            access_token: paymentConfig.access_token,
+            client_id: paymentConfig.client_id,
+            client_secret: paymentConfig.client_secret,
+            public_key: paymentConfig.public_key
+          }
+        }
+      });
 
       if (error) throw error;
 
@@ -250,26 +214,20 @@ export const TenantIntegrations = () => {
 
     setLoading(true);
     try {
-      // Get current tenant ID
-      const currentTenantId = profile.role === 'super_admin' 
-        ? (tenant?.id || null)  // Use selected tenant for super_admin
-        : profile.tenant_id;     // Use user's tenant_id for regular users
+      console.log('Saving Shipping integration via edge function');
 
-      console.log('Saving Shipping integration for tenant:', currentTenantId);
-
-      const { error } = await supabaseTenant.raw
-        .from('shipping_integrations')
-        .upsert({
-          tenant_id: currentTenantId,
-          provider: shippingConfig.provider,
-          access_token: shippingConfig.access_token,
-          client_id: shippingConfig.client_id,
-          client_secret: shippingConfig.client_secret,
-          webhook_secret: shippingConfig.webhook_secret,
-          from_cep: shippingConfig.from_cep,
-          sandbox: shippingConfig.sandbox,
-          is_active: shippingConfig.is_active
-        });
+      // Use edge function to save integration settings
+      const { error } = await supabaseTenant.raw.functions.invoke('save-integration-settings', {
+        body: {
+          melhor_envio: {
+            client_id: shippingConfig.client_id,
+            client_secret: shippingConfig.client_secret,
+            access_token: shippingConfig.access_token,
+            from_cep: shippingConfig.from_cep,
+            env: shippingConfig.sandbox ? 'sandbox' : 'production'
+          }
+        }
+      });
 
       if (error) throw error;
 
