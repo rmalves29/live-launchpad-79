@@ -22,16 +22,16 @@ Deno.serve(async (req) => {
     // Note: In a real implementation, these would be saved as Supabase secrets
     // For now, we'll acknowledge the settings were received
     console.log('Saving integration settings:', {
-      melhor_envio: {
+      melhor_envio: melhor_envio ? {
         ...melhor_envio,
         client_secret: melhor_envio.client_secret ? '[HIDDEN]' : '',
         access_token: melhor_envio.access_token ? '[HIDDEN]' : ''
-      },
-      mercado_pago: {
+      } : null,
+      mercado_pago: mercado_pago ? {
         ...mercado_pago,
         access_token: mercado_pago.access_token ? '[HIDDEN]' : '',
         client_secret: mercado_pago.client_secret ? '[HIDDEN]' : ''
-      }
+      } : null
     })
 
     // In a production environment, you would:
@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
     // 3. Or store encrypted values in a secure table
 
     // For this demo, we'll save some non-sensitive settings to the database
-    if (melhor_envio.from_cep || melhor_envio.env) {
+    if (melhor_envio && (melhor_envio.from_cep || melhor_envio.env)) {
       const { error } = await supabase
         .from('app_settings')
         .upsert({
