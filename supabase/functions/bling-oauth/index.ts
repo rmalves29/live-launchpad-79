@@ -44,7 +44,7 @@ serve(async (req) => {
       const tokenData = {
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: `https://app.orderzaps.com/functions/v1/callback-empresa?service=bling&action=oauth`,
+        redirect_uri: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=bling&action=oauth`,
         client_id: blingConfig.client_id,
         client_secret: blingConfig.client_secret
       };
