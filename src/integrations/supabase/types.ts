@@ -610,7 +610,14 @@ export type Database = {
         Row: {
           cart_id: number | null
           created_at: string | null
+          customer_cep: string | null
+          customer_city: string | null
+          customer_complement: string | null
+          customer_name: string | null
+          customer_number: string | null
           customer_phone: string
+          customer_state: string | null
+          customer_street: string | null
           event_date: string
           event_type: string
           id: number
@@ -627,7 +634,14 @@ export type Database = {
         Insert: {
           cart_id?: number | null
           created_at?: string | null
+          customer_cep?: string | null
+          customer_city?: string | null
+          customer_complement?: string | null
+          customer_name?: string | null
+          customer_number?: string | null
           customer_phone: string
+          customer_state?: string | null
+          customer_street?: string | null
           event_date: string
           event_type: string
           id?: number
@@ -644,7 +658,14 @@ export type Database = {
         Update: {
           cart_id?: number | null
           created_at?: string | null
+          customer_cep?: string | null
+          customer_city?: string | null
+          customer_complement?: string | null
+          customer_name?: string | null
+          customer_number?: string | null
           customer_phone?: string
+          customer_state?: string | null
+          customer_street?: string | null
           event_date?: string
           event_type?: string
           id?: number

@@ -230,6 +230,13 @@ serve(async (req) => {
         .insert({
           tenant_id: tenant_id,
           customer_phone: customerData.phone,
+          customer_name: customerData.name,
+          customer_cep: addressData?.cep,
+          customer_street: addressData?.street,
+          customer_number: addressData?.number,
+          customer_complement: addressData?.complement,
+          customer_city: addressData?.city,
+          customer_state: addressData?.state,
           event_type: 'BAZAR',
           event_date: today,
           total_amount: parseFloat(total),

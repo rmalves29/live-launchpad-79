@@ -312,8 +312,9 @@ serve(async (req) => {
         console.log('[DEBUG] No recipient document found, continuing without it (some shipping services allow this)');
       }
 
-      // Prepare recipient entity with better fallbacks
+      // Prepare recipient entity with better fallbacks using order address data
       const recipientCep = onlyDigits(
+        orderData.customer_cep ||
         customerData?.cep || 
         (orderData as any)?.shipping_zip || 
         (orderData as any)?.customer_cep ||
@@ -327,22 +328,22 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             error: 'CEP de destino inválido',
-            details: `CEP deve ter 8 dígitos. Encontrado: ${recipientCep}`
+            details: `CEP deve ter 8 dígitos. Encontrado: ${recipientCep}. Verifique o endereço do cliente.`
           }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       const toEntity: any = {
-        name: customerData?.name || (orderData as any)?.customer_name || "Cliente",
+        name: orderData.customer_name || customerData?.name || (orderData as any)?.customer_name || "Cliente",
         phone: phoneDigits,
-        email: (customerData as any)?.email || (orderData as any)?.customer_email || "cliente@email.com",
-        address: customerData?.street || (orderData as any)?.shipping_street || "Rua do Cliente",
-        number: customerData?.number || (orderData as any)?.shipping_number || "100",
-        complement: customerData?.complement || (orderData as any)?.shipping_complement || "",
+        email: (customerData as any)?.email || (orderData as any)?.customer_email || `${phoneDigits}@checkout.com`,
+        address: orderData.customer_street || customerData?.street || (orderData as any)?.shipping_street || "Rua do Cliente",
+        number: orderData.customer_number || customerData?.number || (orderData as any)?.shipping_number || "100",
+        complement: orderData.customer_complement || customerData?.complement || (orderData as any)?.shipping_complement || "",
         district: (customerData as any)?.neighborhood || (orderData as any)?.shipping_district || "Centro",
-        city: customerData?.city || (orderData as any)?.shipping_city || "São Paulo",
-        state_abbr: customerData?.state || (orderData as any)?.shipping_state || "SP",
+        city: orderData.customer_city || customerData?.city || (orderData as any)?.shipping_city || "São Paulo",
+        state_abbr: orderData.customer_state || customerData?.state || (orderData as any)?.shipping_state || "SP",
         country_id: "BR",
         postal_code: recipientCep
       };
