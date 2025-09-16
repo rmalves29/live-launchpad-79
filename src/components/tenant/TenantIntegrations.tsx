@@ -62,7 +62,7 @@ export const TenantIntegrations = () => {
     if (profile?.id) {
       loadIntegrations();
     }
-  }, [profile?.id]);
+  }, [profile?.id, tenant?.id]);
 
   const loadIntegrations = async () => {
     if (!profile?.id) return;
@@ -83,6 +83,7 @@ export const TenantIntegrations = () => {
         .maybeSingle();
 
       if (whatsapp) {
+        console.log('WhatsApp integration loaded:', whatsapp);
         setWhatsappConfig({
           api_url: whatsapp.api_url || '',
           instance_name: whatsapp.instance_name || '',
@@ -99,6 +100,7 @@ export const TenantIntegrations = () => {
         .maybeSingle();
 
       if (payment) {
+        console.log('Payment integration loaded:', payment);
         setPaymentConfig({
           provider: payment.provider,
           access_token: payment.access_token || '',
@@ -118,6 +120,7 @@ export const TenantIntegrations = () => {
         .maybeSingle();
 
       if (shipping) {
+        console.log('Shipping integration loaded:', shipping);
         setShippingConfig({
           provider: shipping.provider,
           access_token: shipping.access_token || '',
@@ -138,6 +141,7 @@ export const TenantIntegrations = () => {
         .maybeSingle();
 
       if (bling) {
+        console.log('Bling integration loaded:', bling);
         setBlingConfig({
           client_id: bling.client_id || '',
           client_secret: bling.client_secret || '',
