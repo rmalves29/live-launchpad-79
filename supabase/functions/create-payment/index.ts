@@ -17,6 +17,20 @@ serve(async (req) => {
 
     console.log('Creating payment with data:', { order_id, cartItems, customerData, addressData, shippingCost, shippingData, total, coupon_discount, tenant_id });
 
+    // Initialize Supabase client first
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
+    if (!mpAccessToken) {
+      console.error('MP_ACCESS_TOKEN not found');
+      return new Response(
+        JSON.stringify({ error: 'Mercado Pago não configurado' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Save or update customer with address data
     try {
       const customerUpdateData: any = {
@@ -51,20 +65,6 @@ serve(async (req) => {
     } catch (error) {
       console.error('Error saving customer data:', error);
     }
-
-    const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
-    if (!mpAccessToken) {
-      console.error('MP_ACCESS_TOKEN not found');
-      return new Response(
-        JSON.stringify({ error: 'Mercado Pago não configurado' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Create items for MercadoPago with coupon discount applied to products only
     const subtotalProducts = (cartItems || []).reduce((sum: number, item: any) => sum + Number(item.unit_price) * Number(item.qty), 0);
@@ -108,6 +108,9 @@ serve(async (req) => {
 
     // Se foi passado um order_id específico, usar esse pedido
     let existingOrder = null;
+    let existingOrders = null;
+    const today = new Date().toISOString().split('T')[0];
+    
     if (order_id) {
       const { data: specificOrder, error: specificOrderError } = await supabase
         .from('orders')
@@ -126,9 +129,7 @@ serve(async (req) => {
     
     // Se não foi passado order_id ou não foi encontrado, verificar pedidos existentes do cliente no mesmo dia
     if (!existingOrder) {
-      const today = new Date().toISOString().split('T')[0];
-      
-      const { data: existingOrders, error: orderSearchError } = await supabase
+      const { data: ordersData, error: orderSearchError } = await supabase
         .from('orders')
         .select('*')
         .eq('customer_phone', customerData.phone)
@@ -140,6 +141,7 @@ serve(async (req) => {
         console.error('Error searching for existing order:', orderSearchError);
       }
 
+      existingOrders = ordersData;
       existingOrder = existingOrders && existingOrders.length > 0 ? existingOrders[0] : null;
     }
 
