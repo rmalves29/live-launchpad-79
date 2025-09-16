@@ -647,7 +647,7 @@ export type Database = {
           {
             foreignKeyName: "integration_me_tenant_id_fkey"
             columns: ["tenant_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -697,7 +697,7 @@ export type Database = {
           {
             foreignKeyName: "integration_mp_tenant_id_fkey"
             columns: ["tenant_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -1048,6 +1048,7 @@ export type Database = {
           is_active: boolean
           name: string
           slug: string
+          tenant_key: string | null
           updated_at: string
         }
         Insert: {
@@ -1058,6 +1059,7 @@ export type Database = {
           is_active?: boolean
           name: string
           slug: string
+          tenant_key?: string | null
           updated_at?: string
         }
         Update: {
@@ -1068,6 +1070,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           slug?: string
+          tenant_key?: string | null
           updated_at?: string
         }
         Relationships: []
