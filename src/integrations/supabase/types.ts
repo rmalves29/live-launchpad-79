@@ -500,33 +500,42 @@ export type Database = {
       }
       frete_envios: {
         Row: {
+          cart_id: string | null
           created_at: string
           id: number
           label_url: string | null
+          payment_link: string | null
           pedido_id: number | null
           raw_response: Json | null
+          service_price: number | null
           shipment_id: string | null
           status: string | null
           tracking_code: string | null
           updated_at: string
         }
         Insert: {
+          cart_id?: string | null
           created_at?: string
           id?: number
           label_url?: string | null
+          payment_link?: string | null
           pedido_id?: number | null
           raw_response?: Json | null
+          service_price?: number | null
           shipment_id?: string | null
           status?: string | null
           tracking_code?: string | null
           updated_at?: string
         }
         Update: {
+          cart_id?: string | null
           created_at?: string
           id?: number
           label_url?: string | null
+          payment_link?: string | null
           pedido_id?: number | null
           raw_response?: Json | null
+          service_price?: number | null
           shipment_id?: string | null
           status?: string | null
           tracking_code?: string | null
