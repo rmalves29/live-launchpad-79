@@ -201,7 +201,7 @@ export const TenantIntegrations = () => {
   };
 
   const savePaymentIntegration = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id || !tenant?.id) return;
 
     setLoading(true);
     try {
@@ -210,6 +210,7 @@ export const TenantIntegrations = () => {
       // Use edge function to save integration settings
       const { error } = await supabaseTenant.raw.functions.invoke('save-integration-settings', {
         body: {
+          tenant_id: tenant.id,
           mercado_pago: {
             access_token: paymentConfig.access_token,
             client_id: paymentConfig.client_id,
@@ -225,6 +226,9 @@ export const TenantIntegrations = () => {
         title: 'Sucesso',
         description: 'Configuração Mercado Pago salva com sucesso'
       });
+      
+      // Refresh settings after save
+      loadIntegrations();
     } catch (error) {
       console.error('Error saving payment integration:', error);
       toast({

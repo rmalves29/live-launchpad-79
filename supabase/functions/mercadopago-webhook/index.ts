@@ -40,7 +40,8 @@ serve(async (req) => {
       .select(`
         id,
         integration_mp (
-          access_token
+          access_token,
+          webhook_secret
         )
       `)
       .eq('tenant_key', tenantKey)
