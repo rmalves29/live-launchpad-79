@@ -406,8 +406,25 @@ const Checkout = () => {
 
       const totalAmount = Number(order.total_amount) + shippingCost;
 
+      // Preparar dados do frete selecionado
+      let shippingData = null;
+      if (selectedShipping !== 'retirada') {
+        const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
+        if (selectedOption) {
+          shippingData = {
+            service_id: selectedOption.id,
+            service_name: selectedOption.name,
+            company_name: selectedOption.company?.name,
+            price: parseFloat(selectedOption.custom_price || selectedOption.price),
+            delivery_time: selectedOption.delivery_time,
+            additional_services: selectedOption.additional_services
+          };
+        }
+      }
+
       // Preparar dados no formato esperado pela edge function
       const paymentData = {
+        order_id: order.id, // Enviar o ID do pedido específico
         cartItems: order.items.map(item => ({
           product_name: item.product_name,
           product_code: item.product_code,
@@ -427,6 +444,7 @@ const Checkout = () => {
           state: customerData.state
         },
         shippingCost: shippingCost,
+        shippingData: shippingData, // Informações detalhadas do frete
         total: totalAmount.toString(),
         coupon_discount: 0, // Por enquanto sem cupom de desconto
         tenant_id: tenantId

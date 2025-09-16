@@ -13,9 +13,9 @@ serve(async (req) => {
   }
 
   try {
-    const { cartItems, customerData, addressData, shippingCost, total, coupon_discount, tenant_id } = await req.json();
+    const { order_id, cartItems, customerData, addressData, shippingCost, shippingData, total, coupon_discount, tenant_id } = await req.json();
 
-    console.log('Creating payment with data:', { cartItems, customerData, addressData, shippingCost, total, coupon_discount, tenant_id });
+    console.log('Creating payment with data:', { order_id, cartItems, customerData, addressData, shippingCost, shippingData, total, coupon_discount, tenant_id });
 
     // Save or update customer with address data
     try {
@@ -106,25 +106,46 @@ serve(async (req) => {
       items.reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.quantity), 0).toFixed(2)
     );
 
-    // Verificar se já existe pedido do cliente no mesmo dia
-    const today = new Date().toISOString().split('T')[0];
+    // Se foi passado um order_id específico, usar esse pedido
+    let existingOrder = null;
+    if (order_id) {
+      const { data: specificOrder, error: specificOrderError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('id', order_id)
+        .eq('tenant_id', tenant_id)
+        .single();
+      
+      if (specificOrderError) {
+        console.error('Error finding specific order:', specificOrderError);
+      } else {
+        existingOrder = specificOrder;
+        console.log('Using specific order:', existingOrder.id);
+      }
+    }
     
-    const { data: existingOrders, error: orderSearchError } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('customer_phone', customerData.phone)
-      .eq('event_date', today)
-      .eq('is_paid', false)
-      .order('created_at', { ascending: false });
+    // Se não foi passado order_id ou não foi encontrado, verificar pedidos existentes do cliente no mesmo dia
+    if (!existingOrder) {
+      const today = new Date().toISOString().split('T')[0];
+      
+      const { data: existingOrders, error: orderSearchError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('customer_phone', customerData.phone)
+        .eq('event_date', today)
+        .eq('is_paid', false)
+        .order('created_at', { ascending: false });
 
-    if (orderSearchError) {
-      console.error('Error searching for existing order:', orderSearchError);
+      if (orderSearchError) {
+        console.error('Error searching for existing order:', orderSearchError);
+      }
+
+      existingOrder = existingOrders && existingOrders.length > 0 ? existingOrders[0] : null;
     }
 
-    const existingOrder = existingOrders && existingOrders.length > 0 ? existingOrders[0] : null;
-
-    // Se houver múltiplos pedidos não pagos do mesmo dia, consolidar em um só
-    if (existingOrders && existingOrders.length > 1) {
+    
+    // Se não for um pedido específico e houver múltiplos pedidos não pagos do mesmo dia, consolidar em um só
+    if (!order_id && existingOrders && existingOrders.length > 1) {
       const mainOrder = existingOrders[0];
       const ordersToMerge = existingOrders.slice(1);
       
@@ -306,24 +327,67 @@ serve(async (req) => {
     const mpData = await mpResponse.json();
     console.log('MP Response:', mpData);
 
-    // Save or update order in database
+    // Save or update order in database with shipping information
     try {
       const targetId = (existingOrder?.id ?? orderId)!;
+      
+      // Preparar dados para atualizar o pedido
+      const updateData: any = {
+        total_amount: parseFloat(total),
+        payment_link: mpData.init_point,
+        is_paid: false,
+        customer_name: customerData.name,
+        customer_cep: addressData?.cep,
+        customer_street: addressData?.street,
+        customer_number: addressData?.number,
+        customer_complement: addressData?.complement,
+        customer_city: addressData?.city,
+        customer_state: addressData?.state
+      };
+      
+      // Se há informações de frete, salvar no campo observation ou criar um campo específico
+      if (shippingData) {
+        const shippingInfo = `Frete: ${shippingData.company_name} - ${shippingData.service_name} - R$ ${shippingData.price.toFixed(2)} - ${shippingData.delivery_time} dias`;
+        updateData.observation = existingOrder?.observation ? 
+          `${existingOrder.observation}\n${shippingInfo}` : 
+          shippingInfo;
+      } else if (Number(shippingCost) === 0) {
+        updateData.observation = existingOrder?.observation ? 
+          `${existingOrder.observation}\nFrete: Retirada no local` : 
+          'Frete: Retirada no local';
+      }
+      
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
-        .update({
-          total_amount: parseFloat(total),
-          payment_link: mpData.init_point,
-          is_paid: false
-        })
+        .update(updateData)
         .eq('id', targetId)
         .select()
         .single();
 
-      if (orderError) {
-        console.error('Error saving order:', orderError);
-      } else {
-        console.log('Order saved/updated successfully:', orderData);
+      
+      // Salvar informações detalhadas do frete na tabela frete_cotacoes se disponível
+      if (shippingData && shippingData.price > 0) {
+        try {
+          await supabase
+            .from('frete_cotacoes')
+            .insert({
+              pedido_id: targetId,
+              cep_destino: addressData?.cep,
+              peso: 0.3, // Peso padrão
+              largura: 16, // Dimensões padrão
+              altura: 2,
+              comprimento: 20,
+              valor_declarado: parseFloat(total),
+              valor_frete: shippingData.price,
+              servico_escolhido: shippingData.service_name,
+              transportadora: shippingData.company_name,
+              prazo: shippingData.delivery_time,
+              raw_response: shippingData
+            });
+          console.log('Shipping info saved to frete_cotacoes');
+        } catch (freightError) {
+          console.error('Error saving freight info:', freightError);
+        }
       }
     } catch (error) {
       console.error('Error saving order:', error);
