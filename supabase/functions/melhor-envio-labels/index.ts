@@ -72,20 +72,38 @@ serve(async (req) => {
     let meIntegration = null;
     
     if (tenant_id) {
+      // First get tenant data
       const { data: tenant } = await supabase
         .from('tenants')
-        .select(`
-          *,
-          integration_me!inner(*)
-        `)
+        .select('*')
         .eq('id', tenant_id)
         .eq('is_active', true)
-        .eq('integration_me.is_active', true)
         .single();
       
-      if (tenant && tenant.integration_me && tenant.integration_me.length > 0) {
+      if (!tenant) {
+        return new Response(
+          JSON.stringify({ error: 'Tenant não encontrado ou inativo' }),
+          { 
+            status: 404, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // Then get ME integration for this tenant
+      const { data: integration } = await supabase
+        .from('integration_me')
+        .select('*')
+        .eq('tenant_id', tenant_id)
+        .eq('is_active', true)
+        .single();
+      
+      if (integration) {
         tenantData = tenant;
-        meIntegration = tenant.integration_me[0];
+        meIntegration = integration;
+        console.log('Found ME integration for tenant:', tenant_id, 'integration ID:', integration.id);
+      } else {
+        console.log('No active ME integration found for tenant:', tenant_id);
       }
     }
 
