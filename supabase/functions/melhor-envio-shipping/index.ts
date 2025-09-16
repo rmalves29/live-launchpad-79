@@ -31,12 +31,11 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get shipping integration configuration from database
+    // Get shipping configuration from frete_config table
     const { data: shippingConfig, error: configError } = await supabase
-      .from('shipping_integrations')
+      .from('frete_config')
       .select('*')
-      .eq('tenant_id', tenant_id)
-      .eq('is_active', true)
+      .limit(1)
       .maybeSingle();
 
     if (configError || !shippingConfig) {
@@ -63,14 +62,12 @@ serve(async (req) => {
       );
     }
 
-    const baseUrl = shippingConfig.sandbox ? 
-      'https://sandbox.melhorenvio.com.br/api' : 
-      'https://melhorenvio.com.br/api';
+    const baseUrl = shippingConfig.api_base_url || 'https://melhorenvio.com.br/api';
 
     // Payload para cotação
     const payload = {
       from: {
-        postal_code: shippingConfig.from_cep
+        postal_code: shippingConfig.cep_origem
       },
       to: {
         postal_code: to_postal_code.replace(/\D/g, '')
