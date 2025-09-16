@@ -198,17 +198,24 @@ serve(async (req) => {
         .from('customers')
         .select('*')
         .or(`phone.eq.${customer_phone},phone.eq.${phoneDigits},phone.ilike.%${phoneDigits}%`)
+        .eq('tenant_id', orderData.tenant_id)
         .limit(1)
         .maybeSingle();
 
       // Fallbacks de busca por ID/email do pedido, se existir
       if (!customerData && orderData?.customer_id) {
-        const { data } = await supabase.from('customers').select('*').eq('id', orderData.customer_id).maybeSingle();
+        const { data } = await supabase.from('customers').select('*').eq('id', orderData.customer_id).eq('tenant_id', orderData.tenant_id).maybeSingle();
         customerData = data || customerData;
       }
       if (!customerData && orderData?.customer_email) {
-        const { data } = await supabase.from('customers').select('*').eq('email', orderData.customer_email).maybeSingle();
+        const { data } = await supabase.from('customers').select('*').eq('email', orderData.customer_email).eq('tenant_id', orderData.tenant_id).maybeSingle();
         customerData = data || customerData;
+      }
+
+      // If still no customer data or incomplete address, use order data or defaults
+      console.log('Customer data found:', customerData ? 'Yes' : 'No');
+      if (customerData) {
+        console.log('Customer address complete:', !!(customerData.cep && customerData.street && customerData.city));
       }
 
       // Get app settings for default dimensions and weight
@@ -305,22 +312,42 @@ serve(async (req) => {
         console.log('[DEBUG] No recipient document found, continuing without it (some shipping services allow this)');
       }
 
-      // Prepare recipient entity
+      // Prepare recipient entity with better fallbacks
+      const recipientCep = onlyDigits(
+        customerData?.cep || 
+        (orderData as any)?.shipping_zip || 
+        (orderData as any)?.customer_cep ||
+        configData.cep_origem || // Use sender's CEP as fallback
+        '01000000'
+      );
+      
+      // Validate CEP format
+      if (recipientCep.length !== 8) {
+        console.error(`Invalid recipient CEP: ${recipientCep} (length: ${recipientCep.length})`);
+        return new Response(
+          JSON.stringify({
+            error: 'CEP de destino inválido',
+            details: `CEP deve ter 8 dígitos. Encontrado: ${recipientCep}`
+          }),
+          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       const toEntity: any = {
-        name: customerData?.name || orderData?.customer_name || "Cliente",
+        name: customerData?.name || (orderData as any)?.customer_name || "Cliente",
         phone: phoneDigits,
-        email: (customerData as any)?.email || orderData?.customer_email || "cliente@email.com",
+        email: (customerData as any)?.email || (orderData as any)?.customer_email || "cliente@email.com",
         address: customerData?.street || (orderData as any)?.shipping_street || "Rua do Cliente",
-        number: customerData?.number || (orderData as any)?.shipping_number || "123",
+        number: customerData?.number || (orderData as any)?.shipping_number || "100",
         complement: customerData?.complement || (orderData as any)?.shipping_complement || "",
         district: (customerData as any)?.neighborhood || (orderData as any)?.shipping_district || "Centro",
         city: customerData?.city || (orderData as any)?.shipping_city || "São Paulo",
         state_abbr: customerData?.state || (orderData as any)?.shipping_state || "SP",
         country_id: "BR",
-        postal_code: onlyDigits(
-          (orderData as any)?.shipping_zip || customerData?.cep || customerData?.zip || '01000000'
-        )
+        postal_code: recipientCep
       };
+
+      console.log('Recipient address prepared:', JSON.stringify(toEntity, null, 2));
 
       // Set recipient document if available
       if (rawToDoc) {
@@ -405,19 +432,57 @@ serve(async (req) => {
 
       console.log('Selected service:', availableService.id, availableService.name);
 
-      // Get order products for declaration
-      const { data: cartItems, error: cartError } = await supabase
-        .from('cart_items')
-        .select(`
-          qty,
-          unit_price,
-          product_id,
-          products (
-            name,
-            code
-          )
-        `)
-        .eq('cart_id', orderData.cart_id);
+      // Get order products for declaration - try by cart_id first, then by order directly
+      let cartItems = null;
+      let cartError = null;
+      
+      if (orderData.cart_id) {
+        const { data, error } = await supabase
+          .from('cart_items')
+          .select(`
+            qty,
+            unit_price,
+            product_id,
+            products (
+              name,
+              code
+            )
+          `)
+          .eq('cart_id', orderData.cart_id);
+        cartItems = data;
+        cartError = error;
+      }
+      
+      // If no cart_id or no items found, try to find cart items by order relationship
+      if (!cartItems || cartItems.length === 0) {
+        console.log('No cart items found by cart_id, trying alternative methods...');
+        
+        // Try to find a cart related to this order and get its items
+        const { data: orderCart } = await supabase
+          .from('carts')
+          .select('id')
+          .eq('customer_phone', orderData.customer_phone)
+          .eq('event_date', orderData.event_date)
+          .eq('event_type', orderData.event_type)
+          .eq('tenant_id', orderData.tenant_id)
+          .maybeSingle();
+          
+        if (orderCart?.id) {
+          const { data } = await supabase
+            .from('cart_items')
+            .select(`
+              qty,
+              unit_price,
+              product_id,
+              products (
+                name,
+                code
+              )
+            `)
+            .eq('cart_id', orderCart.id);
+          cartItems = data;
+        }
+      }
 
       if (cartError) {
         console.error('Error fetching cart items:', cartError);

@@ -17,6 +17,41 @@ serve(async (req) => {
 
     console.log('Creating payment with data:', { cartItems, customerData, addressData, shippingCost, total, coupon_discount, tenant_id });
 
+    // Save or update customer with address data
+    try {
+      const customerUpdateData: any = {
+        name: customerData.name,
+        phone: customerData.phone,
+        tenant_id: tenant_id,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Add address data if provided
+      if (addressData) {
+        customerUpdateData.cep = addressData.cep;
+        customerUpdateData.street = addressData.street;
+        customerUpdateData.number = addressData.number;
+        customerUpdateData.complement = addressData.complement || '';
+        customerUpdateData.city = addressData.city;
+        customerUpdateData.state = addressData.state;
+      }
+      
+      const { error: customerError } = await supabase
+        .from('customers')
+        .upsert(customerUpdateData, {
+          onConflict: 'tenant_id,phone',
+          ignoreDuplicates: false
+        });
+        
+      if (customerError) {
+        console.error('Error updating customer:', customerError);
+      } else {
+        console.log('Customer address updated successfully');
+      }
+    } catch (error) {
+      console.error('Error saving customer data:', error);
+    }
+
     const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
     if (!mpAccessToken) {
       console.error('MP_ACCESS_TOKEN not found');
