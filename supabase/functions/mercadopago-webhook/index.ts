@@ -31,6 +31,9 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Log webhook received
+    console.log(`Webhook received for tenant: ${tenantKey}`);
+
     // Get tenant and MP integration config
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
@@ -44,12 +47,19 @@ serve(async (req) => {
       .eq('is_active', true)
       .single();
 
-    if (tenantError || !tenant || !tenant.integration_mp?.access_token) {
-      console.log(`Tenant ${tenantKey} not found or no MP integration configured`);
-      return new Response('Tenant not found or MP not configured', { 
-        status: 404, 
-        headers: corsHeaders 
-      });
+    if (tenantError) {
+      console.error('Error fetching tenant:', tenantError);
+      return new Response('Database error', { status: 500, headers: corsHeaders });
+    }
+
+    if (!tenant) {
+      console.log(`Tenant with key ${tenantKey} not found`);
+      return new Response('Tenant not found', { status: 404, headers: corsHeaders });
+    }
+
+    if (!tenant.integration_mp?.access_token) {
+      console.log(`Tenant ${tenantKey} has no MP integration configured`);
+      return new Response('MP integration not configured', { status: 404, headers: corsHeaders });
     }
 
     const mpAccessToken = tenant.integration_mp.access_token;
@@ -60,6 +70,17 @@ serve(async (req) => {
 
     const body = await req.json();
     console.log('Webhook received:', JSON.stringify(body, null, 2));
+
+    // Log webhook for debugging
+    await supabase
+      .from('webhook_logs')
+      .insert({
+        tenant_id: tenant.id,
+        webhook_type: 'mercadopago_webhook',
+        status_code: 200,
+        payload: body,
+        response: 'Webhook received'
+      });
 
     // Mercado Pago webhook structure
     const { action, data, type, resource, topic } = body;
@@ -182,6 +203,17 @@ serve(async (req) => {
     }
 
     console.log(`Order ${order.id} marked as paid via webhook`);
+
+    // Log successful payment processing
+    await supabase
+      .from('webhook_logs')
+      .insert({
+        tenant_id: tenant.id,
+        webhook_type: 'mercadopago_payment_success',
+        status_code: 200,
+        payload: { payment_id: paymentId, order_id: order.id },
+        response: `Order ${order.id} marked as paid`
+      });
 
     return new Response('Payment processed successfully', { 
       status: 200, 
