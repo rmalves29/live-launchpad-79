@@ -278,7 +278,7 @@ serve(async (req) => {
         );
       }
 
-      // Get recipient document candidates
+      // Get recipient document candidates - make it optional
       const docCandidatesRaw = [
         customerData?.cpf,
         customerData?.cnpj,
@@ -300,15 +300,9 @@ serve(async (req) => {
 
       console.log('[DEBUG] chosen recipient doc:', rawToDoc);
 
+      // Continue without recipient document if not found - some services don't require it
       if (!rawToDoc) {
-        return new Response(
-          JSON.stringify({
-            error: 'Documento do destinatário ausente',
-            field: 'to',
-            details: 'Inclua CPF (11) ou CNPJ (14) no cadastro do cliente ou no pedido.'
-          }),
-          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        console.log('[DEBUG] No recipient document found, continuing without it (some shipping services allow this)');
       }
 
       // Prepare recipient entity
@@ -328,18 +322,14 @@ serve(async (req) => {
         )
       };
 
-      // Set recipient document
-      try {
-        setDocumentFields(toEntity, rawToDoc);
-      } catch (e) {
-        return new Response(
-          JSON.stringify({ 
-            error: 'Documento do destinatário inválido', 
-            field: 'to', 
-            details: (e as Error).message 
-          }),
-          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      // Set recipient document if available
+      if (rawToDoc) {
+        try {
+          setDocumentFields(toEntity, rawToDoc);
+        } catch (e) {
+          console.log(`[DEBUG] Warning: Invalid recipient document ${rawToDoc}, continuing without it: ${(e as Error).message}`);
+          // Continue without document - many shipping services work without recipient document
+        }
       }
 
       // Check if sender and recipient addresses are the same
