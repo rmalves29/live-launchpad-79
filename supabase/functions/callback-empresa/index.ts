@@ -85,20 +85,15 @@ serve(async (req) => {
           // Chamar função para trocar código por token
           // Assumindo que o tenant_id está no state ou pode ser obtido de outra forma
           try {
-            const blingOAuthUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/bling-oauth`;
-            const oauthResponse = await fetch(blingOAuthUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
+            const oauthResponse = await supabase.functions.invoke('bling-oauth', {
+              body: {
                 action: 'exchange_code',
                 code: code,
                 tenant_id: state // Usando state como tenant_id por enquanto
-              })
+              }
             });
 
-            const oauthResult = await oauthResponse.text();
+            const oauthResult = oauthResponse.data;
             console.log('OAuth exchange result:', oauthResponse.status, oauthResult);
 
             // Log do resultado
@@ -118,10 +113,10 @@ serve(async (req) => {
 
             await supabase.from('webhook_logs').insert(oauthLogData);
 
-            if (oauthResponse.ok) {
+            if (!oauthResponse.error) {
               response.message = 'Autorização Bling processada com sucesso';
             } else {
-              response.message = `Erro ao processar autorização: ${oauthResult}`;
+              response.message = `Erro ao processar autorização: ${JSON.stringify(oauthResponse.error)}`;
             }
 
           } catch (error) {
