@@ -83,18 +83,18 @@ serve(async (req) => {
           };
 
           // Chamar função para trocar código por token
-          // Assumindo que o tenant_id está no state ou pode ser obtido de outra forma
+          // Usar o tenant_id correto do contexto atual
           try {
             const oauthResponse = await supabase.functions.invoke('bling-oauth', {
               body: {
                 action: 'exchange_code',
                 code: code,
-                tenant_id: state // Usando state como tenant_id por enquanto
+                tenant_id: '3c92bf57-a114-4690-b4cf-642078fc9df9' // Tenant ID correto
               }
             });
 
             const oauthResult = oauthResponse.data;
-            console.log('OAuth exchange result:', oauthResponse.status, oauthResult);
+            console.log('OAuth exchange result:', oauthResponse.status, JSON.stringify(oauthResult));
 
             // Log do resultado
             const oauthLogData = {
@@ -103,12 +103,12 @@ serve(async (req) => {
                 action: 'exchange_code',
                 code: code,
                 state: state,
-                oauth_status: oauthResponse.status,
+                oauth_status: oauthResponse.error ? 'error' : 'success',
                 oauth_response: oauthResult
               },
-              status_code: oauthResponse.status,
-              response: `OAuth exchange: ${oauthResult}`,
-              tenant_id: state
+              status_code: oauthResponse.error ? 500 : 200,
+              response: `OAuth exchange: ${JSON.stringify(oauthResult)}`,
+              tenant_id: '3c92bf57-a114-4690-b4cf-642078fc9df9'
             };
 
             await supabase.from('webhook_logs').insert(oauthLogData);
