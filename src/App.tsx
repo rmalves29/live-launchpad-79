@@ -22,6 +22,7 @@ import MpReturn from "./pages/MpReturn";
 import ConfigFrete from "./pages/ConfigFrete";
 import CotacaoFrete from "./pages/CotacaoFrete";
 import Etiquetas from "./pages/Etiquetas";
+import Integracoes from "./pages/Integracoes";
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
 import MercadoPagoCallback from "./pages/MercadoPagoCallback";
@@ -118,6 +119,9 @@ const AppContent = () => {
         } />
         <Route path="/etiquetas" element={
           <RequireTenantAuth><Etiquetas /></RequireTenantAuth>
+        } />
+        <Route path="/integracoes" element={
+          <RequireTenantAuth><Integracoes /></RequireTenantAuth>
         } />
         
         <Route path="*" element={<NotFound />} />
