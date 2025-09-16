@@ -405,11 +405,43 @@ serve(async (req) => {
 
       console.log('Selected service:', availableService.id, availableService.name);
 
+      // Get order products for declaration
+      const { data: cartItems, error: cartError } = await supabase
+        .from('cart_items')
+        .select(`
+          qty,
+          unit_price,
+          product_id,
+          products (
+            name,
+            code
+          )
+        `)
+        .eq('cart_id', orderData.cart_id);
+
+      if (cartError) {
+        console.error('Error fetching cart items:', cartError);
+      }
+
+      // Prepare products for Melhor Envio
+      const products = (cartItems || []).map(item => ({
+        name: item.products?.name || 'Produto',
+        quantity: item.qty,
+        unitary_value: parseFloat(item.unit_price?.toString() || '0')
+      }));
+
       // STEP 2: Add to cart with the quoted service ID
       const cartPayload = {
         service: availableService.id,
         from: fromEntity,
         to: toEntity,
+        products: products.length > 0 ? products : [
+          {
+            name: 'Produto do pedido',
+            quantity: 1,
+            unitary_value: parseFloat(orderData.total_amount?.toString() || '0')
+          }
+        ],
         volumes: [
           {
             height: packageData.altura,
@@ -467,38 +499,24 @@ serve(async (req) => {
       
       const cartId = cartData.id;
       
-      // STEP 3: Checkout (purchase)
-      console.log('Step 3: Processing checkout for cart ID:', cartId);
+      // Return cart info for payment processing
+      // Don't checkout immediately - wait for payment via Mercado Pago
+      console.log('Cart created successfully. Shipment will be purchased after payment confirmation.');
       
-      const checkoutResponse = await fetch(`${baseUrl}/v2/me/shipment/checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'User-Agent': 'ManiaDeMulher-Sistema'
-        },
-        body: JSON.stringify({ orders: [cartId] })
-      });
-
-      if (!checkoutResponse.ok) {
-        const errorData = await checkoutResponse.text();
-        console.error('Checkout error:', checkoutResponse.status, errorData);
-        
-        return new Response(
-          JSON.stringify({ 
-            error: 'Erro no checkout',
-            details: errorData 
-          }),
-          { 
-            status: checkoutResponse.status, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
-      const checkoutData = await checkoutResponse.json();
-      console.log('Step 3: Checkout completed successfully:', checkoutData);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          cart_id: cartId,
+          service_name: availableService.name,
+          service_price: availableService.price,
+          message: 'Etiqueta criada. Aguardando pagamento.',
+          requires_payment: true
+        }),
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
       
       const shipmentId = checkoutData.purchase?.id;
       

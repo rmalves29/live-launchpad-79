@@ -26,6 +26,9 @@ interface FreteEnvio {
   id: number;
   pedido_id: number;
   shipment_id: string | null;
+  cart_id?: string | null;
+  service_price?: number | null;
+  payment_link?: string | null;
   status: string;
   label_url: string | null;
   tracking_code: string | null;
@@ -103,12 +106,13 @@ export default function Etiquetas() {
 
       if (error) throw error;
 
-      if (data?.shipment_id) {
-        // Update or create frete_envios record
+      if (data?.cart_id) {
+        // Update or create frete_envios record with cart info
         const envioData = {
           pedido_id: envio.order.id,
-          shipment_id: data.shipment_id,
-          status: 'created',
+          cart_id: data.cart_id,
+          service_price: data.service_price,
+          status: 'created_awaiting_payment',
           raw_response: data,
         };
 
@@ -120,7 +124,7 @@ export default function Etiquetas() {
 
         toast({
           title: "Sucesso",
-          description: "Etiqueta gerada com sucesso",
+          description: "Etiqueta criada. Agora você pode gerar o link de pagamento.",
         });
 
         loadShipments(); // Reload to get updated data
@@ -130,6 +134,56 @@ export default function Etiquetas() {
       toast({
         title: "Erro",
         description: "Erro ao gerar etiqueta",
+        variant: "destructive",
+      });
+    }
+    setActionLoading({...actionLoading, [envio.pedido_id]: false});
+  };
+
+  const generatePaymentLink = async (envio: FreteEnvio) => {
+    if (!envio.order || !envio.service_price) return;
+    
+    setActionLoading({...actionLoading, [envio.pedido_id]: true});
+    try {
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: {
+          amount: envio.service_price,
+          description: `Pagamento da etiqueta de envio - Pedido #${envio.order.id}`,
+          order_id: envio.order.id,
+          payment_type: 'shipping_label',
+          customer_phone: envio.order.customer_phone,
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.payment_link) {
+        // Update frete_envios with payment link
+        const { error: updateError } = await supabase
+          .from('frete_envios')
+          .update({ 
+            payment_link: data.payment_link,
+            status: 'payment_pending'
+          })
+          .eq('pedido_id', envio.pedido_id);
+
+        if (updateError) throw updateError;
+
+        // Open payment link
+        window.open(data.payment_link, '_blank');
+
+        toast({
+          title: "Link de pagamento gerado",
+          description: "O link foi aberto em uma nova aba. Complete o pagamento para prosseguir.",
+        });
+
+        loadShipments();
+      }
+    } catch (error) {
+      console.error('Error generating payment link:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao gerar link de pagamento",
         variant: "destructive",
       });
     }
@@ -224,6 +278,8 @@ export default function Etiquetas() {
   const getStatusBadge = (status: string) => {
     const statusMap = {
       pending: { label: "Pendente", variant: "secondary" as const },
+      created_awaiting_payment: { label: "Aguardando Pagamento", variant: "secondary" as const },
+      payment_pending: { label: "Pagamento Pendente", variant: "default" as const },
       created: { label: "Criado", variant: "default" as const },
       paid: { label: "Pago", variant: "default" as const },
       posted: { label: "Postado", variant: "default" as const },
@@ -287,7 +343,7 @@ export default function Etiquetas() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        {!envio.shipment_id && (
+                        {!envio.cart_id && !envio.shipment_id && (
                           <Button
                             size="sm"
                             onClick={() => generateLabel(envio)}
@@ -298,7 +354,30 @@ export default function Etiquetas() {
                           </Button>
                         )}
                         
-                        {envio.shipment_id && envio.status === 'created' && (
+                        {envio.cart_id && envio.status === 'created_awaiting_payment' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => generatePaymentLink(envio)}
+                            disabled={actionLoading[envio.pedido_id]}
+                          >
+                            <CreditCard className="w-4 h-4 mr-1" />
+                            Pagar via MP
+                          </Button>
+                        )}
+
+                        {envio.payment_link && ['payment_pending', 'created_awaiting_payment'].includes(envio.status) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(envio.payment_link!, '_blank')}
+                          >
+                            <CreditCard className="w-4 h-4 mr-1" />
+                            Ver Pagamento
+                          </Button>
+                        )}
+                        
+                        {envio.shipment_id && ['created', 'paid'].includes(envio.status) && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -306,7 +385,7 @@ export default function Etiquetas() {
                             disabled={actionLoading[envio.pedido_id]}
                           >
                             <CreditCard className="w-4 h-4 mr-1" />
-                            Pagar
+                            Pagar ME
                           </Button>
                         )}
                         
