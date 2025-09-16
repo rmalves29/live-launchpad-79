@@ -410,9 +410,11 @@ serve(async (req) => {
       const shipmentData = await shipmentResponse.json();
       console.log('Shipment created:', JSON.stringify(shipmentData, null, 2));
 
-      // STEP 3: Purchase the shipment to generate label
+      // STEP 3: Checkout (compra da etiqueta)
       if (shipmentData.id) {
-        const purchaseResponse = await fetch(`${baseUrl}/v2/me/shipment/generate`, {
+        console.log('Step 3: Checkout shipment ID:', shipmentData.id);
+        
+        const checkoutResponse = await fetch(`${baseUrl}/v2/me/shipment/checkout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -425,55 +427,132 @@ serve(async (req) => {
           })
         });
 
-        if (purchaseResponse.ok) {
-          const purchaseData = await purchaseResponse.json();
-          console.log('Purchase response:', JSON.stringify(purchaseData, null, 2));
+        if (!checkoutResponse.ok) {
+          const checkoutError = await checkoutResponse.text();
+          console.error('Checkout error:', checkoutResponse.status, checkoutError);
           
-          // Save successful shipment with label
+          // Save shipment created but checkout failed
           await supabase
             .from('frete_envios')
             .insert({
               pedido_id: order_id,
               shipment_id: shipmentData.id,
-              status: 'purchased',
+              status: 'created_checkout_failed',
               service_price: availableService.price,
-              label_url: purchaseData.digitable || null,
-              tracking_code: shipmentData.tracking || null,
-              raw_response: { success: shipmentData, purchase: purchaseData }
-            });
-
-          return new Response(JSON.stringify({
-            success: true,
-            shipment: shipmentData,
-            purchase: purchaseData,
-            service: availableService
-          }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        } else {
-          const purchaseError = await purchaseResponse.text();
-          console.error('Purchase error:', purchaseResponse.status, purchaseError);
-          
-          // Save shipment created but purchase failed
-          await supabase
-            .from('frete_envios')
-            .insert({
-              pedido_id: order_id,
-              shipment_id: shipmentData.id,
-              status: 'created_purchase_failed',
-              service_price: availableService.price,
-              raw_response: { success: shipmentData, purchase_error: purchaseError }
+              raw_response: { success: shipmentData, checkout_error: checkoutError }
             });
 
           return new Response(JSON.stringify({
             success: true,
             shipment: shipmentData,
             service: availableService,
-            warning: 'Envio criado mas falhou ao gerar etiqueta: ' + purchaseError
+            warning: 'Envio criado mas falhou no checkout: ' + checkoutError
           }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         }
+
+        const checkoutData = await checkoutResponse.json();
+        console.log('Checkout response:', JSON.stringify(checkoutData, null, 2));
+
+        // STEP 4: Generate label (só funciona após checkout)
+        const generateResponse = await fetch(`${baseUrl}/v2/me/shipment/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'User-Agent': 'Sistema-Multitenant'
+          },
+          body: JSON.stringify({
+            orders: [shipmentData.id]
+          })
+        });
+
+        if (!generateResponse.ok) {
+          const generateError = await generateResponse.text();
+          console.error('Generate error:', generateResponse.status, generateError);
+          
+          // Save checkout successful but generate failed
+          await supabase
+            .from('frete_envios')
+            .insert({
+              pedido_id: order_id,
+              shipment_id: shipmentData.id,
+              status: 'checkout_success_generate_failed',
+              service_price: availableService.price,
+              raw_response: { 
+                success: shipmentData, 
+                checkout: checkoutData, 
+                generate_error: generateError 
+              }
+            });
+
+          return new Response(JSON.stringify({
+            success: true,
+            shipment: shipmentData,
+            checkout: checkoutData,
+            service: availableService,
+            warning: 'Checkout realizado mas falhou ao gerar etiqueta: ' + generateError
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+
+        const generateData = await generateResponse.json();
+        console.log('Generate response:', JSON.stringify(generateData, null, 2));
+
+        // STEP 5: Get print URL for label
+        const printResponse = await fetch(`${baseUrl}/v2/me/shipment/print`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'User-Agent': 'Sistema-Multitenant'
+          },
+          body: JSON.stringify({
+            orders: [shipmentData.id]
+          })
+        });
+
+        let printData = null;
+        if (printResponse.ok) {
+          printData = await printResponse.json();
+          console.log('Print response:', JSON.stringify(printData, null, 2));
+        } else {
+          const printError = await printResponse.text();
+          console.error('Print error:', printResponse.status, printError);
+        }
+        
+        // Save complete successful flow
+        await supabase
+          .from('frete_envios')
+          .insert({
+            pedido_id: order_id,
+            shipment_id: shipmentData.id,
+            status: 'completed',
+            service_price: availableService.price,
+            label_url: printData?.url || null,
+            tracking_code: shipmentData.tracking || null,
+            raw_response: { 
+              success: shipmentData, 
+              checkout: checkoutData,
+              generate: generateData,
+              print: printData
+            }
+          });
+
+        return new Response(JSON.stringify({
+          success: true,
+          shipment: shipmentData,
+          checkout: checkoutData,
+          generate: generateData,
+          print: printData,
+          service: availableService
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
 
       // Save successful shipment creation
