@@ -68,7 +68,12 @@ export const TenantIntegrations = () => {
     if (!profile?.id) return;
 
     try {
-      console.log('Loading integrations via edge function');
+      console.log('Loading integrations via edge function and database');
+
+      // Get current tenant ID
+      const currentTenantId = profile.role === 'super_admin' 
+        ? (tenant?.id || null)  // Use selected tenant for super_admin
+        : profile.tenant_id;     // Use user's tenant_id for regular users
 
       // Use the same edge function as Config page
       const { data, error } = await supabaseTenant.raw.functions.invoke('get-integration-settings');
@@ -110,16 +115,39 @@ export const TenantIntegrations = () => {
             is_active: !!(data.melhor_envio.client_id)
           });
         }
+      }
 
-        // Set Bling config (may not be in edge function, so keep default)
-        setBlingConfig({
-          client_id: '',
-          client_secret: '',
-          access_token: '',
-          refresh_token: '',
-          environment: 'sandbox',
-          is_active: false
-        });
+      // Load Bling data from database
+      if (currentTenantId) {
+        console.log('Loading Bling data for tenant:', currentTenantId);
+        
+        const { data: blingData, error: blingError } = await supabaseTenant.raw
+          .from('bling_integrations')
+          .select('*')
+          .eq('tenant_id', currentTenantId)
+          .single();
+          
+        if (!blingError && blingData) {
+          console.log('Bling data loaded:', blingData);
+          setBlingConfig({
+            client_id: blingData.client_id || '',
+            client_secret: blingData.client_secret || '',
+            access_token: blingData.access_token || '',
+            refresh_token: blingData.refresh_token || '',
+            environment: blingData.environment || 'sandbox',
+            is_active: blingData.is_active || false
+          });
+        } else {
+          console.log('No Bling data found or error:', blingError);
+          setBlingConfig({
+            client_id: '',
+            client_secret: '',
+            access_token: '',
+            refresh_token: '',
+            environment: 'sandbox',
+            is_active: false
+          });
+        }
       }
 
     } catch (error) {
