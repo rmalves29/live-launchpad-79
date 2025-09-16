@@ -79,38 +79,55 @@ serve(async (req) => {
 
     let order: any | null = null;
     if (externalRef && !Number.isNaN(Number(externalRef))) {
+      console.log(`Looking for order with ID: ${externalRef}`);
       const { data: o, error: byIdError } = await supabase
         .from('orders')
         .select('*')
         .eq('id', Number(externalRef))
-        .eq('is_paid', false)
-        .maybeSingle();
+        .eq('is_paid', false);
+      
       if (byIdError) {
         console.error('Error fetching order by id:', byIdError);
         return new Response('Database error', { status: 500, headers: corsHeaders });
       }
-      order = o;
+      
+      if (o && o.length > 0) {
+        order = o[0];
+        console.log(`Found order: ${order.id} for tenant: ${order.tenant_id}`);
+      } else {
+        console.log(`No unpaid order found with ID: ${externalRef}`);
+      }
     }
 
     // Fallback: try to match by preference id contained in the payment link if available
     if (!order) {
       const preferenceIdFromLink = payment?.point_of_interaction?.transaction_data?.qr_code?.match(/(\d{3,}-[\w-]+)/)?.[1] || null;
       const preferenceId = preferenceIdFromLink; // best-effort
-      if (!preferenceId) {
+      
+      if (preferenceId) {
+        console.log(`Looking for order with preference ID: ${preferenceId}`);
+        const { data: orders, error: fetchError } = await supabase
+          .from('orders')
+          .select('*')
+          .ilike('payment_link', `%${preferenceId}%`)
+          .eq('is_paid', false);
+          
+        if (fetchError) {
+          console.error('Error fetching order by preference link:', fetchError);
+          return new Response('Database error', { status: 500, headers: corsHeaders });
+        }
+        
+        if (orders && orders.length > 0) {
+          order = orders[0];
+          console.log(`Found order by preference: ${order.id} for tenant: ${order.tenant_id}`);
+        } else {
+          console.log(`No unpaid order found with preference ID: ${preferenceId}`);
+        }
+      }
+      
+      if (!preferenceId && !externalRef) {
         console.error('No external_reference or preference id found to locate order');
         return new Response('Unable to locate order', { status: 400, headers: corsHeaders });
-      }
-      const { data: orders, error: fetchError } = await supabase
-        .from('orders')
-        .select('*')
-        .ilike('payment_link', `%${preferenceId}%`)
-        .eq('is_paid', false);
-      if (fetchError) {
-        console.error('Error fetching order by preference link:', fetchError);
-        return new Response('Database error', { status: 500, headers: corsHeaders });
-      }
-      if (orders && orders.length > 0) {
-        order = orders[0];
       }
     }
 
