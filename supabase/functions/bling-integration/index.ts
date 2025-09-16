@@ -14,7 +14,26 @@ serve(async (req) => {
   }
 
   try {
-    const { action, order_id, customer_phone, tenant_id } = await req.json();
+    const requestBody = await req.json();
+    const { action, order_id, customer_phone } = requestBody;
+    let { tenant_id } = requestBody;
+    
+    // If tenant_id is not provided, get it from order
+    if (!tenant_id) {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      const { data: orderData } = await supabase
+        .from('orders')
+        .select('tenant_id')
+        .eq('id', order_id)
+        .single();
+      
+      if (orderData) {
+        tenant_id = orderData.tenant_id;
+      }
+    }
     
     console.log('Bling integration action:', action);
 

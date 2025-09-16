@@ -58,7 +58,22 @@ serve(async (req) => {
     const url = new URL(req.url);
     const tenantKey = url.searchParams.get('tenant_key') || req.headers.get('x-tenant-key');
     
-    const { action, order_id, tenant_id } = await req.json();
+    const requestBody = await req.json();
+    const { action, order_id } = requestBody;
+    let { tenant_id } = requestBody;
+    
+    // If tenant_id is not provided or undefined, try to get it from order
+    if (!tenant_id) {
+      const { data: orderData } = await supabase
+        .from('orders')
+        .select('tenant_id')
+        .eq('id', order_id)
+        .single();
+      
+      if (orderData) {
+        tenant_id = orderData.tenant_id;
+      }
+    }
     
     console.log('Labels action:', action, 'order_id:', order_id, 'tenant_id:', tenant_id);
 
