@@ -6,13 +6,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
+import { useTenantContext } from '@/contexts/TenantContext';
 import { Settings } from 'lucide-react';
 
 export const TenantIntegrations = () => {
   const { toast } = useToast();
   const { profile } = useAuth();
+  const { tenant } = useTenantContext();
   const [loading, setLoading] = useState(false);
   
   // WhatsApp Integration State
@@ -66,15 +68,18 @@ export const TenantIntegrations = () => {
     if (!profile?.id) return;
 
     try {
-      const tenantFilter = profile.role === 'super_admin' 
-        ? { tenant_id: null }  // For super_admin, filter by null tenant_id
-        : { tenant_id: profile.id }; // For regular users, filter by their ID as tenant_id
+      // Get current tenant ID
+      const currentTenantId = profile.role === 'super_admin' 
+        ? (tenant?.id || null)  // Use selected tenant for super_admin
+        : profile.tenant_id;     // Use user's tenant_id for regular users
+
+      console.log('Loading integrations for tenant:', currentTenantId);
 
       // Load WhatsApp integration
-      const { data: whatsapp } = await supabase
+      const { data: whatsapp } = await supabaseTenant.raw
         .from('integration_whatsapp')
         .select('*')
-        .match(tenantFilter)
+        .eq('tenant_id', currentTenantId)
         .maybeSingle();
 
       if (whatsapp) {
@@ -87,10 +92,10 @@ export const TenantIntegrations = () => {
       }
 
       // Load Payment integration
-      const { data: payment } = await supabase
+      const { data: payment } = await supabaseTenant.raw
         .from('payment_integrations')
         .select('*')
-        .match(tenantFilter)
+        .eq('tenant_id', currentTenantId)
         .maybeSingle();
 
       if (payment) {
@@ -106,10 +111,10 @@ export const TenantIntegrations = () => {
       }
 
       // Load Shipping integration
-      const { data: shipping } = await supabase
+      const { data: shipping } = await supabaseTenant.raw
         .from('shipping_integrations')
         .select('*')
-        .match(tenantFilter)
+        .eq('tenant_id', currentTenantId)
         .maybeSingle();
 
       if (shipping) {
@@ -126,10 +131,10 @@ export const TenantIntegrations = () => {
       }
 
       // Load Bling integration
-      const { data: bling } = await supabase
+      const { data: bling } = await supabaseTenant.raw
         .from('bling_integrations')
         .select('*')
-        .match(tenantFilter)
+        .eq('tenant_id', currentTenantId)
         .maybeSingle();
 
       if (bling) {
@@ -158,10 +163,17 @@ export const TenantIntegrations = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      // Get current tenant ID
+      const currentTenantId = profile.role === 'super_admin' 
+        ? (tenant?.id || null)  // Use selected tenant for super_admin
+        : profile.tenant_id;     // Use user's tenant_id for regular users
+
+      console.log('Saving WhatsApp integration for tenant:', currentTenantId);
+
+      const { error } = await supabaseTenant.raw
         .from('integration_whatsapp')
         .upsert({
-          tenant_id: profile.role === 'super_admin' ? null : profile.id,
+          tenant_id: currentTenantId,
           api_url: whatsappConfig.api_url,
           instance_name: whatsappConfig.instance_name,
           webhook_secret: whatsappConfig.webhook_secret,
@@ -191,10 +203,17 @@ export const TenantIntegrations = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      // Get current tenant ID
+      const currentTenantId = profile.role === 'super_admin' 
+        ? (tenant?.id || null)  // Use selected tenant for super_admin
+        : profile.tenant_id;     // Use user's tenant_id for regular users
+
+      console.log('Saving Payment integration for tenant:', currentTenantId);
+
+      const { error } = await supabaseTenant.raw
         .from('payment_integrations')
         .upsert({
-          tenant_id: profile.role === 'super_admin' ? null : profile.id,
+          tenant_id: currentTenantId,
           provider: paymentConfig.provider,
           access_token: paymentConfig.access_token,
           public_key: paymentConfig.public_key,
@@ -227,10 +246,17 @@ export const TenantIntegrations = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      // Get current tenant ID
+      const currentTenantId = profile.role === 'super_admin' 
+        ? (tenant?.id || null)  // Use selected tenant for super_admin
+        : profile.tenant_id;     // Use user's tenant_id for regular users
+
+      console.log('Saving Shipping integration for tenant:', currentTenantId);
+
+      const { error } = await supabaseTenant.raw
         .from('shipping_integrations')
         .upsert({
-          tenant_id: profile.role === 'super_admin' ? null : profile.id,
+          tenant_id: currentTenantId,
           provider: shippingConfig.provider,
           access_token: shippingConfig.access_token,
           client_id: shippingConfig.client_id,
@@ -264,10 +290,17 @@ export const TenantIntegrations = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
+      // Get current tenant ID
+      const currentTenantId = profile.role === 'super_admin' 
+        ? (tenant?.id || null)  // Use selected tenant for super_admin
+        : profile.tenant_id;     // Use user's tenant_id for regular users
+
+      console.log('Saving Bling integration for tenant:', currentTenantId);
+
+      const { error } = await supabaseTenant.raw
         .from('bling_integrations')
         .upsert({
-          tenant_id: profile.role === 'super_admin' ? null : profile.id,
+          tenant_id: currentTenantId,
           client_id: blingConfig.client_id,
           client_secret: blingConfig.client_secret,
           access_token: blingConfig.access_token,
