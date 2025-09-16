@@ -39,13 +39,15 @@ serve(async (req) => {
       .from('tenants')
       .select(`
         id,
-        integration_mp (
+        integration_mp!inner (
           access_token,
-          webhook_secret
+          webhook_secret,
+          is_active
         )
       `)
       .eq('tenant_key', tenantKey)
       .eq('is_active', true)
+      .eq('integration_mp.is_active', true)
       .single();
 
     if (tenantError) {
@@ -63,7 +65,12 @@ serve(async (req) => {
       return new Response('MP integration not configured', { status: 404, headers: corsHeaders });
     }
 
-    const mpAccessToken = tenant.integration_mp.access_token;
+    // Use tenant-specific access token, with fallback to global env variable
+    const mpAccessToken = tenant.integration_mp.access_token || Deno.env.get('MP_ACCESS_TOKEN');
+    if (!mpAccessToken) {
+      console.error('No MP access token available');
+      return new Response('MP not configured', { status: 500, headers: corsHeaders });
+    }
 
     if (req.method !== 'POST') {
       return new Response('Method not allowed', { status: 405, headers: corsHeaders });
