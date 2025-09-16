@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift, Save, Edit, Package, ArrowLeft, BarChart3, TrendingUp, Eye, EyeOff } from 'lucide-react';
+import { ExternalLink, Settings, Database, Truck, CreditCard, MessageSquare, Percent, Gift, Save, Edit, Package, ArrowLeft, BarChart3, TrendingUp, Eye, EyeOff, Building2 } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
+import { CompanySettings } from '@/components/CompanySettings';
 import TenantsManager from '@/components/TenantsManager';
 import { TenantSimulator } from '@/components/TenantSimulator';
 import { TenantIntegrations } from '@/components/tenant/TenantIntegrations';
@@ -370,10 +371,14 @@ const Config = () => {
 
         <div className="space-y-6">
           <Tabs defaultValue="config" className="w-full">
-            <TabsList className={`grid w-full ${isMaster ? 'grid-cols-6' : 'grid-cols-5'}`}>
+            <TabsList className={`grid w-full ${isMaster ? 'grid-cols-7' : 'grid-cols-6'}`}>
               <TabsTrigger value="config" className="flex items-center">
                 <Settings className="h-4 w-4 mr-2" />
                 Configurações
+              </TabsTrigger>
+              <TabsTrigger value="company" className="flex items-center">
+                <Building2 className="h-4 w-4 mr-2" />
+                Empresa
               </TabsTrigger>
               <TabsTrigger value="system" className="flex items-center">
                 <Database className="h-4 w-4 mr-2" />
@@ -897,6 +902,10 @@ const Config = () => {
               </Card>
             </>
           )}
+        </TabsContent>
+
+        <TabsContent value="company" className="space-y-6 mt-6">
+          <CompanySettings />
         </TabsContent>
 
         <TabsContent value="coupons" className="space-y-6 mt-6">
