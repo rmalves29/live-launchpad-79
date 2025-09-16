@@ -44,25 +44,27 @@ serve(async (req) => {
       const tokenData = {
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=bling&action=oauth`,
-        client_id: blingConfig.client_id,
-        client_secret: blingConfig.client_secret
+        redirect_uri: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=bling&action=oauth`
       };
+
+      // Criar Basic Auth header com client_id e client_secret
+      const basicAuth = btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`);
 
       console.log('Requesting Bling token with:', {
         url: tokenUrl,
         grant_type: tokenData.grant_type,
         code: tokenData.code,
         redirect_uri: tokenData.redirect_uri,
-        client_id: tokenData.client_id,
-        has_client_secret: !!tokenData.client_secret
+        client_id: blingConfig.client_id,
+        has_client_secret: !!blingConfig.client_secret
       });
 
       const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': `Basic ${basicAuth}`
         },
         body: new URLSearchParams(tokenData).toString()
       });
@@ -163,16 +165,18 @@ serve(async (req) => {
 
       const refreshData = {
         grant_type: 'refresh_token',
-        refresh_token: blingConfig.refresh_token,
-        client_id: blingConfig.client_id,
-        client_secret: blingConfig.client_secret
+        refresh_token: blingConfig.refresh_token
       };
+
+      // Criar Basic Auth header com client_id e client_secret
+      const basicAuth = btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`);
 
       const refreshResponse = await fetch(refreshUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': `Basic ${basicAuth}`
         },
         body: new URLSearchParams(refreshData).toString()
       });
