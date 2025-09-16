@@ -57,20 +57,20 @@ export const TenantIntegrations = () => {
   });
 
   useEffect(() => {
-    if (profile?.tenant_id) {
+    if (profile?.id) {
       loadIntegrations();
     }
-  }, [profile?.tenant_id]);
+  }, [profile?.id]);
 
   const loadIntegrations = async () => {
-    if (!profile?.tenant_id) return;
+    if (!profile?.id) return;
 
     try {
       // Load WhatsApp integration
       const { data: whatsapp } = await supabase
         .from('integration_whatsapp')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', profile.id)
         .maybeSingle();
 
       if (whatsapp) {
@@ -86,7 +86,7 @@ export const TenantIntegrations = () => {
       const { data: payment } = await supabase
         .from('payment_integrations')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', profile.id)
         .maybeSingle();
 
       if (payment) {
@@ -105,7 +105,7 @@ export const TenantIntegrations = () => {
       const { data: shipping } = await supabase
         .from('shipping_integrations')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', profile.id)
         .maybeSingle();
 
       if (shipping) {
@@ -125,7 +125,7 @@ export const TenantIntegrations = () => {
       const { data: bling } = await supabase
         .from('bling_integrations')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', profile.id)
         .maybeSingle();
 
       if (bling) {
@@ -150,14 +150,14 @@ export const TenantIntegrations = () => {
   };
 
   const saveWhatsAppIntegration = async () => {
-    if (!profile?.tenant_id) return;
+    if (!profile?.id) return;
 
     setLoading(true);
     try {
       const { error } = await supabase
         .from('integration_whatsapp')
         .upsert({
-          tenant_id: profile.tenant_id,
+          tenant_id: profile.id,
           api_url: whatsappConfig.api_url,
           instance_name: whatsappConfig.instance_name,
           webhook_secret: whatsappConfig.webhook_secret,
@@ -183,14 +183,14 @@ export const TenantIntegrations = () => {
   };
 
   const savePaymentIntegration = async () => {
-    if (!profile?.tenant_id) return;
+    if (!profile?.id) return;
 
     setLoading(true);
     try {
       const { error } = await supabase
         .from('payment_integrations')
         .upsert({
-          tenant_id: profile.tenant_id,
+          tenant_id: profile.id,
           provider: paymentConfig.provider,
           access_token: paymentConfig.access_token,
           public_key: paymentConfig.public_key,
@@ -219,14 +219,14 @@ export const TenantIntegrations = () => {
   };
 
   const saveShippingIntegration = async () => {
-    if (!profile?.tenant_id) return;
+    if (!profile?.id) return;
 
     setLoading(true);
     try {
       const { error } = await supabase
         .from('shipping_integrations')
         .upsert({
-          tenant_id: profile.tenant_id,
+          tenant_id: profile.id,
           provider: shippingConfig.provider,
           access_token: shippingConfig.access_token,
           client_id: shippingConfig.client_id,
@@ -256,14 +256,14 @@ export const TenantIntegrations = () => {
   };
 
   const saveBlingIntegration = async () => {
-    if (!profile?.tenant_id) return;
+    if (!profile?.id) return;
 
     setLoading(true);
     try {
       const { error } = await supabase
         .from('bling_integrations')
         .upsert({
-          tenant_id: profile.tenant_id,
+          tenant_id: profile.id,
           client_id: blingConfig.client_id,
           client_secret: blingConfig.client_secret,
           access_token: blingConfig.access_token,
