@@ -21,9 +21,57 @@ Deno.serve(async (req) => {
 
     console.log('Saving integration settings for tenant:', tenant_id)
 
-    // Save Melhor Envio settings to app_settings (global)
-    if (melhor_envio && (melhor_envio.from_cep || melhor_envio.env)) {
-      const { error } = await supabase
+    // Save Melhor Envio settings to integration_me (tenant-specific)
+    if (melhor_envio && tenant_id) {
+      const meData = {
+        tenant_id,
+        client_id: melhor_envio.client_id || null,
+        client_secret: melhor_envio.client_secret || null,
+        access_token: melhor_envio.access_token || null,
+        from_cep: melhor_envio.from_cep || '31575060',
+        environment: melhor_envio.env || 'production',
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }
+
+      // Check if record exists
+      const { data: existing } = await supabase
+        .from('integration_me')
+        .select('id')
+        .eq('tenant_id', tenant_id)
+        .maybeSingle()
+
+      let error
+      if (existing) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('integration_me')
+          .update(meData)
+          .eq('tenant_id', tenant_id)
+        error = updateError
+      } else {
+        // Insert new record
+        const { error: insertError } = await supabase
+          .from('integration_me')
+          .insert({
+            ...meData,
+            created_at: new Date().toISOString()
+          })
+        error = insertError
+      }
+
+      if (error) {
+        console.error('Error saving Melhor Envio settings:', error)
+        return new Response(JSON.stringify({ error: 'Failed to save ME settings' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      console.log('Melhor Envio settings saved successfully')
+
+      // Also save to app_settings for global settings
+      const { error: appError } = await supabase
         .from('app_settings')
         .upsert({
           id: 1,
@@ -31,8 +79,8 @@ Deno.serve(async (req) => {
           melhor_envio_env: melhor_envio.env
         }, { onConflict: 'id' })
 
-      if (error) {
-        console.error('Error updating app_settings:', error)
+      if (appError) {
+        console.error('Error updating app_settings:', appError)
       }
     }
 
@@ -55,7 +103,7 @@ Deno.serve(async (req) => {
         .from('integration_mp')
         .select('id')
         .eq('tenant_id', tenant_id)
-        .single()
+        .maybeSingle()
 
       let error
       if (existing) {

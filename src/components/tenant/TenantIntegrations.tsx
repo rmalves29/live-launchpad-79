@@ -68,59 +68,18 @@ export const TenantIntegrations = () => {
     if (!profile?.id) return;
 
     try {
-      console.log('Loading integrations via edge function and database');
+      console.log('Loading integrations from database');
 
       // Get current tenant ID
       const currentTenantId = profile.role === 'super_admin' 
         ? (tenant?.id || null)  // Use selected tenant for super_admin
         : profile.tenant_id;     // Use user's tenant_id for regular users
 
-      // Use the same edge function as Config page
-      const { data, error } = await supabaseTenant.raw.functions.invoke('get-integration-settings');
-      
-      if (!error && data) {
-        console.log('Integration data loaded:', data);
-        
-        // Set WhatsApp config (may not be in edge function, so keep default)
-        setWhatsappConfig({
-          api_url: '',
-          instance_name: '',
-          webhook_secret: '',
-          is_active: false
-        });
-
-        // Set Payment config from edge function
-        if (data.mercado_pago) {
-          setPaymentConfig({
-            provider: 'mercado_pago',
-            access_token: data.mercado_pago.access_token || '',
-            public_key: data.mercado_pago.public_key || '',
-            client_id: data.mercado_pago.client_id || '',
-            client_secret: data.mercado_pago.client_secret || '',
-            webhook_secret: '',
-            is_active: !!(data.mercado_pago.access_token)
-          });
-        }
-
-        // Set Shipping config from edge function
-        if (data.melhor_envio) {
-          setShippingConfig({
-            provider: 'melhor_envio',
-            access_token: data.melhor_envio.access_token || '',
-            client_id: data.melhor_envio.client_id || '',
-            client_secret: data.melhor_envio.client_secret || '',
-            webhook_secret: '',
-            from_cep: data.melhor_envio.from_cep || '31575060',
-            sandbox: data.melhor_envio.env === 'sandbox',
-            is_active: !!(data.melhor_envio.client_id)
-          });
-        }
-      }
-
-      // Load Bling data from database
+      // Load tenant-specific data from database
       if (currentTenantId) {
-        console.log('Loading Bling data for tenant:', currentTenantId);
+        console.log('Loading tenant-specific data for:', currentTenantId);
         
+        // Load Bling data
         const { data: blingData, error: blingError } = await supabaseTenant.raw
           .from('bling_integrations')
           .select('*')
@@ -146,6 +105,64 @@ export const TenantIntegrations = () => {
             refresh_token: '',
             environment: 'sandbox',
             is_active: false
+          });
+        }
+
+        // Load WhatsApp integration data
+        const { data: whatsappData, error: whatsappError } = await supabaseTenant.raw
+          .from('integration_whatsapp')
+          .select('*')
+          .eq('tenant_id', currentTenantId)
+          .maybeSingle();
+          
+        if (!whatsappError && whatsappData) {
+          console.log('WhatsApp data loaded:', whatsappData);
+          setWhatsappConfig({
+            api_url: whatsappData.api_url || '',
+            instance_name: whatsappData.instance_name || '',
+            webhook_secret: whatsappData.webhook_secret || '',
+            is_active: whatsappData.is_active || false
+          });
+        }
+
+        // Load Mercado Pago data
+        const { data: mpData, error: mpError } = await supabaseTenant.raw
+          .from('integration_mp')
+          .select('*')
+          .eq('tenant_id', currentTenantId)
+          .maybeSingle();
+          
+        if (!mpError && mpData) {
+          console.log('Mercado Pago data loaded:', mpData);
+          setPaymentConfig({
+            provider: 'mercado_pago',
+            access_token: mpData.access_token || '',
+            public_key: mpData.public_key || '',
+            client_id: mpData.client_id || '',
+            client_secret: mpData.client_secret || '',
+            webhook_secret: mpData.webhook_secret || '',
+            is_active: mpData.is_active || false
+          });
+        }
+
+        // Load Melhor Envio data
+        const { data: meData, error: meError } = await supabaseTenant.raw
+          .from('integration_me')
+          .select('*')
+          .eq('tenant_id', currentTenantId)
+          .maybeSingle();
+          
+        if (!meError && meData) {
+          console.log('Melhor Envio data loaded:', meData);
+          setShippingConfig({
+            provider: 'melhor_envio',
+            access_token: meData.access_token || '',
+            client_id: meData.client_id || '',
+            client_secret: meData.client_secret || '',
+            webhook_secret: '',
+            from_cep: meData.from_cep || '31575060',
+            sandbox: meData.environment === 'sandbox',
+            is_active: meData.is_active || false
           });
         }
       }
@@ -242,7 +259,7 @@ export const TenantIntegrations = () => {
   };
 
   const saveShippingIntegration = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id || !tenant?.id) return;
 
     setLoading(true);
     try {
@@ -251,6 +268,7 @@ export const TenantIntegrations = () => {
       // Use edge function to save integration settings
       const { error } = await supabaseTenant.raw.functions.invoke('save-integration-settings', {
         body: {
+          tenant_id: tenant.id,
           melhor_envio: {
             client_id: shippingConfig.client_id,
             client_secret: shippingConfig.client_secret,
@@ -267,6 +285,9 @@ export const TenantIntegrations = () => {
         title: 'Sucesso',
         description: 'Configuração Melhor Envio salva com sucesso'
       });
+      
+      // Refresh settings after save
+      loadIntegrations();
     } catch (error) {
       console.error('Error saving shipping integration:', error);
       toast({
