@@ -114,7 +114,7 @@ export type Database = {
           id: string
           is_active: boolean
           refresh_token: string | null
-          tenant_id: string
+          tenant_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -126,7 +126,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           refresh_token?: string | null
-          tenant_id: string
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -138,7 +138,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           refresh_token?: string | null
-          tenant_id?: string
+          tenant_id?: string | null
           updated_at?: string | null
         }
         Relationships: []
@@ -571,7 +571,7 @@ export type Database = {
           id: string
           instance_name: string
           is_active: boolean
-          tenant_id: string
+          tenant_id: string | null
           updated_at: string | null
           webhook_secret: string
         }
@@ -581,7 +581,7 @@ export type Database = {
           id?: string
           instance_name: string
           is_active?: boolean
-          tenant_id: string
+          tenant_id?: string | null
           updated_at?: string | null
           webhook_secret: string
         }
@@ -591,19 +591,11 @@ export type Database = {
           id?: string
           instance_name?: string
           is_active?: boolean
-          tenant_id?: string
+          tenant_id?: string | null
           updated_at?: string | null
           webhook_secret?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "integration_whatsapp_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       orders: {
         Row: {
@@ -684,7 +676,7 @@ export type Database = {
           is_active: boolean
           provider: string
           public_key: string | null
-          tenant_id: string
+          tenant_id: string | null
           updated_at: string | null
           webhook_secret: string | null
         }
@@ -697,7 +689,7 @@ export type Database = {
           is_active?: boolean
           provider?: string
           public_key?: string | null
-          tenant_id: string
+          tenant_id?: string | null
           updated_at?: string | null
           webhook_secret?: string | null
         }
@@ -710,19 +702,11 @@ export type Database = {
           is_active?: boolean
           provider?: string
           public_key?: string | null
-          tenant_id?: string
+          tenant_id?: string | null
           updated_at?: string | null
           webhook_secret?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "payment_integrations_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       products: {
         Row: {
@@ -823,7 +807,7 @@ export type Database = {
           is_active: boolean
           provider: string
           sandbox: boolean
-          tenant_id: string
+          tenant_id: string | null
           updated_at: string | null
           webhook_secret: string | null
         }
@@ -837,7 +821,7 @@ export type Database = {
           is_active?: boolean
           provider?: string
           sandbox?: boolean
-          tenant_id: string
+          tenant_id?: string | null
           updated_at?: string | null
           webhook_secret?: string | null
         }
@@ -851,19 +835,11 @@ export type Database = {
           is_active?: boolean
           provider?: string
           sandbox?: boolean
-          tenant_id?: string
+          tenant_id?: string | null
           updated_at?: string | null
           webhook_secret?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "shipping_integrations_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       tenant_credentials: {
         Row: {

@@ -66,11 +66,15 @@ export const TenantIntegrations = () => {
     if (!profile?.id) return;
 
     try {
+      const tenantFilter = profile.role === 'super_admin' 
+        ? { tenant_id: null }  // For super_admin, filter by null tenant_id
+        : { tenant_id: profile.id }; // For regular users, filter by their ID as tenant_id
+
       // Load WhatsApp integration
       const { data: whatsapp } = await supabase
         .from('integration_whatsapp')
         .select('*')
-        .eq('tenant_id', profile.id)
+        .match(tenantFilter)
         .maybeSingle();
 
       if (whatsapp) {
@@ -86,7 +90,7 @@ export const TenantIntegrations = () => {
       const { data: payment } = await supabase
         .from('payment_integrations')
         .select('*')
-        .eq('tenant_id', profile.id)
+        .match(tenantFilter)
         .maybeSingle();
 
       if (payment) {
@@ -105,7 +109,7 @@ export const TenantIntegrations = () => {
       const { data: shipping } = await supabase
         .from('shipping_integrations')
         .select('*')
-        .eq('tenant_id', profile.id)
+        .match(tenantFilter)
         .maybeSingle();
 
       if (shipping) {
@@ -125,7 +129,7 @@ export const TenantIntegrations = () => {
       const { data: bling } = await supabase
         .from('bling_integrations')
         .select('*')
-        .eq('tenant_id', profile.id)
+        .match(tenantFilter)
         .maybeSingle();
 
       if (bling) {
@@ -157,7 +161,7 @@ export const TenantIntegrations = () => {
       const { error } = await supabase
         .from('integration_whatsapp')
         .upsert({
-          tenant_id: profile.id,
+          tenant_id: profile.role === 'super_admin' ? null : profile.id,
           api_url: whatsappConfig.api_url,
           instance_name: whatsappConfig.instance_name,
           webhook_secret: whatsappConfig.webhook_secret,
@@ -190,7 +194,7 @@ export const TenantIntegrations = () => {
       const { error } = await supabase
         .from('payment_integrations')
         .upsert({
-          tenant_id: profile.id,
+          tenant_id: profile.role === 'super_admin' ? null : profile.id,
           provider: paymentConfig.provider,
           access_token: paymentConfig.access_token,
           public_key: paymentConfig.public_key,
@@ -226,7 +230,7 @@ export const TenantIntegrations = () => {
       const { error } = await supabase
         .from('shipping_integrations')
         .upsert({
-          tenant_id: profile.id,
+          tenant_id: profile.role === 'super_admin' ? null : profile.id,
           provider: shippingConfig.provider,
           access_token: shippingConfig.access_token,
           client_id: shippingConfig.client_id,
@@ -263,7 +267,7 @@ export const TenantIntegrations = () => {
       const { error } = await supabase
         .from('bling_integrations')
         .upsert({
-          tenant_id: profile.id,
+          tenant_id: profile.role === 'super_admin' ? null : profile.id,
           client_id: blingConfig.client_id,
           client_secret: blingConfig.client_secret,
           access_token: blingConfig.access_token,
@@ -396,6 +400,41 @@ export const TenantIntegrations = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="me-client-id">ID Cliente</Label>
+            <Input
+              id="me-client-id"
+              value={shippingConfig.client_id}
+              onChange={(e) => 
+                setShippingConfig(prev => ({ ...prev, client_id: e.target.value }))
+              }
+              placeholder="Seu Client ID do Melhor Envio"
+            />
+          </div>
+          <div>
+            <Label htmlFor="me-client-secret">Client Secret</Label>
+            <Input
+              id="me-client-secret"
+              type="password"
+              value={shippingConfig.client_secret}
+              onChange={(e) => 
+                setShippingConfig(prev => ({ ...prev, client_secret: e.target.value }))
+              }
+              placeholder="Seu Client Secret do Melhor Envio"
+            />
+          </div>
+          <div>
+            <Label htmlFor="me-access-token">Access Token</Label>
+            <Input
+              id="me-access-token"
+              type="password"
+              value={shippingConfig.access_token}
+              onChange={(e) => 
+                setShippingConfig(prev => ({ ...prev, access_token: e.target.value }))
+              }
+              placeholder="Token de acesso do Melhor Envio"
+            />
+          </div>
           <div>
             <Label htmlFor="me-from-cep">CEP de Origem</Label>
             <Input
