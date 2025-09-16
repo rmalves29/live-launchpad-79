@@ -125,7 +125,7 @@ export const TenantIntegrations = () => {
           .from('bling_integrations')
           .select('*')
           .eq('tenant_id', currentTenantId)
-          .single();
+          .maybeSingle();
           
         if (!blingError && blingData) {
           console.log('Bling data loaded:', blingData);
@@ -138,7 +138,7 @@ export const TenantIntegrations = () => {
             is_active: blingData.is_active || false
           });
         } else {
-          console.log('No Bling data found or error:', blingError);
+          console.log('No Bling data found, using defaults');
           setBlingConfig({
             client_id: '',
             client_secret: '',
