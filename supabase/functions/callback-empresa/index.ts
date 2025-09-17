@@ -106,19 +106,21 @@ serve(async (req) => {
 
     const expiresAt = new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString();
     
-    const { error: updateError } = await supabase
+    const { error: upsertError } = await supabase
       .from('bling_integrations')
-      .update({
+      .upsert({
+        tenant_id,
         access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token,
+        token_type: tokenData.token_type ?? 'Bearer',
+        expires_at: expiresAt,
         updated_at: new Date().toISOString()
-      })
-      .eq('tenant_id', tenant_id);
+      }, { onConflict: 'tenant_id' });
 
-    if (updateError) {
-      console.error('[bling save tokens] error=', updateError);
+    if (upsertError) {
+      console.error('[bling save tokens] error=', upsertError);
       return new Response(
-        JSON.stringify({ step: 'save', error: updateError }), 
+        JSON.stringify({ step: 'save', error: upsertError }), 
         { 
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
