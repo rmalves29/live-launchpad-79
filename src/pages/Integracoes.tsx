@@ -254,7 +254,7 @@ export default function Integracoes() {
   }, [toast]);
 
   const generateBlingAuthUrl = (tenantId: string) => {
-    const clientId = 'd1f9ca5c5ceb91ca4c1e81c037b4e6b5ac4f2f1f';
+    const clientId = 'd1f9ca5cbaa7fd131da159a9afcf98a92d96c64';
     const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa';
     const state = tenantId;
     
