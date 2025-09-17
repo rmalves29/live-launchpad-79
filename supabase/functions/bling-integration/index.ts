@@ -380,8 +380,8 @@ serve(async (req) => {
       });
 
       // 2) Criar o pedido usando contato.id
-      // Criar ID único para o pedido
-      const uniqueOrderId = `PED-${Date.now()}-${orderData.id}`;
+      // Usar o unique_order_id do banco de dados
+      const uniqueOrderId = orderData.unique_order_id || `PED-${Date.now()}-${orderData.id}`;
       
       const blingOrder = {
         data: new Date(orderData.created_at).toISOString().split('T')[0],

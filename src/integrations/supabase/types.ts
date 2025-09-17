@@ -789,6 +789,7 @@ export type Database = {
           printed: boolean | null
           tenant_id: string
           total_amount: number
+          unique_order_id: string | null
           whatsapp_group_name: string | null
         }
         Insert: {
@@ -813,6 +814,7 @@ export type Database = {
           printed?: boolean | null
           tenant_id: string
           total_amount: number
+          unique_order_id?: string | null
           whatsapp_group_name?: string | null
         }
         Update: {
@@ -837,6 +839,7 @@ export type Database = {
           printed?: boolean | null
           tenant_id?: string
           total_amount?: number
+          unique_order_id?: string | null
           whatsapp_group_name?: string | null
         }
         Relationships: [
