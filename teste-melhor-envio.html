@@ -223,6 +223,8 @@
         async function callAPI(endpoint, data, description) {
             try {
                 addLog(`🔄 ${description}...`);
+                addLog(`📡 URL: https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/${endpoint}`);
+                addLog(`📤 Payload: ${JSON.stringify(data, null, 2)}`);
                 
                 const response = await fetch(`https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/${endpoint}`, {
                     method: 'POST',
@@ -234,13 +236,18 @@
                     body: JSON.stringify(data)
                 });
 
+                addLog(`📊 Status: ${response.status} ${response.statusText}`);
+                addLog(`📋 Headers: ${JSON.stringify([...response.headers.entries()], null, 2)}`);
+
                 const responseText = await response.text();
+                addLog(`📄 Raw Response: ${responseText}`);
+                
                 let responseData;
                 
                 try {
                     responseData = JSON.parse(responseText);
                 } catch (e) {
-                    responseData = { raw: responseText };
+                    responseData = { raw: responseText, parse_error: e.message };
                 }
 
                 if (!response.ok) {
@@ -249,13 +256,14 @@
                 }
 
                 addLog(`✅ ${description} bem-sucedido!`, 'success');
-                addLog(`📄 Resposta: ${JSON.stringify(responseData, null, 2)}`);
+                addLog(`📄 Parsed Response: ${JSON.stringify(responseData, null, 2)}`);
                 
                 return { success: true, data: responseData };
 
             } catch (error) {
-                addLog(`💥 Erro em ${description}: ${error.message}`, 'error');
-                return { success: false, error: error.message };
+                addLog(`💥 Erro de rede/conexão em ${description}: ${error.message}`, 'error');
+                addLog(`🔍 Stack trace: ${error.stack}`, 'error');
+                return { success: false, error: error.message, network_error: true };
             }
         }
 
