@@ -61,7 +61,9 @@ serve(async (req) => {
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
-      redirect_uri: redirectUri
+      redirect_uri: redirectUri,
+      client_id: clientId,
+      client_secret: clientSecret
     });
 
     console.log('Requesting Bling token exchange with Basic Auth:', {
