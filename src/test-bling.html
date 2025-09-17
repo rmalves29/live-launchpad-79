@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Bling Integration</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .loading { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Teste Integração Bling</h1>
+    
+    <button onclick="testConnection()">1. Testar Conexão</button>
+    <button onclick="testOrder()">2. Testar Envio Pedido #23</button>
+    <button onclick="clearResults()">Limpar</button>
+    
+    <div id="results"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+        
+        function addResult(message, type = 'loading') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            document.getElementById('results').appendChild(div);
+            return div;
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function testConnection() {
+            const result = addResult('🔄 Testando conexão com Bling...', 'loading');
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/bling-integration`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'test_connection',
+                        tenant_id: '08f2b1b9-3988-489e-8186-c60f0c0b0622'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    result.className = 'result success';
+                    result.innerHTML = `[${new Date().toLocaleTimeString()}] ✅ Conexão OK! ${data.message}`;
+                } else {
+                    result.className = 'result error';
+                    result.innerHTML = `[${new Date().toLocaleTimeString()}] ❌ Erro: ${data.error || response.statusText}`;
+                }
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `[${new Date().toLocaleTimeString()}] ❌ Erro de rede: ${error.message}`;
+            }
+        }
+        
+        async function testOrder() {
+            const result = addResult('🔄 Enviando pedido #23 para Bling...', 'loading');
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/bling-integration`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'create_order',
+                        order_id: 23,
+                        customer_phone: '5531993786530',
+                        tenant_id: '08f2b1b9-3988-489e-8186-c60f0c0b0622'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    result.className = 'result success';
+                    result.innerHTML = `[${new Date().toLocaleTimeString()}] ✅ Pedido enviado! Bling ID: ${data.bling_order_id} | numeroLoja: ${data.numeroLoja}`;
+                } else {
+                    result.className = 'result error';
+                    result.innerHTML = `[${new Date().toLocaleTimeString()}] ❌ Erro: ${JSON.stringify(data)}`;
+                }
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `[${new Date().toLocaleTimeString()}] ❌ Erro de rede: ${error.message}`;
+            }
+        }
+        
+        // Auto-executar teste de conexão
+        window.onload = () => {
+            addResult('📋 Teste de Integração Bling carregado', 'success');
+            setTimeout(testConnection, 1000);
+        };
+    </script>
+</body>
+</html>
