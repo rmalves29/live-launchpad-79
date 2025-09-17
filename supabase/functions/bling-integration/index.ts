@@ -61,9 +61,9 @@ serve(async (req) => {
       );
     }
 
-    if (!blingConfig.client_id || !blingConfig.client_secret) {
+    if (!blingConfig.access_token) {
       return new Response(
-        JSON.stringify({ error: 'Credenciais do Bling não configuradas' }),
+        JSON.stringify({ error: 'Access token do Bling não configurado' }),
         { 
           status: 401, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -130,16 +130,16 @@ serve(async (req) => {
         .eq('tenant_id', tenant_id)
         .eq('cart_id', orderData.cart_id || 0);
 
-      // Prepare Bling order payload
+      // Prepare Bling order payload for API v3
       const blingOrder = {
         numero: orderData.id.toString(),
         data: new Date(orderData.created_at).toISOString().split('T')[0],
-        cliente: {
+        contato: {
           nome: customerData?.name || "Cliente",
           email: customerData?.email || `${customer_phone}@checkout.com`,
           telefone: customer_phone,
           endereco: {
-            logradouro: customerData?.street || "Rua não informada",
+            endereco: customerData?.street || "Rua não informada",
             numero: customerData?.number || "S/N",
             complemento: customerData?.complement || "",
             bairro: customerData?.city || "Centro",
@@ -149,33 +149,33 @@ serve(async (req) => {
           }
         },
         itens: (cartItems || []).map((item: any) => ({
-          codigo: item.products?.code || `ITEM-${item.id}`,
-          descricao: item.products?.name || "Produto",
+          produto: {
+            codigo: item.products?.code || `ITEM-${item.id}`,
+            descricao: item.products?.name || "Produto"
+          },
           quantidade: item.qty,
           valor: item.unit_price
         })),
-        valorTotal: orderData.total_amount,
+        total: orderData.total_amount,
         observacoes: orderData.observation || `Pedido via sistema - Evento: ${orderData.event_type}`,
-        categoria: orderData.event_type || "VENDA"
+        situacao: {
+          valor: 'Em aberto'
+        }
       };
 
       console.log('Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
 
-      // Determine API URL based on environment
-      const apiUrl = blingConfig.environment === 'production' 
-        ? 'https://bling.com.br/Api/v2/pedido/json/'
-        : 'https://sandbox.bling.com.br/Api/v2/pedido/json/';
+      // API v3 URL
+      const apiUrl = 'https://api.bling.com.br/Api/v3/pedidos/vendas';
 
-      // Send order to Bling API
+      // Send order to Bling API v3
       const blingResponse = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${blingConfig.access_token}`,
         },
-        body: JSON.stringify({
-          apikey: blingConfig.client_id,
-          xml: JSON.stringify(blingOrder)
-        })
+        body: JSON.stringify(blingOrder)
       });
 
       if (!blingResponse.ok) {
@@ -211,7 +211,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true,
-          bling_order_id: blingData.retorno?.pedidos?.[0]?.pedido?.numero || 'N/A',
+          bling_order_id: blingData.data?.id || 'N/A',
           message: 'Pedido enviado para o Bling com sucesso'
         }),
         { 

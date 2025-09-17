@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { RefreshCw, ExternalLink, AlertCircle, CheckCircle, Clock, X } from "lucide-react";
+import { RefreshCw, ExternalLink, AlertCircle, CheckCircle, Clock, X, Copy } from "lucide-react";
 import { CallbackInfo } from "@/components/CallbackInfo";
 
 interface WebhookLog {
@@ -40,6 +40,8 @@ export default function Integracoes() {
   const [retryLoading, setRetryLoading] = useState<{ [key: number]: boolean }>({});
   const [blingIntegration, setBlingIntegration] = useState<any>(null);
   const [tenantId, setTenantId] = useState('08f2b1b9-3988-489e-8186-c60f0c0b0622');
+  const [allTenants, setAllTenants] = useState<any[]>([]);
+  const [replicating, setReplicating] = useState(false);
   const { toast } = useToast();
 
   const loadData = async () => {
@@ -53,6 +55,17 @@ export default function Integracoes() {
       
       if (!blingError && blingData) {
         setBlingIntegration(blingData);
+      }
+
+      // Carregar todos os tenants
+      const { data: tenantsData, error: tenantsError } = await supabase
+        .from('tenants')
+        .select('id, name, slug')
+        .eq('is_active', true)
+        .order('name');
+
+      if (!tenantsError && tenantsData) {
+        setAllTenants(tenantsData);
       }
 
       // Carregar pedidos pagos
@@ -241,6 +254,74 @@ export default function Integracoes() {
     copyBlingAuthUrl(tenantId.trim());
   };
 
+  const replicateBlingToAllTenants = async () => {
+    if (!blingIntegration) {
+      toast({
+        title: "Erro",
+        description: "Nenhuma configuração Bling encontrada para replicar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setReplicating(true);
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const tenant of allTenants) {
+        try {
+          const { error } = await supabase
+            .from('bling_integrations')
+            .upsert({
+              tenant_id: tenant.id,
+              client_id: blingIntegration.client_id,
+              client_secret: blingIntegration.client_secret,
+              access_token: blingIntegration.access_token,
+              refresh_token: blingIntegration.refresh_token,
+              environment: blingIntegration.environment,
+              token_type: blingIntegration.token_type,
+              is_active: true,
+              updated_at: new Date().toISOString()
+            });
+
+          if (error) {
+            console.error(`Erro ao replicar para ${tenant.name}:`, error);
+            errorCount++;
+          } else {
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`Erro ao replicar para ${tenant.name}:`, error);
+          errorCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: "Sucesso!",
+          description: `Configuração Bling replicada para ${successCount} empresa(s). ${errorCount > 0 ? `${errorCount} erro(s).` : ''}`,
+          variant: successCount === allTenants.length ? "default" : "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro",
+          description: "Não foi possível replicar para nenhuma empresa.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Erro geral ao replicar:', error);
+      toast({
+        title: "Erro",
+        description: "Erro geral ao replicar configurações.",
+        variant: "destructive",
+      });
+    } finally {
+      setReplicating(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -310,6 +391,17 @@ export default function Integracoes() {
                 >
                   Copiar Link
                 </Button>
+                {blingIntegration && allTenants.length > 0 && (
+                  <Button 
+                    variant="secondary"
+                    onClick={replicateBlingToAllTenants}
+                    disabled={replicating}
+                    className="flex items-center gap-2"
+                  >
+                    <Copy className="w-4 h-4" />
+                    {replicating ? 'Replicando...' : `Replicar p/ ${allTenants.length} Empresas`}
+                  </Button>
+                )}
               </div>
             </div>
           </div>
