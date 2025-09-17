@@ -13,139 +13,124 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
     const url = new URL(req.url);
-    const service = url.searchParams.get('service') || 'unknown';
-    const action = url.searchParams.get('action') || 'callback';
+    const service = url.searchParams.get('service');
+    const action = url.searchParams.get('action');
     
-    // Capturar todos os parâmetros da query string
-    const allParams: Record<string, string> = {};
-    url.searchParams.forEach((value, key) => {
-      allParams[key] = value;
+    // Verificar se é o callback do Bling
+    if (service !== 'bling' || action !== 'oauth') {
+      return new Response('Bad request', { status: 400 });
+    }
+
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state') || '';
+    
+    if (!code) {
+      return new Response('Missing code', { status: 400 });
+    }
+
+    console.log('Bling OAuth callback received:', { code, state });
+
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=bling&action=oauth';
+
+    // 1) Trocar code -> tokens
+    const form = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_id: Deno.env.get('BLING_CLIENT_ID')!,
+      client_secret: Deno.env.get('BLING_CLIENT_SECRET')!,
+      redirect_uri: redirectUri
     });
 
-    // Capturar corpo da requisição se houver
-    let body = null;
-    if (req.method === 'POST') {
-      try {
-        body = await req.json();
-      } catch {
-        body = await req.text();
-      }
-    }
+    console.log('Requesting Bling token exchange with:', {
+      client_id: Deno.env.get('BLING_CLIENT_ID'),
+      redirect_uri: redirectUri,
+      has_client_secret: !!Deno.env.get('BLING_CLIENT_SECRET')
+    });
 
-    // Log detalhado do callback
-    const logData = {
-      webhook_type: `callback_${service}`,
-      payload: {
-        method: req.method,
-        service,
-        action,
-        query_params: allParams,
-        body,
-        headers: Object.fromEntries(req.headers.entries()),
-        timestamp: new Date().toISOString(),
-        url: req.url
+    const tokenResponse = await fetch('https://www.bling.com.br/Api/v3/oauth/token', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded', 
+        'Accept': 'application/json' 
       },
-      status_code: 200,
-      response: 'Callback recebido com sucesso'
-    };
+      body: form
+    });
 
-    // Salvar log no banco
-    const { error: logError } = await supabase
-      .from('webhook_logs')
-      .insert(logData);
+    const tokenData = await tokenResponse.json().catch(() => ({}));
+    console.log('[bling token] status=', tokenResponse.status, 'body=', tokenData);
 
-    if (logError) {
-      console.error('Erro ao salvar log:', logError);
-    }
-
-    // Processar callbacks específicos
-    let response = { message: 'Callback recebido com sucesso', service, action };
-
-    if (service === 'bling') {
-      // Processar callback específico do Bling
-      if (action === 'oauth') {
-        const code = url.searchParams.get('code');
-        const state = url.searchParams.get('state');
-        
-        if (code) {
-          // Processar código de autorização do Bling
-          response = {
-            ...response,
-            message: 'Autorização Bling recebida',
-            code,
-            state
-          };
-
-          // Chamar função para trocar código por token
-          // Usar o tenant_id correto do contexto atual
-          try {
-            const oauthResponse = await supabase.functions.invoke('bling-oauth', {
-              body: {
-                action: 'exchange_code',
-                code: code,
-                tenant_id: '3c92bf57-a114-4690-b4cf-642078fc9df9' // Tenant ID correto
-              }
-            });
-
-            console.log('OAuth response status:', oauthResponse.error ? 'ERROR' : 'SUCCESS');
-            console.log('OAuth response error:', oauthResponse.error);
-            console.log('OAuth response data:', oauthResponse.data);
-
-            const oauthResult = oauthResponse.data;
-
-            // Log do resultado
-            const oauthLogData = {
-              webhook_type: 'bling_oauth_exchange',
-              payload: {
-                action: 'exchange_code',
-                code: code,
-                state: state,
-                oauth_status: oauthResponse.error ? 'error' : 'success',
-                oauth_response: oauthResult,
-                oauth_error: oauthResponse.error
-              },
-              status_code: oauthResponse.error ? 500 : 200,
-              response: `OAuth exchange: ${JSON.stringify(oauthResult)}`,
-              tenant_id: '3c92bf57-a114-4690-b4cf-642078fc9df9'
-            };
-
-            await supabase.from('webhook_logs').insert(oauthLogData);
-
-            if (!oauthResponse.error) {
-              response.message = 'Autorização Bling processada com sucesso';
-            } else {
-              response.message = `Erro ao processar autorização: ${JSON.stringify(oauthResponse.error)}`;
-            }
-
-          } catch (error) {
-            console.error('Erro ao processar OAuth:', error);
-            response.message = `Erro ao processar autorização: ${error.message}`;
-          }
+    if (!tokenResponse.ok) {
+      console.error('Bling token exchange failed:', tokenData);
+      return new Response(
+        JSON.stringify({ 
+          step: 'token', 
+          status: tokenResponse.status, 
+          error: tokenData 
+        }), 
+        { 
+          status: tokenResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
-      }
+      );
     }
 
-    console.log(`Callback recebido - Service: ${service}, Action: ${action}`, allParams);
-
-    return new Response(
-      JSON.stringify(response),
-      {
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        },
-        status: 200
-      }
+    // 2) Salvar tokens no DB com SERVICE ROLE
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
+    // Use o state como tenant_id (ajuste conforme sua lógica)
+    const tenant_id = state || '3c92bf57-a114-4690-b4cf-642078fc9df9'; // fallback para o tenant padrão
+
+    console.log('Saving tokens to database for tenant:', tenant_id);
+
+    const expiresAt = new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString();
+    
+    const { error: updateError } = await supabase
+      .from('bling_integrations')
+      .update({
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        updated_at: new Date().toISOString()
+      })
+      .eq('tenant_id', tenant_id);
+
+    if (updateError) {
+      console.error('[bling save tokens] error=', updateError);
+      return new Response(
+        JSON.stringify({ step: 'save', error: updateError }), 
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Log de sucesso
+    const logData = {
+      webhook_type: 'bling_oauth_success',
+      payload: {
+        tenant_id,
+        has_access_token: !!tokenData.access_token,
+        has_refresh_token: !!tokenData.refresh_token,
+        expires_in: tokenData.expires_in
+      },
+      status_code: 200,
+      response: 'Tokens salvos com sucesso',
+      tenant_id
+    };
+
+    await supabase.from('webhook_logs').insert(logData);
+
+    console.log('Bling OAuth process completed successfully');
+
+    // 3) Redirecionar de volta para a UI
+    return Response.redirect('https://app.orderzaps.com/configuracoes?bling=ok', 302);
+
   } catch (error) {
-    console.error('Erro no callback:', error);
+    console.error('Erro no callback Bling:', error);
     
     return new Response(
       JSON.stringify({ 
