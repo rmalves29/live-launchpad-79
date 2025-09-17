@@ -39,6 +39,7 @@ export default function Integracoes() {
   const [loading, setLoading] = useState(true);
   const [retryLoading, setRetryLoading] = useState<{ [key: number]: boolean }>({});
   const [blingIntegration, setBlingIntegration] = useState<any>(null);
+  const [tenantId, setTenantId] = useState('08f2b1b9-3988-489e-8186-c60f0c0b0622');
   const { toast } = useToast();
 
   const loadData = async () => {
@@ -216,6 +217,30 @@ export default function Integracoes() {
     });
   };
 
+  const openBlingAuth = () => {
+    if (!tenantId.trim()) {
+      toast({
+        title: "Erro",
+        description: "Por favor, insira um Tenant ID válido.",
+        variant: "destructive",
+      });
+      return;
+    }
+    window.open(generateBlingAuthUrl(tenantId.trim()), '_blank');
+  };
+
+  const copyBlingAuth = () => {
+    if (!tenantId.trim()) {
+      toast({
+        title: "Erro", 
+        description: "Por favor, insira um Tenant ID válido.",
+        variant: "destructive",
+      });
+      return;
+    }
+    copyBlingAuthUrl(tenantId.trim());
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -255,23 +280,37 @@ export default function Integracoes() {
         <CardContent className="space-y-4">
           <div className="p-4 bg-muted rounded-lg">
             <h4 className="font-medium mb-2">Link de Autorização para Tenant:</h4>
-            <code className="text-sm bg-background p-2 rounded border block mb-3">
-              08f2b1b9-3988-489e-8186-c60f0c0b0622
-            </code>
-            <div className="flex gap-2">
-              <Button 
-                onClick={() => window.open(generateBlingAuthUrl('08f2b1b9-3988-489e-8186-c60f0c0b0622'), '_blank')}
-                className="flex items-center gap-2"
-              >
-                <ExternalLink className="w-4 h-4" />
-                Autorizar Bling
-              </Button>
-              <Button 
-                variant="outline"
-                onClick={() => copyBlingAuthUrl('08f2b1b9-3988-489e-8186-c60f0c0b0622')}
-              >
-                Copiar Link
-              </Button>
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="tenantId" className="text-sm font-medium mb-1 block">
+                  Tenant ID:
+                </label>
+                <input
+                  id="tenantId"
+                  type="text"
+                  value={tenantId}
+                  onChange={(e) => setTenantId(e.target.value)}
+                  placeholder="Digite o Tenant ID"
+                  className="w-full p-2 border rounded-md text-sm font-mono bg-background"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={openBlingAuth}
+                  className="flex items-center gap-2"
+                  disabled={!tenantId.trim()}
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Autorizar Bling
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={copyBlingAuth}
+                  disabled={!tenantId.trim()}
+                >
+                  Copiar Link
+                </Button>
+              </div>
             </div>
           </div>
           
