@@ -74,12 +74,11 @@ serve(async (req) => {
     // 2) Basic Auth (somente no header)
     const basic = btoa(`${clientId}:${clientSecret}`);
 
-    // 3) Body SEM credenciais (redirect_uri é opcional p/ Bling)
+    // 3) Body com redirect_uri (obrigatório para evitar redirect_uri_mismatch)
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
-      code
-      // se quiser manter: redirect_uri
-      // redirect_uri: redirectUri
+      code,
+      redirect_uri: redirectUri
     });
 
     // 4) Endpoint + headers conforme manual
