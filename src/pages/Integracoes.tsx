@@ -442,6 +442,15 @@ export default function Integracoes() {
                   Copiar Link
                 </Button>
                 <Button 
+                  variant="outline"
+                  onClick={loadData}
+                  disabled={loading}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  Atualizar Link
+                </Button>
+                <Button 
                   variant="secondary"
                   onClick={refreshBlingToken}
                   disabled={!blingIntegration?.refresh_token}
