@@ -233,6 +233,110 @@ serve(async (req) => {
         );
       }
 
+      // Helper functions
+      function normalizeCustomerKey(cpf?: string, email?: string) {
+        if (cpf) return cpf.replace(/\D/g, '');
+        if (email) return email.trim().toLowerCase();
+        throw new Error('Sem chave de cliente (CPF ou email)');
+      }
+
+      async function blingFetch(path: string, opts: RequestInit & { token: string }) {
+        const url = `https://api.bling.com.br/Api/v3${path}`;
+        const res = await fetch(url, {
+          ...opts,
+          headers: {
+            Authorization: `Bearer ${opts.token}`,
+            Accept: '1.0',
+            ...(opts.headers || {})
+          }
+        });
+        let data: any = null;
+        const text = await res.text();
+        try { 
+          data = text ? JSON.parse(text) : null; 
+        } catch { 
+          data = { raw: text }; 
+        }
+        return { res, data };
+      }
+
+      async function getOrCreateContactId(
+        tenantId: string,
+        customer: {
+          nome: string,
+          cpf?: string,
+          email?: string,
+          telefone?: string,
+          endereco?: {
+            endereco?: string, numero?: string, complemento?: string,
+            bairro?: string, cidade?: string, uf?: string, cep?: string
+          }
+        }
+      ): Promise<number> {
+        const key = normalizeCustomerKey(customer.cpf, customer.email);
+
+        // 1) Ver se já temos em cache
+        const { data: cached } = await supabase
+          .from('bling_contacts')
+          .select('bling_contact_id')
+          .eq('tenant_id', tenantId)
+          .eq('customer_key', key)
+          .maybeSingle();
+
+        if (cached?.bling_contact_id) {
+          console.log('Using cached contact ID:', cached.bling_contact_id);
+          return Number(cached.bling_contact_id);
+        }
+
+        // 2) Criar contato no Bling
+        const payload: any = {
+          nome: customer.nome,
+        };
+
+        if (customer.email) payload.email = customer.email;
+        if (customer.telefone) payload.fone = customer.telefone;
+
+        // Se tiver CPF, ajuda em deduplicação futura
+        if (customer.cpf) {
+          payload.tipoPessoa = 'F';
+          payload.numeroDocumento = customer.cpf.replace(/\D/g, '');
+        }
+
+        if (customer.endereco) {
+          payload.endereco = {
+            endereco: customer.endereco.endereco || '',
+            numero: customer.endereco.numero || '',
+            complemento: customer.endereco.complemento || '',
+            bairro: customer.endereco.bairro || '',
+            cidade: customer.endereco.cidade || '',
+            uf: customer.endereco.uf || '',
+            cep: (customer.endereco.cep || '').replace(/\D/g, '')
+          };
+        }
+
+        console.log('Creating contact in Bling:', JSON.stringify(payload, null, 2));
+
+        const { res: rCreate, data: dCreate } = await blingFetch('/contatos', {
+          token: blingConfig.access_token,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!rCreate.ok || !dCreate?.data?.id) {
+          throw new Error(`Falha ao criar contato: ${rCreate.status} ${JSON.stringify(dCreate)}`);
+        }
+
+        const newId = Number(dCreate.data.id);
+        console.log('Contact created in Bling with ID:', newId);
+        
+        // Cache the contact ID
+        await supabase.from('bling_contacts')
+          .upsert({ tenant_id: tenantId, customer_key: key, bling_contact_id: newId });
+
+        return newId;
+      }
+
       // Get customer details
       const phoneDigits = customer_phone.replace(/\D/g, '');
       let { data: customerData } = await supabase
@@ -257,12 +361,12 @@ serve(async (req) => {
         .eq('tenant_id', tenant_id)
         .eq('cart_id', orderData.cart_id || 0);
 
-      // Primeiro, criar/buscar o cliente no Bling
-      const customerPayload = {
+      // 1) Garantir/obter o contato.id
+      const contactId = await getOrCreateContactId(tenant_id, {
         nome: customerData?.name || "Cliente",
         email: customerData?.email || `${customer_phone}@checkout.com`,
         telefone: customer_phone,
-        cpf_cnpj: customerData?.cpf || "",
+        cpf: customerData?.cpf,
         endereco: {
           endereco: customerData?.street || "Rua não informada",
           numero: customerData?.number || "S/N",
@@ -272,115 +376,47 @@ serve(async (req) => {
           uf: customerData?.state || "SP",
           cep: customerData?.cep || "00000000"
         }
-      };
-
-      console.log('Creating customer in Bling:', JSON.stringify(customerPayload, null, 2));
-
-      // Criar cliente no Bling primeiro
-      const customerUrl = 'https://api.bling.com.br/Api/v3/contatos';
-      let customerId = null;
-
-      const customerResponse = await fetch(customerUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${blingConfig.access_token}`,
-        },
-        body: JSON.stringify(customerPayload)
       });
 
-      if (customerResponse.ok) {
-        const customerResult = await customerResponse.json();
-        customerId = customerResult.data?.id;
-        console.log('Customer created in Bling with ID:', customerId);
-      } else {
-        const customerError = await customerResponse.text();
-        console.error('Error creating customer:', customerResponse.status, customerError);
-        
-        // Se der erro ao criar cliente, usar dados diretos (fallback)
-        console.log('Fallback: Using direct customer data');
-      }
-
-      // Prepare Bling order payload for API v3
-      const blingOrder = customerId ? {
-        numero: orderData.id.toString(),
+      // 2) Criar o pedido usando contato.id
+      const blingOrder = {
         data: new Date(orderData.created_at).toISOString().split('T')[0],
-        contato: {
-          id: customerId
-        },
+        numeroLoja: orderData.id.toString(),
+        contato: { id: contactId },
         itens: (cartItems || []).map((item: any) => ({
           produto: {
-            codigo: item.products?.code || `ITEM-${item.id}`,
-            descricao: item.products?.name || "Produto"
+            codigo: item.products?.code || `ITEM-${item.id}`
           },
           quantidade: item.qty,
-          valor: item.unit_price
+          preco: item.unit_price
         })),
-        total: orderData.total_amount,
-        observacoes: orderData.observation || `Pedido via sistema - Evento: ${orderData.event_type}`,
-        situacao: {
-          valor: 'Em aberto'
-        }
-      } : {
-        // Fallback com dados completos do cliente
-        numero: orderData.id.toString(),
-        data: new Date(orderData.created_at).toISOString().split('T')[0],
-        contato: {
-          nome: customerData?.name || "Cliente",
-          email: customerData?.email || `${customer_phone}@checkout.com`,
-          telefone: customer_phone,
-          endereco: {
-            endereco: customerData?.street || "Rua não informada",
-            numero: customerData?.number || "S/N",
-            complemento: customerData?.complement || "",
-            bairro: customerData?.city || "Centro",
-            cidade: customerData?.city || "São Paulo", 
-            uf: customerData?.state || "SP",
-            cep: customerData?.cep || "00000000"
-          }
-        },
-        itens: (cartItems || []).map((item: any) => ({
-          produto: {
-            codigo: item.products?.code || `ITEM-${item.id}`,
-            descricao: item.products?.name || "Produto"
-          },
-          quantidade: item.qty,
-          valor: item.unit_price
-        })),
-        total: orderData.total_amount,
-        observacoes: orderData.observation || `Pedido via sistema - Evento: ${orderData.event_type}`,
-        situacao: {
-          valor: 'Em aberto'
-        }
+        observacoes: orderData.observation || `Pedido via sistema - Evento: ${orderData.event_type}`
       };
 
       console.log('Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
-      console.log('Customer ID used:', customerId || 'Direct customer data');
+      console.log('Using contact ID:', contactId);
 
       // API v3 URL
       const apiUrl = 'https://api.bling.com.br/Api/v3/pedidos/vendas';
 
-      // Send order to Bling API v3
-      const blingResponse = await fetch(apiUrl, {
+      // Send order to Bling API v3 using helper
+      const { res: blingResponse, data: blingData } = await blingFetch('/pedidos/vendas', {
+        token: blingConfig.access_token,
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${blingConfig.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(blingOrder)
       });
 
       if (!blingResponse.ok) {
-        const errorData = await blingResponse.text();
-        console.error('Bling API error:', blingResponse.status, errorData);
+        console.error('Bling API error:', blingResponse.status, JSON.stringify(blingData));
         
         // Tratamento específico para erro de escopo insuficiente
-        if (blingResponse.status === 403 && errorData.includes('insufficient_scope')) {
+        if (blingResponse.status === 403 && JSON.stringify(blingData).includes('insufficient_scope')) {
           return new Response(
             JSON.stringify({ 
               error: 'Escopo insuficiente na API do Bling',
               details: 'O aplicativo no Bling não tem permissões para criar pedidos. Verifique as configurações do aplicativo no painel do Bling e certifique-se de que tenha acesso aos módulos de Pedidos/Vendas.',
-              bling_error: errorData 
+              bling_error: blingData 
             }),
             { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -389,13 +425,12 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             error: 'Erro na API do Bling',
-            details: errorData 
+            details: blingData 
           }),
           { status: blingResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const blingData = await blingResponse.json();
       console.log('Bling response:', JSON.stringify(blingData, null, 2));
 
       // Log the integration

@@ -104,6 +104,30 @@ export type Database = {
           },
         ]
       }
+      bling_contacts: {
+        Row: {
+          bling_contact_id: number
+          created_at: string | null
+          customer_key: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          bling_contact_id: number
+          created_at?: string | null
+          customer_key: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          bling_contact_id?: number
+          created_at?: string | null
+          customer_key?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       bling_integrations: {
         Row: {
           access_token: string | null
