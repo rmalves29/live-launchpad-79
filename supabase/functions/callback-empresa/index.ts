@@ -34,27 +34,45 @@ serve(async (req) => {
     const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=bling&action=oauth';
 
     // 1) Trocar code -> tokens
-    const form = new URLSearchParams({
+    const clientId = Deno.env.get('BLING_CLIENT_ID') ?? '';
+    const clientSecret = Deno.env.get('BLING_CLIENT_SECRET') ?? '';
+    
+    if (!clientId || !clientSecret) {
+      return new Response(
+        JSON.stringify({ 
+          step: 'token', 
+          error: 'Missing env BLING_CLIENT_ID/SECRET' 
+        }), 
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Basic base64(client_id:client_secret)
+    const basic = btoa(`${clientId}:${clientSecret}`);
+
+    const body = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
-      client_id: Deno.env.get('BLING_CLIENT_ID')!,
-      client_secret: Deno.env.get('BLING_CLIENT_SECRET')!,
       redirect_uri: redirectUri
     });
 
-    console.log('Requesting Bling token exchange with:', {
-      client_id: Deno.env.get('BLING_CLIENT_ID'),
+    console.log('Requesting Bling token exchange with Basic Auth:', {
+      client_id: clientId,
       redirect_uri: redirectUri,
-      has_client_secret: !!Deno.env.get('BLING_CLIENT_SECRET')
+      has_client_secret: !!clientSecret
     });
 
     const tokenResponse = await fetch('https://www.bling.com.br/Api/v3/oauth/token', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/x-www-form-urlencoded', 
-        'Accept': 'application/json' 
+      headers: {
+        'Authorization': `Basic ${basic}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
       },
-      body: form
+      body
     });
 
     const tokenData = await tokenResponse.json().catch(() => ({}));
