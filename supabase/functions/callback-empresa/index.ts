@@ -14,14 +14,6 @@ serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const service = url.searchParams.get('service');
-    const action = url.searchParams.get('action');
-    
-    // Verificar se é o callback do Bling
-    if (service !== 'bling' || action !== 'oauth') {
-      return new Response('Bad request', { status: 400 });
-    }
-
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state') || '';
     
@@ -31,11 +23,11 @@ serve(async (req) => {
 
     console.log('Bling OAuth callback received:', { code, state });
 
-    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=bling&action=oauth';
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa';
 
     // 1) Trocar code -> tokens
-    const clientId = Deno.env.get('BLING_CLIENT_ID') ?? '';
-    const clientSecret = Deno.env.get('BLING_CLIENT_SECRET') ?? '';
+    const clientId = (Deno.env.get('BLING_CLIENT_ID') ?? '').trim();
+    const clientSecret = (Deno.env.get('BLING_CLIENT_SECRET') ?? '').trim();
     
     if (!clientId || !clientSecret) {
       return new Response(
