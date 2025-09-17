@@ -301,28 +301,25 @@ export const TenantIntegrations = () => {
   };
 
   const saveBlingIntegration = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id || !tenant?.id) return;
 
     setLoading(true);
     try {
-      // Get current tenant ID
-      const currentTenantId = profile.role === 'super_admin' 
-        ? (tenant?.id || null)  // Use selected tenant for super_admin
-        : profile.tenant_id;     // Use user's tenant_id for regular users
+      console.log('Saving Bling integration via edge function');
 
-      console.log('Saving Bling integration for tenant:', currentTenantId);
-
-      const { error } = await supabaseTenant.raw
-        .from('bling_integrations')
-        .upsert({
-          tenant_id: currentTenantId,
-          client_id: blingConfig.client_id,
-          client_secret: blingConfig.client_secret,
-          access_token: blingConfig.access_token,
-          refresh_token: blingConfig.refresh_token,
-          environment: blingConfig.environment,
-          is_active: blingConfig.is_active
-        });
+      // Use edge function to save integration settings
+      const { error } = await supabaseTenant.raw.functions.invoke('save-integration-settings', {
+        body: {
+          tenant_id: tenant.id,
+          bling: {
+            client_id: blingConfig.client_id,
+            client_secret: blingConfig.client_secret,
+            access_token: blingConfig.access_token,
+            refresh_token: blingConfig.refresh_token,
+            environment: blingConfig.environment
+          }
+        }
+      });
 
       if (error) throw error;
 
@@ -330,6 +327,9 @@ export const TenantIntegrations = () => {
         title: 'Sucesso',
         description: 'Configuração Bling salva com sucesso'
       });
+      
+      // Refresh settings after save
+      loadIntegrations();
     } catch (error) {
       console.error('Error saving bling integration:', error);
       toast({
