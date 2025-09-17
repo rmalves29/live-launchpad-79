@@ -27,6 +27,7 @@ interface OrderIntegration {
   total_amount: number;
   created_at: string;
   is_paid: boolean;
+  tenant_id: string;
   bling_status?: string;
   melhor_envio_status?: string;
   bling_logs: WebhookLog[];
@@ -166,7 +167,8 @@ export default function Integracoes() {
         body: {
           action,
           order_id: orderId,
-          customer_phone: order.customer_phone
+          customer_phone: order.customer_phone,
+          tenant_id: order.tenant_id
         }
       });
 
@@ -191,6 +193,45 @@ export default function Integracoes() {
       });
     } finally {
       setRetryLoading(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
+
+  const refreshBlingToken = async () => {
+    try {
+      toast({
+        title: "Renovando token...",
+        description: "Renovando token de acesso do Bling",
+      });
+      
+      const { error } = await supabase.functions.invoke('bling-oauth', {
+        body: {
+          action: 'refresh_token',
+          tenant_id: '08f2b1b9-3988-489e-8186-c60f0c0b0622'
+        }
+      });
+      
+      if (error) {
+        console.error('Erro ao renovar token:', error);
+        toast({
+          title: "Erro",
+          description: `Erro ao renovar token: ${error.message}`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Sucesso!",
+          description: "Token do Bling renovado com sucesso!",
+        });
+        // Recarregar dados para atualizar status
+        setTimeout(() => loadData(), 1000);
+      }
+    } catch (error) {
+      console.error('Erro ao renovar token:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao renovar token do Bling",
+        variant: "destructive",
+      });
     }
   };
 
@@ -390,6 +431,13 @@ export default function Integracoes() {
                   disabled={!tenantId.trim()}
                 >
                   Copiar Link
+                </Button>
+                <Button 
+                  variant="secondary"
+                  onClick={refreshBlingToken}
+                  disabled={!blingIntegration?.refresh_token}
+                >
+                  Renovar Token
                 </Button>
                 {blingIntegration && allTenants.length > 0 && (
                   <Button 
