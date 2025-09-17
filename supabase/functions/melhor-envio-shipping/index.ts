@@ -39,12 +39,26 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    if (configError || !shippingConfig) {
-      console.error('Shipping config not found:', configError);
+    if (configError) {
+      console.error('Shipping config query error:', configError);
       return new Response(
-        JSON.stringify({ error: 'Configuração de envio não encontrada' }), 
+        JSON.stringify({ error: 'Erro ao buscar configuração de envio: ' + configError.message }), 
         { 
           status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!shippingConfig) {
+      console.error('Shipping config not found');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Configuração de envio não encontrada',
+          details: 'Configure a integração do Melhor Envio no painel de Configurações'
+        }), 
+        { 
+          status: 404, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );

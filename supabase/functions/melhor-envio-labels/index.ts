@@ -19,61 +19,79 @@ async function ensureValidToken(supabase: any, integration: any) {
     throw new Error('Token de acesso não configurado');
   }
 
-  // Check if token expires in less than 60 seconds
-  const now = new Date();
-  const expiresAt = new Date(integration.token_expires_at || '1970-01-01');
-  const timeUntilExpiry = expiresAt.getTime() - now.getTime();
+  const now = Date.now();
+  const expiresAt = integration.updated_at ? new Date(integration.updated_at).getTime() + (3600 * 1000) : 0; // Assume 1h if no expires_at
+  const timeUntilExpiry = expiresAt - now;
   
-  if (timeUntilExpiry < 60000) { // Less than 60 seconds
+  // If token expires in less than 60 seconds, refresh it
+  if (timeUntilExpiry < 60000) {
     console.log('Token expires soon, refreshing...');
     
-    const isProduction = integration.environment === 'production';
-    const refreshUrl = isProduction 
-      ? 'https://melhorenvio.com.br/oauth/token'
-      : 'https://sandbox.melhorenvio.com.br/oauth/token';
+    if (!integration.refresh_token) {
+      throw new Error('Refresh token ausente. Reautorize a integração ME no painel de Integrações.');
+    }
     
-    const refreshPayload = {
-      grant_type: 'refresh_token',
-      client_id: integration.client_id,
-      client_secret: integration.client_secret,
-      refresh_token: integration.refresh_token,
-    };
+    if (!integration.client_id || !integration.client_secret) {
+      throw new Error('Client ID/Secret do ME ausentes. Configure nas Integrações.');
+    }
 
-    const refreshResponse = await fetch(refreshUrl, {
+    // Determine correct OAuth URL based on environment
+    const isProduction = integration.environment === 'production';
+    const authBase = isProduction 
+      ? 'https://melhorenvio.com.br'
+      : 'https://sandbox.melhorenvio.com.br';
+    
+    // Use Basic auth and form-urlencoded as ME requires
+    const basic = btoa(`${integration.client_id}:${integration.client_secret}`);
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: integration.refresh_token
+    });
+
+    console.log(`Refreshing token at: ${authBase}/oauth/token`);
+
+    const refreshResponse = await fetch(`${authBase}/oauth/token`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Authorization': `Basic ${basic}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json',
         'User-Agent': 'OrderZaps (contato@orderzaps.com)',
       },
-      body: JSON.stringify(refreshPayload),
+      body: body.toString()
     });
 
     if (!refreshResponse.ok) {
-      const errorData = await refreshResponse.text();
-      console.error('Token refresh failed:', errorData);
-      throw new Error('Falha ao renovar token: ' + errorData);
+      const errorText = await refreshResponse.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { raw: errorText };
+      }
+      console.error('Token refresh failed:', refreshResponse.status, errorData);
+      throw new Error(`Falha ao renovar token (${refreshResponse.status}): ${JSON.stringify(errorData)}. Reautorize a integração ME.`);
     }
 
     const refreshData = await refreshResponse.json();
-    const newExpiresAt = new Date();
-    newExpiresAt.setSeconds(newExpiresAt.getSeconds() + refreshData.expires_in);
+    const newExpiresAt = new Date(Date.now() + (refreshData.expires_in || 3600) * 1000);
 
-    // Update integration with new token
+    // CRITICAL: Save the NEW refresh_token (ME rotates them)
     const { error: updateError } = await supabase
       .from('integration_me')
       .update({
         access_token: refreshData.access_token,
-        refresh_token: refreshData.refresh_token || integration.refresh_token,
-        updated_at: new Date().toISOString()
+        refresh_token: refreshData.refresh_token, // Always save the new one!
+        updated_at: newExpiresAt.toISOString()
       })
       .eq('id', integration.id);
 
     if (updateError) {
-      console.error('Error updating token:', updateError);
-      throw new Error('Erro ao salvar novo token');
+      console.error('Error saving refreshed token:', updateError);
+      throw new Error('Erro ao salvar novo token: ' + updateError.message);
     }
 
+    console.log('Token refreshed successfully');
     return refreshData.access_token;
   }
 
@@ -102,12 +120,33 @@ serve(async (req) => {
       .select('*')
       .eq('tenant_id', tenant_id)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
-    if (integrationError || !integration) {
+    if (integrationError) {
+      console.error('Integration query error:', integrationError);
       return new Response(
-        JSON.stringify({ error: 'Integração Melhor Envio não encontrada' }),
+        JSON.stringify({ error: 'Erro ao buscar integração ME: ' + integrationError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!integration) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Integração Melhor Envio não encontrada',
+          details: 'Configure a integração ME no painel de Integrações'
+        }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!integration.refresh_token) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Integração ME não autorizada',
+          details: 'Acesse o painel de Integrações e complete a autorização OAuth do Melhor Envio'
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
