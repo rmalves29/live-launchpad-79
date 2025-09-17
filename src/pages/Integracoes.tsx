@@ -235,6 +235,49 @@ export default function Integracoes() {
     }
   };
 
+  const testBlingConnection = async () => {
+    try {
+      toast({
+        title: "Testando conexão...",
+        description: "Verificando conexão com a API do Bling",
+      });
+      
+      const { data, error } = await supabase.functions.invoke('bling-integration', {
+        body: {
+          action: 'test_connection',
+          tenant_id: '08f2b1b9-3988-489e-8186-c60f0c0b0622'
+        }
+      });
+      
+      if (error) {
+        console.error('Erro no teste de conexão:', error);
+        toast({
+          title: "Erro",
+          description: `Erro no teste de conexão: ${error.message}`,
+          variant: "destructive",
+        });
+      } else if (data?.success) {
+        toast({
+          title: "Sucesso!",
+          description: "Conexão com Bling funcionando corretamente!",
+        });
+      } else {
+        toast({
+          title: "Falha",
+          description: data?.error || "Falha no teste de conexão",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Erro no teste de conexão:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao testar conexão com Bling",
+        variant: "destructive",
+      });
+    }
+  };
+
   useEffect(() => {
     loadData();
     
@@ -456,6 +499,15 @@ export default function Integracoes() {
                   disabled={!blingIntegration?.refresh_token}
                 >
                   Renovar Token
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={testBlingConnection}
+                  disabled={!blingIntegration?.access_token}
+                  className="flex items-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Testar Conexão
                 </Button>
                 {blingIntegration && allTenants.length > 0 && (
                   <Button 

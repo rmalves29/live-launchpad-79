@@ -73,8 +73,64 @@ serve(async (req) => {
 
     console.log('Using Bling config:', { 
       environment: blingConfig.environment, 
-      has_client_id: !!blingConfig.client_id 
+      has_client_id: !!blingConfig.client_id,
+      expires_at: blingConfig.expires_at,
+      token_expired: blingConfig.expires_at ? new Date(blingConfig.expires_at) <= new Date() : 'unknown'
     });
+
+    if (action === 'test_connection') {
+      // Testar conexão com Bling e verificar escopos
+      try {
+        const testResponse = await fetch('https://api.bling.com.br/Api/v3/me', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${blingConfig.access_token}`,
+          }
+        });
+
+        if (testResponse.ok) {
+          const userData = await testResponse.json();
+          console.log('Teste de conexão Bling - sucesso:', userData);
+          
+          return new Response(
+            JSON.stringify({ 
+              success: true,
+              message: 'Conexão com Bling funcionando',
+              user_data: userData
+            }),
+            { 
+              status: 200, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        } else {
+          const errorData = await testResponse.text();
+          console.error('Teste de conexão Bling - erro:', testResponse.status, errorData);
+          
+          return new Response(
+            JSON.stringify({ 
+              success: false,
+              error: 'Falha no teste de conexão',
+              details: errorData 
+            }),
+            { status: testResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (error) {
+        console.error('Erro no teste de conexão:', error);
+        return new Response(
+          JSON.stringify({ 
+            success: false,
+            error: 'Erro interno no teste de conexão',
+            details: error.message
+          }),
+          { 
+            status: 500, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+    }
 
     if (action === 'create_order') {
       if (!order_id || !customer_phone) {
@@ -85,6 +141,77 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
           }
         );
+      }
+
+      // Verificar se o token ainda é válido e tentar renovar se necessário
+      if (blingConfig.expires_at && new Date(blingConfig.expires_at) <= new Date()) {
+        console.log('Token do Bling expirado, tentando renovar...');
+        
+        if (!blingConfig.refresh_token) {
+          return new Response(
+            JSON.stringify({ error: 'Token do Bling expirado e sem refresh_token. Reautorize a integração.' }),
+            { 
+              status: 401, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+
+        // Tentar renovar o token
+        try {
+          const refreshResponse = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Basic ${btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`)}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              grant_type: 'refresh_token',
+              refresh_token: blingConfig.refresh_token
+            })
+          });
+
+          if (refreshResponse.ok) {
+            const tokenData = await refreshResponse.json();
+            console.log('Token renovado com sucesso');
+            
+            // Atualizar token no banco
+            const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
+            
+            await supabase
+              .from('bling_integrations')
+              .update({
+                access_token: tokenData.access_token,
+                refresh_token: tokenData.refresh_token || blingConfig.refresh_token,
+                expires_at: expiresAt,
+                updated_at: new Date().toISOString()
+              })
+              .eq('tenant_id', tenant_id);
+            
+            // Atualizar config local
+            blingConfig.access_token = tokenData.access_token;
+            blingConfig.expires_at = expiresAt;
+          } else {
+            const errorData = await refreshResponse.text();
+            console.error('Falha ao renovar token:', errorData);
+            return new Response(
+              JSON.stringify({ error: 'Falha ao renovar token do Bling. Reautorize a integração.' }),
+              { 
+                status: 401, 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+              }
+            );
+          }
+        } catch (refreshError) {
+          console.error('Erro ao renovar token:', refreshError);
+          return new Response(
+            JSON.stringify({ error: 'Erro ao renovar token do Bling. Reautorize a integração.' }),
+            { 
+              status: 401, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
       }
 
       // Get order details
@@ -181,6 +308,19 @@ serve(async (req) => {
       if (!blingResponse.ok) {
         const errorData = await blingResponse.text();
         console.error('Bling API error:', blingResponse.status, errorData);
+        
+        // Tratamento específico para erro de escopo insuficiente
+        if (blingResponse.status === 403 && errorData.includes('insufficient_scope')) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Escopo insuficiente na API do Bling',
+              details: 'O aplicativo no Bling não tem permissões para criar pedidos. Verifique as configurações do aplicativo no painel do Bling e certifique-se de que tenha acesso aos módulos de Pedidos/Vendas.',
+              bling_error: errorData 
+            }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
         return new Response(
           JSON.stringify({ 
             error: 'Erro na API do Bling',
