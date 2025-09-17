@@ -331,6 +331,8 @@ serve(async (req) => {
       // Verificar se pedido já foi processado (idempotência)
       const numeroLoja = `OZ-${finalTenantId.slice(0, 8)}-${order_id}`;
       
+      console.log('Verificando se pedido existe no Bling:', numeroLoja);
+      
       // Buscar se pedido já existe no Bling
       const existingOrderResponse = await blingFetch(
         `/pedidos/vendas?numeroLoja=${numeroLoja}`,
@@ -339,17 +341,30 @@ serve(async (req) => {
         accessToken
       );
       
+      console.log('Resposta da verificação no Bling:', {
+        status: existingOrderResponse.status,
+        ok: existingOrderResponse.ok
+      });
+      
       if (existingOrderResponse.ok) {
         const existingData = await existingOrderResponse.json();
-        if (existingData?.data && existingData.data.length > 0) {
-          console.log('Pedido já existe no Bling:', numeroLoja);
+        console.log('Dados retornados da verificação:', JSON.stringify(existingData, null, 2));
+        
+        if (existingData?.data && Array.isArray(existingData.data) && existingData.data.length > 0) {
+          console.log('Pedido já existe no Bling:', numeroLoja, 'ID:', existingData.data[0].id);
           return j({ 
             success: true, 
             message: 'Pedido já existe no Bling',
             bling_order_id: existingData.data[0].id,
             numeroLoja 
           });
+        } else {
+          console.log('Pedido não existe no Bling, prosseguindo com criação...');
         }
+      } else {
+        const errorText = await existingOrderResponse.text();
+        console.log('Erro na verificação do Bling:', existingOrderResponse.status, errorText);
+        // Continuar com a criação do pedido se não conseguir verificar
       }
 
       // Buscar dados do pedido
@@ -435,9 +450,23 @@ serve(async (req) => {
       // Send order to Bling API v3
       const blingResponse = await blingFetch('/pedidos/vendas', 'POST', orderData, accessToken);
 
+      console.log('Bling response status:', blingResponse.status, 'OK:', blingResponse.ok);
+
       if (!blingResponse.ok) {
         const errorData = await blingResponse.text();
         console.error('Bling API error:', blingResponse.status, errorData);
+        
+        // Log webhook activity with error
+        await supabase
+          .from('webhook_logs')
+          .insert({
+            tenant_id: finalTenantId,
+            webhook_type: 'bling_integration',
+            status_code: blingResponse.status,
+            payload: { action: 'create_order', order_id, customer_phone },
+            response: errorData,
+            error_message: `Falha ao criar pedido no Bling: ${blingResponse.status}`
+          });
         
         // Tratamento específico para erro de escopo insuficiente
         if (blingResponse.status === 403 && errorData.includes('insufficient_scope')) {
@@ -456,9 +485,9 @@ serve(async (req) => {
       }
 
       const blingData = await blingResponse.json();
-      console.log('Bling response:', JSON.stringify(blingData, null, 2));
+      console.log('Bling response data:', JSON.stringify(blingData, null, 2));
 
-      // Log the activity
+      // Log the successful activity
       await supabase
         .from('webhook_logs')
         .insert({
