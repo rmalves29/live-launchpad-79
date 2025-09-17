@@ -2,14 +2,15 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://app.orderzaps.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 }
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
@@ -34,7 +35,19 @@ serve(async (req) => {
     );
 
     // Usar o state como tenant_id
-    const tenant_id = state || '3c92bf57-a114-4690-b4cf-642078fc9df9';
+    const tenant_id = state;
+    
+    if (!tenant_id) {
+      console.error('Missing tenant_id in state parameter');
+      return new Response(JSON.stringify({ 
+        step: 'config', 
+        error: 'Missing tenant_id in state parameter',
+        redirect_url: 'https://app.orderzaps.com/integracoes?bling=error'
+      }), { 
+        status: 400, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     
     console.log('Buscando config Bling para tenant:', tenant_id);
     
@@ -48,18 +61,14 @@ serve(async (req) => {
     let clientId, clientSecret;
 
     if (configError || !blingConfig) {
-      console.log('Não encontrou config Bling, usando valores padrão temporários');
-      // Usar credenciais padrão se não encontrar no banco (para compatibilidade)
-      clientId = 'd1f9ca5cbaa7fd131da159a9afcf98a92d96c64';
+      console.log('Não encontrou config Bling para tenant:', tenant_id);
+      // Usar credenciais padrão se não encontrar no banco (fallback)
+      clientId = Deno.env.get('BLING_CLIENT_ID') || '';
       clientSecret = Deno.env.get('BLING_CLIENT_SECRET') || '';
       
-      if (!clientSecret) {
+      if (!clientId || !clientSecret) {
         console.error('Credenciais não configuradas para tenant:', tenant_id);
-        return new Response(JSON.stringify({ 
-          step:'config', 
-          error:'Bling integration not configured. Please configure Client ID and Client Secret first.',
-          tenant_id: tenant_id
-        }), { status:400, headers:{ ...corsHeaders, 'Content-Type':'application/json' }});
+        return Response.redirect('https://app.orderzaps.com/integracoes?bling=config_error', 302);
       }
     } else {
       clientId = blingConfig.client_id;
@@ -69,8 +78,8 @@ serve(async (req) => {
     console.log('[bling oauth] tenant=', tenant_id, 'id_prefix=', clientId?.slice(0,8), 'secret_len=', clientSecret?.length);
 
     if (!clientId || !clientSecret) {
-      return new Response(JSON.stringify({ step:'token', error:'Missing client credentials in database' }),
-        { status:400, headers:{ ...corsHeaders, 'Content-Type':'application/json' }});
+      console.error('Missing client credentials in database');
+      return Response.redirect('https://app.orderzaps.com/integracoes?bling=credentials_error', 302);
     }
 
     // 2) Basic Auth (somente no header)
@@ -83,13 +92,13 @@ serve(async (req) => {
       redirect_uri: redirectUri
     });
 
-    // 4) Endpoint + headers conforme manual
+    // 4) Endpoint + headers conforme manual e requisitos mínimos
     const tokenResponse = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${basic}`,
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': '1.0'
+        'Accept': '1.0' // Header obrigatório conforme especificação
       },
       body
     });
@@ -99,23 +108,28 @@ serve(async (req) => {
 
     if (!tokenResponse.ok) {
       console.error('Bling token exchange failed:', tokenData);
-      return new Response(
-        JSON.stringify({ 
-          step: 'token', 
-          status: tokenResponse.status, 
-          error: tokenData 
-        }), 
-        { 
-          status: tokenResponse.status,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
-    }
+      
+      // Log do erro
+      await supabase.from('webhook_logs').insert({
+        webhook_type: 'bling_callback_error',
+        payload: {
+          tenant_id,
+          code,
+          state,
+          error: tokenData,
+          status: tokenResponse.status
+        },
+        status_code: tokenResponse.status,
+        response: `Erro no callback: ${JSON.stringify(tokenData)}`,
+        tenant_id
+      });
 
-    // 2) Salvar tokens no DB (cliente já criado acima)
+      return Response.redirect('https://app.orderzaps.com/integracoes?bling=token_error', 302);
+    }
 
     console.log('Saving tokens to database for tenant:', tenant_id);
 
+    // Calcular data de expiração
     const expiresAt = new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString();
     
     const { error: upsertError } = await supabase
@@ -131,13 +145,20 @@ serve(async (req) => {
 
     if (upsertError) {
       console.error('[bling save tokens] error=', upsertError);
-      return new Response(
-        JSON.stringify({ step: 'save', error: upsertError }), 
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+      
+      // Log do erro
+      await supabase.from('webhook_logs').insert({
+        webhook_type: 'bling_callback_save_error',
+        payload: {
+          tenant_id,
+          error: upsertError
+        },
+        status_code: 500,
+        response: `Erro ao salvar tokens: ${JSON.stringify(upsertError)}`,
+        tenant_id
+      });
+
+      return Response.redirect('https://app.orderzaps.com/integracoes?bling=save_error', 302);
     }
 
     // Log de sucesso
@@ -150,7 +171,7 @@ serve(async (req) => {
         expires_in: tokenData.expires_in
       },
       status_code: 200,
-      response: 'Tokens salvos com sucesso',
+      response: 'Tokens salvos com sucesso via callback',
       tenant_id
     };
 
@@ -158,24 +179,12 @@ serve(async (req) => {
 
     console.log('Bling OAuth process completed successfully');
 
-    // 3) Redirecionar de volta para a UI
-    return Response.redirect('https://app.orderzaps.com/integracoes?bling=ok', 302);
+    // 3) Redirecionar de volta para a UI com sucesso
+    return Response.redirect('https://app.orderzaps.com/integracoes?bling=success', 302);
 
   } catch (error) {
     console.error('Erro no callback Bling:', error);
     
-    return new Response(
-      JSON.stringify({ 
-        error: 'Erro interno do servidor',
-        message: error.message 
-      }),
-      {
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        },
-        status: 500
-      }
-    );
+    return Response.redirect('https://app.orderzaps.com/integracoes?bling=unexpected_error', 302);
   }
 });

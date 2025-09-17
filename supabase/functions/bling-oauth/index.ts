@@ -2,14 +2,15 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://app.orderzaps.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 }
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
@@ -36,21 +37,17 @@ serve(async (req) => {
         );
       }
 
-      // Fazer requisição para trocar código por token
-      const tokenUrl = blingConfig.environment === 'production' 
-        ? 'https://bling.com.br/Api/v3/oauth/token'
-        : 'https://bling.com.br/Api/v3/oauth/token'; // Mesmo endpoint para sandbox
+      // Fazer requisição para trocar código por token usando base URL correta
+      const tokenUrl = 'https://api.bling.com.br/Api/v3/oauth/token';
 
       const tokenData = {
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=bling&action=oauth`
+        redirect_uri: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa`
       };
 
       // Criar Basic Auth header com client_id e client_secret
-      const encoder = new TextEncoder();
-      const data = encoder.encode(`${blingConfig.client_id}:${blingConfig.client_secret}`);
-      const basicAuth = btoa(String.fromCharCode(...new Uint8Array(data)));
+      const basicAuth = btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`);
 
       console.log('Requesting Bling token with:', {
         url: tokenUrl,
@@ -65,7 +62,7 @@ serve(async (req) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
+          'Accept': '1.0', // Header obrigatório conforme especificação
           'Authorization': `Basic ${basicAuth}`
         },
         body: new URLSearchParams(tokenData).toString()
@@ -100,12 +97,17 @@ serve(async (req) => {
 
       const tokenJson = JSON.parse(tokenResult);
       
+      // Calcular data de expiração
+      const expiresAt = new Date(Date.now() + (tokenJson.expires_in || 3600) * 1000).toISOString();
+      
       // Atualizar configuração do Bling com os tokens
       const { error: updateError } = await supabase
         .from('bling_integrations')
         .update({
           access_token: tokenJson.access_token,
           refresh_token: tokenJson.refresh_token,
+          token_type: tokenJson.token_type || 'Bearer',
+          expires_at: expiresAt,
           updated_at: new Date().toISOString()
         })
         .eq('tenant_id', tenant_id);
@@ -149,7 +151,7 @@ serve(async (req) => {
     if (action === 'refresh_token') {
       console.log('Starting refresh token process for tenant:', tenant_id);
       
-      // Implementar refresh token se necessário
+      // Buscar configuração do Bling
       const { data: blingConfig, error: configError } = await supabase
         .from('bling_integrations')
         .select('*')
@@ -178,9 +180,7 @@ serve(async (req) => {
         );
       }
 
-      const refreshUrl = blingConfig.environment === 'production' 
-        ? 'https://bling.com.br/Api/v3/oauth/token'
-        : 'https://bling.com.br/Api/v3/oauth/token';
+      const refreshUrl = 'https://api.bling.com.br/Api/v3/oauth/token';
 
       const refreshData = {
         grant_type: 'refresh_token',
@@ -188,9 +188,7 @@ serve(async (req) => {
       };
 
       // Criar Basic Auth header com client_id e client_secret
-      const encoder = new TextEncoder();
-      const refreshAuthData = encoder.encode(`${blingConfig.client_id}:${blingConfig.client_secret}`);
-      const basicAuth = btoa(String.fromCharCode(...new Uint8Array(refreshAuthData)));
+      const basicAuth = btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`);
 
       console.log('Making refresh token request to Bling:', {
         url: refreshUrl,
@@ -204,7 +202,7 @@ serve(async (req) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
+          'Accept': '1.0', // Header obrigatório conforme especificação
           'Authorization': `Basic ${basicAuth}`
         },
         body: new URLSearchParams(refreshData).toString()
@@ -220,11 +218,29 @@ serve(async (req) => {
 
       if (!refreshResponse.ok) {
         console.error('Bling refresh token error:', refreshResult);
+        
+        // Log do erro
+        await supabase.from('webhook_logs').insert({
+          webhook_type: 'bling_refresh_error',
+          payload: {
+            action: 'refresh_token',
+            tenant_id,
+            error: refreshResult,
+            status: refreshResponse.status
+          },
+          status_code: refreshResponse.status,
+          response: `Erro ao renovar token: ${JSON.stringify(refreshResult)}`,
+          tenant_id
+        });
+
         return new Response(
           JSON.stringify({ error: 'Erro ao renovar token', details: refreshResult }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
         );
       }
+
+      // Calcular nova data de expiração
+      const expiresAt = new Date(Date.now() + (refreshResult.expires_in || 3600) * 1000).toISOString();
 
       // Atualizar tokens
       const { error: updateError } = await supabase
@@ -232,6 +248,7 @@ serve(async (req) => {
         .update({
           access_token: refreshResult.access_token,
           refresh_token: refreshResult.refresh_token || blingConfig.refresh_token,
+          expires_at: expiresAt,
           updated_at: new Date().toISOString()
         })
         .eq('tenant_id', tenant_id);
@@ -244,9 +261,26 @@ serve(async (req) => {
         );
       }
 
+      // Log de sucesso
+      await supabase.from('webhook_logs').insert({
+        webhook_type: 'bling_refresh_success',
+        payload: {
+          action: 'refresh_token',
+          tenant_id,
+          has_access_token: !!refreshResult.access_token,
+          expires_in: refreshResult.expires_in
+        },
+        status_code: 200,
+        response: 'Token renovado com sucesso',
+        tenant_id
+      });
+
       console.log('Token refreshed successfully for tenant:', tenant_id);
       return new Response(
-        JSON.stringify({ message: 'Token renovado com sucesso' }),
+        JSON.stringify({ 
+          message: 'Token renovado com sucesso',
+          expires_in: refreshResult.expires_in
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
       );
     }

@@ -3,9 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
-  // Em produção, prefira restringir:
-  // 'Access-Control-Allow-Origin': 'https://app.orderzaps.com',
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://app.orderzaps.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
@@ -17,7 +15,7 @@ const j = (data: unknown, status = 200) =>
   });
 
 serve(async (req) => {
-  // 1) PRE-FLIGHT
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -80,7 +78,6 @@ serve(async (req) => {
     
     console.log('Bling integration action:', action);
 
-    // Usar cliente admin já configurado
     const supabase = supabaseAdmin;
 
     // Get Bling integration configuration from database
@@ -107,15 +104,79 @@ serve(async (req) => {
       token_expired: blingConfig.expires_at ? new Date(blingConfig.expires_at) <= new Date() : 'unknown'
     });
 
-    if (action === 'test_connection') {
-      // Testar conexão com Bling e verificar escopos
+    // Helper para fazer requisições ao Bling com headers corretos
+    async function blingFetch(path: string, method: string, body: any, token: string, retryCount = 0): Promise<Response> {
+      const url = `https://api.bling.com.br/Api/v3${path}`;
+      const options: RequestInit = {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': '1.0',
+          'Content-Type': 'application/json'
+        }
+      };
+      
+      if (body && method !== 'GET') {
+        options.body = JSON.stringify(body);
+      }
+      
+      const response = await fetch(url, options);
+      
+      // Se 401 e temos refresh token, tentar renovar uma vez
+      if (response.status === 401 && retryCount === 0 && blingConfig.refresh_token) {
+        console.log('Token inválido, tentando refresh automático...');
+        
+        const refreshed = await refreshBlingToken(supabase, finalTenantId, blingConfig);
+        if (refreshed) {
+          console.log('Token renovado, tentando novamente...');
+          return blingFetch(path, method, body, refreshed, retryCount + 1);
+        }
+      }
+      
+      return response;
+    }
+
+    // Helper para renovar token automaticamente
+    async function refreshBlingToken(supabase: any, tenantId: string, config: any): Promise<string | null> {
       try {
-        const testResponse = await fetch('https://api.bling.com.br/Api/v3/me', {
-          method: 'GET',
+        const refreshResponse = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
+          method: 'POST',
           headers: {
-            'Authorization': `Bearer ${blingConfig.access_token}`,
-          }
+            'Authorization': `Basic ${btoa(`${config.client_id}:${config.client_secret}`)}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': '1.0'
+          },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: config.refresh_token
+          })
         });
+
+        if (refreshResponse.ok) {
+          const tokenData = await refreshResponse.json();
+          const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
+          
+          await supabase
+            .from('bling_integrations')
+            .update({
+              access_token: tokenData.access_token,
+              refresh_token: tokenData.refresh_token || config.refresh_token,
+              expires_at: expiresAt,
+              updated_at: new Date().toISOString()
+            })
+            .eq('tenant_id', tenantId);
+          
+          return tokenData.access_token;
+        }
+      } catch (error) {
+        console.error('Erro ao renovar token:', error);
+      }
+      return null;
+    }
+
+    if (action === 'test_connection') {
+      try {
+        const testResponse = await blingFetch('/me', 'GET', null, blingConfig.access_token);
 
         if (testResponse.ok) {
           const userData = await testResponse.json();
@@ -157,55 +218,85 @@ serve(async (req) => {
       if (blingConfig.expires_at && new Date(blingConfig.expires_at) <= new Date(Date.now() + 60000)) { // 60 segundos de margem
         console.log('Token do Bling expirando em breve, tentando renovar...');
         
-        if (!blingConfig.refresh_token) {
-          return j({ error: 'Token do Bling expirando e sem refresh_token. Reautorize a integração.' }, 401);
-        }
-
-        // Tentar renovar o token
-        try {
-          const refreshResponse = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Basic ${btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`)}`,
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-              grant_type: 'refresh_token',
-              refresh_token: blingConfig.refresh_token
-            })
-          });
-
-          if (refreshResponse.ok) {
-            const tokenData = await refreshResponse.json();
-            console.log('Token renovado com sucesso');
-            
-            // Atualizar token no banco
-            const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000).toISOString();
-            
-            await supabase
-              .from('bling_integrations')
-              .update({
-                access_token: tokenData.access_token,
-                refresh_token: tokenData.refresh_token || blingConfig.refresh_token,
-                expires_at: expiresAt,
-                updated_at: new Date().toISOString()
-              })
-              .eq('tenant_id', finalTenantId);
-            
-            // Usar novo token
-            accessToken = tokenData.access_token;
-          } else {
-            const errorData = await refreshResponse.text();
-            console.error('Falha ao renovar token:', errorData);
-            return j({ error: 'Falha ao renovar token do Bling. Reautorize a integração.' }, 401);
-          }
-        } catch (refreshError) {
-          console.error('Erro ao renovar token:', refreshError);
-          return j({ error: 'Erro ao renovar token do Bling. Reautorize a integração.' }, 401);
+        const refreshedToken = await refreshBlingToken(supabase, finalTenantId, blingConfig);
+        if (refreshedToken) {
+          accessToken = refreshedToken;
+        } else {
+          return j({ error: 'Token do Bling expirado. Reautorize a integração.' }, 401);
         }
       }
 
-      // Helper functions
+      // Verificar se pedido já foi processado (idempotência)
+      const numeroLoja = `OZ-${finalTenantId.slice(0, 8)}-${order_id}`;
+      
+      console.log('Verificando se pedido existe no Bling:', numeroLoja);
+      
+      // Buscar se pedido já existe no Bling
+      const existingOrderResponse = await blingFetch(
+        `/pedidos/vendas?numeroLoja=${numeroLoja}`,
+        'GET',
+        null,
+        accessToken
+      );
+      
+      if (existingOrderResponse.ok) {
+        const existingData = await existingOrderResponse.json();
+        console.log('Dados retornados da verificação:', JSON.stringify(existingData, null, 2));
+        
+        if (existingData?.data && Array.isArray(existingData.data) && existingData.data.length > 0) {
+          console.log('Pedido já existe no Bling:', numeroLoja, 'ID:', existingData.data[0].id);
+          return j({ 
+            success: true, 
+            message: 'Pedido já existe no Bling',
+            bling_order_id: existingData.data[0].id,
+            numeroLoja 
+          });
+        }
+      }
+
+      // Buscar dados do pedido
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          cart_items:cart_items!inner(
+            qty,
+            unit_price,
+            products:products!inner(
+              id,
+              name,
+              code,
+              price
+            )
+          )
+        `)
+        .eq('id', order_id)
+        .single();
+
+      if (orderError || !order) {
+        console.error('Erro ao buscar pedido:', orderError);
+        return j({ error: 'Pedido não encontrado' }, 404);
+      }
+
+      // Normalizar dados do cliente (apenas dígitos)
+      const normalizedPhone = customer_phone.replace(/\D/g, '');
+      const normalizedCep = (order.customer_cep || '').replace(/\D/g, '');
+
+      // Get customer details
+      let { data: customerData } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('tenant_id', finalTenantId)
+        .or(`phone.eq.${customer_phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone}%`)
+        .limit(1)
+        .maybeSingle();
+
+      // Buscar configuração da loja
+      if (!blingConfig?.loja_id) {
+        return j({ error: 'Código da Loja não configurado no Bling' }, 400);
+      }
+
+      // Função para normalizar chave do contato para cache
       function normalizeCustomerKey(data: { name?: string, phone?: string, cep?: string, cpf?: string }) {
         const normalizedPhone = data.phone?.replace(/\D/g, '') || '';
         const normalizedCep = data.cep?.replace(/\D/g, '') || '';
@@ -214,24 +305,7 @@ serve(async (req) => {
         return `${data.name?.trim()}-${normalizedPhone}-${normalizedCep}-${normalizedCpf}`.toLowerCase();
       }
 
-      async function blingFetch(path: string, method: string, body: any, token: string) {
-        const url = `https://api.bling.com.br/Api/v3${path}`;
-        const options: RequestInit = {
-          method,
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': '1.0',
-            'Content-Type': 'application/json'
-          }
-        };
-        
-        if (body && method !== 'GET') {
-          options.body = JSON.stringify(body);
-        }
-        
-        return fetch(url, options);
-      }
-
+      // Função para obter ou criar contato no Bling
       async function getOrCreateContactId(
         tenantId: string,
         customer: {
@@ -265,41 +339,36 @@ serve(async (req) => {
           return Number(cached.bling_contact_id);
         }
 
-        // 2) Criar contato no Bling
+        // 2) Criar contato no Bling conforme payload mínimo especificado
         const payload: any = {
           nome: customer.nome,
-          tipo: 'F', // F = Pessoa Física, J = Pessoa Jurídica
-          situacao: 'A' // A = Ativo, I = Inativo, E = Excluído, S = Sem movimento
+          tipoPessoa: 'F', // F = Pessoa Física, J = Pessoa Jurídica
+          email: customer.email || `${customer.telefone?.replace(/\D/g, '')}@checkout.com`,
+          fone: customer.telefone?.replace(/\D/g, '') || ''
         };
 
-        if (customer.email) payload.email = customer.email;
-        
-        // Formatação correta do telefone (apenas números, mínimo 10 dígitos)
-        if (customer.telefone) {
-          const cleanPhone = customer.telefone.replace(/\D/g, '');
-          if (cleanPhone.length >= 10) {
-            payload.fone = cleanPhone;
-          }
-        }
-
-        // Se tiver CPF, ajuda em deduplicação futura
+        // CPF/CNPJ normalizado (apenas dígitos)
         if (customer.cpf) {
           const cleanCpf = customer.cpf.replace(/\D/g, '');
           if (cleanCpf.length === 11) {
             payload.numeroDocumento = cleanCpf;
-            payload.tipo = 'F'; // Pessoa Física se tem CPF válido
+            payload.tipoPessoa = 'F';
+          } else if (cleanCpf.length === 14) {
+            payload.numeroDocumento = cleanCpf;
+            payload.tipoPessoa = 'J';
           }
         }
 
+        // Endereço conforme payload mínimo
         if (customer.endereco) {
           payload.endereco = {
-            endereco: customer.endereco.endereco || '',
-            numero: customer.endereco.numero || '',
+            endereco: customer.endereco.endereco || 'Rua não informada',
+            numero: customer.endereco.numero || 'S/N',
             complemento: customer.endereco.complemento || '',
-            bairro: customer.endereco.bairro || '',
-            cidade: customer.endereco.cidade || '',
-            uf: customer.endereco.uf || '',
-            cep: (customer.endereco.cep || '').replace(/\D/g, '')
+            bairro: customer.endereco.bairro || 'Centro',
+            cidade: customer.endereco.cidade || 'São Paulo',
+            uf: customer.endereco.uf || 'SP',
+            cep: (customer.endereco.cep || '00000000').replace(/\D/g, '')
           };
         }
 
@@ -309,6 +378,18 @@ serve(async (req) => {
         
         if (!createResponse.ok) {
           const errorData = await createResponse.text();
+          console.error('Erro ao criar contato:', createResponse.status, errorData);
+          
+          // Log erro no webhook_logs
+          await supabase.from('webhook_logs').insert({
+            tenant_id: finalTenantId,
+            webhook_type: 'bling_create_contact_error',
+            status_code: createResponse.status,
+            payload: { customer, action: 'create_contact' },
+            response: errorData,
+            error_message: `Falha ao criar contato: ${createResponse.status}`
+          });
+          
           throw new Error(`Falha ao criar contato: ${createResponse.status} ${errorData}`);
         }
         
@@ -328,93 +409,12 @@ serve(async (req) => {
         return newId;
       }
 
-      // Verificar se pedido já foi processado (idempotência)
-      const numeroLoja = `OZ-${finalTenantId.slice(0, 8)}-${order_id}`;
-      
-      console.log('Verificando se pedido existe no Bling:', numeroLoja);
-      
-      // Buscar se pedido já existe no Bling
-      const existingOrderResponse = await blingFetch(
-        `/pedidos/vendas?numeroLoja=${numeroLoja}`,
-        'GET',
-        null,
-        accessToken
-      );
-      
-      console.log('Resposta da verificação no Bling:', {
-        status: existingOrderResponse.status,
-        ok: existingOrderResponse.ok
-      });
-      
-      if (existingOrderResponse.ok) {
-        const existingData = await existingOrderResponse.json();
-        console.log('Dados retornados da verificação:', JSON.stringify(existingData, null, 2));
-        
-        if (existingData?.data && Array.isArray(existingData.data) && existingData.data.length > 0) {
-          console.log('Pedido já existe no Bling:', numeroLoja, 'ID:', existingData.data[0].id);
-          return j({ 
-            success: true, 
-            message: 'Pedido já existe no Bling',
-            bling_order_id: existingData.data[0].id,
-            numeroLoja 
-          });
-        } else {
-          console.log('Pedido não existe no Bling, prosseguindo com criação...');
-        }
-      } else {
-        const errorText = await existingOrderResponse.text();
-        console.log('Erro na verificação do Bling:', existingOrderResponse.status, errorText);
-        // Continuar com a criação do pedido se não conseguir verificar
-      }
-
-      // Buscar dados do pedido
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          cart_items:cart_items!inner(
-            qty,
-            unit_price,
-            products:products!inner(
-              id,
-              name,
-              code,
-              price
-            )
-          )
-        `)
-        .eq('id', order_id)
-        .single();
-
-      if (orderError || !order) {
-        console.error('Erro ao buscar pedido:', orderError);
-        return j({ error: 'Pedido não encontrado' }, 404);
-      }
-
-      // Normalizar dados do cliente
-      const normalizedPhone = customer_phone.replace(/\D/g, '');
-      const normalizedCep = order.customer_cep?.replace(/\D/g, '') || '';
-
-      // Get customer details
-      let { data: customerData } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('tenant_id', finalTenantId)
-        .or(`phone.eq.${customer_phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone}%`)
-        .limit(1)
-        .maybeSingle();
-
-      // Buscar configuração da loja
-      if (!blingConfig?.loja_id) {
-        return j({ error: 'Código da Loja não configurado no Bling' }, 400);
-      }
-
-      // 1) Garantir/obter o contato.id
+      // 1) Garantir/obter o contato.id (OBRIGATÓRIO antes do pedido)
       const contactId = await getOrCreateContactId(finalTenantId, {
         nome: customerData?.name || order.customer_name || "Cliente",
-        email: customerData?.email || `${normalizedPhone}@checkout.com`,
+        email: customerData?.email,
         telefone: normalizedPhone,
-        cpf: customerData?.cpf?.replace(/\D/g, ''),
+        cpf: customerData?.cpf,
         endereco: {
           endereco: customerData?.street || order.customer_street || "Rua não informada",
           numero: customerData?.number || order.customer_number || "S/N",
@@ -422,98 +422,122 @@ serve(async (req) => {
           bairro: customerData?.city || order.customer_city || "Centro",
           cidade: customerData?.city || order.customer_city || "São Paulo",
           uf: customerData?.state || order.customer_state || "SP",
-          cep: (customerData?.cep || order.customer_cep || "00000000").replace(/\D/g, '')
+          cep: normalizedCep || "00000000"
         }
       });
 
-      // 2) Criar estrutura do pedido para o Bling
+      // 2) Criar estrutura do pedido para o Bling conforme payload mínimo
       const orderData = {
         data: new Date(order.event_date).toISOString().split('T')[0],
-        numeroLoja,
+        numeroLoja, // Formato: OZ-<tenant>-<pedidoId>
         loja: {
-          id: parseInt(blingConfig.loja_id)
+          id: parseInt(blingConfig.loja_id) // Código da Loja no Bling (OBRIGATÓRIO)
         },
-        contato: { id: contactId },
+        contato: { 
+          id: contactId // id do contato criado/buscado (OBRIGATÓRIO)
+        },
         itens: (order.cart_items || []).map((item: any) => ({
           produto: {
-            codigo: item.products?.code || `ITEM-${item.id}`
+            codigo: item.products?.code || `ITEM-${item.id}` // ou { "id": 111 }
           },
           quantidade: item.qty,
-          preco: Number(item.unit_price)
+          preco: Number(item.unit_price) // Preço com ponto decimal
         })),
         observacoes: order.observation || `Pedido via sistema - Evento: ${order.event_type}`
       };
 
       console.log('Sending order to Bling:', JSON.stringify(orderData, null, 2));
-      console.log('Using contact ID:', contactId);
 
       // Send order to Bling API v3
       const blingResponse = await blingFetch('/pedidos/vendas', 'POST', orderData, accessToken);
+      const responseHeaders = blingResponse.headers;
+      const requestId = responseHeaders.get('x-request-id') || 'N/A';
 
-      console.log('Bling response status:', blingResponse.status, 'OK:', blingResponse.ok);
+      console.log('Bling response:', {
+        status: blingResponse.status,
+        ok: blingResponse.ok,
+        'x-request-id': requestId
+      });
 
-      if (!blingResponse.ok) {
-        const errorData = await blingResponse.text();
-        console.error('Bling API error:', blingResponse.status, errorData);
-        
-        // Log webhook activity with error
-        await supabase
-          .from('webhook_logs')
-          .insert({
-            tenant_id: finalTenantId,
-            webhook_type: 'bling_integration',
-            status_code: blingResponse.status,
-            payload: { action: 'create_order', order_id, customer_phone },
-            response: errorData,
-            error_message: `Falha ao criar pedido no Bling: ${blingResponse.status}`
-          });
-        
-        // Tratamento específico para erro de escopo insuficiente
-        if (blingResponse.status === 403 && errorData.includes('insufficient_scope')) {
-          return j({ 
-            error: 'Escopo insuficiente na API do Bling',
-            details: 'Verifique se a autorização possui os escopos: 404481, 404482',
-            raw_error: errorData
-          }, 403);
-        }
-        
-        return j({ 
-          error: 'Falha ao criar pedido no Bling',
-          status: blingResponse.status,
-          details: errorData
-        }, blingResponse.status);
+      const responseText = await blingResponse.text();
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = responseText;
       }
 
-      const blingData = await blingResponse.json();
-      console.log('Bling response data:', JSON.stringify(blingData, null, 2));
-
-      // Log the successful activity
+      // Log webhook activity
       await supabase
         .from('webhook_logs')
         .insert({
           tenant_id: finalTenantId,
           webhook_type: 'bling_integration',
-          status_code: 200,
-          payload: { action: 'create_order', order_id, customer_phone },
-          response: JSON.stringify(blingData)
+          status_code: blingResponse.status,
+          payload: { action: 'create_order', order_id, customer_phone, numeroLoja, contact_id: contactId },
+          response: responseText,
+          error_message: !blingResponse.ok ? `Falha ao criar pedido no Bling: ${blingResponse.status}` : null
         });
 
+      if (!blingResponse.ok) {
+        console.error('Bling API error:', blingResponse.status, responseData);
+        
+        // Tratamento específico para códigos de erro comuns
+        if (blingResponse.status === 401) {
+          return j({ 
+            error: 'Token inválido ou expirado',
+            details: 'invalid_token - token expirado/refresh não feito',
+            raw_error: responseData,
+            'x-request-id': requestId
+          }, 401);
+        }
+        
+        if (blingResponse.status === 403) {
+          return j({ 
+            error: 'Escopo insuficiente na API do Bling',
+            details: 'insufficient_scope - app não autorizado com escopos que liberem contatos e pedidos',
+            raw_error: responseData,
+            'x-request-id': requestId
+          }, 403);
+        }
+        
+        if (blingResponse.status === 409) {
+          return j({ 
+            success: true, // 409 indica que já existe (idempotência)
+            message: 'Pedido já existe no Bling (duplicado)',
+            numeroLoja,
+            details: 'numeroLoja já existe - idempotência detectada',
+            'x-request-id': requestId
+          });
+        }
+        
+        return j({ 
+          error: 'Falha ao criar pedido no Bling',
+          status: blingResponse.status,
+          details: responseData,
+          'x-request-id': requestId
+        }, blingResponse.status);
+      }
+
+      console.log('Pedido criado com sucesso no Bling:', responseData);
       return j({ 
         success: true,
-        message: 'Pedido criado no Bling com sucesso',
-        bling_order_id: blingData?.data?.id,
+        message: 'Pedido criado com sucesso no Bling',
+        bling_order_id: responseData?.data?.id,
         numeroLoja,
-        bling_response: blingData
+        contact_id: contactId,
+        'x-request-id': requestId
       });
     }
 
     return j({ error: 'Ação não suportada' }, 400);
 
-  } catch (e: any) {
-    console.error('Erro interno da função:', e);
+  } catch (error) {
+    console.error('Erro na função Bling integration:', error);
+    
     return j({ 
-      error: 'Erro interno',
-      details: e?.message ?? String(e)
+      error: 'Erro interno do servidor',
+      details: error.message
     }, 500);
   }
 });
