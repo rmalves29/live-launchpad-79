@@ -291,6 +291,8 @@ serve(async (req) => {
         // 2) Criar contato no Bling
         const payload: any = {
           nome: customer.nome,
+          tipo: 'F', // F = Pessoa Física, J = Pessoa Jurídica
+          situacao: 'A' // A = Ativo, I = Inativo, E = Excluído, S = Sem movimento
         };
 
         if (customer.email) payload.email = customer.email;
@@ -298,7 +300,6 @@ serve(async (req) => {
 
         // Se tiver CPF, ajuda em deduplicação futura
         if (customer.cpf) {
-          payload.tipoPessoa = 'F';
           payload.numeroDocumento = customer.cpf.replace(/\D/g, '');
         }
 
