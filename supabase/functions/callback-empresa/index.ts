@@ -34,6 +34,8 @@ serve(async (req) => {
     // Usar o state como tenant_id
     const tenant_id = state || '3c92bf57-a114-4690-b4cf-642078fc9df9';
     
+    console.log('Buscando config Bling para tenant:', tenant_id);
+    
     // 1) Buscar credenciais do banco de dados
     const { data: blingConfig, error: configError } = await supabase
       .from('bling_integrations')
@@ -41,14 +43,26 @@ serve(async (req) => {
       .eq('tenant_id', tenant_id)
       .single();
 
-    if (configError || !blingConfig) {
-      console.error('Erro ao buscar config Bling:', configError);
-      return new Response(JSON.stringify({ step:'config', error:'Bling integration not configured for tenant' }),
-        { status:400, headers:{ ...corsHeaders, 'Content-Type':'application/json' }});
-    }
+    let clientId, clientSecret;
 
-    const clientId = blingConfig.client_id;
-    const clientSecret = blingConfig.client_secret;
+    if (configError || !blingConfig) {
+      console.log('Não encontrou config Bling, usando valores padrão temporários');
+      // Usar credenciais padrão se não encontrar no banco (para compatibilidade)
+      clientId = 'd1f9ca5cbaa7fd131da159a9afcf98a92d96c64';
+      clientSecret = Deno.env.get('BLING_CLIENT_SECRET') || '';
+      
+      if (!clientSecret) {
+        console.error('Credenciais não configuradas para tenant:', tenant_id);
+        return new Response(JSON.stringify({ 
+          step:'config', 
+          error:'Bling integration not configured. Please configure Client ID and Client Secret first.',
+          tenant_id: tenant_id
+        }), { status:400, headers:{ ...corsHeaders, 'Content-Type':'application/json' }});
+      }
+    } else {
+      clientId = blingConfig.client_id;
+      clientSecret = blingConfig.client_secret;
+    }
 
     console.log('[bling oauth] tenant=', tenant_id, 'id_prefix=', clientId?.slice(0,8), 'secret_len=', clientSecret?.length);
 
