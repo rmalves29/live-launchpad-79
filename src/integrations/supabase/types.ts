@@ -111,10 +111,12 @@ export type Database = {
           client_secret: string | null
           created_at: string | null
           environment: string
+          expires_at: string | null
           id: string
           is_active: boolean
           refresh_token: string | null
           tenant_id: string | null
+          token_type: string | null
           updated_at: string | null
         }
         Insert: {
@@ -123,10 +125,12 @@ export type Database = {
           client_secret?: string | null
           created_at?: string | null
           environment?: string
+          expires_at?: string | null
           id?: string
           is_active?: boolean
           refresh_token?: string | null
           tenant_id?: string | null
+          token_type?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -135,10 +139,12 @@ export type Database = {
           client_secret?: string | null
           created_at?: string | null
           environment?: string
+          expires_at?: string | null
           id?: string
           is_active?: boolean
           refresh_token?: string | null
           tenant_id?: string | null
+          token_type?: string | null
           updated_at?: string | null
         }
         Relationships: []
