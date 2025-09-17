@@ -72,7 +72,18 @@ serve(async (req) => {
       has_client_secret: !!clientSecret
     });
 
-    const tokenResponse = await fetch('https://www.bling.com.br/Api/v3/oauth/token', {
+    console.log('Final request details:', {
+      url: 'https://api.bling.com.br/Api/v3/oauth/token',
+      basicAuth: `${clientId.substring(0, 8)}...:${clientSecret.substring(0, 8)}...`,
+      bodyParams: {
+        grant_type: 'authorization_code',
+        code: code.substring(0, 8) + '...',
+        redirect_uri: redirectUri,
+        client_id: clientId.substring(0, 8) + '...'
+      }
+    });
+
+    const tokenResponse = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${basic}`,
