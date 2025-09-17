@@ -273,11 +273,22 @@ serve(async (req) => {
         };
 
         if (customer.email) payload.email = customer.email;
-        if (customer.telefone) payload.fone = customer.telefone.replace(/\D/g, '');
+        
+        // Formatação correta do telefone (apenas números, mínimo 10 dígitos)
+        if (customer.telefone) {
+          const cleanPhone = customer.telefone.replace(/\D/g, '');
+          if (cleanPhone.length >= 10) {
+            payload.fone = cleanPhone;
+          }
+        }
 
         // Se tiver CPF, ajuda em deduplicação futura
         if (customer.cpf) {
-          payload.numeroDocumento = customer.cpf.replace(/\D/g, '');
+          const cleanCpf = customer.cpf.replace(/\D/g, '');
+          if (cleanCpf.length === 11) {
+            payload.numeroDocumento = cleanCpf;
+            payload.tipo = 'F'; // Pessoa Física se tem CPF válido
+          }
         }
 
         if (customer.endereco) {
