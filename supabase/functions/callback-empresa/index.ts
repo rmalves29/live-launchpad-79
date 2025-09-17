@@ -25,16 +25,36 @@ serve(async (req) => {
 
     const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa';
 
-    // 1) Sanitizar envs (remove aspas e quebras)
-    const sanitize = (s: string) => s.replace(/[\r\n]/g, '').replace(/^['"]+|['"]+$/g, '').trim();
-    const clientId = sanitize(Deno.env.get('BLING_CLIENT_ID') ?? '');
-    const clientSecret = sanitize(Deno.env.get('BLING_CLIENT_SECRET') ?? '');
+    // Criar cliente Supabase primeiro para buscar credenciais
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
 
-    console.log('[bling oauth] id_prefix=', clientId.slice(0,8), 'secret_len=', clientSecret.length);
+    // Usar o state como tenant_id
+    const tenant_id = state || '3c92bf57-a114-4690-b4cf-642078fc9df9';
+    
+    // 1) Buscar credenciais do banco de dados
+    const { data: blingConfig, error: configError } = await supabase
+      .from('bling_integrations')
+      .select('client_id, client_secret')
+      .eq('tenant_id', tenant_id)
+      .single();
+
+    if (configError || !blingConfig) {
+      console.error('Erro ao buscar config Bling:', configError);
+      return new Response(JSON.stringify({ step:'config', error:'Bling integration not configured for tenant' }),
+        { status:400, headers:{ ...corsHeaders, 'Content-Type':'application/json' }});
+    }
+
+    const clientId = blingConfig.client_id;
+    const clientSecret = blingConfig.client_secret;
+
+    console.log('[bling oauth] tenant=', tenant_id, 'id_prefix=', clientId?.slice(0,8), 'secret_len=', clientSecret?.length);
 
     if (!clientId || !clientSecret) {
-      return new Response(JSON.stringify({ step:'token', error:'Missing envs' }),
-        { status:500, headers:{ ...corsHeaders, 'Content-Type':'application/json' }});
+      return new Response(JSON.stringify({ step:'token', error:'Missing client credentials in database' }),
+        { status:400, headers:{ ...corsHeaders, 'Content-Type':'application/json' }});
     }
 
     // 2) Basic Auth (somente no header)
@@ -77,14 +97,7 @@ serve(async (req) => {
       );
     }
 
-    // 2) Salvar tokens no DB com SERVICE ROLE
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
-
-    // Use o state como tenant_id (ajuste conforme sua lógica)
-    const tenant_id = state || '3c92bf57-a114-4690-b4cf-642078fc9df9'; // fallback para o tenant padrão
+    // 2) Salvar tokens no DB (cliente já criado acima)
 
     console.log('Saving tokens to database for tenant:', tenant_id);
 
