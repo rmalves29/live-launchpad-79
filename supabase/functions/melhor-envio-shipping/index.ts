@@ -3,8 +3,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://app.orderzaps.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
 
 serve(async (req) => {
@@ -62,7 +63,11 @@ serve(async (req) => {
       );
     }
 
-    const baseUrl = shippingConfig.api_base_url || 'https://melhorenvio.com.br/api';
+    // Use correct API URLs based on environment
+    const isProduction = !shippingConfig.api_base_url || shippingConfig.api_base_url.includes('melhorenvio.com.br/api');
+    const baseUrl = isProduction 
+      ? 'https://api.melhorenvio.com'
+      : 'https://sandbox.melhorenvio.com.br/api';
 
     // Payload para cotação
     const payload = {
@@ -90,10 +95,10 @@ serve(async (req) => {
     const response = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
         'Authorization': `Bearer ${shippingConfig.access_token}`,
-        'User-Agent': 'FreteApp (contato@empresa.com)'
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'OrderZaps (contato@orderzaps.com)'
       },
       body: JSON.stringify(payload)
     });

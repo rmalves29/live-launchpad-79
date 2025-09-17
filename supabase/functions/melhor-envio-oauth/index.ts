@@ -3,8 +3,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': 'https://app.orderzaps.com',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
 
 serve(async (req) => {
@@ -34,7 +35,11 @@ serve(async (req) => {
         );
       }
 
-      const tokenUrl = `${api_base_url || 'https://melhorenvio.com.br/api'}/oauth/token`;
+      // Determine correct URLs based on environment
+      const isProduction = !api_base_url || api_base_url.includes('melhorenvio.com.br/api');
+      const tokenUrl = isProduction 
+        ? 'https://melhorenvio.com.br/oauth/token'
+        : 'https://sandbox.melhorenvio.com.br/oauth/token';
       
       const tokenPayload = {
         grant_type: 'authorization_code',
@@ -52,6 +57,7 @@ serve(async (req) => {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
         },
         body: JSON.stringify(tokenPayload),
       });
@@ -137,7 +143,11 @@ serve(async (req) => {
         );
       }
 
-      const refreshUrl = `${configData.api_base_url}/oauth/token`;
+      // Use correct refresh URL based on environment
+      const isProduction = !configData.api_base_url || configData.api_base_url.includes('melhorenvio.com.br/api');
+      const refreshUrl = isProduction 
+        ? 'https://melhorenvio.com.br/oauth/token'
+        : 'https://sandbox.melhorenvio.com.br/oauth/token';
       
       const refreshPayload = {
         grant_type: 'refresh_token',
@@ -153,6 +163,7 @@ serve(async (req) => {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
         },
         body: JSON.stringify(refreshPayload),
       });

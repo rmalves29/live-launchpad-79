@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.callback-empresa]
 verify_jwt = false
+
+[functions.webhook-melhorenvio]
+verify_jwt = false

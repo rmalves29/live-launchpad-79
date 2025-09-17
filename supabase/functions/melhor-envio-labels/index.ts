@@ -3,299 +3,196 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-key',
+  'Access-Control-Allow-Origin': 'https://app.orderzaps.com',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
 
-// Utils: sanitização e validação
+// Utils: sanitização
 function onlyDigits(v: string | number | null | undefined): string {
-  return String(v ?? '')
-    .normalize('NFKC')
-    .replace(/\s/g, '')
-    .replace(/\D/g, '');
+  return String(v ?? '').replace(/\D/g, '');
 }
 
-function isValidCPF(cpf: string): boolean {
-  const s = onlyDigits(cpf);
-  if (s.length !== 11 || /(\d)\1{10}/.test(s)) return false;
-  let sum = 0, rest;
-  for (let i = 1; i <= 9; i++) sum += parseInt(s.substring(i - 1, i), 10) * (11 - i);
-  rest = (sum * 10) % 11;
-  if (rest === 10 || rest === 11) rest = 0;
-  if (rest !== parseInt(s.substring(9, 10), 10)) return false;
-  sum = 0;
-  for (let i = 1; i <= 10; i++) sum += parseInt(s.substring(i - 1, i), 10) * (12 - i);
-  rest = (sum * 10) % 11;
-  if (rest === 10 || rest === 11) rest = 0;
-  return rest === parseInt(s.substring(10, 11), 10);
-}
+// Auto-refresh token if expires in < 60 seconds
+async function ensureValidToken(supabase: any, integration: any) {
+  if (!integration.access_token) {
+    throw new Error('Token de acesso não configurado');
+  }
 
-function isValidCNPJ(cnpj: string): boolean {
-  const s = onlyDigits(cnpj);
-  if (s.length !== 14 || /(\d)\1{13}/.test(s)) return false;
-  const calc = (base: number) => {
-    let pos = base - 7, sum = 0;
-    for (let i = 0; i < base; i++) {
-      sum += parseInt(s[i], 10) * pos--;
-      if (pos < 2) pos = 9;
+  // Check if token expires in less than 60 seconds
+  const now = new Date();
+  const expiresAt = new Date(integration.token_expires_at || '1970-01-01');
+  const timeUntilExpiry = expiresAt.getTime() - now.getTime();
+  
+  if (timeUntilExpiry < 60000) { // Less than 60 seconds
+    console.log('Token expires soon, refreshing...');
+    
+    const isProduction = integration.environment === 'production';
+    const refreshUrl = isProduction 
+      ? 'https://melhorenvio.com.br/oauth/token'
+      : 'https://sandbox.melhorenvio.com.br/oauth/token';
+    
+    const refreshPayload = {
+      grant_type: 'refresh_token',
+      client_id: integration.client_id,
+      client_secret: integration.client_secret,
+      refresh_token: integration.refresh_token,
+    };
+
+    const refreshResponse = await fetch(refreshUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+      },
+      body: JSON.stringify(refreshPayload),
+    });
+
+    if (!refreshResponse.ok) {
+      const errorData = await refreshResponse.text();
+      console.error('Token refresh failed:', errorData);
+      throw new Error('Falha ao renovar token: ' + errorData);
     }
-    const r = sum % 11;
-    return (r < 2) ? 0 : 11 - r;
-  };
-  if (calc(12) !== parseInt(s[12], 10)) return false;
-  if (calc(13) !== parseInt(s[13], 10)) return false;
-  return true;
+
+    const refreshData = await refreshResponse.json();
+    const newExpiresAt = new Date();
+    newExpiresAt.setSeconds(newExpiresAt.getSeconds() + refreshData.expires_in);
+
+    // Update integration with new token
+    const { error: updateError } = await supabase
+      .from('integration_me')
+      .update({
+        access_token: refreshData.access_token,
+        refresh_token: refreshData.refresh_token || integration.refresh_token,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', integration.id);
+
+    if (updateError) {
+      console.error('Error updating token:', updateError);
+      throw new Error('Erro ao salvar novo token');
+    }
+
+    return refreshData.access_token;
+  }
+
+  return integration.access_token;
 }
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    // Extract tenant key from URL or headers
-    const url = new URL(req.url);
-    const tenantKey = url.searchParams.get('tenant_key') || req.headers.get('x-tenant-key');
+    const { action, order_id, tenant_id } = await req.json();
     
-    const requestBody = await req.json();
-    const { action, order_id } = requestBody;
-    let { tenant_id } = requestBody;
-    
-    // If tenant_id is not provided or undefined, try to get it from order
-    if (!tenant_id) {
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('tenant_id')
-        .eq('id', order_id)
-        .single();
-      
-      if (orderData) {
-        tenant_id = orderData.tenant_id;
-      }
-    }
-    
-    console.log('Labels action:', action, 'order_id:', order_id, 'tenant_id:', tenant_id);
+    console.log('ME Labels action:', action, 'order_id:', order_id, 'tenant_id:', tenant_id);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get tenant information and ME integration
-    let tenantData = null;
-    let meIntegration = null;
+    // Get tenant and ME integration
+    const { data: integration, error: integrationError } = await supabase
+      .from('integration_me')
+      .select('*')
+      .eq('tenant_id', tenant_id)
+      .eq('is_active', true)
+      .single();
+
+    if (integrationError || !integration) {
+      return new Response(
+        JSON.stringify({ error: 'Integração Melhor Envio não encontrada' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Ensure valid token
+    const accessToken = await ensureValidToken(supabase, integration);
     
-    if (tenant_id) {
-      // First get tenant data
-      const { data: tenant } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('id', tenant_id)
-        .eq('is_active', true)
-        .single();
-      
-      if (!tenant) {
-        return new Response(
-          JSON.stringify({ error: 'Tenant não encontrado ou inativo' }),
-          { 
-            status: 404, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
-      // Then get ME integration for this tenant
-      const { data: integration } = await supabase
-        .from('integration_me')
-        .select('*')
-        .eq('tenant_id', tenant_id)
-        .eq('is_active', true)
-        .single();
-      
-      if (integration) {
-        tenantData = tenant;
-        meIntegration = integration;
-        console.log('Found ME integration for tenant:', tenant_id, 'integration ID:', integration.id);
-      } else {
-        console.log('No active ME integration found for tenant:', tenant_id);
-      }
-    }
-
-    if (!tenantData || !meIntegration) {
-      return new Response(
-        JSON.stringify({ error: 'Tenant ou integração Melhor Envio não encontrada' }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!meIntegration.access_token) {
-      return new Response(
-        JSON.stringify({ error: 'Token de acesso Melhor Envio não configurado' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    const baseUrl = meIntegration.environment === 'sandbox' 
-      ? 'https://sandbox.melhorenvio.com.br/api' 
-      : 'https://melhorenvio.com.br/api';
-    const accessToken = meIntegration.access_token;
+    // Determine API URLs
+    const isProduction = integration.environment === 'production';
+    const baseUrl = isProduction 
+      ? 'https://api.melhorenvio.com'
+      : 'https://sandbox.melhorenvio.com.br/api';
 
     if (action === 'create_shipment') {
-      if (!order_id) {
+      // Check for existing shipment (idempotency)
+      const { data: existingShipment } = await supabase
+        .from('frete_envios')
+        .select('*')
+        .eq('pedido_id', order_id)
+        .single();
+
+      if (existingShipment && existingShipment.shipment_id) {
+        console.log('Shipment already exists:', existingShipment.shipment_id);
         return new Response(
-          JSON.stringify({ error: 'order_id é obrigatório' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
+          JSON.stringify({ 
+            success: true,
+            message: 'Envio já existe',
+            shipment: existingShipment
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       // Get order details
-      const { data: orderData, error: orderError } = await supabase
+      const { data: order, error: orderError } = await supabase
         .from('orders')
         .select('*')
         .eq('id', order_id)
-        .eq('tenant_id', tenantData.id)
+        .eq('tenant_id', tenant_id)
         .single();
 
-      if (orderError || !orderData) {
-        console.error('Order not found:', orderError);
+      if (orderError || !order) {
         return new Response(
           JSON.stringify({ error: 'Pedido não encontrado' }),
-          { 
-            status: 404, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Get app settings for default dimensions and weight
+      // Get app settings for dimensions
       const { data: appSettings } = await supabase
         .from('app_settings')
         .select('*')
         .single();
 
-      // Validate required order data
-      if (!orderData.customer_name || !orderData.customer_cep || !orderData.customer_street || !orderData.customer_city) {
-        console.error('Order missing required address data:', orderData);
+      // Validate order data
+      if (!order.customer_name || !order.customer_cep || !order.customer_street || !order.customer_city) {
         return new Response(
           JSON.stringify({ 
             error: 'Dados de endereço do cliente incompletos',
             details: 'Nome, CEP, rua e cidade são obrigatórios'
           }),
-          { 
-            status: 422, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
-      // Prepare sender data (from integration config)
-      const fromEntity = {
-        name: meIntegration.from_name || "Mania de Mulher",
-        phone: onlyDigits(meIntegration.from_phone || '31999999999'),
-        email: meIntegration.from_email || "contato@maniadmulher.com",
-        document: null as string | null,
-        company_document: null as string | null,
-        address: meIntegration.from_address || "Rua das Flores",
-        complement: meIntegration.from_complement || "Sala 101",
-        number: meIntegration.from_number || "123",
-        district: meIntegration.from_district || "Centro",
-        city: meIntegration.from_city || "Belo Horizonte",
-        state_abbr: meIntegration.from_state || "MG",
-        postal_code: onlyDigits(meIntegration.from_cep || '30110000')
-      };
-
-      // Set sender document (CPF or CNPJ)
-      const senderDoc = onlyDigits(meIntegration.from_document || '12345678000199');
-      if (senderDoc.length === 14 && isValidCNPJ(senderDoc)) {
-        fromEntity.company_document = senderDoc;
-      } else if (senderDoc.length === 11 && isValidCPF(senderDoc)) {
-        fromEntity.document = senderDoc;
-      } else {
-        return new Response(
-          JSON.stringify({
-            error: 'Documento do remetente inválido',
-            details: 'Configure um CPF (11 dígitos) ou CNPJ (14 dígitos) válido'
-          }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Prepare recipient data (from order)
-      const recipientCep = onlyDigits(orderData.customer_cep);
-      
-      if (recipientCep.length !== 8) {
-        console.error(`Invalid recipient CEP: ${recipientCep}`);
-        return new Response(
-          JSON.stringify({
-            error: 'CEP de destino inválido',
-            details: `CEP deve ter 8 dígitos. CEP informado: ${recipientCep}`
-          }),
-          { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const toEntity = {
-        name: orderData.customer_name,
-        phone: onlyDigits(orderData.customer_phone),
-        email: `${onlyDigits(orderData.customer_phone)}@checkout.com`,
-        document: "00000000000", // CPF padrão quando não obrigatório
-        address: orderData.customer_street,
-        complement: orderData.customer_complement || "Casa",
-        number: orderData.customer_number || "S/N",
-        district: orderData.customer_neighborhood || "Centro",
-        city: orderData.customer_city,
-        state_abbr: orderData.customer_state || "MG",
-        postal_code: recipientCep
-      };
-
-      // Prepare packages (exact format from user example)
-      const packages = [
-        {
-          weight: Math.max((appSettings?.default_weight_kg || 0.3) * 1000, 100), // Convert to grams
-          width: appSettings?.default_width_cm || 20,
-          height: appSettings?.default_height_cm || 10,
-          length: appSettings?.default_length_cm || 30,
-          insurance_value: orderData.total_amount || 200.00,
-          quantity: 1
-        }
-      ];
-
-      // STEP 1: Quote services first to find available service
+      // STEP 1: Quote services (cotação)
       const quotePayload = {
-        from: { postal_code: fromEntity.postal_code },
-        to: { postal_code: toEntity.postal_code },
+        from: { postal_code: onlyDigits(integration.from_cep) },
+        to: { postal_code: onlyDigits(order.customer_cep) },
         package: {
-          height: packages[0].height,
-          width: packages[0].width,
-          length: packages[0].length,
-          weight: packages[0].weight / 1000 // Convert to kg for quote
-        },
-        options: {
-          insurance_value: packages[0].insurance_value,
-          receipt: false,
-          own_hand: false
+          weight: (appSettings?.default_weight_kg || 0.3),
+          width: appSettings?.default_width_cm || 16,
+          height: appSettings?.default_height_cm || 4,
+          length: appSettings?.default_length_cm || 24
         }
       };
 
-      console.log('Step 1: Quoting services with payload:', JSON.stringify(quotePayload, null, 2));
+      console.log('Step 1: Quoting services with:', quotePayload);
 
       const quoteResponse = await fetch(`${baseUrl}/v2/me/shipment/calculate`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
-          'User-Agent': 'Sistema-Multitenant'
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
         },
         body: JSON.stringify(quotePayload)
       });
@@ -304,303 +201,378 @@ serve(async (req) => {
         const errorData = await quoteResponse.text();
         console.error('Quote error:', quoteResponse.status, errorData);
         
-        await supabase
-          .from('frete_envios')
-          .insert({
-            pedido_id: order_id,
-            status: 'error',
-            raw_response: { 
-              error: JSON.stringify({
-                error: 'Erro na cotação de frete',
-                details: errorData 
-              })
-            }
-          });
+        // Log error to webhook_logs with request ID
+        const requestId = quoteResponse.headers.get('x-request-id') || 'unknown';
+        await supabase.from('webhook_logs').insert({
+          tenant_id,
+          webhook_type: 'melhor_envio_quote',
+          status_code: quoteResponse.status,
+          payload: quotePayload,
+          response: errorData,
+          error_message: 'Erro na cotação: ' + errorData,
+          created_at: new Date().toISOString()
+        });
 
         return new Response(
-          JSON.stringify({ 
-            error: 'Erro na cotação de frete',
-            details: errorData 
-          }),
+          JSON.stringify({ error: 'Erro na cotação', details: errorData }),
           { status: quoteResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       const quoteData = await quoteResponse.json();
-      console.log('Quote response:', JSON.stringify(quoteData, null, 2));
+      console.log('Quote successful:', quoteData.length, 'services found');
 
-      // Find available service (prefer SEDEX id=2, then PAC id=1, then any available)
-      let availableService = quoteData.find((service: any) => !service.error && service.id === 2); // SEDEX
-      if (!availableService) {
-        availableService = quoteData.find((service: any) => !service.error && service.id === 1); // PAC
+      // Find available service (prefer SEDEX id=2, then PAC id=1)
+      let selectedService = quoteData.find((s: any) => !s.error && s.id === 2); // SEDEX
+      if (!selectedService) {
+        selectedService = quoteData.find((s: any) => !s.error && s.id === 1); // PAC
       }
-      if (!availableService) {
-        availableService = quoteData.find((service: any) => !service.error && service.id); // Any available
+      if (!selectedService) {
+        selectedService = quoteData.find((s: any) => !s.error); // Any available
       }
-      
-      if (!availableService) {
-        const errorDetails = quoteData.map((s: any) => s.error).filter(Boolean).join('; ');
-        
-        await supabase
-          .from('frete_envios')
-          .insert({
-            pedido_id: order_id,
-            status: 'error',
-            raw_response: { 
-              error: JSON.stringify({
-                error: 'Nenhum serviço disponível',
-                details: errorDetails || 'Todas as opções retornaram erro'
-              })
-            }
-          });
 
+      if (!selectedService) {
+        const errors = quoteData.map((s: any) => s.error).filter(Boolean);
         return new Response(
           JSON.stringify({ 
-            error: 'Nenhum serviço de frete disponível',
-            details: errorDetails || 'Todas as opções retornaram erro na cotação'
+            error: 'Nenhum serviço disponível',
+            details: errors.join('; ') 
           }),
           { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      console.log('Selected service:', availableService.id, availableService.name);
+      console.log('Selected service:', selectedService.id, selectedService.name);
 
-      // STEP 2: Create shipment using the exact payload format from user example
-      const shipmentPayload = {
-        from: fromEntity,
-        to: toEntity,
-        packages: packages,
-        service: availableService.id,
-        agency: null,
+      // STEP 2: Add to cart (payload mínimo conforme especificação)
+      const cartPayload = {
+        from: {
+          name: integration.from_name,
+          phone: onlyDigits(integration.from_phone),
+          email: integration.from_email,
+          address: {
+            postal_code: onlyDigits(integration.from_cep),
+            address: integration.from_address,
+            number: integration.from_number || "S/N",
+            complement: integration.from_complement || "",
+            district: integration.from_district,
+            city: integration.from_city,
+            state_abbr: integration.from_state
+          }
+        },
+        to: {
+          name: order.customer_name,
+          phone: onlyDigits(order.customer_phone),
+          email: `${onlyDigits(order.customer_phone)}@checkout.com`,
+          address: {
+            postal_code: onlyDigits(order.customer_cep),
+            address: order.customer_street,
+            number: order.customer_number || "S/N",
+            complement: order.customer_complement || "",
+            district: order.customer_neighborhood || "Centro",
+            city: order.customer_city,
+            state_abbr: order.customer_state || "MG"
+          }
+        },
+        service: selectedService.id,
         options: {
+          insurance_value: parseFloat(order.total_amount?.toString() || '0'),
           receipt: false,
           own_hand: false,
           reverse: false,
-          non_commercial: false
+          non_commercial: true,
+          platform: "OrderZaps",
+          tags: [{ 
+            tag: `pedido_${order.id}`, 
+            url: `https://app.orderzaps.com/pedidos/${order.id}` 
+          }]
         },
-        payment: {
-          method: "wallet"
+        package: {
+          weight: (appSettings?.default_weight_kg || 0.3),
+          width: appSettings?.default_width_cm || 16,
+          height: appSettings?.default_height_cm || 4,
+          length: appSettings?.default_length_cm || 24
         }
       };
 
-      console.log('Step 2: Creating shipment with payload:', JSON.stringify(shipmentPayload, null, 2));
+      console.log('Step 2: Adding to cart with:', JSON.stringify(cartPayload, null, 2));
 
-      const shipmentResponse = await fetch(`${baseUrl}/v2/me/cart`, {
+      const cartResponse = await fetch(`${baseUrl}/v2/me/cart`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
-          'User-Agent': 'Sistema-Multitenant'
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
         },
-        body: JSON.stringify(shipmentPayload)
+        body: JSON.stringify(cartPayload)
       });
 
-      if (!shipmentResponse.ok) {
-        const errorData = await shipmentResponse.text();
-        console.error('Shipment creation error:', shipmentResponse.status, errorData);
+      if (!cartResponse.ok) {
+        const errorData = await cartResponse.text();
+        console.error('Cart error:', cartResponse.status, errorData);
         
-        await supabase
-          .from('frete_envios')
-          .insert({
-            pedido_id: order_id,
-            status: 'error',
-            raw_response: { 
-              error: JSON.stringify({
-                error: 'Erro ao adicionar ao carrinho',
-                details: errorData 
-              })
+        // Handle 401 with retry
+        if (cartResponse.status === 401) {
+          console.log('Token invalid, trying to refresh and retry...');
+          try {
+            const newToken = await ensureValidToken(supabase, integration);
+            // Retry the request with new token
+            const retryResponse = await fetch(`${baseUrl}/v2/me/cart`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${newToken}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+              },
+              body: JSON.stringify(cartPayload)
+            });
+
+            if (retryResponse.ok) {
+              const retryData = await retryResponse.json();
+              console.log('Retry successful after token refresh');
+              // Continue with checkout...
+              return await proceedWithCheckout(supabase, baseUrl, newToken, retryData.id, order_id, selectedService, tenant_id);
             }
-          });
+          } catch (refreshError) {
+            console.error('Refresh and retry failed:', refreshError);
+          }
+        }
+
+        const requestId = cartResponse.headers.get('x-request-id') || 'unknown';
+        await supabase.from('webhook_logs').insert({
+          tenant_id,
+          webhook_type: 'melhor_envio_cart',
+          status_code: cartResponse.status,
+          payload: cartPayload,
+          response: errorData,
+          error_message: 'Erro ao adicionar ao carrinho: ' + errorData,
+          created_at: new Date().toISOString()
+        });
 
         return new Response(
-          JSON.stringify({ 
-            error: 'Erro ao adicionar ao carrinho',
-            details: errorData 
-          }),
-          { status: shipmentResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ error: 'Erro ao adicionar ao carrinho', details: errorData }),
+          { status: cartResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      const shipmentData = await shipmentResponse.json();
-      console.log('Shipment created:', JSON.stringify(shipmentData, null, 2));
+      const cartData = await cartResponse.json();
+      console.log('Added to cart:', cartData.id);
 
-      // STEP 3: Checkout (compra da etiqueta)
-      if (shipmentData.id) {
-        console.log('Step 3: Checkout shipment ID:', shipmentData.id);
-        
-        const checkoutResponse = await fetch(`${baseUrl}/v2/me/shipment/checkout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
-            'User-Agent': 'Sistema-Multitenant'
-          },
-          body: JSON.stringify({
-            orders: [shipmentData.id]
-          })
-        });
+      // Continue with checkout
+      return await proceedWithCheckout(supabase, baseUrl, accessToken, cartData.id, order_id, selectedService, tenant_id);
 
-        if (!checkoutResponse.ok) {
-          const checkoutError = await checkoutResponse.text();
-          console.error('Checkout error:', checkoutResponse.status, checkoutError);
-          
-          // Save shipment created but checkout failed
-          await supabase
-            .from('frete_envios')
-            .insert({
-              pedido_id: order_id,
-              shipment_id: shipmentData.id,
-              status: 'created_checkout_failed',
-              service_price: availableService.price,
-              raw_response: { success: shipmentData, checkout_error: checkoutError }
-            });
+    } else if (action === 'generate_payment_link') {
+      // Gerar link de pagamento para etiqueta já criada
+      const { data: shipment } = await supabase
+        .from('frete_envios')
+        .select('*')
+        .eq('pedido_id', order_id)
+        .single();
 
-          return new Response(JSON.stringify({
-            success: true,
-            shipment: shipmentData,
-            service: availableService,
-            warning: 'Envio criado mas falhou no checkout: ' + checkoutError
-          }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        }
-
-        const checkoutData = await checkoutResponse.json();
-        console.log('Checkout response:', JSON.stringify(checkoutData, null, 2));
-
-        // STEP 4: Generate label (só funciona após checkout)
-        const generateResponse = await fetch(`${baseUrl}/v2/me/shipment/generate`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
-            'User-Agent': 'Sistema-Multitenant'
-          },
-          body: JSON.stringify({
-            orders: [shipmentData.id]
-          })
-        });
-
-        if (!generateResponse.ok) {
-          const generateError = await generateResponse.text();
-          console.error('Generate error:', generateResponse.status, generateError);
-          
-          // Save checkout successful but generate failed
-          await supabase
-            .from('frete_envios')
-            .insert({
-              pedido_id: order_id,
-              shipment_id: shipmentData.id,
-              status: 'checkout_success_generate_failed',
-              service_price: availableService.price,
-              raw_response: { 
-                success: shipmentData, 
-                checkout: checkoutData, 
-                generate_error: generateError 
-              }
-            });
-
-          return new Response(JSON.stringify({
-            success: true,
-            shipment: shipmentData,
-            checkout: checkoutData,
-            service: availableService,
-            warning: 'Checkout realizado mas falhou ao gerar etiqueta: ' + generateError
-          }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        }
-
-        const generateData = await generateResponse.json();
-        console.log('Generate response:', JSON.stringify(generateData, null, 2));
-
-        // STEP 5: Get print URL for label
-        const printResponse = await fetch(`${baseUrl}/v2/me/shipment/print`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
-            'User-Agent': 'Sistema-Multitenant'
-          },
-          body: JSON.stringify({
-            orders: [shipmentData.id]
-          })
-        });
-
-        let printData = null;
-        if (printResponse.ok) {
-          printData = await printResponse.json();
-          console.log('Print response:', JSON.stringify(printData, null, 2));
-        } else {
-          const printError = await printResponse.text();
-          console.error('Print error:', printResponse.status, printError);
-        }
-        
-        // Save complete successful flow
-        await supabase
-          .from('frete_envios')
-          .insert({
-            pedido_id: order_id,
-            shipment_id: shipmentData.id,
-            status: 'completed',
-            service_price: availableService.price,
-            label_url: printData?.url || null,
-            tracking_code: shipmentData.tracking || null,
-            raw_response: { 
-              success: shipmentData, 
-              checkout: checkoutData,
-              generate: generateData,
-              print: printData
-            }
-          });
-
-        return new Response(JSON.stringify({
-          success: true,
-          shipment: shipmentData,
-          checkout: checkoutData,
-          generate: generateData,
-          print: printData,
-          service: availableService
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+      if (!shipment || !shipment.cart_id) {
+        return new Response(
+          JSON.stringify({ error: 'Envio não encontrado ou não adicionado ao carrinho' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
 
-      // Save successful shipment creation
+      // Use Mercado Pago para gerar link de pagamento
+      // TODO: Implementar integração com MP para pagamento de etiquetas
+
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          payment_link: `https://app.orderzaps.com/payment/shipping/${order_id}`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } else if (action === 'download_label') {
+      // Download PDF da etiqueta
+      const { data: shipment } = await supabase
+        .from('frete_envios')
+        .select('*')
+        .eq('pedido_id', order_id)
+        .single();
+
+      if (!shipment || !shipment.shipment_id) {
+        return new Response(
+          JSON.stringify({ error: 'Envio não encontrado' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const labelResponse = await fetch(`${baseUrl}/v2/me/shipment/labels?orders[]=${shipment.shipment_id}&format=pdf`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+        },
+      });
+
+      if (!labelResponse.ok) {
+        const errorData = await labelResponse.text();
+        return new Response(
+          JSON.stringify({ error: 'Erro ao baixar etiqueta', details: errorData }),
+          { status: labelResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const labelUrl = labelResponse.url;
+      
+      // Update shipment with label URL
       await supabase
         .from('frete_envios')
-        .insert({
-          pedido_id: order_id,
-          shipment_id: shipmentData.id || null,
-          status: 'created',
-          service_price: availableService.price,
-          raw_response: { success: shipmentData }
-        });
+        .update({ label_url: labelUrl })
+        .eq('id', shipment.id);
 
-      return new Response(JSON.stringify({
-        success: true,
-        shipment: shipmentData,
-        service: availableService
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      return new Response(
+        JSON.stringify({ success: true, label_url: labelUrl }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } else if (action === 'track_shipment') {
+      // Rastrear envio
+      const { data: shipment } = await supabase
+        .from('frete_envios')
+        .select('*')
+        .eq('pedido_id', order_id)
+        .single();
+
+      if (!shipment || !shipment.shipment_id) {
+        return new Response(
+          JSON.stringify({ error: 'Envio não encontrado' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const trackingResponse = await fetch(`${baseUrl}/v2/me/shipment/tracking/${shipment.shipment_id}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+        },
       });
+
+      if (!trackingResponse.ok) {
+        const errorData = await trackingResponse.text();
+        return new Response(
+          JSON.stringify({ error: 'Erro ao rastrear envio', details: errorData }),
+          { status: trackingResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const trackingData = await trackingResponse.json();
+      
+      // Update tracking info if available
+      if (trackingData.tracking_code) {
+        await supabase
+          .from('frete_envios')
+          .update({ 
+            tracking_code: trackingData.tracking_code,
+            status: trackingData.status || 'in_transit'
+          })
+          .eq('id', shipment.id);
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, tracking: trackingData }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Handle other actions
-    return new Response(JSON.stringify({ error: 'Ação não implementada' }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({ error: 'Ação não reconhecida' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
-  } catch (error: any) {
-    console.error('Labels error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+  } catch (error) {
+    console.error('Error in melhor-envio-labels:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 });
+
+// Helper function for checkout process
+async function proceedWithCheckout(supabase: any, baseUrl: string, accessToken: string, cartId: string, orderId: number, selectedService: any, tenantId: string) {
+  console.log('Step 3: Checkout cart ID:', cartId);
+
+  const checkoutPayload = { orders: [cartId] };
+  
+  const checkoutResponse = await fetch(`${baseUrl}/v2/me/shipment/checkout`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+    },
+    body: JSON.stringify(checkoutPayload)
+  });
+
+  // Save shipment info regardless of checkout result
+  const shipmentData = {
+    pedido_id: orderId,
+    cart_id: cartId,
+    service_price: selectedService.price,
+    status: 'pending_payment',
+    raw_response: { service: selectedService, cart_id: cartId }
+  };
+
+  if (!checkoutResponse.ok) {
+    const checkoutError = await checkoutResponse.text();
+    console.log('Checkout failed, but cart created:', checkoutError);
+    
+    shipmentData.status = 'cart_created';
+    shipmentData.raw_response = { 
+      ...shipmentData.raw_response, 
+      checkout_error: checkoutError 
+    };
+    
+    await supabase.from('frete_envios').upsert(shipmentData, { 
+      onConflict: 'pedido_id' 
+    });
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: 'Adicionado ao carrinho. Aguardando pagamento.',
+      cart_id: cartId,
+      service: selectedService,
+      warning: 'Checkout falhou: ' + checkoutError
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+
+  const checkoutData = await checkoutResponse.json();
+  console.log('Checkout successful:', checkoutData);
+
+  // Update with successful checkout
+  shipmentData.status = 'paid';
+  shipmentData.raw_response = { 
+    ...shipmentData.raw_response, 
+    checkout: checkoutData 
+  };
+
+  if (checkoutData.purchase?.orders?.[0]) {
+    shipmentData.shipment_id = checkoutData.purchase.orders[0].id;
+    shipmentData.tracking_code = checkoutData.purchase.orders[0].tracking;
+  }
+
+  await supabase.from('frete_envios').upsert(shipmentData, { 
+    onConflict: 'pedido_id' 
+  });
+
+  return new Response(JSON.stringify({
+    success: true,
+    message: 'Etiqueta comprada com sucesso!',
+    shipment: shipmentData,
+    checkout: checkoutData
+  }), {
+    headers: { 'Content-Type': 'application/json', ...corsHeaders }
+  });
+}
