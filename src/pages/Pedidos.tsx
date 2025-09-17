@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -195,10 +196,12 @@ const Pedidos = () => {
     setProcessingIds(prev => new Set(prev).add(orderId));
     
     try {
-      // Se o pedido foi marcado como pago, enviar mensagem automática
+      // Se o pedido foi marcado como pago, enviar mensagem automática e para o Bling
       let messageSent = false;
       if (!currentStatus) {
         messageSent = await sendPaidOrderMessage(orderId);
+        // Enviar pedido para o Bling
+        await sendOrderToBling(orderId);
       }
 
       // Update payment status in database
@@ -238,6 +241,49 @@ const Pedidos = () => {
         newSet.delete(orderId);
         return newSet;
       });
+    }
+  };
+
+  const sendOrderToBling = async (orderId: number) => {
+    try {
+      const order = orders.find(o => o.id === orderId);
+      if (!order) {
+        console.error('Order not found:', orderId);
+        return false;
+      }
+
+      // Call Bling integration function
+      const { error } = await supabase.functions.invoke('bling-integration', {
+        body: {
+          action: 'create_order',
+          order_id: orderId,
+          customer_phone: order.customer_phone
+        }
+      });
+
+      if (error) {
+        console.error('Error sending order to Bling:', error);
+        toast({
+          title: 'Erro no Bling',
+          description: 'Erro ao enviar pedido para o Bling: ' + error.message,
+          variant: 'destructive'
+        });
+        return false;
+      }
+
+      toast({
+        title: 'Sucesso',
+        description: 'Pedido enviado para o Bling com sucesso!'
+      });
+      return true;
+    } catch (error) {
+      console.error('Error calling Bling function:', error);
+      toast({
+        title: 'Erro no Bling',
+        description: 'Falha ao comunicar com a integração do Bling',
+        variant: 'destructive'
+      });
+      return false;
     }
   };
 
