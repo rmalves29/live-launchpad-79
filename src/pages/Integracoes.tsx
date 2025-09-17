@@ -253,16 +253,24 @@ export default function Integracoes() {
     }
   }, [toast]);
 
-  const generateBlingAuthUrl = (tenantId: string) => {
-    const clientId = 'd1f9ca5cbaa7fd131da159a9afcf98a92d96c64';
+  const generateBlingAuthUrl = async (tenantId: string) => {
+    // Buscar client_id do banco de dados para o tenant específico
+    const { data: blingData, error } = await supabase
+      .from('bling_integrations')
+      .select('client_id')
+      .eq('tenant_id', tenantId)
+      .single();
+    
+    // Fallback para client_id padrão se não encontrar no banco
+    const clientId = blingData?.client_id || 'd1f9ca5cbaa7fd131da159a9afcf98a92d96c64';
     const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa';
     const state = tenantId;
     
     return `https://api.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
   };
 
-  const copyBlingAuthUrl = (tenantId: string) => {
-    const url = generateBlingAuthUrl(tenantId);
+  const copyBlingAuthUrl = async (tenantId: string) => {
+    const url = await generateBlingAuthUrl(tenantId);
     navigator.clipboard.writeText(url);
     toast({
       title: "Link copiado!",
@@ -271,7 +279,7 @@ export default function Integracoes() {
     });
   };
 
-  const openBlingAuth = () => {
+  const openBlingAuth = async () => {
     if (!tenantId.trim()) {
       toast({
         title: "Erro",
@@ -280,10 +288,11 @@ export default function Integracoes() {
       });
       return;
     }
-    window.open(generateBlingAuthUrl(tenantId.trim()), '_blank');
+    const url = await generateBlingAuthUrl(tenantId.trim());
+    window.open(url, '_blank');
   };
 
-  const copyBlingAuth = () => {
+  const copyBlingAuth = async () => {
     if (!tenantId.trim()) {
       toast({
         title: "Erro", 
@@ -292,7 +301,7 @@ export default function Integracoes() {
       });
       return;
     }
-    copyBlingAuthUrl(tenantId.trim());
+    await copyBlingAuthUrl(tenantId.trim());
   };
 
   const replicateBlingToAllTenants = async () => {
