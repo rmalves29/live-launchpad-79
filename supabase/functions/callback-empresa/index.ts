@@ -24,6 +24,8 @@ serve(async (req) => {
     console.log('Bling OAuth callback received:', { code, state });
 
     const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa';
+    
+    console.log('IMPORTANTE: Verificar se este redirect_uri está cadastrado no aplicativo Bling:', redirectUri);
 
     // Criar cliente Supabase primeiro para buscar credenciais
     const supabase = createClient(
