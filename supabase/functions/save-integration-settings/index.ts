@@ -12,7 +12,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { melhor_envio, mercado_pago, tenant_id } = await req.json()
+    const { melhor_envio, mercado_pago, bling, tenant_id } = await req.json()
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -133,6 +133,56 @@ Deno.serve(async (req) => {
       }
 
       console.log('Mercado Pago settings saved successfully')
+    }
+
+    // Save Bling settings to bling_integrations (tenant-specific)
+    if (bling && tenant_id) {
+      const blingData = {
+        tenant_id,
+        client_id: bling.client_id || null,
+        client_secret: bling.client_secret || null,
+        access_token: bling.access_token || null,
+        refresh_token: bling.refresh_token || null,
+        environment: bling.environment || 'sandbox',
+        is_active: true,
+        updated_at: new Date().toISOString()
+      }
+
+      // Check if record exists
+      const { data: existing } = await supabase
+        .from('bling_integrations')
+        .select('id')
+        .eq('tenant_id', tenant_id)
+        .maybeSingle()
+
+      let error
+      if (existing) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('bling_integrations')
+          .update(blingData)
+          .eq('tenant_id', tenant_id)
+        error = updateError
+      } else {
+        // Insert new record
+        const { error: insertError } = await supabase
+          .from('bling_integrations')
+          .insert({
+            ...blingData,
+            created_at: new Date().toISOString()
+          })
+        error = insertError
+      }
+
+      if (error) {
+        console.error('Error saving Bling settings:', error)
+        return new Response(JSON.stringify({ error: 'Failed to save Bling settings' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      console.log('Bling settings saved successfully')
     }
 
     return new Response(JSON.stringify({ 
