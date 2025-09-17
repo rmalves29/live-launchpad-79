@@ -29,11 +29,24 @@ serve(async (req) => {
     const clientId = (Deno.env.get('BLING_CLIENT_ID') ?? '').trim();
     const clientSecret = (Deno.env.get('BLING_CLIENT_SECRET') ?? '').trim();
     
+    console.log('Environment variables check:', {
+      hasClientId: !!clientId,
+      clientIdLength: clientId.length,
+      clientIdStart: clientId.substring(0, 8) + '...',
+      hasClientSecret: !!clientSecret,
+      clientSecretLength: clientSecret.length
+    });
+    
     if (!clientId || !clientSecret) {
+      console.error('Missing credentials:', { clientId: !!clientId, clientSecret: !!clientSecret });
       return new Response(
         JSON.stringify({ 
           step: 'token', 
-          error: 'Missing env BLING_CLIENT_ID/SECRET' 
+          error: 'Missing env BLING_CLIENT_ID/SECRET',
+          debug: {
+            hasClientId: !!clientId,
+            hasClientSecret: !!clientSecret
+          }
         }), 
         { 
           status: 500,
