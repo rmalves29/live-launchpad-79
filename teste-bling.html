@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Integração Bling</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .result { margin: 20px 0; padding: 15px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Teste de Integração Bling</h1>
+    
+    <button onclick="testarIntegracao()">🧪 Testar Integração</button>
+    
+    <div id="resultado"></div>
+    
+    <script>
+        async function testarIntegracao() {
+            const resultadoDiv = document.getElementById('resultado');
+            resultadoDiv.innerHTML = '<div class="info">Testando integração... Por favor aguarde.</div>';
+            
+            try {
+                console.log('🔄 Iniciando teste da integração Bling...');
+                
+                const testData = {
+                    action: 'create_order',
+                    order_id: 23,
+                    customer_phone: '5531993786530',
+                    tenant_id: '08f2b1b9-3988-489e-8186-c60f0c0b0622'
+                };
+                
+                const response = await fetch('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-integration', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4'
+                    },
+                    body: JSON.stringify(testData)
+                });
+                
+                const responseText = await response.text();
+                
+                let responseData;
+                try {
+                    responseData = JSON.parse(responseText);
+                } catch {
+                    responseData = responseText;
+                }
+                
+                console.log('📊 Status da resposta:', response.status);
+                console.log('📦 Dados da resposta:', responseData);
+                
+                if (response.ok) {
+                    resultadoDiv.innerHTML = `
+                        <div class="success">
+                            <h3>✅ SUCESSO!</h3>
+                            <p>A integração com Bling funcionou corretamente!</p>
+                            <p><strong>Status:</strong> ${response.status}</p>
+                            <pre>${JSON.stringify(responseData, null, 2)}</pre>
+                        </div>
+                    `;
+                } else {
+                    resultadoDiv.innerHTML = `
+                        <div class="error">
+                            <h3>❌ ERRO</h3>
+                            <p>A integração falhou com status ${response.status}</p>
+                            <p><strong>Detalhes:</strong></p>
+                            <pre>${JSON.stringify(responseData, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('💥 Erro no teste:', error);
+                resultadoDiv.innerHTML = `
+                    <div class="error">
+                        <h3>💥 ERRO DE CONEXÃO</h3>
+                        <p>Falha ao conectar com o serviço:</p>
+                        <pre>${error.message}</pre>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
