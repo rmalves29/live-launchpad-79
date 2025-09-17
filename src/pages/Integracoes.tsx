@@ -38,11 +38,22 @@ export default function Integracoes() {
   const [logs, setLogs] = useState<WebhookLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [retryLoading, setRetryLoading] = useState<{ [key: number]: boolean }>({});
+  const [blingIntegration, setBlingIntegration] = useState<any>(null);
   const { toast } = useToast();
 
   const loadData = async () => {
     setLoading(true);
     try {
+      // Carregar integração Bling
+      const { data: blingData, error: blingError } = await supabase
+        .from('bling_integrations')
+        .select('*')
+        .single();
+      
+      if (!blingError && blingData) {
+        setBlingIntegration(blingData);
+      }
+
       // Carregar pedidos pagos
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -187,6 +198,24 @@ export default function Integracoes() {
     }
   }, [toast]);
 
+  const generateBlingAuthUrl = (tenantId: string) => {
+    const clientId = 'd1f9ca5c5ceb91ca4c1e81c037b4e6b5ac4f2f1f';
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa';
+    const state = tenantId;
+    
+    return `https://api.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+  };
+
+  const copyBlingAuthUrl = (tenantId: string) => {
+    const url = generateBlingAuthUrl(tenantId);
+    navigator.clipboard.writeText(url);
+    toast({
+      title: "Link copiado!",
+      description: "Link de autorização Bling copiado para a área de transferência.",
+      variant: "default",
+    });
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -201,6 +230,62 @@ export default function Integracoes() {
           Atualizar
         </Button>
       </div>
+
+      {/* Seção de Configuração Bling */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <span>Configuração Bling</span>
+            {blingIntegration?.access_token ? (
+              <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Conectado
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="bg-orange-100 text-orange-800 border-orange-200">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                Não conectado
+              </Badge>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Configure a integração com o Bling para sincronização de pedidos
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 bg-muted rounded-lg">
+            <h4 className="font-medium mb-2">Link de Autorização para Tenant:</h4>
+            <code className="text-sm bg-background p-2 rounded border block mb-3">
+              08f2b1b9-3988-489e-8186-c60f0c0b0622
+            </code>
+            <div className="flex gap-2">
+              <Button 
+                onClick={() => window.open(generateBlingAuthUrl('08f2b1b9-3988-489e-8186-c60f0c0b0622'), '_blank')}
+                className="flex items-center gap-2"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Autorizar Bling
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => copyBlingAuthUrl('08f2b1b9-3988-489e-8186-c60f0c0b0622')}
+              >
+                Copiar Link
+              </Button>
+            </div>
+          </div>
+          
+          {blingIntegration?.access_token && (
+            <div className="text-sm text-muted-foreground">
+              <p>✓ Token de acesso configurado</p>
+              <p>✓ Ambiente: {blingIntegration.environment}</p>
+              {blingIntegration.expires_at && (
+                <p>⏰ Expira em: {new Date(blingIntegration.expires_at).toLocaleString('pt-BR')}</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="callbacks" className="space-y-4">
         <TabsList>
