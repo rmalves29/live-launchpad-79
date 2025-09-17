@@ -25,70 +25,36 @@ serve(async (req) => {
 
     const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa';
 
-    // 1) Trocar code -> tokens
-    const clientId = (Deno.env.get('BLING_CLIENT_ID') ?? '').trim();
-    const clientSecret = (Deno.env.get('BLING_CLIENT_SECRET') ?? '').trim();
-    
-    console.log('Environment variables check:', {
-      hasClientId: !!clientId,
-      clientIdLength: clientId.length,
-      clientIdStart: clientId.substring(0, 8) + '...',
-      hasClientSecret: !!clientSecret,
-      clientSecretLength: clientSecret.length
-    });
-    
+    // 1) Sanitizar envs (remove aspas e quebras)
+    const sanitize = (s: string) => s.replace(/[\r\n]/g, '').replace(/^['"]+|['"]+$/g, '').trim();
+    const clientId = sanitize(Deno.env.get('BLING_CLIENT_ID') ?? '');
+    const clientSecret = sanitize(Deno.env.get('BLING_CLIENT_SECRET') ?? '');
+
+    console.log('[bling oauth] id_prefix=', clientId.slice(0,8), 'secret_len=', clientSecret.length);
+
     if (!clientId || !clientSecret) {
-      console.error('Missing credentials:', { clientId: !!clientId, clientSecret: !!clientSecret });
-      return new Response(
-        JSON.stringify({ 
-          step: 'token', 
-          error: 'Missing env BLING_CLIENT_ID/SECRET',
-          debug: {
-            hasClientId: !!clientId,
-            hasClientSecret: !!clientSecret
-          }
-        }), 
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+      return new Response(JSON.stringify({ step:'token', error:'Missing envs' }),
+        { status:500, headers:{ ...corsHeaders, 'Content-Type':'application/json' }});
     }
 
-    // Basic base64(client_id:client_secret)
+    // 2) Basic Auth (somente no header)
     const basic = btoa(`${clientId}:${clientSecret}`);
 
+    // 3) Body SEM credenciais (redirect_uri é opcional p/ Bling)
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
-      code,
-      redirect_uri: redirectUri,
-      client_id: clientId,
-      client_secret: clientSecret
+      code
+      // se quiser manter: redirect_uri
+      // redirect_uri: redirectUri
     });
 
-    console.log('Requesting Bling token exchange with Basic Auth:', {
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      has_client_secret: !!clientSecret
-    });
-
-    console.log('Final request details:', {
-      url: 'https://api.bling.com.br/Api/v3/oauth/token',
-      basicAuth: `${clientId.substring(0, 8)}...:${clientSecret.substring(0, 8)}...`,
-      bodyParams: {
-        grant_type: 'authorization_code',
-        code: code.substring(0, 8) + '...',
-        redirect_uri: redirectUri,
-        client_id: clientId.substring(0, 8) + '...'
-      }
-    });
-
+    // 4) Endpoint + headers conforme manual
     const tokenResponse = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${basic}`,
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
+        'Accept': '1.0'
       },
       body
     });
