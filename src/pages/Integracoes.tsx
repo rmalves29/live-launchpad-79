@@ -171,7 +171,21 @@ export default function Integracoes() {
 
   useEffect(() => {
     loadData();
-  }, []);
+    
+    // Verificar se houve sucesso na integração Bling
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('bling') === 'ok') {
+      toast({
+        title: "Sucesso!",
+        description: "Integração com Bling configurada com sucesso.",
+        variant: "default",
+      });
+      
+      // Limpar parâmetro da URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [toast]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">

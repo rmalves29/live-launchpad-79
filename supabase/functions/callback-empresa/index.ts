@@ -131,7 +131,7 @@ serve(async (req) => {
     console.log('Bling OAuth process completed successfully');
 
     // 3) Redirecionar de volta para a UI
-    return Response.redirect('https://app.orderzaps.com/configuracoes?bling=ok', 302);
+    return Response.redirect('https://app.orderzaps.com/integracoes?bling=ok', 302);
 
   } catch (error) {
     console.error('Erro no callback Bling:', error);
