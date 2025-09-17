@@ -19,6 +19,7 @@ interface Customer {
   id: number;
   phone: string;
   name: string;
+  email?: string;
   cpf?: string;
   street?: string;
   number?: string;
@@ -546,24 +547,28 @@ const Clientes = () => {
                                           <CardHeader>
                                             <CardTitle>Informações Pessoais</CardTitle>
                                           </CardHeader>
-                                          <CardContent className="grid grid-cols-2 gap-4">
-                                            <div>
-                                              <Label className="text-sm font-medium">Nome</Label>
-                                              <p className="text-sm">{selectedCustomer?.name}</p>
-                                            </div>
-                                            <div>
-                                              <Label className="text-sm font-medium">Telefone</Label>
-                                              <p className="text-sm font-mono">{selectedCustomer ? formatPhone(selectedCustomer.phone) : ''}</p>
-                                            </div>
-                                            <div>
-                                              <Label className="text-sm font-medium">CPF</Label>
-                                              <p className="text-sm">{selectedCustomer?.cpf || '-'}</p>
-                                            </div>
-                                            <div>
-                                              <Label className="text-sm font-medium">Cadastrado em</Label>
-                                              <p className="text-sm">{selectedCustomer ? formatDate(selectedCustomer.created_at) : ''}</p>
-                                            </div>
-                                          </CardContent>
+                                           <CardContent className="grid grid-cols-2 gap-4">
+                                             <div>
+                                               <Label className="text-sm font-medium">Nome</Label>
+                                               <p className="text-sm">{selectedCustomer?.name}</p>
+                                             </div>
+                                             <div>
+                                               <Label className="text-sm font-medium">Telefone</Label>
+                                               <p className="text-sm font-mono">{selectedCustomer ? formatPhone(selectedCustomer.phone) : ''}</p>
+                                             </div>
+                                             <div>
+                                               <Label className="text-sm font-medium">E-mail</Label>
+                                               <p className="text-sm">{selectedCustomer?.email || '-'}</p>
+                                             </div>
+                                             <div>
+                                               <Label className="text-sm font-medium">CPF</Label>
+                                               <p className="text-sm">{selectedCustomer?.cpf || '-'}</p>
+                                             </div>
+                                             <div>
+                                               <Label className="text-sm font-medium">Cadastrado em</Label>
+                                               <p className="text-sm">{selectedCustomer ? formatDate(selectedCustomer.created_at) : ''}</p>
+                                             </div>
+                                           </CardContent>
                                         </Card>
 
                                         <Card>

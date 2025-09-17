@@ -14,6 +14,7 @@ interface Customer {
   tenant_id: string;
   name: string;
   phone: string;
+  email?: string;
   cpf?: string;
   street?: string;
   number?: string;
@@ -28,6 +29,7 @@ interface Customer {
 interface CustomerForm {
   name: string;
   phone: string;
+  email: string;
   cpf: string;
   street: string;
   number: string;
@@ -44,6 +46,7 @@ export default function TenantCustomers() {
   const [formData, setFormData] = useState<CustomerForm>({
     name: '',
     phone: '',
+    email: '',
     cpf: '',
     street: '',
     number: '',
@@ -87,6 +90,7 @@ export default function TenantCustomers() {
     setFormData({
       name: '',
       phone: '',
+      email: '',
       cpf: '',
       street: '',
       number: '',
@@ -107,6 +111,7 @@ export default function TenantCustomers() {
     setFormData({
       name: customer.name,
       phone: customer.phone,
+      email: customer.email || '',
       cpf: customer.cpf || '',
       street: customer.street || '',
       number: customer.number || '',
@@ -127,6 +132,7 @@ export default function TenantCustomers() {
         tenant_id: profile.tenant_id,
         name: formData.name,
         phone: formData.phone,
+        email: formData.email || null,
         cpf: formData.cpf || null,
         street: formData.street || null,
         number: formData.number || null,
@@ -300,6 +306,17 @@ export default function TenantCustomers() {
                     placeholder="Ex: 11987654321"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">E-mail</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="Ex: joao@email.com"
+                />
               </div>
 
               <div className="space-y-2">
