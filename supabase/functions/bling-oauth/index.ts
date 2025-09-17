@@ -147,12 +147,29 @@ serve(async (req) => {
     }
 
     if (action === 'refresh_token') {
+      console.log('Starting refresh token process for tenant:', tenant_id);
+      
       // Implementar refresh token se necessário
-      const { data: blingConfig } = await supabase
+      const { data: blingConfig, error: configError } = await supabase
         .from('bling_integrations')
         .select('*')
         .eq('tenant_id', tenant_id)
         .single();
+
+      console.log('Bling config loaded:', {
+        has_config: !!blingConfig,
+        config_error: configError,
+        has_refresh_token: !!blingConfig?.refresh_token,
+        has_client_id: !!blingConfig?.client_id,
+        has_client_secret: !!blingConfig?.client_secret
+      });
+
+      if (configError || !blingConfig) {
+        return new Response(
+          JSON.stringify({ error: 'Configuração Bling não encontrada', details: configError }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
 
       if (!blingConfig?.refresh_token) {
         return new Response(
@@ -175,6 +192,14 @@ serve(async (req) => {
       const refreshAuthData = encoder.encode(`${blingConfig.client_id}:${blingConfig.client_secret}`);
       const basicAuth = btoa(String.fromCharCode(...new Uint8Array(refreshAuthData)));
 
+      console.log('Making refresh token request to Bling:', {
+        url: refreshUrl,
+        grant_type: refreshData.grant_type,
+        has_refresh_token: !!refreshData.refresh_token,
+        client_id: blingConfig.client_id,
+        has_client_secret: !!blingConfig.client_secret
+      });
+
       const refreshResponse = await fetch(refreshUrl, {
         method: 'POST',
         headers: {
@@ -186,8 +211,15 @@ serve(async (req) => {
       });
 
       const refreshResult = await refreshResponse.json();
+      
+      console.log('Bling refresh response:', {
+        status: refreshResponse.status,
+        ok: refreshResponse.ok,
+        result: refreshResult
+      });
 
       if (!refreshResponse.ok) {
+        console.error('Bling refresh token error:', refreshResult);
         return new Response(
           JSON.stringify({ error: 'Erro ao renovar token', details: refreshResult }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
@@ -195,7 +227,7 @@ serve(async (req) => {
       }
 
       // Atualizar tokens
-      await supabase
+      const { error: updateError } = await supabase
         .from('bling_integrations')
         .update({
           access_token: refreshResult.access_token,
@@ -204,6 +236,15 @@ serve(async (req) => {
         })
         .eq('tenant_id', tenant_id);
 
+      if (updateError) {
+        console.error('Error updating tokens:', updateError);
+        return new Response(
+          JSON.stringify({ error: 'Erro ao salvar novos tokens', details: updateError }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+
+      console.log('Token refreshed successfully for tenant:', tenant_id);
       return new Response(
         JSON.stringify({ message: 'Token renovado com sucesso' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
