@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, ExternalLink, AlertCircle, CheckCircle, Clock, X, Copy } from "lucide-react";
 import { CallbackInfo } from "@/components/CallbackInfo";
+import { useTenantContext } from '@/contexts/TenantContext';
 
 interface WebhookLog {
   id: string;
@@ -44,6 +45,7 @@ export default function Integracoes() {
   const [allTenants, setAllTenants] = useState<any[]>([]);
   const [replicating, setReplicating] = useState(false);
   const { toast } = useToast();
+  const { tenantId: currentTenantId } = useTenantContext();
 
   const loadData = async () => {
     setLoading(true);
@@ -242,10 +244,14 @@ export default function Integracoes() {
         description: "Verificando conexão com a API do Bling",
       });
       
+      if (!currentTenantId) {
+        throw new Error('Nenhum tenant selecionado');
+      }
+
       const { data, error } = await supabase.functions.invoke('bling-integration', {
         body: {
           action: 'test_connection',
-          tenant_id: '08f2b1b9-3988-489e-8186-c60f0c0b0622'
+          tenant_id: currentTenantId
         }
       });
       

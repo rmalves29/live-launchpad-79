@@ -33,6 +33,7 @@ interface Order {
   observation?: string;
   item_added_message_sent?: boolean;
   payment_confirmation_sent?: boolean;
+  tenant_id: string;
   customer?: {
     name?: string;
     cpf?: string;
@@ -83,7 +84,7 @@ const Pedidos = () => {
       setLoading(true);
       let query = supabaseTenant
         .from('orders')
-        .select('*')
+        .select('*, tenant_id')
         .order('created_at', { ascending: false });
 
       if (filterPaid !== null) {
@@ -257,7 +258,8 @@ const Pedidos = () => {
         body: {
           action: 'create_order',
           order_id: orderId,
-          customer_phone: order.customer_phone
+          customer_phone: order.customer_phone,
+          tenant_id: order.tenant_id
         }
       });
 
