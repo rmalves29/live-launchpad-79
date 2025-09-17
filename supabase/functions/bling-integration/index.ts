@@ -257,8 +257,72 @@ serve(async (req) => {
         .eq('tenant_id', tenant_id)
         .eq('cart_id', orderData.cart_id || 0);
 
+      // Primeiro, criar/buscar o cliente no Bling
+      const customerPayload = {
+        nome: customerData?.name || "Cliente",
+        email: customerData?.email || `${customer_phone}@checkout.com`,
+        telefone: customer_phone,
+        cpf_cnpj: customerData?.cpf || "",
+        endereco: {
+          endereco: customerData?.street || "Rua não informada",
+          numero: customerData?.number || "S/N",
+          complemento: customerData?.complement || "",
+          bairro: customerData?.city || "Centro",
+          cidade: customerData?.city || "São Paulo",
+          uf: customerData?.state || "SP",
+          cep: customerData?.cep || "00000000"
+        }
+      };
+
+      console.log('Creating customer in Bling:', JSON.stringify(customerPayload, null, 2));
+
+      // Criar cliente no Bling primeiro
+      const customerUrl = 'https://api.bling.com.br/Api/v3/contatos';
+      let customerId = null;
+
+      const customerResponse = await fetch(customerUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${blingConfig.access_token}`,
+        },
+        body: JSON.stringify(customerPayload)
+      });
+
+      if (customerResponse.ok) {
+        const customerResult = await customerResponse.json();
+        customerId = customerResult.data?.id;
+        console.log('Customer created in Bling with ID:', customerId);
+      } else {
+        const customerError = await customerResponse.text();
+        console.error('Error creating customer:', customerResponse.status, customerError);
+        
+        // Se der erro ao criar cliente, usar dados diretos (fallback)
+        console.log('Fallback: Using direct customer data');
+      }
+
       // Prepare Bling order payload for API v3
-      const blingOrder = {
+      const blingOrder = customerId ? {
+        numero: orderData.id.toString(),
+        data: new Date(orderData.created_at).toISOString().split('T')[0],
+        contato: {
+          id: customerId
+        },
+        itens: (cartItems || []).map((item: any) => ({
+          produto: {
+            codigo: item.products?.code || `ITEM-${item.id}`,
+            descricao: item.products?.name || "Produto"
+          },
+          quantidade: item.qty,
+          valor: item.unit_price
+        })),
+        total: orderData.total_amount,
+        observacoes: orderData.observation || `Pedido via sistema - Evento: ${orderData.event_type}`,
+        situacao: {
+          valor: 'Em aberto'
+        }
+      } : {
+        // Fallback com dados completos do cliente
         numero: orderData.id.toString(),
         data: new Date(orderData.created_at).toISOString().split('T')[0],
         contato: {
@@ -270,7 +334,7 @@ serve(async (req) => {
             numero: customerData?.number || "S/N",
             complemento: customerData?.complement || "",
             bairro: customerData?.city || "Centro",
-            cidade: customerData?.city || "São Paulo",
+            cidade: customerData?.city || "São Paulo", 
             uf: customerData?.state || "SP",
             cep: customerData?.cep || "00000000"
           }
@@ -291,6 +355,7 @@ serve(async (req) => {
       };
 
       console.log('Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
+      console.log('Customer ID used:', customerId || 'Direct customer data');
 
       // API v3 URL
       const apiUrl = 'https://api.bling.com.br/Api/v3/pedidos/vendas';
