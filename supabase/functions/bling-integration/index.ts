@@ -3,16 +3,37 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'development' ? '*' : 'https://hxtbsieodbtzgcvvkeqx.supabase.co',
+  // Em produção, prefira restringir:
+  // 'Access-Control-Allow-Origin': 'https://app.orderzaps.com',
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
 };
 
+const j = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
 serve(async (req) => {
+  // 1) PRE-FLIGHT
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
+    const url = new URL(req.url);
+    const isGet = req.method === 'GET';
+    const qsAction = url.searchParams.get('action') || undefined;
+    const qsTenant = url.searchParams.get('tenant_id') || undefined;
+    const body = !isGet ? await req.json().catch(() => ({})) : {};
+    const action = qsAction ?? body.action ?? 'test_connection';
+    const tenantId = qsTenant ?? body.tenant_id ?? '';
+    let { order_id, customer_phone } = body;
+
+    if (!tenantId) return j({ error: 'Missing tenant_id' }, 400);
+
     // Validar autenticação
     const auth = req.headers.get('Authorization') || '';
     const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : '';
@@ -24,18 +45,12 @@ serve(async (req) => {
     
     const { data: { user } } = await supabaseAdmin.auth.getUser(jwt);
     if (!user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-        status: 401, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
+      return j({ error: 'Unauthorized' }, 401);
     }
-
-    const requestBody = await req.json();
-    const { action, order_id, customer_phone } = requestBody;
-    let { tenant_id } = requestBody;
     
     // If tenant_id is not provided, get it from order
-    if (!tenant_id) {
+    let finalTenantId = tenantId;
+    if (!finalTenantId && order_id) {
       const { data: orderData } = await supabaseAdmin
         .from('orders')
         .select('tenant_id')
@@ -43,7 +58,7 @@ serve(async (req) => {
         .single();
       
       if (orderData) {
-        tenant_id = orderData.tenant_id;
+        finalTenantId = orderData.tenant_id;
       }
     }
     
@@ -55,18 +70,12 @@ serve(async (req) => {
       .single();
     
     if (!profile) {
-      return new Response(JSON.stringify({ error: 'Profile not found' }), { 
-        status: 403, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
+      return j({ error: 'Profile not found' }, 403);
     }
     
     // Super admin pode acessar qualquer tenant, usuários normais só o próprio tenant
-    if (profile.role !== 'super_admin' && profile.tenant_id !== tenant_id) {
-      return new Response(JSON.stringify({ error: 'Forbidden - Invalid tenant access' }), { 
-        status: 403, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
+    if (profile.role !== 'super_admin' && profile.tenant_id !== finalTenantId) {
+      return j({ error: 'Forbidden - Invalid tenant access' }, 403);
     }
     
     console.log('Bling integration action:', action);
@@ -78,29 +87,17 @@ serve(async (req) => {
     const { data: blingConfig, error: configError } = await supabase
       .from('bling_integrations')
       .select('*')
-      .eq('tenant_id', tenant_id)
+      .eq('tenant_id', finalTenantId)
       .eq('is_active', true)
       .maybeSingle();
 
     if (configError || !blingConfig) {
       console.error('Bling config not found:', configError);
-      return new Response(
-        JSON.stringify({ error: 'Configuração do Bling não encontrada' }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      return j({ error: 'Configuração do Bling não encontrada' }, 500);
     }
 
     if (!blingConfig.access_token) {
-      return new Response(
-        JSON.stringify({ error: 'Access token do Bling não configurado' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      return j({ error: 'Access token do Bling não configurado' }, 401);
     }
 
     console.log('Using Bling config:', { 
@@ -124,55 +121,34 @@ serve(async (req) => {
           const userData = await testResponse.json();
           console.log('Teste de conexão Bling - sucesso:', userData);
           
-          return new Response(
-            JSON.stringify({ 
-              success: true,
-              message: 'Conexão com Bling funcionando',
-              user_data: userData
-            }),
-            { 
-              status: 200, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
+          return j({ 
+            success: true,
+            message: 'Conexão com Bling funcionando',
+            user_data: userData
+          });
         } else {
           const errorData = await testResponse.text();
           console.error('Teste de conexão Bling - erro:', testResponse.status, errorData);
           
-          return new Response(
-            JSON.stringify({ 
-              success: false,
-              error: 'Falha no teste de conexão',
-              details: errorData 
-            }),
-            { status: testResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          return j({ 
+            success: false,
+            error: 'Falha no teste de conexão',
+            details: errorData 
+          }, testResponse.status);
         }
       } catch (error) {
         console.error('Erro no teste de conexão:', error);
-        return new Response(
-          JSON.stringify({ 
-            success: false,
-            error: 'Erro interno no teste de conexão',
-            details: error.message
-          }),
-          { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
+        return j({ 
+          success: false,
+          error: 'Erro interno no teste de conexão',
+          details: error.message
+        }, 500);
       }
     }
 
     if (action === 'create_order') {
       if (!order_id || !customer_phone) {
-        return new Response(
-          JSON.stringify({ error: 'order_id e customer_phone são obrigatórios' }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
+        return j({ error: 'order_id e customer_phone são obrigatórios' }, 400);
       }
 
       // Verificar se o token ainda é válido e tentar renovar se necessário
@@ -182,13 +158,7 @@ serve(async (req) => {
         console.log('Token do Bling expirando em breve, tentando renovar...');
         
         if (!blingConfig.refresh_token) {
-          return new Response(
-            JSON.stringify({ error: 'Token do Bling expirando e sem refresh_token. Reautorize a integração.' }),
-            { 
-              status: 401, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
+          return j({ error: 'Token do Bling expirando e sem refresh_token. Reautorize a integração.' }, 401);
         }
 
         // Tentar renovar o token
@@ -220,30 +190,18 @@ serve(async (req) => {
                 expires_at: expiresAt,
                 updated_at: new Date().toISOString()
               })
-              .eq('tenant_id', tenant_id);
+              .eq('tenant_id', finalTenantId);
             
             // Usar novo token
             accessToken = tokenData.access_token;
           } else {
             const errorData = await refreshResponse.text();
             console.error('Falha ao renovar token:', errorData);
-            return new Response(
-              JSON.stringify({ error: 'Falha ao renovar token do Bling. Reautorize a integração.' }),
-              { 
-                status: 401, 
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-              }
-            );
+            return j({ error: 'Falha ao renovar token do Bling. Reautorize a integração.' }, 401);
           }
         } catch (refreshError) {
           console.error('Erro ao renovar token:', refreshError);
-          return new Response(
-            JSON.stringify({ error: 'Erro ao renovar token do Bling. Reautorize a integração.' }),
-            { 
-              status: 401, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
+          return j({ error: 'Erro ao renovar token do Bling. Reautorize a integração.' }, 401);
         }
       }
 
@@ -360,7 +318,7 @@ serve(async (req) => {
       }
 
       // Verificar se pedido já foi processado (idempotência)
-      const numeroLoja = `OZ-${tenant_id.slice(0, 8)}-${order_id}`;
+      const numeroLoja = `OZ-${finalTenantId.slice(0, 8)}-${order_id}`;
       
       // Buscar se pedido já existe no Bling
       const existingOrderResponse = await blingFetch(
@@ -374,14 +332,11 @@ serve(async (req) => {
         const existingData = await existingOrderResponse.json();
         if (existingData?.data && existingData.data.length > 0) {
           console.log('Pedido já existe no Bling:', numeroLoja);
-          return new Response(JSON.stringify({ 
+          return j({ 
             success: true, 
             message: 'Pedido já existe no Bling',
             bling_order_id: existingData.data[0].id,
             numeroLoja 
-          }), { 
-            status: 200, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
           });
         }
       }
@@ -407,10 +362,7 @@ serve(async (req) => {
 
       if (orderError || !order) {
         console.error('Erro ao buscar pedido:', orderError);
-        return new Response(JSON.stringify({ error: 'Pedido não encontrado' }), { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+        return j({ error: 'Pedido não encontrado' }, 404);
       }
 
       // Normalizar dados do cliente
@@ -421,21 +373,18 @@ serve(async (req) => {
       let { data: customerData } = await supabase
         .from('customers')
         .select('*')
-        .eq('tenant_id', tenant_id)
+        .eq('tenant_id', finalTenantId)
         .or(`phone.eq.${customer_phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone}%`)
         .limit(1)
         .maybeSingle();
 
       // Buscar configuração da loja
       if (!blingConfig?.loja_id) {
-        return new Response(JSON.stringify({ error: 'Código da Loja não configurado no Bling' }), { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        });
+        return j({ error: 'Código da Loja não configurado no Bling' }, 400);
       }
 
       // 1) Garantir/obter o contato.id
-      const contactId = await getOrCreateContactId(tenant_id, {
+      const contactId = await getOrCreateContactId(finalTenantId, {
         nome: customerData?.name || order.customer_name || "Cliente",
         email: customerData?.email || `${normalizedPhone}@checkout.com`,
         telefone: normalizedPhone,
@@ -481,77 +430,50 @@ serve(async (req) => {
         
         // Tratamento específico para erro de escopo insuficiente
         if (blingResponse.status === 403 && errorData.includes('insufficient_scope')) {
-          return new Response(
-            JSON.stringify({ 
-              error: 'Escopo insuficiente na API do Bling',
-              details: 'O aplicativo no Bling não tem permissões para criar pedidos. Verifique as configurações do aplicativo no painel do Bling e certifique-se de que tenha acesso aos módulos de Pedidos/Vendas.',
-              bling_error: errorData 
-            }),
-            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          return j({ 
+            error: 'Escopo insuficiente na API do Bling',
+            details: 'Verifique se a autorização possui os escopos: 404481, 404482',
+            raw_error: errorData
+          }, 403);
         }
         
-        return new Response(
-          JSON.stringify({ 
-            error: 'Erro na API do Bling',
-            details: errorData,
-            status: blingResponse.status
-          }),
-          { status: blingResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return j({ 
+          error: 'Falha ao criar pedido no Bling',
+          status: blingResponse.status,
+          details: errorData
+        }, blingResponse.status);
       }
 
       const blingData = await blingResponse.json();
       console.log('Bling response:', JSON.stringify(blingData, null, 2));
 
-      // Log the integration
+      // Log the activity
       await supabase
         .from('webhook_logs')
         .insert({
-          tenant_id: tenant_id,
-          webhook_type: 'bling_order_created',
+          tenant_id: finalTenantId,
+          webhook_type: 'bling_integration',
           status_code: 200,
-          payload: {
-            order_id: order.id,
-            bling_response: blingData,
-            sent_at: new Date().toISOString()
-          },
+          payload: { action: 'create_order', order_id, customer_phone },
           response: JSON.stringify(blingData)
         });
 
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          bling_order_id: blingData.data?.id || 'N/A',
-          numeroLoja,
-          message: 'Pedido enviado para o Bling com sucesso'
-        }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      return j({ 
+        success: true,
+        message: 'Pedido criado no Bling com sucesso',
+        bling_order_id: blingData?.data?.id,
+        numeroLoja,
+        bling_response: blingData
+      });
     }
 
-    return new Response(
-      JSON.stringify({ error: 'Ação não suportada' }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    return j({ error: 'Ação não suportada' }, 400);
 
-  } catch (error) {
-    console.error('Error in Bling integration:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: 'Erro interno',
-        details: error.message
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+  } catch (e: any) {
+    console.error('Erro interno da função:', e);
+    return j({ 
+      error: 'Erro interno',
+      details: e?.message ?? String(e)
+    }, 500);
   }
 });
