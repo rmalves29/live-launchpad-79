@@ -48,6 +48,7 @@ const Checkout = () => {
   const [showOrderSelection, setShowOrderSelection] = useState(false);
   const [customerData, setCustomerData] = useState({
     name: '',
+    email: '',
     cpf: '',
     cep: '',
     street: '',
@@ -274,6 +275,7 @@ const Checkout = () => {
       const customerRecord = {
         phone: customerPhone,
         name: data.name,
+        email: data.email,
         cpf: data.cpf,
         cep: data.cep,
         street: data.street,
@@ -311,6 +313,7 @@ const Checkout = () => {
       if (customer) {
         const customerDataLoaded = {
           name: customer.name || '',
+          email: customer.email || '',
           cpf: customer.cpf || '',
           cep: customer.cep || '',
           street: customer.street || '',
@@ -488,6 +491,7 @@ const Checkout = () => {
         // Limpar dados após criar o pagamento
         setCustomerData({
           name: '',
+          email: '',
           cpf: '',
           cep: '',
           street: '',
@@ -790,6 +794,18 @@ const Checkout = () => {
                           value={customerData.name}
                           onChange={(e) => {
                             const newData = {...customerData, name: e.target.value};
+                            setCustomerData(newData);
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Email</label>
+                        <Input
+                          type="email"
+                          placeholder="email@exemplo.com"
+                          value={customerData.email}
+                          onChange={(e) => {
+                            const newData = {...customerData, email: e.target.value};
                             setCustomerData(newData);
                           }}
                         />

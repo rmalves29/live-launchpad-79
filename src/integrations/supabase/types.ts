@@ -356,6 +356,7 @@ export type Database = {
           complement: string | null
           cpf: string | null
           created_at: string | null
+          email: string | null
           id: number
           name: string
           number: string | null
@@ -371,6 +372,7 @@ export type Database = {
           complement?: string | null
           cpf?: string | null
           created_at?: string | null
+          email?: string | null
           id?: number
           name: string
           number?: string | null
@@ -386,6 +388,7 @@ export type Database = {
           complement?: string | null
           cpf?: string | null
           created_at?: string | null
+          email?: string | null
           id?: number
           name?: string
           number?: string | null
