@@ -55,6 +55,7 @@ export const TenantIntegrations = () => {
     access_token: '',
     refresh_token: '',
     environment: 'sandbox',
+    loja_id: '',
     is_active: false
   });
 
@@ -94,6 +95,7 @@ export const TenantIntegrations = () => {
             access_token: blingData.access_token || '',
             refresh_token: blingData.refresh_token || '',
             environment: blingData.environment || 'sandbox',
+            loja_id: blingData.loja_id || '',
             is_active: blingData.is_active || false
           });
         } else {
@@ -104,6 +106,7 @@ export const TenantIntegrations = () => {
             access_token: '',
             refresh_token: '',
             environment: 'sandbox',
+            loja_id: '',
             is_active: false
           });
         }
@@ -316,7 +319,8 @@ export const TenantIntegrations = () => {
             client_secret: blingConfig.client_secret,
             access_token: blingConfig.access_token,
             refresh_token: blingConfig.refresh_token,
-            environment: blingConfig.environment
+            environment: blingConfig.environment,
+            loja_id: blingConfig.loja_id
           }
         }
       });
@@ -578,6 +582,21 @@ export const TenantIntegrations = () => {
             />
           </div>
           <div>
+            <Label htmlFor="bling-loja-id">Código da Loja (obrigatório)</Label>
+            <Input
+              id="bling-loja-id"
+              value={blingConfig.loja_id}
+              onChange={(e) => 
+                setBlingConfig(prev => ({ ...prev, loja_id: e.target.value }))
+              }
+              placeholder="Ex: 123456789"
+              required
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Código da loja cadastrada no Bling. Necessário para que os pedidos apareçam corretamente.
+            </p>
+          </div>
+          <div>
             <Label htmlFor="bling-access-token">Access Token</Label>
             <Input
               id="bling-access-token"
@@ -618,9 +637,19 @@ export const TenantIntegrations = () => {
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={saveBlingIntegration} disabled={loading}>
-            Salvar Bling
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button 
+              onClick={saveBlingIntegration} 
+              disabled={loading || !blingConfig.loja_id}
+            >
+              Salvar Bling
+            </Button>
+            {!blingConfig.loja_id && (
+              <p className="text-sm text-red-600">
+                ⚠️ Código da Loja é obrigatório para que os pedidos sejam criados corretamente no Bling.
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>

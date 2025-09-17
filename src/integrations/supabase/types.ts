@@ -138,6 +138,7 @@ export type Database = {
           expires_at: string | null
           id: string
           is_active: boolean
+          loja_id: string | null
           refresh_token: string | null
           tenant_id: string | null
           token_type: string | null
@@ -152,6 +153,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           is_active?: boolean
+          loja_id?: string | null
           refresh_token?: string | null
           tenant_id?: string | null
           token_type?: string | null
@@ -166,6 +168,7 @@ export type Database = {
           expires_at?: string | null
           id?: string
           is_active?: boolean
+          loja_id?: string | null
           refresh_token?: string | null
           tenant_id?: string | null
           token_type?: string | null

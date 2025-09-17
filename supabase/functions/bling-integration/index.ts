@@ -3,28 +3,40 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'development' ? '*' : 'https://hxtbsieodbtzgcvvkeqx.supabase.co',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // Validar autenticação
+    const auth = req.headers.get('Authorization') || '';
+    const jwt = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    const { data: { user } } = await supabaseAdmin.auth.getUser(jwt);
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
+        status: 401, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+
     const requestBody = await req.json();
     const { action, order_id, customer_phone } = requestBody;
     let { tenant_id } = requestBody;
     
     // If tenant_id is not provided, get it from order
     if (!tenant_id) {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      
-      const { data: orderData } = await supabase
+      const { data: orderData } = await supabaseAdmin
         .from('orders')
         .select('tenant_id')
         .eq('id', order_id)
@@ -35,12 +47,32 @@ serve(async (req) => {
       }
     }
     
+    // Validar se usuário pertence ao tenant
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('tenant_id, role')
+      .eq('id', user.id)
+      .single();
+    
+    if (!profile) {
+      return new Response(JSON.stringify({ error: 'Profile not found' }), { 
+        status: 403, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    
+    // Super admin pode acessar qualquer tenant, usuários normais só o próprio tenant
+    if (profile.role !== 'super_admin' && profile.tenant_id !== tenant_id) {
+      return new Response(JSON.stringify({ error: 'Forbidden - Invalid tenant access' }), { 
+        status: 403, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    
     console.log('Bling integration action:', action);
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Usar cliente admin já configurado
+    const supabase = supabaseAdmin;
 
     // Get Bling integration configuration from database
     const { data: blingConfig, error: configError } = await supabase
@@ -144,12 +176,14 @@ serve(async (req) => {
       }
 
       // Verificar se o token ainda é válido e tentar renovar se necessário
-      if (blingConfig.expires_at && new Date(blingConfig.expires_at) <= new Date()) {
-        console.log('Token do Bling expirado, tentando renovar...');
+      let accessToken = blingConfig.access_token;
+      
+      if (blingConfig.expires_at && new Date(blingConfig.expires_at) <= new Date(Date.now() + 60000)) { // 60 segundos de margem
+        console.log('Token do Bling expirando em breve, tentando renovar...');
         
         if (!blingConfig.refresh_token) {
           return new Response(
-            JSON.stringify({ error: 'Token do Bling expirado e sem refresh_token. Reautorize a integração.' }),
+            JSON.stringify({ error: 'Token do Bling expirando e sem refresh_token. Reautorize a integração.' }),
             { 
               status: 401, 
               headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -188,9 +222,8 @@ serve(async (req) => {
               })
               .eq('tenant_id', tenant_id);
             
-            // Atualizar config local
-            blingConfig.access_token = tokenData.access_token;
-            blingConfig.expires_at = expiresAt;
+            // Usar novo token
+            accessToken = tokenData.access_token;
           } else {
             const errorData = await refreshResponse.text();
             console.error('Falha ao renovar token:', errorData);
@@ -214,50 +247,31 @@ serve(async (req) => {
         }
       }
 
-      // Get order details
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('id', order_id)
-        .eq('tenant_id', tenant_id)
-        .single();
-
-      if (orderError || !orderData) {
-        console.error('Order not found:', orderError);
-        return new Response(
-          JSON.stringify({ error: 'Pedido não encontrado' }),
-          { 
-            status: 404, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
       // Helper functions
-      function normalizeCustomerKey(cpf?: string, email?: string) {
-        if (cpf) return cpf.replace(/\D/g, '');
-        if (email) return email.trim().toLowerCase();
-        throw new Error('Sem chave de cliente (CPF ou email)');
+      function normalizeCustomerKey(data: { name?: string, phone?: string, cep?: string, cpf?: string }) {
+        const normalizedPhone = data.phone?.replace(/\D/g, '') || '';
+        const normalizedCep = data.cep?.replace(/\D/g, '') || '';
+        const normalizedCpf = data.cpf?.replace(/\D/g, '') || '';
+        
+        return `${data.name?.trim()}-${normalizedPhone}-${normalizedCep}-${normalizedCpf}`.toLowerCase();
       }
 
-      async function blingFetch(path: string, opts: RequestInit & { token: string }) {
+      async function blingFetch(path: string, method: string, body: any, token: string) {
         const url = `https://api.bling.com.br/Api/v3${path}`;
-        const res = await fetch(url, {
-          ...opts,
+        const options: RequestInit = {
+          method,
           headers: {
-            Authorization: `Bearer ${opts.token}`,
-            Accept: '1.0',
-            ...(opts.headers || {})
+            'Authorization': `Bearer ${token}`,
+            'Accept': '1.0',
+            'Content-Type': 'application/json'
           }
-        });
-        let data: any = null;
-        const text = await res.text();
-        try { 
-          data = text ? JSON.parse(text) : null; 
-        } catch { 
-          data = { raw: text }; 
+        };
+        
+        if (body && method !== 'GET') {
+          options.body = JSON.stringify(body);
         }
-        return { res, data };
+        
+        return fetch(url, options);
       }
 
       async function getOrCreateContactId(
@@ -273,7 +287,12 @@ serve(async (req) => {
           }
         }
       ): Promise<number> {
-        const key = normalizeCustomerKey(customer.cpf, customer.email);
+        const key = normalizeCustomerKey({
+          name: customer.nome,
+          phone: customer.telefone,
+          cep: customer.endereco?.cep,
+          cpf: customer.cpf
+        });
 
         // 1) Ver se já temos em cache
         const { data: cached } = await supabase
@@ -296,7 +315,7 @@ serve(async (req) => {
         };
 
         if (customer.email) payload.email = customer.email;
-        if (customer.telefone) payload.fone = customer.telefone;
+        if (customer.telefone) payload.fone = customer.telefone.replace(/\D/g, '');
 
         // Se tiver CPF, ajuda em deduplicação futura
         if (customer.cpf) {
@@ -317,18 +336,20 @@ serve(async (req) => {
 
         console.log('Creating contact in Bling:', JSON.stringify(payload, null, 2));
 
-        const { res: rCreate, data: dCreate } = await blingFetch('/contatos', {
-          token: blingConfig.access_token,
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!rCreate.ok || !dCreate?.data?.id) {
-          throw new Error(`Falha ao criar contato: ${rCreate.status} ${JSON.stringify(dCreate)}`);
+        const createResponse = await blingFetch('/contatos', 'POST', payload, accessToken);
+        
+        if (!createResponse.ok) {
+          const errorData = await createResponse.text();
+          throw new Error(`Falha ao criar contato: ${createResponse.status} ${errorData}`);
+        }
+        
+        const createData = await createResponse.json();
+        
+        if (!createData?.data?.id) {
+          throw new Error(`Resposta inválida ao criar contato: ${JSON.stringify(createData)}`);
         }
 
-        const newId = Number(dCreate.data.id);
+        const newId = Number(createData.data.id);
         console.log('Contact created in Bling with ID:', newId);
         
         // Cache the contact ID
@@ -338,89 +359,133 @@ serve(async (req) => {
         return newId;
       }
 
+      // Verificar se pedido já foi processado (idempotência)
+      const numeroLoja = `OZ-${tenant_id.slice(0, 8)}-${order_id}`;
+      
+      // Buscar se pedido já existe no Bling
+      const existingOrderResponse = await blingFetch(
+        `/pedidos/vendas?numeroLoja=${numeroLoja}`,
+        'GET',
+        null,
+        accessToken
+      );
+      
+      if (existingOrderResponse.ok) {
+        const existingData = await existingOrderResponse.json();
+        if (existingData?.data && existingData.data.length > 0) {
+          console.log('Pedido já existe no Bling:', numeroLoja);
+          return new Response(JSON.stringify({ 
+            success: true, 
+            message: 'Pedido já existe no Bling',
+            bling_order_id: existingData.data[0].id,
+            numeroLoja 
+          }), { 
+            status: 200, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          });
+        }
+      }
+
+      // Buscar dados do pedido
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          cart_items:cart_items!inner(
+            qty,
+            unit_price,
+            products:products!inner(
+              id,
+              name,
+              code,
+              price
+            )
+          )
+        `)
+        .eq('id', order_id)
+        .single();
+
+      if (orderError || !order) {
+        console.error('Erro ao buscar pedido:', orderError);
+        return new Response(JSON.stringify({ error: 'Pedido não encontrado' }), { 
+          status: 404, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        });
+      }
+
+      // Normalizar dados do cliente
+      const normalizedPhone = customer_phone.replace(/\D/g, '');
+      const normalizedCep = order.customer_cep?.replace(/\D/g, '') || '';
+
       // Get customer details
-      const phoneDigits = customer_phone.replace(/\D/g, '');
       let { data: customerData } = await supabase
         .from('customers')
         .select('*')
         .eq('tenant_id', tenant_id)
-        .or(`phone.eq.${customer_phone},phone.eq.${phoneDigits},phone.ilike.%${phoneDigits}%`)
+        .or(`phone.eq.${customer_phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone}%`)
         .limit(1)
         .maybeSingle();
 
-      // Get cart items
-      const { data: cartItems } = await supabase
-        .from('cart_items')
-        .select(`
-          *,
-          products (
-            name,
-            code,
-            price
-          )
-        `)
-        .eq('tenant_id', tenant_id)
-        .eq('cart_id', orderData.cart_id || 0);
+      // Buscar configuração da loja
+      if (!blingConfig?.loja_id) {
+        return new Response(JSON.stringify({ error: 'Código da Loja não configurado no Bling' }), { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        });
+      }
 
       // 1) Garantir/obter o contato.id
       const contactId = await getOrCreateContactId(tenant_id, {
-        nome: customerData?.name || "Cliente",
-        email: customerData?.email || `${customer_phone}@checkout.com`,
-        telefone: customer_phone,
-        cpf: customerData?.cpf,
+        nome: customerData?.name || order.customer_name || "Cliente",
+        email: customerData?.email || `${normalizedPhone}@checkout.com`,
+        telefone: normalizedPhone,
+        cpf: customerData?.cpf?.replace(/\D/g, ''),
         endereco: {
-          endereco: customerData?.street || "Rua não informada",
-          numero: customerData?.number || "S/N",
-          complemento: customerData?.complement || "",
-          bairro: customerData?.city || "Centro",
-          cidade: customerData?.city || "São Paulo",
-          uf: customerData?.state || "SP",
-          cep: customerData?.cep || "00000000"
+          endereco: customerData?.street || order.customer_street || "Rua não informada",
+          numero: customerData?.number || order.customer_number || "S/N",
+          complemento: customerData?.complement || order.customer_complement || "",
+          bairro: customerData?.city || order.customer_city || "Centro",
+          cidade: customerData?.city || order.customer_city || "São Paulo",
+          uf: customerData?.state || order.customer_state || "SP",
+          cep: (customerData?.cep || order.customer_cep || "00000000").replace(/\D/g, '')
         }
       });
 
-      // 2) Criar o pedido usando contato.id
-      // Usar o unique_order_id do banco de dados
-      const uniqueOrderId = orderData.unique_order_id || `PED-${Date.now()}-${orderData.id}`;
-      
-      const blingOrder = {
-        data: new Date(orderData.created_at).toISOString().split('T')[0],
-        numeroLoja: uniqueOrderId,
+      // 2) Criar estrutura do pedido para o Bling
+      const orderData = {
+        data: new Date(order.event_date).toISOString().split('T')[0],
+        numeroLoja,
+        loja: {
+          id: parseInt(blingConfig.loja_id)
+        },
         contato: { id: contactId },
-        itens: (cartItems || []).map((item: any) => ({
+        itens: (order.cart_items || []).map((item: any) => ({
           produto: {
             codigo: item.products?.code || `ITEM-${item.id}`
           },
           quantidade: item.qty,
-          preco: item.unit_price
+          preco: Number(item.unit_price)
         })),
-        observacoes: orderData.observation || `Pedido via sistema - Evento: ${orderData.event_type}`
+        observacoes: order.observation || `Pedido via sistema - Evento: ${order.event_type}`
       };
 
-      console.log('Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
+      console.log('Sending order to Bling:', JSON.stringify(orderData, null, 2));
       console.log('Using contact ID:', contactId);
 
-      // API v3 URL
-      const apiUrl = 'https://api.bling.com.br/Api/v3/pedidos/vendas';
-
-      // Send order to Bling API v3 using helper
-      const { res: blingResponse, data: blingData } = await blingFetch('/pedidos/vendas', {
-        token: blingConfig.access_token,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(blingOrder)
-      });
+      // Send order to Bling API v3
+      const blingResponse = await blingFetch('/pedidos/vendas', 'POST', orderData, accessToken);
 
       if (!blingResponse.ok) {
-        console.error('Bling API error:', blingResponse.status, JSON.stringify(blingData));
+        const errorData = await blingResponse.text();
+        console.error('Bling API error:', blingResponse.status, errorData);
         
         // Tratamento específico para erro de escopo insuficiente
-        if (blingResponse.status === 403 && JSON.stringify(blingData).includes('insufficient_scope')) {
+        if (blingResponse.status === 403 && errorData.includes('insufficient_scope')) {
           return new Response(
             JSON.stringify({ 
               error: 'Escopo insuficiente na API do Bling',
               details: 'O aplicativo no Bling não tem permissões para criar pedidos. Verifique as configurações do aplicativo no painel do Bling e certifique-se de que tenha acesso aos módulos de Pedidos/Vendas.',
-              bling_error: blingData 
+              bling_error: errorData 
             }),
             { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -429,12 +494,14 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             error: 'Erro na API do Bling',
-            details: blingData 
+            details: errorData,
+            status: blingResponse.status
           }),
           { status: blingResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
+      const blingData = await blingResponse.json();
       console.log('Bling response:', JSON.stringify(blingData, null, 2));
 
       // Log the integration
@@ -445,7 +512,7 @@ serve(async (req) => {
           webhook_type: 'bling_order_created',
           status_code: 200,
           payload: {
-            order_id: orderData.id,
+            order_id: order.id,
             bling_response: blingData,
             sent_at: new Date().toISOString()
           },
@@ -456,6 +523,7 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true,
           bling_order_id: blingData.data?.id || 'N/A',
+          numeroLoja,
           message: 'Pedido enviado para o Bling com sucesso'
         }),
         { 
