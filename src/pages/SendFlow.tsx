@@ -41,6 +41,9 @@ export default function SendFlow() {
   const [isRunning, setIsRunning] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoadingGroups, setIsLoadingGroups] = useState(false);
+  const [currentProduct, setCurrentProduct] = useState<string>('');
+  const [currentGroup, setCurrentGroup] = useState<string>('');
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -230,32 +233,86 @@ export default function SendFlow() {
       return;
     }
 
+    // Verificar se servidor está online
+    try {
+      const statusResponse = await fetch(`http://localhost:3333/status`);
+      if (!statusResponse.ok) {
+        throw new Error('Servidor WhatsApp offline');
+      }
+      const statusData = await statusResponse.json();
+      if (!statusData.whatsapp?.ready) {
+        throw new Error('WhatsApp não conectado');
+      }
+    } catch (error) {
+      toast.error(`❌ ${error.message}. Verifique se o servidor está rodando.`);
+      return;
+    }
+
     await saveTemplate();
+    
+    // Criar novo controller para cancelar operações
+    const controller = new AbortController();
+    setAbortController(controller);
+    
     setIsRunning(true);
     setCurrentIndex(0);
-    processSendFlow();
+    setCurrentProduct('');
+    setCurrentGroup('');
+    
+    toast.success('🚀 Iniciando SendFlow...');
+    
+    processSendFlow(controller);
   };
 
-  const processSendFlow = async () => {
-    const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
-    const selectedGroupArray = Array.from(selectedGroups);
-    
-    for (let i = currentIndex; i < selectedProductArray.length && isRunning; i++) {
-      setCurrentIndex(i);
-      const product = selectedProductArray[i];
-      const personalizedMessage = personalizeMessage(product);
+  // Função para criar delay cancelável
+  const cancelableDelay = (ms: number, controller: AbortController): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(resolve, ms);
+      controller.signal.addEventListener('abort', () => {
+        clearTimeout(timeout);
+        reject(new Error('Operação cancelada'));
+      });
+    });
+  };
 
-      try {
+  const processSendFlow = async (controller: AbortController) => {
+    try {
+      const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
+      const selectedGroupArray = Array.from(selectedGroups);
+      
+      console.log(`🎯 Iniciando envio para ${selectedProductArray.length} produtos em ${selectedGroupArray.length} grupos`);
+      
+      for (let i = currentIndex; i < selectedProductArray.length; i++) {
+        // Verificar se foi cancelado
+        if (controller.signal.aborted) {
+          console.log('❌ SendFlow cancelado pelo usuário');
+          break;
+        }
+        
+        setCurrentIndex(i);
+        const product = selectedProductArray[i];
+        setCurrentProduct(product.name);
+        
+        const personalizedMessage = personalizeMessage(product);
+        console.log(`📦 Processando produto ${i + 1}/${selectedProductArray.length}: ${product.code} - ${product.name}`);
+
         let successCount = 0;
         let errorCount = 0;
         
         // Enviar para cada grupo selecionado com delay entre grupos
-        for (let groupIndex = 0; groupIndex < selectedGroupArray.length && isRunning; groupIndex++) {
+        for (let groupIndex = 0; groupIndex < selectedGroupArray.length; groupIndex++) {
+          // Verificar se foi cancelado
+          if (controller.signal.aborted) {
+            console.log('❌ SendFlow cancelado durante envio aos grupos');
+            return;
+          }
+          
           const groupId = selectedGroupArray[groupIndex];
           const groupName = whatsappGroups.find(g => g.id === groupId)?.name || groupId;
+          setCurrentGroup(groupName);
           
           try {
-            console.log(`🚀 Enviando produto ${product.code} para grupo: ${groupName}`);
+            console.log(`🚀 Enviando produto ${product.code} para grupo ${groupIndex + 1}/${selectedGroupArray.length}: ${groupName}`);
             
             const response = await fetch(`http://localhost:3333/send-to-group`, {
               method: 'POST',
@@ -264,66 +321,88 @@ export default function SendFlow() {
                 groupId,
                 message: personalizedMessage,
                 imageUrl: product.image_url
-              })
+              }),
+              signal: controller.signal // Adicionar abort signal na requisição
             });
             
+            if (controller.signal.aborted) return;
+            
             const result = await response.json();
-            console.log(`✅ Resposta do grupo ${groupName}:`, result);
             
             if (!response.ok) {
-              throw new Error(`Erro ${response.status}: ${result.message || 'Erro desconhecido'}`);
+              throw new Error(`Erro ${response.status}: ${result.message || result.error || 'Erro desconhecido'}`);
             }
             
             successCount++;
-            toast.success(`✅ Produto ${product.code} enviado para: ${groupName}`);
-            
-            // Aplicar delay entre grupos (exceto no último grupo)
-            if (groupIndex < selectedGroupArray.length - 1 && isRunning) {
-              console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo grupo...`);
-              toast.info(`⏳ Aguardando ${timerSeconds}s para próximo grupo...`);
-              await new Promise(resolve => setTimeout(resolve, timerSeconds * 1000));
-            }
+            console.log(`✅ Sucesso no grupo ${groupName}:`, result);
+            toast.success(`✅ ${product.code} → ${groupName.substring(0, 30)}...`);
             
           } catch (groupError) {
-            errorCount++;
-            console.error(`❌ Erro ao enviar para grupo ${groupName}:`, groupError);
-            toast.error(`❌ Erro no grupo ${groupName}: ${groupError.message}`);
+            if (controller.signal.aborted) return;
             
-            // Ainda aplicar delay mesmo em caso de erro (exceto no último)
-            if (groupIndex < selectedGroupArray.length - 1 && isRunning) {
-              console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo grupo (após erro)...`);
-              await new Promise(resolve => setTimeout(resolve, timerSeconds * 1000));
+            errorCount++;
+            const errorMsg = groupError.message || 'Erro desconhecido';
+            console.error(`❌ Erro ao enviar para grupo ${groupName}:`, groupError);
+            toast.error(`❌ ${groupName.substring(0, 20)}: ${errorMsg}`);
+          }
+          
+          // Aplicar delay entre grupos (exceto no último grupo)
+          if (groupIndex < selectedGroupArray.length - 1) {
+            try {
+              console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo grupo...`);
+              toast.info(`⏳ Aguardando ${timerSeconds}s para próximo grupo... (${groupIndex + 2}/${selectedGroupArray.length})`);
+              await cancelableDelay(timerSeconds * 1000, controller);
+            } catch (error) {
+              if (controller.signal.aborted) return;
+              console.log('❌ Delay cancelado');
             }
           }
         }
 
         // Resumo do produto
-        if (successCount > 0 || errorCount > 0) {
-          const totalGroups = selectedGroupArray.length;
-          toast.success(`📊 Produto ${product.code}: ${successCount}/${totalGroups} grupos concluídos`);
-        }
+        const totalGroups = selectedGroupArray.length;
+        console.log(`📊 Produto ${product.code} finalizado: ${successCount} sucessos, ${errorCount} erros de ${totalGroups} grupos`);
+        toast.success(`📊 ${product.code}: ${successCount}/${totalGroups} grupos ✅ ${errorCount > 0 ? `(${errorCount} erros)` : ''}`);
         
         // Aguardar antes do próximo produto (apenas se houver próximo produto)
-        if (i < selectedProductArray.length - 1 && isRunning) {
-          console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo produto...`);
-          toast.info(`⏳ Aguardando ${timerSeconds}s para próximo produto...`);
-          await new Promise(resolve => setTimeout(resolve, timerSeconds * 1000));
+        if (i < selectedProductArray.length - 1) {
+          try {
+            console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo produto...`);
+            toast.info(`⏳ Aguardando ${timerSeconds}s para próximo produto... (${i + 2}/${selectedProductArray.length})`);
+            await cancelableDelay(timerSeconds * 1000, controller);
+          } catch (error) {
+            if (controller.signal.aborted) return;
+            console.log('❌ Delay entre produtos cancelado');
+          }
         }
-        
-      } catch (error) {
-        console.error('❌ Erro geral no envio do produto:', error);
-        toast.error(`❌ Erro ao processar produto ${product.code}: ${error.message}`);
       }
-    }
 
-    setIsRunning(false);
-    setCurrentIndex(0);
-    toast.success('🎉 SendFlow finalizado!');
+      if (!controller.signal.aborted) {
+        console.log('🎉 SendFlow finalizado com sucesso!');
+        toast.success('🎉 SendFlow finalizado com sucesso!');
+      }
+      
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        console.error('❌ Erro crítico no SendFlow:', error);
+        toast.error(`❌ Erro crítico: ${error.message}`);
+      }
+    } finally {
+      setIsRunning(false);
+      setCurrentIndex(0);
+      setCurrentProduct('');
+      setCurrentGroup('');
+      setAbortController(null);
+    }
   };
 
   const stopSendFlow = () => {
+    if (abortController) {
+      abortController.abort();
+      console.log('🛑 Cancelando SendFlow...');
+      toast.info('🛑 Pausando SendFlow...');
+    }
     setIsRunning(false);
-    toast.info('SendFlow pausado');
   };
 
   return (
@@ -516,9 +595,9 @@ export default function SendFlow() {
             <CardTitle>Status do SendFlow</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-4">
               <div className="flex justify-between">
-                <span>Progresso:</span>
+                <span>Progresso dos Produtos:</span>
                 <span>{currentIndex + 1} de {selectedProducts.size}</span>
               </div>
               <div className="w-full bg-secondary rounded-full h-2">
@@ -527,8 +606,25 @@ export default function SendFlow() {
                   style={{ width: `${((currentIndex + 1) / selectedProducts.size) * 100}%` }}
                 />
               </div>
-              <div className="text-sm text-muted-foreground">
-                Enviando para {selectedGroups.size} grupo(s) selecionado(s)
+              {currentProduct && (
+                <div className="text-sm">
+                  <span className="font-medium">Produto atual:</span>
+                  <span className="ml-2 text-muted-foreground">{currentProduct}</span>
+                </div>
+              )}
+              {currentGroup && (
+                <div className="text-sm">
+                  <span className="font-medium">Grupo atual:</span>
+                  <span className="ml-2 text-muted-foreground">{currentGroup}</span>
+                </div>
+              )}
+              <div className="text-sm">
+                <span className="font-medium">Grupos selecionados:</span>
+                <span className="ml-2 text-muted-foreground">{selectedGroups.size} grupo(s)</span>
+              </div>
+              <div className="text-sm">
+                <span className="font-medium">Delay configurado:</span>
+                <span className="ml-2 text-muted-foreground">{timerSeconds}s entre envios</span>
               </div>
             </div>
           </CardContent>
