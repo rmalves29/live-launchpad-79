@@ -82,9 +82,11 @@ export const TenantIntegrations = () => {
     
     // Client IDs de teste/sandbox conhecidos
     const sandboxClientIds = ['20128', '20129', '20130'];
+    // Client ID 7017 é produção 
     const forceSandbox = sandboxClientIds.includes(shippingConfig.client_id);
+    const isProduction = shippingConfig.client_id === '7017';
     
-    const baseUrl = (shippingConfig.sandbox || forceSandbox)
+    const baseUrl = (shippingConfig.sandbox || forceSandbox) && !isProduction
       ? 'https://sandbox.melhorenvio.com.br/oauth/authorize'
       : 'https://melhorenvio.com.br/oauth/authorize';
     
