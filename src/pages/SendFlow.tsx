@@ -80,7 +80,7 @@ export default function SendFlow() {
         .from('whatsapp_templates')
         .select('*')
         .eq('tenant_id', tenant.id)
-        .eq('type', 'sendflow' as any)
+        .eq('type', 'BROADCAST')
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
@@ -161,7 +161,7 @@ export default function SendFlow() {
         .from('whatsapp_templates')
         .upsert({
           tenant_id: tenant.id,
-          type: 'sendflow' as any,
+          type: 'BROADCAST',
           title: 'SendFlow Template',
           content: messageTemplate
         });
