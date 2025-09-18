@@ -15,19 +15,42 @@ serve(async (req) => {
   }
 
   try {
-    const { action, code, client_id, client_secret, redirect_uri, api_base_url } = await req.json();
+    const url = new URL(req.url);
+    const code = url.searchParams.get('code');
+    const state = url.searchParams.get('state');
     
-    console.log('OAuth action:', action);
+    // Handle callback from URL params (OAuth redirect)
+    if (code) {
+      console.log('ME OAuth callback received:', { code, state });
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+      // Initialize Supabase client
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (action === 'exchange_code') {
-      if (!code || !client_id || !client_secret || !redirect_uri) {
+      const tenant_id = state || '08f2b1b9-3988-489e-8186-c60f0c0b0622'; // Default tenant from user's request
+
+      // Get ME integration config for tenant
+      const { data: integration, error: integrationError } = await supabase
+        .from('integration_me')
+        .select('client_id, client_secret, environment')
+        .eq('tenant_id', tenant_id)
+        .single();
+
+      if (integrationError || !integration) {
+        console.error('ME integration not found for tenant:', tenant_id);
         return new Response(
-          JSON.stringify({ error: 'Parâmetros obrigatórios não informados' }),
+          JSON.stringify({ error: 'Integração ME não encontrada para o tenant' }),
+          { 
+            status: 404, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      if (!integration.client_id || !integration.client_secret) {
+        return new Response(
+          JSON.stringify({ error: 'Client ID/Secret não configurados' }),
           { 
             status: 400, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -36,30 +59,33 @@ serve(async (req) => {
       }
 
       // Determine correct URLs based on environment
-      const isProduction = !api_base_url || api_base_url.includes('melhorenvio.com.br/api');
+      const isProduction = integration.environment === 'production';
       const tokenUrl = isProduction 
         ? 'https://melhorenvio.com.br/oauth/token'
         : 'https://sandbox.melhorenvio.com.br/oauth/token';
       
-      const tokenPayload = {
+      const redirect_uri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/melhor-envio-oauth';
+
+      // Use Basic Auth and form-urlencoded as specified
+      const basic = btoa(`${integration.client_id}:${integration.client_secret}`);
+      const body = new URLSearchParams({
         grant_type: 'authorization_code',
-        client_id,
-        client_secret,
-        redirect_uri,
         code,
-      };
+        redirect_uri
+      });
 
       console.log('Requesting token from:', tokenUrl);
-      console.log('Token payload:', { ...tokenPayload, client_secret: '***' });
+      console.log('Using Basic auth for client:', integration.client_id.slice(0, 8));
 
       const tokenResponse = await fetch(tokenUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Authorization': `Basic ${basic}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
           'User-Agent': 'OrderZaps (contato@orderzaps.com)',
         },
-        body: JSON.stringify(tokenPayload),
+        body
       });
 
       if (!tokenResponse.ok) {
@@ -85,17 +111,19 @@ serve(async (req) => {
       const expiresAt = new Date();
       expiresAt.setSeconds(expiresAt.getSeconds() + tokenData.expires_in);
 
-      // Update config with tokens
+      // Update integration_me table for this tenant
       const { error: updateError } = await supabase
-        .from('frete_config')
-        .upsert({
+        .from('integration_me')
+        .update({
           access_token: tokenData.access_token,
           refresh_token: tokenData.refresh_token,
-          token_expires_at: expiresAt.toISOString(),
-        }, { onConflict: 'id' });
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenant_id);
 
       if (updateError) {
-        console.error('Error updating config:', updateError);
+        console.error('Error updating ME integration:', updateError);
         return new Response(
           JSON.stringify({ error: 'Erro ao salvar tokens' }),
           { 
@@ -109,23 +137,35 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true,
           message: 'Token obtido e salvo com sucesso',
-          expires_at: expiresAt.toISOString()
+          tenant_id,
+          environment: integration.environment
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // Handle JSON requests for refresh_token action
+    const { action } = await req.json();
+    console.log('OAuth action:', action);
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     if (action === 'refresh_token') {
-      // Get current config
-      const { data: configData, error: configError } = await supabase
-        .from('frete_config')
+      const tenant_id = '08f2b1b9-3988-489e-8186-c60f0c0b0622'; // Default tenant from user's request
+      
+      // Get current integration
+      const { data: integration, error: integrationError } = await supabase
+        .from('integration_me')
         .select('*')
-        .limit(1)
+        .eq('tenant_id', tenant_id)
         .single();
 
-      if (configError || !configData) {
+      if (integrationError || !integration) {
         return new Response(
-          JSON.stringify({ error: 'Configuração não encontrada' }),
+          JSON.stringify({ error: 'Integração ME não encontrada' }),
           { 
             status: 404, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -133,7 +173,7 @@ serve(async (req) => {
         );
       }
 
-      if (!configData.refresh_token) {
+      if (!integration.refresh_token) {
         return new Response(
           JSON.stringify({ error: 'Refresh token não encontrado' }),
           { 
@@ -143,29 +183,40 @@ serve(async (req) => {
         );
       }
 
+      if (!integration.client_id || !integration.client_secret) {
+        return new Response(
+          JSON.stringify({ error: 'Client ID/Secret não configurados' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
       // Use correct refresh URL based on environment
-      const isProduction = !configData.api_base_url || configData.api_base_url.includes('melhorenvio.com.br/api');
+      const isProduction = integration.environment === 'production';
       const refreshUrl = isProduction 
         ? 'https://melhorenvio.com.br/oauth/token'
         : 'https://sandbox.melhorenvio.com.br/oauth/token';
       
-      const refreshPayload = {
+      // Use Basic Auth and form-urlencoded for refresh
+      const basic = btoa(`${integration.client_id}:${integration.client_secret}`);
+      const body = new URLSearchParams({
         grant_type: 'refresh_token',
-        client_id: configData.client_id,
-        client_secret: configData.client_secret,
-        refresh_token: configData.refresh_token,
-      };
+        refresh_token: integration.refresh_token
+      });
 
       console.log('Refreshing token from:', refreshUrl);
 
       const refreshResponse = await fetch(refreshUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Authorization': `Basic ${basic}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
           'User-Agent': 'OrderZaps (contato@orderzaps.com)',
         },
-        body: JSON.stringify(refreshPayload),
+        body
       });
 
       if (!refreshResponse.ok) {
@@ -187,22 +238,18 @@ serve(async (req) => {
       const refreshData = await refreshResponse.json();
       console.log('Token refreshed successfully');
 
-      // Calculate expiry date
-      const expiresAt = new Date();
-      expiresAt.setSeconds(expiresAt.getSeconds() + refreshData.expires_in);
-
-      // Update config with new tokens
+      // Update integration with new tokens (ME rotates refresh tokens)
       const { error: updateError } = await supabase
-        .from('frete_config')
+        .from('integration_me')
         .update({
           access_token: refreshData.access_token,
-          refresh_token: refreshData.refresh_token || configData.refresh_token,
-          token_expires_at: expiresAt.toISOString(),
+          refresh_token: refreshData.refresh_token || integration.refresh_token, // Use new refresh token if provided
+          updated_at: new Date().toISOString(),
         })
-        .eq('id', configData.id);
+        .eq('tenant_id', tenant_id);
 
       if (updateError) {
-        console.error('Error updating config:', updateError);
+        console.error('Error updating integration:', updateError);
         return new Response(
           JSON.stringify({ error: 'Erro ao salvar novos tokens' }),
           { 
@@ -216,7 +263,7 @@ serve(async (req) => {
         JSON.stringify({ 
           success: true,
           message: 'Token renovado com sucesso',
-          expires_at: expiresAt.toISOString()
+          tenant_id
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
