@@ -185,7 +185,14 @@ serve(async (req) => {
           return j({ 
             success: true,
             message: 'Conexão com Bling funcionando',
-            user_data: userData
+            user_data: userData,
+            webhook_url: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/webhook-bling`,
+            webhook_info: {
+              method: 'POST',
+              authentication: 'X-Bling-Signature-256 (HMAC SHA-256)',
+              supported_events: ['order.created', 'order.updated', 'order.deleted', 'product.created', 'product.updated', 'product.deleted', 'stock.created', 'stock.updated', 'stock.deleted', 'invoice.created', 'invoice.updated', 'invoice.deleted', 'consumer_invoice.created', 'consumer_invoice.updated', 'consumer_invoice.deleted'],
+              configuration_note: 'Configure esta URL no painel de webhooks do seu aplicativo Bling'
+            }
           });
         } else {
           const errorData = await testResponse.text();
