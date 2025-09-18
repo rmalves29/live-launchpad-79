@@ -64,7 +64,7 @@ serve(async (req) => {
         ? 'https://melhorenvio.com.br/oauth/token'
         : 'https://sandbox.melhorenvio.com.br/oauth/token';
       
-      const redirect_uri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/melhor-envio-oauth';
+      const redirect_uri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth';
 
       // Use Basic Auth and form-urlencoded as specified
       const basic = btoa(`${integration.client_id}:${integration.client_secret}`);
