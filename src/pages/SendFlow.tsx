@@ -238,6 +238,7 @@ export default function SendFlow() {
 
   const processSendFlow = async () => {
     const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
+    const selectedGroupArray = Array.from(selectedGroups);
     
     for (let i = currentIndex; i < selectedProductArray.length && isRunning; i++) {
       setCurrentIndex(i);
@@ -245,43 +246,79 @@ export default function SendFlow() {
       const personalizedMessage = personalizeMessage(product);
 
       try {
-        // Enviar para cada grupo selecionado
-        for (const groupId of selectedGroups) {
-          console.log(`Enviando produto ${product.code} para grupo ${groupId}`);
+        let successCount = 0;
+        let errorCount = 0;
+        
+        // Enviar para cada grupo selecionado com delay entre grupos
+        for (let groupIndex = 0; groupIndex < selectedGroupArray.length && isRunning; groupIndex++) {
+          const groupId = selectedGroupArray[groupIndex];
+          const groupName = whatsappGroups.find(g => g.id === groupId)?.name || groupId;
           
-          const response = await fetch(`http://localhost:3333/send-to-group`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              groupId,
-              message: personalizedMessage,
-              imageUrl: product.image_url
-            })
-          });
-          
-          const result = await response.json();
-          console.log(`Resposta do servidor:`, result);
-          
-          if (!response.ok) {
-            throw new Error(`Erro ${response.status}: ${result.message || 'Erro desconhecido'}`);
+          try {
+            console.log(`🚀 Enviando produto ${product.code} para grupo: ${groupName}`);
+            
+            const response = await fetch(`http://localhost:3333/send-to-group`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                groupId,
+                message: personalizedMessage,
+                imageUrl: product.image_url
+              })
+            });
+            
+            const result = await response.json();
+            console.log(`✅ Resposta do grupo ${groupName}:`, result);
+            
+            if (!response.ok) {
+              throw new Error(`Erro ${response.status}: ${result.message || 'Erro desconhecido'}`);
+            }
+            
+            successCount++;
+            toast.success(`✅ Produto ${product.code} enviado para: ${groupName}`);
+            
+            // Aplicar delay entre grupos (exceto no último grupo)
+            if (groupIndex < selectedGroupArray.length - 1 && isRunning) {
+              console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo grupo...`);
+              toast.info(`⏳ Aguardando ${timerSeconds}s para próximo grupo...`);
+              await new Promise(resolve => setTimeout(resolve, timerSeconds * 1000));
+            }
+            
+          } catch (groupError) {
+            errorCount++;
+            console.error(`❌ Erro ao enviar para grupo ${groupName}:`, groupError);
+            toast.error(`❌ Erro no grupo ${groupName}: ${groupError.message}`);
+            
+            // Ainda aplicar delay mesmo em caso de erro (exceto no último)
+            if (groupIndex < selectedGroupArray.length - 1 && isRunning) {
+              console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo grupo (após erro)...`);
+              await new Promise(resolve => setTimeout(resolve, timerSeconds * 1000));
+            }
           }
         }
 
-        toast.success(`Produto ${product.code} enviado para ${selectedGroups.size} grupo(s)`);
+        // Resumo do produto
+        if (successCount > 0 || errorCount > 0) {
+          const totalGroups = selectedGroupArray.length;
+          toast.success(`📊 Produto ${product.code}: ${successCount}/${totalGroups} grupos concluídos`);
+        }
         
-        // Aguardar o tempo configurado antes do próximo envio
-        if (i < selectedProductArray.length - 1) {
+        // Aguardar antes do próximo produto (apenas se houver próximo produto)
+        if (i < selectedProductArray.length - 1 && isRunning) {
+          console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo produto...`);
+          toast.info(`⏳ Aguardando ${timerSeconds}s para próximo produto...`);
           await new Promise(resolve => setTimeout(resolve, timerSeconds * 1000));
         }
+        
       } catch (error) {
-        console.error('Erro no envio:', error);
-        toast.error(`Erro ao enviar produto ${product.code}: ${error.message}`);
+        console.error('❌ Erro geral no envio do produto:', error);
+        toast.error(`❌ Erro ao processar produto ${product.code}: ${error.message}`);
       }
     }
 
     setIsRunning(false);
     setCurrentIndex(0);
-    toast.success('SendFlow finalizado!');
+    toast.success('🎉 SendFlow finalizado!');
   };
 
   const stopSendFlow = () => {
