@@ -19,7 +19,7 @@ import Relatorios from "./pages/Relatorios";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import WhatsAppIntegration from "./components/WhatsAppIntegration";
 import MpReturn from "./pages/MpReturn";
-import Integracoes from "./pages/Integracoes";
+
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
 import MercadoPagoCallback from "./pages/MercadoPagoCallback";
@@ -107,9 +107,6 @@ const AppContent = () => {
         } />
         <Route path="/whatsapp-integration" element={
           <RequireTenantAuth><WhatsAppIntegration /></RequireTenantAuth>
-        } />
-        <Route path="/integracoes" element={
-          <RequireTenantAuth><Integracoes /></RequireTenantAuth>
         } />
         
         <Route path="*" element={<NotFound />} />
