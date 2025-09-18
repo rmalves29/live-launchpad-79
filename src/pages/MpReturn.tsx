@@ -39,20 +39,36 @@ const MpReturn = () => {
     
     setIsUpdating(true);
     try {
-      // Find order by preference ID in payment link
+      console.log(`Buscando pedido com preference_id: ${preferenceId}`);
+      
+      // First try to find any order with this preference ID (paid or unpaid)
       const { data: orders, error: fetchError } = await supabase
         .from("orders")
         .select("*")
-        .ilike("payment_link", `%${preferenceId}%`)
-        .eq("is_paid", false);
+        .ilike("payment_link", `%${preferenceId}%`);
 
       if (fetchError) {
         console.error("Error fetching order:", fetchError);
+        toast({
+          title: "Erro",
+          description: "Erro ao buscar informações do pedido.",
+          variant: "destructive",
+        });
         return;
       }
 
       if (orders && orders.length > 0) {
         const order = orders[0];
+        console.log(`Pedido encontrado: #${order.id}, is_paid: ${order.is_paid}`);
+        
+        if (order.is_paid) {
+          // Order already paid (probably by webhook)
+          toast({
+            title: "Pagamento já confirmado",
+            description: `Pedido #${order.id} já foi marcado como pago.`,
+          });
+          return;
+        }
         
         // Update order status to paid
         const { error: updateError } = await supabase
@@ -68,14 +84,27 @@ const MpReturn = () => {
             variant: "destructive",
           });
         } else {
+          console.log(`Pedido #${order.id} marcado como pago via return page`);
           toast({
             title: "Pagamento confirmado",
             description: `Pedido #${order.id} marcado como pago.`,
           });
         }
+      } else {
+        console.log(`Nenhum pedido encontrado para preference_id: ${preferenceId}`);
+        toast({
+          title: "Pedido não encontrado",
+          description: "Não foi possível localizar o pedido correspondente.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error updating payment status:", error);
+      toast({
+        title: "Erro",
+        description: "Erro inesperado ao processar o pagamento.",
+        variant: "destructive",
+      });
     } finally {
       setIsUpdating(false);
     }

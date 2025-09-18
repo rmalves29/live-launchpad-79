@@ -52,11 +52,16 @@ export default function MercadoPagoCallback() {
 
   const loadOrderInfo = async (preferenceId: string) => {
     try {
-      const { data: order } = await supabase
+      const { data: order, error } = await supabase
         .from('orders')
         .select('id, total_amount')
         .ilike('payment_link', `%${preferenceId}%`)
-        .single();
+        .maybeSingle();
+
+      if (error) {
+        console.error('Erro ao carregar informações do pedido:', error);
+        return;
+      }
 
       if (order) {
         setPaymentInfo(prev => prev ? {
@@ -64,6 +69,8 @@ export default function MercadoPagoCallback() {
           amount: order.total_amount,
           orderId: order.id.toString()
         } : null);
+      } else {
+        console.log('Pedido não encontrado para preference_id:', preferenceId);
       }
     } catch (error) {
       console.error('Erro ao carregar informações do pedido:', error);
