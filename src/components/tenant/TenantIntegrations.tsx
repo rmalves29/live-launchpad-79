@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabaseTenant } from '@/lib/supabase-tenant';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { Settings, Truck } from 'lucide-react';
@@ -137,51 +138,58 @@ export const TenantIntegrations = () => {
 
     setLoading(true);
     try {
-      const redirectUri = `${window.location.origin}/config?tab=integracoes&callback=melhor_envio`;
-      const tokenUrl = shippingConfig.sandbox 
-        ? 'https://sandbox.melhorenvio.com.br/oauth/token'
-        : 'https://melhorenvio.com.br/oauth/token';
+      const currentTenantId = profile?.role === 'super_admin' ? tenant?.id : profile?.tenant_id;
+      
+      if (!currentTenantId) {
+        throw new Error('Tenant ID não encontrado');
+      }
 
-      const response = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          grant_type: 'authorization_code',
+      console.log('🔄 Processando callback OAuth com edge function');
+
+      // Usar edge function para processar o OAuth
+      const { data, error } = await supabase.functions.invoke('melhor-envio-oauth', {
+        body: {
+          code,
+          tenant_id: currentTenantId,
           client_id: shippingConfig.client_id,
-          client_secret: shippingConfig.client_secret,
-          redirect_uri: redirectUri,
-          code: code
-        })
+          client_secret: shippingConfig.client_secret
+        }
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (error) {
+        console.error('❌ Erro na edge function:', error);
+        throw new Error(`Erro na edge function: ${error.message}`);
       }
 
-      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Erro desconhecido');
+      }
+
+      console.log('✅ OAuth processado com sucesso');
+
+      // Atualizar estado local
+      setShippingConfig(prev => ({
+        ...prev,
+        access_token: data.access_token
+      }));
+
+      toast({
+        title: 'Sucesso!',
+        description: 'Autorização concluída com sucesso! Access token obtido.',
+        duration: 5000,
+      });
+
+      // Recarregar integrações
+      await loadIntegrations();
       
-      if (data.access_token) {
-        setShippingConfig(prev => ({
-          ...prev,
-          access_token: data.access_token
-        }));
-
-        toast({
-          title: 'Sucesso',
-          description: 'Autorização concluída! Access token obtido com sucesso.'
-        });
-
-        // Remove callback parameter from URL
-        const url = new URL(window.location.href);
-        url.searchParams.delete('callback');
-        url.searchParams.delete('code');
-        window.history.replaceState({}, '', url.toString());
-      }
+      // Limpar URL parameters
+      const url = new URL(window.location.href);
+      url.searchParams.delete('code');
+      url.searchParams.delete('callback');
+      window.history.replaceState({}, document.title, url.toString());
+      
     } catch (error: any) {
-      console.error('Error exchanging code for token:', error);
+      console.error('❌ Error exchanging code for token:', error);
       toast({
         title: 'Erro',
         description: `Erro ao obter access token: ${error.message}`,
@@ -740,49 +748,71 @@ export const TenantIntegrations = () => {
                 </Button>
                 
                 {showAuthUrl && (
-                  <div className="p-3 bg-background border rounded-lg space-y-3">
+                  <div className="p-4 bg-background border rounded-lg space-y-4">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <h5 className="font-medium text-yellow-800 mb-2">⚠️ IMPORTANTE - Configure no Painel do Melhor Envio:</h5>
+                      <ol className="text-sm text-yellow-700 space-y-1">
+                        <li>1. Acesse <a href="https://sandbox.melhorenvio.com.br/painel/gerenciar/aplicativos" target="_blank" className="underline text-blue-600">https://sandbox.melhorenvio.com.br/painel/gerenciar/aplicativos</a></li>
+                        <li>2. Encontre seu aplicativo (Client ID: {shippingConfig.client_id})</li>
+                        <li>3. Configure EXATAMENTE este Redirect URI:</li>
+                      </ol>
+                    </div>
+                    
                     <div>
-                      <label className="text-sm font-medium">
-                        1. Primeiro, registre este Redirect URI no painel do Melhor Envio:
+                      <label className="text-sm font-medium text-red-600">
+                        🔗 Redirect URI (Copie e cole no painel):
                       </label>
                       <div className="flex mt-1">
                         <input
                           type="text"
                           value={`${window.location.origin}/config?tab=integracoes&callback=melhor_envio`}
                           readOnly
-                          className="flex-1 px-2 py-1 text-xs bg-muted border rounded-l font-mono"
+                          className="flex-1 px-2 py-1 text-xs bg-red-50 border border-red-200 rounded-l font-mono"
                         />
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="rounded-l-none"
+                          className="rounded-l-none border-red-200"
                           onClick={() => {
                             navigator.clipboard.writeText(`${window.location.origin}/config?tab=integracoes&callback=melhor_envio`);
-                            toast({ title: 'Redirect URI copiado!' });
+                            toast({ title: 'Redirect URI copiado!', description: 'Cole no painel do Melhor Envio' });
                           }}
                         >
-                          📋
+                          📋 Copiar
                         </Button>
                       </div>
                     </div>
                     
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-sm text-blue-700">
+                        💡 <strong>Erro "Client authentication failed"?</strong><br/>
+                        Certifique-se de que:
+                      </p>
+                      <ul className="text-xs text-blue-600 mt-1 space-y-1">
+                        <li>• O Client ID {shippingConfig.client_id} existe na sua conta</li>
+                        <li>• O Redirect URI acima foi adicionado no painel</li>
+                        <li>• Aguarde alguns minutos após salvar as configurações</li>
+                      </ul>
+                    </div>
+                    
                     <div>
                       <label className="text-sm font-medium">
-                        2. Depois, acesse este link para autorizar:
+                        🚀 Após configurar no painel, clique aqui:
                       </label>
-                      <div className="flex mt-1">
-                        <input
-                          type="text"
-                          value={authUrl}
-                          readOnly
-                          className="flex-1 px-2 py-1 text-xs bg-muted border rounded-l font-mono"
-                        />
+                      <div className="flex mt-1 space-x-2">
+                        <Button
+                          type="button"
+                          variant="default"
+                          className="flex-1"
+                          onClick={() => window.open(authUrl, '_blank')}
+                        >
+                          🔗 Abrir Link de Autorização
+                        </Button>
                         <Button
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="rounded-none"
                           onClick={() => {
                             navigator.clipboard.writeText(authUrl);
                             toast({ title: 'Link copiado!' });
@@ -790,21 +820,13 @@ export const TenantIntegrations = () => {
                         >
                           📋
                         </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="default"
-                          className="rounded-l-none"
-                          onClick={() => window.open(authUrl, '_blank')}
-                        >
-                          🔗 Abrir
-                        </Button>
                       </div>
                     </div>
                     
-                    <p className="text-xs text-muted-foreground">
-                      💡 Após autorizar, você será redirecionado de volta para esta página automaticamente.
-                    </p>
+                    <div className="text-xs text-muted-foreground bg-gray-50 p-2 rounded">
+                      <strong>Link completo:</strong><br/>
+                      <code className="break-all">{authUrl}</code>
+                    </div>
                   </div>
                 )}
               </div>

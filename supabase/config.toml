@@ -3,6 +3,9 @@ project_id = "hxtbsieodbtzgcvvkeqx"
 [functions.webhook-melhor-envio]
 verify_jwt = false
 
+[functions.melhor-envio-oauth]
+verify_jwt = false
+
 [functions.create-payment]
 verify_jwt = true
 
