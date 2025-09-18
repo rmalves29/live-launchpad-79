@@ -77,7 +77,12 @@ export const TenantIntegrations = () => {
     }
 
     const redirectUri = `${window.location.origin}/config?tab=integracoes&callback=melhor_envio`;
-    const baseUrl = shippingConfig.sandbox 
+    
+    // Client IDs de teste/sandbox conhecidos
+    const sandboxClientIds = ['20128', '20129', '20130'];
+    const forceSandbox = sandboxClientIds.includes(shippingConfig.client_id);
+    
+    const baseUrl = (shippingConfig.sandbox || forceSandbox)
       ? 'https://sandbox.melhorenvio.com.br/oauth/authorize'
       : 'https://melhorenvio.com.br/oauth/authorize';
     
@@ -103,6 +108,7 @@ export const TenantIntegrations = () => {
     const authUrl = `${baseUrl}?${params.toString()}`;
     
     console.log('🔗 Auth URL gerada:', authUrl);
+    console.log('🌍 Ambiente:', (shippingConfig.sandbox || forceSandbox) ? 'SANDBOX' : 'PRODUÇÃO');
     console.log('📍 Redirect URI usado:', redirectUri);
     console.log('ℹ️ IMPORTANTE: Registre este redirect_uri no painel do Melhor Envio:', redirectUri);
     
