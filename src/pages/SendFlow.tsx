@@ -34,7 +34,7 @@ export default function SendFlow() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
   const [messageTemplate, setMessageTemplate] = useState('');
-  const [timerMinutes, setTimerMinutes] = useState(1);
+  const [timerSeconds, setTimerSeconds] = useState(30);
   const [targetPhone, setTargetPhone] = useState('');
   const [whatsappGroups, setWhatsappGroups] = useState<WhatsAppGroup[]>([]);
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
@@ -247,7 +247,9 @@ export default function SendFlow() {
       try {
         // Enviar para cada grupo selecionado
         for (const groupId of selectedGroups) {
-          await fetch(`http://localhost:3333/send-to-group`, {
+          console.log(`Enviando produto ${product.code} para grupo ${groupId}`);
+          
+          const response = await fetch(`http://localhost:3333/send-to-group`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -256,17 +258,24 @@ export default function SendFlow() {
               imageUrl: product.image_url
             })
           });
+          
+          const result = await response.json();
+          console.log(`Resposta do servidor:`, result);
+          
+          if (!response.ok) {
+            throw new Error(`Erro ${response.status}: ${result.message || 'Erro desconhecido'}`);
+          }
         }
 
-        toast.success(`Produto ${product.code} enviado com sucesso`);
+        toast.success(`Produto ${product.code} enviado para ${selectedGroups.size} grupo(s)`);
         
         // Aguardar o tempo configurado antes do próximo envio
         if (i < selectedProductArray.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, timerMinutes * 60 * 1000));
+          await new Promise(resolve => setTimeout(resolve, timerSeconds * 1000));
         }
       } catch (error) {
         console.error('Erro no envio:', error);
-        toast.error(`Erro ao enviar produto ${product.code}`);
+        toast.error(`Erro ao enviar produto ${product.code}: ${error.message}`);
       }
     }
 
@@ -401,12 +410,12 @@ export default function SendFlow() {
             </CardHeader>
             <CardContent>
               <div>
-                <label className="text-sm font-medium">Intervalo entre mensagens (minutos):</label>
+                <label className="text-sm font-medium">Intervalo entre mensagens (segundos):</label>
                 <Input
                   type="number"
                   min="1"
-                  value={timerMinutes}
-                  onChange={(e) => setTimerMinutes(Number(e.target.value))}
+                  value={timerSeconds}
+                  onChange={(e) => setTimerSeconds(Number(e.target.value))}
                 />
               </div>
             </CardContent>
