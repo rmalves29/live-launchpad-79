@@ -67,9 +67,53 @@ class TenantSupabaseClient {
     console.log(`🔍 Aplicando filtro tenant_id=${tenantId} na tabela ${table}`);
 
     const wrapped: any = {
-      select: (columns?: any, options?: any) => (base as any).select(columns ?? '*', options).eq('tenant_id', tenantId),
-      update: (values: any) => (base as any).update(values).eq('tenant_id', tenantId),
-      delete: () => (base as any).delete().eq('tenant_id', tenantId),
+      select: (columns?: any, options?: any) => {
+        return (base as any).select(columns ?? '*', options).eq('tenant_id', tenantId);
+      },
+      update: (values: any) => {
+        // Retornar query builder que adiciona tenant_id junto com outras condições
+        const query = (base as any).update(values);
+        return {
+          ...query,
+          eq: (column: string, value: any) => {
+            if (column === 'tenant_id') {
+              return query.eq(column, value);
+            }
+            return query.eq(column, value).eq('tenant_id', tenantId);
+          },
+          in: (column: string, values: any[]) => {
+            return query.in(column, values).eq('tenant_id', tenantId);
+          },
+          // Para outras operações que não especificam condições, aplicar tenant_id diretamente
+          then: (resolve?: any, reject?: any) => {
+            return query.eq('tenant_id', tenantId).then(resolve, reject);
+          },
+          catch: (reject: any) => {
+            return query.eq('tenant_id', tenantId).catch(reject);
+          }
+        };
+      },
+      delete: () => {
+        const query = (base as any).delete();
+        return {
+          ...query,
+          eq: (column: string, value: any) => {
+            if (column === 'tenant_id') {
+              return query.eq(column, value);
+            }
+            return query.eq(column, value).eq('tenant_id', tenantId);
+          },
+          in: (column: string, values: any[]) => {
+            return query.in(column, values).eq('tenant_id', tenantId);
+          },
+          then: (resolve?: any, reject?: any) => {
+            return query.eq('tenant_id', tenantId).then(resolve, reject);
+          },
+          catch: (reject: any) => {
+            return query.eq('tenant_id', tenantId).catch(reject);
+          }
+        };
+      },
       upsert: (values: any) => {
         const arr = Array.isArray(values) ? values : [values];
         const withTenant = arr.map((v) => ({ tenant_id: tenantId, ...v }));
