@@ -60,21 +60,13 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
   }, [order?.id]);
 
   const loadFreteInfo = async (orderId: number) => {
-    try {
-      const { data, error } = await supabase
-        .from('frete_cotacoes')
-        .select('transportadora, servico_escolhido, valor_frete, prazo')
-        .eq('pedido_id', orderId)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading frete info:', error);
-      } else if (data) {
-        setFreteInfo(data);
-      }
-    } catch (error) {
-      console.error('Error loading frete info:', error);
-    }
+    // Frete info removed - no longer available
+    setFreteInfo({
+      transportadora: '',
+      servico_escolhido: '',
+      valor_frete: 0,
+      prazo: 0
+    });
   };
 
   if (!order) return null;

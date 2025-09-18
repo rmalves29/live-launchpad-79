@@ -104,35 +104,8 @@ export default function TenantOrders() {
         })) || [];
       }
 
-      // Carregar informações de frete
-      try {
-        const { data: freteData } = await supabase
-          .from('frete_cotacoes')
-          .select('transportadora, servico_escolhido, valor_frete, prazo')
-          .eq('pedido_id', order.id)
-          .maybeSingle();
-        
-        if (freteData) {
-          orderWithItems.frete_info = freteData;
-        }
-      } catch (freteError) {
-        console.error('Error loading frete info:', freteError);
-      }
-
-      // Carregar informações de envio
-      try {
-        const { data: envioData } = await supabase
-          .from('frete_envios')
-          .select('status, tracking_code, label_url, shipment_id')
-          .eq('pedido_id', order.id)
-          .maybeSingle();
-        
-        if (envioData) {
-          orderWithItems.envio_info = envioData;
-        }
-      } catch (envioError) {
-        console.error('Error loading envio info:', envioError);
-      }
+      // Carregar informações de frete - removido (tabelas excluídas)
+      // Carregar informações de envio - removido (tabelas excluídas)
 
       setSelectedOrder(orderWithItems);
       setIsViewDialogOpen(true);

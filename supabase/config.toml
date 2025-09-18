@@ -1,8 +1,5 @@
 project_id = "hxtbsieodbtzgcvvkeqx"
 
-[functions.webhook-bling]
-verify_jwt = false
-
 [functions.create-payment]
 verify_jwt = true
 
@@ -14,18 +11,6 @@ verify_jwt = true
 
 [functions.save-integration-settings]
 verify_jwt = true
-
-[functions.melhor-envio-shipping]
-verify_jwt = false
-
-[functions.melhor-envio-labels]
-verify_jwt = false
-
-[functions.melhor-envio-oauth]
-verify_jwt = false
-
-[functions.melhor-envio-webhook]
-verify_jwt = false
 
 [functions.mercadopago-webhook]
 verify_jwt = false
@@ -44,15 +29,3 @@ verify_jwt = false
 
 [functions.whatsapp-multitenant]
 verify_jwt = true
-
-[functions.bling-integration]
-verify_jwt = true
-
-[functions.bling-oauth]
-verify_jwt = false
-
-[functions.callback-empresa]
-verify_jwt = false
-
-[functions.webhook-melhorenvio]
-verify_jwt = false

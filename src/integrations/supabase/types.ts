@@ -23,8 +23,6 @@ export type Database = {
           default_weight_kg: number | null
           default_width_cm: number | null
           id: number
-          melhor_envio_env: string | null
-          melhor_envio_from_cep: string | null
           public_base_url: string | null
           updated_at: string
         }
@@ -36,8 +34,6 @@ export type Database = {
           default_weight_kg?: number | null
           default_width_cm?: number | null
           id?: number
-          melhor_envio_env?: string | null
-          melhor_envio_from_cep?: string | null
           public_base_url?: string | null
           updated_at?: string
         }
@@ -49,8 +45,6 @@ export type Database = {
           default_weight_kg?: number | null
           default_width_cm?: number | null
           id?: number
-          melhor_envio_env?: string | null
-          melhor_envio_from_cep?: string | null
           public_base_url?: string | null
           updated_at?: string
         }
@@ -103,78 +97,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      bling_contacts: {
-        Row: {
-          bling_contact_id: number
-          created_at: string | null
-          customer_key: string
-          tenant_id: string
-          updated_at: string | null
-        }
-        Insert: {
-          bling_contact_id: number
-          created_at?: string | null
-          customer_key: string
-          tenant_id: string
-          updated_at?: string | null
-        }
-        Update: {
-          bling_contact_id?: number
-          created_at?: string | null
-          customer_key?: string
-          tenant_id?: string
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      bling_integrations: {
-        Row: {
-          access_token: string | null
-          client_id: string | null
-          client_secret: string | null
-          created_at: string | null
-          environment: string
-          expires_at: string | null
-          id: string
-          is_active: boolean
-          loja_id: string | null
-          refresh_token: string | null
-          tenant_id: string | null
-          token_type: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          access_token?: string | null
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string | null
-          environment?: string
-          expires_at?: string | null
-          id?: string
-          is_active?: boolean
-          loja_id?: string | null
-          refresh_token?: string | null
-          tenant_id?: string | null
-          token_type?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          access_token?: string | null
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string | null
-          environment?: string
-          expires_at?: string | null
-          id?: string
-          is_active?: boolean
-          loja_id?: string | null
-          refresh_token?: string | null
-          tenant_id?: string | null
-          token_type?: string | null
-          updated_at?: string | null
-        }
-        Relationships: []
       }
       cart_items: {
         Row: {
@@ -408,177 +330,6 @@ export type Database = {
           },
         ]
       }
-      frete_config: {
-        Row: {
-          access_token: string | null
-          api_base_url: string
-          cep_origem: string | null
-          client_id: string | null
-          client_secret: string | null
-          created_at: string
-          id: number
-          localidade_retirada_url: string | null
-          redirect_uri: string | null
-          refresh_token: string | null
-          remetente_bairro: string | null
-          remetente_cidade: string | null
-          remetente_documento: string | null
-          remetente_email: string | null
-          remetente_endereco_comp: string | null
-          remetente_endereco_numero: string | null
-          remetente_endereco_rua: string | null
-          remetente_nome: string | null
-          remetente_telefone: string | null
-          remetente_uf: string | null
-          token_expires_at: string | null
-          updated_at: string
-        }
-        Insert: {
-          access_token?: string | null
-          api_base_url?: string
-          cep_origem?: string | null
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string
-          id?: number
-          localidade_retirada_url?: string | null
-          redirect_uri?: string | null
-          refresh_token?: string | null
-          remetente_bairro?: string | null
-          remetente_cidade?: string | null
-          remetente_documento?: string | null
-          remetente_email?: string | null
-          remetente_endereco_comp?: string | null
-          remetente_endereco_numero?: string | null
-          remetente_endereco_rua?: string | null
-          remetente_nome?: string | null
-          remetente_telefone?: string | null
-          remetente_uf?: string | null
-          token_expires_at?: string | null
-          updated_at?: string
-        }
-        Update: {
-          access_token?: string | null
-          api_base_url?: string
-          cep_origem?: string | null
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string
-          id?: number
-          localidade_retirada_url?: string | null
-          redirect_uri?: string | null
-          refresh_token?: string | null
-          remetente_bairro?: string | null
-          remetente_cidade?: string | null
-          remetente_documento?: string | null
-          remetente_email?: string | null
-          remetente_endereco_comp?: string | null
-          remetente_endereco_numero?: string | null
-          remetente_endereco_rua?: string | null
-          remetente_nome?: string | null
-          remetente_telefone?: string | null
-          remetente_uf?: string | null
-          token_expires_at?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      frete_cotacoes: {
-        Row: {
-          altura: number
-          cep_destino: string
-          comprimento: number
-          created_at: string
-          id: number
-          largura: number
-          pedido_id: number | null
-          peso: number
-          prazo: number | null
-          raw_response: Json | null
-          servico_escolhido: string | null
-          transportadora: string | null
-          valor_declarado: number | null
-          valor_frete: number | null
-        }
-        Insert: {
-          altura: number
-          cep_destino: string
-          comprimento: number
-          created_at?: string
-          id?: number
-          largura: number
-          pedido_id?: number | null
-          peso: number
-          prazo?: number | null
-          raw_response?: Json | null
-          servico_escolhido?: string | null
-          transportadora?: string | null
-          valor_declarado?: number | null
-          valor_frete?: number | null
-        }
-        Update: {
-          altura?: number
-          cep_destino?: string
-          comprimento?: number
-          created_at?: string
-          id?: number
-          largura?: number
-          pedido_id?: number | null
-          peso?: number
-          prazo?: number | null
-          raw_response?: Json | null
-          servico_escolhido?: string | null
-          transportadora?: string | null
-          valor_declarado?: number | null
-          valor_frete?: number | null
-        }
-        Relationships: []
-      }
-      frete_envios: {
-        Row: {
-          cart_id: string | null
-          created_at: string
-          id: number
-          label_url: string | null
-          payment_link: string | null
-          pedido_id: number | null
-          raw_response: Json | null
-          service_price: number | null
-          shipment_id: string | null
-          status: string | null
-          tracking_code: string | null
-          updated_at: string
-        }
-        Insert: {
-          cart_id?: string | null
-          created_at?: string
-          id?: number
-          label_url?: string | null
-          payment_link?: string | null
-          pedido_id?: number | null
-          raw_response?: Json | null
-          service_price?: number | null
-          shipment_id?: string | null
-          status?: string | null
-          tracking_code?: string | null
-          updated_at?: string
-        }
-        Update: {
-          cart_id?: string | null
-          created_at?: string
-          id?: number
-          label_url?: string | null
-          payment_link?: string | null
-          pedido_id?: number | null
-          raw_response?: Json | null
-          service_price?: number | null
-          shipment_id?: string | null
-          status?: string | null
-          tracking_code?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
       gifts: {
         Row: {
           created_at: string
@@ -608,86 +359,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
-      }
-      integration_me: {
-        Row: {
-          access_token: string | null
-          client_id: string | null
-          client_secret: string | null
-          created_at: string
-          environment: string
-          from_address: string | null
-          from_cep: string | null
-          from_city: string | null
-          from_complement: string | null
-          from_district: string | null
-          from_document: string | null
-          from_email: string | null
-          from_name: string | null
-          from_number: string | null
-          from_phone: string | null
-          from_state: string | null
-          id: string
-          is_active: boolean
-          refresh_token: string | null
-          tenant_id: string
-          updated_at: string
-        }
-        Insert: {
-          access_token?: string | null
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string
-          environment?: string
-          from_address?: string | null
-          from_cep?: string | null
-          from_city?: string | null
-          from_complement?: string | null
-          from_district?: string | null
-          from_document?: string | null
-          from_email?: string | null
-          from_name?: string | null
-          from_number?: string | null
-          from_phone?: string | null
-          from_state?: string | null
-          id?: string
-          is_active?: boolean
-          refresh_token?: string | null
-          tenant_id: string
-          updated_at?: string
-        }
-        Update: {
-          access_token?: string | null
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string
-          environment?: string
-          from_address?: string | null
-          from_cep?: string | null
-          from_city?: string | null
-          from_complement?: string | null
-          from_district?: string | null
-          from_document?: string | null
-          from_email?: string | null
-          from_name?: string | null
-          from_number?: string | null
-          from_phone?: string | null
-          from_state?: string | null
-          id?: string
-          is_active?: boolean
-          refresh_token?: string | null
-          tenant_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "integration_me_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: true
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       integration_mp: {
         Row: {

@@ -19,12 +19,7 @@ import Relatorios from "./pages/Relatorios";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import WhatsAppIntegration from "./components/WhatsAppIntegration";
 import MpReturn from "./pages/MpReturn";
-import ConfigFrete from "./pages/ConfigFrete";
-import CotacaoFrete from "./pages/CotacaoFrete";
-import Etiquetas from "./pages/Etiquetas";
 import Integracoes from "./pages/Integracoes";
-import TesteBling from "./pages/TesteBling";
-import TesteMelhorEnvio from "./pages/TesteMelhorEnvio";
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
 import MercadoPagoCallback from "./pages/MercadoPagoCallback";
@@ -113,20 +108,9 @@ const AppContent = () => {
         <Route path="/whatsapp-integration" element={
           <RequireTenantAuth><WhatsAppIntegration /></RequireTenantAuth>
         } />
-        <Route path="/config-frete" element={
-          <RequireTenantAuth><ConfigFrete /></RequireTenantAuth>
-        } />
-        <Route path="/cotacao-frete" element={
-          <RequireTenantAuth><CotacaoFrete /></RequireTenantAuth>
-        } />
-        <Route path="/etiquetas" element={
-          <RequireTenantAuth><Etiquetas /></RequireTenantAuth>
-        } />
         <Route path="/integracoes" element={
           <RequireTenantAuth><Integracoes /></RequireTenantAuth>
         } />
-        <Route path="/teste-bling" element={<TesteBling />} />
-        <Route path="/teste-melhor-envio" element={<TesteMelhorEnvio />} />
         
         <Route path="*" element={<NotFound />} />
       </Routes>

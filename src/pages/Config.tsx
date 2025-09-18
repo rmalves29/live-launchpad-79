@@ -112,7 +112,13 @@ const Config = () => {
       }
 
       if (data) {
-        setSettings(data);
+        // Remove campos do Melhor Envio que foram excluídos
+        const cleanData = {
+          ...data,
+          melhor_envio_env: 'production',
+          melhor_envio_from_cep: '31575060'
+        };
+        setSettings(cleanData);
       } else {
         // Create default settings
         const defaultSettings = {
