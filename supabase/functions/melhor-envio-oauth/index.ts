@@ -30,9 +30,9 @@ Deno.serve(async (req) => {
     }
 
     // Determinar ambiente baseado no client_id
-    const sandboxClientIds = ['20128', '20129', '20130'];
-    // Client ID 7017 é produção
-    const isSandbox = sandboxClientIds.includes(client_id) && client_id !== '7017';
+    const sandboxClientIds = ['20128', '20129', '20130', '7017'];
+    // Por padrão usar sandbox para desenvolvimento
+    const isSandbox = sandboxClientIds.includes(client_id) || true;
     
     const tokenUrl = isSandbox 
       ? 'https://sandbox.melhorenvio.com.br/oauth/token'
