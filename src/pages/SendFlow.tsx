@@ -40,6 +40,7 @@ export default function SendFlow() {
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [isRunning, setIsRunning] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -104,7 +105,23 @@ export default function SendFlow() {
   const identifyWhatsAppGroups = async () => {
     if (!targetPhone || !tenant?.id) return;
     
+    setIsLoadingGroups(true);
     try {
+      console.log('🔍 Tentando identificar grupos para:', targetPhone);
+      
+      // Verificar se o servidor está online primeiro
+      const statusResponse = await fetch(`http://localhost:3333/status`);
+      if (!statusResponse.ok) {
+        throw new Error('Servidor WhatsApp não está rodando na porta 3333');
+      }
+      
+      const statusData = await statusResponse.json();
+      console.log('📊 Status do servidor:', statusData);
+      
+      if (!statusData.whatsapp?.ready) {
+        throw new Error('WhatsApp não está conectado no servidor');
+      }
+
       // Fazer chamada para o servidor Node.js para identificar grupos
       const response = await fetch(`http://localhost:3333/identify-groups`, {
         method: 'POST',
@@ -112,14 +129,27 @@ export default function SendFlow() {
         body: JSON.stringify({ phone: targetPhone })
       });
 
-      if (!response.ok) throw new Error('Erro ao identificar grupos');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erro ${response.status}: ${errorText}`);
+      }
       
       const data = await response.json();
-      setWhatsappGroups(data.groups || []);
+      console.log('📋 Grupos encontrados:', data);
+      
+      if (data.success && data.groups) {
+        setWhatsappGroups(data.groups);
+        toast.success(`${data.groups.length} grupos encontrados`);
+      } else {
+        setWhatsappGroups([]);
+        toast.info('Nenhum grupo encontrado para este número');
+      }
     } catch (error) {
-      console.error('Erro ao identificar grupos WhatsApp:', error);
-      toast.error('Erro ao identificar grupos WhatsApp');
+      console.error('❌ Erro ao identificar grupos WhatsApp:', error);
+      toast.error(`Erro: ${error.message}`);
       setWhatsappGroups([]);
+    } finally {
+      setIsLoadingGroups(false);
     }
   };
 
@@ -292,10 +322,16 @@ export default function SendFlow() {
                   placeholder="5511999999999"
                   value={targetPhone}
                   onChange={(e) => setTargetPhone(e.target.value)}
+                  disabled={isLoadingGroups}
                 />
+                {isLoadingGroups && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    🔍 Identificando grupos...
+                  </div>
+                )}
               </div>
               
-              {whatsappGroups.length > 0 && (
+              {whatsappGroups.length > 0 && !isLoadingGroups && (
                 <div>
                   <label className="text-sm font-medium">Grupos encontrados:</label>
                   <div className="space-y-2 max-h-32 overflow-y-auto">
@@ -312,6 +348,17 @@ export default function SendFlow() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+              
+              {whatsappGroups.length === 0 && !isLoadingGroups && targetPhone && (
+                <div className="text-sm text-muted-foreground">
+                  ⚠️ Para usar o SendFlow:
+                  <ol className="list-decimal list-inside mt-2 space-y-1">
+                    <li>Execute o servidor WhatsApp: <code className="bg-muted px-1 rounded">node server-whatsapp-groups.js</code></li>
+                    <li>Conecte o WhatsApp escaneando o QR Code</li>
+                    <li>Digite um número que participe dos grupos desejados</li>
+                  </ol>
                 </div>
               )}
             </CardContent>
