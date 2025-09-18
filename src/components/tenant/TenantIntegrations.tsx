@@ -385,6 +385,16 @@ export const TenantIntegrations = () => {
   };
 
   const saveShippingIntegration = async () => {
+    // Validação dos campos obrigatórios
+    if (!shippingConfig.client_id || !shippingConfig.client_secret || !shippingConfig.from_cep) {
+      toast({
+        title: 'Erro',
+        description: 'Preencha todos os campos obrigatórios: Client ID, Client Secret e CEP de Origem',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     if (!profile?.id) {
       toast({
         title: 'Erro',
@@ -404,45 +414,27 @@ export const TenantIntegrations = () => {
 
       console.log('Salvando integração do Melhor Envio para tenant:', currentTenantId);
 
-      // Check if integration already exists
-      const { data: existingIntegration } = await supabaseTenant.raw
-        .from('shipping_integrations')
-        .select('id')
-        .eq('tenant_id', currentTenantId)
-        .eq('provider', 'melhor_envio')
-        .maybeSingle();
-
       const integrationData = {
         tenant_id: currentTenantId,
         provider: 'melhor_envio',
         client_id: shippingConfig.client_id,
         client_secret: shippingConfig.client_secret,
-        access_token: shippingConfig.access_token,
+        access_token: shippingConfig.access_token || null,
         from_cep: shippingConfig.from_cep,
         sandbox: shippingConfig.sandbox,
-        webhook_secret: shippingConfig.webhook_secret,
+        webhook_secret: shippingConfig.webhook_secret || null,
         is_active: shippingConfig.is_active,
         updated_at: new Date().toISOString()
       };
 
-      let error;
-      
-      if (existingIntegration) {
-        // Update existing integration
-        console.log('Atualizando integração existente:', existingIntegration.id);
-        const result = await supabaseTenant.raw
-          .from('shipping_integrations')
-          .update(integrationData)
-          .eq('id', existingIntegration.id);
-        error = result.error;
-      } else {
-        // Create new integration
-        console.log('Criando nova integração');
-        const result = await supabaseTenant.raw
-          .from('shipping_integrations')
-          .insert(integrationData);
-        error = result.error;
-      }
+      console.log('Dados para salvar:', integrationData);
+
+      // Usar upsert para lidar com insert e update automaticamente
+      const { error } = await supabaseTenant.raw
+        .from('shipping_integrations')
+        .upsert(integrationData, {
+          onConflict: 'tenant_id,provider'
+        });
 
       if (error) {
         console.error('Erro na operação do banco:', error);
