@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenantContext } from '@/contexts/TenantContext';
-import { Settings } from 'lucide-react';
+import { Settings, Truck } from 'lucide-react';
 
 export const TenantIntegrations = () => {
   const { toast } = useToast();
@@ -32,6 +32,18 @@ export const TenantIntegrations = () => {
     public_key: '',
     client_id: '',
     client_secret: '',
+    webhook_secret: '',
+    is_active: false
+  });
+
+  // Shipping Integration State (Melhor Envio)
+  const [shippingConfig, setShippingConfig] = useState({
+    provider: 'melhor_envio',
+    client_id: '',
+    client_secret: '',
+    access_token: '',
+    from_cep: '31575060',
+    sandbox: true,
     webhook_secret: '',
     is_active: false
   });
@@ -108,6 +120,39 @@ export const TenantIntegrations = () => {
             public_key: '',
             client_id: '',
             client_secret: '',
+            webhook_secret: '',
+            is_active: false
+          });
+        }
+
+        // Load Shipping data (Melhor Envio)
+        const { data: shippingData, error: shippingError } = await supabaseTenant.raw
+          .from('shipping_integrations')
+          .select('*') 
+          .eq('tenant_id', currentTenantId)
+          .maybeSingle();
+          
+        if (!shippingError && shippingData) {
+          console.log('Shipping data loaded:', shippingData);
+          setShippingConfig({
+            provider: 'melhor_envio',
+            client_id: shippingData.client_id || '',
+            client_secret: shippingData.client_secret || '',
+            access_token: shippingData.access_token || '',
+            from_cep: shippingData.from_cep || '31575060',
+            sandbox: shippingData.sandbox !== false,
+            webhook_secret: shippingData.webhook_secret || '',
+            is_active: shippingData.is_active || false
+          });
+        } else {
+          console.log('No Shipping data found, using defaults');
+          setShippingConfig({
+            provider: 'melhor_envio',
+            client_id: '',
+            client_secret: '',
+            access_token: '',
+            from_cep: '31575060',
+            sandbox: true,
             webhook_secret: '',
             is_active: false
           });
@@ -216,6 +261,62 @@ export const TenantIntegrations = () => {
       toast({
         title: 'Erro',
         description: 'Erro ao salvar configuração WhatsApp',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveShippingIntegration = async () => {
+    if (!profile?.id || !shippingConfig.access_token.trim()) {
+      toast({
+        title: 'Erro',
+        description: 'Access Token é obrigatório',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const currentTenantId = profile.role === 'super_admin' ? tenant?.id : profile.tenant_id;
+      
+      if (!currentTenantId) {
+        throw new Error('Tenant ID não encontrado');
+      }
+
+      // Insert or update Shipping integration
+      const { error } = await supabaseTenant.raw
+        .from('shipping_integrations')
+        .upsert({
+          tenant_id: currentTenantId,
+          provider: 'melhor_envio',
+          client_id: shippingConfig.client_id,
+          client_secret: shippingConfig.client_secret,
+          access_token: shippingConfig.access_token,
+          from_cep: shippingConfig.from_cep,
+          sandbox: shippingConfig.sandbox,
+          webhook_secret: shippingConfig.webhook_secret,
+          is_active: shippingConfig.is_active
+        }, {
+          onConflict: 'tenant_id'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Sucesso',
+        description: 'Configuração Melhor Envio salva com sucesso'
+      });
+
+      // Refresh integrations after save
+      await loadIntegrations();
+    } catch (error) {
+      console.error('Error saving shipping integration:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao salvar configuração Melhor Envio',
         variant: 'destructive'
       });
     } finally {
@@ -362,6 +463,97 @@ export const TenantIntegrations = () => {
           </div>
           <Button onClick={savePaymentIntegration} disabled={loading}>
             Salvar Mercado Pago
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Shipping Integration (Melhor Envio) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              Frete (Melhor Envio)
+            </div>
+            <Switch
+              checked={shippingConfig.is_active}
+              onCheckedChange={(checked) =>
+                setShippingConfig(prev => ({ ...prev, is_active: checked }))
+              }
+            />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="me-client-id">Client ID</Label>
+            <Input
+              id="me-client-id"
+              value={shippingConfig.client_id}
+              onChange={(e) =>
+                setShippingConfig(prev => ({ ...prev, client_id: e.target.value }))
+              }
+              placeholder="Seu Client ID do Melhor Envio"
+            />
+          </div>
+          <div>
+            <Label htmlFor="me-client-secret">Client Secret</Label>
+            <Input
+              id="me-client-secret"
+              type="password"
+              value={shippingConfig.client_secret}
+              onChange={(e) =>
+                setShippingConfig(prev => ({ ...prev, client_secret: e.target.value }))
+              }
+              placeholder="Seu Client Secret do Melhor Envio"
+            />
+          </div>
+          <div>
+            <Label htmlFor="me-access-token">Access Token</Label>
+            <Input
+              id="me-access-token"
+              type="password"
+              value={shippingConfig.access_token}
+              onChange={(e) =>
+                setShippingConfig(prev => ({ ...prev, access_token: e.target.value }))
+              }
+              placeholder="Seu Access Token do Melhor Envio"
+            />
+          </div>
+          <div>
+            <Label htmlFor="me-from-cep">CEP de Origem</Label>
+            <Input
+              id="me-from-cep"
+              value={shippingConfig.from_cep}
+              onChange={(e) =>
+                setShippingConfig(prev => ({ ...prev, from_cep: e.target.value }))
+              }
+              placeholder="31575060"
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="me-sandbox"
+              checked={shippingConfig.sandbox}
+              onCheckedChange={(checked) =>
+                setShippingConfig(prev => ({ ...prev, sandbox: checked }))
+              }
+            />
+            <Label htmlFor="me-sandbox">Modo Sandbox (Teste)</Label>
+          </div>
+          <div>
+            <Label htmlFor="me-webhook-secret">Webhook Secret</Label>
+            <Input
+              id="me-webhook-secret"
+              type="password"
+              value={shippingConfig.webhook_secret}
+              onChange={(e) =>
+                setShippingConfig(prev => ({ ...prev, webhook_secret: e.target.value }))
+              }
+              placeholder="Seu Webhook Secret do Melhor Envio"
+            />
+          </div>
+          <Button onClick={saveShippingIntegration} disabled={loading}>
+            Salvar Melhor Envio
           </Button>
         </CardContent>
       </Card>
