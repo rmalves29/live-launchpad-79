@@ -47,7 +47,8 @@ export const TenantIntegrations = () => {
     is_active: false
   });
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [authUrl, setAuthUrl] = useState<string>('');
+  const [showAuthUrl, setShowAuthUrl] = useState(false);
 
   useEffect(() => {
     if (profile?.id) {
@@ -91,7 +92,7 @@ export const TenantIntegrations = () => {
       'cart-read', 'cart-write', 
       'companies-read', 'companies-write',
       'coupons-read', 'coupons-write',
-      'notifications-read', 
+      'notifications-read',
       'orders-read',
       'products-read', 'products-write',
       'purchases-read',
@@ -107,6 +108,10 @@ export const TenantIntegrations = () => {
 
     const authUrl = `${baseUrl}?${params.toString()}`;
     
+    // Salvar URL gerada para exibir
+    setAuthUrl(authUrl);
+    setShowAuthUrl(true);
+    
     console.log('🔗 Auth URL gerada:', authUrl);
     console.log('🌍 Ambiente:', (shippingConfig.sandbox || forceSandbox) ? 'SANDBOX' : 'PRODUÇÃO');
     console.log('📍 Redirect URI usado:', redirectUri);
@@ -114,23 +119,10 @@ export const TenantIntegrations = () => {
     
     // Mostrar informações importantes para o usuário
     toast({
-      title: 'Redirect URI para Registrar',
-      description: `${redirectUri}`,
-      duration: 10000,
+      title: 'Link de autorização gerado!',
+      description: 'Copie o redirect URI e registre no painel do Melhor Envio.',
+      duration: 5000,
     });
-    
-    // Copiar para clipboard para facilitar
-    navigator.clipboard.writeText(redirectUri).then(() => {
-      toast({
-        title: 'Redirect URI copiado!',
-        description: 'Cole no painel do Melhor Envio antes de autorizar.',
-      });
-    });
-    
-    // Abrir URL após um pequeno delay para dar tempo de ver as mensagens
-    setTimeout(() => {
-      window.open(authUrl, '_blank');
-    }, 2000);
   };
 
   const handleAuthCallback = async (code: string) => {
@@ -143,7 +135,7 @@ export const TenantIntegrations = () => {
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     try {
       const redirectUri = `${window.location.origin}/config?tab=integracoes&callback=melhor_envio`;
       const tokenUrl = shippingConfig.sandbox 
@@ -196,7 +188,7 @@ export const TenantIntegrations = () => {
         variant: 'destructive'
       });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
@@ -434,7 +426,7 @@ export const TenantIntegrations = () => {
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     try {
       const currentTenantId = profile.role === 'super_admin' ? tenant?.id : profile.tenant_id;
       
@@ -486,7 +478,7 @@ export const TenantIntegrations = () => {
         variant: 'destructive'
       });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
@@ -736,14 +728,87 @@ export const TenantIntegrations = () => {
                 Para usar a API do Melhor Envio, você precisa autorizar seu aplicativo. 
                 Certifique-se de ter preenchido o Client ID e Client Secret antes de prosseguir.
               </p>
-              <Button
-                type="button"
-                onClick={generateAuthUrl}
-                disabled={!shippingConfig.client_id || !shippingConfig.client_secret}
-                variant="outline"
-              >
-                🔗 Gerar Link de Autorização
-              </Button>
+              <div className="space-y-3">
+                <Button
+                  type="button"
+                  onClick={generateAuthUrl}
+                  disabled={!shippingConfig.client_id || !shippingConfig.client_secret}
+                  variant="outline"
+                  className="w-full"
+                >
+                  🔗 Gerar Link de Autorização
+                </Button>
+                
+                {showAuthUrl && (
+                  <div className="p-3 bg-background border rounded-lg space-y-3">
+                    <div>
+                      <label className="text-sm font-medium">
+                        1. Primeiro, registre este Redirect URI no painel do Melhor Envio:
+                      </label>
+                      <div className="flex mt-1">
+                        <input
+                          type="text"
+                          value={`${window.location.origin}/config?tab=integracoes&callback=melhor_envio`}
+                          readOnly
+                          className="flex-1 px-2 py-1 text-xs bg-muted border rounded-l font-mono"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-l-none"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/config?tab=integracoes&callback=melhor_envio`);
+                            toast({ title: 'Redirect URI copiado!' });
+                          }}
+                        >
+                          📋
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="text-sm font-medium">
+                        2. Depois, acesse este link para autorizar:
+                      </label>
+                      <div className="flex mt-1">
+                        <input
+                          type="text"
+                          value={authUrl}
+                          readOnly
+                          className="flex-1 px-2 py-1 text-xs bg-muted border rounded-l font-mono"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-none"
+                          onClick={() => {
+                            navigator.clipboard.writeText(authUrl);
+                            toast({ title: 'Link copiado!' });
+                          }}
+                        >
+                          📋
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="default"
+                          className="rounded-l-none"
+                          onClick={() => window.open(authUrl, '_blank')}
+                        >
+                          🔗 Abrir
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <p className="text-xs text-muted-foreground">
+                      💡 Após autorizar, você será redirecionado de volta para esta página automaticamente.
+                    </p>
+                  </div>
+                )}
+              </div>
+              
               {shippingConfig.access_token && (
                 <p className="text-sm text-green-600 mt-2">
                   ✅ Access token obtido com sucesso!
@@ -771,9 +836,9 @@ export const TenantIntegrations = () => {
             </Button>
             <Button
               onClick={saveShippingIntegration}
-              disabled={isLoading}
+              disabled={loading}
             >
-              {isLoading ? 'Salvando...' : 'Salvar Configuração'}
+              {loading ? 'Salvando...' : 'Salvar Configuração'}
             </Button>
           </div>
         </CardContent>
