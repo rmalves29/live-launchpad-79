@@ -162,7 +162,21 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: TENANT_SLUG }),
   puppeteer: {
     headless: false,
-    args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu',
+      '--disable-extensions'
+    ]
+  },
+  // Configurações adicionais para compatibilidade
+  webVersionCache: {
+    type: 'remote',
+    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
   }
 });
 
@@ -375,39 +389,95 @@ async function sendToGroup(groupId, message, imageUrl = null) {
       throw new Error('WhatsApp não está conectado');
     }
 
+    console.log(`🚀 Tentando enviar mensagem para grupo: ${groupId}`);
+
+    // Verificar se o grupo existe e está acessível
+    let targetChat;
+    try {
+      targetChat = await client.getChatById(groupId);
+      if (!targetChat || !targetChat.isGroup) {
+        throw new Error(`Grupo ${groupId} não encontrado ou não é um grupo válido`);
+      }
+      console.log(`✅ Grupo encontrado: ${targetChat.name}`);
+    } catch (error) {
+      console.error(`❌ Erro ao acessar grupo ${groupId}:`, error.message);
+      throw new Error(`Não foi possível acessar o grupo: ${error.message}`);
+    }
+
     let media = null;
     if (imageUrl) {
       try {
+        console.log(`📷 Tentando carregar imagem: ${imageUrl}`);
         media = await MessageMedia.fromUrl(imageUrl);
+        console.log(`✅ Imagem carregada com sucesso`);
       } catch (error) {
-        console.error('❌ Erro ao carregar imagem:', error);
+        console.error('❌ Erro ao carregar imagem:', error.message);
         // Continuar sem imagem se houver erro
+        media = null;
       }
     }
 
-    if (media) {
-      await client.sendMessage(groupId, media, { caption: message });
-    } else {
-      await client.sendMessage(groupId, message);
+    // Tentar enviar a mensagem com retry
+    let sendSuccess = false;
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (!sendSuccess && attempts < maxAttempts) {
+      attempts++;
+      try {
+        console.log(`📤 Tentativa ${attempts}/${maxAttempts} de envio para ${targetChat.name}`);
+
+        if (media) {
+          await targetChat.sendMessage(media, { caption: message });
+          console.log(`✅ Mensagem com imagem enviada para ${targetChat.name}`);
+        } else {
+          await targetChat.sendMessage(message);
+          console.log(`✅ Mensagem de texto enviada para ${targetChat.name}`);
+        }
+        
+        sendSuccess = true;
+      } catch (sendError) {
+        console.error(`❌ Tentativa ${attempts} falhou:`, sendError.message);
+        
+        if (attempts < maxAttempts) {
+          console.log(`⏳ Aguardando 2s antes da próxima tentativa...`);
+          await delay(2000);
+        } else {
+          throw new Error(`Falha após ${maxAttempts} tentativas: ${sendError.message}`);
+        }
+      }
     }
 
-    // Salvar no banco
-    await supa('/whatsapp_messages', {
-      method: 'POST',
-      body: JSON.stringify({
-        tenant_id: TENANT_ID,
-        phone: groupId,
-        message: message,
-        type: 'outgoing',
-        sent_at: new Date().toISOString()
-      })
-    });
+    // Salvar no banco apenas se o envio foi bem-sucedido
+    try {
+      await supa('/whatsapp_messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: TENANT_ID,
+          phone: groupId,
+          message: message,
+          type: 'outgoing',
+          sent_at: new Date().toISOString()
+        })
+      });
+      console.log(`💾 Mensagem salva no banco de dados`);
+    } catch (dbError) {
+      console.error('⚠️ Erro ao salvar no banco (mensagem foi enviada):', dbError.message);
+      // Não falhar aqui, pois a mensagem já foi enviada
+    }
 
-    console.log(`✅ Mensagem enviada para grupo ${groupId}`);
-    return { success: true, groupId };
+    return { 
+      success: true, 
+      groupId, 
+      groupName: targetChat.name,
+      message: 'Mensagem enviada com sucesso'
+    };
   } catch (error) {
-    console.error('❌ Erro ao enviar para grupo:', error);
-    throw error;
+    console.error('❌ Erro crítico ao enviar para grupo:', error.message);
+    console.error('❌ Stack trace:', error.stack);
+    
+    // Retornar erro mais detalhado
+    throw new Error(`Falha no envio: ${error.message}`);
   }
 }
 
@@ -469,52 +539,95 @@ app.post('/identify-groups', async (req, res) => {
 // Nova rota para enviar para grupo
 app.post('/send-to-group', async (req, res) => {
   try {
+    console.log('📨 Recebida requisição para envio de grupo:', req.body);
+    
     const { groupId, message, imageUrl } = req.body;
     if (!groupId || !message) {
-      return res.status(400).json({ error: 'GroupId e mensagem são obrigatórios' });
+      return res.status(400).json({ 
+        success: false,
+        error: 'GroupId e mensagem são obrigatórios' 
+      });
+    }
+
+    if (!clientReady) {
+      return res.status(503).json({ 
+        success: false,
+        error: 'WhatsApp não está conectado. Aguarde a conexão.' 
+      });
     }
 
     const result = await sendToGroup(groupId, message, imageUrl);
-    res.json({ success: true, result });
+    
+    console.log('✅ Resposta do envio:', result);
+    res.json({ 
+      success: true, 
+      result,
+      message: 'Mensagem enviada com sucesso'
+    });
   } catch (error) {
-    console.error('❌ Erro ao enviar para grupo:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ Erro na API de envio para grupo:', error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      details: 'Verifique se o WhatsApp está conectado e o grupo existe'
+    });
   }
 });
 
 // Listar todos os grupos WhatsApp
-app.get('/list-all-groups', (req, res) => {
+app.get('/list-all-groups', async (req, res) => {
   console.log('📋 Requisição para listar todos os grupos');
   
-  if (!client?.info?.wid?._serialized) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'WhatsApp não está conectado' 
-    });
-  }
+  try {
+    if (!clientReady) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'WhatsApp não está conectado' 
+      });
+    }
 
-  client.getChats().then(chats => {
+    if (!client?.info?.wid?._serialized) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'WhatsApp não está devidamente inicializado' 
+      });
+    }
+
+    console.log('🔍 Buscando chats...');
+    const chats = await client.getChats();
+    console.log(`📱 Total de chats encontrados: ${chats.length}`);
+
     const groups = chats
-      .filter(chat => chat.isGroup)
-      .map(chat => ({
-        id: chat.id._serialized,
-        name: chat.name,
-        participantCount: chat.participants ? chat.participants.length : 0
-      }));
+      .filter(chat => {
+        const isGroup = chat.isGroup;
+        console.log(`📋 Chat ${chat.name}: isGroup=${isGroup}`);
+        return isGroup;
+      })
+      .map(chat => {
+        const group = {
+          id: chat.id._serialized,
+          name: chat.name,
+          participantCount: chat.participants ? chat.participants.length : 0
+        };
+        console.log(`✅ Grupo mapeado: ${group.name} (${group.participantCount} participantes)`);
+        return group;
+      });
 
-    console.log(`📋 ${groups.length} grupos encontrados:`, groups.map(g => g.name));
+    console.log(`📋 ${groups.length} grupos encontrados:`, groups.map(g => `${g.name} (ID: ${g.id.substring(0, 20)}...)`));
     
     res.json({
       success: true,
-      groups: groups
+      groups: groups,
+      total: groups.length
     });
-  }).catch(error => {
-    console.error('❌ Erro ao listar grupos:', error);
+  } catch (error) {
+    console.error('❌ Erro ao listar grupos:', error.message);
+    console.error('❌ Stack trace:', error.stack);
     res.status(500).json({ 
       success: false, 
       error: 'Erro ao listar grupos: ' + error.message 
     });
-  });
+  }
 });
 
 /* ============================ INICIALIZAÇÃO ============================ */
