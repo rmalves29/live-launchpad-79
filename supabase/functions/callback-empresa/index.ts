@@ -227,6 +227,8 @@ async function handleMelhorEnvioCallback(code: string, state: string) {
 
   // Determine correct URLs based on environment
   const isProduction = integration.environment === 'production';
+  console.log('ME Environment:', integration.environment, 'isProduction:', isProduction);
+  
   const tokenUrl = isProduction 
     ? 'https://melhorenvio.com.br/oauth/token'
     : 'https://sandbox.melhorenvio.com.br/oauth/token';
