@@ -81,6 +81,7 @@ export const TenantIntegrations = () => {
       ? 'https://sandbox.melhorenvio.com.br/oauth/authorize'
       : 'https://melhorenvio.com.br/oauth/authorize';
     
+    // Usar + como separador de scopes (formato correto do Melhor Envio)
     const scopes = [
       'cart-read', 'cart-write', 
       'companies-read', 'companies-write',
@@ -90,7 +91,7 @@ export const TenantIntegrations = () => {
       'products-read', 'products-write',
       'purchases-read',
       'shipping-calculate', 'shipping-cancel', 'shipping-checkout', 'shipping-companies', 'shipping-generate', 'shipping-preview', 'shipping-print', 'shipping-share', 'shipping-tracking'
-    ].join(' ');
+    ].join('+');
 
     const params = new URLSearchParams({
       client_id: shippingConfig.client_id,
@@ -100,7 +101,30 @@ export const TenantIntegrations = () => {
     });
 
     const authUrl = `${baseUrl}?${params.toString()}`;
-    window.open(authUrl, '_blank');
+    
+    console.log('🔗 Auth URL gerada:', authUrl);
+    console.log('📍 Redirect URI usado:', redirectUri);
+    console.log('ℹ️ IMPORTANTE: Registre este redirect_uri no painel do Melhor Envio:', redirectUri);
+    
+    // Mostrar informações importantes para o usuário
+    toast({
+      title: 'Redirect URI para Registrar',
+      description: `${redirectUri}`,
+      duration: 10000,
+    });
+    
+    // Copiar para clipboard para facilitar
+    navigator.clipboard.writeText(redirectUri).then(() => {
+      toast({
+        title: 'Redirect URI copiado!',
+        description: 'Cole no painel do Melhor Envio antes de autorizar.',
+      });
+    });
+    
+    // Abrir URL após um pequeno delay para dar tempo de ver as mensagens
+    setTimeout(() => {
+      window.open(authUrl, '_blank');
+    }, 2000);
   };
 
   const handleAuthCallback = async (code: string) => {
