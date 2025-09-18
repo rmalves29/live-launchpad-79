@@ -83,7 +83,7 @@ serve(async (req) => {
           'Authorization': `Basic ${basic}`,
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
-          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+          'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
         },
         body
       });
@@ -214,7 +214,7 @@ serve(async (req) => {
           'Authorization': `Basic ${basic}`,
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
-          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+          'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
         },
         body
       });

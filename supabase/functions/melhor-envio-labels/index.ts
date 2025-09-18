@@ -56,7 +56,7 @@ async function ensureValidToken(supabase: any, integration: any) {
         'Authorization': `Basic ${basic}`,
         'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json',
-        'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+        'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
       },
       body: body.toString()
     });
@@ -231,7 +231,7 @@ serve(async (req) => {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json',
-          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+          'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
         },
         body: JSON.stringify(quotePayload)
       });
@@ -342,7 +342,7 @@ serve(async (req) => {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
           'Content-Type': 'application/json',
-          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+          'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
         },
         body: JSON.stringify(cartPayload)
       });
@@ -363,7 +363,7 @@ serve(async (req) => {
                 'Authorization': `Bearer ${newToken}`,
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
-                'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+                'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
               },
               body: JSON.stringify(cartPayload)
             });
@@ -447,7 +447,7 @@ serve(async (req) => {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
-          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+          'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
         },
       });
 
@@ -491,7 +491,7 @@ serve(async (req) => {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
-          'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+          'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
         },
       });
 
@@ -548,7 +548,7 @@ async function proceedWithCheckout(supabase: any, baseUrl: string, accessToken: 
       'Authorization': `Bearer ${accessToken}`,
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      'User-Agent': 'OrderZaps (contato@orderzaps.com)',
+      'User-Agent': 'Lovable Platform (integracoes@lovable.dev)',
     },
     body: JSON.stringify(checkoutPayload)
   });

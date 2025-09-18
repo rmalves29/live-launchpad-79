@@ -112,7 +112,7 @@ serve(async (req) => {
         'Authorization': `Bearer ${shippingConfig.access_token}`,
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'User-Agent': 'OrderZaps (contato@orderzaps.com)'
+        'User-Agent': 'Lovable Platform (integracoes@lovable.dev)'
       },
       body: JSON.stringify(payload)
     });
