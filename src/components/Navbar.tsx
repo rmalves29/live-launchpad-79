@@ -12,7 +12,7 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
   const { user, profile } = useAuth();
   const location = useLocation();
-  const isWhatsAppActive = ['/whatsapp-templates', '/whatsapp-integration'].includes(location.pathname);
+  const isWhatsAppActive = ['/whatsapp-templates', '/whatsapp-integration', '/sendflow'].includes(location.pathname);
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
@@ -27,7 +27,7 @@ const Navbar = () => {
     ...(user?.email === 'rmalves21@hotmail.com' ? [{ path: '/config', label: 'Configurações' }] : [])
   ];
 
-  const whatsappItems = ['/whatsapp-templates', '/whatsapp-integration'];
+  const whatsappItems = ['/whatsapp-templates', '/whatsapp-integration', '/sendflow'];
   const filteredNavItems = navItems.filter((item) => !whatsappItems.includes(item.path));
 
   return (
@@ -83,6 +83,9 @@ const Navbar = () => {
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <NavLink to="/whatsapp-templates">Templates WPP</NavLink>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <NavLink to="/sendflow">SendFlow</NavLink>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -154,6 +157,19 @@ const Navbar = () => {
                           }
                         >
                           Templates WPP
+                        </NavLink>
+                        <NavLink
+                          to="/sendflow"
+                          onClick={() => setOpen(false)}
+                          className={({ isActive }) =>
+                            `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                              isActive
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                            }`
+                          }
+                        >
+                          SendFlow
                         </NavLink>
                       </div>
                     </div>

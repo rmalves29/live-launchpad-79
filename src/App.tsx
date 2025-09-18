@@ -17,6 +17,7 @@ import Produtos from "./pages/Produtos";
 import Clientes from "./pages/Clientes";
 import Relatorios from "./pages/Relatorios";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
+import SendFlow from "./pages/SendFlow";
 import WhatsAppIntegration from "./components/WhatsAppIntegration";
 import MpReturn from "./pages/MpReturn";
 
@@ -104,6 +105,9 @@ const AppContent = () => {
         } />
         <Route path="/whatsapp-templates" element={
           <RequireTenantAuth><WhatsAppTemplates /></RequireTenantAuth>
+        } />
+        <Route path="/sendflow" element={
+          <RequireTenantAuth><SendFlow /></RequireTenantAuth>
         } />
         <Route path="/whatsapp-integration" element={
           <RequireTenantAuth><WhatsAppIntegration /></RequireTenantAuth>
