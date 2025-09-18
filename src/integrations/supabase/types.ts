@@ -669,44 +669,65 @@ export type Database = {
       shipping_integrations: {
         Row: {
           access_token: string
+          account_id: number | null
           client_id: string | null
           client_secret: string | null
+          company_id: number | null
           created_at: string | null
+          expires_at: string | null
           from_cep: string | null
           id: string
           is_active: boolean
           provider: string
+          refresh_token: string | null
           sandbox: boolean
+          scope: string | null
           tenant_id: string | null
+          token_type: string | null
           updated_at: string | null
+          webhook_id: number | null
           webhook_secret: string | null
         }
         Insert: {
           access_token: string
+          account_id?: number | null
           client_id?: string | null
           client_secret?: string | null
+          company_id?: number | null
           created_at?: string | null
+          expires_at?: string | null
           from_cep?: string | null
           id?: string
           is_active?: boolean
           provider?: string
+          refresh_token?: string | null
           sandbox?: boolean
+          scope?: string | null
           tenant_id?: string | null
+          token_type?: string | null
           updated_at?: string | null
+          webhook_id?: number | null
           webhook_secret?: string | null
         }
         Update: {
           access_token?: string
+          account_id?: number | null
           client_id?: string | null
           client_secret?: string | null
+          company_id?: number | null
           created_at?: string | null
+          expires_at?: string | null
           from_cep?: string | null
           id?: string
           is_active?: boolean
           provider?: string
+          refresh_token?: string | null
           sandbox?: boolean
+          scope?: string | null
           tenant_id?: string | null
+          token_type?: string | null
           updated_at?: string | null
+          webhook_id?: number | null
           webhook_secret?: string | null
         }
         Relationships: []
