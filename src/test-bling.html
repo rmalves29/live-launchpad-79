@@ -13,9 +13,10 @@
 <body>
     <h1>🧪 Teste Integração Bling</h1>
     
-    <button onclick="testConnection()">1. Testar Conexão</button>
-    <button onclick="testOrder()">2. Testar Envio Pedido #23</button>
-    <button onclick="clearResults()">Limpar</button>
+    <button onclick="testConnection()">1. 🔗 Testar Conexão</button>
+    <button onclick="testOrder()">2. 📦 Testar Envio Pedido #23</button>
+    <button onclick="refreshToken()">3. 🔄 Renovar Token</button>
+    <button onclick="clearResults()">🗑️ Limpar</button>
     
     <div id="results"></div>
 
@@ -99,9 +100,40 @@
             }
         }
         
+        async function refreshToken() {
+            const result = addResult('🔄 Renovando token do Bling...', 'loading');
+            
+            try {
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/bling-oauth`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        action: 'refresh_token',
+                        tenant_id: '08f2b1b9-3988-489e-8186-c60f0c0b0622'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.message) {
+                    result.className = 'result success';
+                    result.innerHTML = `[${new Date().toLocaleTimeString()}] ✅ Token renovado! ${data.message}`;
+                } else {
+                    result.className = 'result error';
+                    result.innerHTML = `[${new Date().toLocaleTimeString()}] ❌ Erro: ${data.error || response.statusText}`;
+                }
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `[${new Date().toLocaleTimeString()}] ❌ Erro de rede: ${error.message}`;
+            }
+        }
+        
         // Auto-executar teste de conexão
         window.onload = () => {
-            addResult('📋 Teste de Integração Bling carregado', 'success');
+            addResult('📋 Teste de Integração Bling v3 carregado - Documentação oficial implementada', 'success');
             setTimeout(testConnection, 1000);
         };
     </script>
