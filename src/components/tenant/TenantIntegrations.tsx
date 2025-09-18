@@ -36,7 +36,6 @@ export const TenantIntegrations = () => {
     is_active: false
   });
 
-  // Shipping Integration State (Melhor Envio)
   const [shippingConfig, setShippingConfig] = useState({
     provider: 'melhor_envio',
     client_id: '',
@@ -48,11 +47,128 @@ export const TenantIntegrations = () => {
     is_active: false
   });
 
+  const [isLoading, setIsLoading] = useState(false);
+
   useEffect(() => {
     if (profile?.id) {
       loadIntegrations();
     }
   }, [profile?.id, tenant?.id]);
+
+  // Handle OAuth callback
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const callback = urlParams.get('callback');
+    const code = urlParams.get('code');
+    
+    if (callback === 'melhor_envio' && code) {
+      handleAuthCallback(code);
+    }
+  }, []);
+
+  const generateAuthUrl = () => {
+    if (!shippingConfig.client_id) {
+      toast({
+        title: 'Erro',
+        description: 'Client ID é obrigatório para gerar link de autorização',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const redirectUri = `${window.location.origin}/config?tab=integracoes&callback=melhor_envio`;
+    const baseUrl = shippingConfig.sandbox 
+      ? 'https://sandbox.melhorenvio.com.br/oauth/authorize'
+      : 'https://melhorenvio.com.br/oauth/authorize';
+    
+    const scopes = [
+      'cart-read', 'cart-write', 
+      'companies-read', 'companies-write',
+      'coupons-read', 'coupons-write',
+      'notifications-read', 
+      'orders-read',
+      'products-read', 'products-write',
+      'purchases-read',
+      'shipping-calculate', 'shipping-cancel', 'shipping-checkout', 'shipping-companies', 'shipping-generate', 'shipping-preview', 'shipping-print', 'shipping-share', 'shipping-tracking'
+    ].join(' ');
+
+    const params = new URLSearchParams({
+      client_id: shippingConfig.client_id,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: scopes
+    });
+
+    const authUrl = `${baseUrl}?${params.toString()}`;
+    window.open(authUrl, '_blank');
+  };
+
+  const handleAuthCallback = async (code: string) => {
+    if (!shippingConfig.client_id || !shippingConfig.client_secret) {
+      toast({
+        title: 'Erro',
+        description: 'Client ID e Client Secret são obrigatórios',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const redirectUri = `${window.location.origin}/config?tab=integracoes&callback=melhor_envio`;
+      const tokenUrl = shippingConfig.sandbox 
+        ? 'https://sandbox.melhorenvio.com.br/oauth/token'
+        : 'https://melhorenvio.com.br/oauth/token';
+
+      const response = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          grant_type: 'authorization_code',
+          client_id: shippingConfig.client_id,
+          client_secret: shippingConfig.client_secret,
+          redirect_uri: redirectUri,
+          code: code
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.access_token) {
+        setShippingConfig(prev => ({
+          ...prev,
+          access_token: data.access_token
+        }));
+
+        toast({
+          title: 'Sucesso',
+          description: 'Autorização concluída! Access token obtido com sucesso.'
+        });
+
+        // Remove callback parameter from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('callback');
+        url.searchParams.delete('code');
+        window.history.replaceState({}, '', url.toString());
+      }
+    } catch (error: any) {
+      console.error('Error exchanging code for token:', error);
+      toast({
+        title: 'Erro',
+        description: `Erro ao obter access token: ${error.message}`,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const loadIntegrations = async () => {
     if (!profile?.id) return;
@@ -269,16 +385,16 @@ export const TenantIntegrations = () => {
   };
 
   const saveShippingIntegration = async () => {
-    if (!profile?.id || !shippingConfig.access_token.trim()) {
+    if (!profile?.id) {
       toast({
         title: 'Erro',
-        description: 'Access Token é obrigatório',
+        description: 'Usuário não encontrado',
         variant: 'destructive'
       });
       return;
     }
 
-    setLoading(true);
+    setIsLoading(true);
     try {
       const currentTenantId = profile.role === 'super_admin' ? tenant?.id : profile.tenant_id;
       
@@ -335,12 +451,12 @@ export const TenantIntegrations = () => {
 
       toast({
         title: 'Sucesso',
-        description: 'Configuração Melhor Envio salva com sucesso'
+        description: 'Configuração Melhor Envio salva com sucesso!'
       });
 
       // Refresh integrations after save
       await loadIntegrations();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving shipping integration:', error);
       toast({
         title: 'Erro',
@@ -348,7 +464,7 @@ export const TenantIntegrations = () => {
         variant: 'destructive'
       });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -580,18 +696,64 @@ export const TenantIntegrations = () => {
               placeholder="Seu Webhook Secret do Melhor Envio"
             />
           </div>
-          <div className="bg-muted p-4 rounded-md">
-            <Label className="text-sm font-medium">URL do Webhook</Label>
-            <p className="text-sm text-muted-foreground mt-1">
-              Use esta URL no painel do Melhor Envio:
-            </p>
-            <code className="block mt-2 p-2 bg-background rounded text-xs break-all">
-              https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/webhook-melhor-envio
-            </code>
+
+          <div className="space-y-4">
+            <div className="bg-muted p-4 rounded-md">
+              <Label className="text-sm font-medium">URL do Webhook</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Use esta URL no painel do Melhor Envio:
+              </p>
+              <code className="block mt-2 p-2 bg-background rounded text-xs break-all">
+                https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/webhook-melhor-envio
+              </code>
+            </div>
+
+            <div className="p-4 border rounded-lg bg-muted/50">
+              <h4 className="font-medium mb-2">Autorização OAuth</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Para usar a API do Melhor Envio, você precisa autorizar seu aplicativo. 
+                Certifique-se de ter preenchido o Client ID e Client Secret antes de prosseguir.
+              </p>
+              <Button
+                type="button"
+                onClick={generateAuthUrl}
+                disabled={!shippingConfig.client_id || !shippingConfig.client_secret}
+                variant="outline"
+              >
+                🔗 Gerar Link de Autorização
+              </Button>
+              {shippingConfig.access_token && (
+                <p className="text-sm text-green-600 mt-2">
+                  ✅ Access token obtido com sucesso!
+                </p>
+              )}
+            </div>
           </div>
-          <Button onClick={saveShippingIntegration} disabled={loading}>
-            Salvar Melhor Envio
-          </Button>
+
+          <div className="flex justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShippingConfig({
+                provider: 'melhor_envio',
+                client_id: '',
+                client_secret: '',
+                access_token: '',
+                from_cep: '31575060',
+                sandbox: true,
+                webhook_secret: '',
+                is_active: false
+              })}
+            >
+              Limpar
+            </Button>
+            <Button
+              onClick={saveShippingIntegration}
+              disabled={isLoading}
+            >
+              {isLoading ? 'Salvando...' : 'Salvar Configuração'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
