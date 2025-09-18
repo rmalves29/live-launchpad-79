@@ -48,10 +48,10 @@ export default function SendFlow() {
   }, [tenant?.id]);
 
   useEffect(() => {
-    if (targetPhone) {
-      identifyWhatsAppGroups();
-    }
-  }, [targetPhone]);
+    loadProducts();
+    loadTemplate();
+    loadAllWhatsAppGroups();
+  }, [tenant?.id]);
 
   const loadProducts = async () => {
     if (!tenant?.id) return;
@@ -102,12 +102,12 @@ export default function SendFlow() {
     }
   };
 
-  const identifyWhatsAppGroups = async () => {
-    if (!targetPhone || !tenant?.id) return;
+  const loadAllWhatsAppGroups = async () => {
+    if (!tenant?.id) return;
     
     setIsLoadingGroups(true);
     try {
-      console.log('🔍 Tentando identificar grupos para:', targetPhone);
+      console.log('🔍 Carregando todos os grupos do WhatsApp...');
       
       // Verificar se o servidor está online primeiro
       const statusResponse = await fetch(`http://localhost:3333/status`);
@@ -122,11 +122,10 @@ export default function SendFlow() {
         throw new Error('WhatsApp não está conectado no servidor');
       }
 
-      // Fazer chamada para o servidor Node.js para identificar grupos
-      const response = await fetch(`http://localhost:3333/identify-groups`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: targetPhone })
+      // Fazer chamada para o servidor Node.js para listar todos os grupos
+      const response = await fetch(`http://localhost:3333/list-all-groups`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
       });
 
       if (!response.ok) {
@@ -142,10 +141,10 @@ export default function SendFlow() {
         toast.success(`${data.groups.length} grupos encontrados`);
       } else {
         setWhatsappGroups([]);
-        toast.info('Nenhum grupo encontrado para este número');
+        toast.info('Nenhum grupo encontrado');
       }
     } catch (error) {
-      console.error('❌ Erro ao identificar grupos WhatsApp:', error);
+      console.error('❌ Erro ao carregar grupos WhatsApp:', error);
       toast.error(`Erro: ${error.message}`);
       setWhatsappGroups([]);
     } finally {
@@ -316,49 +315,62 @@ export default function SendFlow() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Número para identificar grupos:</label>
-                <Input
-                  placeholder="5511999999999"
-                  value={targetPhone}
-                  onChange={(e) => setTargetPhone(e.target.value)}
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium">Grupos WhatsApp</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadAllWhatsAppGroups}
                   disabled={isLoadingGroups}
-                />
-                {isLoadingGroups && (
-                  <div className="text-xs text-muted-foreground mt-1">
-                    🔍 Identificando grupos...
-                  </div>
-                )}
+                >
+                  {isLoadingGroups ? "Carregando..." : "Atualizar Grupos"}
+                </Button>
               </div>
-              
-              {whatsappGroups.length > 0 && !isLoadingGroups && (
+
+              {isLoadingGroups && (
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                  <span className="text-sm">Carregando grupos...</span>
+                </div>
+              )}
+
+              {whatsappGroups.length > 0 && (
                 <div>
-                  <label className="text-sm font-medium">Grupos encontrados:</label>
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                  <label className="text-sm font-medium">Grupos WhatsApp Disponíveis ({whatsappGroups.length})</label>
+                  <div className="mt-2 space-y-2 max-h-48 overflow-y-auto border rounded-md p-3">
                     {whatsappGroups.map((group) => (
                       <div key={group.id} className="flex items-center space-x-2">
                         <Checkbox
-                          id={group.id}
+                          id={`group-${group.id}`}
                           checked={selectedGroups.has(group.id)}
                           onCheckedChange={() => toggleGroup(group.id)}
                         />
-                        <label htmlFor={group.id} className="text-sm">
-                          {group.name} {group.participantCount && `(${group.participantCount} membros)`}
+                        <label 
+                          htmlFor={`group-${group.id}`}
+                          className="text-sm cursor-pointer flex-1"
+                        >
+                          {group.name}
+                          {group.participantCount && (
+                            <span className="text-muted-foreground ml-2">
+                              ({group.participantCount} participantes)
+                            </span>
+                          )}
                         </label>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-              
-              {whatsappGroups.length === 0 && !isLoadingGroups && targetPhone && (
-                <div className="text-sm text-muted-foreground">
-                  ⚠️ Para usar o SendFlow:
-                  <ol className="list-decimal list-inside mt-2 space-y-1">
-                    <li>Execute o servidor WhatsApp: <code className="bg-muted px-1 rounded">node server-whatsapp-groups.js</code></li>
-                    <li>Conecte o WhatsApp escaneando o QR Code</li>
-                    <li>Digite um número que participe dos grupos desejados</li>
-                  </ol>
+
+              {whatsappGroups.length === 0 && !isLoadingGroups && (
+                <div className="text-sm text-muted-foreground p-3 bg-muted rounded-md">
+                  <p className="font-medium">Nenhum grupo encontrado</p>
+                  <p>Certifique-se de que:</p>
+                  <ul className="list-disc list-inside mt-1 space-y-1">
+                    <li>O servidor Node.js está rodando na porta 3333</li>
+                    <li>O WhatsApp Web está conectado</li>
+                    <li>Existem grupos no WhatsApp conectado</li>
+                  </ul>
                 </div>
               )}
             </CardContent>

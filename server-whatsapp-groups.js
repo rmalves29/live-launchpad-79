@@ -482,6 +482,41 @@ app.post('/send-to-group', async (req, res) => {
   }
 });
 
+// Listar todos os grupos WhatsApp
+app.get('/list-all-groups', (req, res) => {
+  console.log('📋 Requisição para listar todos os grupos');
+  
+  if (!client?.info?.wid?._serialized) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'WhatsApp não está conectado' 
+    });
+  }
+
+  client.getChats().then(chats => {
+    const groups = chats
+      .filter(chat => chat.isGroup)
+      .map(chat => ({
+        id: chat.id._serialized,
+        name: chat.name,
+        participantCount: chat.participants ? chat.participants.length : 0
+      }));
+
+    console.log(`📋 ${groups.length} grupos encontrados:`, groups.map(g => g.name));
+    
+    res.json({
+      success: true,
+      groups: groups
+    });
+  }).catch(error => {
+    console.error('❌ Erro ao listar grupos:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro ao listar grupos: ' + error.message 
+    });
+  });
+});
+
 /* ============================ INICIALIZAÇÃO ============================ */
 console.log('🚀 Iniciando servidor WhatsApp com suporte a grupos...');
 console.log(`📍 Tenant: ${TENANT_SLUG} (${TENANT_ID})`);
@@ -494,6 +529,7 @@ app.listen(PORT, () => {
   console.log(`📤 Enviar: POST http://localhost:${PORT}/send`);
   console.log(`👥 Identificar grupos: POST http://localhost:${PORT}/identify-groups`);
   console.log(`📨 Enviar para grupo: POST http://localhost:${PORT}/send-to-group`);
+  console.log(`📋 Listar grupos: GET http://localhost:${PORT}/list-all-groups`);
 });
 
 // Graceful shutdown
