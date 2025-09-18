@@ -552,6 +552,15 @@ export const TenantIntegrations = () => {
               placeholder="Seu Webhook Secret do Melhor Envio"
             />
           </div>
+          <div className="bg-muted p-4 rounded-md">
+            <Label className="text-sm font-medium">URL do Webhook</Label>
+            <p className="text-sm text-muted-foreground mt-1">
+              Use esta URL no painel do Melhor Envio:
+            </p>
+            <code className="block mt-2 p-2 bg-background rounded text-xs break-all">
+              https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/webhook-melhor-envio
+            </code>
+          </div>
           <Button onClick={saveShippingIntegration} disabled={loading}>
             Salvar Melhor Envio
           </Button>
