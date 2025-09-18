@@ -391,17 +391,19 @@ async function sendToGroup(groupId, message, imageUrl = null) {
 
     console.log(`🚀 Tentando enviar mensagem para grupo: ${groupId}`);
 
-    // Verificar se o grupo existe e está acessível
-    let targetChat;
+    // Verificar se o grupo existe primeiro
+    let targetGroup = null;
     try {
-      targetChat = await client.getChatById(groupId);
-      if (!targetChat || !targetChat.isGroup) {
-        throw new Error(`Grupo ${groupId} não encontrado ou não é um grupo válido`);
+      const chats = await client.getChats();
+      targetGroup = chats.find(chat => chat.isGroup && chat.id._serialized === groupId);
+      
+      if (!targetGroup) {
+        throw new Error(`Grupo ${groupId} não encontrado`);
       }
-      console.log(`✅ Grupo encontrado: ${targetChat.name}`);
+      console.log(`✅ Grupo encontrado: ${targetGroup.name}`);
     } catch (error) {
-      console.error(`❌ Erro ao acessar grupo ${groupId}:`, error.message);
-      throw new Error(`Não foi possível acessar o grupo: ${error.message}`);
+      console.error(`❌ Erro ao buscar grupo ${groupId}:`, error.message);
+      throw new Error(`Não foi possível encontrar o grupo: ${error.message}`);
     }
 
     let media = null;
@@ -417,7 +419,7 @@ async function sendToGroup(groupId, message, imageUrl = null) {
       }
     }
 
-    // Tentar enviar a mensagem com retry
+    // Tentar enviar a mensagem com retry usando client.sendMessage diretamente
     let sendSuccess = false;
     let attempts = 0;
     const maxAttempts = 3;
@@ -425,14 +427,14 @@ async function sendToGroup(groupId, message, imageUrl = null) {
     while (!sendSuccess && attempts < maxAttempts) {
       attempts++;
       try {
-        console.log(`📤 Tentativa ${attempts}/${maxAttempts} de envio para ${targetChat.name}`);
+        console.log(`📤 Tentativa ${attempts}/${maxAttempts} de envio para ${targetGroup.name}`);
 
         if (media) {
-          await targetChat.sendMessage(media, { caption: message });
-          console.log(`✅ Mensagem com imagem enviada para ${targetChat.name}`);
+          await client.sendMessage(groupId, media, { caption: message });
+          console.log(`✅ Mensagem com imagem enviada para ${targetGroup.name}`);
         } else {
-          await targetChat.sendMessage(message);
-          console.log(`✅ Mensagem de texto enviada para ${targetChat.name}`);
+          await client.sendMessage(groupId, message);
+          console.log(`✅ Mensagem de texto enviada para ${targetGroup.name}`);
         }
         
         sendSuccess = true;
@@ -469,7 +471,7 @@ async function sendToGroup(groupId, message, imageUrl = null) {
     return { 
       success: true, 
       groupId, 
-      groupName: targetChat.name,
+      groupName: targetGroup.name,
       message: 'Mensagem enviada com sucesso'
     };
   } catch (error) {
