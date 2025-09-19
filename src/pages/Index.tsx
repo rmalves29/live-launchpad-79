@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
-import { ShoppingCart, Package, List, Dice6, Settings, Plus } from 'lucide-react';
+import { ShoppingCart, Package, List, Dice6, Settings, Plus, CreditCard, Truck } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -9,6 +9,10 @@ import { User } from '@supabase/supabase-js';
 const Index = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
+  const [integrationStatus, setIntegrationStatus] = useState({
+    mercadoPago: { active: false, loading: true },
+    melhorEnvio: { active: false, loading: true }
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -22,6 +26,47 @@ const Index = () => {
     );
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const checkIntegrations = async () => {
+      try {
+        // Check Mercado Pago integration
+        const { data: mpData, error: mpError } = await supabase
+          .from('payment_integrations')
+          .select('is_active')
+          .eq('provider', 'mercado_pago')
+          .eq('is_active', true)
+          .maybeSingle();
+
+        // Check Melhor Envio integration
+        const { data: meData, error: meError } = await supabase
+          .from('shipping_integrations')
+          .select('is_active')
+          .eq('provider', 'melhor_envio')
+          .eq('is_active', true)
+          .maybeSingle();
+
+        setIntegrationStatus({
+          mercadoPago: { 
+            active: !mpError && mpData?.is_active === true, 
+            loading: false 
+          },
+          melhorEnvio: { 
+            active: !meError && meData?.is_active === true, 
+            loading: false 
+          }
+        });
+      } catch (error) {
+        console.error('Error checking integrations:', error);
+        setIntegrationStatus({
+          mercadoPago: { active: false, loading: false },
+          melhorEnvio: { active: false, loading: false }
+        });
+      }
+    };
+
+    checkIntegrations();
   }, []);
 
   const dashboardItems = [
@@ -117,7 +162,7 @@ const Index = () => {
                 Status do Sistema
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-4 text-sm">
+            <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div className="text-center">
                 <div className="font-medium text-green-600">✓ Database</div>
                 <div className="text-muted-foreground">Conectado</div>
@@ -125,6 +170,38 @@ const Index = () => {
               <div className="text-center">
                 <div className="font-medium text-green-600">✓ API</div>
                 <div className="text-muted-foreground">Operacional</div>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-1">
+                  <CreditCard className="h-4 w-4 mr-1" />
+                  <div className={`font-medium ${
+                    integrationStatus.mercadoPago.loading ? 'text-yellow-600' : 
+                    integrationStatus.mercadoPago.active ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {integrationStatus.mercadoPago.loading ? '⏳' : 
+                     integrationStatus.mercadoPago.active ? '✓' : '✗'} Mercado Pago
+                  </div>
+                </div>
+                <div className="text-muted-foreground">
+                  {integrationStatus.mercadoPago.loading ? 'Verificando...' : 
+                   integrationStatus.mercadoPago.active ? 'Ativo' : 'Inativo'}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-1">
+                  <Truck className="h-4 w-4 mr-1" />
+                  <div className={`font-medium ${
+                    integrationStatus.melhorEnvio.loading ? 'text-yellow-600' : 
+                    integrationStatus.melhorEnvio.active ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {integrationStatus.melhorEnvio.loading ? '⏳' : 
+                     integrationStatus.melhorEnvio.active ? '✓' : '✗'} Melhor Envio
+                  </div>
+                </div>
+                <div className="text-muted-foreground">
+                  {integrationStatus.melhorEnvio.loading ? 'Verificando...' : 
+                   integrationStatus.melhorEnvio.active ? 'Ativo' : 'Inativo'}
+                </div>
               </div>
             </CardContent>
           </Card>
