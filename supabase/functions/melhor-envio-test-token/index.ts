@@ -99,6 +99,64 @@ Deno.serve(async (req) => {
         })
       }
     } else {
+      // Se token inválido/expirado e temos refresh_token, tentar renovar automaticamente
+      if ((testResponse.status === 401 || testResponse.status === 403) && integration.refresh_token) {
+        console.log('🔄 Token expirado, tentando renovar automaticamente...')
+        
+        try {
+          // Chamar função de refresh
+          const refreshResponse = await supabase.functions.invoke('melhor-envio-token-refresh', {
+            body: { tenant_id }
+          });
+          
+          if (refreshResponse.data && !refreshResponse.error) {
+            console.log('✅ Token renovado automaticamente, testando novamente...')
+            
+            // Buscar o token atualizado
+            const { data: updatedIntegration } = await supabase
+              .from('shipping_integrations')
+              .select('access_token')
+              .eq('tenant_id', tenant_id)
+              .eq('provider', 'melhor_envio')
+              .single()
+            
+            if (updatedIntegration) {
+              // Testar novamente com o novo token
+              const retestResponse = await fetch(`${baseUrl}/api/v2/me`, {
+                method: 'GET',
+                headers: {
+                  'Accept': 'application/json',
+                  'Authorization': `Bearer ${updatedIntegration.access_token}`
+                }
+              })
+              
+              if (retestResponse.ok) {
+                const userData = await retestResponse.json()
+                console.log('✅ Token renovado e válido')
+                
+                return new Response(JSON.stringify({
+                  valid: true,
+                  user_info: {
+                    name: userData.firstname + ' ' + userData.lastname,
+                    email: userData.email,
+                    company: userData.company?.name || 'N/A'
+                  },
+                  integration_info: {
+                    sandbox: integration.sandbox,
+                    from_cep: integration.from_cep
+                  }
+                }), {
+                  status: 200,
+                  headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                })
+              }
+            }
+          }
+        } catch (refreshError) {
+          console.error('❌ Erro ao renovar token automaticamente:', refreshError)
+        }
+      }
+      
       // Token inválido ou expirado
       console.error('❌ Token inválido:', testResponse.status, testResponseText)
       
