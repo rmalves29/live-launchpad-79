@@ -58,10 +58,7 @@ export const useTenant = (): UseTenantReturn => {
           if (previewTenantId) {
             console.log('🧪 Preview - usando tenant selecionado:', previewTenantId);
             const { data: previewTenant, error: previewErr } = await supabase
-              .from('tenants')
-              .select('*')
-              .eq('id', previewTenantId)
-              .eq('is_active', true)
+              .rpc('get_tenant_by_id', { tenant_id_param: previewTenantId })
               .maybeSingle();
 
             if (!previewErr && previewTenant) {
