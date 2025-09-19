@@ -312,9 +312,9 @@ serve(async (req) => {
         }
       },
       back_urls: {
-        success: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=success`,
-        failure: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=failure`,
-        pending: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=pending`
+        success: `https://live-launchpad-79.lovable.app/mp/return?status=success`,
+        failure: `https://live-launchpad-79.lovable.app/mp/return?status=failure`,
+        pending: `https://live-launchpad-79.lovable.app/mp/return?status=pending`
       },
       notification_url: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/mercadopago-webhook/${tenantKey}`,
       external_reference: String(orderId),
