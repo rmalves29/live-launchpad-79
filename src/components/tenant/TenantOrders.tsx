@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { ShoppingCart, Eye, CreditCard, Calendar, Phone, Package } from 'lucide-react';
@@ -62,10 +62,9 @@ export default function TenantOrders() {
     if (!profile?.tenant_id) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('orders')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -84,7 +83,7 @@ export default function TenantOrders() {
       let orderWithItems: OrderWithItems = { ...order };
 
       if (order.cart_id) {
-        const { data: cartItems, error } = await supabase
+        const { data: cartItems, error } = await supabaseTenant
           .from('cart_items')
           .select(`
             id,
@@ -120,7 +119,7 @@ export default function TenantOrders() {
 
   const markAsPaid = async (orderId: number) => {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('orders')
         .update({ is_paid: true })
         .eq('id', orderId);
