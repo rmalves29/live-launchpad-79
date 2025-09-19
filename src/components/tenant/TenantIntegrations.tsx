@@ -62,6 +62,45 @@ export const TenantIntegrations = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const callback = urlParams.get('callback');
     const code = urlParams.get('code');
+    const error = urlParams.get('error');
+    const errorDescription = urlParams.get('error_description');
+    const melhorenvio = urlParams.get('melhorenvio');
+    
+    // Tratar erros do OAuth
+    if (callback === 'melhor_envio' && (error || melhorenvio === 'config_error')) {
+      console.error('❌ Erro no OAuth do Melhor Envio:', { error, errorDescription, melhorenvio });
+      
+      let errorMessage = 'Erro na autorização do Melhor Envio';
+      
+      if (error === 'access_denied') {
+        errorMessage = 'Autorização negada pelo usuário';
+      } else if (error === 'invalid_client') {
+        errorMessage = 'Client ID inválido ou não registrado';
+      } else if (error === 'invalid_request') {
+        errorMessage = 'Parâmetros de requisição inválidos';
+      } else if (errorDescription) {
+        errorMessage = errorDescription;
+      } else if (melhorenvio === 'config_error') {
+        errorMessage = 'Erro de configuração. Verifique se o redirect_uri está registrado corretamente no painel do Melhor Envio';
+      }
+      
+      toast({
+        title: 'Erro na Autorização',
+        description: errorMessage,
+        variant: 'destructive',
+        duration: 8000,
+      });
+      
+      // Limpar URL parameters de erro
+      const url = new URL(window.location.href);
+      url.searchParams.delete('error');
+      url.searchParams.delete('error_description');
+      url.searchParams.delete('melhorenvio');
+      url.searchParams.delete('callback');
+      window.history.replaceState({}, document.title, url.toString());
+      
+      return;
+    }
     
     if (callback === 'melhor_envio' && code) {
       handleAuthCallback(code);
