@@ -9,6 +9,7 @@ import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { CompanySettings } from '@/components/CompanySettings';
+import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
 import TenantsManager from '@/components/TenantsManager';
 import { TenantSimulator } from '@/components/TenantSimulator';
 import { useToast } from '@/hooks/use-toast';
@@ -260,6 +261,9 @@ const Config = () => {
               </TabsList>
 
               <TabsContent value="config" className="space-y-6 mt-6">
+                {/* Status do Melhor Envio */}
+                <MelhorEnvioStatus />
+                
                 {/* Current Configuration */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {configSections.map((section) => (

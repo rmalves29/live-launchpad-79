@@ -192,16 +192,24 @@ const Checkout = () => {
         }
       }
 
-      // Primeiro, tentar renovar token se necessário
+      // Primeiro, testar se o token está válido
       try {
-        console.log('🔄 Tentando renovar token Melhor Envio...');
-        await supabaseTenant.raw.functions.invoke('melhor-envio-token-refresh', {
+        console.log('🔍 Testando token Melhor Envio...');
+        const { data: tokenTest } = await supabaseTenant.raw.functions.invoke('melhor-envio-test-token', {
           body: { tenant_id: tenantId }
         });
-        console.log('✅ Token renovado ou já válido');
-      } catch (refreshError) {
-        console.log('⚠️ Erro ao renovar token (pode estar válido):', refreshError);
-        // Continuar mesmo se a renovação falhar, o token pode estar válido
+        
+        console.log('🧪 Resultado do teste de token:', tokenTest);
+        
+        if (!tokenTest?.valid) {
+          // Token inválido, mostrar erro específico
+          throw new Error(tokenTest?.error || 'Token do Melhor Envio inválido ou expirado');
+        }
+        
+        console.log('✅ Token válido, prosseguindo com cálculo');
+      } catch (tokenError) {
+        console.error('❌ Erro no teste de token:', tokenError);
+        throw tokenError;
       }
 
       // Calcular frete
@@ -285,38 +293,11 @@ const Checkout = () => {
       } else if (data && data.error) {
         // Mostrar erro específico da API
         console.error('❌ Erro na API de frete:', data.error);
-        
-        // Fallback para retirada apenas
-        setShippingOptions([{
-          id: 'retirada',
-          name: 'Retirada - Retirar na Fábrica',
-          company: 'Retirada',
-          price: '0.00',
-          delivery_time: 'Imediato',
-          custom_price: '0.00'
-        }]);
-        
-        toast({
-          title: 'Erro no cálculo de frete',
-          description: `${data.error}. Retirada disponível.`,
-          variant: 'destructive'
-        });
+        throw new Error(data.error);
       } else {
         // Se não houver opções, mostrar apenas retirada
         console.log('⚠️ Resposta vazia, usando apenas retirada');
-        setShippingOptions([{
-          id: 'retirada',
-          name: 'Retirada - Retirar na Fábrica',
-          company: 'Retirada',
-          price: '0.00',
-          delivery_time: 'Imediato',
-          custom_price: '0.00'
-        }]);
-        
-        toast({
-          title: 'Frete não disponível',
-          description: 'Apenas retirada disponível para este CEP'
-        });
+        throw new Error('Nenhuma opção de frete disponível para este CEP');
       }
     } catch (error) {
       console.error('❌ Erro no cálculo de frete:', error);
@@ -325,7 +306,7 @@ const Checkout = () => {
       let errorMessage = 'Não foi possível calcular o frete. Retirada disponível.';
       if (error && typeof error === 'object') {
         if ('message' in error) {
-          errorMessage = `Erro: ${error.message}`;
+          errorMessage = error.message;
         }
       }
       
@@ -339,11 +320,20 @@ const Checkout = () => {
         custom_price: '0.00'
       }]);
       
-      toast({
-        title: 'Erro no cálculo de frete',
-        description: errorMessage,
-        variant: 'destructive'
-      });
+      // Mostrar erro específico se for problema de token
+      if (errorMessage.includes('inválido') || errorMessage.includes('expirado') || errorMessage.includes('Unauthenticated')) {
+        toast({
+          title: 'Token do Melhor Envio Expirado',
+          description: 'É necessário reconfigurar a integração do Melhor Envio. Entre em contato com o administrador.',
+          variant: 'destructive'
+        });
+      } else {
+        toast({
+          title: 'Erro no cálculo de frete',
+          description: errorMessage,
+          variant: 'destructive'
+        });
+      }
     } finally {
       setLoadingShipping(false);
     }
