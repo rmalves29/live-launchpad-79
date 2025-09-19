@@ -69,27 +69,22 @@ async function handleMelhorEnvioOAuth(req: Request, url: URL) {
     throw new Error('Missing required parameters: code and state (tenant_id)');
   }
 
-  // Buscar configurações do tenant
-  const { data: integration, error: integrationError } = await supabase
-    .from('shipping_integrations')
-    .select('client_id, client_secret, sandbox')
-    .eq('tenant_id', tenantId)
-    .eq('provider', 'melhor_envio')
-    .single();
+  // Usar credenciais fixas de produção
+  const client_id = '20128';
+  const client_secret = Deno.env.get('MELHOR_ENVIO_CLIENT_SECRET');
+  const sandbox = false;
 
-  if (integrationError || !integration) {
-    throw new Error('Integration configuration not found for tenant');
+  if (!client_secret) {
+    throw new Error('MELHOR_ENVIO_CLIENT_SECRET environment variable not configured');
   }
-
-  const { client_id, client_secret, sandbox } = integration;
 
   // Determinar URL baseado no ambiente
   const tokenUrl = sandbox 
     ? 'https://sandbox.melhorenvio.com.br/oauth/token'
     : 'https://melhorenvio.com.br/oauth/token';
 
-  // Montar redirect_uri exatamente como usado no authorize
-  const redirectUri = `${url.origin}/functions/v1/callback-empresa?service=melhorenvio&action=oauth`;
+  // Montar redirect_uri exatamente como usado no authorize (fixo para produção)
+  const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth';
 
   console.log('📡 Fazendo requisição para obter access token:', {
     tokenUrl,
@@ -103,6 +98,9 @@ async function handleMelhorEnvioOAuth(req: Request, url: URL) {
   params.set('grant_type', 'authorization_code');
   params.set('code', code);
   params.set('redirect_uri', redirectUri);
+  // Adicionar client credentials também no body para máxima compatibilidade
+  params.set('client_id', client_id);
+  params.set('client_secret', client_secret);
 
   // 🟢 Client auth no header (forma mais compatível)
   const basic = 'Basic ' + btoa(`${client_id}:${client_secret}`);
