@@ -101,12 +101,9 @@ export const useTenant = (): UseTenantReturn => {
 
         console.log('🔎 Buscando tenant com slug:', slug);
 
-        // Buscar tenant no banco
+        // Buscar tenant usando função segura (apenas dados básicos, sem informações sensíveis)
         const { data: tenantData, error: tenantError } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('slug', slug)
-          .eq('is_active', true)
+          .rpc('get_tenant_by_slug', { slug_param: slug })
           .maybeSingle();
 
         if (tenantError) {
