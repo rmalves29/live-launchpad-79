@@ -170,6 +170,8 @@ const Checkout = () => {
     if (!cep || cep.replace(/[^0-9]/g, '').length !== 8) return;
     
     console.log('🚚 Iniciando cálculo de frete para CEP:', cep);
+    console.log('📋 Tenant ID:', tenantId);
+    console.log('📦 Order items:', order.items);
     
     setLoadingShipping(true);
     try {
@@ -300,42 +302,72 @@ const Checkout = () => {
         throw new Error('Nenhuma opção de frete disponível para este CEP');
       }
     } catch (error) {
-      console.error('❌ Erro no cálculo de frete:', error);
+      console.error('❌ Erro completo no cálculo de frete:', error);
+      console.error('❌ Stack trace:', error instanceof Error ? error.stack : 'Sem stack trace');
       
       // Tentar extrair mensagem de erro mais específica
       let errorMessage = 'Não foi possível calcular o frete. Retirada disponível.';
-      if (error && typeof error === 'object') {
-        if ('message' in error) {
-          errorMessage = error.message;
+      
+      try {
+        if (error && typeof error === 'object') {
+          if ('message' in error) {
+            errorMessage = String(error.message);
+          } else if ('error' in error) {
+            errorMessage = String(error.error);
+          } else {
+            errorMessage = JSON.stringify(error);
+          }
+        } else if (typeof error === 'string') {
+          errorMessage = error;
         }
+      } catch (parseError) {
+        console.error('❌ Erro ao processar mensagem de erro:', parseError);
+        errorMessage = 'Erro desconhecido no cálculo de frete';
       }
       
-      // Fallback para retirada apenas
-      setShippingOptions([{
-        id: 'retirada',
-        name: 'Retirada - Retirar na Fábrica', 
-        company: 'Retirada',
-        price: '0.00',
-        delivery_time: 'Imediato',
-        custom_price: '0.00'
-      }]);
+      console.log('📋 Mensagem de erro processada:', errorMessage);
       
-      // Mostrar erro específico se for problema de token
-      if (errorMessage.includes('inválido') || errorMessage.includes('expirado') || errorMessage.includes('Unauthenticated')) {
-        toast({
-          title: 'Token do Melhor Envio Expirado',
-          description: 'É necessário reconfigurar a integração do Melhor Envio. Entre em contato com o administrador.',
-          variant: 'destructive'
-        });
-      } else {
-        toast({
-          title: 'Erro no cálculo de frete',
-          description: errorMessage,
-          variant: 'destructive'
-        });
+      // Garantir que sempre há uma opção de retirada
+      try {
+        setShippingOptions([{
+          id: 'retirada',
+          name: 'Retirada - Retirar na Fábrica', 
+          company: 'Retirada',
+          price: '0.00',
+          delivery_time: 'Imediato',
+          custom_price: '0.00'
+        }]);
+        
+        console.log('✅ Opção de retirada definida com sucesso');
+      } catch (setError) {
+        console.error('❌ Erro ao definir opção de retirada:', setError);
+      }
+      
+      // Mostrar toast de erro de forma segura
+      try {
+        if (errorMessage.includes('inválido') || errorMessage.includes('expirado') || errorMessage.includes('Unauthenticated')) {
+          toast({
+            title: 'Token do Melhor Envio Expirado',
+            description: 'É necessário reconfigurar a integração do Melhor Envio. Entre em contato com o administrador.',
+            variant: 'destructive'
+          });
+        } else {
+          toast({
+            title: 'Erro no cálculo de frete',
+            description: errorMessage,
+            variant: 'destructive'
+          });
+        }
+      } catch (toastError) {
+        console.error('❌ Erro ao mostrar toast:', toastError);
       }
     } finally {
-      setLoadingShipping(false);
+      try {
+        setLoadingShipping(false);
+        console.log('✅ Loading shipping finalizado');
+      } catch (finallyError) {
+        console.error('❌ Erro no finally:', finallyError);
+      }
     }
   };
 
