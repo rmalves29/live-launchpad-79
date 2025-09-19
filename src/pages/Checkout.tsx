@@ -169,6 +169,8 @@ const Checkout = () => {
   const calculateShipping = async (cep: string, order: Order) => {
     if (!cep || cep.replace(/[^0-9]/g, '').length !== 8) return;
     
+    console.log('🚚 Iniciando cálculo de frete para CEP:', cep);
+    
     setLoadingShipping(true);
     try {
       // Buscar endereço pelo CEP (ViaCEP)
@@ -190,8 +192,20 @@ const Checkout = () => {
         }
       }
 
+      // Primeiro, tentar renovar token se necessário
+      try {
+        console.log('🔄 Tentando renovar token Melhor Envio...');
+        await supabaseTenant.raw.functions.invoke('melhor-envio-token-refresh', {
+          body: { tenant_id: tenantId }
+        });
+        console.log('✅ Token renovado ou já válido');
+      } catch (refreshError) {
+        console.log('⚠️ Erro ao renovar token (pode estar válido):', refreshError);
+        // Continuar mesmo se a renovação falhar, o token pode estar válido
+      }
+
       // Calcular frete
-      console.log('Chamando função de frete com:', {
+      console.log('📦 Chamando função de frete com:', {
         to_postal_code: cep.replace(/[^0-9]/g, ''),
         tenant_id: tenantId,
         products: order.items.map(item => ({
@@ -221,34 +235,56 @@ const Checkout = () => {
         }
       });
 
-      console.log('Resposta da função de frete:', { data, error });
+      console.log('📡 Resposta da função de frete:', { data, error });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
 
-      if (data && data.shipping_options && data.shipping_options.length > 0) {
+      if (data && data.success && data.shipping_options && data.shipping_options.length > 0) {
         // Mapear as opções de frete da resposta do Melhor Envio
         const options = data.shipping_options
           .filter((option: any) => !option.error) // Filtrar opções com erro
           .map((option: any) => ({
-            id: option.service_id.toString(),
-            name: option.service_name,
-            company: option.company,
+            id: option.service_id?.toString() || `me_${option.name?.toLowerCase().replace(/\s+/g, '_')}`,
+            name: option.service_name || option.name || 'Transportadora',
+            company: option.company || 'Melhor Envio',
             price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
-            delivery_time: option.delivery_time || option.custom_delivery_time,
+            delivery_time: option.delivery_time || option.custom_delivery_time || '5-10 dias',
             custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
           }));
 
-        setShippingOptions(options);
+        // Sempre adicionar opção de retirada
+        const shippingWithPickup = [
+          {
+            id: 'retirada',
+            name: 'Retirada - Retirar na Fábrica',
+            company: 'Retirada',
+            price: '0.00',
+            delivery_time: 'Imediato',
+            custom_price: '0.00'
+          },
+          ...options
+        ];
+
+        setShippingOptions(shippingWithPickup);
         
         if (options.length > 0) {
+          console.log('✅ Opções de frete encontradas:', options);
           toast({
             title: 'Frete calculado',
             description: `${options.length} opções de frete encontradas`
           });
+        } else {
+          console.log('⚠️ Nenhuma opção de frete retornada, usando apenas retirada');
+          toast({
+            title: 'Frete não disponível',
+            description: 'Apenas retirada disponível para este CEP'
+          });
         }
       } else if (data && data.error) {
         // Mostrar erro específico da API
-        console.error('Erro na API de frete:', data.error);
+        console.error('❌ Erro na API de frete:', data.error);
         
         // Fallback para retirada apenas
         setShippingOptions([{
@@ -256,23 +292,24 @@ const Checkout = () => {
           name: 'Retirada - Retirar na Fábrica',
           company: 'Retirada',
           price: '0.00',
-          delivery_time: 3,
+          delivery_time: 'Imediato',
           custom_price: '0.00'
         }]);
         
         toast({
           title: 'Erro no cálculo de frete',
-          description: data.error,
+          description: `${data.error}. Retirada disponível.`,
           variant: 'destructive'
         });
       } else {
         // Se não houver opções, mostrar apenas retirada
+        console.log('⚠️ Resposta vazia, usando apenas retirada');
         setShippingOptions([{
           id: 'retirada',
           name: 'Retirada - Retirar na Fábrica',
           company: 'Retirada',
           price: '0.00',
-          delivery_time: 3,
+          delivery_time: 'Imediato',
           custom_price: '0.00'
         }]);
         
@@ -282,7 +319,7 @@ const Checkout = () => {
         });
       }
     } catch (error) {
-      console.error('Error calculating shipping:', error);
+      console.error('❌ Erro no cálculo de frete:', error);
       
       // Tentar extrair mensagem de erro mais específica
       let errorMessage = 'Não foi possível calcular o frete. Retirada disponível.';
@@ -298,7 +335,7 @@ const Checkout = () => {
         name: 'Retirada - Retirar na Fábrica', 
         company: 'Retirada',
         price: '0.00',
-        delivery_time: 3,
+        delivery_time: 'Imediato',
         custom_price: '0.00'
       }]);
       

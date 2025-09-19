@@ -39,7 +39,26 @@ Deno.serve(async (req) => {
       tenant_id: tenant_id
     })
 
-    if (integrationError) {
+    let finalIntegration = integration
+
+    // Se não encontrou integração do tenant, buscar integração global
+    if (!integration) {
+      console.log('🌐 Buscando integração global...')
+      const { data: globalIntegration, error: globalError } = await supabase
+        .from('shipping_integrations')
+        .select('*')
+        .eq('provider', 'melhor_envio')
+        .eq('is_active', true)
+        .is('tenant_id', null)
+        .maybeSingle()
+
+      if (globalIntegration) {
+        finalIntegration = globalIntegration
+        console.log('✅ Usando integração global do Melhor Envio')
+      }
+    }
+
+    if (integrationError && !finalIntegration) {
       console.error('Erro ao buscar integração:', integrationError)
       return new Response(JSON.stringify({ 
         error: 'Erro ao buscar configurações de frete',
@@ -50,8 +69,8 @@ Deno.serve(async (req) => {
       })
     }
 
-    if (!integration) {
-      console.log('⚠️ Integração Melhor Envio não encontrada para tenant:', tenant_id)
+    if (!finalIntegration) {
+      console.log('⚠️ Nenhuma integração Melhor Envio encontrada (tenant ou global)')
       return new Response(JSON.stringify({ 
         error: 'Integração Melhor Envio não configurada',
         shipping_options: []
@@ -62,15 +81,16 @@ Deno.serve(async (req) => {
     }
 
     console.log('✅ Integração encontrada:', {
-      id: integration.id,
-      sandbox: integration.sandbox,
-      from_cep: integration.from_cep,
-      has_token: !!integration.access_token,
-      token_length: integration.access_token?.length || 0
+      id: finalIntegration.id,
+      sandbox: finalIntegration.sandbox,
+      from_cep: finalIntegration.from_cep,
+      has_token: !!finalIntegration.access_token,
+      token_length: finalIntegration.access_token?.length || 0,
+      is_global: !finalIntegration.tenant_id
     })
 
     // Configurar ambiente (sandbox ou produção)
-    const isSandbox = integration.sandbox || integration.environment === 'sandbox'
+    const isSandbox = finalIntegration.sandbox || finalIntegration.environment === 'sandbox'
     const baseUrl = isSandbox 
       ? 'https://sandbox.melhorenvio.com.br'
       : 'https://melhorenvio.com.br'
@@ -78,11 +98,11 @@ Deno.serve(async (req) => {
     console.log('🏗️ Configurações da API:', {
       isSandbox,
       baseUrl,
-      environment: integration.environment || 'não definido'
+      environment: finalIntegration.environment || 'não definido'
     })
 
     // CEP de origem padrão ou da integração
-    const fromCep = integration.from_cep || Deno.env.get('MELHOR_ENVIO_FROM_CEP') || '31575060'
+    const fromCep = finalIntegration.from_cep || Deno.env.get('MELHOR_ENVIO_FROM_CEP') || '31575060'
 
     // Preparar dados dos produtos
     const packages = products?.map((product: any, index: number) => ({
@@ -122,7 +142,7 @@ Deno.serve(async (req) => {
     // Fazer requisição para API do Melhor Envio
     console.log('🚀 Fazendo requisição para API do Melhor Envio...')
     console.log('URL:', `${baseUrl}/api/v2/me/shipment/calculate`)
-    console.log('Headers:', { Authorization: `Bearer ${integration.access_token?.substring(0, 10)}...` })
+    console.log('Headers:', { Authorization: `Bearer ${finalIntegration.access_token?.substring(0, 10)}...` })
     console.log('Body:', JSON.stringify(shippingData, null, 2))
     
     const response = await fetch(`${baseUrl}/api/v2/me/shipment/calculate`, {
@@ -130,7 +150,7 @@ Deno.serve(async (req) => {
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Authorization': `Bearer ${integration.access_token}`
+        'Authorization': `Bearer ${finalIntegration.access_token}`
       },
       body: JSON.stringify(shippingData)
     })
@@ -153,40 +173,92 @@ Deno.serve(async (req) => {
         console.error('💥 Resposta não é JSON válido:', responseText)
       }
       
-      // Se token expirado, tentar usar configurações globais
+      // Se token expirado, tentar renovar token via refresh_token ou usar configurações globais
       if (response.status === 401) {
-        console.log('🔄 Token expirado/inválido, tentando token global...')
+        console.log('🔄 Token expirado/inválido, tentando renovar...')
         
-        const globalToken = Deno.env.get('MELHOR_ENVIO_ACCESS_TOKEN')
-        if (globalToken) {
-          console.log('🌐 Usando token global...')
-          const globalResponse = await fetch(`${baseUrl}/api/v2/me/shipment/calculate`, {
+        let newToken = null
+        
+        // Tentar renovar token se temos refresh_token
+        if (finalIntegration.refresh_token) {
+          console.log('🔄 Tentando renovar token com refresh_token...')
+          try {
+            const refreshResponse = await fetch(`${baseUrl}/oauth/token`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify({
+                grant_type: 'refresh_token',
+                refresh_token: finalIntegration.refresh_token,
+                client_id: finalIntegration.client_id,
+                client_secret: finalIntegration.client_secret
+              })
+            })
+
+            if (refreshResponse.ok) {
+              const tokenData = await refreshResponse.json()
+              newToken = tokenData.access_token
+              
+              // Atualizar token no banco
+              await supabase
+                .from('shipping_integrations')
+                .update({
+                  access_token: newToken,
+                  refresh_token: tokenData.refresh_token || finalIntegration.refresh_token,
+                  expires_at: new Date(Date.now() + (tokenData.expires_in * 1000)).toISOString()
+                })
+                .eq('id', finalIntegration.id)
+              
+              console.log('✅ Token renovado com sucesso')
+            } else {
+              const errorText = await refreshResponse.text()
+              console.error('❌ Erro ao renovar token:', refreshResponse.status, errorText)
+            }
+          } catch (refreshError) {
+            console.error('❌ Erro na renovação do token:', refreshError)
+          }
+        }
+        
+        // Se não conseguiu renovar, tentar token global
+        if (!newToken) {
+          const globalToken = Deno.env.get('MELHOR_ENVIO_ACCESS_TOKEN')
+          if (globalToken) {
+            console.log('🌐 Usando token global...')
+            newToken = globalToken
+          } else {
+            console.error('❌ Nenhum token disponível (renovação falhou e sem token global)')
+          }
+        }
+        
+        // Tentar novamente com o novo token
+        if (newToken) {
+          const retryResponse = await fetch(`${baseUrl}/api/v2/me/shipment/calculate`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
-              'Authorization': `Bearer ${globalToken}`
+              'Authorization': `Bearer ${newToken}`
             },
             body: JSON.stringify(shippingData)
           })
 
-          const globalResponseText = await globalResponse.text()
-          console.log('🌐 Resposta com token global:', globalResponse.status, globalResponseText.substring(0, 500))
+          const retryResponseText = await retryResponse.text()
+          console.log('🔄 Resposta com token renovado/global:', retryResponse.status, retryResponseText.substring(0, 500))
 
-          if (globalResponse.ok) {
-            const globalData = JSON.parse(globalResponseText)
+          if (retryResponse.ok) {
+            const retryData = JSON.parse(retryResponseText)
             return new Response(JSON.stringify({
               success: true,
-              shipping_options: globalData || []
+              shipping_options: retryData || []
             }), {
               status: 200,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             })
           } else {
-            console.error('❌ Token global também falhou:', globalResponse.status, globalResponseText)
+            console.error('❌ Falha mesmo com token renovado/global:', retryResponse.status, retryResponseText)
           }
-        } else {
-          console.error('❌ Nenhum token global disponível')
         }
       }
 
