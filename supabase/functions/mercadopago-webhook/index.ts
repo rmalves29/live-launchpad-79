@@ -13,11 +13,17 @@ serve(async (req) => {
   }
 
   try {
-    // Extract tenant key from URL path (multitenant support)
+    // Extract tenant key from URL path or header (multitenant support)
     const url = new URL(req.url);
-    const tenantKey = url.pathname.split('/').pop();
+    let tenantKey = url.pathname.split('/').pop();
+    
+    // If tenantKey is the function name, try to get it from query params or headers
+    if (tenantKey === 'mercadopago-webhook' || !tenantKey) {
+      tenantKey = url.searchParams.get('tenant_key') || req.headers.get('x-tenant-key');
+    }
     
     if (!tenantKey) {
+      console.log('No tenant key found in URL path, query params, or headers');
       return new Response('Tenant key required', { status: 400, headers: corsHeaders });
     }
 
@@ -32,7 +38,8 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Log webhook received
-    console.log(`Webhook received for tenant: ${tenantKey}`);
+    console.log(`Webhook received. URL: ${url.toString()}`);
+    console.log(`Extracted tenant key: ${tenantKey}`);
 
     // Get tenant and MP integration config
     const { data: tenant, error: tenantError } = await supabase
