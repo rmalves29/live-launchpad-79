@@ -167,21 +167,44 @@ const Checkout = () => {
   };
 
   const calculateShipping = async (cep: string, order: Order) => {
-    if (!cep || cep.replace(/[^0-9]/g, '').length !== 8) return;
+    // Proteção inicial
+    if (!cep || !order || !tenantId) {
+      console.log('⚠️ Dados insuficientes para calcular frete:', { cep, order: !!order, tenantId });
+      return;
+    }
+
+    if (cep.replace(/[^0-9]/g, '').length !== 8) {
+      console.log('⚠️ CEP inválido:', cep);
+      return;
+    }
     
     console.log('🚚 Iniciando cálculo de frete para CEP:', cep);
     console.log('📋 Tenant ID:', tenantId);
     console.log('📦 Order items:', order.items);
     
+    // Definir opção de retirada como fallback imediato
+    const fallbackShipping = [{
+      id: 'retirada',
+      name: 'Retirada - Retirar na Fábrica',
+      company: 'Retirada',
+      price: '0.00',
+      delivery_time: 'Imediato',
+      custom_price: '0.00'
+    }];
+
     setLoadingShipping(true);
+    
+    // Sempre garantir que há pelo menos a opção de retirada
+    setShippingOptions(fallbackShipping);
+    
     try {
-      // Buscar endereço pelo CEP (ViaCEP)
+      // Buscar endereço pelo CEP (ViaCEP) - forma segura
       if (cep.replace(/[^0-9]/g, '').length === 8) {
         try {
           const cepResponse = await fetch(`https://viacep.com.br/ws/${cep.replace(/[^0-9]/g, '')}/json/`);
           const cepData = await cepResponse.json();
           
-          if (!cepData.erro) {
+          if (!cepData.erro && cepData.localidade) {
             setCustomerData(prev => ({
               ...prev,
               street: cepData.logradouro || prev.street,
@@ -189,185 +212,139 @@ const Checkout = () => {
               state: cepData.uf || prev.state
             }));
           }
-        } catch (error) {
-          console.error('Error fetching address:', error);
+        } catch (cepError) {
+          console.error('Error fetching address from ViaCEP:', cepError);
+          // Não throw aqui, continua sem os dados do CEP
         }
       }
 
-      // Primeiro, testar se o token está válido
-      try {
-        console.log('🔍 Testando token Melhor Envio...');
-        const { data: tokenTest } = await supabaseTenant.raw.functions.invoke('melhor-envio-test-token', {
-          body: { tenant_id: tenantId }
-        });
-        
-        console.log('🧪 Resultado do teste de token:', tokenTest);
-        
-        if (!tokenTest?.valid) {
-          // Token inválido, mostrar erro específico
-          throw new Error(tokenTest?.error || 'Token do Melhor Envio inválido ou expirado');
-        }
-        
-        console.log('✅ Token válido, prosseguindo com cálculo');
-      } catch (tokenError) {
-        console.error('❌ Erro no teste de token:', tokenError);
-        throw tokenError;
+      // Verificar se supabaseTenant está disponível
+      if (!supabaseTenant || !supabaseTenant.raw) {
+        console.error('❌ supabaseTenant não disponível');
+        throw new Error('Sistema de integração não disponível');
       }
 
-      // Calcular frete
-      console.log('📦 Chamando função de frete com:', {
-        to_postal_code: cep.replace(/[^0-9]/g, ''),
-        tenant_id: tenantId,
-        products: order.items.map(item => ({
-          id: item.id.toString(),
-          width: 16,
-          height: 2,
-          length: 20,
-          weight: 0.3,
-          insurance_value: item.unit_price,
-          quantity: item.qty
-        }))
+      console.log('🔍 Testando token Melhor Envio...');
+      
+      // Testar token primeiro
+      const tokenTestResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-test-token', {
+        body: { tenant_id: tenantId }
       });
       
-      const { data, error } = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
+      console.log('🧪 Resposta do teste de token:', tokenTestResponse);
+      
+      if (tokenTestResponse.error) {
+        console.error('❌ Erro na função de teste de token:', tokenTestResponse.error);
+        throw new Error('Erro ao verificar token do Melhor Envio');
+      }
+
+      const tokenTest = tokenTestResponse.data;
+      if (!tokenTest?.valid) {
+        throw new Error(tokenTest?.error || 'Token do Melhor Envio inválido ou expirado');
+      }
+      
+      console.log('✅ Token válido, calculando frete...');
+
+      // Preparar dados do produto de forma segura
+      const products = order.items.map(item => ({
+        id: String(item.id || Math.random()),
+        width: 16,
+        height: 2,
+        length: 20,
+        weight: 0.3,
+        insurance_value: Number(item.unit_price) || 1,
+        quantity: Number(item.qty) || 1
+      }));
+      
+      console.log('📦 Produtos preparados:', products);
+      
+      // Calcular frete
+      const shippingResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
           tenant_id: tenantId,
-          products: order.items.map(item => ({
-            id: item.id.toString(),
-            width: 16,
-            height: 2,
-            length: 20,
-            weight: 0.3,
-            insurance_value: item.unit_price,
-            quantity: item.qty
-          }))
+          products: products
         }
       });
 
-      console.log('📡 Resposta da função de frete:', { data, error });
+      console.log('📡 Resposta da função de frete:', shippingResponse);
 
-      if (error) {
-        throw error;
+      if (shippingResponse.error) {
+        console.error('❌ Erro na função de frete:', shippingResponse.error);
+        throw new Error('Erro ao calcular frete');
       }
 
-      if (data && data.success && data.shipping_options && data.shipping_options.length > 0) {
-        // Mapear as opções de frete da resposta do Melhor Envio
-        const options = data.shipping_options
-          .filter((option: any) => !option.error) // Filtrar opções com erro
+      const data = shippingResponse.data;
+      if (data && data.success && data.shipping_options && Array.isArray(data.shipping_options)) {
+        // Processar opções de frete de forma segura
+        const validOptions = data.shipping_options
+          .filter((option: any) => option && !option.error && option.price)
           .map((option: any) => ({
-            id: option.service_id?.toString() || `me_${option.name?.toLowerCase().replace(/\s+/g, '_')}`,
-            name: option.service_name || option.name || 'Transportadora',
-            company: option.company || 'Melhor Envio',
+            id: String(option.service_id || option.id || Math.random()),
+            name: String(option.service_name || option.name || 'Transportadora'),
+            company: String(option.company || 'Melhor Envio'),
             price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
-            delivery_time: option.delivery_time || option.custom_delivery_time || '5-10 dias',
+            delivery_time: String(option.delivery_time || option.custom_delivery_time || '5-10 dias'),
             custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
           }));
 
-        // Sempre adicionar opção de retirada
-        const shippingWithPickup = [
-          {
-            id: 'retirada',
-            name: 'Retirada - Retirar na Fábrica',
-            company: 'Retirada',
-            price: '0.00',
-            delivery_time: 'Imediato',
-            custom_price: '0.00'
-          },
-          ...options
-        ];
-
-        setShippingOptions(shippingWithPickup);
-        
-        if (options.length > 0) {
-          console.log('✅ Opções de frete encontradas:', options);
+        if (validOptions.length > 0) {
+          const allOptions = [...fallbackShipping, ...validOptions];
+          setShippingOptions(allOptions);
+          
+          console.log('✅ Opções de frete encontradas:', validOptions.length);
           toast({
             title: 'Frete calculado',
-            description: `${options.length} opções de frete encontradas`
+            description: `${validOptions.length} opções de frete encontradas`,
           });
         } else {
-          console.log('⚠️ Nenhuma opção de frete retornada, usando apenas retirada');
+          console.log('⚠️ Nenhuma opção válida retornada');
           toast({
             title: 'Frete não disponível',
-            description: 'Apenas retirada disponível para este CEP'
+            description: 'Apenas retirada disponível para este CEP',
           });
         }
-      } else if (data && data.error) {
-        // Mostrar erro específico da API
-        console.error('❌ Erro na API de frete:', data.error);
-        throw new Error(data.error);
       } else {
-        // Se não houver opções, mostrar apenas retirada
-        console.log('⚠️ Resposta vazia, usando apenas retirada');
-        throw new Error('Nenhuma opção de frete disponível para este CEP');
+        console.log('⚠️ Resposta inválida da API de frete');
+        toast({
+          title: 'Frete não disponível',
+          description: 'Apenas retirada disponível para este CEP',
+        });
       }
     } catch (error) {
-      console.error('❌ Erro completo no cálculo de frete:', error);
-      console.error('❌ Stack trace:', error instanceof Error ? error.stack : 'Sem stack trace');
+      console.error('❌ Erro no cálculo de frete:', error);
       
-      // Tentar extrair mensagem de erro mais específica
-      let errorMessage = 'Não foi possível calcular o frete. Retirada disponível.';
-      
+      // Extrair mensagem de erro de forma segura
+      let errorMessage = 'Não foi possível calcular o frete';
       try {
-        if (error && typeof error === 'object') {
-          if ('message' in error) {
-            errorMessage = String(error.message);
-          } else if ('error' in error) {
-            errorMessage = String(error.error);
-          } else {
-            errorMessage = JSON.stringify(error);
-          }
+        if (error instanceof Error) {
+          errorMessage = error.message;
         } else if (typeof error === 'string') {
           errorMessage = error;
         }
-      } catch (parseError) {
-        console.error('❌ Erro ao processar mensagem de erro:', parseError);
-        errorMessage = 'Erro desconhecido no cálculo de frete';
-      }
-      
-      console.log('📋 Mensagem de erro processada:', errorMessage);
-      
-      // Garantir que sempre há uma opção de retirada
-      try {
-        setShippingOptions([{
-          id: 'retirada',
-          name: 'Retirada - Retirar na Fábrica', 
-          company: 'Retirada',
-          price: '0.00',
-          delivery_time: 'Imediato',
-          custom_price: '0.00'
-        }]);
-        
-        console.log('✅ Opção de retirada definida com sucesso');
-      } catch (setError) {
-        console.error('❌ Erro ao definir opção de retirada:', setError);
+      } catch {
+        // Se der erro até aqui, usa mensagem padrão
       }
       
       // Mostrar toast de erro de forma segura
       try {
         if (errorMessage.includes('inválido') || errorMessage.includes('expirado') || errorMessage.includes('Unauthenticated')) {
           toast({
-            title: 'Token do Melhor Envio Expirado',
-            description: 'É necessário reconfigurar a integração do Melhor Envio. Entre em contato com o administrador.',
+            title: 'Token Expirado',
+            description: 'É necessário reconfigurar a integração do Melhor Envio',
             variant: 'destructive'
           });
         } else {
           toast({
-            title: 'Erro no cálculo de frete',
-            description: errorMessage,
-            variant: 'destructive'
+            title: 'Aviso',
+            description: 'Apenas retirada disponível para este CEP',
           });
         }
       } catch (toastError) {
         console.error('❌ Erro ao mostrar toast:', toastError);
       }
     } finally {
-      try {
-        setLoadingShipping(false);
-        console.log('✅ Loading shipping finalizado');
-      } catch (finallyError) {
-        console.error('❌ Erro no finally:', finallyError);
-      }
+      setLoadingShipping(false);
     }
   };
 
