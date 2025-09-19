@@ -61,11 +61,25 @@ Deno.serve(async (req) => {
       })
     }
 
+    console.log('✅ Integração encontrada:', {
+      id: integration.id,
+      sandbox: integration.sandbox,
+      from_cep: integration.from_cep,
+      has_token: !!integration.access_token,
+      token_length: integration.access_token?.length || 0
+    })
+
     // Configurar ambiente (sandbox ou produção)
     const isSandbox = integration.sandbox || integration.environment === 'sandbox'
     const baseUrl = isSandbox 
       ? 'https://sandbox.melhorenvio.com.br'
       : 'https://melhorenvio.com.br'
+
+    console.log('🏗️ Configurações da API:', {
+      isSandbox,
+      baseUrl,
+      environment: integration.environment || 'não definido'
+    })
 
     // CEP de origem padrão ou da integração
     const fromCep = integration.from_cep || Deno.env.get('MELHOR_ENVIO_FROM_CEP') || '31575060'
@@ -122,17 +136,30 @@ Deno.serve(async (req) => {
     })
 
     const responseText = await response.text()
-    console.log('📡 Resposta Melhor Envio (status:', response.status, '):', responseText.substring(0, 500))
+    console.log('📡 Resposta Melhor Envio (status:', response.status, '):', responseText.substring(0, 1000))
 
     if (!response.ok) {
-      console.error('Erro na API Melhor Envio:', response.status, responseText)
+      console.error('❌ Erro na API Melhor Envio:', response.status, responseText)
+      
+      let errorMessage = `Erro ${response.status} na API do Melhor Envio`
+      
+      try {
+        const errorData = JSON.parse(responseText)
+        if (errorData.message) {
+          errorMessage = errorData.message
+        }
+        console.error('💥 Detalhes do erro:', errorData)
+      } catch (e) {
+        console.error('💥 Resposta não é JSON válido:', responseText)
+      }
       
       // Se token expirado, tentar usar configurações globais
       if (response.status === 401) {
-        console.log('🔄 Token expirado, usando configurações globais...')
+        console.log('🔄 Token expirado/inválido, tentando token global...')
         
         const globalToken = Deno.env.get('MELHOR_ENVIO_ACCESS_TOKEN')
         if (globalToken) {
+          console.log('🌐 Usando token global...')
           const globalResponse = await fetch(`${baseUrl}/api/v2/me/shipment/calculate`, {
             method: 'POST',
             headers: {
@@ -143,8 +170,11 @@ Deno.serve(async (req) => {
             body: JSON.stringify(shippingData)
           })
 
+          const globalResponseText = await globalResponse.text()
+          console.log('🌐 Resposta com token global:', globalResponse.status, globalResponseText.substring(0, 500))
+
           if (globalResponse.ok) {
-            const globalData = await globalResponse.json()
+            const globalData = JSON.parse(globalResponseText)
             return new Response(JSON.stringify({
               success: true,
               shipping_options: globalData || []
@@ -152,12 +182,17 @@ Deno.serve(async (req) => {
               status: 200,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             })
+          } else {
+            console.error('❌ Token global também falhou:', globalResponse.status, globalResponseText)
           }
+        } else {
+          console.error('❌ Nenhum token global disponível')
         }
       }
 
       return new Response(JSON.stringify({ 
-        error: `Erro na API: ${response.status}`,
+        error: errorMessage,
+        details: responseText,
         shipping_options: []
       }), {
         status: 200,

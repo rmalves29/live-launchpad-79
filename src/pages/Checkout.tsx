@@ -284,6 +284,14 @@ const Checkout = () => {
     } catch (error) {
       console.error('Error calculating shipping:', error);
       
+      // Tentar extrair mensagem de erro mais específica
+      let errorMessage = 'Não foi possível calcular o frete. Retirada disponível.';
+      if (error && typeof error === 'object') {
+        if ('message' in error) {
+          errorMessage = `Erro: ${error.message}`;
+        }
+      }
+      
       // Fallback para retirada apenas
       setShippingOptions([{
         id: 'retirada',
@@ -296,7 +304,7 @@ const Checkout = () => {
       
       toast({
         title: 'Erro no cálculo de frete',
-        description: 'Não foi possível calcular o frete. Retirada disponível.',
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {
