@@ -13,6 +13,7 @@ import Checkout from "./pages/Checkout";
 import Pedidos from "./pages/Pedidos";
 import Sorteio from "./pages/Sorteio";
 import Config from "./pages/Config";
+import Integracoes from "./pages/Integracoes";
 import Produtos from "./pages/Produtos";
 import Clientes from "./pages/Clientes";
 import Relatorios from "./pages/Relatorios";
@@ -113,13 +114,9 @@ const AppContent = () => {
           <RequireTenantAuth><WhatsAppIntegration /></RequireTenantAuth>
         } />
         
-        {/* Rota para integracoes - redireciona para config com tab de integracoes */}
+        {/* Rota para integracoes */}
         <Route path="/integracoes" element={
-          <RequireAuth>
-            <SuperAdminOnly>
-              <Config />
-            </SuperAdminOnly>
-          </RequireAuth>
+          <RequireTenantAuth><Integracoes /></RequireTenantAuth>
         } />
         
         <Route path="*" element={<NotFound />} />

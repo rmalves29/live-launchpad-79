@@ -13,7 +13,6 @@ import { GiftsManager } from '@/components/GiftsManager';
 import { CompanySettings } from '@/components/CompanySettings';
 import TenantsManager from '@/components/TenantsManager';
 import { TenantSimulator } from '@/components/TenantSimulator';
-import { TenantIntegrations } from '@/components/tenant/TenantIntegrations';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -379,7 +378,7 @@ const Config = () => {
 
         <div className="space-y-6">
           <Tabs defaultValue={searchParams.get('tab') || 'config'} className="w-full">
-            <TabsList className={`grid w-full ${isMaster ? 'grid-cols-7' : 'grid-cols-6'}`}>
+            <TabsList className={`grid w-full ${isMaster ? 'grid-cols-6' : 'grid-cols-5'}`}>
               <TabsTrigger value="config" className="flex items-center">
                 <Settings className="h-4 w-4 mr-2" />
                 Configurações
@@ -399,10 +398,6 @@ const Config = () => {
               <TabsTrigger value="gifts" className="flex items-center">
                 <Gift className="h-4 w-4 mr-2" />
                 Brindes
-              </TabsTrigger>
-              <TabsTrigger value="integrations" className="flex items-center">
-                <Truck className="h-4 w-4 mr-2" />
-                Integrações
               </TabsTrigger>
               {isMaster && (
                 <TabsTrigger value="tenants" className="flex items-center">
@@ -924,9 +919,6 @@ const Config = () => {
           <GiftsManager />
         </TabsContent>
 
-        <TabsContent value="integrations" className="space-y-6 mt-6">
-          <TenantIntegrations />
-        </TabsContent>
 
         {isMaster && (
           <TabsContent value="tenants" className="space-y-6 mt-6">

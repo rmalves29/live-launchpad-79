@@ -24,6 +24,7 @@ const Navbar = () => {
     { path: '/whatsapp-templates', label: 'Templates WPP' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/etiquetas', label: 'Etiquetas' },
+    { path: '/integracoes', label: 'Integrações' },
     ...(user?.email === 'rmalves21@hotmail.com' ? [{ path: '/config', label: 'Configurações' }] : [])
   ];
 
