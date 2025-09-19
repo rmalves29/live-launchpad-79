@@ -1,5 +1,8 @@
 project_id = "hxtbsieodbtzgcvvkeqx"
 
+[functions.callback-empresa]
+verify_jwt = false
+
 [functions.webhook-melhor-envio]
 verify_jwt = false
 
