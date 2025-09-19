@@ -113,6 +113,15 @@ const AppContent = () => {
           <RequireTenantAuth><WhatsAppIntegration /></RequireTenantAuth>
         } />
         
+        {/* Rota para integracoes - redireciona para config com tab de integracoes */}
+        <Route path="/integracoes" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <Config />
+            </SuperAdminOnly>
+          </RequireAuth>
+        } />
+        
         <Route path="*" element={<NotFound />} />
       </Routes>
     </>
