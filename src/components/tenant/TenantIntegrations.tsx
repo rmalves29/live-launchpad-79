@@ -118,22 +118,28 @@ export const TenantIntegrations = () => {
       return;
     }
 
-    const redirectUri = `${window.location.origin}/config?tab=integracoes&callback=melhor_envio`;
+    // Usar a mesma redirect_uri do callback-empresa
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth';
     
-    // Forçar uso do sandbox para desenvolvimento
-    const baseUrl = 'https://sandbox.melhorenvio.com.br/oauth/authorize';
+    // Usar produção como no callback-empresa
+    const baseUrl = 'https://melhorenvio.com.br/oauth/authorize';
     
-    // Usar + como separador de scopes (formato correto do Melhor Envio)
+    // Usar vírgula como separador e incluir todos os escopos necessários
     const scopes = [
       'cart-read', 'cart-write', 
       'companies-read', 'companies-write',
       'coupons-read', 'coupons-write',
       'notifications-read',
       'orders-read',
-      'products-read', 'products-write',
+      'products-read', 'products-destroy', 'products-write',
       'purchases-read',
-      'shipping-calculate', 'shipping-cancel', 'shipping-checkout', 'shipping-companies', 'shipping-generate', 'shipping-preview', 'shipping-print', 'shipping-share', 'shipping-tracking'
-    ].join('+');
+      'shipping-calculate', 'shipping-cancel', 'shipping-checkout', 'shipping-companies', 
+      'shipping-generate', 'shipping-preview', 'shipping-print', 'shipping-share', 'shipping-tracking',
+      'ecommerce-shipping',
+      'transactions-read',
+      'users-read', 'users-write',
+      'webhooks-read', 'webhooks-write', 'webhooks-delete'
+    ].join(',');
 
     const params = new URLSearchParams({
       client_id: shippingConfig.client_id,
