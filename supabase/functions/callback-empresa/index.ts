@@ -32,11 +32,12 @@ Deno.serve(async (req) => {
     console.error('❌ Erro no callback empresa:', error);
     
     // Redirect to error page with reason
+    const FRONTEND_BASE_URL = Deno.env.get('FRONTEND_BASE_URL') ?? 'https://app.orderzaps.com';
     const reason = encodeURIComponent(error.message || 'callback_processing_failed');
     return new Response(null, {
       status: 302,
       headers: { 
-        Location: `https://live-launchpad-79.lovable.app/integracoes?melhorenvio=config_error&reason=${reason}` 
+        Location: `${FRONTEND_BASE_URL}/integracoes?melhorenvio=config_error&reason=${reason}` 
       }
     });
   }
@@ -179,10 +180,11 @@ async function handleMelhorEnvioOAuth(req: Request, url: URL) {
   console.log('💾 Integração salva com sucesso:', integrationData);
 
   // Redirect to success page
+  const FRONTEND_BASE_URL = Deno.env.get('FRONTEND_BASE_URL') ?? 'https://app.orderzaps.com';
   return new Response(null, {
     status: 302,
     headers: { 
-      Location: 'https://live-launchpad-79.lovable.app/integracoes?melhorenvio=ok' 
+      Location: `${FRONTEND_BASE_URL}/integracoes?melhorenvio=ok` 
     }
   });
 }
