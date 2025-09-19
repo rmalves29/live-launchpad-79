@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       ? 'https://sandbox.melhorenvio.com.br/oauth/token'
       : 'https://melhorenvio.com.br/oauth/token';
 
-    const redirectUri = `${Deno.env.get('PUBLIC_APP_URL')}/config?tab=integracoes&callback=melhor_envio`;
+    const redirectUri = 'https://app.orderzaps.com/config?tab=integracoes&callback=melhor_envio';
 
     console.log('📡 Fazendo requisição para obter access token:', {
       tokenUrl,
@@ -76,8 +76,15 @@ Deno.serve(async (req) => {
     console.log('✅ Token obtido com sucesso:', {
       access_token: tokenData.access_token ? `${tokenData.access_token.substring(0, 20)}...` : 'não fornecido',
       token_type: tokenData.token_type,
-      expires_in: tokenData.expires_in
+      expires_in: tokenData.expires_in,
+      refresh_token: tokenData.refresh_token ? `${tokenData.refresh_token.substring(0, 20)}...` : 'não fornecido',
+      scope: tokenData.scope
     });
+
+    // Calcular data de expiração
+    const expiresAt = tokenData.expires_in ? 
+      new Date(Date.now() + (tokenData.expires_in * 1000)).toISOString() : 
+      null;
 
     // Salvar/atualizar a integração no banco
     const { data: integrationData, error: integrationError } = await supabase
@@ -88,6 +95,10 @@ Deno.serve(async (req) => {
         client_id,
         client_secret,
         access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        token_type: tokenData.token_type || 'Bearer',
+        scope: tokenData.scope,
+        expires_at: expiresAt,
         sandbox: isSandbox,
         is_active: true,
         updated_at: new Date().toISOString()

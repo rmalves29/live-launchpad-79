@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Play, Pause, Save, Phone } from 'lucide-react';
+import { Play, Pause, Save, Phone, Clock, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTenant } from '@/hooks/useTenant';
@@ -44,6 +44,7 @@ export default function SendFlow() {
   const [currentProduct, setCurrentProduct] = useState<string>('');
   const [currentGroup, setCurrentGroup] = useState<string>('');
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [sentCount, setSentCount] = useState(0);
 
   useEffect(() => {
     loadProducts();
@@ -258,6 +259,7 @@ export default function SendFlow() {
     setCurrentIndex(0);
     setCurrentProduct('');
     setCurrentGroup('');
+    setSentCount(0);
     
     toast.success('🚀 Iniciando SendFlow...');
     
@@ -334,6 +336,7 @@ export default function SendFlow() {
             }
             
             successCount++;
+            setSentCount(prev => prev + 1);
             console.log(`✅ Sucesso no grupo ${groupName}:`, result);
             toast.success(`✅ ${product.code} → ${groupName.substring(0, 30)}...`);
             
@@ -393,6 +396,7 @@ export default function SendFlow() {
       setCurrentProduct('');
       setCurrentGroup('');
       setAbortController(null);
+      setSentCount(0);
     }
   };
 
@@ -409,6 +413,32 @@ export default function SendFlow() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">SendFlow</h1>
+        
+        {/* Contadores de Status */}
+        <div className="flex items-center gap-6 text-sm">
+          <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg">
+            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+            <span className="font-medium">Selecionados:</span>
+            <span className="text-blue-700 font-bold">{selectedProducts.size}</span>
+          </div>
+          {isRunning && (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-lg">
+                <CheckCircle2 className="w-4 h-4 text-green-600" />
+                <span className="font-medium">Enviados:</span>
+                <span className="text-green-700 font-bold">{sentCount}</span>
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 bg-orange-50 rounded-lg">
+                <Clock className="w-4 h-4 text-orange-600" />
+                <span className="font-medium">Tempo estimado:</span>
+                <span className="text-orange-700 font-bold">
+                  {Math.ceil((selectedProducts.size * selectedGroups.size * timerSeconds) / 60)}min
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+        
         <div className="flex gap-2">
           <Button onClick={saveTemplate} variant="outline">
             <Save className="w-4 h-4 mr-2" />
