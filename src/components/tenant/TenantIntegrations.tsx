@@ -42,6 +42,7 @@ export const TenantIntegrations = () => {
     client_id: '',
     client_secret: '',
     access_token: '',
+    refresh_token: '',
     from_cep: '31575060',
     sandbox: true,
     webhook_secret: '',
@@ -204,7 +205,8 @@ export const TenantIntegrations = () => {
       // Atualizar estado local
       setShippingConfig(prev => ({
         ...prev,
-        access_token: data.access_token
+        access_token: data.access_token,
+        refresh_token: data.refresh_token || ''
       }));
 
       toast({
@@ -319,6 +321,7 @@ export const TenantIntegrations = () => {
             client_id: shippingData.client_id || '',
             client_secret: shippingData.client_secret || '',
             access_token: shippingData.access_token || '',
+            refresh_token: shippingData.refresh_token || '',
             from_cep: shippingData.from_cep || '31575060',
             sandbox: shippingData.sandbox !== false,
             webhook_secret: shippingData.webhook_secret || '',
@@ -331,6 +334,7 @@ export const TenantIntegrations = () => {
             client_id: '',
             client_secret: '',
             access_token: '',
+            refresh_token: '',
             from_cep: '31575060',
             sandbox: true,
             webhook_secret: '',
@@ -484,6 +488,7 @@ export const TenantIntegrations = () => {
         client_id: shippingConfig.client_id,
         client_secret: shippingConfig.client_secret,
         access_token: shippingConfig.access_token || null,
+        refresh_token: shippingConfig.refresh_token || null,
         from_cep: shippingConfig.from_cep,
         sandbox: shippingConfig.sandbox,
         webhook_secret: shippingConfig.webhook_secret || null,
@@ -720,6 +725,18 @@ export const TenantIntegrations = () => {
             />
           </div>
           <div>
+            <Label htmlFor="me-refresh-token">Refresh Token</Label>
+            <Input
+              id="me-refresh-token"
+              type="password"
+              value={shippingConfig.refresh_token || ''}
+              onChange={(e) =>
+                setShippingConfig(prev => ({ ...prev, refresh_token: e.target.value }))
+              }
+              placeholder="Seu Refresh Token do Melhor Envio"
+            />
+          </div>
+          <div>
             <Label htmlFor="me-from-cep">CEP de Origem</Label>
             <Input
               id="me-from-cep"
@@ -882,6 +899,7 @@ export const TenantIntegrations = () => {
                 client_id: '',
                 client_secret: '',
                 access_token: '',
+                refresh_token: '',
                 from_cep: '31575060',
                 sandbox: true,
                 webhook_secret: '',

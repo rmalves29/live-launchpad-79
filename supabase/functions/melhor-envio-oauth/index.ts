@@ -120,6 +120,7 @@ Deno.serve(async (req) => {
         success: true,
         message: 'Autorização concluída com sucesso!',
         access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
         expires_in: tokenData.expires_in
       }),
       {
