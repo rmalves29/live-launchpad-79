@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
       ? 'https://sandbox.melhorenvio.com.br/oauth/token'
       : 'https://melhorenvio.com.br/oauth/token';
 
-    const redirectUri = 'https://app.orderzaps.com/config?tab=integracoes&callback=melhor_envio';
+    const redirectUri = 'https://live-launchpad-79.lovable.app/integracoes?callback=melhor_envio';
 
     console.log('📡 Fazendo requisição para obter access token:', {
       tokenUrl,
