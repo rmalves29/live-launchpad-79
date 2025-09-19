@@ -33,10 +33,7 @@ export const TenantSwitcher = () => {
       try {
         setLoading(true);
         const { data, error } = await supabase
-          .from('tenants')
-          .select('id,name,slug')
-          .eq('is_active', true)
-          .order('name');
+          .rpc('list_active_tenants_basic');
         if (error) throw error;
         setTenants(data || []);
       } catch (e) {

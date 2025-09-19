@@ -19,10 +19,7 @@ export const TenantSimulator = () => {
     setLoading(true);
     try {
       const { data, error } = await supabaseTenant.raw
-        .from('tenants')
-        .select('*')
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
+        .rpc('list_active_tenants_basic');
 
       if (error) throw error;
       setTenants(data || []);

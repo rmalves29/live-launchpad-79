@@ -1070,6 +1070,15 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      list_active_tenants_basic: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+        }[]
+      }
       text_to_bytea: {
         Args: { data: string }
         Returns: string
