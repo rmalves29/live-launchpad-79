@@ -12,6 +12,21 @@ verify_jwt = false
 [functions.melhor-envio-oauth]
 verify_jwt = false
 
+[functions.melhor-envio-shipping]
+verify_jwt = false
+
+[functions.melhor-envio-labels]
+verify_jwt = false
+
+[functions.melhor-envio-healthcheck]
+verify_jwt = false
+
+[functions.melhor-envio-test-token]
+verify_jwt = true
+
+[functions.melhor-envio-token-refresh]
+verify_jwt = true
+
 [functions.create-payment]
 verify_jwt = true
 

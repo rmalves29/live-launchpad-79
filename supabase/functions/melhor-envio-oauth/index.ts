@@ -17,49 +17,51 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { code, tenant_id, client_id, client_secret } = await req.json();
+    const { code, tenant_id } = await req.json();
 
-    console.log('🔄 Processando callback OAuth do Melhor Envio:', {
+    console.log('🔄 Processando OAuth do Melhor Envio:', {
       code: code ? `${code.substring(0, 10)}...` : 'não fornecido',
-      tenant_id,
-      client_id
+      tenant_id
     });
 
-    if (!code || !tenant_id || !client_id || !client_secret) {
-      throw new Error('Parâmetros obrigatórios: code, tenant_id, client_id, client_secret');
+    if (!code || !tenant_id) {
+      throw new Error('Parâmetros obrigatórios: code, tenant_id');
     }
 
-    // Determinar ambiente baseado no client_id
-    const sandboxClientIds = ['20128', '20129', '20130', '7017'];
-    // Por padrão usar sandbox para desenvolvimento
-    const isSandbox = sandboxClientIds.includes(client_id) || true;
+    // Usar credenciais fixas de produção conforme as instruções
+    const client_id = '20128';
+    const client_secret = Deno.env.get('MELHOR_ENVIO_CLIENT_SECRET');
     
-    const tokenUrl = isSandbox 
-      ? 'https://sandbox.melhorenvio.com.br/oauth/token'
-      : 'https://melhorenvio.com.br/oauth/token';
+    if (!client_secret) {
+      throw new Error('MELHOR_ENVIO_CLIENT_SECRET environment variable not configured');
+    }
 
-    const redirectUri = 'https://live-launchpad-79.lovable.app/integracoes?callback=melhor_envio';
+    // Sempre usar produção conforme instruções
+    const tokenUrl = 'https://melhorenvio.com.br/oauth/token';
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth';
 
     console.log('📡 Fazendo requisição para obter access token:', {
       tokenUrl,
       redirectUri,
-      isSandbox
+      client_id
     });
+
+    // Usar application/x-www-form-urlencoded conforme instruções
+    const params = new URLSearchParams();
+    params.set('grant_type', 'authorization_code');
+    params.set('code', code);
+    params.set('redirect_uri', redirectUri);
+    params.set('client_id', client_id);
+    params.set('client_secret', client_secret);
 
     // Trocar code por access token
     const tokenResponse = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Accept': 'application/json'
       },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        client_id,
-        client_secret,
-        redirect_uri: redirectUri,
-        code
-      })
+      body: params.toString()
     });
 
     if (!tokenResponse.ok) {
@@ -69,7 +71,16 @@ Deno.serve(async (req) => {
         statusText: tokenResponse.statusText,
         error: errorText
       });
-      throw new Error(`Erro ao obter token: ${tokenResponse.status} - ${errorText}`);
+      
+      let errorReason = 'token_exchange_failed';
+      try {
+        const errorData = JSON.parse(errorText);
+        errorReason = errorData.error || errorReason;
+      } catch {
+        // Keep default error reason
+      }
+      
+      throw new Error(`Token exchange failed: ${tokenResponse.status} - ${errorReason}`);
     }
 
     const tokenData = await tokenResponse.json();
@@ -99,7 +110,7 @@ Deno.serve(async (req) => {
         token_type: tokenData.token_type || 'Bearer',
         scope: tokenData.scope,
         expires_at: expiresAt,
-        sandbox: isSandbox,
+        sandbox: false, // Sempre produção conforme instruções
         is_active: true,
         updated_at: new Date().toISOString()
       }, {
