@@ -22,6 +22,7 @@ export type Database = {
           default_length_cm: number | null
           default_weight_kg: number | null
           default_width_cm: number | null
+          handling_days: number | null
           id: number
           public_base_url: string | null
           updated_at: string
@@ -33,6 +34,7 @@ export type Database = {
           default_length_cm?: number | null
           default_weight_kg?: number | null
           default_width_cm?: number | null
+          handling_days?: number | null
           id?: number
           public_base_url?: string | null
           updated_at?: string
@@ -44,6 +46,7 @@ export type Database = {
           default_length_cm?: number | null
           default_weight_kg?: number | null
           default_width_cm?: number | null
+          handling_days?: number | null
           id?: number
           public_base_url?: string | null
           updated_at?: string

@@ -11,6 +11,7 @@ import { GiftsManager } from '@/components/GiftsManager';
 import { CompanySettings } from '@/components/CompanySettings';
 import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
 import TenantsManager from '@/components/TenantsManager';
+import { AvailabilitySettings } from '@/components/AvailabilitySettings';
 import { TenantSimulator } from '@/components/TenantSimulator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +21,7 @@ interface SystemConfig {
   event_date: string;
   event_type: string;
   origin_cep: string;
+  handling_days: number;
 }
 
 interface MercadoPagoIntegration {
@@ -67,6 +69,7 @@ const Config = () => {
   const [melhorEnvioIntegration, setMelhorEnvioIntegration] = useState<MelhorEnvioIntegration | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [activeView, setActiveView] = useState<'dashboard' | 'config'>('dashboard');
+  const [appSettings, setAppSettings] = useState<any>(null);
 
   const loadSettings = async () => {
     setLoadingSettings(true);
@@ -104,6 +107,16 @@ const Config = () => {
           is_active: meData.is_active || false
         });
       }
+
+      // Load app settings
+      const { data: appData } = await supabase
+        .from('app_settings')
+        .select('*')
+        .single();
+
+      if (appData) {
+        setAppSettings(appData);
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
       toast({
@@ -121,7 +134,8 @@ const Config = () => {
     const mockConfig: SystemConfig = {
       event_date: '2025-08-16',
       event_type: 'BAZAR',
-      origin_cep: '31575-060'
+      origin_cep: '31575-060',
+      handling_days: appSettings?.handling_days || 3
     };
     
     setConfig(mockConfig);
@@ -134,7 +148,8 @@ const Config = () => {
       icon: Settings,
       items: [
         { label: 'Data do Evento', value: config?.event_date, type: 'date' },
-        { label: 'Tipo do Evento', value: config?.event_type, type: 'badge' }
+        { label: 'Tipo do Evento', value: config?.event_type, type: 'badge' },
+        { label: 'Disponibilidade', value: config?.handling_days ? `${config.handling_days} dias` : '3 dias', type: 'text' }
       ]
     },
     {
@@ -263,6 +278,9 @@ const Config = () => {
               <TabsContent value="config" className="space-y-6 mt-6">
                 {/* Status do Melhor Envio */}
                 <MelhorEnvioStatus />
+                
+                {/* Availability Settings */}
+                <AvailabilitySettings />
                 
                 {/* Current Configuration */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

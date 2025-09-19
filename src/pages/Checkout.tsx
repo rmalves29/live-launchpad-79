@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
+import { supabase } from '@/integrations/supabase/client';
 
 interface OrderItem {
   id: number;
@@ -68,6 +69,7 @@ const Checkout = () => {
   } | null>(null);
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [loadingPayment, setLoadingPayment] = useState(false);
+  const [handlingDays, setHandlingDays] = useState<number>(3);
 
   const loadOpenOrders = async () => {
     if (!phone) {
@@ -171,6 +173,55 @@ const Checkout = () => {
     } finally {
       setLoadingOpenOrders(false);
     }
+  };
+
+  const loadHandlingDays = async () => {
+    try {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('handling_days')
+        .single();
+
+      if (data?.handling_days) {
+        setHandlingDays(data.handling_days);
+      }
+    } catch (error) {
+      console.error('Error loading handling days:', error);
+    }
+  };
+
+  const formatDeliveryTime = (originalTime: string, companyName: string) => {
+    if (companyName === 'Retirada') {
+      return originalTime;
+    }
+    
+    // Extract number from delivery time (e.g., "5-10" from "5-10 dias")
+    const timeMatch = originalTime.match(/(\d+(?:-\d+)?)/);
+    if (timeMatch) {
+      const deliveryDays = timeMatch[1];
+      return `${handlingDays} dias para postagem + ${deliveryDays} dias úteis`;
+    }
+    
+    return `${handlingDays} dias para postagem + ${originalTime}`;
+  };
+
+  const filterShippingOptions = (options: any[]) => {
+    return options.filter(option => {
+      const companyName = option.company?.toLowerCase() || '';
+      const serviceName = option.name?.toLowerCase() || '';
+      
+      // Allow pickup option
+      if (option.id === 'retirada') return true;
+      
+      // Filter for J&T and Correios services
+      return (
+        companyName.includes('j&t') ||
+        companyName.includes('correios') ||
+        serviceName.includes('pac') ||
+        serviceName.includes('sedex') ||
+        serviceName.includes('j&t')
+      );
+    });
   };
 
   const calculateShipping = async (cep: string, order: Order) => {
@@ -309,13 +360,15 @@ const Checkout = () => {
           }));
 
         if (validOptions.length > 0) {
-          const allOptions = [...fallbackShipping, ...validOptions];
+          // Filter shipping options to show only desired services
+          const filteredOptions = filterShippingOptions(validOptions);
+          const allOptions = [...fallbackShipping, ...filteredOptions];
           setShippingOptions(allOptions);
           
-          console.log('✅ Opções de frete encontradas:', validOptions.length);
+          console.log('✅ Opções de frete filtradas:', filteredOptions.length);
           toast({
             title: 'Frete calculado',
-            description: `${validOptions.length} opções de frete encontradas`,
+            description: `${filteredOptions.length} opções de frete encontradas`,
           });
         } else {
           console.log('⚠️ Nenhuma opção válida retornada');
@@ -1071,7 +1124,7 @@ const Checkout = () => {
                               {option.name}
                             </label>
                             <p className="text-sm text-muted-foreground ml-6">
-                              {option.company} - Entrega em até {option.delivery_time} dias úteis
+                              {option.company} - {formatDeliveryTime(option.delivery_time, option.company)}
                             </p>
                           </div>
                           <span className="font-bold">
@@ -1093,7 +1146,9 @@ const Checkout = () => {
                             <label htmlFor={`retirada-${order.id}`} className="font-medium">
                               Retirada - Retirar na Fábrica
                             </label>
-                            <p className="text-sm text-muted-foreground ml-6">Entrega em até 3 dias úteis</p>
+                             <p className="text-sm text-muted-foreground ml-6">
+                               Disponível em {handlingDays} dias úteis
+                             </p>
                           </div>
                           <span className="font-bold">R$ 0,00</span>
                         </div>
@@ -1126,10 +1181,9 @@ const Checkout = () => {
                              <div>
                                <strong>Valor do Frete:</strong> R$ {parseFloat(selectedShippingData.price).toFixed(2)}
                              </div>
-                             <div>
-                               <strong>Prazo:</strong> {selectedShippingData.delivery_time}
-                               {selectedShippingData.id !== 'retirada' && ' dias úteis'}
-                             </div>
+                              <div>
+                                <strong>Prazo:</strong> {formatDeliveryTime(selectedShippingData.delivery_time, selectedShippingData.company)}
+                              </div>
                            </div>
                          </CardContent>
                        </Card>
