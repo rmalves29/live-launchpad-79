@@ -470,18 +470,11 @@ const Checkout = () => {
       console.log('Payment response:', data);
 
       if (data && (data.init_point || data.sandbox_init_point)) {
-        // Redirecionar para página de callback em vez de abrir nova aba
+        // Redirecionar diretamente para o checkout do Mercado Pago
         const paymentUrl = data.init_point || data.sandbox_init_point;
-        const urlParams = new URLSearchParams(paymentUrl.split('?')[1]);
-        const prefId = urlParams.get('pref_id');
         
-        if (prefId) {
-          // Redirecionar para página de callback com informações do pagamento
-          navigate(`/mp/callback?status=pending&payment_id=&preference_id=${prefId}`);
-        } else {
-          // Fallback: abrir em nova aba
-          window.open(paymentUrl, '_blank');
-        }
+        // Redirecionar diretamente para o checkout transparente do Mercado Pago
+        window.location.href = paymentUrl;
         
         toast({
           title: 'Redirecionando para pagamento',
