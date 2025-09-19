@@ -191,6 +191,20 @@ const Checkout = () => {
       }
 
       // Calcular frete
+      console.log('Chamando função de frete com:', {
+        to_postal_code: cep.replace(/[^0-9]/g, ''),
+        tenant_id: tenantId,
+        products: order.items.map(item => ({
+          id: item.id.toString(),
+          width: 16,
+          height: 2,
+          length: 20,
+          weight: 0.3,
+          insurance_value: item.unit_price,
+          quantity: item.qty
+        }))
+      });
+      
       const { data, error } = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
@@ -206,6 +220,8 @@ const Checkout = () => {
           }))
         }
       });
+
+      console.log('Resposta da função de frete:', { data, error });
 
       if (error) throw error;
 
@@ -230,6 +246,25 @@ const Checkout = () => {
             description: `${options.length} opções de frete encontradas`
           });
         }
+      } else if (data && data.error) {
+        // Mostrar erro específico da API
+        console.error('Erro na API de frete:', data.error);
+        
+        // Fallback para retirada apenas
+        setShippingOptions([{
+          id: 'retirada',
+          name: 'Retirada - Retirar na Fábrica',
+          company: 'Retirada',
+          price: '0.00',
+          delivery_time: 3,
+          custom_price: '0.00'
+        }]);
+        
+        toast({
+          title: 'Erro no cálculo de frete',
+          description: data.error,
+          variant: 'destructive'
+        });
       } else {
         // Se não houver opções, mostrar apenas retirada
         setShippingOptions([{

@@ -33,6 +33,12 @@ Deno.serve(async (req) => {
       .eq('is_active', true)
       .maybeSingle()
 
+    console.log('🔍 Integração encontrada:', {
+      integration: integration ? 'sim' : 'não',
+      error: integrationError ? integrationError.message : 'nenhum',
+      tenant_id: tenant_id
+    })
+
     if (integrationError) {
       console.error('Erro ao buscar integração:', integrationError)
       return new Response(JSON.stringify({ 
@@ -100,6 +106,11 @@ Deno.serve(async (req) => {
     })
 
     // Fazer requisição para API do Melhor Envio
+    console.log('🚀 Fazendo requisição para API do Melhor Envio...')
+    console.log('URL:', `${baseUrl}/api/v2/me/shipment/calculate`)
+    console.log('Headers:', { Authorization: `Bearer ${integration.access_token?.substring(0, 10)}...` })
+    console.log('Body:', JSON.stringify(shippingData, null, 2))
+    
     const response = await fetch(`${baseUrl}/api/v2/me/shipment/calculate`, {
       method: 'POST',
       headers: {
