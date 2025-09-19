@@ -98,20 +98,24 @@ async function handleMelhorEnvioOAuth(req: Request, url: URL) {
     client_id
   });
 
+  // 🟢 Body OAUTH padrão: x-www-form-urlencoded
+  const params = new URLSearchParams();
+  params.set('grant_type', 'authorization_code');
+  params.set('code', code);
+  params.set('redirect_uri', redirectUri);
+
+  // 🟢 Client auth no header (forma mais compatível)
+  const basic = 'Basic ' + btoa(`${client_id}:${client_secret}`);
+
   // Trocar code por access token
   const tokenResponse = await fetch(tokenUrl, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'Authorization': basic
     },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      client_id,
-      client_secret,
-      redirect_uri: redirectUri,
-      code
-    })
+    body: params.toString()
   });
 
   if (!tokenResponse.ok) {
