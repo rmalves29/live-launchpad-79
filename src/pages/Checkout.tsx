@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye } from 'lucide-react';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 
 interface OrderItem {
@@ -59,6 +59,13 @@ const Checkout = () => {
   });
   const [shippingOptions, setShippingOptions] = useState<any[]>([]);
   const [selectedShipping, setSelectedShipping] = useState('retirada');
+  const [selectedShippingData, setSelectedShippingData] = useState<{
+    id: string;
+    name: string;
+    company: string;
+    price: string;
+    delivery_time: string;
+  } | null>(null);
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [loadingPayment, setLoadingPayment] = useState(false);
 
@@ -176,6 +183,19 @@ const Checkout = () => {
     if (cep.replace(/[^0-9]/g, '').length !== 8) {
       console.log('⚠️ CEP inválido:', cep);
       return;
+    }
+
+    // Verificar se já temos dados de frete salvos para este telefone
+    const savedShipping = loadSelectedShippingData(order.customer_phone);
+    if (savedShipping && savedShipping.id !== 'retirada') {
+      console.log('✅ Dados de frete já salvos, não recalculando:', savedShipping);
+      setSelectedShipping(savedShipping.id);
+      setSelectedShippingData(savedShipping);
+      
+      // Se já temos opções de frete salvas, não precisamos recalcular
+      if (shippingOptions.length > 0) {
+        return;
+      }
     }
     
     console.log('🚚 Iniciando cálculo de frete para CEP:', cep);
@@ -380,7 +400,60 @@ const Checkout = () => {
     }
   };
 
+  // Função para salvar/carregar dados do frete selecionado
+  const saveSelectedShippingData = (phone: string, shippingData: any) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`shipping_${phone}`, JSON.stringify(shippingData));
+    }
+  };
+
+  const loadSelectedShippingData = (phone: string) => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`shipping_${phone}`);
+      return saved ? JSON.parse(saved) : null;
+    }
+    return null;
+  };
+
+  // Função para atualizar frete selecionado
+  const handleShippingChange = (shippingId: string, orderPhone: string) => {
+    setSelectedShipping(shippingId);
+    
+    if (shippingId === 'retirada') {
+      const retiradaData = {
+        id: 'retirada',
+        name: 'Retirada - Retirar na Fábrica',
+        company: 'Retirada',
+        price: '0.00',
+        delivery_time: 'Imediato'
+      };
+      setSelectedShippingData(retiradaData);
+      saveSelectedShippingData(orderPhone, retiradaData);
+    } else {
+      const selectedOption = shippingOptions.find(opt => opt.id === shippingId);
+      if (selectedOption) {
+        const shippingData = {
+          id: selectedOption.id,
+          name: selectedOption.name,
+          company: selectedOption.company,
+          price: selectedOption.custom_price || selectedOption.price,
+          delivery_time: selectedOption.delivery_time
+        };
+        setSelectedShippingData(shippingData);
+        saveSelectedShippingData(orderPhone, shippingData);
+      }
+    }
+  };
+
   const loadCustomerData = async (customerPhone: string) => {
+  // Carregar dados do frete também
+    const savedShipping = loadSelectedShippingData(customerPhone);
+    if (savedShipping) {
+      setSelectedShipping(savedShipping.id);
+      setSelectedShippingData(savedShipping);
+      console.log('✅ Dados de frete carregados:', savedShipping);
+    }
+
     try {
       // Tentar carregar do banco primeiro
       const { data: customer } = await supabaseTenant
@@ -560,7 +633,8 @@ const Checkout = () => {
           description: 'Você será redirecionado para finalizar o pagamento'
         });
 
-        // Limpar dados após criar o pagamento
+        // Limpar dados após criar o pagamento apenas se o pagamento foi bem-sucedido
+        // Não limpar os dados do frete para evitar recálculo
         setCustomerData({
           name: '',
           email: '',
@@ -572,8 +646,7 @@ const Checkout = () => {
           city: '',
           state: ''
         });
-        setShippingOptions([]);
-        setSelectedShipping('retirada');
+        // NÃO limpar shippingOptions e selectedShipping para manter os dados
 
       } else if (data && data.free_order) {
         toast({
@@ -985,15 +1058,15 @@ const Checkout = () => {
                       {shippingOptions.length > 0 ? shippingOptions.map((option) => (
                         <div key={option.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                           <div>
-                            <input 
-                              type="radio" 
-                              id={`${option.id}-${order.id}`} 
-                              name={`frete-${order.id}`} 
-                              value={option.id}
-                              checked={selectedShipping === option.id}
-                              onChange={(e) => setSelectedShipping(e.target.value)}
-                              className="mr-3" 
-                            />
+                             <input 
+                               type="radio" 
+                               id={`${option.id}-${order.id}`} 
+                               name={`frete-${order.id}`} 
+                               value={option.id}
+                               checked={selectedShipping === option.id}
+                               onChange={(e) => handleShippingChange(e.target.value, order.customer_phone)}
+                               className="mr-3" 
+                             />
                             <label htmlFor={`${option.id}-${order.id}`} className="font-medium">
                               {option.name}
                             </label>
@@ -1008,15 +1081,15 @@ const Checkout = () => {
                       )) : (
                         <div className="flex items-center justify-between p-3 border rounded-lg">
                           <div>
-                            <input 
-                              type="radio" 
-                              id={`retirada-${order.id}`} 
-                              name={`frete-${order.id}`} 
-                              value="retirada"
-                              checked={selectedShipping === 'retirada'}
-                              onChange={(e) => setSelectedShipping(e.target.value)}
-                              className="mr-3" 
-                            />
+                             <input 
+                               type="radio" 
+                               id={`retirada-${order.id}`} 
+                               name={`frete-${order.id}`} 
+                               value="retirada"
+                               checked={selectedShipping === 'retirada'}
+                               onChange={(e) => handleShippingChange(e.target.value, order.customer_phone)}
+                               className="mr-3" 
+                             />
                             <label htmlFor={`retirada-${order.id}`} className="font-medium">
                               Retirada - Retirar na Fábrica
                             </label>
@@ -1032,9 +1105,38 @@ const Checkout = () => {
                         Insira um CEP válido para calcular as opções de frete
                       </p>
                     )}
-                  </div>
+                   </div>
 
-                  {/* Resumo e Finalização */}
+                   {/* Informações de Frete */}
+                   {selectedShippingData && (
+                     <div className="mb-6">
+                       <h4 className="font-medium mb-4 flex items-center">
+                         <Package className="h-4 w-4 mr-2" />
+                         Informações de Frete
+                       </h4>
+                       <Card>
+                         <CardContent className="p-4">
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                             <div>
+                               <strong>Transportadora:</strong> {selectedShippingData.company}
+                             </div>
+                             <div>
+                               <strong>Serviço:</strong> {selectedShippingData.name}
+                             </div>
+                             <div>
+                               <strong>Valor do Frete:</strong> R$ {parseFloat(selectedShippingData.price).toFixed(2)}
+                             </div>
+                             <div>
+                               <strong>Prazo:</strong> {selectedShippingData.delivery_time}
+                               {selectedShippingData.id !== 'retirada' && ' dias úteis'}
+                             </div>
+                           </div>
+                         </CardContent>
+                       </Card>
+                     </div>
+                   )}
+
+                   {/* Resumo e Finalização */}
                   <div className="border-t pt-4">
                     <div className="flex justify-between items-center mb-4">
                       <span className="text-lg font-medium">Total do Pedido:</span>
