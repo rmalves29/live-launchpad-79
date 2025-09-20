@@ -137,29 +137,62 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       throw new Error('Pedido não encontrado');
     }
 
-    // Aqui você implementaria a lógica para criar a remessa no Melhor Envio
-    // Usando os dados do pedido e a API do Melhor Envio
-    
+    // Buscar dados completos da empresa (tenant) para o remetente
+    const { data: tenant, error: tenantError } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('id', tenantId)
+      .single();
+
+    if (tenantError || !tenant) {
+      throw new Error('Dados da empresa não encontrados');
+    }
+
     console.log('📦 Criando remessa para pedido:', orderId);
-    
-    // Exemplo de payload para criar remessa (adapte conforme sua necessidade)
+    console.log('🏢 Dados da empresa:', {
+      name: tenant.company_name,
+      document: tenant.company_document,
+      cep: tenant.company_cep,
+      city: tenant.company_city,
+      email: tenant.company_email,
+      phone: tenant.company_phone
+    });
+
+    // Validar dados obrigatórios da empresa
+    const missingFields = [];
+    if (!tenant.company_name) missingFields.push('Nome da empresa');
+    if (!tenant.company_document) missingFields.push('CNPJ da empresa');
+    if (!tenant.company_email) missingFields.push('E-mail da empresa');
+    if (!tenant.company_phone) missingFields.push('Telefone da empresa');
+    if (!tenant.company_address) missingFields.push('Endereço da empresa');
+    if (!tenant.company_number) missingFields.push('Número do endereço');
+    if (!tenant.company_district) missingFields.push('Bairro da empresa');
+    if (!tenant.company_city) missingFields.push('Cidade da empresa');
+    if (!tenant.company_state) missingFields.push('Estado da empresa');
+    if (!tenant.company_cep) missingFields.push('CEP da empresa');
+
+    if (missingFields.length > 0) {
+      throw new Error(`Dados da empresa incompletos. Campos obrigatórios faltando: ${missingFields.join(', ')}. Por favor, complete os dados da empresa nas configurações.`);
+    }
+
+    // Payload completo para criar remessa com dados reais da empresa
     const shipmentData = {
       service: 1, // ID do serviço (ex: PAC = 1, SEDEX = 2)
       from: {
-        name: "Remetente",
-        phone: "11999999999",
-        email: "contato@empresa.com",
-        document: "12345678901",
-        company_document: "12345678000123",
-        state_register: "123456789",
-        address: integration.from_cep || "31575060",
-        complement: "",
-        number: "123",
-        district: "Centro",
-        city: "Belo Horizonte",
-        state_abbr: "MG",
+        name: tenant.admin_email || tenant.company_email, // Nome do responsável ou email da empresa
+        phone: tenant.company_phone.replace(/[^0-9]/g, ''), // Remove formatação do telefone
+        email: tenant.company_email,
+        document: tenant.company_document.replace(/[^0-9]/g, ''), // Remove formatação do CNPJ
+        company_document: tenant.company_document.replace(/[^0-9]/g, ''),
+        state_register: "", // Inscrição Estadual (opcional)
+        address: tenant.company_address,
+        complement: tenant.company_complement || "",
+        number: tenant.company_number,
+        district: tenant.company_district,
+        city: tenant.company_city,
+        state_abbr: tenant.company_state,
         country_id: "BR",
-        postal_code: integration.from_cep || "31575060"
+        postal_code: tenant.company_cep.replace(/[^0-9]/g, '') // Remove formatação do CEP
       },
       to: {
         name: order.customer_name || "Cliente",
