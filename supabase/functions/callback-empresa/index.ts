@@ -14,18 +14,18 @@ Deno.serve(async (req) => {
     const state = url.searchParams.get("state") || ""; // tenant_id
     const service = url.searchParams.get("service") || "melhorenvio";
     const action  = url.searchParams.get("action") || "oauth";
-    const error = url.searchParams.get("error");
+    const oauthError = url.searchParams.get("error");
     const errorDescription = url.searchParams.get("error_description");
 
     if (service !== "melhorenvio" || action !== "oauth")
       throw new Error("rota inválida para este callback");
 
     // Se há erro no OAuth, redirecionar com o erro
-    if (error) {
-      console.error("❌ Erro no OAuth:", error, errorDescription);
+    if (oauthError) {
+      console.error("❌ Erro no OAuth:", oauthError, errorDescription);
       return Response.redirect(
         `https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=config_error&reason=${encodeURIComponent(
-          `OAuth Error: ${error} - ${errorDescription || ''}`
+          `OAuth Error: ${oauthError} - ${errorDescription || ''}`
         )}`,
         302
       );
