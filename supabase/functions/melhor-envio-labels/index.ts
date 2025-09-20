@@ -148,6 +148,26 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       throw new Error('Dados da empresa não encontrados');
     }
 
+    // Buscar dados completos do cliente para o destinatário
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('phone', order.customer_phone)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    console.log('👤 Dados do cliente encontrados:', customer ? 'Sim' : 'Não', {
+      phone: order.customer_phone,
+      customerData: customer ? {
+        name: customer.name,
+        email: customer.email,
+        cpf: customer.cpf,
+        cep: customer.cep,
+        city: customer.city,
+        state: customer.state
+      } : null
+    });
+
     console.log('📦 Criando remessa para pedido:', orderId);
     console.log('🏢 Dados da empresa:', {
       name: tenant.company_name,
@@ -195,18 +215,18 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         postal_code: tenant.company_cep.replace(/[^0-9]/g, '') // Remove formatação do CEP
       },
       to: {
-        name: order.customer_name || "Cliente",
-        phone: order.customer_phone || "11999999999",  
-        email: "cliente@email.com",
-        document: "12345678901",
-        address: order.customer_street || "Rua do Cliente",
-        complement: order.customer_complement || "",
-        number: order.customer_number || "123",
-        district: "Centro",
-        city: order.customer_city || "São Paulo",
-        state_abbr: order.customer_state || "SP",
+        name: customer?.name || order.customer_name || "Cliente",
+        phone: (customer?.phone || order.customer_phone || "11999999999").replace(/[^0-9]/g, ''), // Remove formatação
+        email: customer?.email || "cliente@exemplo.com", // Email real do cliente ou genérico
+        document: customer?.cpf?.replace(/[^0-9]/g, '') || "00000000000", // CPF real ou genérico
+        address: customer?.street || order.customer_street || "Endereço não informado",
+        complement: customer?.complement || order.customer_complement || "",
+        number: customer?.number || order.customer_number || "S/N",
+        district: customer?.city || order.customer_city || "Centro", // Usa cidade como bairro se não tiver bairro
+        city: customer?.city || order.customer_city || "São Paulo",
+        state_abbr: customer?.state || order.customer_state || "SP",
         country_id: "BR",
-        postal_code: order.customer_cep || "01310100"
+        postal_code: (customer?.cep || order.customer_cep || "01310100").replace(/[^0-9]/g, '') // Remove formatação
       },
       products: [
         {
