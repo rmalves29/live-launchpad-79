@@ -124,19 +124,15 @@ export const TenantIntegrations = () => {
     // Usar produção como no callback-empresa
     const baseUrl = 'https://melhorenvio.com.br/oauth/authorize';
     
-    // Usar apenas scopes válidos do Melhor Envio
+    // Usar apenas os escopos essenciais e válidos do Melhor Envio
     const scopes = [
-      'cart-read', 'cart-write',
-      'companies-read', 'companies-write', 
-      'coupons-read', 'coupons-write',
-      'notifications-read',
-      'orders-read',
-      'products-read', 'products-write',
-      'purchases-read',
-      'shipping-calculate', 'shipping-cancel', 'shipping-checkout', 
-      'shipping-companies', 'shipping-generate', 'shipping-preview', 
-      'shipping-print', 'shipping-share', 'shipping-tracking',
-      'users-read', 'users-write'
+      'shipping-calculate',
+      'shipping-checkout', 
+      'shipping-generate',
+      'shipping-print',
+      'shipping-tracking',
+      'companies-read',
+      'users-read'
     ].join(',');
 
     const params = new URLSearchParams({
