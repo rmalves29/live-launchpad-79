@@ -624,7 +624,7 @@ const Checkout = () => {
           shippingData = {
             service_id: selectedOption.id,
             service_name: selectedOption.name,
-            company_name: selectedOption.company?.name,
+            company_name: selectedOption.company, // Corrigido: remover .name
             price: parseFloat(selectedOption.custom_price || selectedOption.price),
             delivery_time: selectedOption.delivery_time,
             additional_services: selectedOption.additional_services

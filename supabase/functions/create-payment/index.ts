@@ -365,16 +365,38 @@ serve(async (req) => {
         customer_state: addressData?.state
       };
       
-      // Se há informações de frete, salvar no campo observation ou criar um campo específico
+      // Se há informações de frete, salvar no campo observation evitando duplicação
       if (shippingData) {
-        const shippingInfo = `Frete: ${shippingData.company_name} - ${shippingData.service_name} - R$ ${shippingData.price.toFixed(2)} - ${shippingData.delivery_time} dias`;
-        updateData.observation = existingOrder?.observation ? 
-          `${existingOrder.observation}\n${shippingInfo}` : 
-          shippingInfo;
+        const shippingInfo = `Frete: ${shippingData.company_name || 'Transportadora'} - ${shippingData.service_name} - R$ ${shippingData.price.toFixed(2)} - ${shippingData.delivery_time}`;
+        
+        // Verificar se já existe informação de frete na observação para evitar duplicação
+        const currentObservation = existingOrder?.observation || '';
+        if (!currentObservation.includes('Frete:')) {
+          updateData.observation = currentObservation ? 
+            `${currentObservation}\n${shippingInfo}` : 
+            shippingInfo;
+        } else {
+          // Se já existe informação de frete, substituir pela nova
+          const observationWithoutShipping = currentObservation.split('\n').filter(line => !line.startsWith('Frete:')).join('\n');
+          updateData.observation = observationWithoutShipping ? 
+            `${observationWithoutShipping}\n${shippingInfo}` : 
+            shippingInfo;
+        }
       } else if (Number(shippingCost) === 0) {
-        updateData.observation = existingOrder?.observation ? 
-          `${existingOrder.observation}\nFrete: Retirada no local` : 
-          'Frete: Retirada no local';
+        const retiradaInfo = 'Frete: Retirada no local';
+        const currentObservation = existingOrder?.observation || '';
+        
+        if (!currentObservation.includes('Frete:')) {
+          updateData.observation = currentObservation ? 
+            `${currentObservation}\n${retiradaInfo}` : 
+            retiradaInfo;
+        } else {
+          // Se já existe informação de frete, substituir pela nova
+          const observationWithoutShipping = currentObservation.split('\n').filter(line => !line.startsWith('Frete:')).join('\n');
+          updateData.observation = observationWithoutShipping ? 
+            `${observationWithoutShipping}\n${retiradaInfo}` : 
+            retiradaInfo;
+        }
       }
       
       const { data: orderData, error: orderError } = await supabase
