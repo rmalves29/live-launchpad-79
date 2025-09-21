@@ -225,6 +225,15 @@ const Checkout = () => {
   };
 
   const calculateShipping = async (cep: string, order: Order) => {
+    console.log('🚚 Iniciando cálculo de frete...', { 
+      cep, 
+      order_id: order.id, 
+      tenantId,
+      hasSupabaseTenant: !!supabaseTenant,
+      hasRaw: !!supabaseTenant?.raw,
+      hasFunctions: !!supabaseTenant?.raw?.functions
+    });
+    
     // Proteção inicial
     if (!cep || !order || !tenantId) {
       console.log('⚠️ Dados insuficientes para calcular frete:', { cep, order: !!order, tenantId });
@@ -292,7 +301,14 @@ const Checkout = () => {
       // Verificar se supabaseTenant está disponível
       if (!supabaseTenant || !supabaseTenant.raw) {
         console.error('❌ supabaseTenant não disponível');
+        console.error('❌ supabaseTenant:', supabaseTenant);
+        console.error('❌ supabaseTenant.raw:', supabaseTenant?.raw);
         throw new Error('Sistema de integração não disponível');
+      }
+
+      if (!tenantId) {
+        console.error('❌ tenantId não definido');
+        throw new Error('ID do tenant não identificado');
       }
 
       console.log('🔍 Testando token Melhor Envio...');
@@ -311,6 +327,7 @@ const Checkout = () => {
 
       const tokenTest = tokenTestResponse.data;
       if (!tokenTest?.valid) {
+        console.error('❌ Token inválido:', tokenTest);
         throw new Error(tokenTest?.error || 'Token do Melhor Envio inválido ou expirado');
       }
       
@@ -330,6 +347,7 @@ const Checkout = () => {
       console.log('📦 Produtos preparados:', products);
       
       // Calcular frete
+      console.log('📡 Enviando dados para cálculo de frete...');
       const shippingResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
@@ -401,6 +419,8 @@ const Checkout = () => {
       }
     } catch (error) {
       console.error('❌ Erro no cálculo de frete:', error);
+      console.error('❌ Tipo do erro:', typeof error);
+      console.error('❌ Stack do erro:', error?.stack);
       
       // Extrair mensagem de erro de forma segura
       let errorMessage = 'Não foi possível calcular o frete';
