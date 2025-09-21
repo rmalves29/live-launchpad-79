@@ -347,17 +347,32 @@ const Checkout = () => {
 
       const data = shippingResponse.data;
       if (data && data.success && data.shipping_options && Array.isArray(data.shipping_options)) {
+        // Log para debug da estrutura de dados
+        console.log('📊 Estrutura dos dados de frete recebidos:', data.shipping_options.slice(0, 2));
+        
         // Processar opções de frete de forma segura
         const validOptions = data.shipping_options
           .filter((option: any) => option && !option.error && option.price)
-          .map((option: any) => ({
-            id: String(option.service_id || option.id || Math.random()),
-            name: String(option.service_name || option.name || 'Transportadora'),
-            company: String(option.company || 'Melhor Envio'),
-            price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
-            delivery_time: String(option.delivery_time || option.custom_delivery_time || '5-10 dias'),
-            custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
-          }));
+          .map((option: any) => {
+            console.log('🔧 Processando opção:', {
+              service_id: option.service_id,
+              id: option.id,
+              service_name: option.service_name,
+              name: option.name,
+              company: option.company,
+              company_type: typeof option.company,
+              company_name: option.company?.name // Testa se company é objeto
+            });
+            
+            return {
+              id: String(option.service_id || option.id || Math.random()),
+              name: String(option.service_name || option.name || 'Transportadora'),
+              company: String(option.company?.name || option.company || 'Melhor Envio'),
+              price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
+              delivery_time: String(option.delivery_time || option.custom_delivery_time || '5-10 dias'),
+              custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
+            };
+          });
 
         if (validOptions.length > 0) {
           // Filter shipping options to show only desired services
