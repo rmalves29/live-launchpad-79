@@ -248,14 +248,10 @@ const Checkout = () => {
     // Verificar se já temos dados de frete salvos para este telefone
     const savedShipping = loadSelectedShippingData(order.customer_phone);
     if (savedShipping && savedShipping.id !== 'retirada') {
-      console.log('✅ Dados de frete já salvos, não recalculando:', savedShipping);
+      console.log('✅ Dados de frete já salvos, restaurando seleção:', savedShipping);
       setSelectedShipping(savedShipping.id);
       setSelectedShippingData(savedShipping);
-      
-      // Se já temos opções de frete salvas, não precisamos recalcular
-      if (shippingOptions.length > 0) {
-        return;
-      }
+      // Continua para recalcular as opções disponíveis
     }
     
     console.log('🚚 Iniciando cálculo de frete para CEP:', cep);
