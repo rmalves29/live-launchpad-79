@@ -114,9 +114,18 @@ serve(async (req) => {
     }
 
   } catch (error) {
-    console.error('❌ Erro na função de labels:', error);
+    console.error('❌ Erro na função de labels:', {
+      message: error.message,
+      stack: error.stack,
+      body: body,
+      action: action
+    });
     return new Response(
-      JSON.stringify({ error: 'Erro interno no processamento de etiquetas' }),
+      JSON.stringify({ 
+        success: false,
+        error: `Erro interno no processamento de etiquetas: ${error.message}`,
+        details: error.stack 
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -291,10 +300,17 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
     );
 
   } catch (error) {
-    console.error('❌ Erro ao criar remessa:', error);
+    console.error('❌ Erro ao criar remessa:', {
+      message: error.message,
+      stack: error.stack,
+      orderId: orderId,
+      tenantId: tenantId
+    });
     return new Response(
       JSON.stringify({ 
-        error: 'Erro ao criar remessa: ' + error.message 
+        success: false,
+        error: 'Erro ao criar remessa: ' + error.message,
+        details: error.stack
       }),
       { 
         status: 500, 

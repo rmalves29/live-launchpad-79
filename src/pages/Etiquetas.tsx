@@ -97,6 +97,8 @@ const Etiquetas = () => {
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
+      console.log('🚀 Enviando pedido para Melhor Envio:', orderId);
+      
       const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
         body: {
           action: 'create_shipment',
@@ -105,17 +107,23 @@ const Etiquetas = () => {
         }
       });
 
-      if (error) throw error;
+      console.log('📡 Resposta da edge function:', { data, error });
 
-      if (data.success) {
+      if (error) {
+        console.error('❌ Erro da edge function:', error);
+        throw new Error(error.message || 'Erro na comunicação com Melhor Envio');
+      }
+
+      if (data?.success) {
         toast.success('Remessa criada no Melhor Envio com sucesso!');
         // Recarregar os pedidos para atualizar o status
         loadPaidOrders();
       } else {
-        throw new Error(data.error || 'Erro desconhecido');
+        console.error('❌ Resposta de erro:', data);
+        throw new Error(data?.error || 'Erro desconhecido ao criar remessa');
       }
     } catch (error) {
-      console.error('Erro ao enviar para Melhor Envio:', error);
+      console.error('❌ Erro ao enviar para Melhor Envio:', error);
       toast.error(`Erro ao enviar para Melhor Envio: ${error.message}`);
     } finally {
       setProcessingOrders(prev => {
