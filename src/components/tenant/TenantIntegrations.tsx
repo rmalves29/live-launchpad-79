@@ -118,10 +118,10 @@ export const TenantIntegrations = () => {
       return;
     }
 
-    // Usar a mesma redirect_uri do callback-empresa
-    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&callback=melhor_envio';
+    // Usar redirect_uri para a edge function callback-empresa
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth';
     
-    // Usar produção como no callback-empresa
+    // Usar produção sempre
     const baseUrl = 'https://melhorenvio.com.br/oauth/authorize';
     
     // Usar apenas os escopos essenciais e válidos do Melhor Envio
@@ -133,13 +133,14 @@ export const TenantIntegrations = () => {
       'shipping-tracking',
       'companies-read',
       'users-read'
-    ].join(',');
+    ].join(' '); // Usar espaços para separar escopos
 
     const params = new URLSearchParams({
       client_id: shippingConfig.client_id,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: scopes
+      scope: scopes,
+      state: (profile?.role === 'super_admin' ? tenant?.id : profile?.tenant_id) || ''
     });
 
     const authUrl = `${baseUrl}?${params.toString()}`;
@@ -149,7 +150,7 @@ export const TenantIntegrations = () => {
     setShowAuthUrl(true);
     
     console.log('🔗 Auth URL gerada:', authUrl);
-    console.log('🌍 Ambiente:', 'SANDBOX');
+    console.log('🌍 Ambiente:', 'PRODUÇÃO');
     console.log('📍 Redirect URI usado:', redirectUri);
     console.log('ℹ️ IMPORTANTE: Registre este redirect_uri no painel do Melhor Envio:', redirectUri);
     
