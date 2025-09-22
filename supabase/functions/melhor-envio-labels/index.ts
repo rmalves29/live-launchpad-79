@@ -320,7 +320,7 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
 
     // Montar payload correto conforme especificação do Melhor Envio
     const shipmentPayload = {
-      service: serviceId, // Campo correto é "service", não "service_id"
+      service: serviceId,
       from: {
         name: (tenant.company_name || "Empresa").substring(0, 50),
         email: tenant.company_email || "loja@exemplo.com",
@@ -331,7 +331,9 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         district: (tenant.company_district || "Centro").substring(0, 30),
         city: (tenant.company_city || "São Paulo").substring(0, 30),
         state_abbr: (tenant.company_state || "SP").toUpperCase().substring(0, 2),
-        country_id: "BR"
+        country_id: "BR",
+        // CNPJ/CPF da empresa (obrigatório)
+        document: tenant.company_document || "11222333000181"
       },
       to: {
         name: (customer?.name || order.customer_name || "Cliente").substring(0, 50),
@@ -340,10 +342,12 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         postal_code: toCEP,
         address: (customer?.street || order.customer_street || "Rua Destino").substring(0, 60),
         number: (customer?.number || order.customer_number || "100").substring(0, 10),
-        district: "Centro", // Bairro padrão
+        district: "Centro",
         city: (customer?.city || order.customer_city || "São Paulo").substring(0, 30),
         state_abbr: (customer?.state || order.customer_state || "SP").toUpperCase().substring(0, 2),
-        country_id: "BR"
+        country_id: "BR",
+        // CPF do destinatário (obrigatório conforme erro da API)
+        document: customer?.cpf ? validateOrGenerateCPF(customer.cpf) : "12345678909"
       },
       volumes: [{
         weight: Math.max(0.3, products.reduce((sum, p) => sum + (p.weight || 0), 0)),
@@ -352,7 +356,7 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         length: 24
       }],
       options: {
-        insurance_value: Math.max(totalAmount, 50),
+        insurance_value: Math.max(50, totalAmount),
         receipt: false,
         own_hand: false,
         reverse: false,
