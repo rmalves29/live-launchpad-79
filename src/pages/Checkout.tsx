@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useTenantContext } from '@/contexts/TenantContext';
@@ -70,6 +70,31 @@ const Checkout = () => {
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [handlingDays, setHandlingDays] = useState<number>(3);
+
+  // Detectar retorno da página de pagamento e limpar dados duplicados  
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isReturningFromPayment = urlParams.has('collection_id') || urlParams.has('preference_id') || urlParams.has('payment_id');
+    
+    if (isReturningFromPayment) {
+      console.log('🔄 Detectado retorno da página de pagamento via URL, resetando dados de frete');
+      // Limpar qualquer dado de frete que possa causar duplicação
+      setSelectedShipping('retirada');
+      setSelectedShippingData(null);
+      setShippingOptions([{
+        id: 'retirada',
+        name: 'Retirada - Retirar na Fábrica', 
+        company: 'Retirada',
+        price: '0.00',
+        delivery_time: 'Imediato',
+        custom_price: '0.00'
+      }]);
+      
+      // Limpar a URL para evitar que o efeito rode novamente desnecessariamente
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, []);
 
   const loadOpenOrders = async () => {
     if (!phone) {
@@ -153,8 +178,12 @@ const Checkout = () => {
         // Carregar dados salvos do cliente quando encontrar pedidos
         const loadedCustomerData = await loadCustomerData(normalizedPhone);
         
-        // Se carregou dados do cliente com CEP válido, calcular frete automaticamente
-        if (loadedCustomerData && loadedCustomerData.cep && loadedCustomerData.cep.replace(/[^0-9]/g, '').length === 8) {
+        // Verificar se está voltando da página de pagamento
+        const urlParams = new URLSearchParams(window.location.search);
+        const isReturningFromPayment = urlParams.has('collection_id') || urlParams.has('preference_id') || urlParams.has('payment_id');
+        
+        // Se carregou dados do cliente com CEP válido E não está voltando do pagamento, calcular frete automaticamente
+        if (loadedCustomerData && loadedCustomerData.cep && loadedCustomerData.cep.replace(/[^0-9]/g, '').length === 8 && !isReturningFromPayment) {
           // Se há apenas um pedido, calcular frete automaticamente
           if (ordersWithItems.length === 1) {
             setTimeout(() => {
@@ -530,12 +559,32 @@ const Checkout = () => {
   };
 
   const loadCustomerData = async (customerPhone: string) => {
-  // Carregar dados do frete também
-    const savedShipping = loadSelectedShippingData(customerPhone);
-    if (savedShipping) {
-      setSelectedShipping(savedShipping.id);
-      setSelectedShippingData(savedShipping);
-      console.log('✅ Dados de frete carregados:', savedShipping);
+  // Verificar se o usuário está voltando da página de pagamento
+    const urlParams = new URLSearchParams(window.location.search);
+    const isReturningFromPayment = urlParams.has('collection_id') || urlParams.has('preference_id') || urlParams.has('payment_id');
+    
+    // Se está voltando do pagamento, limpar dados de frete salvos para evitar duplicação
+    if (isReturningFromPayment) {
+      console.log('🔄 Detectado retorno da página de pagamento, limpando dados de frete salvos');
+      localStorage.removeItem(`shipping_${customerPhone}`);
+      setSelectedShipping('retirada');
+      setSelectedShippingData(null);
+      setShippingOptions([{
+        id: 'retirada',
+        name: 'Retirada - Retirar na Fábrica',
+        company: 'Retirada',
+        price: '0.00',
+        delivery_time: 'Imediato',
+        custom_price: '0.00'
+      }]);
+    } else {
+      // Carregar dados do frete salvos apenas se não estiver voltando do pagamento
+      const savedShipping = loadSelectedShippingData(customerPhone);
+      if (savedShipping) {
+        setSelectedShipping(savedShipping.id);
+        setSelectedShippingData(savedShipping);
+        console.log('✅ Dados de frete carregados:', savedShipping);
+      }
     }
 
     try {
