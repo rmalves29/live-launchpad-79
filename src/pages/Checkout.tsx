@@ -1274,7 +1274,13 @@ const Checkout = () => {
                   <div className="border-t pt-4">
                     <div className="flex justify-between items-center mb-4">
                       <span className="text-lg font-medium">Total do Pedido:</span>
-                      <span className="text-xl font-bold">R$ {Number(order.total_amount).toFixed(2)}</span>
+                      <span className="text-xl font-bold">R$ {(() => {
+                        // Calcular apenas o total dos produtos
+                        const productsTotal = order.items.reduce((sum: number, item: any) => {
+                          return sum + (parseFloat(item.product_price) * item.quantity);
+                        }, 0);
+                        return productsTotal.toFixed(2);
+                      })()}</span>
                     </div>
                     
                     {selectedShipping !== 'retirada' && (
@@ -1293,7 +1299,13 @@ const Checkout = () => {
                       <span>Total Geral:</span>
                       <span className="text-green-600">
                         R$ {(() => {
-                          let total = Number(order.total_amount);
+                          // Calcular o total dos produtos (sem frete)
+                          const productsTotal = order.items.reduce((sum: number, item: any) => {
+                            return sum + (parseFloat(item.product_price) * item.quantity);
+                          }, 0);
+                          
+                          // Adicionar frete apenas se não for retirada
+                          let total = productsTotal;
                           if (selectedShipping !== 'retirada') {
                             const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
                             total += selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
