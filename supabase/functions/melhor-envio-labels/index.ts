@@ -310,55 +310,42 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
     const totalAmount = parseFloat(order.total_amount || "1");
     let products = [];
     
-    if (orderItems.length > 0) {
-      products = orderItems.map((item, index) => ({
-        description: item.product?.name || `Item ${index + 1}`,
-        quantity: item.qty || 1,
-        unitary_value: parseFloat(item.unit_price || "1"),
-        weight: 0.3 / orderItems.length, // Distribuir peso entre itens
-        sku: item.product?.code || undefined
-      }));
-    } else {
-      // Produto genérico se não houver itens
-      products = [{
-        description: "Produto do Pedido",
-        quantity: 1,
-        unitary_value: totalAmount,
-        weight: 0.3
-      }];
-    }
+    // Sempre usar produto genérico conforme solicitado
+    products = [{
+      name: "Acessórios", // Campo obrigatório é "name", não "description"
+      quantity: 1,
+      unitary_value: 20.00,
+      weight: 0.3
+    }];
 
     // Montar payload correto conforme especificação do Melhor Envio
     const shipmentPayload = {
-      service_id: serviceId,
+      service: serviceId, // Campo correto é "service", não "service_id"
       from: {
         name: (tenant.company_name || "Empresa").substring(0, 50),
         email: tenant.company_email || "loja@exemplo.com",
         phone: cleanPhone(tenant.company_phone || "11999999999"),
-        address: {
-          postal_code: fromCEP,
-          address: (tenant.company_address || "Rua Exemplo").substring(0, 60),
-          number: (tenant.company_number || "123").substring(0, 10),
-          province: (tenant.company_district || "Centro").substring(0, 30),
-          city: (tenant.company_city || "São Paulo").substring(0, 30),
-          state_abbr: (tenant.company_state || "SP").toUpperCase()
-        }
+        postal_code: fromCEP,
+        address: (tenant.company_address || "Rua Exemplo").substring(0, 60),
+        number: (tenant.company_number || "123").substring(0, 10),
+        district: (tenant.company_district || "Centro").substring(0, 30),
+        city: (tenant.company_city || "São Paulo").substring(0, 30),
+        state_abbr: (tenant.company_state || "SP").toUpperCase().substring(0, 2),
+        country_id: "BR"
       },
       to: {
         name: (customer?.name || order.customer_name || "Cliente").substring(0, 50),
         email: customer?.email || "cliente@exemplo.com", 
         phone: cleanPhone(customer?.phone || order.customer_phone || "11999999999"),
-        address: {
-          postal_code: toCEP,
-          address: (customer?.street || order.customer_street || "Rua Destino").substring(0, 60),
-          number: (customer?.number || order.customer_number || "100").substring(0, 10),
-          province: "Centro", // Bairro padrão
-          city: (customer?.city || order.customer_city || "São Paulo").substring(0, 30),
-          state_abbr: (customer?.state || order.customer_state || "SP").toUpperCase()
-        },
-        documents: customer?.cpf ? [{ type: "cpf", number: validateOrGenerateCPF(customer.cpf) }] : []
+        postal_code: toCEP,
+        address: (customer?.street || order.customer_street || "Rua Destino").substring(0, 60),
+        number: (customer?.number || order.customer_number || "100").substring(0, 10),
+        district: "Centro", // Bairro padrão
+        city: (customer?.city || order.customer_city || "São Paulo").substring(0, 30),
+        state_abbr: (customer?.state || order.customer_state || "SP").toUpperCase().substring(0, 2),
+        country_id: "BR"
       },
-      packages: [{
+      volumes: [{
         weight: Math.max(0.3, products.reduce((sum, p) => sum + (p.weight || 0), 0)),
         width: 16,
         height: 4, 
@@ -369,17 +356,17 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         receipt: false,
         own_hand: false,
         reverse: false,
-        non_commercial: true // Sem NF-e conforme instruções
+        non_commercial: true
       },
       products: products
     };
 
     console.log('📋 [CREATE_SHIPMENT] Payload final:', {
-      service_id: shipmentPayload.service_id,
-      from_cep: shipmentPayload.from.address.postal_code,
-      to_cep: shipmentPayload.to.address.postal_code,
+      service: shipmentPayload.service,
+      from_cep: shipmentPayload.from.postal_code,
+      to_cep: shipmentPayload.to.postal_code,
       products_count: shipmentPayload.products.length,
-      total_weight: shipmentPayload.packages[0].weight,
+      total_weight: shipmentPayload.volumes[0].weight,
       insurance_value: shipmentPayload.options.insurance_value,
       non_commercial: shipmentPayload.options.non_commercial
     });
