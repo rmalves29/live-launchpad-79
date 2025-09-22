@@ -34,25 +34,59 @@ const Etiquetas = () => {
   }, []);
 
   const loadPaidOrders = async () => {
+    console.log('🔄 Carregando pedidos pagos...');
     try {
       const { data, error } = await supabaseTenant
         .from('orders')
-        .select(`
-          *,
-          items:cart_items(
-            id,
-            quantity,
-            unit_price,
-            product:products(name, code)
-          )
-        `)
+        .select('*')
         .eq('is_paid', true)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setOrders(data || []);
+      if (error) {
+        console.error('❌ Erro na query de pedidos:', error);
+        throw error;
+      }
+
+      console.log('✅ Pedidos carregados:', data?.length || 0);
+      
+      // Carregar itens dos pedidos separadamente
+      const ordersWithItems = [];
+      for (const order of data || []) {
+        if (order.cart_id) {
+          const { data: cartItems, error: itemsError } = await supabaseTenant
+            .from('cart_items')
+            .select(`
+              id,
+              qty as quantity,
+              unit_price,
+              product:products(name, code)
+            `)
+            .eq('cart_id', order.cart_id);
+
+          if (!itemsError) {
+            ordersWithItems.push({
+              ...order,
+              items: cartItems || []
+            });
+          } else {
+            console.error('❌ Erro ao carregar itens do carrinho:', itemsError);
+            ordersWithItems.push({
+              ...order,
+              items: []
+            });
+          }
+        } else {
+          ordersWithItems.push({
+            ...order,
+            items: []
+          });
+        }
+      }
+
+      console.log('✅ Pedidos com itens carregados:', ordersWithItems.length);
+      setOrders(ordersWithItems);
     } catch (error) {
-      console.error('Erro ao carregar pedidos:', error);
+      console.error('❌ Erro ao carregar pedidos:', error);
       toast.error('Erro ao carregar pedidos pagos');
     } finally {
       setLoading(false);
@@ -248,12 +282,12 @@ const Etiquetas = () => {
                   <div>
                     <h4 className="font-semibold mb-2">Itens do Pedido</h4>
                     <div className="space-y-1">
-                      {order.items.map((item, index) => (
-                        <div key={index} className="text-sm flex justify-between">
-                          <span>{item.product?.name} ({item.product?.code})</span>
-                          <span>{item.quantity}x R$ {Number(item.unit_price).toFixed(2)}</span>
-                        </div>
-                      ))}
+                       {order.items.map((item, index) => (
+                         <div key={index} className="text-sm flex justify-between">
+                           <span>{item.product?.name || 'Produto'} ({item.product?.code || 'N/A'})</span>
+                           <span>{item.quantity}x R$ {Number(item.unit_price).toFixed(2)}</span>
+                         </div>
+                       ))}
                     </div>
                   </div>
                 )}
