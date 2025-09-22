@@ -788,6 +788,20 @@ export const TenantIntegrations = () => {
                 Para usar a API do Melhor Envio, você precisa autorizar seu aplicativo. 
                 Certifique-se de ter preenchido o Client ID e Client Secret antes de prosseguir.
               </p>
+              
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-md mb-3">
+                <h5 className="font-medium text-amber-800 mb-1">⚠️ IMPORTANTE - Configuração no Melhor Envio</h5>
+                <p className="text-sm text-amber-700 mb-2">
+                  No painel do Melhor Envio, configure EXATAMENTE esta URL de redirecionamento:
+                </p>
+                <code className="block bg-amber-100 p-2 rounded text-xs break-all text-amber-900">
+                  https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth
+                </code>
+                <p className="text-xs text-amber-600 mt-1">
+                  Qualquer diferença (até mesmo uma "/" a mais ou a menos) causará erro "invalid_client"
+                </p>
+              </div>
+
               <div className="space-y-3">
                 <Button
                   type="button"

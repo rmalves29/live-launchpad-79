@@ -17,6 +17,17 @@ Deno.serve(async (req) => {
     const oauthError = url.searchParams.get("error");
     const errorDescription = url.searchParams.get("error_description");
 
+    console.log('🔍 DEBUG - Callback recebido:', {
+      url: req.url,
+      code: code ? `${code.substring(0, 10)}...` : 'não fornecido',
+      state,
+      service,
+      action,
+      oauthError,
+      errorDescription,
+      allParams: Object.fromEntries(url.searchParams.entries())
+    });
+
     if (service !== "melhorenvio" || action !== "oauth")
       throw new Error("rota inválida para este callback");
 
@@ -43,8 +54,8 @@ Deno.serve(async (req) => {
 
     const base = "https://melhorenvio.com.br";
 
-    // Redirect URI que aponta para a aplicação frontend
-    const redirect_uri = "https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&callback=melhor_envio";
+    // Redirect URI que aponta para este callback
+    const redirect_uri = "https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth";
 
     // Troca do code por token (form-urlencoded)
     const body = new URLSearchParams({
