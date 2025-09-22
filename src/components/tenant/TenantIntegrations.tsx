@@ -119,7 +119,7 @@ export const TenantIntegrations = () => {
     }
 
     // Usar redirect_uri para a edge function callback-empresa
-    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth';
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio';
     
     // Usar produção sempre
     const baseUrl = 'https://melhorenvio.com.br/oauth/authorize';
@@ -795,7 +795,7 @@ export const TenantIntegrations = () => {
                   No painel do Melhor Envio, configure EXATAMENTE esta URL de redirecionamento:
                 </p>
                 <code className="block bg-amber-100 p-2 rounded text-xs break-all text-amber-900">
-                  https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth
+                  https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio
                 </code>
                 <p className="text-xs text-amber-600 mt-1">
                   Qualquer diferença (até mesmo uma "/" a mais ou a menos) causará erro "invalid_client"

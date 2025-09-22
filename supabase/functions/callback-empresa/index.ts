@@ -10,134 +10,88 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const code = url.searchParams.get("code") || "";
-    const state = url.searchParams.get("state") || ""; // tenant_id
-    const service = url.searchParams.get("service") || "melhorenvio";
-    const action  = url.searchParams.get("action") || "oauth";
-    const oauthError = url.searchParams.get("error");
-    const errorDescription = url.searchParams.get("error_description");
+    const service = url.searchParams.get("service");
+    if (service !== "melhorenvio") throw new Error("service inválido");
+
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state") || ""; // seu tenant_id vem aqui
+    if (!code) throw new Error("code ausente");
 
     console.log('🔍 DEBUG - Callback recebido:', {
       url: req.url,
       code: code ? `${code.substring(0, 10)}...` : 'não fornecido',
       state,
       service,
-      action,
-      oauthError,
-      errorDescription,
       allParams: Object.fromEntries(url.searchParams.entries())
     });
 
-    if (service !== "melhorenvio" || action !== "oauth")
-      throw new Error("rota inválida para este callback");
+    // PRODUÇÃO
+    const clientId = Deno.env.get("ME_CLIENT_ID_PROD")!;       // 20128
+    const clientSecret = Deno.env.get("ME_CLIENT_SECRET_PROD")!; // cole o secret EXATO
+    const tokenUrl = "https://melhorenvio.com.br/oauth/token";
+    const redirectUri = "https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio";
 
-    // Se há erro no OAuth, redirecionar com o erro
-    if (oauthError) {
-      console.error("❌ Erro no OAuth:", oauthError, errorDescription);
-      return Response.redirect(
-        `https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=config_error&reason=${encodeURIComponent(
-          `OAuth Error: ${oauthError} - ${errorDescription || ''}`
-        )}`,
-        302
-      );
-    }
-
-    if (!code)  throw new Error("code ausente");
-    if (!state) throw new Error("state (tenant_id) ausente");
-
-    const tenant_id = state;
-
-    // PRODUÇÃO FIXO - usar as env vars corretas
-    const client_id = "20128";
-    const client_secret = Deno.env.get("ME_CLIENT_SECRET_PROD") || Deno.env.get("ME_CLIENT_SECRET") || "";
-    if (!client_secret) throw new Error("ME_CLIENT_SECRET_PROD/ME_CLIENT_SECRET ausente");
-
-    const base = "https://melhorenvio.com.br";
-
-    // Redirect URI que aponta para este callback
-    const redirect_uri = "https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth";
-
-    // Troca do code por token (form-urlencoded)
+    // form-url-encoded + Basic Auth
     const body = new URLSearchParams({
       grant_type: "authorization_code",
-      client_id,
-      client_secret,
-      redirect_uri,
       code,
+      redirect_uri: redirectUri, // sem encode manual; o URLSearchParams já codifica
     });
+    const basic = btoa(`${clientId}:${clientSecret}`);
 
-    const tokenRes = await fetch(`${base}/oauth/token`, {
+    const tokenRes = await fetch(tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `Basic ${basic}`,
         "Accept": "application/json",
       },
-      body: body.toString(),
+      body,
     });
 
     const raw = await tokenRes.text();
     if (!tokenRes.ok) {
       console.error("Token exchange failed", tokenRes.status, raw);
-      return Response.redirect(
-        `https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=config_error&reason=${encodeURIComponent(
-          `Token exchange failed: ${tokenRes.status} - ${raw}`
-        )}`,
-        302
-      );
+      throw new Error(`Token exchange failed: ${tokenRes.status} - ${raw}`);
     }
 
-    const token = JSON.parse(raw);
+    const tok = JSON.parse(raw);
 
+    // salve na sua tabela de integrações
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const expires_at = token.expires_in
-      ? new Date(Date.now() + token.expires_in * 1000).toISOString()
-      : null;
-
-    const { error } = await supabase
-      .from("shipping_integrations")
-      .upsert(
-        {
-          tenant_id,
-          provider: "melhor_envio",
-          client_id,
-          client_secret,
-          access_token: token.access_token,
-          refresh_token: token.refresh_token,
-          token_type: token.token_type || "Bearer",
-          scope: token.scope || "",
-          expires_at,
-          sandbox: false,            // PRODUÇÃO
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "tenant_id,provider" }
-      );
+    const { error } = await supabase.from("shipping_integrations").upsert({
+      tenant_id: state || "08f2b1b9-3988-489e-8186-c60f0c0b0622",
+      provider: "melhor_envio",
+      client_id: clientId,
+      client_secret: clientSecret,
+      access_token: tok.access_token,
+      refresh_token: tok.refresh_token,
+      token_type: tok.token_type || "Bearer",
+      scope: tok.scope || null,
+      expires_at: tok.expires_in
+        ? new Date(Date.now() + tok.expires_in * 1000).toISOString()
+        : null,
+      sandbox: false,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    });
 
     if (error) {
       console.error("DB upsert failed", error);
-      return Response.redirect(
-        `https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=config_error&reason=${encodeURIComponent(
-          "DB upsert failed: " + error.message
-        )}`,
-        302
-      );
+      throw new Error("DB upsert failed: " + error.message);
     }
 
-    // sucesso
-    return Response.redirect(
-      `https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=ok`,
-      302
-    );
+    // redirecione de volta ao painel
+    const ok = "https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=connected";
+    return new Response(null, { status: 302, headers: { Location: ok, ...cors } });
 
   } catch (e) {
-    console.error(e);
-    return new Response(JSON.stringify({ error: String(e) }), {
-      status: 400,
-      headers: { ...cors, "Content-Type": "application/json" },
-    });
+    console.error("❌ Erro na function:", e);
+    const back = `https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=config_error&reason=${encodeURIComponent(e.message)}`;
+    return new Response(null, { status: 302, headers: { Location: back, ...cors } });
   }
 });
