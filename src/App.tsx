@@ -20,6 +20,7 @@ import Relatorios from "./pages/Relatorios";
 import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import SendFlow from "./pages/SendFlow";
 import WhatsAppIntegration from "./components/WhatsAppIntegration";
+import Etiquetas from "./pages/Etiquetas";
 import MpReturn from "./pages/MpReturn";
 
 import Auth from "./pages/Auth";
@@ -117,6 +118,11 @@ const AppContent = () => {
         {/* Rota para integracoes */}
         <Route path="/integracoes" element={
           <RequireTenantAuth><Integracoes /></RequireTenantAuth>
+        } />
+        
+        {/* Rota para etiquetas */}
+        <Route path="/etiquetas" element={
+          <RequireTenantAuth><Etiquetas /></RequireTenantAuth>
         } />
         
         <Route path="*" element={<NotFound />} />
