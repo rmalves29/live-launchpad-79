@@ -119,7 +119,7 @@ export const TenantIntegrations = () => {
     }
 
     // Usar a mesma redirect_uri do callback-empresa
-    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth';
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&callback=melhor_envio';
     
     // Usar produção como no callback-empresa
     const baseUrl = 'https://melhorenvio.com.br/oauth/authorize';

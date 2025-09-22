@@ -30,15 +30,15 @@ Deno.serve(async (req) => {
 
     // Usar credenciais fixas de produção conforme as instruções
     const client_id = '20128';
-    const client_secret = Deno.env.get('MELHOR_ENVIO_CLIENT_SECRET');
+    const client_secret = Deno.env.get('ME_CLIENT_SECRET_PROD') || Deno.env.get('ME_CLIENT_SECRET') || '';
     
     if (!client_secret) {
-      throw new Error('MELHOR_ENVIO_CLIENT_SECRET environment variable not configured');
+      throw new Error('ME_CLIENT_SECRET_PROD/ME_CLIENT_SECRET environment variable not configured');
     }
 
     // Sempre usar produção conforme instruções
     const tokenUrl = 'https://melhorenvio.com.br/oauth/token';
-    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth';
+    const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&callback=melhor_envio';
 
     console.log('📡 Fazendo requisição para obter access token:', {
       tokenUrl,

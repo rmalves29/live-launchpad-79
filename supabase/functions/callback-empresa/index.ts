@@ -36,16 +36,15 @@ Deno.serve(async (req) => {
 
     const tenant_id = state;
 
-    // PRODUÇÃO FIXO
-    const client_id = Deno.env.get("ME_CLIENT_ID") ?? "";
-    const client_secret = Deno.env.get("ME_CLIENT_SECRET") ?? "";
-    if (!client_id || !client_secret) throw new Error("ME_CLIENT_ID/ME_CLIENT_SECRET ausentes");
+    // PRODUÇÃO FIXO - usar as env vars corretas
+    const client_id = "20128";
+    const client_secret = Deno.env.get("ME_CLIENT_SECRET_PROD") || Deno.env.get("ME_CLIENT_SECRET") || "";
+    if (!client_secret) throw new Error("ME_CLIENT_SECRET_PROD/ME_CLIENT_SECRET ausente");
 
     const base = "https://melhorenvio.com.br";
 
-    // MESMA redirect_uri do /authorize E cadastrada no app
-    const redirect_uri =
-      "https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/callback-empresa?service=melhorenvio&action=oauth";
+    // Redirect URI que aponta para a aplicação frontend
+    const redirect_uri = "https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&callback=melhor_envio";
 
     // Troca do code por token (form-urlencoded)
     const body = new URLSearchParams({
