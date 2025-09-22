@@ -202,8 +202,8 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         name: tenant.admin_email || tenant.company_email, // Nome do responsável ou email da empresa
         phone: tenant.company_phone.replace(/[^0-9]/g, ''), // Remove formatação do telefone
         email: tenant.company_email,
-        document: tenant.company_document.replace(/[^0-9]/g, ''), // Remove formatação do CNPJ
-        company_document: tenant.company_document.replace(/[^0-9]/g, ''),
+        document: "00000000000", // CPF genérico para pessoa jurídica
+        company_document: tenant.company_document.replace(/[^0-9]/g, ''), // CNPJ da empresa
         state_register: "", // Inscrição Estadual (opcional)
         address: tenant.company_address,
         complement: tenant.company_complement || "",
@@ -218,7 +218,9 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         name: customer?.name || order.customer_name || "Cliente",
         phone: (customer?.phone || order.customer_phone || "11999999999").replace(/[^0-9]/g, ''), // Remove formatação
         email: customer?.email || "cliente@exemplo.com", // Email real do cliente ou genérico
-        document: customer?.cpf?.replace(/[^0-9]/g, '') || "00000000000", // CPF real ou genérico
+        document: (customer?.cpf?.replace(/[^0-9]/g, '') && customer.cpf.replace(/[^0-9]/g, '').length === 11) 
+          ? customer.cpf.replace(/[^0-9]/g, '') 
+          : "11122233344", // CPF genérico válido se não tiver CPF do cliente
         address: customer?.street || order.customer_street || "Endereço não informado",
         complement: customer?.complement || order.customer_complement || "",
         number: customer?.number || order.customer_number || "S/N",
@@ -249,6 +251,12 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         own_hand: false
       }
     };
+
+    console.log('📋 Payload da remessa:', JSON.stringify({
+      from_document: shipmentData.from.document,
+      to_document: shipmentData.to.document,
+      company_document: shipmentData.from.company_document
+    }));
 
     const response = await fetch(`${baseUrl}/api/v2/me/cart`, {
       method: 'POST',
