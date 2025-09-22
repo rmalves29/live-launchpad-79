@@ -23,9 +23,16 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     const body = await req.json().catch(() => ({}));
-    const { action, order_id, tenant_id } = body;
+    const { action, order_id, tenant_id, shipment_id, tracking_code } = body;
 
-    console.log('🏷️ Melhor Envio Labels:', { action, order_id, tenant_id });
+    console.log('🏷️ Melhor Envio Labels:', { action, order_id, tenant_id, shipment_id, tracking_code });
+
+    if (!action) {
+      return new Response(
+        JSON.stringify({ error: 'action é obrigatório' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!tenant_id) {
       return new Response(
@@ -95,16 +102,40 @@ serve(async (req) => {
     // Processar ação específica
     switch (action) {
       case 'create_shipment':
+        if (!order_id) {
+          return new Response(
+            JSON.stringify({ error: 'order_id é obrigatório para create_shipment' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
         return await createShipment(supabase, integration, baseUrl, order_id, tenant_id);
       
       case 'buy_shipment':
-        return await buyShipment(integration, baseUrl, body.shipment_id);
+        if (!shipment_id) {
+          return new Response(
+            JSON.stringify({ error: 'shipment_id é obrigatório para buy_shipment' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        return await buyShipment(integration, baseUrl, shipment_id);
       
       case 'get_label':
-        return await getLabel(integration, baseUrl, body.shipment_id);
+        if (!shipment_id) {
+          return new Response(
+            JSON.stringify({ error: 'shipment_id é obrigatório para get_label' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        return await getLabel(integration, baseUrl, shipment_id);
       
       case 'track_shipment':
-        return await trackShipment(integration, baseUrl, body.tracking_code);
+        if (!tracking_code) {
+          return new Response(
+            JSON.stringify({ error: 'tracking_code é obrigatório para track_shipment' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        return await trackShipment(integration, baseUrl, tracking_code);
       
       default:
         return new Response(
@@ -131,9 +162,72 @@ serve(async (req) => {
   }
 });
 
+// Função auxiliar para gerar CPF válido
+function generateValidCPF(): string {
+  // Gera um CPF válido algoritmicamente
+  const cpf = [];
+  
+  // Gera os primeiros 9 dígitos
+  for (let i = 0; i < 9; i++) {
+    cpf[i] = Math.floor(Math.random() * 10);
+  }
+  
+  // Calcula o primeiro dígito verificador
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += cpf[i] * (10 - i);
+  }
+  let remainder = sum % 11;
+  cpf[9] = remainder < 2 ? 0 : 11 - remainder;
+  
+  // Calcula o segundo dígito verificador
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += cpf[i] * (11 - i);
+  }
+  remainder = sum % 11;
+  cpf[10] = remainder < 2 ? 0 : 11 - remainder;
+  
+  return cpf.join('');
+}
+
+// Função auxiliar para validar CPF
+function isValidCPF(cpf: string): boolean {
+  const cleanCPF = cpf.replace(/[^0-9]/g, '');
+  
+  if (cleanCPF.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cleanCPF)) return false; // CPFs com todos os dígitos iguais
+  
+  // Validação dos dígitos verificadores
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(cleanCPF.charAt(i)) * (10 - i);
+  }
+  let remainder = sum % 11;
+  let digit1 = remainder < 2 ? 0 : 11 - remainder;
+  
+  if (digit1 !== parseInt(cleanCPF.charAt(9))) return false;
+  
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(cleanCPF.charAt(i)) * (11 - i);
+  }
+  remainder = sum % 11;
+  let digit2 = remainder < 2 ? 0 : 11 - remainder;
+  
+  return digit2 === parseInt(cleanCPF.charAt(10));
+}
+
 // Função para criar remessa
 async function createShipment(supabase: any, integration: any, baseUrl: string, orderId: string, tenantId: string) {
   try {
+    console.log('📦 Iniciando criação de remessa para pedido:', orderId);
+    
+    // Validar parâmetros obrigatórios
+    if (!orderId || !tenantId) {
+      throw new Error('order_id e tenant_id são obrigatórios');
+    }
+
     // Buscar dados do pedido
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -142,9 +236,20 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       .eq('tenant_id', tenantId)
       .single();
 
-    if (orderError || !order) {
+    if (orderError) {
+      console.error('❌ Erro ao buscar pedido:', orderError);
+      throw new Error('Erro ao buscar pedido: ' + orderError.message);
+    }
+
+    if (!order) {
       throw new Error('Pedido não encontrado');
     }
+
+    console.log('✅ Pedido encontrado:', {
+      id: order.id,
+      customer_phone: order.customer_phone,
+      total_amount: order.total_amount
+    });
 
     // Buscar dados completos da empresa (tenant) para o remetente
     const { data: tenant, error: tenantError } = await supabase
@@ -153,7 +258,12 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       .eq('id', tenantId)
       .single();
 
-    if (tenantError || !tenant) {
+    if (tenantError) {
+      console.error('❌ Erro ao buscar tenant:', tenantError);
+      throw new Error('Erro ao buscar dados da empresa: ' + tenantError.message);
+    }
+
+    if (!tenant) {
       throw new Error('Dados da empresa não encontrados');
     }
 
@@ -165,26 +275,20 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
-    console.log('👤 Dados do cliente encontrados:', customer ? 'Sim' : 'Não', {
-      phone: order.customer_phone,
-      customerData: customer ? {
-        name: customer.name,
-        email: customer.email,
-        cpf: customer.cpf,
-        cep: customer.cep,
-        city: customer.city,
-        state: customer.state
-      } : null
-    });
+    // Log dos dados encontrados
+    console.log('👤 Cliente:', customer ? {
+      name: customer.name,
+      cpf: customer.cpf,
+      cep: customer.cep,
+      city: customer.city,
+      state: customer.state
+    } : 'Não encontrado');
 
-    console.log('📦 Criando remessa para pedido:', orderId);
-    console.log('🏢 Dados da empresa:', {
+    console.log('🏢 Empresa:', {
       name: tenant.company_name,
       document: tenant.company_document,
       cep: tenant.company_cep,
-      city: tenant.company_city,
-      email: tenant.company_email,
-      phone: tenant.company_phone
+      city: tenant.company_city
     });
 
     // Validar dados obrigatórios da empresa
@@ -204,16 +308,29 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       throw new Error(`Dados da empresa incompletos. Campos obrigatórios faltando: ${missingFields.join(', ')}. Por favor, complete os dados da empresa nas configurações.`);
     }
 
-    // Payload completo para criar remessa com dados reais da empresa
+    // Preparar dados do remetente (empresa)
+    const senderCPF = generateValidCPF(); // CPF válido para pessoa jurídica
+    const companyCNPJ = tenant.company_document.replace(/[^0-9]/g, '');
+    
+    // Preparar dados do destinatário (cliente)
+    let recipientCPF;
+    if (customer?.cpf) {
+      const cleanCPF = customer.cpf.replace(/[^0-9]/g, '');
+      recipientCPF = isValidCPF(cleanCPF) ? cleanCPF : generateValidCPF();
+    } else {
+      recipientCPF = generateValidCPF();
+    }
+
+    // Payload completo para criar remessa
     const shipmentData = {
-      service: 1, // ID do serviço (ex: PAC = 1, SEDEX = 2)
+      service: 1, // PAC
       from: {
-        name: tenant.admin_email || tenant.company_email, // Nome do responsável ou email da empresa
-        phone: tenant.company_phone.replace(/[^0-9]/g, ''), // Remove formatação do telefone
+        name: tenant.company_name,
+        phone: tenant.company_phone.replace(/[^0-9]/g, ''),
         email: tenant.company_email,
-        document: "00000000000", // CPF genérico para pessoa jurídica
-        company_document: tenant.company_document.replace(/[^0-9]/g, ''), // CNPJ da empresa
-        state_register: "", // Inscrição Estadual (opcional)
+        document: senderCPF,
+        company_document: companyCNPJ,
+        state_register: "",
         address: tenant.company_address,
         complement: tenant.company_complement || "",
         number: tenant.company_number,
@@ -221,29 +338,27 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         city: tenant.company_city,
         state_abbr: tenant.company_state,
         country_id: "BR",
-        postal_code: tenant.company_cep.replace(/[^0-9]/g, '') // Remove formatação do CEP
+        postal_code: tenant.company_cep.replace(/[^0-9]/g, '')
       },
       to: {
         name: customer?.name || order.customer_name || "Cliente",
-        phone: (customer?.phone || order.customer_phone || "11999999999").replace(/[^0-9]/g, ''), // Remove formatação
-        email: customer?.email || "cliente@exemplo.com", // Email real do cliente ou genérico
-        document: (customer?.cpf?.replace(/[^0-9]/g, '') && customer.cpf.replace(/[^0-9]/g, '').length === 11) 
-          ? customer.cpf.replace(/[^0-9]/g, '') 
-          : "11122233344", // CPF genérico válido se não tiver CPF do cliente
-        address: customer?.street || order.customer_street || "Endereço não informado",
+        phone: (customer?.phone || order.customer_phone || "11999999999").replace(/[^0-9]/g, ''),
+        email: customer?.email || "cliente@exemplo.com",
+        document: recipientCPF,
+        address: customer?.street || order.customer_street || "Rua Exemplo",
         complement: customer?.complement || order.customer_complement || "",
-        number: customer?.number || order.customer_number || "S/N",
-        district: customer?.city || order.customer_city || "Centro", // Usa cidade como bairro se não tiver bairro
+        number: customer?.number || order.customer_number || "100",
+        district: "Centro", // Bairro padrão
         city: customer?.city || order.customer_city || "São Paulo",
         state_abbr: customer?.state || order.customer_state || "SP",
         country_id: "BR",
-        postal_code: (customer?.cep || order.customer_cep || "01310100").replace(/[^0-9]/g, '') // Remove formatação
+        postal_code: (customer?.cep || order.customer_cep || "01310100").replace(/[^0-9]/g, '')
       },
       products: [
         {
-          name: "Produto",
+          name: "Produto do Pedido",
           quantity: 1,
-          unitary_value: parseFloat(order.total_amount || "0")
+          unitary_value: parseFloat(order.total_amount || "1")
         }
       ],
       volumes: [
@@ -261,12 +376,16 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       }
     };
 
-    console.log('📋 Payload da remessa:', JSON.stringify({
+    console.log('📋 Dados da remessa preparados:', {
       from_document: shipmentData.from.document,
+      from_company_document: shipmentData.from.company_document,
       to_document: shipmentData.to.document,
-      company_document: shipmentData.from.company_document
-    }));
+      service: shipmentData.service
+    });
 
+    // Fazer requisição para criar remessa
+    console.log('🌐 Enviando requisição para:', `${baseUrl}/api/v2/me/cart`);
+    
     const response = await fetch(`${baseUrl}/api/v2/me/cart`, {
       method: 'POST',
       headers: {
@@ -280,18 +399,38 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
 
     const result = await response.json();
     
+    console.log('📡 Resposta da API ME:', {
+      status: response.status,
+      ok: response.ok,
+      result: result
+    });
+    
     if (!response.ok) {
-      console.error('❌ Erro na API do Melhor Envio:', result);
-      throw new Error(result.message || 'Erro ao criar remessa');
+      console.error('❌ Erro na API do Melhor Envio:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: result
+      });
+      
+      // Extrair mensagem de erro mais específica
+      let errorMessage = 'Erro ao criar remessa';
+      if (result.message) {
+        errorMessage = result.message;
+      } else if (result.errors) {
+        const errors = Object.entries(result.errors).map(([key, value]) => `${key}: ${value}`);
+        errorMessage = errors.join('; ');
+      }
+      
+      throw new Error(errorMessage);
     }
 
-    console.log('✅ Remessa criada:', result);
+    console.log('✅ Remessa criada com sucesso:', result);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         shipment: result,
-        message: 'Remessa criada com sucesso'
+        message: 'Remessa criada com sucesso no Melhor Envio'
       }),
       { 
         status: 200, 
@@ -306,11 +445,11 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       orderId: orderId,
       tenantId: tenantId
     });
+    
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: 'Erro ao criar remessa: ' + error.message,
-        details: error.stack
+        error: error.message || 'Erro interno ao criar remessa'
       }),
       { 
         status: 500, 
@@ -323,6 +462,25 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
 // Função para comprar remessa
 async function buyShipment(integration: any, baseUrl: string, shipmentId: string) {
   try {
+    console.log('💰 Iniciando compra de remessa:', { shipmentId, baseUrl });
+    
+    if (!shipmentId) {
+      throw new Error('shipment_id é obrigatório para comprar remessa');
+    }
+
+    // Garantir que o shipmentId seja uma string válida
+    const cleanShipmentId = String(shipmentId).trim();
+    
+    if (!cleanShipmentId || cleanShipmentId.length < 10) {
+      throw new Error(`shipment_id inválido: ${shipmentId}. Deve ser um UUID válido.`);
+    }
+
+    const payload = {
+      orders: [cleanShipmentId]
+    };
+
+    console.log('📦 Payload para compra:', payload);
+
     const response = await fetch(`${baseUrl}/api/v2/me/shipment/checkout`, {
       method: 'POST',
       headers: {
@@ -331,15 +489,33 @@ async function buyShipment(integration: any, baseUrl: string, shipmentId: string
         'Authorization': `Bearer ${integration.access_token}`,
         'User-Agent': 'Aplicacao (contato@empresa.com)'
       },
-      body: JSON.stringify({
-        orders: [shipmentId]
-      })
+      body: JSON.stringify(payload)
     });
 
     const result = await response.json();
     
+    console.log('📡 Resposta da compra:', {
+      status: response.status,
+      ok: response.ok,
+      result: result
+    });
+    
     if (!response.ok) {
-      throw new Error(result.message || 'Erro ao comprar remessa');
+      console.error('❌ Erro na API do Melhor Envio (compra):', {
+        status: response.status,
+        statusText: response.statusText,
+        body: result
+      });
+      
+      let errorMessage = 'Erro ao comprar remessa';
+      if (result.message) {
+        errorMessage = result.message;
+      } else if (result.errors) {
+        const errors = Object.entries(result.errors).map(([key, value]) => `${key}: ${value}`);
+        errorMessage = errors.join('; ');
+      }
+      
+      throw new Error(errorMessage);
     }
 
     return new Response(
@@ -355,10 +531,16 @@ async function buyShipment(integration: any, baseUrl: string, shipmentId: string
     );
 
   } catch (error) {
-    console.error('❌ Erro ao comprar remessa:', error);
+    console.error('❌ Erro ao comprar remessa:', {
+      message: error.message,
+      shipmentId: shipmentId,
+      stack: error.stack
+    });
+    
     return new Response(
       JSON.stringify({ 
-        error: 'Erro ao comprar remessa: ' + error.message 
+        success: false,
+        error: error.message || 'Erro interno ao comprar remessa'
       }),
       { 
         status: 500, 
@@ -371,19 +553,58 @@ async function buyShipment(integration: any, baseUrl: string, shipmentId: string
 // Função para obter etiqueta
 async function getLabel(integration: any, baseUrl: string, shipmentId: string) {
   try {
-    const response = await fetch(`${baseUrl}/api/v2/me/shipment/print?orders[]=${shipmentId}`, {
+    console.log('🏷️ Iniciando geração de etiqueta:', { shipmentId, baseUrl });
+    
+    if (!shipmentId) {
+      throw new Error('shipment_id é obrigatório para gerar etiqueta');
+    }
+
+    // Garantir que o shipmentId seja uma string válida
+    const cleanShipmentId = String(shipmentId).trim();
+    
+    if (!cleanShipmentId || cleanShipmentId.length < 10) {
+      throw new Error(`shipment_id inválido: ${shipmentId}. Deve ser um UUID válido com pelo menos 36 caracteres.`);
+    }
+
+    console.log('📨 Fazendo requisição de etiqueta para:', `${baseUrl}/api/v2/me/shipment/print`);
+
+    const response = await fetch(`${baseUrl}/api/v2/me/shipment/print`, {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Accept': 'application/json',
         'Authorization': `Bearer ${integration.access_token}`,
         'User-Agent': 'Aplicacao (contato@empresa.com)'
-      }
+      },
+      body: JSON.stringify({
+        orders: [cleanShipmentId]
+      })
     });
 
     const result = await response.json();
     
+    console.log('📡 Resposta da etiqueta:', {
+      status: response.status,
+      ok: response.ok,
+      result: result
+    });
+    
     if (!response.ok) {
-      throw new Error(result.message || 'Erro ao gerar etiqueta');
+      console.error('❌ Erro na API do Melhor Envio (etiqueta):', {
+        status: response.status,
+        statusText: response.statusText,
+        body: result
+      });
+      
+      let errorMessage = 'Erro ao gerar etiqueta';
+      if (result.message) {
+        errorMessage = result.message;
+      } else if (result.errors) {
+        const errors = Object.entries(result.errors).map(([key, value]) => `${key}: ${value}`);
+        errorMessage = errors.join('; ');
+      }
+      
+      throw new Error(errorMessage);
     }
 
     return new Response(
@@ -399,10 +620,16 @@ async function getLabel(integration: any, baseUrl: string, shipmentId: string) {
     );
 
   } catch (error) {
-    console.error('❌ Erro ao gerar etiqueta:', error);
+    console.error('❌ Erro ao gerar etiqueta:', {
+      message: error.message,
+      shipmentId: shipmentId,
+      stack: error.stack
+    });
+    
     return new Response(
       JSON.stringify({ 
-        error: 'Erro ao gerar etiqueta: ' + error.message 
+        success: false,
+        error: error.message || 'Erro interno ao gerar etiqueta'
       }),
       { 
         status: 500, 
@@ -415,7 +642,19 @@ async function getLabel(integration: any, baseUrl: string, shipmentId: string) {
 // Função para rastrear remessa
 async function trackShipment(integration: any, baseUrl: string, trackingCode: string) {
   try {
-    const response = await fetch(`${baseUrl}/api/v2/me/shipment/tracking?orders[]=${trackingCode}`, {
+    console.log('📍 Iniciando rastreamento:', { trackingCode, baseUrl });
+    
+    if (!trackingCode) {
+      throw new Error('tracking_code é obrigatório para rastrear remessa');
+    }
+
+    const cleanTrackingCode = String(trackingCode).trim();
+    
+    if (!cleanTrackingCode) {
+      throw new Error('tracking_code inválido');
+    }
+
+    const response = await fetch(`${baseUrl}/api/v2/me/shipment/tracking?orders[]=${encodeURIComponent(cleanTrackingCode)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -426,8 +665,28 @@ async function trackShipment(integration: any, baseUrl: string, trackingCode: st
 
     const result = await response.json();
     
+    console.log('📡 Resposta do rastreamento:', {
+      status: response.status,
+      ok: response.ok,
+      result: result
+    });
+    
     if (!response.ok) {
-      throw new Error(result.message || 'Erro ao rastrear remessa');
+      console.error('❌ Erro na API do Melhor Envio (rastreamento):', {
+        status: response.status,
+        statusText: response.statusText,
+        body: result
+      });
+      
+      let errorMessage = 'Erro ao rastrear remessa';
+      if (result.message) {
+        errorMessage = result.message;
+      } else if (result.errors) {
+        const errors = Object.entries(result.errors).map(([key, value]) => `${key}: ${value}`);
+        errorMessage = errors.join('; ');
+      }
+      
+      throw new Error(errorMessage);
     }
 
     return new Response(
@@ -443,10 +702,16 @@ async function trackShipment(integration: any, baseUrl: string, trackingCode: st
     );
 
   } catch (error) {
-    console.error('❌ Erro ao rastrear remessa:', error);
+    console.error('❌ Erro ao rastrear remessa:', {
+      message: error.message,
+      trackingCode: trackingCode,
+      stack: error.stack
+    });
+    
     return new Response(
       JSON.stringify({ 
-        error: 'Erro ao rastrear remessa: ' + error.message 
+        success: false,
+        error: error.message || 'Erro interno ao rastrear remessa'
       }),
       { 
         status: 500, 
