@@ -94,37 +94,86 @@ const Etiquetas = () => {
   };
 
   const sendToMelhorEnvio = async (orderId: number) => {
+    console.log('🚀 [ETIQUETAS] Iniciando envio para Melhor Envio:', { orderId, timestamp: new Date().toISOString() });
+    
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
-      console.log('🚀 Enviando pedido para Melhor Envio:', orderId);
+      const requestPayload = {
+        action: 'create_shipment',
+        order_id: orderId,
+        tenant_id: supabaseTenant.getTenantId()
+      };
+
+      console.log('📦 [ETIQUETAS] Payload da requisição:', requestPayload);
       
       const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
-        body: {
-          action: 'create_shipment',
-          order_id: orderId,
-          tenant_id: supabaseTenant.getTenantId()
-        }
+        body: requestPayload
       });
 
-      console.log('📡 Resposta da edge function:', { data, error });
+      console.log('📡 [ETIQUETAS] Resposta completa:', { 
+        data, 
+        error,
+        hasData: !!data,
+        hasError: !!error,
+        dataKeys: data ? Object.keys(data) : [],
+        errorKeys: error ? Object.keys(error) : []
+      });
 
       if (error) {
-        console.error('❌ Erro da edge function:', error);
-        throw new Error(error.message || 'Erro na comunicação com Melhor Envio');
+        console.error('❌ [ETIQUETAS] Erro da edge function:', error);
+        throw new Error(error.message || `Erro na comunicação: ${JSON.stringify(error)}`);
       }
 
-      if (data?.success) {
+      if (!data) {
+        throw new Error('Nenhuma resposta recebida da API');
+      }
+
+      if (data.success === false) {
+        console.error('❌ [ETIQUETAS] Erro na resposta:', data);
+        throw new Error(data.error || 'Erro desconhecido na operação');
+      }
+
+      if (data.success === true) {
+        console.log('✅ [ETIQUETAS] Remessa criada com sucesso:', data);
         toast.success('Remessa criada no Melhor Envio com sucesso!');
         // Recarregar os pedidos para atualizar o status
         loadPaidOrders();
       } else {
-        console.error('❌ Resposta de erro:', data);
-        throw new Error(data?.error || 'Erro desconhecido ao criar remessa');
+        // Se não tem success definido mas não há erro, assumir sucesso se há dados de shipment
+        if (data.shipment) {
+          console.log('✅ [ETIQUETAS] Remessa criada (sem flag success):', data);
+          toast.success('Remessa criada no Melhor Envio com sucesso!');
+          loadPaidOrders();
+        } else {
+          throw new Error(data.error || 'Resposta inesperada da API');
+        }
       }
-    } catch (error) {
-      console.error('❌ Erro ao enviar para Melhor Envio:', error);
-      toast.error(`Erro ao enviar para Melhor Envio: ${error.message}`);
+      
+    } catch (error: any) {
+      console.error('❌ [ETIQUETAS] Erro crítico:', {
+        message: error.message,
+        stack: error.stack,
+        orderId: orderId,
+        timestamp: new Date().toISOString()
+      });
+      
+      let userMessage = 'Erro ao enviar para Melhor Envio';
+      
+      if (error.message) {
+        // Tratar mensagens de erro específicas para o usuário
+        if (error.message.includes('Dados da empresa incompletos')) {
+          userMessage = `Erro: ${error.message}`;
+        } else if (error.message.includes('Integração')) {
+          userMessage = `Erro de integração: ${error.message}`;
+        } else if (error.message.includes('token')) {
+          userMessage = 'Erro de autorização: Refaça a configuração do Melhor Envio';
+        } else {
+          userMessage = `Erro: ${error.message}`;
+        }
+      }
+      
+      toast.error(userMessage);
     } finally {
       setProcessingOrders(prev => {
         const newSet = new Set(prev);

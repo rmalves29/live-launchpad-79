@@ -12,31 +12,69 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let body;
+  let action;
+  
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing Supabase configuration');
+      console.error('❌ Configuração do Supabase não encontrada');
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Configuração do servidor incompleta' 
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    const body = await req.json().catch(() => ({}));
-    const { action, order_id, tenant_id, shipment_id, tracking_code } = body;
+    // Parse do body com tratamento de erro
+    try {
+      body = await req.json();
+    } catch (parseError) {
+      console.error('❌ Erro ao fazer parse do JSON:', parseError);
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Formato de dados inválido' 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    console.log('🏷️ Melhor Envio Labels:', { action, order_id, tenant_id, shipment_id, tracking_code });
+    const { action: requestAction, order_id, tenant_id, shipment_id, tracking_code } = body;
+    action = requestAction;
 
+    console.log('🏷️ Melhor Envio Labels - Request:', { 
+      action, 
+      order_id, 
+      tenant_id, 
+      shipment_id, 
+      tracking_code,
+      timestamp: new Date().toISOString()
+    });
+
+    // Validações obrigatórias
     if (!action) {
       return new Response(
-        JSON.stringify({ error: 'action é obrigatório' }),
+        JSON.stringify({ 
+          success: false,
+          error: 'Parâmetro "action" é obrigatório' 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     if (!tenant_id) {
       return new Response(
-        JSON.stringify({ error: 'tenant_id é obrigatório' }),
+        JSON.stringify({ 
+          success: false,
+          error: 'Parâmetro "tenant_id" é obrigatório' 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -52,6 +90,7 @@ serve(async (req) => {
 
     // Se não encontrou integração específica do tenant, buscar global
     if (!integration && !integrationError) {
+      console.log('🔍 Buscando integração global...');
       const { data: globalIntegration, error: globalError } = await supabase
         .from('shipping_integrations')
         .select('*')
@@ -70,21 +109,32 @@ serve(async (req) => {
     if (integrationError) {
       console.error('❌ Erro ao buscar integração:', integrationError);
       return new Response(
-        JSON.stringify({ error: 'Erro ao buscar integração' }),
+        JSON.stringify({ 
+          success: false,
+          error: 'Erro ao verificar integração com Melhor Envio' 
+        }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     if (!integration) {
+      console.error('❌ Integração não encontrada para tenant:', tenant_id);
       return new Response(
-        JSON.stringify({ error: 'Integração ME não encontrada para este tenant' }),
+        JSON.stringify({ 
+          success: false,
+          error: 'Integração com Melhor Envio não configurada para esta empresa. Configure a integração nas configurações.' 
+        }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     if (!integration.access_token) {
+      console.error('❌ Token de acesso não encontrado');
       return new Response(
-        JSON.stringify({ error: 'Integração ME não autorizada - token não encontrado' }),
+        JSON.stringify({ 
+          success: false,
+          error: 'Integração com Melhor Envio não autorizada. Refaça a autorização nas configurações.' 
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -92,19 +142,22 @@ serve(async (req) => {
     // Determinar URL base (sandbox ou produção)
     const baseUrl = integration.sandbox ? 'https://sandbox.melhorenvio.com.br' : 'https://melhorenvio.com.br';
     
-    console.log('🌐 Configuração:', {
+    console.log('🌐 Configuração da integração:', {
       isSandbox: integration.sandbox,
       baseUrl,
       hasToken: !!integration.access_token,
       action
     });
 
-    // Processar ação específica
+    // Processar ação específica com validações
     switch (action) {
       case 'create_shipment':
         if (!order_id) {
           return new Response(
-            JSON.stringify({ error: 'order_id é obrigatório para create_shipment' }),
+            JSON.stringify({ 
+              success: false,
+              error: 'Parâmetro "order_id" é obrigatório para criar remessa' 
+            }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -113,7 +166,10 @@ serve(async (req) => {
       case 'buy_shipment':
         if (!shipment_id) {
           return new Response(
-            JSON.stringify({ error: 'shipment_id é obrigatório para buy_shipment' }),
+            JSON.stringify({ 
+              success: false,
+              error: 'Parâmetro "shipment_id" é obrigatório para comprar remessa' 
+            }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -122,7 +178,10 @@ serve(async (req) => {
       case 'get_label':
         if (!shipment_id) {
           return new Response(
-            JSON.stringify({ error: 'shipment_id é obrigatório para get_label' }),
+            JSON.stringify({ 
+              success: false,
+              error: 'Parâmetro "shipment_id" é obrigatório para gerar etiqueta' 
+            }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -131,7 +190,10 @@ serve(async (req) => {
       case 'track_shipment':
         if (!tracking_code) {
           return new Response(
-            JSON.stringify({ error: 'tracking_code é obrigatório para track_shipment' }),
+            JSON.stringify({ 
+              success: false,
+              error: 'Parâmetro "tracking_code" é obrigatório para rastrear remessa' 
+            }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -139,35 +201,51 @@ serve(async (req) => {
       
       default:
         return new Response(
-          JSON.stringify({ error: 'Ação não suportada', supported_actions: ['create_shipment', 'buy_shipment', 'get_label', 'track_shipment'] }),
+          JSON.stringify({ 
+            success: false,
+            error: `Ação "${action}" não suportada`,
+            supported_actions: ['create_shipment', 'buy_shipment', 'get_label', 'track_shipment']
+          }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }
 
   } catch (error) {
-    console.error('❌ Erro na função de labels:', {
+    console.error('❌ Erro crítico na função:', {
       message: error.message,
       stack: error.stack,
       body: body,
-      action: action
+      action: action,
+      timestamp: new Date().toISOString()
     });
+    
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: `Erro interno no processamento de etiquetas: ${error.message}`,
-        details: error.stack 
+        error: 'Erro interno do servidor. Tente novamente em alguns instantes.',
+        details: error.message
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
 
+// Função auxiliar para validar e gerar CPF
+function validateOrGenerateCPF(cpf?: string): string {
+  if (cpf) {
+    const cleanCPF = cpf.replace(/[^0-9]/g, '');
+    if (cleanCPF.length === 11 && isValidCPF(cleanCPF)) {
+      return cleanCPF;
+    }
+  }
+  return generateValidCPF();
+}
+
 // Função auxiliar para gerar CPF válido
 function generateValidCPF(): string {
-  // Gera um CPF válido algoritmicamente
   const cpf = [];
   
-  // Gera os primeiros 9 dígitos
+  // Gera os primeiros 9 dígitos aleatórios
   for (let i = 0; i < 9; i++) {
     cpf[i] = Math.floor(Math.random() * 10);
   }
@@ -218,16 +296,29 @@ function isValidCPF(cpf: string): boolean {
   return digit2 === parseInt(cleanCPF.charAt(10));
 }
 
-// Função para criar remessa
+// Função auxiliar para limpar e validar CEP
+function validateCEP(cep: string): string {
+  const cleanCEP = cep.replace(/[^0-9]/g, '');
+  return cleanCEP.length === 8 ? cleanCEP : '01310100'; // CEP de São Paulo como fallback
+}
+
+// Função auxiliar para limpar telefone
+function cleanPhone(phone: string): string {
+  const cleaned = phone.replace(/[^0-9]/g, '');
+  return cleaned.length >= 10 ? cleaned : '11999999999'; // Telefone genérico como fallback
+}
+
+// Função auxiliar para validar CNPJ
+function validateCNPJ(cnpj: string): string {
+  const cleanCNPJ = cnpj.replace(/[^0-9]/g, '');
+  return cleanCNPJ.length === 14 ? cleanCNPJ : null;
+}
+
+// Função para criar remessa com validações robustas
 async function createShipment(supabase: any, integration: any, baseUrl: string, orderId: string, tenantId: string) {
   try {
-    console.log('📦 Iniciando criação de remessa para pedido:', orderId);
+    console.log('📦 [CREATE_SHIPMENT] Iniciando criação de remessa:', { orderId, tenantId });
     
-    // Validar parâmetros obrigatórios
-    if (!orderId || !tenantId) {
-      throw new Error('order_id e tenant_id são obrigatórios');
-    }
-
     // Buscar dados do pedido
     const { data: order, error: orderError } = await supabase
       .from('orders')
@@ -237,21 +328,22 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       .single();
 
     if (orderError) {
-      console.error('❌ Erro ao buscar pedido:', orderError);
-      throw new Error('Erro ao buscar pedido: ' + orderError.message);
+      console.error('❌ [CREATE_SHIPMENT] Erro ao buscar pedido:', orderError);
+      throw new Error(`Erro ao buscar pedido: ${orderError.message}`);
     }
 
     if (!order) {
       throw new Error('Pedido não encontrado');
     }
 
-    console.log('✅ Pedido encontrado:', {
+    console.log('✅ [CREATE_SHIPMENT] Pedido encontrado:', {
       id: order.id,
       customer_phone: order.customer_phone,
-      total_amount: order.total_amount
+      total_amount: order.total_amount,
+      customer_name: order.customer_name
     });
 
-    // Buscar dados completos da empresa (tenant) para o remetente
+    // Buscar dados da empresa (tenant)
     const { data: tenant, error: tenantError } = await supabase
       .from('tenants')
       .select('*')
@@ -259,15 +351,15 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       .single();
 
     if (tenantError) {
-      console.error('❌ Erro ao buscar tenant:', tenantError);
-      throw new Error('Erro ao buscar dados da empresa: ' + tenantError.message);
+      console.error('❌ [CREATE_SHIPMENT] Erro ao buscar empresa:', tenantError);
+      throw new Error(`Erro ao buscar dados da empresa: ${tenantError.message}`);
     }
 
     if (!tenant) {
       throw new Error('Dados da empresa não encontrados');
     }
 
-    // Buscar dados completos do cliente para o destinatário
+    // Buscar dados do cliente
     const { data: customer, error: customerError } = await supabase
       .from('customers')
       .select('*')
@@ -275,90 +367,88 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       .eq('tenant_id', tenantId)
       .maybeSingle();
 
-    // Log dos dados encontrados
-    console.log('👤 Cliente:', customer ? {
-      name: customer.name,
-      cpf: customer.cpf,
-      cep: customer.cep,
-      city: customer.city,
-      state: customer.state
-    } : 'Não encontrado');
-
-    console.log('🏢 Empresa:', {
+    console.log('👤 [CREATE_SHIPMENT] Cliente encontrado:', !!customer);
+    console.log('🏢 [CREATE_SHIPMENT] Empresa:', {
       name: tenant.company_name,
-      document: tenant.company_document,
+      document: tenant.company_document ? 'Sim' : 'Não',
       cep: tenant.company_cep,
       city: tenant.company_city
     });
 
     // Validar dados obrigatórios da empresa
-    const missingFields = [];
-    if (!tenant.company_name) missingFields.push('Nome da empresa');
-    if (!tenant.company_document) missingFields.push('CNPJ da empresa');
-    if (!tenant.company_email) missingFields.push('E-mail da empresa');
-    if (!tenant.company_phone) missingFields.push('Telefone da empresa');
-    if (!tenant.company_address) missingFields.push('Endereço da empresa');
-    if (!tenant.company_number) missingFields.push('Número do endereço');
-    if (!tenant.company_district) missingFields.push('Bairro da empresa');
-    if (!tenant.company_city) missingFields.push('Cidade da empresa');
-    if (!tenant.company_state) missingFields.push('Estado da empresa');
-    if (!tenant.company_cep) missingFields.push('CEP da empresa');
+    const requiredCompanyFields = [
+      { field: 'company_name', label: 'Nome da empresa', value: tenant.company_name },
+      { field: 'company_document', label: 'CNPJ da empresa', value: tenant.company_document },
+      { field: 'company_email', label: 'E-mail da empresa', value: tenant.company_email },
+      { field: 'company_phone', label: 'Telefone da empresa', value: tenant.company_phone },
+      { field: 'company_address', label: 'Endereço da empresa', value: tenant.company_address },
+      { field: 'company_number', label: 'Número do endereço', value: tenant.company_number },
+      { field: 'company_district', label: 'Bairro da empresa', value: tenant.company_district },
+      { field: 'company_city', label: 'Cidade da empresa', value: tenant.company_city },
+      { field: 'company_state', label: 'Estado da empresa', value: tenant.company_state },
+      { field: 'company_cep', label: 'CEP da empresa', value: tenant.company_cep }
+    ];
+
+    const missingFields = requiredCompanyFields.filter(field => !field.value || field.value.trim() === '');
 
     if (missingFields.length > 0) {
-      throw new Error(`Dados da empresa incompletos. Campos obrigatórios faltando: ${missingFields.join(', ')}. Por favor, complete os dados da empresa nas configurações.`);
+      const fieldLabels = missingFields.map(f => f.label).join(', ');
+      throw new Error(`Dados da empresa incompletos. Complete os seguintes campos nas configurações: ${fieldLabels}`);
+    }
+
+    // Validar e preparar CNPJ da empresa
+    const companyCNPJ = validateCNPJ(tenant.company_document);
+    if (!companyCNPJ) {
+      throw new Error(`CNPJ da empresa inválido: ${tenant.company_document}. O CNPJ deve ter 14 dígitos.`);
     }
 
     // Preparar dados do remetente (empresa)
-    const senderCPF = generateValidCPF(); // CPF válido para pessoa jurídica
-    const companyCNPJ = tenant.company_document.replace(/[^0-9]/g, '');
-    
-    // Preparar dados do destinatário (cliente)
-    let recipientCPF;
-    if (customer?.cpf) {
-      const cleanCPF = customer.cpf.replace(/[^0-9]/g, '');
-      recipientCPF = isValidCPF(cleanCPF) ? cleanCPF : generateValidCPF();
-    } else {
-      recipientCPF = generateValidCPF();
-    }
+    const senderData = {
+      name: tenant.company_name.substring(0, 50), // Limite da API
+      phone: cleanPhone(tenant.company_phone),
+      email: tenant.company_email,
+      document: validateOrGenerateCPF(), // CPF válido para pessoa jurídica
+      company_document: companyCNPJ,
+      state_register: "", // Inscrição Estadual (opcional)
+      address: tenant.company_address.substring(0, 60), // Limite da API
+      complement: (tenant.company_complement || "").substring(0, 30),
+      number: tenant.company_number.substring(0, 10),
+      district: tenant.company_district.substring(0, 30),
+      city: tenant.company_city.substring(0, 30),
+      state_abbr: tenant.company_state.toUpperCase(),
+      country_id: "BR",
+      postal_code: validateCEP(tenant.company_cep)
+    };
 
-    // Payload completo para criar remessa
-    const shipmentData = {
+    // Preparar dados do destinatário (cliente)
+    const recipientData = {
+      name: (customer?.name || order.customer_name || "Cliente").substring(0, 50),
+      phone: cleanPhone(customer?.phone || order.customer_phone || "11999999999"),
+      email: customer?.email || "cliente@exemplo.com",
+      document: validateOrGenerateCPF(customer?.cpf),
+      address: (customer?.street || order.customer_street || "Rua Exemplo, 100").substring(0, 60),
+      complement: (customer?.complement || order.customer_complement || "").substring(0, 30),
+      number: (customer?.number || order.customer_number || "100").substring(0, 10),
+      district: "Centro", // Bairro padrão
+      city: (customer?.city || order.customer_city || "São Paulo").substring(0, 30),
+      state_abbr: (customer?.state || order.customer_state || "SP").toUpperCase(),
+      country_id: "BR",
+      postal_code: validateCEP(customer?.cep || order.customer_cep || "01310100")
+    };
+
+    // Preparar dados da remessa
+    const totalAmount = parseFloat(order.total_amount || "1");
+    const insuranceValue = Math.max(totalAmount, 50); // Mínimo R$ 50 para seguro
+
+    const shipmentPayload = {
       service: 1, // PAC
-      from: {
-        name: tenant.company_name,
-        phone: tenant.company_phone.replace(/[^0-9]/g, ''),
-        email: tenant.company_email,
-        document: senderCPF,
-        company_document: companyCNPJ,
-        state_register: "",
-        address: tenant.company_address,
-        complement: tenant.company_complement || "",
-        number: tenant.company_number,
-        district: tenant.company_district,
-        city: tenant.company_city,
-        state_abbr: tenant.company_state,
-        country_id: "BR",
-        postal_code: tenant.company_cep.replace(/[^0-9]/g, '')
-      },
-      to: {
-        name: customer?.name || order.customer_name || "Cliente",
-        phone: (customer?.phone || order.customer_phone || "11999999999").replace(/[^0-9]/g, ''),
-        email: customer?.email || "cliente@exemplo.com",
-        document: recipientCPF,
-        address: customer?.street || order.customer_street || "Rua Exemplo",
-        complement: customer?.complement || order.customer_complement || "",
-        number: customer?.number || order.customer_number || "100",
-        district: "Centro", // Bairro padrão
-        city: customer?.city || order.customer_city || "São Paulo",
-        state_abbr: customer?.state || order.customer_state || "SP",
-        country_id: "BR",
-        postal_code: (customer?.cep || order.customer_cep || "01310100").replace(/[^0-9]/g, '')
-      },
+      from: senderData,
+      to: recipientData,
       products: [
         {
           name: "Produto do Pedido",
           quantity: 1,
-          unitary_value: parseFloat(order.total_amount || "1")
+          unitary_value: totalAmount
         }
       ],
       volumes: [
@@ -370,23 +460,27 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         }
       ],
       options: {
-        insurance_value: parseFloat(order.total_amount || "0"),
+        insurance_value: insuranceValue,
         receipt: false,
         own_hand: false
       }
     };
 
-    console.log('📋 Dados da remessa preparados:', {
-      from_document: shipmentData.from.document,
-      from_company_document: shipmentData.from.company_document,
-      to_document: shipmentData.to.document,
-      service: shipmentData.service
+    console.log('📋 [CREATE_SHIPMENT] Payload preparado:', {
+      from_document: shipmentPayload.from.document,
+      from_company_document: shipmentPayload.from.company_document,
+      to_document: shipmentPayload.to.document,
+      from_cep: shipmentPayload.from.postal_code,
+      to_cep: shipmentPayload.to.postal_code,
+      service: shipmentPayload.service,
+      insurance_value: shipmentPayload.options.insurance_value
     });
 
     // Fazer requisição para criar remessa
-    console.log('🌐 Enviando requisição para:', `${baseUrl}/api/v2/me/cart`);
+    const apiUrl = `${baseUrl}/api/v2/me/cart`;
+    console.log('🌐 [CREATE_SHIPMENT] Fazendo requisição para:', apiUrl);
     
-    const response = await fetch(`${baseUrl}/api/v2/me/cart`, {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -394,37 +488,56 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         'Authorization': `Bearer ${integration.access_token}`,
         'User-Agent': 'Aplicacao (contato@empresa.com)'
       },
-      body: JSON.stringify(shipmentData)
+      body: JSON.stringify(shipmentPayload)
     });
 
-    const result = await response.json();
+    let result;
+    try {
+      result = await response.json();
+    } catch (jsonError) {
+      console.error('❌ [CREATE_SHIPMENT] Erro ao fazer parse da resposta:', jsonError);
+      throw new Error('Resposta inválida da API do Melhor Envio');
+    }
     
-    console.log('📡 Resposta da API ME:', {
+    console.log('📡 [CREATE_SHIPMENT] Resposta da API:', {
       status: response.status,
       ok: response.ok,
-      result: result
+      hasResult: !!result,
+      resultKeys: result ? Object.keys(result) : []
     });
     
     if (!response.ok) {
-      console.error('❌ Erro na API do Melhor Envio:', {
+      console.error('❌ [CREATE_SHIPMENT] Erro na API do Melhor Envio:', {
         status: response.status,
         statusText: response.statusText,
         body: result
       });
       
-      // Extrair mensagem de erro mais específica
-      let errorMessage = 'Erro ao criar remessa';
-      if (result.message) {
+      // Extrair mensagem de erro específica
+      let errorMessage = 'Erro ao criar remessa no Melhor Envio';
+      
+      if (result?.message) {
         errorMessage = result.message;
-      } else if (result.errors) {
-        const errors = Object.entries(result.errors).map(([key, value]) => `${key}: ${value}`);
-        errorMessage = errors.join('; ');
+      } else if (result?.errors && typeof result.errors === 'object') {
+        const errorMessages = [];
+        for (const [field, messages] of Object.entries(result.errors)) {
+          if (Array.isArray(messages)) {
+            errorMessages.push(`${field}: ${messages.join(', ')}`);
+          } else {
+            errorMessages.push(`${field}: ${messages}`);
+          }
+        }
+        if (errorMessages.length > 0) {
+          errorMessage = errorMessages.join('; ');
+        }
+      } else if (result?.error) {
+        errorMessage = result.error;
       }
       
       throw new Error(errorMessage);
     }
 
-    console.log('✅ Remessa criada com sucesso:', result);
+    console.log('✅ [CREATE_SHIPMENT] Remessa criada com sucesso');
 
     return new Response(
       JSON.stringify({ 
@@ -439,11 +552,12 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
     );
 
   } catch (error) {
-    console.error('❌ Erro ao criar remessa:', {
+    console.error('❌ [CREATE_SHIPMENT] Erro crítico:', {
       message: error.message,
       stack: error.stack,
       orderId: orderId,
-      tenantId: tenantId
+      tenantId: tenantId,
+      timestamp: new Date().toISOString()
     });
     
     return new Response(
