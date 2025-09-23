@@ -134,13 +134,16 @@ serve(async (req) => {
       timestamp: new Date().toISOString()
     });
     
+    // SEMPRE retornar 200 para mostrar erro real no front-end
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message || 'Erro interno do servidor'
+        stage: action || 'unknown',
+        error: error.message || 'Erro interno do servidor',
+        details: error.stack
       }),
       { 
-        status: 500, 
+        status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
@@ -437,7 +440,21 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       console.error('❌ [CREATE_SHIPMENT] Erro completo da API:', JSON.stringify(result, null, 2));
       console.error('❌ [CREATE_SHIPMENT] Payload enviado:', JSON.stringify(shipmentPayload, null, 2));
       
-      throw new Error(errorMessage);
+      // SEMPRE retornar 200 para mostrar erro real no front-end
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          stage: 'create_shipment',
+          error: errorMessage,
+          details: result,
+          payload_sent: shipmentPayload,
+          api_status: response.status
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     console.log('✅ [CREATE_SHIPMENT] Remessa criada com sucesso');
@@ -445,6 +462,7 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
     return new Response(
       JSON.stringify({ 
         success: true, 
+        stage: 'create_shipment',
         shipment: result,
         message: 'Remessa criada com sucesso no Melhor Envio'
       }),
@@ -466,10 +484,12 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message || 'Erro interno ao criar remessa'
+        stage: 'create_shipment',
+        error: error.message || 'Erro interno ao criar remessa',
+        details: error.stack
       }),
       { 
-        status: 500, 
+        status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
@@ -531,12 +551,26 @@ async function buyShipment(integration: any, baseUrl: string, shipmentId: string
         errorMessage = errors.join('; ');
       }
       
-      throw new Error(errorMessage);
+      // SEMPRE retornar 200 para mostrar erro real no front-end
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          stage: 'buy_shipment', 
+          error: errorMessage,
+          details: result,
+          api_status: response.status
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     return new Response(
       JSON.stringify({ 
-        success: true, 
+        success: true,
+        stage: 'buy_shipment', 
         purchase: result,
         message: 'Remessa comprada com sucesso'
       }),
@@ -556,10 +590,12 @@ async function buyShipment(integration: any, baseUrl: string, shipmentId: string
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message || 'Erro interno ao comprar remessa'
+        stage: 'buy_shipment',
+        error: error.message || 'Erro interno ao comprar remessa',
+        details: error.stack
       }),
       { 
-        status: 500, 
+        status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
@@ -613,12 +649,26 @@ async function getLabel(integration: any, baseUrl: string, shipmentId: string) {
         errorMessage = errors.join('; ');
       }
       
-      throw new Error(errorMessage);
+      // SEMPRE retornar 200 para mostrar erro real no front-end
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          stage: 'get_label',
+          error: errorMessage,
+          details: result,
+          api_status: response.status
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     return new Response(
       JSON.stringify({ 
-        success: true, 
+        success: true,
+        stage: 'get_label', 
         data: result,
         message: 'Etiqueta obtida com sucesso'
       }),
@@ -638,10 +688,12 @@ async function getLabel(integration: any, baseUrl: string, shipmentId: string) {
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message || 'Erro interno ao obter etiqueta'
+        stage: 'get_label',
+        error: error.message || 'Erro interno ao obter etiqueta',
+        details: error.stack
       }),
       { 
-        status: 500, 
+        status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
@@ -695,12 +747,26 @@ async function trackShipment(integration: any, baseUrl: string, trackingCode: st
         errorMessage = errors.join('; ');
       }
       
-      throw new Error(errorMessage);
+      // SEMPRE retornar 200 para mostrar erro real no front-end
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          stage: 'track_shipment',
+          error: errorMessage,
+          details: result,
+          api_status: response.status
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     return new Response(
       JSON.stringify({ 
-        success: true, 
+        success: true,
+        stage: 'track_shipment', 
         tracking: result,
         message: 'Rastreamento obtido com sucesso'
       }),
@@ -720,10 +786,12 @@ async function trackShipment(integration: any, baseUrl: string, trackingCode: st
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message || 'Erro interno ao rastrear remessa'
+        stage: 'track_shipment',
+        error: error.message || 'Erro interno ao rastrear remessa',
+        details: error.stack
       }),
       { 
-        status: 500, 
+        status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
