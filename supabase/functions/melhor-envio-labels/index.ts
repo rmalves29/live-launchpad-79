@@ -150,6 +150,27 @@ serve(async (req) => {
   }
 });
 
+// Função auxiliar para validar e identificar tipo de documento
+function validateDocument(document?: string): { document: string, company: boolean } {
+  if (!document) {
+    return { document: '12345678909', company: false }; // CPF genérico
+  }
+  
+  const cleanDoc = document.replace(/[^0-9]/g, '');
+  
+  if (cleanDoc.length === 11) {
+    // CPF - Pessoa Física
+    return { document: cleanDoc, company: false };
+  } else if (cleanDoc.length === 14) {
+    // CNPJ - Pessoa Jurídica  
+    return { document: cleanDoc, company: true };
+  } else {
+    // Documento inválido, usar CPF genérico
+    console.warn(`Documento inválido: ${document}. Usando CPF genérico.`);
+    return { document: '12345678909', company: false };
+  }
+}
+
 // Função auxiliar para gerar CPF válido aleatório
 function validateOrGenerateCPF(cpf?: string): string {
   if (cpf) {
@@ -321,6 +342,17 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       weight: 0.3
     }];
 
+    // Validar documentos do remetente e destinatário
+    const fromDoc = validateDocument(tenant.company_document);
+    const toDoc = validateDocument(customer?.cpf);
+
+    console.log('📋 [CREATE_SHIPMENT] Documentos validados:', {
+      from: fromDoc,
+      to: toDoc,
+      tenant_doc: tenant.company_document,
+      customer_cpf: customer?.cpf
+    });
+
     // Montar payload correto conforme especificação do Melhor Envio
     const shipmentPayload = {
       service: serviceId,
@@ -335,8 +367,8 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         city: (tenant.company_city || "São Paulo").substring(0, 30),
         state_abbr: (tenant.company_state || "SP").toUpperCase().substring(0, 2),
         country_id: "BR",
-        // CNPJ/CPF da empresa (obrigatório)
-        document: tenant.company_document || "11222333000181"
+        document: fromDoc.document,
+        company: fromDoc.company
       },
       to: {
         name: (customer?.name || order.customer_name || "Cliente").substring(0, 50),
@@ -349,8 +381,8 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         city: (customer?.city || order.customer_city || "São Paulo").substring(0, 30),
         state_abbr: (customer?.state || order.customer_state || "SP").toUpperCase().substring(0, 2),
         country_id: "BR",
-        // CPF do destinatário (obrigatório conforme erro da API)
-        document: customer?.cpf ? validateOrGenerateCPF(customer.cpf) : "12345678909"
+        document: toDoc.document,
+        company: toDoc.company
       },
       volumes: [{
         weight: Math.max(0.3, products.reduce((sum, p) => sum + (p.weight || 0), 0)),
