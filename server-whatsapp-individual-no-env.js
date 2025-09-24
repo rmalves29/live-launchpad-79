@@ -386,25 +386,15 @@ app.get('/list-all-groups', async (req, res) => {
     const groups = chats.filter(chat => chat.isGroup);
     console.log(`👥 Total de grupos encontrados: ${groups.length}`);
     
-    const groupList = await Promise.all(groups.map(async (group) => {
-      try {
-        const participants = await group.getParticipants();
-        return {
-          id: group.id._serialized,
-          name: group.name,
-          participantCount: participants.length,
-          isActive: !group.archived
-        };
-      } catch (error) {
-        console.error(`❌ Erro ao obter participantes do grupo ${group.name}:`, error);
-        return {
-          id: group.id._serialized,
-          name: group.name,
-          participantCount: 0,
-          isActive: !group.archived
-        };
-      }
-    }));
+    const groupList = groups.map((group) => {
+      return {
+        id: group.id._serialized,
+        name: group.name,
+        participantCount: group.participants ? group.participants.length : 0,
+        isActive: !group.archived,
+        description: group.description || ''
+      };
+    });
 
     console.log(`✅ Lista de grupos processada: ${groupList.length} grupos`);
     
