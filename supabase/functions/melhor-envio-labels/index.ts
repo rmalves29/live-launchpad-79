@@ -367,8 +367,11 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         city: (tenant.company_city || "São Paulo").substring(0, 30),
         state_abbr: (tenant.company_state || "SP").toUpperCase().substring(0, 2),
         country_id: "BR",
-        document: fromDoc.document,
-        company: fromDoc.company
+        company: fromDoc.company,
+        ...(fromDoc.company ? 
+          { company_document: fromDoc.document } : 
+          { document: fromDoc.document }
+        )
       },
       to: {
         name: (customer?.name || order.customer_name || "Cliente").substring(0, 50),
@@ -381,8 +384,11 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
         city: (customer?.city || order.customer_city || "São Paulo").substring(0, 30),
         state_abbr: (customer?.state || order.customer_state || "SP").toUpperCase().substring(0, 2),
         country_id: "BR",
-        document: toDoc.document,
-        company: toDoc.company
+        company: toDoc.company,
+        ...(toDoc.company ? 
+          { company_document: toDoc.document } : 
+          { document: toDoc.document }
+        )
       },
       volumes: [{
         weight: Math.max(0.3, products.reduce((sum, p) => sum + (p.weight || 0), 0)),
