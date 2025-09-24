@@ -112,44 +112,118 @@ export default function SendFlow() {
     setIsLoadingGroups(true);
     try {
       console.log('🔍 Carregando todos os grupos do WhatsApp...');
+      console.log('🌐 Tentando conectar com servidor na porta 3333...');
+      
+      // Criar AbortController para timeout
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => timeoutController.abort(), 5000); // 5 segundos
       
       // Verificar se o servidor está online primeiro
-      const statusResponse = await fetch(`http://localhost:3333/status`);
-      if (!statusResponse.ok) {
-        throw new Error('Servidor WhatsApp não está rodando na porta 3333');
-      }
-      
-      const statusData = await statusResponse.json();
-      console.log('📊 Status do servidor:', statusData);
-      
-      if (!statusData.whatsapp?.ready) {
-        throw new Error('WhatsApp não está conectado no servidor');
+      let statusResponse;
+      try {
+        statusResponse = await fetch(`http://localhost:3333/status`, {
+          signal: timeoutController.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        console.error('❌ Erro de conexão com servidor:', fetchError);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Timeout na conexão com servidor WhatsApp na porta 3333');
+        }
+        throw new Error('Não foi possível conectar ao servidor WhatsApp na porta 3333. Verifique se o servidor está rodando.');
       }
 
+      if (!statusResponse.ok) {
+        const errorText = await statusResponse.text();
+        console.error('❌ Status response não OK:', statusResponse.status, errorText);
+        throw new Error(`Servidor WhatsApp retornou erro ${statusResponse.status}: ${errorText}`);
+      }
+      
+      let statusData;
+      try {
+        statusData = await statusResponse.json();
+        console.log('📊 Status do servidor:', statusData);
+      } catch (parseError) {
+        console.error('❌ Erro ao fazer parse do status:', parseError);
+        throw new Error('Resposta inválida do servidor WhatsApp');
+      }
+      
+      if (!statusData.whatsapp?.ready) {
+        console.error('❌ WhatsApp não conectado:', statusData.whatsapp);
+        throw new Error('WhatsApp não está conectado no servidor. Escaneie o QR Code primeiro.');
+      }
+
+      console.log('✅ Servidor conectado, listando grupos...');
+
+      // Criar novo AbortController para a requisição de grupos
+      const groupsController = new AbortController();
+      const groupsTimeoutId = setTimeout(() => groupsController.abort(), 10000); // 10 segundos
+      
       // Fazer chamada para o servidor Node.js para listar todos os grupos
-      const response = await fetch(`http://localhost:3333/list-all-groups`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      });
+      let response;
+      try {
+        response = await fetch(`http://localhost:3333/list-all-groups`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: groupsController.signal
+        });
+        clearTimeout(groupsTimeoutId);
+      } catch (fetchError) {
+        clearTimeout(groupsTimeoutId);
+        console.error('❌ Erro ao buscar grupos:', fetchError);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Timeout ao listar grupos do WhatsApp');
+        }
+        throw new Error('Falha na comunicação com servidor para listar grupos');
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Erro ${response.status}: ${errorText}`);
+        console.error('❌ Erro na resposta de grupos:', response.status, errorText);
+        throw new Error(`Erro ${response.status} ao listar grupos: ${errorText}`);
       }
       
-      const data = await response.json();
-      console.log('📋 Grupos encontrados:', data);
+      let data;
+      try {
+        data = await response.json();
+        console.log('📋 Resposta completa dos grupos:', data);
+      } catch (parseError) {
+        console.error('❌ Erro ao fazer parse da resposta de grupos:', parseError);
+        throw new Error('Resposta inválida ao listar grupos');
+      }
       
-      if (data.success && data.groups) {
+      if (data.success && data.groups && Array.isArray(data.groups)) {
+        console.log(`✅ ${data.groups.length} grupos carregados com sucesso`);
         setWhatsappGroups(data.groups);
-        toast.success(`${data.groups.length} grupos encontrados`);
-      } else {
+        toast.success(`✅ ${data.groups.length} grupos WhatsApp encontrados`);
+      } else if (data.success && (!data.groups || data.groups.length === 0)) {
+        console.log('ℹ️ Nenhum grupo encontrado (array vazio ou null)');
         setWhatsappGroups([]);
-        toast.info('Nenhum grupo encontrado');
+        toast.info('Nenhum grupo WhatsApp encontrado');
+      } else {
+        console.error('❌ Resposta inesperada:', data);
+        setWhatsappGroups([]);
+        toast.error('Resposta inesperada do servidor');
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar grupos WhatsApp:', error);
-      toast.error(`Erro: ${error.message}`);
+      console.error('❌ ERRO COMPLETO ao carregar grupos WhatsApp:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      // Mensagem mais específica baseada no tipo de erro
+      let userMessage = error.message;
+      if (error.message.includes('conectar')) {
+        userMessage = '🔌 Servidor WhatsApp offline. Inicie o servidor na porta 3333.';
+      } else if (error.message.includes('QR Code')) {
+        userMessage = '📱 Conecte o WhatsApp escaneando o QR Code no servidor.';
+      } else if (error.message.includes('Timeout')) {
+        userMessage = '⏱️ Timeout na conexão. Verifique se o servidor está respondendo.';
+      }
+      
+      toast.error(userMessage);
       setWhatsappGroups([]);
     } finally {
       setIsLoadingGroups(false);
