@@ -367,6 +367,63 @@ app.post('/send', async (req, res) => {
   }
 });
 
+// Listar todos os grupos WhatsApp
+app.get('/list-all-groups', async (req, res) => {
+  console.log('📋 Requisição para listar todos os grupos');
+  
+  try {
+    if (!clientReady) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'WhatsApp não está conectado' 
+      });
+    }
+
+    console.log('🔍 Buscando todos os grupos...');
+    const chats = await client.getChats();
+    console.log(`📱 Total de chats encontrados: ${chats.length}`);
+    
+    const groups = chats.filter(chat => chat.isGroup);
+    console.log(`👥 Total de grupos encontrados: ${groups.length}`);
+    
+    const groupList = await Promise.all(groups.map(async (group) => {
+      try {
+        const participants = await group.getParticipants();
+        return {
+          id: group.id._serialized,
+          name: group.name,
+          participantCount: participants.length,
+          isActive: !group.archived
+        };
+      } catch (error) {
+        console.error(`❌ Erro ao obter participantes do grupo ${group.name}:`, error);
+        return {
+          id: group.id._serialized,
+          name: group.name,
+          participantCount: 0,
+          isActive: !group.archived
+        };
+      }
+    }));
+
+    console.log(`✅ Lista de grupos processada: ${groupList.length} grupos`);
+    
+    res.json({
+      success: true,
+      groups: groupList,
+      total: groupList.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao listar grupos:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      details: 'Verifique se o WhatsApp está conectado'
+    });
+  }
+});
+
 /* ============================ INICIALIZAÇÃO ============================ */
 console.log('🚀 Iniciando servidor WhatsApp individual...');
 console.log(`📍 Tenant: ${TENANT_SLUG} (${TENANT_ID})`);
@@ -377,6 +434,7 @@ app.listen(PORT, () => {
   console.log(`🌐 Servidor rodando na porta ${PORT}`);
   console.log(`📋 Status: http://localhost:${PORT}/status`);
   console.log(`📤 Enviar: POST http://localhost:${PORT}/send`);
+  console.log(`📋 Listar grupos: GET http://localhost:${PORT}/list-all-groups`);
 });
 
 // Graceful shutdown
