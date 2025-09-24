@@ -414,6 +414,86 @@ app.get('/list-all-groups', async (req, res) => {
   }
 });
 
+// Enviar mensagem para grupo WhatsApp
+app.post('/send-to-group', async (req, res) => {
+  console.log('📤 Requisição para enviar mensagem para grupo');
+  
+  try {
+    if (!clientReady) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'WhatsApp não está conectado' 
+      });
+    }
+
+    const { groupId, message, imageUrl } = req.body;
+    
+    if (!groupId || !message) {
+      return res.status(400).json({ 
+        error: 'Group ID e mensagem são obrigatórios' 
+      });
+    }
+
+    console.log(`📋 Enviando para grupo: ${groupId}`);
+    console.log(`💬 Mensagem: ${message.substring(0, 50)}...`);
+    
+    // Verificar se o grupo existe
+    const chats = await client.getChats();
+    const group = chats.find(chat => chat.id._serialized === groupId && chat.isGroup);
+    
+    if (!group) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Grupo não encontrado',
+        groupId: groupId
+      });
+    }
+
+    console.log(`👥 Grupo encontrado: ${group.name} (${group.participants ? group.participants.length : 0} participantes)`);
+
+    // Enviar mensagem
+    let result;
+    if (imageUrl) {
+      console.log(`🖼️ Enviando imagem: ${imageUrl}`);
+      const media = await MessageMedia.fromUrl(imageUrl);
+      result = await client.sendMessage(groupId, media, { caption: message });
+    } else {
+      result = await client.sendMessage(groupId, message);
+    }
+
+    console.log(`✅ Mensagem enviada com sucesso para ${group.name}`);
+
+    // Salvar no banco de dados (mensagem para grupo)
+    await supa('/whatsapp_messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: TENANT_ID, 
+        phone: groupId, // Usar o ID do grupo como phone para diferenciação
+        message: message,
+        type: 'outgoing_group',
+        sent_at: new Date().toISOString(),
+        group_name: group.name
+      })
+    });
+
+    res.json({ 
+      success: true, 
+      groupId: groupId,
+      groupName: group.name,
+      messageId: result.id._serialized,
+      participantCount: group.participants ? group.participants.length : 0
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao enviar mensagem para grupo:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      details: 'Erro ao enviar mensagem para o grupo'
+    });
+  }
+});
+
 /* ============================ INICIALIZAÇÃO ============================ */
 console.log('🚀 Iniciando servidor WhatsApp individual...');
 console.log(`📍 Tenant: ${TENANT_SLUG} (${TENANT_ID})`);
@@ -425,6 +505,7 @@ app.listen(PORT, () => {
   console.log(`📋 Status: http://localhost:${PORT}/status`);
   console.log(`📤 Enviar: POST http://localhost:${PORT}/send`);
   console.log(`📋 Listar grupos: GET http://localhost:${PORT}/list-all-groups`);
+  console.log(`📤 Enviar para grupo: POST http://localhost:${PORT}/send-to-group`);
 });
 
 // Graceful shutdown
