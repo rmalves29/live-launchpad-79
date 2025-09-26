@@ -1111,18 +1111,24 @@ const Checkout = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="md:col-span-1">
                         <label className="text-sm font-medium mb-1 block">CEP</label>
-                        <div className="flex gap-2">
-                          <Input
-                            placeholder="00000-000"
-                            value={customerData.cep}
-                            onChange={(e) => {
-                              const newCep = e.target.value;
-                              setCustomerData({...customerData, cep: newCep});
-                              if (newCep.replace(/[^0-9]/g, '').length === 8) {
-                                calculateShipping(newCep, order);
-                              }
-                            }}
-                          />
+                         <div className="flex gap-2">
+                           <Input
+                             placeholder="00000-000"
+                             value={customerData.cep}
+                             onChange={(e) => {
+                               const newCep = e.target.value;
+                               setCustomerData({...customerData, cep: newCep});
+                               if (newCep.replace(/[^0-9]/g, '').length === 8) {
+                                 calculateShipping(newCep, order);
+                               }
+                             }}
+                             onBlur={(e) => {
+                               const cep = e.target.value;
+                               if (cep && cep.replace(/[^0-9]/g, '').length === 8) {
+                                 calculateShipping(cep, order);
+                               }
+                             }}
+                           />
                           <Button 
                             variant="outline" 
                             size="sm"
