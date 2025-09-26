@@ -7,6 +7,7 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { ShoppingCart, Eye, CreditCard, Calendar, Phone, Package } from 'lucide-react';
+import { formatPhoneForDisplay } from '@/lib/phone-utils';
 
 interface Order {
   id: number;
@@ -145,13 +146,7 @@ export default function TenantOrders() {
   };
 
   const formatPhone = (phone: string) => {
-    const cleaned = phone.replace(/\D/g, '');
-    if (cleaned.length === 11) {
-      return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 3)} ${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
-    } else if (cleaned.length === 10) {
-      return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 6)}-${cleaned.slice(6)}`;
-    }
-    return phone;
+    return formatPhoneForDisplay(phone);
   };
 
   const formatDate = (dateString: string) => {

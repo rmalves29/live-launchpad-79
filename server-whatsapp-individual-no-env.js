@@ -58,8 +58,31 @@ try {
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 function fmtMoney(v) { return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`; }
 
-// Normalização de DDD: se DDD < 31 adiciona 9, se >= 31 remove 9
-function normalizeDDD(phone) {
+// Normalização para armazenamento (sem DDI)
+function normalizeForStorage(phone) {
+  if (!phone) return phone;
+  
+  const cleanPhone = phone.replace(/\D/g, '');
+  let phoneWithoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
+  
+  if (phoneWithoutDDI.length < 10) {
+    return phoneWithoutDDI;
+  }
+  
+  const ddd = parseInt(phoneWithoutDDI.substring(0, 2));
+  const restOfNumber = phoneWithoutDDI.substring(2);
+  
+  if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
+    phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
+  } else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
+    phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + phoneWithoutDDI.substring(3);
+  }
+  
+  return phoneWithoutDDI;
+}
+
+// Normalização para envio (com DDI) - renomeando a função original
+function normalizeForSending(phone) {
   if (!phone) return phone;
   const cleanPhone = phone.replace(/\D/g, '');
   let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
@@ -73,6 +96,11 @@ function normalizeDDD(phone) {
     }
   }
   return normalizedPhone;
+}
+
+// Normalização de DDD: se DDD < 31 adiciona 9, se >= 31 remove 9
+function normalizeDDD(phone) {
+  return normalizeForSending(phone);
 }
 
 /* ============================ SUPABASE ============================ */
@@ -188,7 +216,7 @@ client.on('message', async (msg) => {
       method: 'POST',
       body: JSON.stringify({
         tenant_id: TENANT_ID,
-        phone: msg.from,
+        phone: normalizeForStorage(msg.from),
         message: msg.body,
         type: 'incoming',
         received_at: new Date().toISOString()
@@ -278,7 +306,7 @@ async function upsertOrderForCart(cart, customerPhone, eventDate) {
 }
 
 async function processProductCode(phone, product) {
-  const normalizedPhone = normalizeDDD(phone);
+  const normalizedPhone = normalizeForStorage(phone);
   const today = new Date().toISOString().split('T')[0];
 
   try {
@@ -350,17 +378,17 @@ app.post('/send', async (req, res) => {
     const { number, message } = req.body;
     if (!number || !message) return res.status(400).json({ error: 'Número e mensagem são obrigatórios' });
 
-    const normalizedNumber = normalizeDDD(number);
+    const normalizedNumber = normalizeForSending(number);
     await client.sendMessage(`${normalizedNumber}@c.us`, message);
 
     await supa('/whatsapp_messages', {
       method: 'POST',
       body: JSON.stringify({
-        tenant_id: TENANT_ID, phone: normalizedNumber, message, type: 'outgoing', sent_at: new Date().toISOString()
+        tenant_id: TENANT_ID, phone: normalizeForStorage(number), message, type: 'outgoing', sent_at: new Date().toISOString()
       })
     });
 
-    res.json({ success: true, phone: normalizedNumber });
+    res.json({ success: true, phone: normalizeForStorage(number) });
   } catch (error) {
     console.error('❌ Erro ao enviar mensagem:', error);
     res.status(500).json({ error: error.message });

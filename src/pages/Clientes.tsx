@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenantContext } from '@/contexts/TenantContext';
+import { normalizeForStorage, formatPhoneForDisplay } from '@/lib/phone-utils';
 interface Customer {
   id: number;
   phone: string;
@@ -72,11 +73,11 @@ const Clientes = () => {
   const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
 
   const normalizePhone = (phone: string): string => {
-    const digits = phone.replace(/[^0-9]/g, '');
-    if (!digits.startsWith('55')) {
-      return '55' + digits;
-    }
-    return digits;
+    return normalizeForStorage(phone);
+  };
+
+  const formatPhone = (phone: string): string => {
+    return formatPhoneForDisplay(phone);
   };
 
   const loadCustomers = async () => {
@@ -282,21 +283,6 @@ const Clientes = () => {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
-  };
-
-  const formatPhone = (phone: string) => {
-    // Display complete number without DDD adjustments - format as +55 (XX) XXXXX-XXXX
-    const digits = phone.replace(/\D/g, '');
-    if (digits.startsWith('55') && digits.length >= 12) {
-      const ddd = digits.slice(2, 4);
-      const number = digits.slice(4);
-      if (number.length === 9) {
-        return `+55 (${ddd}) ${number.slice(0, 5)}-${number.slice(5)}`;
-      } else if (number.length === 8) {
-        return `+55 (${ddd}) ${number.slice(0, 4)}-${number.slice(4)}`;
-      }
-    }
-    return phone; // Return original if doesn't match expected format
   };
 
   const formatCurrency = (value: number) => {
@@ -520,9 +506,9 @@ const Clientes = () => {
                                    )}
                                  </div>
                                </TableCell>
-                              <TableCell className="font-mono">
-                                {formatPhone(customer.phone)}
-                              </TableCell>
+                               <TableCell className="font-mono">
+                                 {formatPhone(customer.phone)}
+                               </TableCell>
                               <TableCell className="text-right">
                                 <div className="flex justify-end space-x-2">
                                   <Dialog>
@@ -554,7 +540,7 @@ const Clientes = () => {
                                              </div>
                                              <div>
                                                <Label className="text-sm font-medium">Telefone</Label>
-                                               <p className="text-sm font-mono">{selectedCustomer ? formatPhone(selectedCustomer.phone) : ''}</p>
+                                                <p className="text-sm font-mono">{selectedCustomer ? formatPhone(selectedCustomer.phone) : ''}</p>
                                              </div>
                                              <div>
                                                <Label className="text-sm font-medium">E-mail</Label>

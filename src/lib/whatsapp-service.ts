@@ -1,4 +1,5 @@
 // Serviço para integração com o servidor WhatsApp
+import { normalizeForSending } from './phone-utils';
 const WHATSAPP_SERVER_URL = 'http://localhost:3333';
 
 interface WhatsAppResponse {
@@ -48,21 +49,21 @@ class WhatsAppService {
 
   async sendItemAdded(orderData: OrderData): Promise<WhatsAppResponse> {
     return this.makeRequest('/api/test/item-added', {
-      phone: orderData.customer_phone,
+      phone: normalizeForSending(orderData.customer_phone),
       product: orderData.product,
     });
   }
 
   async sendItemCancelled(orderData: OrderData): Promise<WhatsAppResponse> {
     return this.makeRequest('/api/test/item-cancelled', {
-      phone: orderData.customer_phone,
+      phone: normalizeForSending(orderData.customer_phone),
       product: orderData.product,
     });
   }
 
   async sendOrderCreated(orderData: OrderData): Promise<WhatsAppResponse> {
     return this.makeRequest('/api/test/order-created', {
-      phone: orderData.customer_phone,
+      phone: normalizeForSending(orderData.customer_phone),
       customer_name: orderData.customer_name,
       order_id: orderData.order_id,
       total_amount: orderData.total_amount,
@@ -72,7 +73,7 @@ class WhatsAppService {
   async broadcastByPhones(phones: string[], message: string): Promise<WhatsAppResponse> {
     return this.makeRequest('/api/broadcast/by-phones', {
       key: 'whatsapp-broadcast-2024', // BROADCAST_SECRET
-      phones,
+      phones: phones.map(phone => normalizeForSending(phone)),
       message,
       interval: 2000,
       batchSize: 5,
@@ -93,14 +94,14 @@ class WhatsAppService {
 
   async sendSimpleMessage(phone: string, message: string): Promise<WhatsAppResponse> {
     return this.makeRequest('/send', {
-      number: phone,
+      number: normalizeForSending(phone),
       message,
     });
   }
 
   async addLabel(phone: string, label: string): Promise<WhatsAppResponse> {
     return this.makeRequest('/add-label', {
-      phone,
+      phone: normalizeForSending(phone),
       label,
     });
   }

@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Plus, Users, Edit, Phone, MapPin } from 'lucide-react';
+import { formatPhoneForDisplay } from '@/lib/phone-utils';
 
 interface Customer {
   id: number;
@@ -180,13 +181,7 @@ export default function TenantCustomers() {
   };
 
   const formatPhone = (phone: string) => {
-    const cleaned = phone.replace(/\D/g, '');
-    if (cleaned.length === 11) {
-      return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 3)} ${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
-    } else if (cleaned.length === 10) {
-      return `(${cleaned.slice(0, 2)}) ${cleaned.slice(2, 6)}-${cleaned.slice(6)}`;
-    }
-    return phone;
+    return formatPhoneForDisplay(phone);
   };
 
   const filteredCustomers = customers.filter(customer =>

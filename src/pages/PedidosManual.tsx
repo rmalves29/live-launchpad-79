@@ -11,6 +11,7 @@ import { Loader2, Search, RefreshCw, Edit, Trash2, Plus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
+import { normalizeForStorage, formatPhoneForDisplay } from '@/lib/phone-utils';
 
 
 interface Product {
@@ -115,11 +116,11 @@ const PedidosManual = () => {
   }, [searchQuery, itemsPerPage]);
 
   const normalizePhone = (phone: string): string => {
-    const digits = phone.replace(/[^0-9]/g, '');
-    if (!digits.startsWith('55')) {
-      return '55' + digits;
-    }
-    return digits;
+    return normalizeForStorage(phone);
+  };
+
+  const formatPhone = (phone: string): string => {
+    return formatPhoneForDisplay(phone);
   };
 
   const handlePhoneChange = (productId: number, value: string) => {
