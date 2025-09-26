@@ -377,7 +377,7 @@ serve(async (req) => {
             shippingInfo;
         } else {
           // Se já existe informação de frete, substituir pela nova
-          const observationWithoutShipping = currentObservation.split('\n').filter(line => !line.startsWith('Frete:')).join('\n');
+          const observationWithoutShipping = currentObservation.split('\n').filter((line: string) => !line.startsWith('Frete:')).join('\n');
           updateData.observation = observationWithoutShipping ? 
             `${observationWithoutShipping}\n${shippingInfo}` : 
             shippingInfo;
@@ -392,7 +392,7 @@ serve(async (req) => {
             retiradaInfo;
         } else {
           // Se já existe informação de frete, substituir pela nova
-          const observationWithoutShipping = currentObservation.split('\n').filter(line => !line.startsWith('Frete:')).join('\n');
+          const observationWithoutShipping = currentObservation.split('\n').filter((line: string) => !line.startsWith('Frete:')).join('\n');
           updateData.observation = observationWithoutShipping ? 
             `${observationWithoutShipping}\n${retiradaInfo}` : 
             retiradaInfo;
@@ -446,8 +446,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in create-payment function:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

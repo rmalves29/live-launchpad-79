@@ -91,7 +91,8 @@ Deno.serve(async (req) => {
 
   } catch (e) {
     console.error("❌ Erro na function:", e);
-    const back = `https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=config_error&reason=${encodeURIComponent(e.message)}`;
+    const errorMessage = e instanceof Error ? e.message : 'Erro desconhecido';
+    const back = `https://hxtbsieodbtzgcvvkeqx.lovableproject.com/config?tab=integracoes&melhorenvio=config_error&reason=${encodeURIComponent(errorMessage)}`;
     return new Response(null, { status: 302, headers: { Location: back, ...cors } });
   }
 });

@@ -19,7 +19,7 @@ serve(async (req) => {
     
     // If tenantKey is the function name, try to get it from query params or headers
     if (tenantKey === 'mercadopago-webhook' || !tenantKey) {
-      tenantKey = url.searchParams.get('tenant_key') || req.headers.get('x-tenant-key');
+      tenantKey = url.searchParams.get('tenant_key') || req.headers.get('x-tenant-key') || undefined;
     }
     
     if (!tenantKey) {

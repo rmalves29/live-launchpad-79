@@ -127,9 +127,11 @@ serve(async (req) => {
     }
 
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    const errorStack = error instanceof Error ? error.stack : 'No stack trace';
     console.error('❌ Erro na função:', {
-      message: error.message,
-      stack: error.stack,
+      message: errorMessage,
+      stack: errorStack,
       action: action || 'unknown',
       timestamp: new Date().toISOString()
     });
@@ -139,8 +141,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: false,
         stage: action || 'unknown',
-        error: error.message || 'Erro interno do servidor',
-        details: error.stack
+        error: errorMessage || 'Erro interno do servidor',
+        details: errorStack
       }),
       { 
         status: 200, 
@@ -197,7 +199,7 @@ function cleanPhone(phone: string): string {
 }
 
 // Função auxiliar para validar CNPJ
-function validateCNPJ(cnpj: string): string {
+function validateCNPJ(cnpj: string): string | null {
   const cleanCNPJ = cnpj.replace(/[^0-9]/g, '');
   return cleanCNPJ.length === 14 ? cleanCNPJ : null;
 }
@@ -316,8 +318,8 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
     // Escolher service_id da cotação (preferir SEDEX=2, depois PAC=1, depois primeiro disponível)
     let serviceId = 1; // PAC como fallback
     if (quoteResult.length > 0) {
-      const sedex = quoteResult.find(s => s.id === 2);
-      const pac = quoteResult.find(s => s.id === 1);
+      const sedex = quoteResult.find((s: any) => s.id === 2);
+      const pac = quoteResult.find((s: any) => s.id === 1);
       
       if (sedex) {
         serviceId = 2;
@@ -511,9 +513,11 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
     );
 
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    const errorStack = error instanceof Error ? error.stack : 'No stack trace';
     console.error('❌ [CREATE_SHIPMENT] Erro crítico:', {
-      message: error.message,
-      stack: error.stack,
+      message: errorMessage,
+      stack: errorStack,
       orderId: orderId,
       tenantId: tenantId,
       timestamp: new Date().toISOString()
@@ -523,8 +527,8 @@ async function createShipment(supabase: any, integration: any, baseUrl: string, 
       JSON.stringify({ 
         success: false,
         stage: 'create_shipment',
-        error: error.message || 'Erro interno ao criar remessa',
-        details: error.stack
+        error: errorMessage || 'Erro interno ao criar remessa',
+        details: errorStack
       }),
       { 
         status: 200, 
@@ -619,8 +623,10 @@ async function buyShipment(integration: any, baseUrl: string, shipmentId: string
     );
 
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    const errorStack = error instanceof Error ? error.stack : 'No stack trace';
     console.error('❌ Erro ao comprar remessa:', {
-      message: error.message,
+      message: errorMessage,
       shipmentId: shipmentId,
       timestamp: new Date().toISOString()
     });
@@ -629,8 +635,8 @@ async function buyShipment(integration: any, baseUrl: string, shipmentId: string
       JSON.stringify({ 
         success: false,
         stage: 'buy_shipment',
-        error: error.message || 'Erro interno ao comprar remessa',
-        details: error.stack
+        error: errorMessage || 'Erro interno ao comprar remessa',
+        details: errorStack
       }),
       { 
         status: 200, 
@@ -717,8 +723,10 @@ async function getLabel(integration: any, baseUrl: string, shipmentId: string) {
     );
 
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    const errorStack = error instanceof Error ? error.stack : 'No stack trace';
     console.error('❌ Erro ao obter etiqueta:', {
-      message: error.message,
+      message: errorMessage,
       shipmentId: shipmentId,
       timestamp: new Date().toISOString()
     });
@@ -727,8 +735,8 @@ async function getLabel(integration: any, baseUrl: string, shipmentId: string) {
       JSON.stringify({ 
         success: false,
         stage: 'get_label',
-        error: error.message || 'Erro interno ao obter etiqueta',
-        details: error.stack
+        error: errorMessage || 'Erro interno ao obter etiqueta',
+        details: errorStack
       }),
       { 
         status: 200, 
@@ -815,8 +823,10 @@ async function trackShipment(integration: any, baseUrl: string, trackingCode: st
     );
 
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    const errorStack = error instanceof Error ? error.stack : 'No stack trace';
     console.error('❌ Erro ao rastrear remessa:', {
-      message: error.message,
+      message: errorMessage,
       trackingCode: trackingCode,
       timestamp: new Date().toISOString()
     });
@@ -825,8 +835,8 @@ async function trackShipment(integration: any, baseUrl: string, trackingCode: st
       JSON.stringify({ 
         success: false,
         stage: 'track_shipment',
-        error: error.message || 'Erro interno ao rastrear remessa',
-        details: error.stack
+        error: errorMessage || 'Erro interno ao rastrear remessa',
+        details: errorStack
       }),
       { 
         status: 200, 

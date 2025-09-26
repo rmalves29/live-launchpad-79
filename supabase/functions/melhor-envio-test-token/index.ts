@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
     console.error('❌ Erro no teste do token:', error)
     return new Response(JSON.stringify({ 
       valid: false,
-      error: error.message 
+      error: error instanceof Error ? error.message : 'Erro desconhecido' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
