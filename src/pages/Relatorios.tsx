@@ -358,14 +358,60 @@ const Relatorios = () => {
     }
   };
 
+  // Função para determinar o grupo WhatsApp baseado no CEP
+  const getGroupByCep = (cep: string): string => {
+    if (!cep) return 'Sem Grupo Definido';
+    
+    const cleanCep = cep.replace(/[^0-9]/g, '');
+    const cepNum = parseInt(cleanCep);
+    
+    // Configuração de faixas de CEP para grupos WhatsApp
+    // Pode ser facilmente modificada conforme necessário
+    if (cepNum >= 30000000 && cepNum <= 39999999) {
+      return 'Grupo Minas Gerais';
+    } else if (cepNum >= 20000000 && cepNum <= 28999999) {
+      return 'Grupo Rio de Janeiro';
+    } else if (cepNum >= 1000000 && cepNum <= 19999999) {
+      return 'Grupo São Paulo';
+    } else if (cepNum >= 40000000 && cepNum <= 48999999) {
+      return 'Grupo Bahia';
+    } else if (cepNum >= 50000000 && cepNum <= 56999999) {
+      return 'Grupo Pernambuco';
+    } else if (cepNum >= 60000000 && cepNum <= 63999999) {
+      return 'Grupo Ceará';
+    } else if (cepNum >= 70000000 && cepNum <= 76999999) {
+      return 'Grupo Brasília/Goiás';
+    } else if (cepNum >= 80000000 && cepNum <= 87999999) {
+      return 'Grupo Paraná';
+    } else if (cepNum >= 88000000 && cepNum <= 89999999) {
+      return 'Grupo Santa Catarina';
+    } else if (cepNum >= 90000000 && cepNum <= 99999999) {
+      return 'Grupo Rio Grande do Sul';
+    } else {
+      return 'Outras Regiões';
+    }
+  };
+
   const loadWhatsAppGroupStats = async () => {
     try {
       // Buscar pedidos com info básica
       const { data: orders, error } = await supabaseTenant
         .from('orders')
-        .select('id, total_amount, is_paid, cart_id, customer_phone, whatsapp_group_name');
+        .select('id, total_amount, is_paid, cart_id, customer_phone, whatsapp_group_name, customer_cep');
 
       if (error) throw error;
+
+      // Buscar dados dos clientes para obter CEP quando não estiver no pedido
+      const customerPhones = orders?.map(o => o.customer_phone) || [];
+      const { data: customers, error: customersError } = await supabaseTenant
+        .from('customers')
+        .select('phone, cep')
+        .in('phone', customerPhones);
+
+      if (customersError) throw customersError;
+
+      const phoneToCustomerMap = new Map<string, any>();
+      customers?.forEach(c => phoneToCustomerMap.set(c.phone, c));
 
       // Buscar mapeamento expresso (cliente -> grupo real)
       const { data: customerGroups, error: groupsError } = await supabaseTenant
@@ -394,8 +440,25 @@ const Relatorios = () => {
       const groupMap = new Map<string, WhatsAppGroupStats>();
 
       orders?.forEach(order => {
-        // Prioridade: tabela de mapeamento -> campo no pedido -> Sem Grupo
-        const groupName = phoneToGroupMap.get(order.customer_phone) || order.whatsapp_group_name || 'Sem Grupo Definido';
+        // Determinar CEP: do pedido ou do cliente cadastrado
+        const customerCep = order.customer_cep || phoneToCustomerMap.get(order.customer_phone)?.cep;
+        
+        // Prioridade: 
+        // 1. Mapeamento direto na tabela customer_whatsapp_groups
+        // 2. Campo whatsapp_group_name do pedido
+        // 3. Grupo determinado pelo CEP
+        // 4. Sem Grupo Definido
+        let groupName = phoneToGroupMap.get(order.customer_phone);
+        if (!groupName) {
+          groupName = order.whatsapp_group_name;
+        }
+        if (!groupName && customerCep) {
+          groupName = getGroupByCep(customerCep);
+        }
+        if (!groupName) {
+          groupName = 'Sem Grupo Definido';
+        }
+
         const amount = Number(order.total_amount);
         const items = cartItemsMap.get(order.cart_id) || [];
         const productsCount = items.reduce((sum, it) => sum + it.qty, 0);
