@@ -1274,13 +1274,13 @@ const Checkout = () => {
                   <div className="border-t pt-4">
                     <div className="flex justify-between items-center mb-4">
                       <span className="text-lg font-medium">Total do Pedido:</span>
-                      <span className="text-xl font-bold">R$ {(() => {
-                        // Calcular apenas o total dos produtos
-                        const productsTotal = order.items.reduce((sum: number, item: any) => {
-                          return sum + (parseFloat(item.product_price) * item.quantity);
-                        }, 0);
-                        return productsTotal.toFixed(2);
-                      })()}</span>
+                       <span className="text-xl font-bold">R$ {(() => {
+                         // Calcular apenas o total dos produtos
+                         const productsTotal = order.items.reduce((sum: number, item: any) => {
+                           return sum + (parseFloat(item.unit_price) * item.qty);
+                         }, 0);
+                         return productsTotal.toFixed(2);
+                       })()}</span>
                     </div>
                     
                     {selectedShipping !== 'retirada' && (
@@ -1298,11 +1298,11 @@ const Checkout = () => {
                     <div className="flex justify-between items-center mb-6 text-xl font-bold border-t pt-4">
                       <span>Total Geral:</span>
                       <span className="text-green-600">
-                        R$ {(() => {
-                          // Calcular o total dos produtos (sem frete)
-                          const productsTotal = order.items.reduce((sum: number, item: any) => {
-                            return sum + (parseFloat(item.product_price) * item.quantity);
-                          }, 0);
+                         R$ {(() => {
+                           // Calcular o total dos produtos (sem frete)
+                           const productsTotal = order.items.reduce((sum: number, item: any) => {
+                             return sum + (parseFloat(item.unit_price) * item.qty);
+                           }, 0);
                           
                           // Adicionar frete apenas se não for retirada
                           let total = productsTotal;
