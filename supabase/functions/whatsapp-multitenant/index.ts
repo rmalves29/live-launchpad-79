@@ -1,5 +1,70 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+/**
+ * Normaliza número para armazenamento no banco (sem DDI)
+ * Entrada: 5531992904210 ou 31992904210 ou 31 99290-4210
+ * Saída: 31992904210 (DDD + número com/sem 9º dígito baseado no DDD)
+ */
+function normalizeForStorage(phone: string): string {
+  if (!phone) return phone;
+  
+  // Remove todos os caracteres não numéricos
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  // Remove DDI 55 se presente
+  let phoneWithoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
+  
+  // Deve ter pelo menos 10 dígitos (DDD + 8 dígitos mínimo)
+  if (phoneWithoutDDI.length < 10) {
+    return phoneWithoutDDI; // Retorna como está se muito pequeno
+  }
+  
+  const ddd = parseInt(phoneWithoutDDI.substring(0, 2));
+  const restOfNumber = phoneWithoutDDI.substring(2);
+  
+  // Normalização do 9º dígito baseado no DDD
+  if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
+    // DDD < 31: adiciona 9 se não tiver e tiver 8 dígitos
+    phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
+  } else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
+    // DDD >= 31: remove 9 se tiver e tiver 9 dígitos
+    phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + phoneWithoutDDI.substring(3);
+  }
+  
+  return phoneWithoutDDI;
+}
+
+/**
+ * Normaliza número para envio de mensagens (com DDI)
+ * Entrada: 31992904210 ou 5531992904210
+ * Saída: 5531992904210 (DDI 55 + DDD + número com/sem 9º dígito baseado no DDD)
+ */
+function normalizeForSending(phone: string): string {
+  if (!phone) return phone;
+  
+  // Remove todos os caracteres não numéricos
+  const cleanPhone = phone.replace(/\D/g, '');
+  
+  // Adiciona DDI 55 se não tiver
+  let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+  
+  if (normalizedPhone.length >= 4) {
+    const ddd = parseInt(normalizedPhone.substring(2, 4));
+    const restOfNumber = normalizedPhone.substring(4);
+    
+    // Normalização do 9º dígito baseado no DDD
+    if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
+      // DDD < 31: adiciona 9 se não tiver e tiver 8 dígitos
+      normalizedPhone = normalizedPhone.substring(0, 4) + '9' + normalizedPhone.substring(4);
+    } else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
+      // DDD >= 31: remove 9 se tiver e tiver 9 dígitos
+      normalizedPhone = normalizedPhone.substring(0, 4) + normalizedPhone.substring(5);
+    }
+  }
+  
+  return normalizedPhone;
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
@@ -54,7 +119,7 @@ Deno.serve(async (req) => {
 
     // Process incoming message for product detection
     if (payload.from && payload.body) {
-      const phone = payload.from;
+      const phone = normalizeForStorage(payload.from);
       const message = payload.body;
       
       // Store message in whatsapp_messages table
@@ -216,7 +281,7 @@ async function sendProductAddedMessage(supabase: any, tenantId: string, phone: s
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        number: phone,
+        number: normalizeForSending(phone),
         message: messageText
       })
     });
