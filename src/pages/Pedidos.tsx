@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 import { useAuth } from '@/hooks/useAuth';
+import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 
 interface Order {
   id: number;
@@ -574,7 +575,7 @@ Obrigado pela confiança! 🙌`;
             <h1 style="margin: 0 0 6px 0; font-size: 16px; font-weight: bold;">${customerName}</h1>
             <div style="display: flex; gap: 14px; margin-bottom: 6px; font-size: 10px;">
               <span><strong>CPF:</strong> ${customerCPF}</span>
-              <span><strong>Celular:</strong> ${order.customer_phone}</span>
+              <span><strong>Celular:</strong> ${formatPhoneForDisplay(order.customer_phone)}</span>
             </div>
           </div>
 
@@ -1119,7 +1120,7 @@ Obrigado pela confiança! 🙌`;
                       <TableCell>
                         <Badge variant="outline">#{order.id}</Badge>
                       </TableCell>
-                      <TableCell>{order.customer_phone}</TableCell>
+                      <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                       <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">

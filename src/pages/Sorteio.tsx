@@ -13,6 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
+import { formatPhoneForDisplay } from '@/lib/phone-utils';
 
 interface Winner {
   order_id: number;
@@ -276,7 +277,7 @@ const Sorteio = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-center">
                     <div>
                       <div className="text-sm text-muted-foreground mb-1">Telefone</div>
-                      <div className="font-mono font-medium">{winner.customer_phone}</div>
+                      <div className="font-mono font-medium">{formatPhoneForDisplay(winner.customer_phone)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground mb-1">Data do Evento</div>

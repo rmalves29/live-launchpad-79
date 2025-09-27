@@ -679,7 +679,7 @@ const PedidosManual = () => {
                           orders.map((order) => (
                             <TableRow key={order.id}>
                               <TableCell>#{order.id}</TableCell>
-                              <TableCell>{order.customer_phone}</TableCell>
+                              <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                               <TableCell>{new Date(order.created_at).toLocaleDateString('pt-BR')}</TableCell>
                               <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
                               <TableCell>

@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
+import { formatPhoneForDisplay } from '@/lib/phone-utils';
 
 interface Order {
   id: number;
@@ -96,7 +97,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                   <strong>Nome:</strong> {customerName}
                 </div>
                 <div>
-                  <strong>Telefone:</strong> {order.customer_phone}
+                  <strong>Telefone:</strong> {formatPhoneForDisplay(order.customer_phone)}
                 </div>
                 {order.customer?.cpf && (
                   <div>

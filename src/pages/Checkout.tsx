@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
+import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 
 interface OrderItem {
   id: number;
@@ -115,7 +116,7 @@ const Checkout = () => {
       return;
     }
 
-    const normalizedPhone = phone.replace(/[^0-9]/g, '');
+    const normalizedPhone = normalizeForStorage(phone);
     setLoadingOpenOrders(true);
     
     try {
