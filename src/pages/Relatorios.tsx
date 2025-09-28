@@ -78,6 +78,11 @@ const Relatorios = () => {
   const [salesFilter, setSalesFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
   const [salesStartDate, setSalesStartDate] = useState('');
   const [salesEndDate, setSalesEndDate] = useState('');
+  
+  // Filtros específicos para Grupos WhatsApp
+  const [whatsappFilter, setWhatsappFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
+  const [whatsappStartDate, setWhatsappStartDate] = useState('');
+  const [whatsappEndDate, setWhatsappEndDate] = useState('');
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -360,8 +365,34 @@ const Relatorios = () => {
 
   const loadWhatsAppGroupStats = async () => {
     try {
+      // Aplicar filtros de data
+      let dateFilter = '';
+      let endDateFilter = '';
+      
+      switch (whatsappFilter) {
+        case 'today':
+          dateFilter = new Date().toISOString().split('T')[0];
+          break;
+        case 'month':
+          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+          dateFilter = startOfMonth.toISOString().split('T')[0];
+          break;
+        case 'year':
+          const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+          dateFilter = startOfYear.toISOString().split('T')[0];
+          break;
+        case 'custom':
+          if (!whatsappStartDate || !whatsappEndDate) return;
+          dateFilter = whatsappStartDate;
+          endDateFilter = whatsappEndDate;
+          break;
+        case 'all':
+          // No date filter
+          break;
+      }
+
       // Buscar pedidos com informação de grupo do carrinho
-      const { data: orders, error } = await supabaseTenant
+      let query = supabaseTenant
         .from('orders')
         .select(`
           id, 
@@ -372,6 +403,16 @@ const Relatorios = () => {
           whatsapp_group_name,
           carts!inner(whatsapp_group_name)
         `);
+
+      if (whatsappFilter === 'custom' && dateFilter && endDateFilter) {
+        query = query
+          .gte('created_at', `${dateFilter}T00:00:00`)
+          .lte('created_at', `${endDateFilter}T23:59:59`);
+      } else if (dateFilter) {
+        query = query.gte('created_at', `${dateFilter}T00:00:00`);
+      }
+
+      const { data: orders, error } = await query;
 
       if (error) throw error;
 
@@ -477,6 +518,10 @@ const Relatorios = () => {
   useEffect(() => {
     loadTodaySales();
   }, [salesFilter, salesStartDate, salesEndDate]);
+
+  useEffect(() => {
+    loadWhatsAppGroupStats();
+  }, [whatsappFilter, whatsappStartDate, whatsappEndDate]);
 
   return (
     <div className="container mx-auto py-6 max-w-7xl space-y-6">
@@ -781,9 +826,42 @@ const Relatorios = () => {
         <TabsContent value="whatsapp" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center">
-                <Users className="h-5 w-5 mr-2" />
-                Relatório por Grupos de WhatsApp
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center">
+                  <Users className="h-5 w-5 mr-2" />
+                  Relatório por Grupos de WhatsApp
+                </span>
+                <div className="flex items-center space-x-4">
+                  <Select value={whatsappFilter} onValueChange={(value: any) => setWhatsappFilter(value)}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Geral</SelectItem>
+                      <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="month">Este Mês</SelectItem>
+                      <SelectItem value="year">Este Ano</SelectItem>
+                      <SelectItem value="custom">Personalizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {whatsappFilter === 'custom' && (
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        type="date"
+                        value={whatsappStartDate}
+                        onChange={(e) => setWhatsappStartDate(e.target.value)}
+                        className="w-36"
+                      />
+                      <span>até</span>
+                      <Input
+                        type="date"
+                        value={whatsappEndDate}
+                        onChange={(e) => setWhatsappEndDate(e.target.value)}
+                        className="w-36"
+                      />
+                    </div>
+                  )}
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>
