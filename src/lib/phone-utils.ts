@@ -19,12 +19,19 @@ export function normalizeForStorage(phone: string): string {
   // Remove DDI 55 se presente
   let phoneWithoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
-  // Deve ter pelo menos 10 dígitos (DDD + 8 dígitos mínimo)
-  if (phoneWithoutDDI.length < 10) {
-    return phoneWithoutDDI; // Retorna como está se muito pequeno
+  // Validação: deve ter entre 10 e 11 dígitos após remoção do DDI
+  if (phoneWithoutDDI.length < 10 || phoneWithoutDDI.length > 11) {
+    console.warn(`Número de telefone inválido (${phoneWithoutDDI.length} dígitos): ${phone} -> ${phoneWithoutDDI}`);
+    return phone; // Retorna original se inválido para depuração
   }
   
+  // Validar se DDD é válido (11-99)
   const ddd = parseInt(phoneWithoutDDI.substring(0, 2));
+  if (ddd < 11 || ddd > 99) {
+    console.warn(`DDD inválido: ${ddd} no número ${phone}`);
+    return phone; // Retorna original se DDD inválido
+  }
+  
   const restOfNumber = phoneWithoutDDI.substring(2);
   
   // Normalização do 9º dígito baseado no DDD
