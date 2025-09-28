@@ -172,19 +172,78 @@ async function createTenantClient(tenant) {
 
 async function handleIncomingMessage(tenantId, message) {
   try {
-    // Log da mensagem recebida
+    let groupName = null;
+    let authorPhone = null;
+    let messageFrom = message.from;
+    
+    // Verificar se é mensagem de grupo
+    if (message.from.includes('@g.us')) {
+      try {
+        // Obter chat para pegar nome do grupo
+        const chat = await message.getChat();
+        if (chat.isGroup) {
+          groupName = chat.name || 'Grupo WhatsApp';
+          
+          // Para grupos, usar o author como remetente individual
+          if (message.author) {
+            authorPhone = message.author.replace('@c.us', '');
+            messageFrom = message.author;
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erro ao obter informações do grupo:', error);
+      }
+    }
+
+    console.log(`📨 Mensagem para tenant ${tenantId}:`, {
+      from: message.from,
+      author: message.author,
+      body: message.body,
+      groupName: groupName,
+      authorPhone: authorPhone,
+      messageFrom: messageFrom
+    });
+
+    // Preparar payload para webhook
+    const webhookPayload = {
+      from: messageFrom,
+      body: message.body,
+      groupName: groupName,
+      author: authorPhone,
+      chatName: groupName
+    };
+
+    // Chamar webhook se configurado
+    try {
+      const webhookUrl = `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-multitenant/${tenantId}`;
+      
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(webhookPayload)
+      });
+
+      const result = await response.text();
+      console.log(`🔗 Webhook response:`, response.status, result);
+    } catch (webhookError) {
+      console.error('❌ Erro ao chamar webhook:', webhookError);
+    }
+
+    // Log da mensagem recebida no banco
     await supaRaw('/whatsapp_messages', {
       method: 'POST',
       body: JSON.stringify({
         tenant_id: tenantId,
-        phone: message.from,
+        phone: authorPhone || message.from,
         message: message.body,
         type: 'received',
-        received_at: new Date().toISOString()
+        received_at: new Date().toISOString(),
+        whatsapp_group_name: groupName
       })
     });
 
-    console.log(`📨 Mensagem recebida para tenant ${tenantId}: ${message.from} - ${message.body}`);
   } catch (error) {
     console.error('❌ Erro ao processar mensagem recebida:', error);
   }

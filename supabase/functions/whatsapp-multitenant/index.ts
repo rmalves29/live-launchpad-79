@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
       
       const phone = normalizeForStorage(individualPhone);
       console.log(`Normalized phone: ${individualPhone} -> ${phone} | Group: ${groupName || 'N/A'}`);
+      console.log(`🔍 DEBUG - Payload recebido:`, JSON.stringify(payload, null, 2));
       
       // Double check that normalized phone is valid
       if (!phone.match(/^[1-9]{2}[0-9]{8,9}$/)) {
