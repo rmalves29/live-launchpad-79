@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
-import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
+import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 
 interface OrderItem {
   id: number;
@@ -116,9 +116,30 @@ const Checkout = () => {
       return;
     }
 
-    const normalizedPhone = normalizeForStorage(phone);
-    const phoneWithDDI = phone.startsWith('55') ? phone : `55${phone}`;
-    const phoneWithoutDDI = phone.startsWith('55') ? phone.substring(2) : phone;
+    // Remove formatação do telefone e cria todas as variações possíveis
+    const cleanPhone = phone.replace(/\D/g, '');
+    
+    // Cria variações para busca
+    const searchVariations = [];
+    
+    // Variação normalizada (formato de armazenamento)
+    const normalizedPhone = normalizeForStorage(cleanPhone);
+    searchVariations.push(normalizedPhone);
+    
+    // Variação com DDI 55 (formato de envio)
+    const phoneWithDDI = normalizeForSending(cleanPhone);
+    searchVariations.push(phoneWithDDI);
+    
+    // Variação original limpa
+    searchVariations.push(cleanPhone);
+    
+    // Se o telefone não tem DDI 55, adiciona variação com DDI
+    if (!cleanPhone.startsWith('55')) {
+      searchVariations.push(`55${cleanPhone}`);
+    }
+    
+    // Remove duplicatas
+    const uniqueVariations = [...new Set(searchVariations)];
     
     setLoadingOpenOrders(true);
     
@@ -126,7 +147,7 @@ const Checkout = () => {
       const { data: orders, error } = await supabaseTenant
         .from('orders')
         .select('*')
-        .in('customer_phone', [normalizedPhone, phoneWithDDI, phoneWithoutDDI, phone])
+        .in('customer_phone', uniqueVariations)
         .eq('is_paid', false)
         .order('created_at', { ascending: false });
 
