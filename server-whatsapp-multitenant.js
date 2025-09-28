@@ -176,42 +176,57 @@ async function handleIncomingMessage(tenantId, message) {
     let authorPhone = null;
     let messageFrom = message.from;
     
+    console.log(`📨 Mensagem recebida para tenant ${tenantId}:`, {
+      from: message.from,
+      body: message.body,
+      hasAuthor: !!message.author
+    });
+
     // Verificar se é mensagem de grupo
-    if (message.from.includes('@g.us')) {
+    if (message.from && message.from.includes('@g.us')) {
       try {
         // Obter chat para pegar nome do grupo
         const chat = await message.getChat();
-        if (chat.isGroup) {
+        if (chat && chat.isGroup) {
           groupName = chat.name || 'Grupo WhatsApp';
+          console.log(`📱 Grupo identificado: ${groupName}`);
           
           // Para grupos, usar o author como remetente individual
           if (message.author) {
             authorPhone = message.author.replace('@c.us', '');
             messageFrom = message.author;
+            console.log(`👤 Autor do grupo: ${authorPhone}`);
+          } else {
+            console.log(`⚠️ Mensagem de grupo sem author definido`);
+            // Se não temos o author, vamos ignorar esta mensagem para evitar dados inválidos
+            return;
           }
         }
-      } catch (error) {
-        console.error('❌ Erro ao obter informações do grupo:', error);
+      } catch (chatError) {
+        console.error('❌ Erro ao obter informações do grupo:', chatError.message);
+        // Em caso de erro, tratar como mensagem individual
       }
+    } else {
+      // Mensagem individual - usar o from normalmente
+      authorPhone = message.from.replace('@c.us', '');
     }
 
-    console.log(`📨 Mensagem para tenant ${tenantId}:`, {
-      from: message.from,
-      author: message.author,
-      body: message.body,
-      groupName: groupName,
-      authorPhone: authorPhone,
-      messageFrom: messageFrom
-    });
+    // Se não conseguimos determinar um telefone válido, não processar
+    if (!authorPhone) {
+      console.log(`⚠️ Não foi possível determinar telefone válido para a mensagem`);
+      return;
+    }
 
     // Preparar payload para webhook
     const webhookPayload = {
       from: messageFrom,
-      body: message.body,
+      body: message.body || '',
       groupName: groupName,
       author: authorPhone,
       chatName: groupName
     };
+
+    console.log(`🔗 Enviando para webhook:`, webhookPayload);
 
     // Chamar webhook se configurado
     try {
@@ -225,27 +240,37 @@ async function handleIncomingMessage(tenantId, message) {
         body: JSON.stringify(webhookPayload)
       });
 
-      const result = await response.text();
-      console.log(`🔗 Webhook response:`, response.status, result);
+      if (response.ok) {
+        const result = await response.text();
+        console.log(`✅ Webhook enviado com sucesso:`, response.status);
+      } else {
+        console.log(`⚠️ Webhook retornou status:`, response.status);
+      }
     } catch (webhookError) {
-      console.error('❌ Erro ao chamar webhook:', webhookError);
+      console.error('❌ Erro ao chamar webhook:', webhookError.message);
     }
 
     // Log da mensagem recebida no banco
-    await supaRaw('/whatsapp_messages', {
-      method: 'POST',
-      body: JSON.stringify({
-        tenant_id: tenantId,
-        phone: authorPhone || message.from,
-        message: message.body,
-        type: 'received',
-        received_at: new Date().toISOString(),
-        whatsapp_group_name: groupName
-      })
-    });
+    try {
+      await supaRaw('/whatsapp_messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          phone: authorPhone,
+          message: message.body || '',
+          type: 'received',
+          received_at: new Date().toISOString(),
+          whatsapp_group_name: groupName
+        })
+      });
+      console.log(`💾 Mensagem salva no banco`);
+    } catch (dbError) {
+      console.error('❌ Erro ao salvar no banco:', dbError.message);
+    }
 
   } catch (error) {
-    console.error('❌ Erro ao processar mensagem recebida:', error);
+    console.error('❌ Erro geral ao processar mensagem:', error.message);
+    console.error('Stack:', error.stack);
   }
 }
 
