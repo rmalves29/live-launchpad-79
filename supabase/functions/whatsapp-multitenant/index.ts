@@ -126,10 +126,12 @@ Deno.serve(async (req) => {
 
     // Process incoming message for product detection
     if (payload.from && payload.body) {
-      // Ignore group messages (those ending with @g.us)
-      if (payload.from.includes('@g.us')) {
-        console.log(`Ignoring group message from: ${payload.from}`);
-        return new Response(JSON.stringify({ success: true, message: 'Group message ignored' }), {
+      // Ignore group messages and invalid phone numbers
+      if (payload.from.includes('@g.us') || 
+          payload.from.length > 15 || 
+          !payload.from.match(/^(\+?55)?[1-9][1-9][0-9]{8,9}$/)) {
+        console.log(`Ignoring invalid/group message from: ${payload.from}`);
+        return new Response(JSON.stringify({ success: true, message: 'Invalid phone number or group message ignored' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
@@ -137,10 +139,10 @@ Deno.serve(async (req) => {
       const phone = normalizeForStorage(payload.from);
       console.log(`Normalized phone: ${payload.from} -> ${phone}`);
       
-      // Validate that we got a proper phone number after normalization
-      if (phone === payload.from && phone.length > 15) {
-        console.log(`Invalid phone number after normalization: ${phone}`);
-        return new Response(JSON.stringify({ success: true, message: 'Invalid phone number' }), {
+      // Double check that normalized phone is valid
+      if (!phone.match(/^[1-9]{2}[0-9]{8,9}$/)) {
+        console.log(`Invalid normalized phone number: ${phone}`);
+        return new Response(JSON.stringify({ success: true, message: 'Invalid normalized phone number' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
