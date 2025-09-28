@@ -117,13 +117,16 @@ const Checkout = () => {
     }
 
     const normalizedPhone = normalizeForStorage(phone);
+    const phoneWithDDI = phone.startsWith('55') ? phone : `55${phone}`;
+    const phoneWithoutDDI = phone.startsWith('55') ? phone.substring(2) : phone;
+    
     setLoadingOpenOrders(true);
     
     try {
       const { data: orders, error } = await supabaseTenant
         .from('orders')
         .select('*')
-        .eq('customer_phone', normalizedPhone)
+        .in('customer_phone', [normalizedPhone, phoneWithDDI, phoneWithoutDDI, phone])
         .eq('is_paid', false)
         .order('created_at', { ascending: false });
 
