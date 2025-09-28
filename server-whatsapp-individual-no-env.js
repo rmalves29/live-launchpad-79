@@ -209,28 +209,109 @@ client.on('auth_failure', () => console.log('❌ Falha na autenticação do What
 
 client.on('message', async (msg) => {
   try {
-    console.log(`📨 Mensagem recebida de ${msg.from}: ${msg.body}`);
+    let groupName = null;
+    let authorPhone = null;
+    let messageFrom = msg.from;
     
-    // Salvar mensagem no banco
-    await supa('/whatsapp_messages', {
-      method: 'POST',
-      body: JSON.stringify({
-        tenant_id: TENANT_ID,
-        phone: normalizeForStorage(msg.from),
-        message: msg.body,
-        type: 'incoming',
-        received_at: new Date().toISOString()
-      })
+    console.log(`📨 Mensagem recebida para tenant ${TENANT_SLUG}:`, {
+      from: msg.from,
+      body: msg.body,
+      hasAuthor: !!msg.author
     });
 
-const text = String(msg.body || '').trim().toUpperCase();
+    // Verificar se é mensagem de grupo
+    if (msg.from && msg.from.includes('@g.us')) {
+      try {
+        // Obter chat para pegar nome do grupo
+        const chat = await msg.getChat();
+        if (chat && chat.isGroup) {
+          groupName = chat.name || 'Grupo WhatsApp';
+          console.log(`📱 Grupo identificado: ${groupName}`);
+          
+          // Para grupos, usar o author como remetente individual
+          if (msg.author) {
+            authorPhone = normalizeForStorage(msg.author.replace('@c.us', ''));
+            messageFrom = msg.author;
+            console.log(`👤 Autor do grupo: ${authorPhone}`);
+          } else {
+            console.log(`⚠️ Mensagem de grupo sem author definido`);
+            // Se não temos o author, vamos ignorar esta mensagem para evitar dados inválidos
+            return;
+          }
+        }
+      } catch (chatError) {
+        console.error('❌ Erro ao obter informações do grupo:', chatError.message);
+        // Em caso de erro, tratar como mensagem individual
+      }
+    } else {
+      // Mensagem individual - usar o from normalmente
+      authorPhone = normalizeForStorage(msg.from.replace('@c.us', ''));
+    }
+
+    // Se não conseguimos determinar um telefone válido, não processar
+    if (!authorPhone) {
+      console.log(`⚠️ Não foi possível determinar telefone válido para a mensagem`);
+      return;
+    }
+
+    // Preparar payload para webhook
+    const webhookPayload = {
+      from: messageFrom,
+      body: msg.body || '',
+      groupName: groupName,
+      author: authorPhone,
+      chatName: groupName
+    };
+
+    console.log(`🔗 Enviando para webhook:`, webhookPayload);
+
+    // Chamar webhook se configurado
+    try {
+      const webhookUrl = `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-multitenant/${TENANT_ID}`;
+      
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(webhookPayload)
+      });
+
+      if (response.ok) {
+        console.log(`✅ Webhook enviado com sucesso:`, response.status);
+      } else {
+        console.log(`⚠️ Webhook retornou status:`, response.status);
+      }
+    } catch (webhookError) {
+      console.error('❌ Erro ao chamar webhook:', webhookError.message);
+    }
+    
+    // Salvar mensagem no banco
+    try {
+      await supa('/whatsapp_messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: TENANT_ID,
+          phone: authorPhone,
+          message: msg.body || '',
+          type: 'incoming',
+          received_at: new Date().toISOString(),
+          whatsapp_group_name: groupName
+        })
+      });
+      console.log(`💾 Mensagem salva no banco`);
+    } catch (dbError) {
+      console.error('❌ Erro ao salvar no banco:', dbError.message);
+    }
+
+    const text = String(msg.body || '').trim().toUpperCase();
     console.log(`🔍 Texto processado: "${text}"`);
     
     // Se o cliente digitar apenas "finalizar", responder com o template FINALIZAR
     if (text === 'FINALIZAR') {
       const message = await composeFinalize();
-      await client.sendMessage(msg.from, message);
-      console.log(`✅ Mensagem FINALIZAR enviada para ${msg.from}`);
+      await client.sendMessage(messageFrom, message);
+      console.log(`✅ Mensagem FINALIZAR enviada para ${messageFrom}`);
       return;
     }
     
@@ -248,10 +329,10 @@ const text = String(msg.body || '').trim().toUpperCase();
       const product = products?.[0];
       if (product) {
         console.log(`🎯 Produto encontrado: ${product.name} (${product.code})`);
-        await processProductCode(msg.from, product);
+        await processProductCode(authorPhone, product, groupName);
         const message = await composeItemAdded(product);
-        await client.sendMessage(msg.from, message);
-        console.log(`✅ Confirmação enviada para ${msg.from}`);
+        await client.sendMessage(messageFrom, message);
+        console.log(`✅ Confirmação enviada para ${messageFrom}`);
       } else {
         console.log(`❌ Nenhum produto encontrado para os códigos:`, candidates);
       }
@@ -259,7 +340,7 @@ const text = String(msg.body || '').trim().toUpperCase();
       console.log(`❌ Mensagem não corresponde ao padrão de código: "${text}"`);
     }
   } catch (error) {
-    console.error('❌ Erro ao processar mensagem:', error);
+    console.error('❌ Erro geral ao processar mensagem:', error.message);
     console.error('Stack trace:', error.stack);
   }
 });
@@ -305,7 +386,7 @@ async function upsertOrderForCart(cart, customerPhone, eventDate) {
   }
 }
 
-async function processProductCode(phone, product) {
+async function processProductCode(phone, product, groupName = null) {
   const normalizedPhone = normalizeForStorage(phone);
   const today = new Date().toISOString().split('T')[0];
 
@@ -330,7 +411,7 @@ async function processProductCode(phone, product) {
         method: 'POST',
         headers: { Prefer: 'return=representation' },
         body: JSON.stringify({
-          tenant_id: TENANT_ID, customer_phone: normalizedPhone, event_date: today, event_type: 'whatsapp', status: 'OPEN'
+          tenant_id: TENANT_ID, customer_phone: normalizedPhone, event_date: today, event_type: 'whatsapp', status: 'OPEN', whatsapp_group_name: groupName
         })
       });
       cart = newCarts?.[0];
