@@ -140,6 +140,7 @@ Deno.serve(async (req) => {
     // Process incoming message
     if (webhookType === 'incoming' && payload.from && payload.body) {
       const phone = normalizeForStorage(payload.from);
+      console.log(`Normalized phone: ${payload.from} -> ${phone}`);
       const message = payload.body;
       
       // Store message in whatsapp_messages table
