@@ -166,6 +166,7 @@ export type Database = {
           id: number
           status: Database["public"]["Enums"]["cart_status"]
           tenant_id: string
+          whatsapp_group_name: string | null
         }
         Insert: {
           created_at?: string | null
@@ -176,6 +177,7 @@ export type Database = {
           id?: number
           status?: Database["public"]["Enums"]["cart_status"]
           tenant_id: string
+          whatsapp_group_name?: string | null
         }
         Update: {
           created_at?: string | null
@@ -186,6 +188,7 @@ export type Database = {
           id?: number
           status?: Database["public"]["Enums"]["cart_status"]
           tenant_id?: string
+          whatsapp_group_name?: string | null
         }
         Relationships: [
           {
