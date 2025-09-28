@@ -360,48 +360,25 @@ const Relatorios = () => {
 
   const loadWhatsAppGroupStats = async () => {
     try {
-      // Buscar todos os grupos WhatsApp que já tiveram bazar
-      const { data: customerGroups, error: groupsError } = await supabaseTenant
-        .from('customer_whatsapp_groups')
-        .select('customer_phone, whatsapp_group_name, customer_name');
-
-      if (groupsError) throw groupsError;
-
-      console.log('🎯 Customer Groups encontrados:', customerGroups);
-
-      // Criar mapa telefone -> grupo
-      const phoneToGroupMap = new Map<string, string>();
-      customerGroups?.forEach(m => phoneToGroupMap.set(m.customer_phone, m.whatsapp_group_name));
-
-      // Obter lista única de todos os grupos que já tiveram bazar
-      const uniqueGroups = [...new Set(customerGroups?.map(g => g.whatsapp_group_name).filter(Boolean) as string[] || [])];
-      console.log('📋 Grupos únicos encontrados:', uniqueGroups);
-
-      // Inicializar todos os grupos com estatísticas zeradas
-      const groupMap = new Map<string, WhatsAppGroupStats>();
-      uniqueGroups.forEach(groupName => {
-        groupMap.set(groupName, {
-          group_name: groupName,
-          total_orders: 0,
-          paid_orders: 0,
-          unpaid_orders: 0,
-          total_products: 0,
-          paid_products: 0,
-          unpaid_products: 0,
-          total_revenue: 0,
-          paid_revenue: 0,
-          unpaid_revenue: 0
-        });
-      });
-
-      // Buscar pedidos com info básica
+      // Buscar pedidos com informação de grupo do carrinho
       const { data: orders, error } = await supabaseTenant
         .from('orders')
-        .select('id, total_amount, is_paid, cart_id, customer_phone');
+        .select(`
+          id, 
+          total_amount, 
+          is_paid, 
+          cart_id, 
+          customer_phone,
+          whatsapp_group_name,
+          carts!inner(whatsapp_group_name)
+        `);
 
       if (error) throw error;
 
       console.log('📦 Orders encontrados:', orders?.length);
+
+      // Criar mapa para agrupar estatísticas por grupo
+      const groupMap = new Map<string, WhatsAppGroupStats>();
 
       // Coletar cart items para contar produtos
       const cartIds = orders?.map(o => o.cart_id).filter(Boolean) as number[];
@@ -417,69 +394,48 @@ const Relatorios = () => {
         });
       }
 
-      // Processar cada pedido e atualizar estatísticas do grupo correspondente
+      // Processar cada pedido e agrupar por grupo WhatsApp
       orders?.forEach(order => {
-        // Identificar grupo pelo telefone do cliente
-        const groupName = phoneToGroupMap.get(order.customer_phone);
+        // Determinar nome do grupo - priorizar do pedido, depois do carrinho
+        let groupName = order.whatsapp_group_name || 
+                        order.carts?.whatsapp_group_name || 
+                        'Sem Grupo Definido';
         
-        if (groupName && groupMap.has(groupName)) {
-          console.log(`📞 Telefone ${order.customer_phone} pertence ao grupo: ${groupName}`);
-          
-          const amount = Number(order.total_amount);
-          const items = cartItemsMap.get(order.cart_id) || [];
-          const productsCount = items.reduce((sum, it) => sum + it.qty, 0);
+        console.log(`📞 Pedido ${order.id} - Telefone ${order.customer_phone} - Grupo: ${groupName}`);
+        
+        const amount = Number(order.total_amount);
+        const items = cartItemsMap.get(order.cart_id) || [];
+        const productsCount = items.reduce((sum, it) => sum + it.qty, 0);
 
-          const g = groupMap.get(groupName)!;
-          g.total_orders += 1;
-          g.total_revenue += amount;
-          g.total_products += productsCount;
-          
-          if (order.is_paid) {
-            g.paid_orders += 1;
-            g.paid_revenue += amount;
-            g.paid_products += productsCount;
-          } else {
-            g.unpaid_orders += 1;
-            g.unpaid_revenue += amount;
-            g.unpaid_products += productsCount;
-          }
+        // Inicializar grupo se não existir
+        if (!groupMap.has(groupName)) {
+          groupMap.set(groupName, {
+            group_name: groupName,
+            total_orders: 0,
+            paid_orders: 0,
+            unpaid_orders: 0,
+            total_products: 0,
+            paid_products: 0,
+            unpaid_products: 0,
+            total_revenue: 0,
+            paid_revenue: 0,
+            unpaid_revenue: 0
+          });
+        }
+
+        const g = groupMap.get(groupName)!;
+        g.total_orders += 1;
+        g.total_revenue += amount;
+        g.total_products += productsCount;
+        
+        if (order.is_paid) {
+          g.paid_orders += 1;
+          g.paid_revenue += amount;
+          g.paid_products += productsCount;
         } else {
-          console.log(`⚠️ Telefone ${order.customer_phone} não encontrado em nenhum grupo`);
-          
-          // Se o cliente não está em nenhum grupo, adicionar ao "Sem Grupo Definido"
-          const groupName = 'Sem Grupo Definido';
-          const amount = Number(order.total_amount);
-          const items = cartItemsMap.get(order.cart_id) || [];
-          const productsCount = items.reduce((sum, it) => sum + it.qty, 0);
-
-          if (groupMap.has(groupName)) {
-            const g = groupMap.get(groupName)!;
-            g.total_orders += 1;
-            g.total_revenue += amount;
-            g.total_products += productsCount;
-            if (order.is_paid) {
-              g.paid_orders += 1;
-              g.paid_revenue += amount;
-              g.paid_products += productsCount;
-            } else {
-              g.unpaid_orders += 1;
-              g.unpaid_revenue += amount;
-              g.unpaid_products += productsCount;
-            }
-          } else {
-            groupMap.set(groupName, {
-              group_name: groupName,
-              total_orders: 1,
-              paid_orders: order.is_paid ? 1 : 0,
-              unpaid_orders: order.is_paid ? 0 : 1,
-              total_products: productsCount,
-              paid_products: order.is_paid ? productsCount : 0,
-              unpaid_products: order.is_paid ? 0 : productsCount,
-              total_revenue: amount,
-              paid_revenue: order.is_paid ? amount : 0,
-              unpaid_revenue: order.is_paid ? 0 : amount
-            });
-          }
+          g.unpaid_orders += 1;
+          g.unpaid_revenue += amount;
+          g.unpaid_products += productsCount;
         }
       });
 

@@ -126,18 +126,37 @@ Deno.serve(async (req) => {
 
     // Process incoming message for product detection
     if (payload.from && payload.body) {
-      // Ignore group messages and invalid phone numbers
-      if (payload.from.includes('@g.us') || 
-          payload.from.length > 15 || 
-          !payload.from.match(/^(\+?55)?[1-9][1-9][0-9]{8,9}$/)) {
-        console.log(`Ignoring invalid/group message from: ${payload.from}`);
-        return new Response(JSON.stringify({ success: true, message: 'Invalid phone number or group message ignored' }), {
+      // Extract group info if it's a group message, but get individual phone number
+      let groupName = null;
+      let individualPhone = payload.from;
+      
+      // Check if it's a group message
+      if (payload.from.includes('@g.us')) {
+        // Extract group name if available
+        groupName = payload.groupName || payload.chatName || 'Grupo WhatsApp';
+        
+        // For group messages, we need the individual phone number of the sender
+        if (payload.author && typeof payload.author === 'string') {
+          individualPhone = payload.author.replace('@c.us', '');
+        } else {
+          console.log(`Group message without individual author: ${payload.from}`);
+          return new Response(JSON.stringify({ success: true, message: 'Group message without individual author ignored' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
+        }
+      }
+      
+      // Validate individual phone number
+      if (individualPhone.length > 15 || 
+          !individualPhone.match(/^(\+?55)?[1-9][1-9][0-9]{8,9}$/)) {
+        console.log(`Ignoring invalid phone number: ${individualPhone}`);
+        return new Response(JSON.stringify({ success: true, message: 'Invalid phone number ignored' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
       
-      const phone = normalizeForStorage(payload.from);
-      console.log(`Normalized phone: ${payload.from} -> ${phone}`);
+      const phone = normalizeForStorage(individualPhone);
+      console.log(`Normalized phone: ${individualPhone} -> ${phone} | Group: ${groupName || 'N/A'}`);
       
       // Double check that normalized phone is valid
       if (!phone.match(/^[1-9]{2}[0-9]{8,9}$/)) {
@@ -149,16 +168,17 @@ Deno.serve(async (req) => {
       
       const message = payload.body;
       
-      // Store message in whatsapp_messages table
-      await supabase
-        .from('whatsapp_messages')
-        .insert({
-          tenant_id: tenant.id,
-          phone: phone,
-          message: message,
-          type: 'received',
-          received_at: new Date().toISOString()
-        });
+        // Store message in whatsapp_messages table
+        await supabase
+          .from('whatsapp_messages')
+          .insert({
+            tenant_id: tenant.id,
+            phone: phone,
+            message: message,
+            type: 'received',
+            received_at: new Date().toISOString(),
+            whatsapp_group_name: groupName
+          });
 
       // Process product codes with enhanced detection
       {
@@ -236,7 +256,15 @@ Deno.serve(async (req) => {
                   unit_price: product.price
                 });
 
-              console.log(`Added product ${product.code} to cart for ${phone} in tenant ${tenantSlug}`);
+              // Update cart with group info if available
+              if (groupName) {
+                await supabase
+                  .from('carts')
+                  .update({ whatsapp_group_name: groupName })
+                  .eq('id', cart.id);
+              }
+
+              console.log(`Added product ${product.code} to cart for ${phone} in tenant ${tenantSlug} | Group: ${groupName || 'N/A'}`);
 
               // Send automatic message using template
               await sendProductAddedMessage(supabase, tenant.id, phone, product);
