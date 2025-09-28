@@ -732,15 +732,16 @@ Obrigado pela confiança! 🙌`;
         return;
       }
 
-      // Buscar template BROADCAST
+      // Buscar template ID 14 especificamente
       const { data: template, error: templateError } = await supabaseTenant
         .from('whatsapp_templates')
         .select('content')
-        .eq('type', 'BROADCAST')
+        .eq('id', 14)
         .single();
 
       if (templateError || !template) {
-        throw new Error('Template BROADCAST não encontrado');
+        console.error('Template error:', templateError);
+        throw new Error('Template ID 14 não encontrado');
       }
 
       const uniquePhones = Array.from(new Set((ordersToSend || []).map(o => o.customer_phone)));
@@ -766,24 +767,54 @@ Obrigado pela confiança! 🙌`;
         return template.content.replace('{{nome_cliente}}', customerName);
       });
 
-      // Usar o sistema de envio em massa otimizado
-      const baseUrl = 'http://localhost:3333';
-      const response = await fetch(`${baseUrl}/api/send-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          data: JSON.stringify({
-            numeros: uniquePhones,
-            mensagens: messages,
-            interval: 3000,  // 3 segundos entre mensagens
-            batchSize: 3,    // 3 mensagens por lote
-            batchDelay: 5000 // 5 segundos entre lotes
-          })
-        })
-      });
+      // Tentar usar o servidor multitenant primeiro
+      const multitenantUrl = 'http://localhost:3001';
+      let response;
+      let useMultitenant = true;
 
-      if (!response.ok) {
-        throw new Error(`Erro no servidor: ${response.status}`);
+      try {
+        response = await fetch(`${multitenantUrl}/broadcast`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-tenant-id': profile?.tenant_id || ''
+          },
+          body: JSON.stringify({
+            phones: uniquePhones,
+            message: template.content
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Servidor multitenant não disponível: ${response.status}`);
+        }
+      } catch (multitenantError) {
+        console.log('Tentando servidor alternativo...');
+        useMultitenant = false;
+        
+        // Fallback para o servidor localhost:3333
+        try {
+          const baseUrl = 'http://localhost:3333';
+          response = await fetch(`${baseUrl}/api/send-config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              data: JSON.stringify({
+                numeros: uniquePhones,
+                mensagens: messages,
+                interval: 3000,
+                batchSize: 3,
+                batchDelay: 5000
+              })
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Servidor localhost:3333 não disponível: ${response.status}`);
+          }
+        } catch (fallbackError) {
+          throw new Error(`Nenhum servidor WhatsApp disponível. Verifique se algum está rodando:\n- http://localhost:3001 (multitenant)\n- http://localhost:3333 (individual)`);
+        }
       }
 
       const result = await response.json();
@@ -793,17 +824,24 @@ Obrigado pela confiança! 🙌`;
         const phone = uniquePhones[i];
         const message = messages[i % messages.length];
         
-         await supabaseTenant.from('whatsapp_messages').insert({
-           phone,
-           message,
-           type: 'broadcast',
-           sent_at: new Date().toISOString(),
-           tenant_id: profile?.tenant_id || ''
-         });
+        await supabaseTenant.from('whatsapp_messages').insert({
+          phone,
+          message,
+          type: 'broadcast',
+          sent_at: new Date().toISOString(),
+          tenant_id: profile?.tenant_id || ''
+        });
       }
 
-      const successCount = result.sucesso ? uniquePhones.length : 0;
-      const errorCount = result.sucesso ? 0 : uniquePhones.length;
+      let successCount, errorCount;
+      
+      if (useMultitenant) {
+        successCount = result.total || uniquePhones.length;
+        errorCount = 0;
+      } else {
+        successCount = result.sucesso ? uniquePhones.length : 0;
+        errorCount = result.sucesso ? 0 : uniquePhones.length;
+      }
 
       toast({
         title: 'Mensagem em Massa Concluída',
@@ -815,7 +853,7 @@ Obrigado pela confiança! 🙌`;
       console.error('Error sending broadcast message:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao enviar mensagem em massa',
+        description: error.message || 'Erro ao enviar mensagem em massa',
         variant: 'destructive'
       });
     } finally {
