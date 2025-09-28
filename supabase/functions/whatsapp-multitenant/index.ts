@@ -126,8 +126,25 @@ Deno.serve(async (req) => {
 
     // Process incoming message for product detection
     if (payload.from && payload.body) {
+      // Ignore group messages (those ending with @g.us)
+      if (payload.from.includes('@g.us')) {
+        console.log(`Ignoring group message from: ${payload.from}`);
+        return new Response(JSON.stringify({ success: true, message: 'Group message ignored' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
       const phone = normalizeForStorage(payload.from);
       console.log(`Normalized phone: ${payload.from} -> ${phone}`);
+      
+      // Validate that we got a proper phone number after normalization
+      if (phone === payload.from && phone.length > 15) {
+        console.log(`Invalid phone number after normalization: ${phone}`);
+        return new Response(JSON.stringify({ success: true, message: 'Invalid phone number' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      
       const message = payload.body;
       
       // Store message in whatsapp_messages table
