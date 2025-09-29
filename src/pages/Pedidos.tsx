@@ -734,25 +734,35 @@ Obrigado pela confiança! 🙌`;
         return;
       }
 
-      // Debug: Verificar tenant atual
-      console.log('Tenant atual:', supabaseTenant.getTenantId());
-      console.log('Profile tenant_id:', profile?.tenant_id);
+      // Buscar tenant_id do usuário atual
+      const currentTenantId = profile?.tenant_id;
+      
+      if (!currentTenantId) {
+        throw new Error('Tenant ID não encontrado no perfil do usuário');
+      }
 
-      // Buscar template ID 14 especificamente (tenant_id já aplicado automaticamente)
-      const { data: template, error: templateError } = await supabaseTenant
+      console.log('Buscando template 14 para tenant:', currentTenantId);
+
+      // Buscar template ID 14 usando supabase client normal com filtro explícito de tenant
+      const { data: template, error: templateError } = await supabase
         .from('whatsapp_templates')
         .select('content')
         .eq('id', 14)
-        .single();
+        .eq('tenant_id', currentTenantId)
+        .maybeSingle();
 
-      console.log('Template query result:', { template, templateError });
+      console.log('Template encontrado:', template);
+      console.log('Erro na busca:', templateError);
 
       if (templateError || !template) {
-        console.error('Template error:', templateError);
-        // Listar todos os templates disponíveis para debug
-        const { data: allTemplates } = await supabaseTenant.from('whatsapp_templates').select('id, title, type');
-        console.error('Available templates:', allTemplates);
-        throw new Error(`Template ID 14 não encontrado. Templates disponíveis: ${allTemplates?.map(t => `ID: ${t.id} - ${t.title}`).join(', ') || 'nenhum'}`);
+        // Listar todos os templates deste tenant para debug
+        const { data: allTemplates } = await supabase
+          .from('whatsapp_templates')
+          .select('id, title, type, tenant_id')
+          .eq('tenant_id', currentTenantId);
+        
+        console.error('Templates disponíveis para este tenant:', allTemplates);
+        throw new Error(`Template ID 14 não encontrado para seu tenant. Templates disponíveis: ${allTemplates?.map(t => `ID: ${t.id} - ${t.title}`).join(', ') || 'nenhum'}`);
       }
 
       const uniquePhones = Array.from(new Set((ordersToSend || []).map(o => o.customer_phone).filter(Boolean))) as string[];
