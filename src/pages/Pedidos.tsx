@@ -734,11 +734,11 @@ Obrigado pela confiança! 🙌`;
         return;
       }
 
-      // Buscar tenant_id do usuário atual
-      const currentTenantId = profile?.tenant_id;
+      // Buscar tenant_id do contexto
+      const currentTenantId = supabaseTenant.getTenantId();
       
       if (!currentTenantId) {
-        throw new Error('Tenant ID não encontrado no perfil do usuário');
+        throw new Error('Tenant ID não encontrado. Certifique-se de estar logado.');
       }
 
       console.log('Buscando template 14 para tenant:', currentTenantId);
