@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { whatsappService } from '@/lib/whatsapp-service';
 import { useAuth } from '@/hooks/useAuth';
@@ -422,11 +423,12 @@ useEffect(() => {
       })();
 
       // Registrar no banco
-      await supabaseTenant.from('whatsapp_messages').insert({
+      await supabase.from('whatsapp_messages').insert({
         phone: order.customer_phone,
         message,
         type: 'system_log',
-        sent_at: new Date().toISOString()
+        sent_at: new Date().toISOString(),
+        tenant_id: profile?.tenant_id
       });
 
       if (sent) {

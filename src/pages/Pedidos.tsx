@@ -796,12 +796,12 @@ Obrigado pela confiança! 🙌`;
         const phone = uniquePhones[i];
         const message = messages[i % messages.length];
         
-        await supabaseTenant.from('whatsapp_messages').insert({
+        await supabase.from('whatsapp_messages').insert({
           phone,
           message,
           type: 'broadcast',
           sent_at: new Date().toISOString(),
-          tenant_id: profile?.tenant_id || ''
+          tenant_id: profile?.tenant_id
         });
       }
 
