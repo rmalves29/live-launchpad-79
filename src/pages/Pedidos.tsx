@@ -741,13 +741,13 @@ Obrigado pela confiança! 🙌`;
         throw new Error('Tenant ID não encontrado. Certifique-se de estar logado.');
       }
 
-      console.log('Buscando template 14 para tenant:', currentTenantId);
+      console.log('Buscando template de mensagem em massa para tenant:', currentTenantId);
 
-      // Buscar template ID 14 usando supabase client normal com filtro explícito de tenant
+      // Buscar template de "Mensagem em Massa" usando supabase client normal com filtro explícito de tenant
       const { data: template, error: templateError } = await supabase
         .from('whatsapp_templates')
         .select('content')
-        .eq('id', 14)
+        .eq('type', 'BROADCAST')
         .eq('tenant_id', currentTenantId)
         .maybeSingle();
 
@@ -762,7 +762,7 @@ Obrigado pela confiança! 🙌`;
           .eq('tenant_id', currentTenantId);
         
         console.error('Templates disponíveis para este tenant:', allTemplates);
-        throw new Error(`Template ID 14 não encontrado para seu tenant. Templates disponíveis: ${allTemplates?.map(t => `ID: ${t.id} - ${t.title}`).join(', ') || 'nenhum'}`);
+        throw new Error(`Template de Mensagem em Massa (BROADCAST) não encontrado para seu tenant. Templates disponíveis: ${allTemplates?.map(t => `ID: ${t.id} - ${t.title || 'Sem título'} (${t.type})`).join(', ') || 'nenhum'}`);
       }
 
       const uniquePhones = Array.from(new Set((ordersToSend || []).map(o => o.customer_phone).filter(Boolean))) as string[];
