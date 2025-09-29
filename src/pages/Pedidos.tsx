@@ -747,7 +747,7 @@ Obrigado pela confiança! 🙌`;
       const { data: template, error: templateError } = await supabase
         .from('whatsapp_templates')
         .select('content')
-        .eq('type', 'BROADCAST')
+        .eq('type', 'MSG_MASSA')
         .eq('tenant_id', currentTenantId)
         .maybeSingle();
 
@@ -762,7 +762,7 @@ Obrigado pela confiança! 🙌`;
           .eq('tenant_id', currentTenantId);
         
         console.error('Templates disponíveis para este tenant:', allTemplates);
-        throw new Error(`Template de Mensagem em Massa (BROADCAST) não encontrado para seu tenant. Templates disponíveis: ${allTemplates?.map(t => `ID: ${t.id} - ${t.title || 'Sem título'} (${t.type})`).join(', ') || 'nenhum'}`);
+        throw new Error(`Template de Mensagem em Massa (MSG_MASSA) não encontrado para seu tenant. Templates disponíveis: ${allTemplates?.map(t => `ID: ${t.id} - ${t.title || 'Sem título'} (${t.type})`).join(', ') || 'nenhum'}`);
       }
 
       const uniquePhones = Array.from(new Set((ordersToSend || []).map(o => o.customer_phone).filter(Boolean))) as string[];
