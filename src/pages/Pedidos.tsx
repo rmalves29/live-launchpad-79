@@ -692,6 +692,7 @@ Obrigado pela confiança! 🙌`;
   };
 
   const sendBroadcastMessage = async () => {
+    console.log('Iniciando envio de mensagem em massa...');
     try {
       setLoading(true);
 
@@ -733,16 +734,25 @@ Obrigado pela confiança! 🙌`;
         return;
       }
 
-      // Buscar template ID 14 especificamente
+      // Debug: Verificar tenant atual
+      console.log('Tenant atual:', supabaseTenant.getTenantId());
+      console.log('Profile tenant_id:', profile?.tenant_id);
+
+      // Buscar template ID 14 especificamente (tenant_id já aplicado automaticamente)
       const { data: template, error: templateError } = await supabaseTenant
         .from('whatsapp_templates')
         .select('content')
         .eq('id', 14)
         .single();
 
+      console.log('Template query result:', { template, templateError });
+
       if (templateError || !template) {
         console.error('Template error:', templateError);
-        throw new Error('Template ID 14 não encontrado');
+        // Listar todos os templates disponíveis para debug
+        const { data: allTemplates } = await supabaseTenant.from('whatsapp_templates').select('id, title, type');
+        console.error('Available templates:', allTemplates);
+        throw new Error(`Template ID 14 não encontrado. Templates disponíveis: ${allTemplates?.map(t => `ID: ${t.id} - ${t.title}`).join(', ') || 'nenhum'}`);
       }
 
       const uniquePhones = Array.from(new Set((ordersToSend || []).map(o => o.customer_phone).filter(Boolean))) as string[];
