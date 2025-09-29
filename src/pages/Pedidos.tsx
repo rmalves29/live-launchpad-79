@@ -19,6 +19,7 @@ import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
+import { whatsappService } from '@/lib/whatsapp-service';
 
 interface Order {
   id: number;
@@ -744,7 +745,7 @@ Obrigado pela confiança! 🙌`;
         throw new Error('Template ID 14 não encontrado');
       }
 
-      const uniquePhones = Array.from(new Set((ordersToSend || []).map(o => o.customer_phone)));
+      const uniquePhones = Array.from(new Set((ordersToSend || []).map(o => o.customer_phone).filter(Boolean))) as string[];
 
       if (uniquePhones.length === 0) {
         toast({
@@ -767,57 +768,8 @@ Obrigado pela confiança! 🙌`;
         return template.content.replace('{{nome_cliente}}', customerName);
       });
 
-      // Tentar usar o servidor multitenant primeiro
-      const multitenantUrl = 'http://localhost:3001';
-      let response;
-      let useMultitenant = true;
-
-      try {
-        response = await fetch(`${multitenantUrl}/broadcast`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-tenant-id': profile?.tenant_id || ''
-          },
-          body: JSON.stringify({
-            phones: uniquePhones,
-            message: template.content
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`Servidor multitenant não disponível: ${response.status}`);
-        }
-      } catch (multitenantError) {
-        console.log('Tentando servidor alternativo...');
-        useMultitenant = false;
-        
-        // Fallback para o servidor localhost:3333
-        try {
-          const baseUrl = 'http://localhost:3333';
-          response = await fetch(`${baseUrl}/api/send-config`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              data: JSON.stringify({
-                numeros: uniquePhones,
-                mensagens: messages,
-                interval: 3000,
-                batchSize: 3,
-                batchDelay: 5000
-              })
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error(`Servidor localhost:3333 não disponível: ${response.status}`);
-          }
-        } catch (fallbackError) {
-          throw new Error(`Nenhum servidor WhatsApp disponível. Verifique se algum está rodando:\n- http://localhost:3001 (multitenant)\n- http://localhost:3333 (individual)`);
-        }
-      }
-
-      const result = await response.json();
+      // Usar o whatsappService para envio de broadcast
+      const result = await whatsappService.broadcastByPhones(uniquePhones, template.content);
       
       // Registrar no banco independente do sucesso
       for (let i = 0; i < uniquePhones.length; i++) {
@@ -835,12 +787,12 @@ Obrigado pela confiança! 🙌`;
 
       let successCount, errorCount;
       
-      if (useMultitenant) {
+      if (result && result.success) {
         successCount = result.total || uniquePhones.length;
         errorCount = 0;
       } else {
-        successCount = result.sucesso ? uniquePhones.length : 0;
-        errorCount = result.sucesso ? 0 : uniquePhones.length;
+        successCount = 0;
+        errorCount = uniquePhones.length;
       }
 
       toast({
