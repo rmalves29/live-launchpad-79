@@ -789,7 +789,7 @@ Obrigado pela confiança! 🙌`;
       });
 
       // Usar o whatsappService para envio de broadcast
-      const result = await whatsappService.broadcastByPhones(uniquePhones, template.content);
+      const result = await whatsappService.broadcastByPhones(uniquePhones, template.content, currentTenantId);
       
       // Registrar no banco independente do sucesso
       for (let i = 0; i < uniquePhones.length; i++) {

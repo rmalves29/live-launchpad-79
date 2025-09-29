@@ -1,6 +1,18 @@
 // Serviço para integração com o servidor WhatsApp
 import { normalizeForSending } from './phone-utils';
-const WHATSAPP_SERVER_URL = 'http://localhost:3333';
+import { supabase } from '@/integrations/supabase/client';
+
+// Função para obter a URL do servidor WhatsApp configurada
+async function getWhatsAppServerUrl(tenantId: string): Promise<string> {
+  const { data } = await supabase
+    .from('integration_whatsapp')
+    .select('api_url')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .maybeSingle();
+  
+  return data?.api_url || 'http://localhost:3333';
+}
 
 interface WhatsAppResponse {
   ok?: boolean;
@@ -25,9 +37,11 @@ interface OrderData {
 }
 
 class WhatsAppService {
-  private async makeRequest(endpoint: string, data: any): Promise<WhatsAppResponse> {
+  private async makeRequest(endpoint: string, data: any, tenantId?: string): Promise<WhatsAppResponse> {
     try {
-      const response = await fetch(`${WHATSAPP_SERVER_URL}${endpoint}`, {
+      const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
+      
+      const response = await fetch(`${serverUrl}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -36,8 +50,13 @@ class WhatsAppService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        const errorText = await response.text();
+        try {
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || `HTTP ${response.status}`);
+        } catch {
+          throw new Error(`Erro ao conectar com servidor WhatsApp: ${response.status}. Verifique se a integração está configurada corretamente.`);
+        }
       }
 
       return await response.json();
@@ -70,7 +89,7 @@ class WhatsAppService {
     });
   }
 
-  async broadcastByPhones(phones: string[], message: string): Promise<WhatsAppResponse> {
+  async broadcastByPhones(phones: string[], message: string, tenantId?: string): Promise<WhatsAppResponse> {
     return this.makeRequest('/api/broadcast/by-phones', {
       key: 'whatsapp-broadcast-2024', // BROADCAST_SECRET
       phones: phones.map(phone => normalizeForSending(phone)),
@@ -78,7 +97,7 @@ class WhatsAppService {
       interval: 2000,
       batchSize: 5,
       batchDelay: 3000,
-    });
+    }, tenantId);
   }
 
   async broadcastByOrderStatus(status: 'paid' | 'unpaid' | 'all', message: string): Promise<WhatsAppResponse> {
@@ -106,9 +125,10 @@ class WhatsAppService {
     });
   }
 
-  async getStatus(): Promise<any> {
+  async getStatus(tenantId?: string): Promise<any> {
     try {
-      const response = await fetch(`${WHATSAPP_SERVER_URL}/api/status`);
+      const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
+      const response = await fetch(`${serverUrl}/api/status`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
@@ -117,9 +137,10 @@ class WhatsAppService {
     }
   }
 
-  async getLogs(): Promise<any> {
+  async getLogs(tenantId?: string): Promise<any> {
     try {
-      const response = await fetch(`${WHATSAPP_SERVER_URL}/api/logs`);
+      const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
+      const response = await fetch(`${serverUrl}/api/logs`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
@@ -128,9 +149,10 @@ class WhatsAppService {
     }
   }
 
-  async getMessageStatus(): Promise<any> {
+  async getMessageStatus(tenantId?: string): Promise<any> {
     try {
-      const response = await fetch(`${WHATSAPP_SERVER_URL}/api/message-status`);
+      const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
+      const response = await fetch(`${serverUrl}/api/message-status`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
