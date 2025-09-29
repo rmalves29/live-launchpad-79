@@ -1171,7 +1171,7 @@ Obrigado pela confiança! 🙌`;
                         <Badge variant="outline">{order.event_type}</Badge>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(order.event_date), 'dd/MM/yyyy')}
+                        {format(new Date(order.event_date + 'T00:00:00'), 'dd/MM/yyyy')}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
