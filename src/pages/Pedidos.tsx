@@ -308,45 +308,23 @@ const Pedidos = () => {
 
       console.log('✅ Configuração encontrada:', config.api_url);
 
-      // Passo 3: Montar mensagem
+      // Passo 3: Enviar via Node.js (template será buscado no servidor)
       console.log('');
-      console.log('📝 PASSO 3: Montando mensagem...');
-      const customerName = order.customer?.name || order.customer_phone;
-      const message = `🎉 *Pagamento Confirmado!*
-
-Olá ${customerName}!
-
-✅ Seu pagamento foi confirmado com sucesso!
-📄 Pedido: #${order.id}
-💰 Valor: R$ ${order.total_amount.toFixed(2)}
-📅 Data: ${format(new Date(), 'dd/MM/yyyy \'às\' HH:mm')}
-
-Seu pedido já está sendo preparado para o envio! 📦
-
-Obrigado pela confiança! 🙌`;
-
-      console.log('✅ Mensagem montada (' + message.length + ' caracteres)');
-
-      // Passo 4: Enviar via Node.js
-      console.log('');
-      console.log('📤 PASSO 4: Enviando para servidor Node.js...');
+      console.log('📤 PASSO 3: Enviando para servidor Node.js...');
+      console.log('🎨 O servidor buscará o template PAID_ORDER do banco');
       console.log('URL:', `${config.api_url}/send`);
       console.log('Payload:', {
         phone: order.customer_phone,
-        tenantId: order.tenant_id,
         order_id: order.id
       });
 
       const response = await fetch(`${config.api_url}/send`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'x-tenant-id': order.tenant_id
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           phone: order.customer_phone,
-          message: message,
-          tenantId: order.tenant_id,
           order_id: order.id
         })
       });
@@ -362,13 +340,13 @@ Obrigado pela confiança! 🙌`;
       }
 
       console.log('');
-      console.log('✅✅✅ SUCESSO! Mensagem enviada! ✅✅✅');
+      console.log('✅✅✅ SUCESSO! Mensagem enviada via template! ✅✅✅');
       console.log('═══════════════════════════════════════════════');
       console.log('');
       
       toast({
         title: 'Confirmação Enviada',
-        description: 'Mensagem de pagamento enviada via WhatsApp'
+        description: 'Mensagem de pagamento enviada via WhatsApp usando template personalizado'
       });
       return true;
       
