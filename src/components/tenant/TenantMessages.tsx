@@ -128,11 +128,7 @@ export const TenantMessages = () => {
 
     } catch (error) {
       console.error('Error sending message:', error);
-      toast({
-        title: 'Erro',
-        description: 'Erro ao enviar mensagem',
-        variant: 'destructive'
-      });
+      // Toast de erro removido conforme solicitado
     } finally {
       setSendLoading(false);
     }

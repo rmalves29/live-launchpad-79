@@ -356,11 +356,7 @@ useEffect(() => {
 
     } catch (error) {
       console.error('Error sending item added message:', error);
-      toast({
-        title: 'Erro',
-        description: 'Erro ao enviar mensagem de item adicionado',
-        variant: 'destructive'
-      });
+      // Toast de erro removido conforme solicitado
     }
   };
 
@@ -446,11 +442,7 @@ useEffect(() => {
 
     } catch (error) {
       console.error('Error sending cancellation message:', error);
-      toast({
-        title: 'Erro',
-        description: 'Erro ao enviar mensagem de cancelamento',
-        variant: 'destructive'
-      });
+      // Toast de erro removido conforme solicitado
     }
   };
 
