@@ -236,8 +236,8 @@ async function checkAndSendPendingPaymentConfirmations() {
       return;
     }
     
-    // Buscar pedidos pagos que não tiveram confirmação enviada
-    const orders = await supa('/orders?select=id,customer_phone,customer_name,total_amount,created_at&is_paid=eq.true&payment_confirmation_sent=is.null&order=created_at.desc');
+    // Buscar pedidos pagos que não tiveram confirmação enviada (false ou null)
+    const orders = await supa('/orders?select=id,customer_phone,customer_name,total_amount,created_at&is_paid=eq.true&or=(payment_confirmation_sent.is.null,payment_confirmation_sent.eq.false)&order=created_at.desc');
     
     if (!orders || orders.length === 0) {
       console.log('✅ [PAYMENT] Nenhum pedido pendente de confirmação');
