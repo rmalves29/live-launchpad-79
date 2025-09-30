@@ -45,6 +45,8 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Buscar integração WhatsApp do tenant
+    console.log('Looking for WhatsApp integration for tenant:', tenant_id)
+    
     const { data: integration, error: integrationError } = await supabase
       .from('integration_whatsapp')
       .select('api_url, is_active')
@@ -55,15 +57,21 @@ Deno.serve(async (req) => {
     if (integrationError) {
       console.error('Error fetching WhatsApp integration:', integrationError)
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch WhatsApp integration' }),
+        JSON.stringify({ error: 'Failed to fetch WhatsApp integration', details: integrationError.message }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
+    console.log('Integration result:', integration)
+
     if (!integration?.api_url) {
-      console.log('No active WhatsApp integration found for tenant')
+      console.log('No active WhatsApp integration found for tenant:', tenant_id)
       return new Response(
-        JSON.stringify({ error: 'WhatsApp integration not configured' }),
+        JSON.stringify({ 
+          error: 'WhatsApp integration not configured', 
+          tenant_id,
+          message: 'Configure a integração do WhatsApp em Integrações > WhatsApp'
+        }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

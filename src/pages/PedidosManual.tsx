@@ -445,10 +445,24 @@ const PedidosManual = () => {
   const sendItemAddedMessage = async (phone: string, customerName: string, productName: string, quantity: number, price: number) => {
     if (!profile?.tenant_id) {
       console.warn('Tenant ID não disponível para envio de mensagem');
+      toast({
+        title: 'Aviso',
+        description: 'Não foi possível enviar mensagem WhatsApp: tenant não identificado',
+        variant: 'destructive'
+      });
       return;
     }
 
     try {
+      console.log('🚀 [PedidosManual] Enviando mensagem ITEM_ADDED:', {
+        phone,
+        customerName,
+        productName,
+        quantity,
+        price,
+        tenantId: profile.tenant_id
+      });
+
       const { whatsappService } = await import('@/lib/whatsapp-service');
       await whatsappService.sendItemAdded({
         customer_phone: phone,
@@ -461,10 +475,24 @@ const PedidosManual = () => {
         }
       }, profile.tenant_id);
       
-      console.log('WhatsApp message sent successfully:', { phone, customerName, productName, quantity, price });
-    } catch (error) {
-      console.warn('Failed to send WhatsApp message:', error);
-      // Não exibe erro para não interromper o fluxo principal
+      console.log('✅ [PedidosManual] Mensagem WhatsApp enviada com sucesso');
+      
+      toast({
+        title: 'Mensagem enviada',
+        description: 'Mensagem WhatsApp enviada ao cliente',
+      });
+    } catch (error: any) {
+      console.error('❌ [PedidosManual] Erro ao enviar mensagem WhatsApp:', error);
+      
+      // Mostrar erro específico ao usuário
+      const errorMessage = error?.message || 'Erro desconhecido ao enviar mensagem';
+      toast({
+        title: 'Erro ao enviar WhatsApp',
+        description: errorMessage.includes('not configured') 
+          ? 'Configure a integração WhatsApp em Integrações > WhatsApp'
+          : errorMessage,
+        variant: 'destructive'
+      });
     }
   };
 

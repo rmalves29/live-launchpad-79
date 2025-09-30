@@ -103,13 +103,25 @@ class WhatsAppService {
       throw new Error('Product data is required');
     }
 
+    console.log('📤 [sendItemAdded] Iniciando envio:', { 
+      tenantId, 
+      phone: orderData.customer_phone,
+      product: orderData.product.name 
+    });
+
     // Buscar template ITEM_ADDED do tenant
-    const { data: template } = await supabase
+    const { data: template, error: templateError } = await supabase
       .from('whatsapp_templates')
       .select('content')
       .eq('tenant_id', tenantId)
       .eq('type', 'ITEM_ADDED')
       .maybeSingle();
+
+    if (templateError) {
+      console.error('❌ [sendItemAdded] Erro ao buscar template:', templateError);
+    }
+
+    console.log('📝 [sendItemAdded] Template encontrado:', template ? 'Sim' : 'Não (usando fallback)');
 
     let message = template?.content || 
       `🛒 *Item adicionado ao pedido*\n\n✅ ${orderData.product.name}\nQtd: *${orderData.product.qty}*\nValor: *R$ ${orderData.product.price.toFixed(2)}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
@@ -119,7 +131,11 @@ class WhatsAppService {
     message = message.replace('{{quantidade}}', orderData.product.qty.toString());
     message = message.replace('{{valor}}', orderData.product.price.toFixed(2));
 
+    console.log('💬 [sendItemAdded] Mensagem preparada:', message.substring(0, 50) + '...');
+
     // Usar edge function via Supabase
+    console.log('🌐 [sendItemAdded] Chamando edge function com:', { tenant_id: tenantId, phone: orderData.customer_phone });
+    
     const { data, error } = await supabase.functions.invoke('whatsapp-send-template', {
       body: {
         tenant_id: tenantId,
@@ -128,7 +144,12 @@ class WhatsAppService {
       }
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('❌ [sendItemAdded] Erro na edge function:', error);
+      throw error;
+    }
+    
+    console.log('✅ [sendItemAdded] Resposta da edge function:', data);
     return data;
   }
 
