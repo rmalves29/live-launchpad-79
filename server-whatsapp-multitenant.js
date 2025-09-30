@@ -31,6 +31,10 @@ const tenantAuthDir = new Map(); // tenantId -> auth directory path
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+}
+
 function normalizeDDD(phone) {
   if (!phone) return phone;
   const cleanPhone = phone.replace(/\D/g, '');
@@ -48,6 +52,86 @@ function normalizeDDD(phone) {
   }
   
   return normalizedPhone;
+}
+
+/* ============================ PAYMENT CONFIRMATION ============================ */
+async function checkAndSendPendingPaymentConfirmations(tenantId, client) {
+  try {
+    console.log(`💰 [${tenantId}] Buscando pedidos pagos sem confirmação enviada...`);
+    
+    // Buscar pedidos pagos que não tiveram confirmação enviada
+    const orders = await supaRaw(
+      `/orders?select=*&tenant_id=eq.${tenantId}&is_paid=eq.true&payment_confirmation_sent=is.null&order=created_at.desc`
+    );
+    
+    if (!orders || orders.length === 0) {
+      console.log(`✅ [${tenantId}] Nenhum pagamento pendente de confirmação`);
+      return;
+    }
+    
+    console.log(`📨 [${tenantId}] Encontrados ${orders.length} pedidos para enviar confirmação`);
+    
+    for (const order of orders) {
+      try {
+        console.log(`📤 [${tenantId}] Enviando confirmação para pedido #${order.id}`);
+        
+        const customerName = order.customer_name || order.customer_phone;
+        const message = `🎉 *Pagamento Confirmado!*
+
+Olá ${customerName}!
+
+✅ Seu pagamento foi confirmado com sucesso!
+📄 Pedido: #${order.id}
+💰 Valor: ${formatCurrency(order.total_amount)}
+📅 Data: ${new Date().toLocaleDateString('pt-BR')}
+
+Seu pedido já está sendo preparado para o envio! 📦
+
+Obrigado pela confiança! 🙌`;
+
+        const normalizedPhone = normalizeDDD(order.customer_phone);
+        const chatId = `${normalizedPhone}@c.us`;
+        
+        // Enviar mensagem
+        await client.sendMessage(chatId, message);
+        console.log(`✅ [${tenantId}] Mensagem enviada para ${normalizedPhone}`);
+        
+        // Atualizar order como confirmação enviada
+        await supaRaw(`/orders?id=eq.${order.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            payment_confirmation_sent: true
+          })
+        });
+        
+        // Registrar no log de mensagens
+        await supaRaw('/whatsapp_messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            phone: normalizedPhone,
+            message: message,
+            type: 'payment_confirmation',
+            order_id: order.id,
+            sent_at: new Date().toISOString()
+          })
+        });
+        
+        console.log(`💾 [${tenantId}] Pedido #${order.id} marcado como confirmação enviada`);
+        
+        // Delay entre mensagens
+        await delay(2000);
+        
+      } catch (orderError) {
+        console.error(`❌ [${tenantId}] Erro ao processar pedido #${order.id}:`, orderError);
+      }
+    }
+    
+    console.log(`✅ [${tenantId}] Verificação de pagamentos concluída`);
+    
+  } catch (error) {
+    console.error(`❌ [${tenantId}] Erro ao verificar pagamentos pendentes:`, error);
+  }
 }
 
 /* ============================ SUPABASE HELPERS ============================ */
@@ -132,9 +216,13 @@ async function createTenantClient(tenant) {
     tenantStatus.set(tenant.id, 'qr_code');
   });
 
-  client.on('ready', () => {
+  client.on('ready', async () => {
     console.log(`✅ Cliente WhatsApp conectado para ${tenant.name}`);
     tenantStatus.set(tenant.id, 'online');
+    
+    // Verificar e enviar confirmações de pagamento pendentes
+    console.log(`🔍 Verificando pagamentos pendentes para ${tenant.name}...`);
+    await checkAndSendPendingPaymentConfirmations(tenant.id, client);
   });
 
   client.on('authenticated', () => {
@@ -361,7 +449,7 @@ app.get('/status/:tenantId', (req, res) => {
 // Enviar mensagem
 app.post('/send', async (req, res) => {
   try {
-    const { phone, message, tenantId: bodyTenantId } = req.body;
+    const { phone, message, tenantId: bodyTenantId, order_id } = req.body;
     const tenantId = req.tenantId || bodyTenantId;
     
     if (!tenantId) {
@@ -392,6 +480,21 @@ app.post('/send', async (req, res) => {
     
     await client.sendMessage(chatId, message);
     
+    // Se é uma confirmação de pagamento, atualizar order
+    if (order_id) {
+      try {
+        await supaRaw(`/orders?id=eq.${order_id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            payment_confirmation_sent: true
+          })
+        });
+        console.log(`✅ Pedido #${order_id} marcado como confirmação enviada`);
+      } catch (updateError) {
+        console.error(`❌ Erro ao atualizar pedido #${order_id}:`, updateError);
+      }
+    }
+    
     // Log da mensagem enviada
     await supaRaw('/whatsapp_messages', {
       method: 'POST',
@@ -399,7 +502,8 @@ app.post('/send', async (req, res) => {
         tenant_id: tenantId,
         phone: normalizedPhone,
         message: message,
-        type: 'sent',
+        type: order_id ? 'payment_confirmation' : 'sent',
+        order_id: order_id || null,
         sent_at: new Date().toISOString()
       })
     });

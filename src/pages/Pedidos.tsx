@@ -332,16 +332,21 @@ Obrigado pela confiança! 🙌`;
       console.log('📤 PASSO 4: Enviando para servidor Node.js...');
       console.log('URL:', `${config.api_url}/send`);
       console.log('Payload:', {
-        number: order.customer_phone,
+        phone: order.customer_phone,
+        tenantId: order.tenant_id,
         order_id: order.id
       });
 
       const response = await fetch(`${config.api_url}/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-tenant-id': order.tenant_id
+        },
         body: JSON.stringify({
-          number: order.customer_phone,
+          phone: order.customer_phone,
           message: message,
+          tenantId: order.tenant_id,
           order_id: order.id
         })
       });
