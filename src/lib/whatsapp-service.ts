@@ -98,11 +98,38 @@ class WhatsAppService {
     }
   }
 
-  async sendItemAdded(orderData: OrderData): Promise<WhatsAppResponse> {
-    return this.makeRequest('/api/test/item-added', {
-      phone: normalizeForSending(orderData.customer_phone),
-      product: orderData.product,
+  async sendItemAdded(orderData: OrderData, tenantId: string): Promise<WhatsAppResponse> {
+    if (!orderData.product) {
+      throw new Error('Product data is required');
+    }
+
+    // Buscar template ITEM_ADDED do tenant
+    const { data: template } = await supabase
+      .from('whatsapp_templates')
+      .select('content')
+      .eq('tenant_id', tenantId)
+      .eq('type', 'ITEM_ADDED')
+      .maybeSingle();
+
+    let message = template?.content || 
+      `🛒 *Item adicionado ao pedido*\n\n✅ ${orderData.product.name}\nQtd: *${orderData.product.qty}*\nValor: *R$ ${orderData.product.price.toFixed(2)}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
+
+    // Substituir placeholders
+    message = message.replace('{{produto}}', orderData.product.name);
+    message = message.replace('{{quantidade}}', orderData.product.qty.toString());
+    message = message.replace('{{valor}}', orderData.product.price.toFixed(2));
+
+    // Usar edge function via Supabase
+    const { data, error } = await supabase.functions.invoke('whatsapp-send-template', {
+      body: {
+        tenant_id: tenantId,
+        phone: orderData.customer_phone,
+        message
+      }
     });
+
+    if (error) throw error;
+    return data;
   }
 
   async sendItemCancelled(orderData: OrderData): Promise<WhatsAppResponse> {
@@ -149,15 +176,45 @@ class WhatsAppService {
     tenantId: string,
     orderDate?: string
   ): Promise<WhatsAppResponse> {
-    return this.makeRequest('/api/broadcast/orders', {
-      key: 'whatsapp-broadcast-2024',
-      status,
-      message,
-      orderDate,
-      interval: 2000,
-      batchSize: 5,
-      batchDelay: 3000,
-    }, tenantId);
+    // Buscar telefones únicos dos pedidos
+    let query = supabase
+      .from('orders')
+      .select('customer_phone')
+      .eq('tenant_id', tenantId);
+
+    if (status === 'paid') {
+      query = query.eq('is_paid', true);
+    } else if (status === 'unpaid') {
+      query = query.eq('is_paid', false);
+    }
+
+    if (orderDate) {
+      query = query.eq('event_date', orderDate);
+    }
+
+    const { data: orders, error } = await query;
+    if (error) throw error;
+
+    const uniquePhones = [...new Set(orders?.map(o => o.customer_phone) || [])];
+    
+    // Enviar mensagem para cada telefone usando a edge function
+    let successCount = 0;
+    for (const phone of uniquePhones) {
+      try {
+        await supabase.functions.invoke('whatsapp-send-template', {
+          body: {
+            tenant_id: tenantId,
+            phone,
+            message
+          }
+        });
+        successCount++;
+      } catch (error) {
+        console.error(`Erro ao enviar para ${phone}:`, error);
+      }
+    }
+
+    return { success: true, total: successCount };
   }
 
   async getContactCount(

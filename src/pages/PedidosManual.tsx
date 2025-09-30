@@ -443,6 +443,11 @@ const PedidosManual = () => {
   };
 
   const sendItemAddedMessage = async (phone: string, customerName: string, productName: string, quantity: number, price: number) => {
+    if (!profile?.tenant_id) {
+      console.warn('Tenant ID não disponível para envio de mensagem');
+      return;
+    }
+
     try {
       const { whatsappService } = await import('@/lib/whatsapp-service');
       await whatsappService.sendItemAdded({
@@ -454,7 +459,7 @@ const PedidosManual = () => {
           qty: quantity,
           price: price
         }
-      });
+      }, profile.tenant_id);
       
       console.log('WhatsApp message sent successfully:', { phone, customerName, productName, quantity, price });
     } catch (error) {

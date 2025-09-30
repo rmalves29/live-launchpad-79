@@ -32,6 +32,7 @@ interface CartItem {
 interface Order {
   id: number;
   customer_phone: string;
+  customer_name?: string;
   event_type: string;
   event_date: string;
   total_amount: number;
@@ -314,62 +315,43 @@ useEffect(() => {
   };
 
   const sendItemAddedMessage = async () => {
-    if (!selectedProduct || !order) return;
+    if (!selectedProduct || !order || !profile?.tenant_id) return;
     
     console.log('📤 [EditOrder] Iniciando envio de mensagem item adicionado:', {
       orderId: order.id,
       customerPhone: order.customer_phone,
-      productName: selectedProduct.name
+      productName: selectedProduct.name,
+      tenantId: profile.tenant_id
     });
     
     try {
-      // Buscar template (prioriza PRODUCT_ADDED, senão ITEM_ADDED)
-      const { data: template } = await supabaseTenant
-        .from('whatsapp_templates')
-        .select('content')
-        .in('type', ['PRODUCT_ADDED', 'ITEM_ADDED'] as any)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      console.log('📋 [EditOrder] Template encontrado:', template ? 'Sim' : 'Não (usando fallback)');
-
       const qty = quantity || 1;
       const unitValue = Number(unitPrice || selectedProduct.price) || 0;
-      const totalValue = qty * unitValue;
 
-      const baseMessage = template?.content ||
-        `🛒 Item adicionado ao pedido\n\nProduto: {{produto}}\nQtd: {{quantidade}}\nValor: R$ {{valor}}\nVariação 1: {{variacao1}}\nVariação 2: {{variacao2}}`;
-
-      const message = baseMessage
-        .replace(/{{produto}}/g, selectedProduct.name)
-        .replace(/{{quantidade}}/g, String(qty))
-        .replace(/{{valor}}/g, totalValue.toFixed(2))
-        .replace(/{{variacao1}}/g, '-')
-        .replace(/{{variacao2}}/g, '-');
-
-      console.log('📨 [EditOrder] Enviando mensagem via WhatsApp service...');
+      await whatsappService.sendItemAdded({
+        customer_phone: order.customer_phone,
+        customer_name: order.customer_name || 'Cliente',
+        product: {
+          name: selectedProduct.name,
+          code: selectedProduct.code,
+          qty: qty,
+          price: unitValue
+        }
+      }, profile.tenant_id);
       
-      const resp = await whatsappService.sendSimpleMessage(order.customer_phone, message);
+      console.log('✅ [EditOrder] Mensagem WhatsApp enviada com sucesso');
 
-      console.log('✅ [EditOrder] Resposta do WhatsApp service:', resp);
-
-      // Marcar que mensagem foi enviada (independente do sucesso externo, registramos tentativa)
+      // Marcar que mensagem foi enviada
       await supabaseTenant
         .from('orders')
         .update({ item_added_message_sent: true })
         .eq('id', order.id);
 
-      if (resp?.success) {
-        toast({ title: 'Sucesso', description: 'Mensagem enviada ao cliente' });
-      } else {
-        console.warn('⚠️ [EditOrder] Mensagem pode não ter sido entregue:', resp);
-        toast({ title: 'Aviso', description: 'Mensagem registrada, mas pode não ter sido entregue', variant: 'destructive' });
-      }
+      toast({ title: 'Sucesso', description: 'Mensagem enviada ao cliente' });
 
     } catch (error) {
       console.error('❌ [EditOrder] Error sending item added message:', error);
-      // Toast de erro removido conforme solicitado
+      console.warn('⚠️ [EditOrder] Falha ao enviar mensagem WhatsApp');
     }
   };
 
