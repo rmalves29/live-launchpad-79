@@ -247,7 +247,12 @@ const Pedidos = () => {
   const sendPaidOrderMessage = async (orderId: number) => {
     try {
       const order = orders.find(o => o.id === orderId);
-      if (!order) return false;
+      if (!order) {
+        console.error('Order not found:', orderId);
+        return false;
+      }
+
+      console.log('Sending payment confirmation for order:', order.id, 'tenant:', order.tenant_id);
 
       const customerName = order.customer?.name || order.customer_phone;
 
@@ -265,6 +270,8 @@ Seu pedido já está sendo preparado para o envio! 📦
 
 Obrigado pela confiança! 🙌`;
 
+      console.log('Calling whatsappService.sendSimpleMessage...');
+
       // Enviar mensagem via WhatsApp service com tenant_id
       const response = await whatsappService.sendSimpleMessage(
         order.customer_phone,
@@ -272,19 +279,21 @@ Obrigado pela confiança! 🙌`;
         order.tenant_id
       );
 
-      if (response.success) {
-        toast({
-          title: 'Mensagem Enviada',
-          description: 'Confirmação de pagamento enviada via WhatsApp'
-        });
-        return true;
-      } else {
-        console.error('Erro no envio:', response);
-        return false;
-      }
+      console.log('WhatsApp service response:', response);
+
+      // A resposta do whatsappService já indica sucesso se não lançar exceção
+      toast({
+        title: 'Mensagem Enviada',
+        description: 'Confirmação de pagamento enviada via WhatsApp'
+      });
+      return true;
     } catch (error) {
       console.error('Error sending paid order message:', error);
-      // Não mostrar erro para o usuário
+      toast({
+        title: 'Atenção',
+        description: 'Pedido marcado como pago. Verifique se a integração WhatsApp está configurada.',
+        variant: 'default'
+      });
       return false;
     }
   };
