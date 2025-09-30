@@ -155,10 +155,11 @@ const PedidosManual = () => {
     }
 
     const normalizedPhone = normalizePhone(phone);
-    if (normalizedPhone.length < 12 || normalizedPhone.length > 15) {
+    // Validar telefone brasileiro (10 ou 11 dígitos sem DDI)
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
       toast({
         title: 'Erro',
-        description: 'Telefone inválido. Use formato com DDD (ex: 11999999999)',
+        description: 'Telefone inválido. Use formato com DDD (ex: 31999999999)',
         variant: 'destructive'
       });
       return;
