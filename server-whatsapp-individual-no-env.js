@@ -82,23 +82,37 @@ function normalizeForStorage(phone) {
 }
 
 // Normalização para envio (com DDI) - renomeando a função original
+/**
+ * Normaliza número de telefone brasileiro para WhatsApp
+ * - Remove caracteres não numéricos
+ * - Adiciona DDI 55 se necessário
+ * - Garante o 9º dígito para celulares (números com 10 dígitos após DDD)
+ */
 function normalizeForSending(phone) {
   if (!phone) return phone;
+  
   const cleanPhone = phone.replace(/\D/g, '');
-  let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-  if (normalizedPhone.length >= 4) {
-    const ddd = parseInt(normalizedPhone.substring(2, 4));
-    const restOfNumber = normalizedPhone.substring(4);
-    if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
-      normalizedPhone = normalizedPhone.substring(0, 4) + '9' + normalizedPhone.substring(4);
-    } else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
-      normalizedPhone = normalizedPhone.substring(0, 4) + normalizedPhone.substring(5);
+  const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
+  
+  let normalized = withoutDDI;
+  
+  if (normalized.length >= 10 && normalized.length <= 11) {
+    const ddd = parseInt(normalized.substring(0, 2));
+    
+    if (ddd >= 11 && ddd <= 99) {
+      if (normalized.length === 10) {
+        const firstDigitAfterDDD = normalized[2];
+        if (firstDigitAfterDDD !== '9') {
+          normalized = normalized.substring(0, 2) + '9' + normalized.substring(2);
+          console.log(`✅ 9º dígito adicionado: ${phone} -> ${normalized}`);
+        }
+      }
     }
   }
-  return normalizedPhone;
+  
+  return '55' + normalized;
 }
 
-// Normalização de DDD: se DDD < 31 adiciona 9, se >= 31 remove 9
 function normalizeDDD(phone) {
   return normalizeForSending(phone);
 }

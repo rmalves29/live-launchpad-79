@@ -58,32 +58,35 @@ const digits = (s) => String(s || '').replace(/\D/g, '');
 function withBR(s) { const n = digits(s); return n.startsWith('55') ? n : `55${n}`; }
 function fmtMoney(v) { return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`; }
 
-// Normalização de DDD: se DDD < 31 adiciona 9, se >= 31 remove 9
+/**
+ * Normaliza número de telefone brasileiro para WhatsApp
+ * - Remove caracteres não numéricos
+ * - Adiciona DDI 55 se necessário
+ * - Garante o 9º dígito para celulares (números com 10 dígitos após DDD)
+ */
 function normalizeDDD(phone) {
   if (!phone) return phone;
   
-  // Remove todos os caracteres não numéricos
   const cleanPhone = phone.replace(/\D/g, '');
+  const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone : cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
-  // Se não tem código do país, adiciona 55
-  let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+  let normalized = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
-  // Extrai DDD (após o 55)
-  if (normalizedPhone.length >= 4) {
-    const ddd = parseInt(normalizedPhone.substring(2, 4));
-    const restOfNumber = normalizedPhone.substring(4);
+  if (normalized.length >= 10 && normalized.length <= 11) {
+    const ddd = parseInt(normalized.substring(0, 2));
     
-    // Se DDD < 31, adiciona o 9 se não existir e o número tem 8 dígitos após DDD
-    if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
-      normalizedPhone = normalizedPhone.substring(0, 4) + '9' + normalizedPhone.substring(4);
-    }
-    // Se DDD >= 31, remove o 9 se existir na posição seguinte
-    else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
-      normalizedPhone = normalizedPhone.substring(0, 4) + normalizedPhone.substring(5);
+    if (ddd >= 11 && ddd <= 99) {
+      if (normalized.length === 10) {
+        const firstDigitAfterDDD = normalized[2];
+        if (firstDigitAfterDDD !== '9') {
+          normalized = normalized.substring(0, 2) + '9' + normalized.substring(2);
+          console.log(`✅ 9º dígito adicionado: ${phone} -> ${normalized}`);
+        }
+      }
     }
   }
   
-  return normalizedPhone;
+  return '55' + normalized;
 }
 
 // log curto
