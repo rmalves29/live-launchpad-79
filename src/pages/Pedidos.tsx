@@ -363,11 +363,7 @@ const Pedidos = () => {
       console.log('═══════════════════════════════════════════════');
       console.log('');
       
-      toast({
-        title: 'Erro no Envio',
-        description: error instanceof Error ? error.message : 'Erro desconhecido',
-        variant: 'destructive'
-      });
+      // Toast de erro removido conforme solicitado
       return false;
     }
   };
