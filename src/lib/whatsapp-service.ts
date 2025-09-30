@@ -4,22 +4,32 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Função para obter a URL do servidor WhatsApp configurada
 async function getWhatsAppServerUrl(tenantId: string): Promise<string> {
-  const { data, error } = await supabase
-    .from('integration_whatsapp')
-    .select('api_url')
-    .eq('tenant_id', tenantId)
-    .eq('is_active', true)
-    .maybeSingle();
-  
-  if (error) {
-    throw new Error(`Erro ao buscar configuração WhatsApp: ${error.message}`);
+  try {
+    console.log('🔍 [WS] Buscando URL do servidor WhatsApp para tenant:', tenantId);
+    
+    const { data, error } = await supabase
+      .from('integration_whatsapp')
+      .select('api_url')
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true)
+      .maybeSingle();
+    
+    if (error) {
+      console.error('❌ [WS] Erro ao buscar configuração:', error);
+      throw new Error(`Erro ao buscar configuração WhatsApp: ${error.message}`);
+    }
+    
+    if (!data || !data.api_url) {
+      console.error('❌ [WS] Configuração não encontrada ou api_url vazia');
+      throw new Error('Integração WhatsApp não configurada. Configure a URL da API em Integrações > WhatsApp.');
+    }
+    
+    console.log('✅ [WS] URL encontrada:', data.api_url);
+    return data.api_url;
+  } catch (error) {
+    console.error('❌ [WS] Falha crítica ao obter URL:', error);
+    throw error;
   }
-  
-  if (!data || !data.api_url) {
-    throw new Error('Integração WhatsApp não configurada. Configure a URL da API em Integrações > WhatsApp.');
-  }
-  
-  return data.api_url;
 }
 
 interface WhatsAppResponse {
@@ -185,6 +195,13 @@ class WhatsAppService {
   }
 
   async sendSimpleMessage(phone: string, message: string, tenantId?: string): Promise<WhatsAppResponse> {
+    console.log('📞 [WS] sendSimpleMessage chamado:', {
+      phone,
+      messageLength: message.length,
+      tenantId,
+      endpoint: '/send'
+    });
+    
     return this.makeRequest('/send', {
       number: normalizeForSending(phone),
       message,
