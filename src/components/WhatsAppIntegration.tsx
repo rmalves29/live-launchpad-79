@@ -130,38 +130,53 @@ export default function WhatsAppIntegration() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4">
-            {status?.instancias ? (
-              status.instancias.map((instance: any, index: number) => (
-                <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center gap-3">
-                    {getStatusIcon(instance.status)}
-                    <div>
-                      <div className="font-medium">{instance.nome}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {instance.numero || 'Número não definido'}
+          {!tenant?.id ? (
+            <div className="text-center text-muted-foreground py-4">
+              <AlertCircle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+              <p>Carregando informações do tenant...</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4">
+                {status?.instancias ? (
+                  status.instancias.map((instance: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-3">
+                        {getStatusIcon(instance.status)}
+                        <div>
+                          <div className="font-medium">{instance.nome}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {instance.numero || 'Número não definido'}
+                          </div>
+                        </div>
                       </div>
+                      <Badge 
+                        variant={instance.status === 'online' ? 'default' : 'secondary'}
+                      >
+                        {getStatusLabel(instance.status)}
+                      </Badge>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center py-6 space-y-2">
+                    <AlertCircle className="h-8 w-8 mx-auto text-yellow-500" />
+                    <p className="text-muted-foreground">
+                      Carregando status das instâncias...
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Se esta mensagem persistir, verifique se a integração WhatsApp está configurada corretamente em <strong>Integrações &gt; WhatsApp</strong>
+                    </p>
                   </div>
-                  <Badge 
-                    variant={instance.status === 'online' ? 'default' : 'secondary'}
-                  >
-                    {getStatusLabel(instance.status)}
-                  </Badge>
-                </div>
-              ))
-            ) : (
-              <div className="text-center text-muted-foreground py-4">
-                Carregando status das instâncias...
+                )}
               </div>
-            )}
-          </div>
-          
-          <div className="mt-4">
-            <Button onClick={fetchStatus} variant="outline" size="sm">
-              Atualizar Status
-            </Button>
-          </div>
+              
+              <div className="mt-4">
+                <Button onClick={fetchStatus} variant="outline" size="sm">
+                  Atualizar Status
+                </Button>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

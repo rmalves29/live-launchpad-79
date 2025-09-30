@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -553,6 +553,11 @@ export const TenantIntegrations = () => {
               }
             />
           </CardTitle>
+          <CardDescription>
+            Configure a URL do servidor WhatsApp para este tenant. Cada empresa deve ter sua própria instância WhatsApp rodando.
+            <br />
+            <strong>Exemplo:</strong> http://seu-servidor.com:3333 ou https://api.seudominio.com/whatsapp
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
