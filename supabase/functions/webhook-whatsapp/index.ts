@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 /**
  * Normaliza número para armazenamento no banco (sem DDI)
  * Entrada: 5531992904210 ou 31992904210 ou 31 99290-4210
- * Saída: 31992904210 (DDD + número com/sem 9º dígito baseado no DDD)
+ * Saída: 31992904210 (DDD + número com 9º dígito)
  */
 function normalizeForStorage(phone: string): string {
   if (!phone) return phone;
@@ -29,14 +29,12 @@ function normalizeForStorage(phone: string): string {
   
   const restOfNumber = phoneWithoutDDI.substring(2);
   
-  // Normalização do 9º dígito baseado no DDD
-  if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
-    // DDD < 31: adiciona 9 se não tiver e tiver 8 dígitos
+  // Normalização do 9º dígito: todos os celulares brasileiros têm 9 dígitos
+  if (restOfNumber.length === 8 && !restOfNumber.startsWith('9')) {
+    // Número com 8 dígitos sem o 9: adicionar o 9 (celular antigo)
     phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
-  } else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
-    // DDD >= 31: remove 9 se tiver e tiver 9 dígitos
-    phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + phoneWithoutDDI.substring(3);
   }
+  // Se já tem 9 dígitos e começa com 9, está correto - não fazer nada
   
   return phoneWithoutDDI;
 }
@@ -44,7 +42,7 @@ function normalizeForStorage(phone: string): string {
 /**
  * Normaliza número para envio de mensagens (com DDI)
  * Entrada: 31992904210 ou 5531992904210
- * Saída: 5531992904210 (DDI 55 + DDD + número com/sem 9º dígito baseado no DDD)
+ * Saída: 5531992904210 (DDI 55 + DDD + número com 9º dígito)
  */
 function normalizeForSending(phone: string): string {
   if (!phone) return phone;
@@ -59,14 +57,12 @@ function normalizeForSending(phone: string): string {
     const ddd = parseInt(normalizedPhone.substring(2, 4));
     const restOfNumber = normalizedPhone.substring(4);
     
-    // Normalização do 9º dígito baseado no DDD
-    if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
-      // DDD < 31: adiciona 9 se não tiver e tiver 8 dígitos
+    // Normalização do 9º dígito: todos os celulares brasileiros têm 9 dígitos
+    if (restOfNumber.length === 8 && !restOfNumber.startsWith('9')) {
+      // Número com 8 dígitos sem o 9: adicionar o 9 (celular antigo)
       normalizedPhone = normalizedPhone.substring(0, 4) + '9' + normalizedPhone.substring(4);
-    } else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
-      // DDD >= 31: remove 9 se tiver e tiver 9 dígitos
-      normalizedPhone = normalizedPhone.substring(0, 4) + normalizedPhone.substring(5);
     }
+    // Se já tem 9 dígitos e começa com 9, está correto - não fazer nada
   }
   
   return normalizedPhone;
