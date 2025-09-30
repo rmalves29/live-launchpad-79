@@ -302,8 +302,13 @@ const Pedidos = () => {
 
       if (!config?.api_url) {
         console.error('❌ ERRO: URL não configurada!');
-        alert('ERRO: Configure a URL do servidor WhatsApp em Integrações > WhatsApp');
-        throw new Error('Configure a URL do servidor WhatsApp');
+        toast({
+          title: 'Configuração Necessária',
+          description: 'Configure a URL do servidor WhatsApp em Integrações > WhatsApp. Exemplo: http://localhost:3333',
+          variant: 'destructive',
+          duration: 8000
+        });
+        throw new Error('Configure a URL do servidor WhatsApp em Integrações');
       }
 
       console.log('✅ Configuração encontrada:', config.api_url);

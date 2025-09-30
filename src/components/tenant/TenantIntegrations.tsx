@@ -411,6 +411,16 @@ export const TenantIntegrations = () => {
       return;
     }
 
+    // Validar formato da URL
+    if (!whatsappConfig.api_url.startsWith('http://') && !whatsappConfig.api_url.startsWith('https://')) {
+      toast({
+        title: 'Erro',
+        description: 'URL deve começar com http:// ou https:// (ex: http://localhost:3333)',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const currentTenantId = profile.role === 'super_admin' ? tenant?.id : profile.tenant_id;
@@ -554,33 +564,43 @@ export const TenantIntegrations = () => {
             />
           </CardTitle>
           <CardDescription>
-            Configure a URL do servidor WhatsApp para este tenant. Cada empresa deve ter sua própria instância WhatsApp rodando.
+            Configure a URL do servidor WhatsApp individual para esta empresa.
             <br />
-            <strong>Exemplo:</strong> http://seu-servidor.com:3333 ou https://api.seudominio.com/whatsapp
+            <strong className="text-yellow-600">⚠️ IMPORTANTE:</strong> Cada empresa deve ter seu próprio servidor Node.js rodando (server-whatsapp-individual.js) em uma porta diferente.
+            <br />
+            <strong>Exemplo:</strong> http://localhost:3333 (para desenvolvimento) ou https://api.seudominio.com (para produção)
+            <br />
+            <span className="text-sm text-muted-foreground">Sem esta configuração, as confirmações de pagamento via WhatsApp não funcionarão.</span>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="whatsapp-api-url">API URL</Label>
+            <Label htmlFor="whatsapp-api-url">API URL *</Label>
             <Input
               id="whatsapp-api-url"
               value={whatsappConfig.api_url}
               onChange={(e) =>
                 setWhatsappConfig(prev => ({ ...prev, api_url: e.target.value }))
               }
-              placeholder="https://api.whatsapp.example.com"
+              placeholder="http://localhost:3333"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              URL do servidor Node.js individual desta empresa (ex: http://localhost:3333)
+            </p>
           </div>
           <div>
-            <Label htmlFor="whatsapp-instance">Nome da Instância</Label>
+            <Label htmlFor="whatsapp-instance">Nome da Instância *</Label>
             <Input
               id="whatsapp-instance"
               value={whatsappConfig.instance_name}
               onChange={(e) =>
                 setWhatsappConfig(prev => ({ ...prev, instance_name: e.target.value }))
               }
-              placeholder="minha-instancia"
+              placeholder="empresa-fulano"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Nome identificador desta instância WhatsApp (ex: empresa-fulano)
+            </p>
           </div>
           <div>
             <Label htmlFor="whatsapp-webhook-secret">Webhook Secret</Label>
