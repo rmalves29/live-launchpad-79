@@ -245,8 +245,7 @@ const Pedidos = () => {
   };
 
   const sendPaidOrderMessage = async (orderId: number) => {
-    console.log('=== INÍCIO ENVIO CONFIRMAÇÃO PAGAMENTO ===');
-    console.log('Pedido ID:', orderId);
+    console.log('=== CONFIRMAÇÃO PAGAMENTO VIA NODE.JS ===');
     
     try {
       const order = orders.find(o => o.id === orderId);
@@ -255,11 +254,22 @@ const Pedidos = () => {
         return false;
       }
 
-      console.log('✅ Pedido encontrado:', {
-        id: order.id,
-        phone: order.customer_phone,
-        tenant: order.tenant_id
-      });
+      console.log('📋 Pedido:', { id: order.id, phone: order.customer_phone, tenant: order.tenant_id });
+
+      // Buscar URL do servidor
+      const { data: config } = await supabaseTenant
+        .from('integration_whatsapp')
+        .select('api_url')
+        .eq('tenant_id', order.tenant_id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!config?.api_url) {
+        console.error('❌ Servidor Node.js não configurado');
+        throw new Error('Configure a URL do servidor WhatsApp');
+      }
+
+      console.log('🌐 Servidor:', config.api_url);
 
       const customerName = order.customer?.name || order.customer_phone;
       const message = `🎉 *Pagamento Confirmado!*
@@ -275,59 +285,39 @@ Seu pedido já está sendo preparado para o envio! 📦
 
 Obrigado pela confiança! 🙌`;
 
-      console.log('📝 Mensagem montada, tamanho:', message.length);
-
-      // Buscar URL do servidor WhatsApp
-      console.log('🔍 Buscando configuração WhatsApp...');
-      const { data: config } = await supabaseTenant
-        .from('integration_whatsapp')
-        .select('api_url')
-        .eq('tenant_id', order.tenant_id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (!config?.api_url) {
-        console.error('❌ URL do servidor não configurada');
-        throw new Error('Configure a URL do servidor WhatsApp em Integrações');
-      }
-
-      console.log('✅ URL encontrada:', config.api_url);
-
-      // Enviar mensagem
-      console.log('📤 Enviando requisição para:', `${config.api_url}/send`);
+      // Enviar via Node.js
+      console.log('📤 Enviando para Node.js...');
       const response = await fetch(`${config.api_url}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           number: order.customer_phone,
-          message: message
+          message: message,
+          order_id: order.id
         })
       });
 
-      console.log('📥 Response status:', response.status);
       const result = await response.json();
-      console.log('📥 Response body:', result);
+      console.log('📥 Resposta:', result);
 
       if (!response.ok) {
-        throw new Error(result.error || 'Erro ao enviar mensagem');
+        throw new Error(result.error || 'Erro ao enviar');
       }
 
-      console.log('✅ MENSAGEM ENVIADA COM SUCESSO!');
+      console.log('✅ SUCESSO!');
       toast({
-        title: 'Mensagem Enviada',
-        description: 'Confirmação de pagamento enviada via WhatsApp'
+        title: 'Confirmação Enviada',
+        description: 'Mensagem de pagamento confirmado enviada via WhatsApp'
       });
       return true;
     } catch (error) {
-      console.error('❌ ERRO COMPLETO:', error);
+      console.error('❌ ERRO:', error);
       toast({
-        title: 'Erro ao Enviar',
-        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        title: 'Erro no Envio',
+        description: error instanceof Error ? error.message : 'Verifique se o servidor Node.js está rodando',
         variant: 'destructive'
       });
       return false;
-    } finally {
-      console.log('=== FIM ENVIO CONFIRMAÇÃO PAGAMENTO ===');
     }
   };
 

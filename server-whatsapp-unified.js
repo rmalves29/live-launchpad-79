@@ -99,6 +99,87 @@ function normalizeForSending(phone) {
   return normalizedPhone;
 }
 
+/* ============================ PAYMENT CONFIRMATION ============================ */
+async function checkAndSendPendingPaymentConfirmations() {
+  try {
+    console.log('🔍 [PAYMENT] Verificando pedidos pagos sem confirmação enviada...');
+    
+    const response = await supa('/orders', {
+      method: 'GET',
+      query: {
+        tenant_id: `eq.${TENANT_ID}`,
+        is_paid: 'eq.true',
+        payment_confirmation_sent: 'is.null',
+        select: 'id,customer_phone,customer_name,total_amount,created_at'
+      }
+    });
+
+    const orders = await response.json();
+    
+    if (!orders || orders.length === 0) {
+      console.log('✅ [PAYMENT] Nenhum pedido pendente de confirmação');
+      return;
+    }
+
+    console.log(`📋 [PAYMENT] Encontrados ${orders.length} pedidos pendentes de confirmação`);
+
+    for (const order of orders) {
+      try {
+        console.log(`📤 [PAYMENT] Enviando confirmação para pedido #${order.id}`);
+        
+        const customerName = order.customer_name || order.customer_phone;
+        const message = `🎉 *Pagamento Confirmado!*
+
+Olá ${customerName}!
+
+✅ Seu pagamento foi confirmado com sucesso!
+📄 Pedido: #${order.id}
+💰 Valor: R$ ${fmtMoney(order.total_amount)}
+📅 Data: ${new Date(order.created_at).toLocaleString('pt-BR')}
+
+Seu pedido já está sendo preparado para o envio! 📦
+
+Obrigado pela confiança! 🙌`;
+
+        const normalizedNumber = normalizeForSending(order.customer_phone);
+        await client.sendMessage(`${normalizedNumber}@c.us`, message);
+
+        // Atualizar no banco que a mensagem foi enviada
+        await supa(`/orders?id=eq.${order.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            payment_confirmation_sent: true
+          })
+        });
+
+        // Salvar no histórico
+        await supa('/whatsapp_messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            tenant_id: TENANT_ID,
+            phone: normalizeForStorage(order.customer_phone),
+            message,
+            type: 'payment_confirmation',
+            order_id: order.id,
+            sent_at: new Date().toISOString()
+          })
+        });
+
+        console.log(`✅ [PAYMENT] Confirmação enviada para pedido #${order.id}`);
+        
+        // Delay entre envios
+        await delay(2000);
+      } catch (error) {
+        console.error(`❌ [PAYMENT] Erro ao enviar confirmação pedido #${order.id}:`, error.message);
+      }
+    }
+
+    console.log('✅ [PAYMENT] Verificação de confirmações pendentes concluída');
+  } catch (error) {
+    console.error('❌ [PAYMENT] Erro ao verificar confirmações pendentes:', error.message);
+  }
+}
+
 /* ============================ SUPABASE ============================ */
 async function supaRaw(pathname, init) {
   const url = `${SUPABASE_URL.replace(/\/+$/,'')}/rest/v1${pathname}`;
@@ -198,9 +279,12 @@ client.on('qr', (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', () => { 
+client.on('ready', async () => { 
   console.log('✅ WhatsApp conectado!'); 
   clientReady = true; 
+  
+  // Verificar e enviar mensagens de confirmação pendentes
+  await checkAndSendPendingPaymentConfirmations();
 });
 
 client.on('authenticated', () => console.log('🔑 WhatsApp autenticado!'));
@@ -466,23 +550,48 @@ app.get('/status', (req, res) => {
 app.post('/send', async (req, res) => {
   try {
     if (!clientReady) return res.status(503).json({ error: 'WhatsApp não está conectado' });
-    const { number, message } = req.body;
+    const { number, message, order_id } = req.body;
     if (!number || !message) return res.status(400).json({ error: 'Número e mensagem são obrigatórios' });
+
+    console.log('📤 [SEND] Enviando mensagem:', { 
+      phone: normalizeForStorage(number), 
+      order_id,
+      messageLength: message.length 
+    });
 
     const normalizedNumber = normalizeForSending(number);
     await client.sendMessage(`${normalizedNumber}@c.us`, message);
 
+    // Salvar no histórico
+    const messageData = {
+      tenant_id: TENANT_ID, 
+      phone: normalizeForStorage(number), 
+      message, 
+      type: order_id ? 'payment_confirmation' : 'outgoing',
+      sent_at: new Date().toISOString()
+    };
+    
+    if (order_id) {
+      messageData.order_id = order_id;
+    }
+
     await supa('/whatsapp_messages', {
       method: 'POST',
-      body: JSON.stringify({
-        tenant_id: TENANT_ID, 
-        phone: normalizeForStorage(number), 
-        message, 
-        type: 'outgoing', 
-        sent_at: new Date().toISOString()
-      })
+      body: JSON.stringify(messageData)
     });
 
+    // Se for confirmação de pagamento, marcar no pedido
+    if (order_id) {
+      await supa(`/orders?id=eq.${order_id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          payment_confirmation_sent: true
+        })
+      });
+      console.log(`✅ [SEND] Confirmação marcada para pedido #${order_id}`);
+    }
+
+    console.log('✅ [SEND] Mensagem enviada com sucesso');
     res.json({ success: true, phone: normalizeForStorage(number) });
   } catch (error) {
     console.error('❌ Erro ao enviar mensagem individual:', error);
