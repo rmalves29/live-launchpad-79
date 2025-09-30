@@ -11,7 +11,8 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -75,6 +76,7 @@ const Pedidos = () => {
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [viewOrderOpen, setViewOrderOpen] = useState(false);
   const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Filtros específicos para Mensagem em Massa
   const [broadcastPaid, setBroadcastPaid] = useState<'all' | 'paid' | 'unpaid'>('all');
@@ -883,7 +885,22 @@ const Pedidos = () => {
     setFilterPaid(null);
     setFilterEventType('all');
     setFilterDate(undefined);
+    setSearchTerm('');
   };
+
+  // Filtrar pedidos por telefone
+  const filteredOrders = orders.filter(order => {
+    if (!searchTerm) return true;
+    
+    // Normalizar o termo de busca e o telefone do pedido
+    const normalizedSearch = normalizeForStorage(searchTerm);
+    const normalizedPhone = normalizeForStorage(order.customer_phone);
+    
+    // Buscar também sem normalização (para busca parcial)
+    return normalizedPhone.includes(normalizedSearch) || 
+           order.customer_phone.includes(searchTerm) ||
+           formatPhoneForDisplay(order.customer_phone).includes(searchTerm);
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -924,9 +941,23 @@ const Pedidos = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Status Pagamento</label>
+          <div className="space-y-4">
+            {/* Campo de busca por telefone */}
+            <div className="flex items-center space-x-2">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por telefone..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm"
+              />
+            </div>
+
+            <Separator />
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Status Pagamento</label>
               <Select 
                 value={filterPaid === null ? 'all' : filterPaid.toString()} 
                 onValueChange={(value) => setFilterPaid(value === 'all' ? null : value === 'true')}
@@ -991,6 +1022,7 @@ const Pedidos = () => {
                 Limpar Filtros
               </Button>
             </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1034,20 +1066,20 @@ const Pedidos = () => {
                       <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     </TableCell>
                   </TableRow>
-                ) : orders.length === 0 ? (
+                ) : filteredOrders.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
-                      Nenhum pedido encontrado
+                      {searchTerm ? 'Nenhum pedido encontrado com este telefone' : 'Nenhum pedido encontrado'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  orders.map((order) => (
+                  filteredOrders.map((order) => (
                     <TableRow key={order.id}>
                       <TableCell>
                         <input 
                           type="checkbox"
                           checked={selectedOrders.has(order.id)}
-                          onChange={() => toggleOrderSelection(order.id)}
+                       onChange={() => toggleOrderSelection(order.id)}
                         />
                       </TableCell>
                       <TableCell>
