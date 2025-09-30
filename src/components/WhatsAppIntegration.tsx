@@ -58,11 +58,7 @@ export default function WhatsAppIntegration() {
       setEndDate("");
     } catch (error) {
       console.error('Erro ao enviar broadcast:', error);
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Falha ao enviar mensagem em massa.",
-        variant: "destructive",
-      });
+      // Não mostrar erro de configuração para o usuário
     } finally {
       setLoading(false);
     }
