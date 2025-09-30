@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.whatsapp-multitenant]
 verify_jwt = true
+
+[functions.whatsapp-send-template]
+verify_jwt = false

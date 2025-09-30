@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Smartphone, Send } from "lucide-react";
+import { Smartphone, Send, Save } from "lucide-react";
 import { whatsappService } from "@/lib/whatsapp-service";
 import { useToast } from "@/components/ui/use-toast";
 import { useTenant } from "@/hooks/useTenant";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function WhatsAppIntegration() {
   const [message, setMessage] = useState("");
@@ -17,8 +18,69 @@ export default function WhatsAppIntegration() {
   const [contactCount, setContactCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const { toast } = useToast();
   const { tenant } = useTenant();
+
+  // Carregar template MSG_MASSA ao montar
+  useEffect(() => {
+    loadTemplate();
+  }, [tenant?.id]);
+
+  const loadTemplate = async () => {
+    if (!tenant?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_templates')
+        .select('content')
+        .eq('tenant_id', tenant.id)
+        .eq('type', 'MSG_MASSA')
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      
+      if (data?.content) {
+        setMessage(data.content);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar template:', error);
+    }
+  };
+
+  const saveTemplate = async () => {
+    if (!tenant?.id || !message.trim()) return;
+    
+    setSavingTemplate(true);
+    try {
+      const { error } = await supabase
+        .from('whatsapp_templates')
+        .upsert({
+          tenant_id: tenant.id,
+          type: 'MSG_MASSA',
+          title: 'Mensagem em Massa',
+          content: message
+        }, {
+          onConflict: 'tenant_id,type'
+        });
+
+      if (error) throw error;
+      
+      toast({
+        title: "Sucesso",
+        description: "Template salvo com sucesso",
+      });
+    } catch (error) {
+      console.error('Erro ao salvar template:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao salvar template",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   const fetchContactCount = async () => {
     if (!tenant?.id) return;
@@ -161,14 +223,26 @@ export default function WhatsAppIntegration() {
             />
           </div>
 
-          <Button 
-            onClick={handleBroadcast} 
-            disabled={loading || !message.trim()}
-            className="w-full"
-          >
-            <Send className="h-4 w-4 mr-2" />
-            {loading ? 'Enviando...' : 'Enviar Mensagem em Massa'}
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={saveTemplate} 
+              disabled={savingTemplate || !message.trim()}
+              variant="outline"
+              className="flex-1"
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {savingTemplate ? 'Salvando...' : 'Salvar Template'}
+            </Button>
+
+            <Button 
+              onClick={handleBroadcast} 
+              disabled={loading || !message.trim()}
+              className="flex-1"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              {loading ? 'Enviando...' : 'Enviar Mensagem'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
