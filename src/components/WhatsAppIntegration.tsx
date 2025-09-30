@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { AlertCircle, CheckCircle, Clock, Smartphone, Send } from "lucide-react";
 import { whatsappService } from "@/lib/whatsapp-service";
 import { useToast } from "@/components/ui/use-toast";
+import { useTenant } from "@/hooks/useTenant";
 
 export default function WhatsAppIntegration() {
   const [status, setStatus] = useState<any>(null);
@@ -15,26 +16,31 @@ export default function WhatsAppIntegration() {
   const [orderStatus, setOrderStatus] = useState<'paid' | 'unpaid' | 'all'>('all');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { tenant } = useTenant();
 
   const fetchStatus = async () => {
+    if (!tenant?.id) return;
+    
     try {
-      const statusData = await whatsappService.getStatus();
+      const statusData = await whatsappService.getStatus(tenant.id);
       setStatus(statusData);
     } catch (error) {
       console.error('Erro ao buscar status:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível conectar ao servidor WhatsApp. Verifique se está rodando.",
+        description: error instanceof Error ? error.message : "Não foi possível conectar ao servidor WhatsApp.",
         variant: "destructive",
       });
     }
   };
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000); // Atualiza a cada 5 segundos
-    return () => clearInterval(interval);
-  }, []);
+    if (tenant?.id) {
+      fetchStatus();
+      const interval = setInterval(fetchStatus, 5000); // Atualiza a cada 5 segundos
+      return () => clearInterval(interval);
+    }
+  }, [tenant?.id]);
 
   const getStatusIcon = (instanceStatus: string) => {
     switch (instanceStatus) {
@@ -77,6 +83,15 @@ export default function WhatsAppIntegration() {
       return;
     }
 
+    if (!tenant?.id) {
+      toast({
+        title: "Erro",
+        description: "Tenant não identificado.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await whatsappService.broadcastByOrderStatus(orderStatus, message);
@@ -91,7 +106,7 @@ export default function WhatsAppIntegration() {
       console.error('Erro ao enviar broadcast:', error);
       toast({
         title: "Erro",
-        description: "Falha ao enviar mensagem em massa.",
+        description: error instanceof Error ? error.message : "Falha ao enviar mensagem em massa.",
         variant: "destructive",
       });
     } finally {
