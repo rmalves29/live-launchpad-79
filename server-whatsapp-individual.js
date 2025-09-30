@@ -361,7 +361,7 @@ client.on('message', async (msg) => {
 
     // Detectar códigos de produto
     const text = String(msg.body || '').trim().toUpperCase();
-    const match = text.match(/^(?:[CPA]\\s*)?(\d{1,6})$/);
+    const match = text.match(/^(?:[CPA]\s*)?(\d{1,6})$/);
     
     if (match) {
       const numeric = match[1];
@@ -572,16 +572,16 @@ app.listen(PORT, () => {
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('\\n🛑 Encerrando servidor...');
+  console.log('\n🛑 Encerrando servidor...');
   if (clientReady) {
     await client.destroy();
   }
   process.exit();
 });
 
-console.log('\\n📖 INSTRUÇÕES DE USO:');
+console.log('\n📖 INSTRUÇÕES DE USO:');
 console.log('1. Execute: node server-whatsapp-individual.js');
 console.log('2. Escaneie o QR Code que aparecerá');
 console.log('3. Aguarde a mensagem "WhatsApp conectado!"');
 console.log('4. Envie códigos de produto via WhatsApp para testar');
-console.log('\\n✅ Sistema pronto para detectar códigos automaticamente!');
+console.log('\n✅ Sistema pronto para detectar códigos automaticamente!');
