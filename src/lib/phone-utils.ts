@@ -7,11 +7,10 @@
 
 /**
  * Normaliza número para armazenamento no banco (sem DDI).
- * NÃO adiciona ou remove o 9º dígito - apenas limpa e remove DDI.
- * A normalização do 9º dígito acontece APENAS no servidor Node.js.
+ * Garante que números mobile brasileiros tenham o 9º dígito.
  * 
- * Entrada: 5531992904210 ou 31992904210 ou (31) 99290-4210
- * Saída: 31992904210 (mantém o número exatamente como fornecido, apenas sem DDI)
+ * Entrada: 5531992904210 ou 3193786530 ou (31) 99290-4210
+ * Saída: 31993786530 (com 9º dígito adicionado automaticamente se necessário)
  */
 export function normalizeForStorage(phone: string): string {
   if (!phone) return phone;
@@ -20,18 +19,45 @@ export function normalizeForStorage(phone: string): string {
   const cleanPhone = phone.replace(/\D/g, '');
   
   // Remove DDI 55 se presente
-  const phoneWithoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
+  let phoneWithoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
+  
+  // Validação básica de comprimento
+  if (phoneWithoutDDI.length < 10 || phoneWithoutDDI.length > 11) {
+    console.warn('Telefone com comprimento inválido:', phoneWithoutDDI);
+    return phoneWithoutDDI;
+  }
+  
+  // Validar DDD (11-99)
+  const ddd = parseInt(phoneWithoutDDI.substring(0, 2));
+  if (ddd < 11 || ddd > 99) {
+    console.warn('DDD inválido:', ddd);
+    return phoneWithoutDDI;
+  }
+  
+  // Se tem 11 dígitos, já está correto
+  if (phoneWithoutDDI.length === 11) {
+    return phoneWithoutDDI;
+  }
+  
+  // Se tem 10 dígitos, adicionar o 9º dígito para celulares
+  if (phoneWithoutDDI.length === 10) {
+    const firstDigitAfterDDD = phoneWithoutDDI[2];
+    
+    // Se não começa com 9, adicionar o 9 (celular brasileiro)
+    if (firstDigitAfterDDD !== '9') {
+      phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
+      console.log('✅ 9º dígito adicionado:', phone, '->', phoneWithoutDDI);
+    }
+  }
   
   return phoneWithoutDDI;
 }
 
 /**
- * Adiciona DDI 55 ao número se não estiver presente.
- * NÃO adiciona ou remove o 9º dígito - apenas garante o DDI.
- * A normalização do 9º dígito acontece APENAS no servidor Node.js.
+ * Adiciona DDI 55 ao número e garante o 9º dígito para envio.
  * 
- * Entrada: 31992904210 ou 5531992904210
- * Saída: 5531992904210 (apenas adiciona DDI se necessário)
+ * Entrada: 31993786530 ou 3193786530 ou 5531993786530
+ * Saída: 5531993786530 (com DDI e 9º dígito garantidos)
  */
 export function normalizeForSending(phone: string): string {
   if (!phone) return phone;
@@ -39,10 +65,24 @@ export function normalizeForSending(phone: string): string {
   // Remove todos os caracteres não numéricos
   const cleanPhone = phone.replace(/\D/g, '');
   
-  // Adiciona DDI 55 se não tiver
-  const normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+  // Remove DDI se presente para processar
+  const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
-  return normalizedPhone;
+  // Normalizar adicionando 9º dígito se necessário
+  let normalized = withoutDDI;
+  
+  if (withoutDDI.length === 10) {
+    const firstDigitAfterDDD = withoutDDI[2];
+    
+    // Se não começa com 9, adicionar
+    if (firstDigitAfterDDD !== '9') {
+      normalized = withoutDDI.substring(0, 2) + '9' + withoutDDI.substring(2);
+      console.log('✅ 9º dígito adicionado para envio:', phone, '->', normalized);
+    }
+  }
+  
+  // Adicionar DDI 55
+  return '55' + normalized;
 }
 
 /**
