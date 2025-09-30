@@ -109,20 +109,13 @@ function normalizeForSending(phone) {
  */
 async function getPaymentTemplate() {
   try {
-    const response = await supa('/whatsapp_templates', {
-      method: 'GET',
-      query: {
-        tenant_id: `eq.${TENANT_ID}`,
-        type: 'eq.PAID_ORDER',
-        select: 'content',
-        limit: '1'
-      }
-    });
-
-    const templates = await response.json();
+    console.log('📋 [TEMPLATE] Buscando template PAID_ORDER...');
+    
+    // supa() já retorna o JSON parseado e adiciona tenant_id automaticamente
+    const templates = await supa('/whatsapp_templates?select=content&type=eq.PAID_ORDER&limit=1');
     
     if (templates && templates.length > 0) {
-      console.log('📋 [TEMPLATE] Template de pagamento encontrado no banco');
+      console.log('✅ [TEMPLATE] Template de pagamento encontrado no banco');
       return templates[0].content;
     }
     
@@ -138,7 +131,8 @@ Seu pedido está sendo preparado e em breve entraremos em contato com as informa
 
 Obrigado pela preferência! 😊`;
   } catch (error) {
-    console.error('❌ [TEMPLATE] Erro ao buscar template:', error);
+    console.error('❌ [TEMPLATE] Erro ao buscar template:', error.message);
+    console.error('Stack:', error.stack);
     return null;
   }
 }
@@ -172,17 +166,8 @@ async function checkAndSendPendingPaymentConfirmations() {
       return;
     }
     
-    const response = await supa('/orders', {
-      method: 'GET',
-      query: {
-        tenant_id: `eq.${TENANT_ID}`,
-        is_paid: 'eq.true',
-        payment_confirmation_sent: 'is.null',
-        select: 'id,customer_phone,customer_name,total_amount,created_at'
-      }
-    });
-
-    const orders = await response.json();
+    // supa() já retorna o JSON parseado
+    const orders = await supa('/orders?select=id,customer_phone,customer_name,total_amount,created_at&is_paid=eq.true&payment_confirmation_sent=is.null');
     
     if (!orders || orders.length === 0) {
       console.log('✅ [PAYMENT] Nenhum pedido pendente de confirmação');
@@ -634,18 +619,9 @@ app.post('/send', async (req, res) => {
           return res.status(500).json({ error: 'Template de pagamento não encontrado' });
         }
 
-        // Buscar dados do pedido
-        const orderResponse = await supa('/orders', {
-          method: 'GET',
-          query: {
-            id: `eq.${order_id}`,
-            tenant_id: `eq.${TENANT_ID}`,
-            select: 'id,customer_phone,customer_name,total_amount,created_at',
-            limit: '1'
-          }
-        });
+        // Buscar dados do pedido - supa() já retorna JSON parseado
+        const orders = await supa(`/orders?select=id,customer_phone,customer_name,total_amount,created_at&id=eq.${order_id}&limit=1`);
 
-        const orders = await orderResponse.json();
         if (!orders || orders.length === 0) {
           return res.status(404).json({ error: 'Pedido não encontrado' });
         }
