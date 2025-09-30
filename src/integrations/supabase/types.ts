@@ -1112,6 +1112,7 @@ export type Database = {
         | "FINALIZAR"
         | "sendflow"
         | "MSG_MASSA"
+        | "SENDFLOW"
     }
     CompositeTypes: {
       http_header: {
@@ -1273,6 +1274,7 @@ export const Constants = {
         "FINALIZAR",
         "sendflow",
         "MSG_MASSA",
+        "SENDFLOW",
       ],
     },
   },
