@@ -170,11 +170,11 @@ class WhatsAppService {
     return uniquePhones.size;
   }
 
-  async sendSimpleMessage(phone: string, message: string): Promise<WhatsAppResponse> {
+  async sendSimpleMessage(phone: string, message: string, tenantId?: string): Promise<WhatsAppResponse> {
     return this.makeRequest('/send', {
       number: normalizeForSending(phone),
       message,
-    });
+    }, tenantId);
   }
 
   async addLabel(phone: string, label: string): Promise<WhatsAppResponse> {

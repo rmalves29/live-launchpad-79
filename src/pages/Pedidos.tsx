@@ -265,38 +265,26 @@ Seu pedido já está sendo preparado para o envio! 📦
 
 Obrigado pela confiança! 🙌`;
 
-      // Enviar usando o servidor otimizado
-      const baseUrl = 'http://localhost:3333';
-      const response = await fetch(`${baseUrl}/api/send-config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          data: JSON.stringify({
-            numeros: [order.customer_phone],
-            mensagens: [message],
-            interval: 2000,
-            batchSize: 1,
-            batchDelay: 1000
-          })
-        })
-      });
+      // Enviar mensagem via WhatsApp service com tenant_id
+      const response = await whatsappService.sendSimpleMessage(
+        order.customer_phone,
+        message,
+        order.tenant_id
+      );
 
-      if (response.ok) {
+      if (response.success) {
         toast({
           title: 'Mensagem Enviada',
           description: 'Confirmação de pagamento enviada via WhatsApp'
         });
         return true;
       } else {
-        throw new Error('Falha na resposta do servidor');
+        console.error('Erro no envio:', response);
+        return false;
       }
     } catch (error) {
       console.error('Error sending paid order message:', error);
-      toast({
-        title: 'Erro ao Enviar Mensagem',
-        description: 'Não foi possível enviar a confirmação via WhatsApp',
-        variant: 'destructive'
-      });
+      // Não mostrar erro para o usuário
       return false;
     }
   };
