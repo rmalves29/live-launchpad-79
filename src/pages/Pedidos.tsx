@@ -196,12 +196,22 @@ const Pedidos = () => {
   }, [filterPaid, filterEventType, filterDate]);
 
   const togglePaidStatus = async (orderId: number, currentStatus: boolean) => {
+    console.log('🔄 TOGGLE PAID STATUS INICIADO', { orderId, currentStatus });
     setProcessingIds(prev => new Set(prev).add(orderId));
     
     try {
       let messageSent = false;
+      
+      // Se está marcando como pago (de false para true)
       if (!currentStatus) {
-        messageSent = await sendPaidOrderMessage(orderId);
+        console.log('💰 Pedido sendo marcado como PAGO - tentando enviar mensagem');
+        try {
+          messageSent = await sendPaidOrderMessage(orderId);
+          console.log('📨 Resultado do envio:', messageSent);
+        } catch (msgError) {
+          console.error('❌ Erro ao enviar mensagem:', msgError);
+          // Continua mesmo se falhar o envio
+        }
       }
 
       // Update payment status in database
@@ -210,6 +220,7 @@ const Pedidos = () => {
         updateData.payment_confirmation_sent = true;
       }
 
+      console.log('💾 Atualizando banco de dados:', updateData);
       const { error } = await supabaseTenant
         .from('orders')
         .update(updateData)
@@ -224,12 +235,13 @@ const Pedidos = () => {
           : order
       ));
 
+      console.log('✅ Status atualizado com sucesso');
       toast({
         title: 'Sucesso',
         description: `Pedido ${!currentStatus ? 'marcado como pago' : 'desmarcado como pago'}`
       });
     } catch (error) {
-      console.error('Error updating payment status:', error);
+      console.error('❌ Erro ao atualizar status:', error);
       toast({
         title: 'Erro',
         description: 'Erro ao atualizar status do pagamento',
@@ -245,32 +257,60 @@ const Pedidos = () => {
   };
 
   const sendPaidOrderMessage = async (orderId: number) => {
-    console.log('=== CONFIRMAÇÃO PAGAMENTO VIA NODE.JS ===');
+    console.log('');
+    console.log('═══════════════════════════════════════════════');
+    console.log('🚀 INÍCIO ENVIO CONFIRMAÇÃO PAGAMENTO');
+    console.log('═══════════════════════════════════════════════');
+    console.log('Order ID:', orderId);
     
     try {
+      // Passo 1: Buscar pedido
+      console.log('');
+      console.log('📋 PASSO 1: Buscando pedido nos dados locais...');
       const order = orders.find(o => o.id === orderId);
+      
       if (!order) {
-        console.error('❌ Pedido não encontrado');
+        console.error('❌ ERRO: Pedido não encontrado!');
+        alert('ERRO: Pedido não encontrado!');
         return false;
       }
 
-      console.log('📋 Pedido:', { id: order.id, phone: order.customer_phone, tenant: order.tenant_id });
+      console.log('✅ Pedido encontrado:', {
+        id: order.id,
+        phone: order.customer_phone,
+        tenant: order.tenant_id,
+        amount: order.total_amount
+      });
 
-      // Buscar URL do servidor
-      const { data: config } = await supabaseTenant
+      // Passo 2: Buscar configuração WhatsApp
+      console.log('');
+      console.log('🔍 PASSO 2: Buscando configuração WhatsApp...');
+      const { data: config, error: configError } = await supabaseTenant
         .from('integration_whatsapp')
-        .select('api_url')
+        .select('api_url, is_active')
         .eq('tenant_id', order.tenant_id)
         .eq('is_active', true)
         .maybeSingle();
 
+      console.log('Resultado da query:', { config, configError });
+
+      if (configError) {
+        console.error('❌ ERRO ao buscar config:', configError);
+        alert('ERRO ao buscar configuração WhatsApp: ' + configError.message);
+        throw configError;
+      }
+
       if (!config?.api_url) {
-        console.error('❌ Servidor Node.js não configurado');
+        console.error('❌ ERRO: URL não configurada!');
+        alert('ERRO: Configure a URL do servidor WhatsApp em Integrações > WhatsApp');
         throw new Error('Configure a URL do servidor WhatsApp');
       }
 
-      console.log('🌐 Servidor:', config.api_url);
+      console.log('✅ Configuração encontrada:', config.api_url);
 
+      // Passo 3: Montar mensagem
+      console.log('');
+      console.log('📝 PASSO 3: Montando mensagem...');
       const customerName = order.customer?.name || order.customer_phone;
       const message = `🎉 *Pagamento Confirmado!*
 
@@ -285,8 +325,17 @@ Seu pedido já está sendo preparado para o envio! 📦
 
 Obrigado pela confiança! 🙌`;
 
-      // Enviar via Node.js
-      console.log('📤 Enviando para Node.js...');
+      console.log('✅ Mensagem montada (' + message.length + ' caracteres)');
+
+      // Passo 4: Enviar via Node.js
+      console.log('');
+      console.log('📤 PASSO 4: Enviando para servidor Node.js...');
+      console.log('URL:', `${config.api_url}/send`);
+      console.log('Payload:', {
+        number: order.customer_phone,
+        order_id: order.id
+      });
+
       const response = await fetch(`${config.api_url}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -297,24 +346,38 @@ Obrigado pela confiança! 🙌`;
         })
       });
 
+      console.log('📥 Response status:', response.status, response.statusText);
+
       const result = await response.json();
-      console.log('📥 Resposta:', result);
+      console.log('📥 Response body:', result);
 
       if (!response.ok) {
+        console.error('❌ ERRO na resposta:', result);
         throw new Error(result.error || 'Erro ao enviar');
       }
 
-      console.log('✅ SUCESSO!');
+      console.log('');
+      console.log('✅✅✅ SUCESSO! Mensagem enviada! ✅✅✅');
+      console.log('═══════════════════════════════════════════════');
+      console.log('');
+      
       toast({
         title: 'Confirmação Enviada',
-        description: 'Mensagem de pagamento confirmado enviada via WhatsApp'
+        description: 'Mensagem de pagamento enviada via WhatsApp'
       });
       return true;
+      
     } catch (error) {
-      console.error('❌ ERRO:', error);
+      console.log('');
+      console.log('❌❌❌ ERRO FATAL ❌❌❌');
+      console.error('Erro completo:', error);
+      console.log('Stack trace:', error instanceof Error ? error.stack : 'N/A');
+      console.log('═══════════════════════════════════════════════');
+      console.log('');
+      
       toast({
         title: 'Erro no Envio',
-        description: error instanceof Error ? error.message : 'Verifique se o servidor Node.js está rodando',
+        description: error instanceof Error ? error.message : 'Erro desconhecido',
         variant: 'destructive'
       });
       return false;
