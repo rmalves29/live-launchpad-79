@@ -116,40 +116,26 @@ const Checkout = () => {
       return;
     }
 
-    // Remove formatação do telefone e cria todas as variações possíveis
-    const cleanPhone = phone.replace(/\D/g, '');
-    
-    // Cria variações para busca
-    const searchVariations = [];
-    
-    // Variação normalizada (formato de armazenamento)
-    const normalizedPhone = normalizeForStorage(cleanPhone);
-    searchVariations.push(normalizedPhone);
-    
-    // Variação com DDI 55 (formato de envio)
-    const phoneWithDDI = normalizeForSending(cleanPhone);
-    searchVariations.push(phoneWithDDI);
-    
-    // Variação original limpa
-    searchVariations.push(cleanPhone);
-    
-    // Se o telefone não tem DDI 55, adiciona variação com DDI
-    if (!cleanPhone.startsWith('55')) {
-      searchVariations.push(`55${cleanPhone}`);
-    }
-    
-    // Remove duplicatas
-    const uniqueVariations = [...new Set(searchVariations)];
+    // Normalizar o telefone para busca
+    const normalizedPhone = normalizeForStorage(phone);
     
     setLoadingOpenOrders(true);
     
     try {
-      const { data: orders, error } = await supabaseTenant
+      // Buscar todos os pedidos não pagos do tenant
+      const { data: allOrders, error } = await supabaseTenant
         .from('orders')
         .select('*')
-        .in('customer_phone', uniqueVariations)
         .eq('is_paid', false)
         .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Filtrar pedidos que correspondem ao telefone normalizado
+      const orders = (allOrders || []).filter(order => {
+        const orderPhone = normalizeForStorage(order.customer_phone);
+        return orderPhone === normalizedPhone;
+      });
 
       if (error) throw error;
 
@@ -201,7 +187,7 @@ const Checkout = () => {
         });
       } else {
         // Carregar dados salvos do cliente quando encontrar pedidos
-        const loadedCustomerData = await loadCustomerData(normalizedPhone);
+        const loadedCustomerData = await loadCustomerData(normalizeForStorage(phone));
         
         // Verificar se está voltando da página de pagamento
         const urlParams = new URLSearchParams(window.location.search);
