@@ -13,11 +13,31 @@ import { useTenant } from "@/hooks/useTenant";
 export default function WhatsAppIntegration() {
   const [message, setMessage] = useState("");
   const [orderStatus, setOrderStatus] = useState<'paid' | 'unpaid' | 'all'>('all');
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [orderDate, setOrderDate] = useState("");
+  const [contactCount, setContactCount] = useState<number | null>(null);
+  const [loadingCount, setLoadingCount] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { tenant } = useTenant();
+
+  const fetchContactCount = async () => {
+    if (!tenant?.id) return;
+    
+    setLoadingCount(true);
+    try {
+      const count = await whatsappService.getContactCount(
+        orderStatus,
+        tenant.id,
+        orderDate || undefined
+      );
+      setContactCount(count);
+    } catch (error) {
+      console.error('Erro ao buscar contagem:', error);
+      setContactCount(null);
+    } finally {
+      setLoadingCount(false);
+    }
+  };
 
   const handleBroadcast = async () => {
     if (!message.trim()) {
@@ -44,8 +64,7 @@ export default function WhatsAppIntegration() {
         orderStatus, 
         message, 
         tenant.id,
-        startDate || undefined, 
-        endDate || undefined
+        orderDate || undefined
       );
       
       toast({
@@ -54,8 +73,8 @@ export default function WhatsAppIntegration() {
       });
       
       setMessage("");
-      setStartDate("");
-      setEndDate("");
+      setOrderDate("");
+      setContactCount(null);
     } catch (error) {
       console.error('Erro ao enviar broadcast:', error);
       // Não mostrar erro de configuração para o usuário
@@ -83,7 +102,10 @@ export default function WhatsAppIntegration() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="orderStatus">Status do Pedido</Label>
-              <Select value={orderStatus} onValueChange={(value: 'paid' | 'unpaid' | 'all') => setOrderStatus(value)}>
+              <Select value={orderStatus} onValueChange={(value: 'paid' | 'unpaid' | 'all') => {
+                setOrderStatus(value);
+                setContactCount(null);
+              }}>
                 <SelectTrigger id="orderStatus">
                   <SelectValue placeholder="Selecione o status" />
                 </SelectTrigger>
@@ -94,28 +116,39 @@ export default function WhatsAppIntegration() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label htmlFor="orderDate">Data do Pedido (opcional)</Label>
+              <Input
+                id="orderDate"
+                type="date"
+                value={orderDate}
+                onChange={(e) => {
+                  setOrderDate(e.target.value);
+                  setContactCount(null);
+                }}
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="startDate">Data Inicial (opcional)</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="endDate">Data Final (opcional)</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-          </div>
+          <Button 
+            onClick={fetchContactCount} 
+            disabled={loadingCount}
+            variant="outline"
+            className="w-full"
+          >
+            {loadingCount ? 'Contando...' : 'Verificar Quantidade de Contatos'}
+          </Button>
+
+          {contactCount !== null && (
+            <Card className="bg-muted">
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground mb-2">Contatos que receberão a mensagem:</p>
+                  <p className="text-3xl font-bold">{contactCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <div>
             <Label htmlFor="message">Mensagem</Label>

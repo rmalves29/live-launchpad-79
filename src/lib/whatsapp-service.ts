@@ -123,19 +123,51 @@ class WhatsAppService {
     status: 'paid' | 'unpaid' | 'all', 
     message: string, 
     tenantId: string,
-    startDate?: string, 
-    endDate?: string
+    orderDate?: string
   ): Promise<WhatsAppResponse> {
     return this.makeRequest('/api/broadcast/orders', {
       key: 'whatsapp-broadcast-2024',
       status,
       message,
-      startDate,
-      endDate,
+      orderDate,
       interval: 2000,
       batchSize: 5,
       batchDelay: 3000,
     }, tenantId);
+  }
+
+  async getContactCount(
+    status: 'paid' | 'unpaid' | 'all',
+    tenantId: string,
+    orderDate?: string
+  ): Promise<number> {
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    let query = supabase
+      .from('orders')
+      .select('customer_phone', { count: 'exact', head: false })
+      .eq('tenant_id', tenantId);
+
+    if (status === 'paid') {
+      query = query.eq('is_paid', true);
+    } else if (status === 'unpaid') {
+      query = query.eq('is_paid', false);
+    }
+
+    if (orderDate) {
+      query = query.eq('event_date', orderDate);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Erro ao contar contatos:', error);
+      return 0;
+    }
+
+    // Contar telefones únicos
+    const uniquePhones = new Set(data?.map(order => order.customer_phone) || []);
+    return uniquePhones.size;
   }
 
   async sendSimpleMessage(phone: string, message: string): Promise<WhatsAppResponse> {
