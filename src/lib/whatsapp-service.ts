@@ -195,15 +195,18 @@ class WhatsAppService {
   }
 
   async sendSimpleMessage(phone: string, message: string, tenantId?: string): Promise<WhatsAppResponse> {
-    console.log('📞 [WS] sendSimpleMessage chamado:', {
-      phone,
+    const normalizedPhone = normalizeForSending(phone);
+    
+    console.log('📞 [WS] sendSimpleMessage:', {
+      phoneOriginal: phone,
+      phoneNormalized: normalizedPhone,
       messageLength: message.length,
       tenantId,
       endpoint: '/send'
     });
     
     return this.makeRequest('/send', {
-      number: normalizeForSending(phone),
+      number: normalizedPhone,
       message,
     }, tenantId);
   }

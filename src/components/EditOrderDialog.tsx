@@ -316,6 +316,12 @@ useEffect(() => {
   const sendItemAddedMessage = async () => {
     if (!selectedProduct || !order) return;
     
+    console.log('📤 [EditOrder] Iniciando envio de mensagem item adicionado:', {
+      orderId: order.id,
+      customerPhone: order.customer_phone,
+      productName: selectedProduct.name
+    });
+    
     try {
       // Buscar template (prioriza PRODUCT_ADDED, senão ITEM_ADDED)
       const { data: template } = await supabaseTenant
@@ -325,6 +331,8 @@ useEffect(() => {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      console.log('📋 [EditOrder] Template encontrado:', template ? 'Sim' : 'Não (usando fallback)');
 
       const qty = quantity || 1;
       const unitValue = Number(unitPrice || selectedProduct.price) || 0;
@@ -340,7 +348,11 @@ useEffect(() => {
         .replace(/{{variacao1}}/g, '-')
         .replace(/{{variacao2}}/g, '-');
 
+      console.log('📨 [EditOrder] Enviando mensagem via WhatsApp service...');
+      
       const resp = await whatsappService.sendSimpleMessage(order.customer_phone, message);
+
+      console.log('✅ [EditOrder] Resposta do WhatsApp service:', resp);
 
       // Marcar que mensagem foi enviada (independente do sucesso externo, registramos tentativa)
       await supabaseTenant
@@ -351,11 +363,12 @@ useEffect(() => {
       if (resp?.success) {
         toast({ title: 'Sucesso', description: 'Mensagem enviada ao cliente' });
       } else {
+        console.warn('⚠️ [EditOrder] Mensagem pode não ter sido entregue:', resp);
         toast({ title: 'Aviso', description: 'Mensagem registrada, mas pode não ter sido entregue', variant: 'destructive' });
       }
 
     } catch (error) {
-      console.error('Error sending item added message:', error);
+      console.error('❌ [EditOrder] Error sending item added message:', error);
       // Toast de erro removido conforme solicitado
     }
   };
