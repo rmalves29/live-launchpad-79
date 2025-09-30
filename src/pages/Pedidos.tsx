@@ -245,25 +245,23 @@ const Pedidos = () => {
   };
 
   const sendPaidOrderMessage = async (orderId: number) => {
-    console.log('🚀 [PAYMENT] Iniciando envio de confirmação de pagamento para pedido:', orderId);
+    console.log('=== INÍCIO ENVIO CONFIRMAÇÃO PAGAMENTO ===');
+    console.log('Pedido ID:', orderId);
     
     try {
       const order = orders.find(o => o.id === orderId);
       if (!order) {
-        console.error('❌ [PAYMENT] Order not found:', orderId);
+        console.error('❌ Pedido não encontrado');
         return false;
       }
 
-      console.log('✅ [PAYMENT] Pedido encontrado:', {
+      console.log('✅ Pedido encontrado:', {
         id: order.id,
-        tenant_id: order.tenant_id,
-        customer_phone: order.customer_phone,
-        total_amount: order.total_amount
+        phone: order.customer_phone,
+        tenant: order.tenant_id
       });
 
       const customerName = order.customer?.name || order.customer_phone;
-
-      // Construir mensagem de pagamento confirmado
       const message = `🎉 *Pagamento Confirmado!*
 
 Olá ${customerName}!
@@ -277,36 +275,59 @@ Seu pedido já está sendo preparado para o envio! 📦
 
 Obrigado pela confiança! 🙌`;
 
-      console.log('📝 [PAYMENT] Mensagem preparada, tamanho:', message.length);
-      console.log('📞 [PAYMENT] Chamando whatsappService.sendSimpleMessage...');
+      console.log('📝 Mensagem montada, tamanho:', message.length);
 
-      // Enviar mensagem via WhatsApp service com tenant_id
-      const response = await whatsappService.sendSimpleMessage(
-        order.customer_phone,
-        message,
-        order.tenant_id
-      );
+      // Buscar URL do servidor WhatsApp
+      console.log('🔍 Buscando configuração WhatsApp...');
+      const { data: config } = await supabaseTenant
+        .from('integration_whatsapp')
+        .select('api_url')
+        .eq('tenant_id', order.tenant_id)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      console.log('✅ [PAYMENT] WhatsApp service response:', response);
+      if (!config?.api_url) {
+        console.error('❌ URL do servidor não configurada');
+        throw new Error('Configure a URL do servidor WhatsApp em Integrações');
+      }
 
+      console.log('✅ URL encontrada:', config.api_url);
+
+      // Enviar mensagem
+      console.log('📤 Enviando requisição para:', `${config.api_url}/send`);
+      const response = await fetch(`${config.api_url}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: order.customer_phone,
+          message: message
+        })
+      });
+
+      console.log('📥 Response status:', response.status);
+      const result = await response.json();
+      console.log('📥 Response body:', result);
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao enviar mensagem');
+      }
+
+      console.log('✅ MENSAGEM ENVIADA COM SUCESSO!');
       toast({
         title: 'Mensagem Enviada',
         description: 'Confirmação de pagamento enviada via WhatsApp'
       });
       return true;
     } catch (error) {
-      console.error('❌ [PAYMENT] Erro completo ao enviar mensagem:', {
-        message: error.message,
-        stack: error.stack,
-        error: error
-      });
-      
+      console.error('❌ ERRO COMPLETO:', error);
       toast({
-        title: 'Atenção',
-        description: 'Pedido marcado como pago. Verifique se a integração WhatsApp está configurada.',
-        variant: 'default'
+        title: 'Erro ao Enviar',
+        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        variant: 'destructive'
       });
       return false;
+    } finally {
+      console.log('=== FIM ENVIO CONFIRMAÇÃO PAGAMENTO ===');
     }
   };
 
