@@ -321,13 +321,11 @@ const Pedidos = () => {
       const response = await fetch(`${config.api_url}/send`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'x-tenant-id': order.tenant_id
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           phone: order.customer_phone,
-          order_id: order.id,
-          tenantId: order.tenant_id
+          order_id: order.id
         })
       });
 

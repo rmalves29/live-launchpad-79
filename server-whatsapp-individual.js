@@ -55,6 +55,10 @@ function fmtMoney(v) {
   return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`;
 }
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+}
+
 // Normalização para armazenamento (sem DDI)
 function normalizeForStorage(phone) {
   if (!phone) return phone;
@@ -177,6 +181,128 @@ async function composeItemAdded(product) {
   return `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *1*\nPreço: *${price}*`;
 }
 
+/* ============================ PAYMENT CONFIRMATION ============================ */
+async function getPaymentTemplate() {
+  try {
+    console.log('📋 [TEMPLATE] Buscando template PAID_ORDER...');
+    
+    const templates = await supa('/whatsapp_templates?select=content&type=eq.PAID_ORDER&limit=1');
+    
+    if (templates && templates.length > 0) {
+      console.log('✅ [TEMPLATE] Template personalizado encontrado');
+      return templates[0].content;
+    }
+    
+    console.log('⚠️ [TEMPLATE] Nenhum template encontrado, usando padrão');
+    return `🎉 *Pagamento Confirmado!*
+
+Olá {customer_name}!
+
+✅ Seu pagamento foi confirmado com sucesso!
+📄 Pedido: #{order_id}
+💰 Valor: {total_amount}
+📅 Data: {created_at}
+
+Seu pedido já está sendo preparado! 📦
+
+Obrigado pela preferência! 😊`;
+  } catch (error) {
+    console.error('❌ [TEMPLATE] Erro ao buscar template:', error.message);
+    return null;
+  }
+}
+
+function replaceTemplateVariables(template, order) {
+  if (!template || !order) return null;
+  
+  const customerName = order.customer_name || order.customer_phone || 'Cliente';
+  const formattedDate = order.created_at ? new Date(order.created_at).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
+  
+  return template
+    .replace(/{customer_name}/g, customerName)
+    .replace(/{order_id}/g, order.id)
+    .replace(/{total_amount}/g, formatCurrency(order.total_amount))
+    .replace(/{created_at}/g, formattedDate);
+}
+
+async function checkAndSendPendingPaymentConfirmations() {
+  try {
+    console.log('💰 [PAYMENT] Verificando pedidos pagos sem confirmação...');
+    
+    // Buscar template primeiro
+    const template = await getPaymentTemplate();
+    if (!template) {
+      console.error('❌ [PAYMENT] Template não disponível, abortando envio');
+      return;
+    }
+    
+    // Buscar pedidos pagos que não tiveram confirmação enviada
+    const orders = await supa('/orders?select=id,customer_phone,customer_name,total_amount,created_at&is_paid=eq.true&payment_confirmation_sent=is.null&order=created_at.desc');
+    
+    if (!orders || orders.length === 0) {
+      console.log('✅ [PAYMENT] Nenhum pedido pendente de confirmação');
+      return;
+    }
+    
+    console.log(`📨 [PAYMENT] Encontrados ${orders.length} pedidos para enviar confirmação`);
+    
+    for (const order of orders) {
+      try {
+        console.log(`📤 [PAYMENT] Enviando confirmação para pedido #${order.id}`);
+        
+        // Substituir variáveis no template
+        const message = replaceTemplateVariables(template, order);
+        
+        if (!message) {
+          console.error(`❌ [PAYMENT] Erro ao processar template para pedido #${order.id}`);
+          continue;
+        }
+
+        const normalizedPhone = normalizeForSending(order.customer_phone);
+        const chatId = `${normalizedPhone}@c.us`;
+        
+        // Enviar mensagem
+        await client.sendMessage(chatId, message);
+        console.log(`✅ [PAYMENT] Mensagem enviada para ${normalizedPhone}`);
+        
+        // Atualizar order como confirmação enviada
+        await supaRaw(`/orders?id=eq.${order.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            payment_confirmation_sent: true
+          })
+        });
+        
+        // Registrar no log de mensagens
+        await supa('/whatsapp_messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            tenant_id: TENANT_ID,
+            phone: normalizeForStorage(order.customer_phone),
+            message: message,
+            type: 'payment_confirmation',
+            order_id: order.id,
+            sent_at: new Date().toISOString()
+          })
+        });
+        
+        console.log(`💾 [PAYMENT] Pedido #${order.id} marcado como confirmação enviada`);
+        
+        // Delay entre mensagens
+        await delay(2000);
+        
+      } catch (orderError) {
+        console.error(`❌ [PAYMENT] Erro ao processar pedido #${order.id}:`, orderError);
+      }
+    }
+    
+    console.log('✅ [PAYMENT] Verificação de pagamentos concluída');
+    
+  } catch (error) {
+    console.error('❌ [PAYMENT] Erro ao verificar pagamentos pendentes:', error);
+  }
+}
+
 /* ============================ WHATSAPP CLIENT ============================ */
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: TENANT_SLUG }),
@@ -197,9 +323,16 @@ client.on('qr', (qr) => {
   qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
   console.log('✅ WhatsApp conectado!');
   clientReady = true;
+  
+  // Verificar pedidos pagos pendentes de confirmação
+  try {
+    await checkAndSendPendingPaymentConfirmations();
+  } catch (error) {
+    console.error('❌ Erro ao verificar confirmações pendentes:', error);
+  }
 });
 
 client.on('authenticated', () => {
@@ -336,27 +469,89 @@ app.post('/send', async (req, res) => {
       return res.status(503).json({ error: 'WhatsApp não está conectado' });
     }
 
-    const { number, message } = req.body;
-    if (!number || !message) {
-      return res.status(400).json({ error: 'Número e mensagem são obrigatórios' });
+    const { number, phone, message, order_id } = req.body;
+    
+    // Aceita tanto 'number' quanto 'phone' para compatibilidade
+    const phoneNumber = number || phone;
+    
+    if (!phoneNumber) {
+      return res.status(400).json({ error: 'Telefone é obrigatório' });
     }
 
-    const normalizedNumber = normalizeForSending(number);
-    await client.sendMessage(`${normalizedNumber}@c.us`, message);
+    let finalMessage = message;
+
+    // Se tem order_id, buscar template e dados do pedido
+    if (order_id) {
+      console.log(`📋 [SEND] Buscando template e dados do pedido #${order_id}`);
+      
+      try {
+        // Buscar template
+        const template = await getPaymentTemplate();
+        if (!template) {
+          return res.status(500).json({ error: 'Template de pagamento não encontrado' });
+        }
+
+        // Buscar dados do pedido
+        const orders = await supa(`/orders?select=id,customer_phone,customer_name,total_amount,created_at&id=eq.${order_id}&limit=1`);
+
+        if (!orders || orders.length === 0) {
+          return res.status(404).json({ error: 'Pedido não encontrado' });
+        }
+
+        const order = orders[0];
+        
+        // Montar mensagem com template
+        finalMessage = replaceTemplateVariables(template, order);
+        
+        if (!finalMessage) {
+          return res.status(500).json({ error: 'Erro ao processar template' });
+        }
+
+        console.log(`✅ [SEND] Template processado para pedido #${order_id}`);
+        
+      } catch (templateError) {
+        console.error('❌ [SEND] Erro ao processar template:', templateError);
+        return res.status(500).json({ error: 'Erro ao processar template de pagamento' });
+      }
+    } else if (!message) {
+      return res.status(400).json({ error: 'Mensagem é obrigatória quando não há order_id' });
+    }
+
+    const normalizedNumber = normalizeForSending(phoneNumber);
+    console.log(`📤 [SEND] Enviando mensagem para ${normalizedNumber}`);
+    await client.sendMessage(`${normalizedNumber}@c.us`, finalMessage);
 
     // Log da mensagem enviada
+    const messageData = {
+      tenant_id: TENANT_ID,
+      phone: normalizeForStorage(phoneNumber),
+      message: finalMessage,
+      type: order_id ? 'payment_confirmation' : 'outgoing',
+      sent_at: new Date().toISOString()
+    };
+    
+    if (order_id) {
+      messageData.order_id = order_id;
+    }
+
     await supa('/whatsapp_messages', {
       method: 'POST',
-      body: JSON.stringify({
-        tenant_id: TENANT_ID,
-        phone: normalizeForStorage(number),
-        message: message,
-        type: 'outgoing',
-        sent_at: new Date().toISOString()
-      })
+      body: JSON.stringify(messageData)
     });
 
-    res.json({ success: true, phone: normalizeForStorage(number) });
+    // Se for confirmação de pagamento, marcar no pedido
+    if (order_id) {
+      await supaRaw(`/orders?id=eq.${order_id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          payment_confirmation_sent: true
+        })
+      });
+      console.log(`✅ [SEND] Confirmação marcada para pedido #${order_id}`);
+    }
+
+    console.log('✅ [SEND] Mensagem enviada com sucesso');
+    res.json({ success: true, phone: normalizeForStorage(phoneNumber) });
   } catch (error) {
     console.error('❌ Erro ao enviar mensagem:', error);
     res.status(500).json({ error: error.message });
