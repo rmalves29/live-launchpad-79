@@ -47,9 +47,17 @@ interface OrderData {
 class WhatsAppService {
   private async makeRequest(endpoint: string, data: any, tenantId?: string): Promise<WhatsAppResponse> {
     try {
+      console.log('🔍 [WS] makeRequest chamado:', { endpoint, tenantId, hasData: !!data });
+      
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
       
-      const response = await fetch(`${serverUrl}${endpoint}`, {
+      console.log('🌐 [WS] URL do servidor:', serverUrl);
+      console.log('📤 [WS] Dados a enviar:', JSON.stringify(data, null, 2));
+      
+      const fullUrl = `${serverUrl}${endpoint}`;
+      console.log('🔗 [WS] URL completa:', fullUrl);
+      
+      const response = await fetch(fullUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -57,8 +65,12 @@ class WhatsAppService {
         body: JSON.stringify(data),
       });
 
+      console.log('📥 [WS] Response status:', response.status, response.statusText);
+
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('❌ [WS] Erro na resposta:', errorText);
+        
         try {
           const errorData = JSON.parse(errorText);
           throw new Error(errorData.error || `HTTP ${response.status}`);
@@ -67,9 +79,11 @@ class WhatsAppService {
         }
       }
 
-      return await response.json();
+      const result = await response.json();
+      console.log('✅ [WS] Resposta sucesso:', result);
+      return result;
     } catch (error) {
-      console.error(`Erro ao chamar ${endpoint}:`, error);
+      console.error(`❌ [WS] Erro ao chamar ${endpoint}:`, error);
       throw error;
     }
   }

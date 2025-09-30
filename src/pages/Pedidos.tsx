@@ -245,14 +245,21 @@ const Pedidos = () => {
   };
 
   const sendPaidOrderMessage = async (orderId: number) => {
+    console.log('🚀 [PAYMENT] Iniciando envio de confirmação de pagamento para pedido:', orderId);
+    
     try {
       const order = orders.find(o => o.id === orderId);
       if (!order) {
-        console.error('Order not found:', orderId);
+        console.error('❌ [PAYMENT] Order not found:', orderId);
         return false;
       }
 
-      console.log('Sending payment confirmation for order:', order.id, 'tenant:', order.tenant_id);
+      console.log('✅ [PAYMENT] Pedido encontrado:', {
+        id: order.id,
+        tenant_id: order.tenant_id,
+        customer_phone: order.customer_phone,
+        total_amount: order.total_amount
+      });
 
       const customerName = order.customer?.name || order.customer_phone;
 
@@ -270,7 +277,8 @@ Seu pedido já está sendo preparado para o envio! 📦
 
 Obrigado pela confiança! 🙌`;
 
-      console.log('Calling whatsappService.sendSimpleMessage...');
+      console.log('📝 [PAYMENT] Mensagem preparada, tamanho:', message.length);
+      console.log('📞 [PAYMENT] Chamando whatsappService.sendSimpleMessage...');
 
       // Enviar mensagem via WhatsApp service com tenant_id
       const response = await whatsappService.sendSimpleMessage(
@@ -279,16 +287,20 @@ Obrigado pela confiança! 🙌`;
         order.tenant_id
       );
 
-      console.log('WhatsApp service response:', response);
+      console.log('✅ [PAYMENT] WhatsApp service response:', response);
 
-      // A resposta do whatsappService já indica sucesso se não lançar exceção
       toast({
         title: 'Mensagem Enviada',
         description: 'Confirmação de pagamento enviada via WhatsApp'
       });
       return true;
     } catch (error) {
-      console.error('Error sending paid order message:', error);
+      console.error('❌ [PAYMENT] Erro completo ao enviar mensagem:', {
+        message: error.message,
+        stack: error.stack,
+        error: error
+      });
+      
       toast({
         title: 'Atenção',
         description: 'Pedido marcado como pago. Verifique se a integração WhatsApp está configurada.',
