@@ -4,14 +4,22 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Função para obter a URL do servidor WhatsApp configurada
 async function getWhatsAppServerUrl(tenantId: string): Promise<string> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('integration_whatsapp')
     .select('api_url')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .maybeSingle();
   
-  return data?.api_url || 'http://localhost:3333';
+  if (error) {
+    throw new Error(`Erro ao buscar configuração WhatsApp: ${error.message}`);
+  }
+  
+  if (!data || !data.api_url) {
+    throw new Error('Integração WhatsApp não configurada. Configure a URL da API em Integrações > WhatsApp.');
+  }
+  
+  return data.api_url;
 }
 
 interface WhatsAppResponse {
