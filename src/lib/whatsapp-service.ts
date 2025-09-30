@@ -119,6 +119,25 @@ class WhatsAppService {
     });
   }
 
+  async broadcastByOrderStatusAndDate(
+    status: 'paid' | 'unpaid' | 'all', 
+    message: string, 
+    tenantId: string,
+    startDate?: string, 
+    endDate?: string
+  ): Promise<WhatsAppResponse> {
+    return this.makeRequest('/api/broadcast/orders', {
+      key: 'whatsapp-broadcast-2024',
+      status,
+      message,
+      startDate,
+      endDate,
+      interval: 2000,
+      batchSize: 5,
+      batchDelay: 3000,
+    }, tenantId);
+  }
+
   async sendSimpleMessage(phone: string, message: string): Promise<WhatsAppResponse> {
     return this.makeRequest('/send', {
       number: normalizeForSending(phone),

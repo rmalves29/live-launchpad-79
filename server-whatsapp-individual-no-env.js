@@ -603,6 +603,138 @@ app.post('/send-to-group', async (req, res) => {
   }
 });
 
+// ===== BROADCAST BY ORDER STATUS AND DATE =====
+app.post('/api/broadcast/orders', async (req, res) => {
+  console.log('📢 Requisição de broadcast por status de pedidos e data');
+  
+  try {
+    if (!clientReady) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'WhatsApp não está conectado' 
+      });
+    }
+
+    const { key, status, message, startDate, endDate, interval = 2000, batchSize = 5, batchDelay = 3000 } = req.body;
+
+    // Validação de segurança (opcional)
+    if (key !== 'whatsapp-broadcast-2024') {
+      return res.status(403).json({ error: 'Chave de broadcast inválida' });
+    }
+
+    if (!message || !status) {
+      return res.status(400).json({ error: 'Mensagem e status são obrigatórios' });
+    }
+
+    console.log(`📊 Filtros: Status=${status}, Data Inicial=${startDate || 'N/A'}, Data Final=${endDate || 'N/A'}`);
+
+    // Construir query para buscar pedidos
+    let query = '/orders?select=customer_phone,customer_name';
+    
+    // Filtro de status de pagamento
+    if (status === 'paid') {
+      query += '&is_paid=eq.true';
+    } else if (status === 'unpaid') {
+      query += '&is_paid=eq.false';
+    }
+    // Se status === 'all', não adiciona filtro de pagamento
+
+    // Filtro de data
+    if (startDate) {
+      query += `&created_at=gte.${startDate}T00:00:00`;
+    }
+    if (endDate) {
+      query += `&created_at=lte.${endDate}T23:59:59`;
+    }
+
+    console.log(`🔍 Query Supabase: ${query}`);
+
+    // Buscar pedidos do banco de dados
+    const orders = await supa(query);
+    
+    if (!orders || orders.length === 0) {
+      console.log('⚠️  Nenhum pedido encontrado com os filtros especificados');
+      return res.json({ 
+        success: true, 
+        total: 0, 
+        message: 'Nenhum pedido encontrado com os filtros especificados' 
+      });
+    }
+
+    // Extrair números únicos
+    const uniquePhones = [...new Set(orders.map(o => o.customer_phone).filter(Boolean))];
+    console.log(`📱 Total de números únicos encontrados: ${uniquePhones.length}`);
+
+    if (uniquePhones.length === 0) {
+      return res.json({ 
+        success: true, 
+        total: 0, 
+        message: 'Nenhum telefone válido encontrado' 
+      });
+    }
+
+    // Enviar mensagens em lotes
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let i = 0; i < uniquePhones.length; i += batchSize) {
+      const batch = uniquePhones.slice(i, i + batchSize);
+      console.log(`📤 Enviando lote ${Math.floor(i / batchSize) + 1}/${Math.ceil(uniquePhones.length / batchSize)}`);
+
+      await Promise.all(
+        batch.map(async (phone) => {
+          try {
+            const normalizedPhone = normalizeForSending(phone);
+            const chatId = `${normalizedPhone}@c.us`;
+
+            await client.sendMessage(chatId, message);
+            successCount++;
+
+            // Registrar no banco
+            await supa('/whatsapp_messages', {
+              method: 'POST',
+              body: JSON.stringify({
+                tenant_id: TENANT_ID,
+                phone: normalizeForStorage(phone),
+                message,
+                type: 'bulk',
+                sent_at: new Date().toISOString()
+              })
+            });
+
+            await delay(interval);
+          } catch (error) {
+            console.error(`❌ Erro ao enviar para ${phone}:`, error.message);
+            errorCount++;
+          }
+        })
+      );
+
+      // Delay entre lotes
+      if (i + batchSize < uniquePhones.length) {
+        console.log(`⏳ Aguardando ${batchDelay}ms antes do próximo lote...`);
+        await delay(batchDelay);
+      }
+    }
+
+    console.log(`✅ Broadcast concluído: ${successCount} sucessos, ${errorCount} erros`);
+
+    res.json({
+      success: true,
+      total: successCount,
+      errors: errorCount,
+      message: `Mensagem enviada para ${successCount} contatos`
+    });
+
+  } catch (error) {
+    console.error('❌ Erro no broadcast:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
 /* ============================ INICIALIZAÇÃO ============================ */
 console.log('🚀 Iniciando servidor WhatsApp individual...');
 console.log(`📍 Tenant: ${TENANT_SLUG} (${TENANT_ID})`);

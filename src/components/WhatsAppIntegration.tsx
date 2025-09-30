@@ -1,77 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { AlertCircle, CheckCircle, Clock, Smartphone, Send } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Smartphone, Send } from "lucide-react";
 import { whatsappService } from "@/lib/whatsapp-service";
 import { useToast } from "@/components/ui/use-toast";
 import { useTenant } from "@/hooks/useTenant";
 
 export default function WhatsAppIntegration() {
-  const [status, setStatus] = useState<any>(null);
   const [message, setMessage] = useState("");
   const [orderStatus, setOrderStatus] = useState<'paid' | 'unpaid' | 'all'>('all');
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { tenant } = useTenant();
-
-  const fetchStatus = async () => {
-    if (!tenant?.id) return;
-    
-    try {
-      const statusData = await whatsappService.getStatus(tenant.id);
-      setStatus(statusData);
-    } catch (error) {
-      console.error('Erro ao buscar status:', error);
-      toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Não foi possível conectar ao servidor WhatsApp.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  useEffect(() => {
-    if (tenant?.id) {
-      fetchStatus();
-      const interval = setInterval(fetchStatus, 5000); // Atualiza a cada 5 segundos
-      return () => clearInterval(interval);
-    }
-  }, [tenant?.id]);
-
-  const getStatusIcon = (instanceStatus: string) => {
-    switch (instanceStatus) {
-      case 'online':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'qr_code':
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-      case 'offline':
-      case 'auth_failure':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getStatusLabel = (instanceStatus: string) => {
-    switch (instanceStatus) {
-      case 'online':
-        return 'Online';
-      case 'qr_code':
-        return 'Aguardando QR';
-      case 'authenticated':
-        return 'Autenticado';
-      case 'offline':
-        return 'Offline';
-      case 'auth_failure':
-        return 'Falha na Auth';
-      default:
-        return 'Desconhecido';
-    }
-  };
 
   const handleBroadcast = async () => {
     if (!message.trim()) {
@@ -94,14 +40,22 @@ export default function WhatsAppIntegration() {
 
     setLoading(true);
     try {
-      const response = await whatsappService.broadcastByOrderStatus(orderStatus, message);
+      const response = await whatsappService.broadcastByOrderStatusAndDate(
+        orderStatus, 
+        message, 
+        tenant.id,
+        startDate || undefined, 
+        endDate || undefined
+      );
       
       toast({
         title: "Sucesso",
-        description: `Mensagem enviada para ${response.total || 0} contatos com status '${orderStatus}'`,
+        description: `Mensagem enviada para ${response.total || 0} contatos`,
       });
       
       setMessage("");
+      setStartDate("");
+      setEndDate("");
     } catch (error) {
       console.error('Erro ao enviar broadcast:', error);
       toast({
@@ -121,97 +75,56 @@ export default function WhatsAppIntegration() {
         <h1 className="text-2xl font-bold">Integração WhatsApp</h1>
       </div>
 
-      {/* Status das Instâncias */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Status das Instâncias</CardTitle>
-          <CardDescription>
-            Status das conexões WhatsApp ativas
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!tenant?.id ? (
-            <div className="text-center text-muted-foreground py-4">
-              <AlertCircle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
-              <p>Carregando informações do tenant...</p>
-            </div>
-          ) : (
-            <>
-              <div className="grid gap-4">
-                {status?.instancias ? (
-                  status.instancias.map((instance: any, index: number) => (
-                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        {getStatusIcon(instance.status)}
-                        <div>
-                          <div className="font-medium">{instance.nome}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {instance.numero || 'Número não definido'}
-                          </div>
-                        </div>
-                      </div>
-                      <Badge 
-                        variant={instance.status === 'online' ? 'default' : 'secondary'}
-                      >
-                        {getStatusLabel(instance.status)}
-                      </Badge>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-6 space-y-2">
-                    <AlertCircle className="h-8 w-8 mx-auto text-yellow-500" />
-                    <p className="text-muted-foreground">
-                      Carregando status das instâncias...
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Se esta mensagem persistir, verifique se a integração WhatsApp está configurada corretamente em <strong>Integrações &gt; WhatsApp</strong>
-                    </p>
-                  </div>
-                )}
-              </div>
-              
-              <div className="mt-4">
-                <Button onClick={fetchStatus} variant="outline" size="sm">
-                  Atualizar Status
-                </Button>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Separator />
-
       {/* Envio de Mensagem em Massa */}
       <Card>
         <CardHeader>
           <CardTitle>Mensagem em Massa</CardTitle>
           <CardDescription>
-            Envie mensagens para clientes filtrados por status de pagamento
+            Envie mensagens para clientes filtrados por status de pagamento e data do pedido
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <label className="text-sm font-medium mb-2 block">
-              Filtrar por Status do Pedido
-            </label>
-            <Select value={orderStatus} onValueChange={(value: 'paid' | 'unpaid' | 'all') => setOrderStatus(value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos os Clientes</SelectItem>
-                <SelectItem value="paid">Apenas Pedidos Pagos</SelectItem>
-                <SelectItem value="unpaid">Apenas Pedidos Não Pagos</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="orderStatus">Status do Pedido</Label>
+              <Select value={orderStatus} onValueChange={(value: 'paid' | 'unpaid' | 'all') => setOrderStatus(value)}>
+                <SelectTrigger id="orderStatus">
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os Clientes</SelectItem>
+                  <SelectItem value="paid">Pedidos Pagos</SelectItem>
+                  <SelectItem value="unpaid">Pedidos Não Pagos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="startDate">Data Inicial (opcional)</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="endDate">Data Final (opcional)</Label>
+              <Input
+                id="endDate"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-2 block">
-              Mensagem
-            </label>
+            <Label htmlFor="message">Mensagem</Label>
             <Textarea
+              id="message"
               placeholder="Digite a mensagem que será enviada para os clientes..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -237,11 +150,12 @@ export default function WhatsAppIntegration() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="text-sm">
-            <h4 className="font-medium mb-2">📱 Configuração Inicial:</h4>
+            <h4 className="font-medium mb-2">📱 Envio de Mensagens em Massa:</h4>
             <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-              <li>Inicie o servidor: <code className="bg-muted px-1 py-0.5 rounded">node server-whatsapp.js</code></li>
-              <li>Escaneie o QR Code que aparece no terminal</li>
-              <li>Aguarde o status mudar para "Online"</li>
+              <li>Selecione o status dos pedidos (Pagos, Não Pagos ou Todos)</li>
+              <li>Opcionalmente, defina um período de datas para filtrar os pedidos</li>
+              <li>Digite a mensagem que deseja enviar</li>
+              <li>Clique em "Enviar Mensagem em Massa"</li>
             </ol>
           </div>
 
