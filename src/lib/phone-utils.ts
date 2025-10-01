@@ -39,14 +39,17 @@ export function normalizeForStorage(phone: string): string {
     return phoneWithoutDDI;
   }
   
-  // Se tem 10 dígitos, adicionar o 9º dígito para celulares
+  // Se tem 10 dígitos, verificar se é celular antes de adicionar o 9º dígito
   if (phoneWithoutDDI.length === 10) {
     const firstDigitAfterDDD = phoneWithoutDDI[2];
     
-    // Se não começa com 9, adicionar o 9 (celular brasileiro)
-    if (firstDigitAfterDDD !== '9') {
+    // Celulares começam com 6, 7 ou 8 (quando falta o 9)
+    // Fixos começam com 2, 3, 4 ou 5 (não devem receber o 9)
+    if (['6', '7', '8'].includes(firstDigitAfterDDD)) {
       phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
-      console.log('✅ 9º dígito adicionado:', phone, '->', phoneWithoutDDI);
+      console.log('✅ 9º dígito adicionado (celular):', phone, '->', phoneWithoutDDI);
+    } else if (['2', '3', '4', '5'].includes(firstDigitAfterDDD)) {
+      console.log('ℹ️ Telefone fixo detectado (não adiciona 9):', phoneWithoutDDI);
     }
   }
   
@@ -68,16 +71,19 @@ export function normalizeForSending(phone: string): string {
   // Remove DDI se presente para processar
   const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
-  // Normalizar adicionando 9º dígito se necessário
+  // Normalizar adicionando 9º dígito se necessário (apenas para celulares)
   let normalized = withoutDDI;
   
   if (withoutDDI.length === 10) {
     const firstDigitAfterDDD = withoutDDI[2];
     
-    // Se não começa com 9, adicionar
-    if (firstDigitAfterDDD !== '9') {
+    // Celulares começam com 6, 7 ou 8 (quando falta o 9)
+    // Fixos começam com 2, 3, 4 ou 5 (não devem receber o 9)
+    if (['6', '7', '8'].includes(firstDigitAfterDDD)) {
       normalized = withoutDDI.substring(0, 2) + '9' + withoutDDI.substring(2);
-      console.log('✅ 9º dígito adicionado para envio:', phone, '->', normalized);
+      console.log('✅ 9º dígito adicionado para envio (celular):', phone, '->', normalized);
+    } else if (['2', '3', '4', '5'].includes(firstDigitAfterDDD)) {
+      console.log('ℹ️ Telefone fixo para envio (não adiciona 9):', normalized);
     }
   }
   
