@@ -202,24 +202,35 @@ class WhatsAppService {
 
     const uniquePhones = [...new Set(orders?.map(o => o.customer_phone) || [])];
     
-    // Enviar mensagem para cada telefone usando a edge function
-    let successCount = 0;
-    for (const phone of uniquePhones) {
-      try {
-        await supabase.functions.invoke('whatsapp-send-template', {
-          body: {
-            tenant_id: tenantId,
-            phone,
-            message
-          }
-        });
-        successCount++;
-      } catch (error) {
-        console.error(`Erro ao enviar para ${phone}:`, error);
-      }
-    }
+    // Enviar mensagens via Node.js local
+    console.log(`📤 Enviando ${uniquePhones.length} mensagens via Node.js`);
+    
+    try {
+      const response = await fetch('http://localhost:3333/api/broadcast/by-phones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: 'whatsapp-broadcast-2024',
+          phones: uniquePhones.map(phone => normalizeForSending(phone)),
+          message,
+          interval: 2000,
+          batchSize: 5,
+          batchDelay: 3000,
+        })
+      });
 
-    return { success: true, total: successCount };
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Broadcast via Node.js concluído:', result);
+      
+      return { success: true, total: uniquePhones.length };
+    } catch (error) {
+      console.error('❌ Erro ao enviar via Node.js:', error);
+      throw error;
+    }
   }
 
   async getContactCount(
