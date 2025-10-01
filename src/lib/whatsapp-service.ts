@@ -109,47 +109,35 @@ class WhatsAppService {
       product: orderData.product.name 
     });
 
-    // Chamar diretamente o endpoint do Node.js
-    try {
-      const response = await fetch('http://localhost:3333/send-item-added', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phone: orderData.customer_phone,
-          product_id: orderData.product.code, // Assumindo que code é o ID
-          quantity: orderData.product.qty
-        })
-      });
+    // Montar mensagem formatada
+    const message = `🛒 *Item adicionado ao pedido*\n\n✅ ${orderData.product.name}\nQtd: *${orderData.product.qty}*\nValor: *R$ ${orderData.product.price.toFixed(2)}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ [sendItemAdded] Resposta do Node.js:', result);
-      return { success: true, ...result };
-    } catch (error) {
-      console.error('❌ [sendItemAdded] Erro ao enviar via Node.js:', error);
-      throw new Error(`Não foi possível enviar mensagem WhatsApp: ${error.message}`);
-    }
+    // Usar endpoint correto /send do Node.js
+    return this.makeRequest('/send', {
+      number: normalizeForSending(orderData.customer_phone),
+      message,
+    }, tenantId);
   }
 
   async sendItemCancelled(orderData: OrderData): Promise<WhatsAppResponse> {
-    return this.makeRequest('/api/test/item-cancelled', {
-      phone: normalizeForSending(orderData.customer_phone),
-      product: orderData.product,
+    if (!orderData.product) {
+      throw new Error('Product data is required');
+    }
+
+    const message = `❌ *Produto Cancelado*\n\nO produto "${orderData.product.name}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
+
+    return this.makeRequest('/send', {
+      number: normalizeForSending(orderData.customer_phone),
+      message,
     });
   }
 
   async sendOrderCreated(orderData: OrderData): Promise<WhatsAppResponse> {
-    return this.makeRequest('/api/test/order-created', {
-      phone: normalizeForSending(orderData.customer_phone),
-      customer_name: orderData.customer_name,
-      order_id: orderData.order_id,
-      total_amount: orderData.total_amount,
+    const message = `🎉 *Pedido Criado - #${orderData.order_id}*\n\nOlá ${orderData.customer_name || 'Cliente'}!\n\nSeu pedido foi criado com sucesso!\n💰 Total: *R$ ${orderData.total_amount?.toFixed(2)}*\n\nEm breve você receberá o link de pagamento.`;
+
+    return this.makeRequest('/send', {
+      number: normalizeForSending(orderData.customer_phone),
+      message,
     });
   }
 
