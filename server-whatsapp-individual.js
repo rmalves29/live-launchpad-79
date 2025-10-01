@@ -1,94 +1,56 @@
 /**
- * server-whatsapp-individual.js — Servidor WhatsApp por empresa
- * Baseado no server-whatsapp.js original mas com suporte completo a templates
- * Uso: node server-whatsapp-individual.js
+ * server-whatsapp-individual.js — WhatsApp Server Individual
+ * Servidor WhatsApp dedicado para UMA ÚNICA empresa
+ * Cada empresa roda sua própria instância em porta diferente
+ * Node 18+ | whatsapp-web.js | express | cors
  */
 
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
-require('dotenv').config();
 
-// fetch (fallback para ambientes sem global)
+// Fetch polyfill
 if (typeof fetch !== 'function') {
   global.fetch = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
 }
 
-/* ============================ CONFIG ============================ */
-const PORT = process.env.PORT || 3333;
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-const SUPABASE_SERVICE_ROLE =
-  process.env.SUPABASE_SERVICE_ROLE ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY;
+/* ============================ CONFIGURAÇÃO DA EMPRESA ============================ */
+// IMPORTANTE: Configure essas variáveis para cada empresa
 
-if (!SUPABASE_SERVICE_ROLE) {
-  console.error('❌ [FATAL] SUPABASE_SERVICE_ROLE (ou SUPABASE_SERVICE_ROLE_KEY / SUPABASE_SERVICE_KEY) não configurado. Configure a service role para evitar erros 401/42501 (RLS).');
+const COMPANY_NAME = process.env.COMPANY_NAME || 'Mania de Mulher';
+const TENANT_ID = process.env.TENANT_ID || ''; // UUID do tenant no banco
+const PORT = process.env.PORT || 3333;
+const AUTH_FOLDER = process.env.AUTH_FOLDER || '.wwebjs_auth';
+
+// Supabase
+const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+
+/* ============================ VALIDAÇÃO ============================ */
+if (!TENANT_ID) {
+  console.error('❌ ERRO: TENANT_ID não configurado!');
+  console.error('Configure a variável de ambiente TENANT_ID com o UUID da empresa');
   process.exit(1);
 }
 
-const SUPABASE_KEY = SUPABASE_SERVICE_ROLE;
-
-// Configuração do tenant (definir manualmente para cada empresa)
-const TENANT_ID = process.env.TENANT_ID || '08f2b1b9-3988-489e-8186-c60f0c0b0622';
-const TENANT_SLUG = process.env.TENANT_SLUG || 'app';
-
-const USING_SERVICE_ROLE = true;
-
-console.log(`🏢 Inicializando servidor para tenant: ${TENANT_SLUG} (${TENANT_ID})`);
-console.log(`🔐 Modo Supabase: service_role (RLS ignorada no servidor)`);
-
-// Diagnóstico rápido do token (não imprime o token, só o claim)
-try {
-  const payload = (SUPABASE_KEY || '').split('.')[1];
-  const claims = payload ? JSON.parse(Buffer.from(payload, 'base64').toString('utf8')) : null;
-  console.log(`🧪 JWT role: ${claims?.role || 'N/A'} | exp: ${claims?.exp ? new Date(claims.exp * 1000).toISOString() : 'n/a'}`);
-} catch (e) {
-  console.log('⚠️ Não foi possível decodificar o JWT de SUPABASE_SERVICE_ROLE.');
-}
+console.log(`🏢 Empresa: ${COMPANY_NAME}`);
+console.log(`🆔 Tenant ID: ${TENANT_ID}`);
+console.log(`🔌 Porta: ${PORT}`);
+console.log(`📁 Pasta Auth: ${AUTH_FOLDER}`);
 
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-function fmtMoney(v) { 
-  return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`;
-}
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
-
-// Normalização para armazenamento (sem DDI)
-function normalizeForStorage(phone) {
+/**
+ * Normaliza número de telefone brasileiro para WhatsApp
+ */
+function normalizeDDD(phone) {
   if (!phone) return phone;
   
   const cleanPhone = phone.replace(/\D/g, '');
-  let phoneWithoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
-  
-  if (phoneWithoutDDI.length < 10) {
-    return phoneWithoutDDI;
-  }
-  
-  const ddd = parseInt(phoneWithoutDDI.substring(0, 2));
-  const restOfNumber = phoneWithoutDDI.substring(2);
-  
-  if (ddd < 31 && !restOfNumber.startsWith('9') && restOfNumber.length === 8) {
-    phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
-  } else if (ddd >= 31 && restOfNumber.startsWith('9') && restOfNumber.length === 9) {
-    phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + phoneWithoutDDI.substring(3);
-  }
-  
-  return phoneWithoutDDI;
-}
-
-// Normalização para envio (com DDI) - renomeando a função original
-function normalizeForSending(phone) {
-  if (!phone) return phone;
-  
-  const cleanPhone = phone.replace(/\D/g, '');
-  let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-  
   const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
   let normalized = withoutDDI;
@@ -110,483 +72,446 @@ function normalizeForSending(phone) {
   return '55' + normalized;
 }
 
-function normalizeDDD(phone) {
-  return normalizeForSending(phone);
-}
-
 /* ============================ SUPABASE ============================ */
 async function supaRaw(pathname, init) {
   const url = `${SUPABASE_URL.replace(/\/+$/,'')}/rest/v1${pathname}`;
-  const baseHeaders = {
-    apikey: SUPABASE_KEY,
-    Authorization: `Bearer ${SUPABASE_KEY}`,
-    'Content-Type': 'application/json',
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json'
   };
-  const finalInit = { ...(init || {}), headers: { ...baseHeaders, ...((init && init.headers) || {}) } };
-  if ((finalInit.method || '').toUpperCase() === 'POST' && !('Prefer' in finalInit.headers)) {
-    finalInit.headers.Prefer = 'return=representation';
-  }
-  const res = await fetch(url, finalInit);
-  const text = await res.text();
-  if (!res.ok) throw new Error(`Supabase ${res.status} ${pathname} ${text}`);
-  return text ? JSON.parse(text) : null;
+  const res = await fetch(url, { ...init, headers: { ...headers, ...(init && init.headers) } });
+  if (!res.ok) throw new Error(`Supabase ${res.status} ${pathname} ${await res.text()}`);
+  return res.json();
 }
 
-async function supa(pathname, init) {
-  const separator = pathname.includes('?') ? '&' : '?';
-  pathname += `${separator}tenant_id=eq.${TENANT_ID}`;
-  return supaRaw(pathname, init);
-}
+/* ============================ WHATSAPP CLIENT ============================ */
+let whatsappClient = null;
+let clientStatus = 'initializing';
 
-/* ============================ TEMPLATES ============================ */
-let templatesCache = {};
-let templatesCacheTime = 0;
-
-async function getTemplate(type) {
-  const now = Date.now();
-  if (now - templatesCacheTime > 300000) { // 5 minutos
-    try {
-      const templates = await supa('/whatsapp_templates?select=*');
-      templatesCache = {};
-      templates.forEach(t => templatesCache[t.type] = t);
-      templatesCacheTime = now;
-      console.log(`📄 Templates carregados:`, Object.keys(templatesCache));
-    } catch (e) {
-      console.error('❌ Erro ao buscar templates:', e.message);
-    }
-  }
-  return templatesCache[type] || null;
-}
-
-function replaceVariables(template, variables) {
-  if (!template) return '';
-  let result = template;
-  Object.keys(variables).forEach(key => {
-    const regex = new RegExp(`{{${key}}}`, 'g');
-    result = result.replace(regex, variables[key] || '');
-  });
-  return result;
-}
-
-async function composeItemAdded(product) {
-  const template = await getTemplate('ITEM_ADDED');
-  if (template) {
-    return replaceVariables(template.content, {
-      produto: product.name || 'Produto',
-      codigo: product.code ? `(${product.code})` : '',
-      quantidade: '1',
-      preco: fmtMoney(product.price),
-      total: fmtMoney(product.price)
-    });
+function getAuthDir() {
+  const authDir = path.join(__dirname, AUTH_FOLDER);
+  
+  if (!fs.existsSync(authDir)) {
+    fs.mkdirSync(authDir, { recursive: true });
   }
   
-  // Fallback
-  const productCode = product.code ? ` (${product.code})` : '';
-  const price = fmtMoney(product.price);
-  return `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *1*\nPreço: *${price}*`;
+  return authDir;
 }
 
-/* ============================ PAYMENT CONFIRMATION ============================ */
-async function getPaymentTemplate() {
-  try {
-    console.log('📋 [TEMPLATE] Buscando template PAID_ORDER...');
-    
-    const templates = await supa('/whatsapp_templates?select=content&type=eq.PAID_ORDER&limit=1');
-    
-    if (templates && templates.length > 0) {
-      console.log('✅ [TEMPLATE] Template personalizado encontrado');
-      return templates[0].content;
+async function createWhatsAppClient() {
+  const authDir = getAuthDir();
+  
+  console.log(`🔧 Criando cliente WhatsApp para ${COMPANY_NAME}...`);
+  
+  const client = new Client({
+    authStrategy: new LocalAuth({ 
+      clientId: TENANT_ID,
+      dataPath: authDir
+    }),
+    puppeteer: {
+      headless: true,
+      devtools: false,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu'
+      ]
     }
-    
-    console.log('⚠️ [TEMPLATE] Nenhum template encontrado, usando padrão');
-    return `🎉 *Pagamento Confirmado!*
+  });
 
-Olá {customer_name}!
+  // QR Code
+  client.on('qr', (qr) => {
+    console.log(`\n📱 Escaneie o QR Code para ${COMPANY_NAME}:\n`);
+    qrcode.generate(qr, { small: true });
+    clientStatus = 'qr_code';
+  });
 
-✅ Seu pagamento foi confirmado com sucesso!
-📄 Pedido: #{order_id}
-💰 Valor: {total_amount}
-📅 Data: {created_at}
+  // Conectado
+  client.on('ready', () => {
+    console.log(`✅ WhatsApp conectado: ${COMPANY_NAME}`);
+    clientStatus = 'online';
+  });
 
-Seu pedido já está sendo preparado! 📦
+  // Autenticado
+  client.on('authenticated', () => {
+    console.log(`🔐 Autenticado: ${COMPANY_NAME}`);
+    clientStatus = 'authenticated';
+  });
 
-Obrigado pela preferência! 😊`;
+  // Falha autenticação
+  client.on('auth_failure', (msg) => {
+    console.error(`❌ Falha na autenticação:`, msg);
+    clientStatus = 'auth_failure';
+  });
+
+  // Desconectado
+  client.on('disconnected', (reason) => {
+    console.log(`🔌 Desconectado:`, reason);
+    clientStatus = 'offline';
+  });
+
+  // Mensagens recebidas
+  client.on('message', async (message) => {
+    await handleIncomingMessage(message);
+  });
+
+  whatsappClient = client;
+  
+  try {
+    await client.initialize();
+    console.log(`🚀 Cliente inicializado`);
   } catch (error) {
-    console.error('❌ [TEMPLATE] Erro ao buscar template:', error.message);
+    console.error(`❌ Erro ao inicializar:`, error);
+    clientStatus = 'error';
+  }
+  
+  return client;
+}
+
+async function handleIncomingMessage(message) {
+  try {
+    let groupName = null;
+    let authorPhone = null;
+    let messageFrom = message.from;
+    
+    console.log(`📨 Mensagem recebida:`, {
+      from: message.from,
+      body: message.body?.substring(0, 50),
+      hasAuthor: !!message.author
+    });
+
+    // Verificar se é grupo
+    if (message.from && message.from.includes('@g.us')) {
+      try {
+        const chat = await message.getChat();
+        if (chat && chat.isGroup) {
+          groupName = chat.name || 'Grupo WhatsApp';
+          
+          if (message.author) {
+            authorPhone = message.author.replace('@c.us', '');
+            messageFrom = message.author;
+          } else {
+            console.log(`⚠️ Mensagem grupo sem author`);
+            return;
+          }
+        }
+      } catch (chatError) {
+        console.error('❌ Erro obter grupo:', chatError.message);
+      }
+    } else {
+      authorPhone = message.from.replace('@c.us', '');
+    }
+
+    if (!authorPhone) {
+      console.log(`⚠️ Telefone inválido`);
+      return;
+    }
+
+    // Webhook
+    const webhookPayload = {
+      from: messageFrom,
+      body: message.body || '',
+      groupName: groupName,
+      author: authorPhone,
+      chatName: groupName
+    };
+
+    // Chamar edge function
+    try {
+      const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-multitenant/${TENANT_ID}`;
+      
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(webhookPayload)
+      });
+
+      if (response.ok) {
+        console.log(`✅ Webhook enviado`);
+      } else {
+        console.log(`⚠️ Webhook status: ${response.status}`);
+      }
+    } catch (webhookError) {
+      console.error('❌ Erro webhook:', webhookError.message);
+    }
+
+    // Log no banco
+    try {
+      await supaRaw('/whatsapp_messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: TENANT_ID,
+          phone: authorPhone,
+          message: message.body || '',
+          type: 'incoming',
+          received_at: new Date().toISOString(),
+          whatsapp_group_name: groupName
+        })
+      });
+      console.log(`💾 Mensagem salva`);
+    } catch (dbError) {
+      console.error('❌ Erro salvar:', dbError.message);
+    }
+
+  } catch (error) {
+    console.error('❌ Erro processar mensagem:', error.message);
+  }
+}
+
+async function getClient() {
+  if (!whatsappClient || clientStatus !== 'online') {
+    return null;
+  }
+  
+  try {
+    const state = await whatsappClient.getState();
+    return state === 'CONNECTED' ? whatsappClient : null;
+  } catch (error) {
+    console.error(`❌ Erro verificar estado:`, error);
     return null;
   }
 }
 
-function replaceTemplateVariables(template, order) {
-  if (!template || !order) return null;
-  
-  const customerName = order.customer_name || order.customer_phone || 'Cliente';
-  const formattedDate = order.created_at ? new Date(order.created_at).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
-  
-  return template
-    .replace(/{customer_name}/g, customerName)
-    .replace(/{order_id}/g, order.id)
-    .replace(/{total_amount}/g, formatCurrency(order.total_amount))
-    .replace(/{created_at}/g, formattedDate);
-}
-
-async function checkAndSendPendingPaymentConfirmations() {
-  try {
-    console.log('💰 [PAYMENT] Verificando pedidos pagos sem confirmação...');
-    
-    // Buscar template primeiro
-    const template = await getPaymentTemplate();
-    if (!template) {
-      console.error('❌ [PAYMENT] Template não disponível, abortando envio');
-      return;
-    }
-    
-    // Buscar pedidos pagos que não tiveram confirmação enviada (false ou null)
-    const orders = await supa('/orders?select=id,customer_phone,customer_name,total_amount,created_at&is_paid=eq.true&or=(payment_confirmation_sent.is.null,payment_confirmation_sent.eq.false)&order=created_at.desc');
-    
-    if (!orders || orders.length === 0) {
-      console.log('✅ [PAYMENT] Nenhum pedido pendente de confirmação');
-      return;
-    }
-    
-    console.log(`📨 [PAYMENT] Encontrados ${orders.length} pedidos para enviar confirmação`);
-    
-    for (const order of orders) {
-      try {
-        console.log(`📤 [PAYMENT] Enviando confirmação para pedido #${order.id}`);
-        
-        // Substituir variáveis no template
-        const message = replaceTemplateVariables(template, order);
-        
-        if (!message) {
-          console.error(`❌ [PAYMENT] Erro ao processar template para pedido #${order.id}`);
-          continue;
-        }
-
-        const normalizedPhone = normalizeForSending(order.customer_phone);
-        const chatId = `${normalizedPhone}@c.us`;
-        
-        // Enviar mensagem
-        await client.sendMessage(chatId, message);
-        console.log(`✅ [PAYMENT] Mensagem enviada para ${normalizedPhone}`);
-        
-        // Atualizar order como confirmação enviada
-        await supaRaw(`/orders?id=eq.${order.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            payment_confirmation_sent: true
-          })
-        });
-        
-        // Registrar no log de mensagens
-        await supa('/whatsapp_messages', {
-          method: 'POST',
-          body: JSON.stringify({
-            tenant_id: TENANT_ID,
-            phone: normalizeForStorage(order.customer_phone),
-            message: message,
-            type: 'payment_confirmation',
-            order_id: order.id,
-            sent_at: new Date().toISOString()
-          })
-        });
-        
-        console.log(`💾 [PAYMENT] Pedido #${order.id} marcado como confirmação enviada`);
-        
-        // Delay entre mensagens
-        await delay(2000);
-        
-      } catch (orderError) {
-        console.error(`❌ [PAYMENT] Erro ao processar pedido #${order.id}:`, orderError);
-      }
-    }
-    
-    console.log('✅ [PAYMENT] Verificação de pagamentos concluída');
-    
-  } catch (error) {
-    console.error('❌ [PAYMENT] Erro ao verificar pagamentos pendentes:', error);
-  }
-}
-
-/* ============================ WHATSAPP CLIENT ============================ */
-const client = new Client({
-  authStrategy: new LocalAuth({ clientId: TENANT_SLUG }),
-  puppeteer: {
-    headless: false,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
-    ]
-  }
-});
-
-let clientReady = false;
-
-client.on('qr', (qr) => {
-  console.log('📱 Escaneie o QR Code:');
-  qrcode.generate(qr, { small: true });
-});
-
-client.on('ready', async () => {
-  console.log('✅ WhatsApp conectado!');
-  clientReady = true;
-  
-  // Verificar pedidos pagos pendentes de confirmação
-  try {
-    await checkAndSendPendingPaymentConfirmations();
-  } catch (error) {
-    console.error('❌ Erro ao verificar confirmações pendentes:', error);
-  }
-});
-
-client.on('authenticated', () => {
-  console.log('🔑 WhatsApp autenticado!');
-});
-
-client.on('auth_failure', () => {
-  console.log('❌ Falha na autenticação do WhatsApp');
-});
-
-client.on('message', async (msg) => {
-  try {
-    console.log(`📨 Mensagem recebida de ${msg.from}: ${msg.body}`);
-    
-    // Salvar mensagem no banco
-    await supa('/whatsapp_messages', {
-      method: 'POST',
-      body: JSON.stringify({
-        tenant_id: TENANT_ID,
-        phone: normalizeForStorage(msg.from),
-        message: msg.body,
-        type: 'incoming',
-        received_at: new Date().toISOString()
-      })
-    });
-
-    // Detectar códigos de produto
-    const text = String(msg.body || '').trim().toUpperCase();
-    const match = text.match(/^(?:[CPA]\s*)?(\d{1,6})$/);
-    
-    if (match) {
-      const numeric = match[1];
-      const candidates = [`C${numeric}`, `P${numeric}`, `A${numeric}`, numeric];
-
-      // Buscar produto
-      const products = await supa(`/products?select=*&is_active=eq.true&code=in.(${candidates.map(c => `"${c}"`).join(',')})`);
-      const product = products[0];
-
-      if (product) {
-        console.log(`🎯 Produto encontrado: ${product.name} (${product.code})`);
-        
-        // Processar pedido automaticamente
-        await processProductCode(msg.from, product);
-        
-        // Enviar confirmação
-        const message = await composeItemAdded(product);
-        await client.sendMessage(msg.from, message);
-        console.log(`✅ Confirmação enviada para ${msg.from}`);
-      }
-    }
-  } catch (error) {
-    console.error('❌ Erro ao processar mensagem:', error);
-  }
-});
-
-async function processProductCode(phone, product) {
-  const normalizedPhone = normalizeForStorage(phone);
-  const today = new Date().toISOString().split('T')[0];
-
-  try {
-    // Buscar ou criar cliente
-    let customers = await supa(`/customers?select=*&phone=eq.${normalizedPhone}`);
-    let customer = customers[0];
-
-    if (!customer) {
-      const newCustomers = await supa('/customers', {
-        method: 'POST',
-        headers: { Prefer: 'return=representation' },
-        body: JSON.stringify({
-          tenant_id: TENANT_ID,
-          phone: normalizedPhone,
-          name: normalizedPhone
-        })
-      });
-      customer = newCustomers[0];
-    }
-
-    // Buscar ou criar carrinho aberto
-    let carts = await supa(`/carts?select=*&customer_phone=eq.${normalizedPhone}&event_date=eq.${today}&status=eq.OPEN`);
-    let cart = carts[0];
-
-    if (!cart) {
-      const newCarts = await supa('/carts', {
-        method: 'POST',
-        headers: { Prefer: 'return=representation' },
-        body: JSON.stringify({
-          tenant_id: TENANT_ID,
-          customer_phone: normalizedPhone,
-          event_date: today,
-          event_type: 'whatsapp',
-          status: 'OPEN'
-        })
-      });
-      cart = newCarts[0];
-    }
-
-    // Adicionar item ao carrinho
-    if (cart) {
-      await supa('/cart_items', {
-        method: 'POST',
-        body: JSON.stringify({
-          tenant_id: TENANT_ID,
-          cart_id: cart.id,
-          product_id: product.id,
-          qty: 1,
-          unit_price: product.price
-        })
-      });
-
-      console.log(`🛒 Produto ${product.code} adicionado ao carrinho do cliente ${normalizedPhone}`);
-    }
-  } catch (error) {
-    console.error('❌ Erro ao processar código do produto:', error);
-    throw error;
-  }
-}
-
-/* ============================ EXPRESS API ============================ */
+/* ============================ EXPRESS ============================ */
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(cors());
 
+/* ============================ ROUTES ============================ */
+
+// Status
 app.get('/status', (req, res) => {
   res.json({
-    tenant: { id: TENANT_ID, slug: TENANT_SLUG },
-    whatsapp: { ready: clientReady },
+    success: true,
+    company: COMPANY_NAME,
+    tenant_id: TENANT_ID,
+    status: clientStatus,
+    hasClient: !!whatsappClient,
+    port: PORT
+  });
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    status: 'online',
+    company: COMPANY_NAME,
+    tenant_id: TENANT_ID,
     timestamp: new Date().toISOString()
   });
 });
 
+// Enviar mensagem
 app.post('/send', async (req, res) => {
   try {
-    if (!clientReady) {
-      return res.status(503).json({ error: 'WhatsApp não está conectado' });
-    }
-
-    const { number, phone, message, order_id } = req.body;
+    const { number, message, phone } = req.body;
     
-    // Aceita tanto 'number' quanto 'phone' para compatibilidade
     const phoneNumber = number || phone;
     
-    if (!phoneNumber) {
-      return res.status(400).json({ error: 'Telefone é obrigatório' });
-    }
-
-    let finalMessage = message;
-
-    // Se tem order_id, buscar template e dados do pedido
-    if (order_id) {
-      console.log(`📋 [SEND] Buscando template e dados do pedido #${order_id}`);
-      
-      try {
-        // Buscar template
-        const template = await getPaymentTemplate();
-        if (!template) {
-          return res.status(500).json({ error: 'Template de pagamento não encontrado' });
-        }
-
-        // Buscar dados do pedido
-        const orders = await supa(`/orders?select=id,customer_phone,customer_name,total_amount,created_at&id=eq.${order_id}&limit=1`);
-
-        if (!orders || orders.length === 0) {
-          return res.status(404).json({ error: 'Pedido não encontrado' });
-        }
-
-        const order = orders[0];
-        
-        // Montar mensagem com template
-        finalMessage = replaceTemplateVariables(template, order);
-        
-        if (!finalMessage) {
-          return res.status(500).json({ error: 'Erro ao processar template' });
-        }
-
-        console.log(`✅ [SEND] Template processado para pedido #${order_id}`);
-        
-      } catch (templateError) {
-        console.error('❌ [SEND] Erro ao processar template:', templateError);
-        return res.status(500).json({ error: 'Erro ao processar template de pagamento' });
-      }
-    } else if (!message) {
-      return res.status(400).json({ error: 'Mensagem é obrigatória quando não há order_id' });
-    }
-
-    const normalizedNumber = normalizeForSending(phoneNumber);
-    console.log(`📤 [SEND] Enviando mensagem para ${normalizedNumber}`);
-    await client.sendMessage(`${normalizedNumber}@c.us`, finalMessage);
-
-    // Log da mensagem enviada
-    const messageData = {
-      tenant_id: TENANT_ID,
-      phone: normalizeForStorage(phoneNumber),
-      message: finalMessage,
-      type: order_id ? 'payment_confirmation' : 'outgoing',
-      sent_at: new Date().toISOString()
-    };
-    
-    if (order_id) {
-      messageData.order_id = order_id;
-    }
-
-    await supa('/whatsapp_messages', {
-      method: 'POST',
-      body: JSON.stringify(messageData)
-    });
-
-    // Se for confirmação de pagamento, marcar no pedido
-    if (order_id) {
-      await supaRaw(`/orders?id=eq.${order_id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          payment_confirmation_sent: true
-        })
+    if (!phoneNumber || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Número e mensagem obrigatórios'
       });
-      console.log(`✅ [SEND] Confirmação marcada para pedido #${order_id}`);
     }
-
-    console.log('✅ [SEND] Mensagem enviada com sucesso');
-    res.json({ success: true, phone: normalizeForStorage(phoneNumber) });
+    
+    const client = await getClient();
+    
+    if (!client) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp não conectado',
+        status: clientStatus
+      });
+    }
+    
+    const normalizedPhone = normalizeDDD(phoneNumber);
+    const chatId = `${normalizedPhone}@c.us`;
+    
+    console.log(`📤 Enviando para ${normalizedPhone}`);
+    await client.sendMessage(chatId, message);
+    console.log(`✅ Enviado`);
+    
+    // Log
+    await supaRaw('/whatsapp_messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: TENANT_ID,
+        phone: normalizedPhone,
+        message: message,
+        type: 'outgoing',
+        sent_at: new Date().toISOString()
+      })
+    });
+    
+    res.json({
+      success: true,
+      message: 'Mensagem enviada',
+      phone: normalizedPhone,
+      company: COMPANY_NAME
+    });
+    
   } catch (error) {
-    console.error('❌ Erro ao enviar mensagem:', error);
-    res.status(500).json({ error: error.message });
+    console.error(`❌ Erro enviar:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-/* ============================ INICIALIZAÇÃO ============================ */
-console.log('🚀 Iniciando servidor WhatsApp individual...');
-console.log(`📍 Tenant: ${TENANT_SLUG} (${TENANT_ID})`);
-
-client.initialize();
-
-app.listen(PORT, () => {
-  console.log(`🌐 Servidor rodando na porta ${PORT}`);
-  console.log(`📋 Status: http://localhost:${PORT}/status`);
-  console.log(`📤 Enviar: POST http://localhost:${PORT}/send`);
+// Broadcast
+app.post('/broadcast', async (req, res) => {
+  try {
+    const { phones, message } = req.body;
+    
+    if (!phones || !Array.isArray(phones) || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Lista de telefones e mensagem obrigatórios'
+      });
+    }
+    
+    const client = await getClient();
+    
+    if (!client) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp não conectado'
+      });
+    }
+    
+    const results = [];
+    
+    for (const phone of phones) {
+      try {
+        const normalizedPhone = normalizeDDD(phone);
+        const chatId = `${normalizedPhone}@c.us`;
+        
+        await client.sendMessage(chatId, message);
+        
+        // Log
+        await supaRaw('/whatsapp_messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            tenant_id: TENANT_ID,
+            phone: normalizedPhone,
+            message: message,
+            type: 'bulk',
+            sent_at: new Date().toISOString()
+          })
+        });
+        
+        results.push({
+          phone: normalizedPhone,
+          success: true
+        });
+        
+        await delay(2000);
+        
+      } catch (error) {
+        console.error(`❌ Erro enviar para ${phone}:`, error);
+        results.push({
+          phone: phone,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: 'Broadcast processado',
+      company: COMPANY_NAME,
+      total: phones.length,
+      results
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro broadcast:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
+
+// Reiniciar
+app.post('/restart', async (req, res) => {
+  try {
+    console.log(`🔄 Reiniciando cliente WhatsApp...`);
+    
+    if (whatsappClient) {
+      try {
+        await whatsappClient.destroy();
+      } catch (error) {
+        console.warn(`⚠️ Erro destruir cliente:`, error.message);
+      }
+    }
+    
+    await createWhatsAppClient();
+    
+    res.json({
+      success: true,
+      message: 'Cliente reiniciado',
+      company: COMPANY_NAME,
+      status: clientStatus
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro reiniciar:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/* ============================ START ============================ */
+async function startServer() {
+  try {
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`🚀 WhatsApp Server Individual - ${COMPANY_NAME}`);
+    console.log(`${'='.repeat(60)}\n`);
+    
+    // Criar cliente WhatsApp
+    await createWhatsAppClient();
+    
+    // Iniciar servidor HTTP
+    app.listen(PORT, () => {
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`🌐 Servidor rodando na porta ${PORT}`);
+      console.log(`📊 Status: http://localhost:${PORT}/status`);
+      console.log(`💚 Health: http://localhost:${PORT}/health`);
+      console.log(`${'='.repeat(60)}\n`);
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro iniciar servidor:', error);
+    process.exit(1);
+  }
+}
 
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
-  if (clientReady) {
-    await client.destroy();
+  
+  if (whatsappClient) {
+    try {
+      await whatsappClient.destroy();
+      console.log('✅ Cliente WhatsApp desconectado');
+    } catch (error) {
+      console.warn('⚠️ Erro ao desconectar:', error.message);
+    }
   }
-  process.exit();
+  
+  process.exit(0);
 });
 
-console.log('\n📖 INSTRUÇÕES DE USO:');
-console.log('1. Execute: node server-whatsapp-individual.js');
-console.log('2. Escaneie o QR Code que aparecerá');
-console.log('3. Aguarde a mensagem "WhatsApp conectado!"');
-console.log('4. Envie códigos de produto via WhatsApp para testar');
-console.log('\n✅ Sistema pronto para detectar códigos automaticamente!');
+startServer();
