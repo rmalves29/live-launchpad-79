@@ -7,6 +7,7 @@ import { Menu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { TenantSwitcher } from '@/components/TenantSwitcher';
+import orderZapsLogo from '@/assets/order-zaps-logo.png';
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
@@ -37,8 +38,8 @@ const Navbar = () => {
           <div className="flex items-center">
             <NavLink to="/" className="flex items-center">
               <img 
-                src="/lovable-uploads/6cab2f0c-61fb-4bf3-a1d4-afffeafcefd9.png" 
-                alt="Mania de Mulher" 
+                src={orderZapsLogo} 
+                alt="Order Zaps" 
                 className="h-[90px] w-[90px] object-contain"
               />
             </NavLink>
