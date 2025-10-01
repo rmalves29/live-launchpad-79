@@ -19,9 +19,10 @@ if (typeof fetch !== 'function') {
 
 /* ============================ CONFIGURAÇÃO DA EMPRESA ============================ */
 // IMPORTANTE: Configure essas variáveis para cada empresa
+// Para encontrar o TENANT_ID correto, acesse o banco de dados e consulte a tabela 'tenants'
 
 const COMPANY_NAME = process.env.COMPANY_NAME || 'Mania de Mulher';
-const TENANT_ID = process.env.TENANT_ID || ''; // UUID do tenant no banco
+const TENANT_ID = process.env.TENANT_ID || '08f2b1b9-3988-489e-8186-c60f0c0b0622'; // MANIA DE MULHER
 const PORT = process.env.PORT || 3333;
 const AUTH_FOLDER = process.env.AUTH_FOLDER || '.wwebjs_auth';
 
