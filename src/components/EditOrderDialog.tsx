@@ -199,8 +199,7 @@ useEffect(() => {
         if (error) throw error;
       }
 
-      // Enviar mensagem de item adicionado
-      await sendItemAddedMessage();
+      // Mensagem enviada automaticamente via trigger do banco
 
       // Reload cart items
       await loadCartItems(targetCartId);
@@ -246,8 +245,7 @@ useEffect(() => {
 
       if (error) throw error;
 
-      // Enviar mensagem de cancelamento
-      await sendCancellationMessage(item);
+      // Mensagem de cancelamento enviada automaticamente via trigger do banco
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
@@ -314,132 +312,9 @@ useEffect(() => {
     }
   };
 
-  const sendItemAddedMessage = async () => {
-    if (!selectedProduct || !order || !profile?.tenant_id) return;
-    
-    console.log('📤 [EditOrder] Iniciando envio de mensagem item adicionado:', {
-      orderId: order.id,
-      customerPhone: order.customer_phone,
-      productName: selectedProduct.name,
-      tenantId: profile.tenant_id
-    });
-    
-    try {
-      const qty = quantity || 1;
-      const unitValue = Number(unitPrice || selectedProduct.price) || 0;
+  // Mensagem enviada automaticamente via trigger - função removida
 
-      await whatsappService.sendItemAdded({
-        customer_phone: order.customer_phone,
-        customer_name: order.customer_name || 'Cliente',
-        product: {
-          name: selectedProduct.name,
-          code: selectedProduct.code,
-          qty: qty,
-          price: unitValue
-        }
-      }, profile.tenant_id);
-      
-      console.log('✅ [EditOrder] Mensagem WhatsApp enviada com sucesso');
-
-      // Marcar que mensagem foi enviada
-      await supabaseTenant
-        .from('orders')
-        .update({ item_added_message_sent: true })
-        .eq('id', order.id);
-
-      toast({ title: 'Sucesso', description: 'Mensagem enviada ao cliente' });
-
-    } catch (error) {
-      console.error('❌ [EditOrder] Error sending item added message:', error);
-      console.warn('⚠️ [EditOrder] Falha ao enviar mensagem WhatsApp');
-    }
-  };
-
-  const sendCancellationMessage = async (item: CartItem) => {
-    if (!order) return;
-    
-    try {
-      // Buscar template de cancelamento
-      const { data: template } = await supabaseTenant
-        .from('whatsapp_templates')
-        .select('content')
-        .eq('type', 'PRODUCT_CANCELED')
-        .maybeSingle();
-
-      const message = template?.content 
-        ? template.content.replace('{{produto}}', item.product?.name || 'Produto')
-        : `❌ *Produto Cancelado*\n\nO produto "${item.product?.name || 'Produto'}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
-
-      // Usar a função de envio otimizada
-      const sent = await (async () => {
-        const baseUrl = 'http://localhost:3333';
-        try {
-          const attempts = [
-            { path: '/send-message', body: { number: order.customer_phone, message } },
-            { path: '/send-message', body: { to: order.customer_phone, message } },
-            { path: '/send', body: { to: order.customer_phone, message } },
-            { path: '/send', body: { number: order.customer_phone, message } },
-          ];
-
-          for (const a of attempts) {
-            try {
-              const resp = await fetch(`${baseUrl}${a.path}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(a.body),
-              });
-              
-              if (resp.ok) {
-                // Adicionar tag "app" ao cliente
-                try {
-                  await fetch(`${baseUrl}/add-label`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: order.customer_phone, label: 'app' }),
-                  });
-                } catch (labelError) {
-                  console.warn('Erro ao adicionar tag "app":', labelError);
-                }
-                return true;
-              }
-            } catch (error) {
-              console.warn(`Erro na tentativa (${a.path}):`, error);
-            }
-          }
-          return false;
-        } catch (error) {
-          console.warn('Erro geral no envio:', error);
-          return false;
-        }
-      })();
-
-      // Registrar no banco
-      await supabase.from('whatsapp_messages').insert({
-        phone: order.customer_phone,
-        message,
-        type: 'system_log',
-        sent_at: new Date().toISOString(),
-        tenant_id: profile?.tenant_id
-      });
-
-      if (sent) {
-        toast({
-          title: 'Sucesso',
-          description: 'Mensagem de cancelamento enviada'
-        });
-      } else {
-        toast({
-          title: 'Aviso',
-          description: 'Mensagem registrada, mas pode não ter sido entregue via WhatsApp',
-          variant: 'destructive'
-        });
-      }
-
-    } catch (error) {
-      console.error('Error sending cancellation message:', error);
-      // Toast de erro removido conforme solicitado
-    }
-  };
+  // Mensagem de cancelamento enviada automaticamente via trigger - função removida
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

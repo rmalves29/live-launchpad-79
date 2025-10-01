@@ -356,8 +356,7 @@ const PedidosManual = () => {
       setPhones(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
       
-      // Send automatic message
-      await sendItemAddedMessage(normalizedPhone, 'Cliente', product.name, qty, product.price);
+      // Mensagem enviada automaticamente via trigger do banco
       
       // Reload orders to show the new one
       loadOrders();
@@ -442,59 +441,7 @@ const PedidosManual = () => {
     }
   };
 
-  const sendItemAddedMessage = async (phone: string, customerName: string, productName: string, quantity: number, price: number) => {
-    if (!profile?.tenant_id) {
-      console.warn('Tenant ID não disponível para envio de mensagem');
-      toast({
-        title: 'Aviso',
-        description: 'Não foi possível enviar mensagem WhatsApp: tenant não identificado',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      console.log('🚀 [PedidosManual] Enviando mensagem ITEM_ADDED:', {
-        phone,
-        customerName,
-        productName,
-        quantity,
-        price,
-        tenantId: profile.tenant_id
-      });
-
-      const { whatsappService } = await import('@/lib/whatsapp-service');
-      await whatsappService.sendItemAdded({
-        customer_phone: phone,
-        customer_name: customerName,
-        product: {
-          name: productName,
-          code: '',
-          qty: quantity,
-          price: price
-        }
-      }, profile.tenant_id);
-      
-      console.log('✅ [PedidosManual] Mensagem WhatsApp enviada com sucesso');
-      
-      toast({
-        title: 'Mensagem enviada',
-        description: 'Mensagem WhatsApp enviada ao cliente',
-      });
-    } catch (error: any) {
-      console.error('❌ [PedidosManual] Erro ao enviar mensagem WhatsApp:', error);
-      
-      // Mostrar erro específico ao usuário
-      const errorMessage = error?.message || 'Erro desconhecido ao enviar mensagem';
-      toast({
-        title: 'Erro ao enviar WhatsApp',
-        description: errorMessage.includes('not configured') 
-          ? 'Configure a integração WhatsApp em Integrações > WhatsApp'
-          : errorMessage,
-        variant: 'destructive'
-      });
-    }
-  };
+  // Mensagem enviada automaticamente via trigger - função removida
 
   const fillDefaultPhone = () => {
     if (!defaultPhone) return;
