@@ -110,7 +110,7 @@ async function createWhatsAppClient() {
       dataPath: authDir
     }),
   puppeteer: {
-      headless: true,
+      headless: false, // Abre navegador visível
       devtools: false,
       args: [
         '--no-sandbox',
@@ -512,17 +512,19 @@ app.post('/restart', async (req, res) => {
 
 /* ============================ GRACEFUL SHUTDOWN ============================ */
 async function gracefulShutdown(signal) {
-  console.log(`\n⚠️ ${signal} recebido, encerrando...`);
+  console.log(`\n⚠️ ${signal} recebido, encerrando servidor...`);
+  console.log('📱 WhatsApp permanecerá conectado');
   
-  if (whatsappClient) {
-    try {
-      console.log('🔌 Desconectando WhatsApp...');
-      await whatsappClient.destroy();
-      console.log('✅ WhatsApp desconectado');
-    } catch (error) {
-      console.error('❌ Erro ao desconectar:', error.message);
-    }
-  }
+  // Não destruir o cliente para manter WhatsApp conectado
+  // if (whatsappClient) {
+  //   try {
+  //     console.log('🔌 Desconectando WhatsApp...');
+  //     await whatsappClient.destroy();
+  //     console.log('✅ WhatsApp desconectado');
+  //   } catch (error) {
+  //     console.error('❌ Erro ao desconectar:', error.message);
+  //   }
+  // }
   
   process.exit(0);
 }
@@ -555,20 +557,7 @@ async function startServer() {
   }
 }
 
-// Graceful shutdown
-process.on('SIGINT', async () => {
-  console.log('\n🛑 Encerrando servidor...');
-  
-  if (whatsappClient) {
-    try {
-      await whatsappClient.destroy();
-      console.log('✅ Cliente WhatsApp desconectado');
-    } catch (error) {
-      console.warn('⚠️ Erro ao desconectar:', error.message);
-    }
-  }
-  
-  process.exit(0);
-});
+// Graceful shutdown (já tratado acima via gracefulShutdown)
+// Removido para evitar duplicação
 
 startServer();
