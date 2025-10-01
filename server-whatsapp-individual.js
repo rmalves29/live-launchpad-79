@@ -109,7 +109,7 @@ async function createWhatsAppClient() {
       clientId: TENANT_ID,
       dataPath: authDir
     }),
-    puppeteer: {
+  puppeteer: {
       headless: true,
       devtools: false,
       args: [
@@ -119,8 +119,13 @@ async function createWhatsAppClient() {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
-      ]
+        '--disable-gpu',
+        '--single-process',
+        '--disable-extensions'
+      ],
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false
     }
   });
 
@@ -157,7 +162,12 @@ async function createWhatsAppClient() {
 
   // Mensagens recebidas
   client.on('message', async (message) => {
-    await handleIncomingMessage(message);
+    try {
+      await handleIncomingMessage(message);
+    } catch (error) {
+      console.error('❌ Erro no handler de mensagem:', error.message);
+      // Não deixar o erro propagar para evitar crash
+    }
   });
 
   whatsappClient = client;
@@ -175,6 +185,12 @@ async function createWhatsAppClient() {
 
 async function handleIncomingMessage(message) {
   try {
+    // Verificar se o cliente ainda está conectado
+    if (!whatsappClient || clientStatus !== 'online') {
+      console.log(`⚠️ Cliente não está online, ignorando mensagem`);
+      return;
+    }
+
     let groupName = null;
     let authorPhone = null;
     let messageFrom = message.from;
@@ -188,7 +204,14 @@ async function handleIncomingMessage(message) {
     // Verificar se é grupo
     if (message.from && message.from.includes('@g.us')) {
       try {
-        const chat = await message.getChat();
+        // Timeout de 5 segundos para getChat
+        const chatPromise = message.getChat();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout getChat')), 5000)
+        );
+        
+        const chat = await Promise.race([chatPromise, timeoutPromise]);
+        
         if (chat && chat.isGroup) {
           groupName = chat.name || 'Grupo WhatsApp';
           
@@ -201,7 +224,21 @@ async function handleIncomingMessage(message) {
           }
         }
       } catch (chatError) {
-        console.error('❌ Erro obter grupo:', chatError.message);
+        // Se falhar ao obter chat de grupo, tentar extrair info do author
+        if (chatError.message && chatError.message.includes('Execution context was destroyed')) {
+          console.log('⚠️ Contexto destruído, usando author diretamente');
+          if (message.author) {
+            authorPhone = message.author.replace('@c.us', '');
+            messageFrom = message.author;
+            groupName = 'Grupo WhatsApp';
+          } else {
+            console.log('⚠️ Sem author, ignorando mensagem');
+            return;
+          }
+        } else {
+          console.error('❌ Erro obter grupo:', chatError.message);
+          return;
+        }
       }
     } else {
       authorPhone = message.from.replace('@c.us', '');
@@ -472,6 +509,26 @@ app.post('/restart', async (req, res) => {
     });
   }
 });
+
+/* ============================ GRACEFUL SHUTDOWN ============================ */
+async function gracefulShutdown(signal) {
+  console.log(`\n⚠️ ${signal} recebido, encerrando...`);
+  
+  if (whatsappClient) {
+    try {
+      console.log('🔌 Desconectando WhatsApp...');
+      await whatsappClient.destroy();
+      console.log('✅ WhatsApp desconectado');
+    } catch (error) {
+      console.error('❌ Erro ao desconectar:', error.message);
+    }
+  }
+  
+  process.exit(0);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 /* ============================ START ============================ */
 async function startServer() {
