@@ -174,20 +174,25 @@ function replaceVariables(template, variables) {
   return result;
 }
 
-async function composeItemAdded(product) {
+async function composeItemAdded(product, quantity = 1) {
   const template = await getTemplate('ITEM_ADDED');
+  const totalPrice = Number(product.price || 0) * Number(quantity);
+  
   if (template) {
     return replaceVariables(template.content, {
       produto: product.name || 'Produto',
       codigo: product.code ? `(${product.code})` : '',
-      quantidade: '1',
+      quantidade: String(quantity),
       preco: fmtMoney(product.price),
-      total: fmtMoney(product.price)
+      valor: fmtMoney(product.price),
+      total: fmtMoney(totalPrice),
     });
   }
+  
   const productCode = product.code ? ` (${product.code})` : '';
   const price = fmtMoney(product.price);
-  return `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *1*\nPreço: *${price}*`;
+  const total = fmtMoney(totalPrice);
+  return `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *${quantity}*\nPreço: *${price}*\nTotal: *${total}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
 }
 
 // Mensagem para finalizar compra
@@ -199,6 +204,19 @@ async function composeFinalize() {
     'Para pagar agora: clique no link, coloque o seu telefone.\n' +
     '👉 https://app.orderzaps.com/checkout'
   );
+}
+
+// Mensagem de pedido pago
+async function composePaidOrder(orderData) {
+  const template = await getTemplate('PAID_ORDER');
+  if (template) {
+    return replaceVariables(template.content, {
+      order_id: String(orderData.id || 'N/A'),
+      total: fmtMoney(orderData.total_amount || 0),
+      customer_name: orderData.customer_name || 'Cliente',
+    });
+  }
+  return `🎉 *Pagamento Confirmado - Pedido #${orderData.id}*\n\n✅ Recebemos seu pagamento!\n💰 Valor: *${fmtMoney(orderData.total_amount)}*\n\nSeu pedido está sendo preparado para envio.\n\nObrigado pela preferência! 💚`;
 }
 
 /* ============================ WHATSAPP CLIENT ============================ */
@@ -490,6 +508,129 @@ app.post('/send', async (req, res) => {
   }
 });
 
+/* ============================ WHATSAPP SEND HELPER ============================ */
+async function sendWhatsAppMessage(phone, message, messageType = 'outgoing') {
+  const normalizedPhone = normalizeForSending(phone);
+  
+  if (!clientReady) {
+    throw new Error('WhatsApp não está conectado');
+  }
+
+  // Enviar mensagem via WhatsApp
+  await client.sendMessage(`${normalizedPhone}@c.us`, message);
+  
+  // Registrar no banco de dados
+  await supa('/whatsapp_messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      tenant_id: TENANT_ID,
+      phone: normalizeForStorage(phone),
+      message,
+      type: messageType,
+      sent_at: new Date().toISOString(),
+    }),
+  });
+  
+  console.log(`✅ Mensagem ${messageType} enviada para ${normalizedPhone}`);
+  return { success: true, phone: normalizeForStorage(phone) };
+}
+
+// Endpoint para enviar mensagem de item adicionado (pedido manual)
+app.post('/send-item-added', async (req, res) => {
+  console.log('🛒 Requisição para enviar mensagem de item adicionado');
+  
+  try {
+    const { phone, product_id, quantity = 1 } = req.body;
+    
+    if (!phone || !product_id) {
+      return res.status(400).json({ error: 'Telefone e ID do produto são obrigatórios' });
+    }
+
+    console.log(`📋 Buscando produto ${product_id} para telefone ${phone}`);
+
+    // Buscar informações do produto
+    const products = await supa(`/products?select=*&id=eq.${product_id}`);
+    const product = products?.[0];
+
+    if (!product) {
+      console.log(`❌ Produto ${product_id} não encontrado`);
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
+
+    console.log(`📦 Produto encontrado: ${product.name} (${product.code})`);
+
+    // Compor e enviar mensagem
+    const message = await composeItemAdded(product, quantity);
+    const result = await sendWhatsAppMessage(phone, message, 'outgoing');
+    
+    console.log(`✅ Mensagem de item adicionado enviada com sucesso`);
+    res.json({ ...result, product: product.name, message });
+  } catch (error) {
+    console.error('❌ Erro ao enviar mensagem de item adicionado:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint para enviar confirmação de pedido pago
+app.post('/send-paid-order', async (req, res) => {
+  console.log('💰 Requisição para enviar confirmação de pagamento');
+  
+  try {
+    const { phone, order_id } = req.body;
+    
+    if (!phone || !order_id) {
+      return res.status(400).json({ error: 'Telefone e ID do pedido são obrigatórios' });
+    }
+
+    console.log(`📋 Buscando pedido ${order_id} para telefone ${phone}`);
+
+    // Buscar informações do pedido
+    const orders = await supa(`/orders?select=*&id=eq.${order_id}`);
+    const order = orders?.[0];
+
+    if (!order) {
+      console.log(`❌ Pedido ${order_id} não encontrado`);
+      return res.status(404).json({ error: 'Pedido não encontrado' });
+    }
+
+    console.log(`🧾 Pedido encontrado: #${order.id} - ${fmtMoney(order.total_amount)}`);
+
+    // Compor e enviar mensagem
+    const message = await composePaidOrder(order);
+    const result = await sendWhatsAppMessage(phone, message, 'outgoing');
+    
+    console.log(`✅ Confirmação de pagamento enviada com sucesso`);
+    res.json({ ...result, order_id: order.id, message });
+  } catch (error) {
+    console.error('❌ Erro ao enviar confirmação de pagamento:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint para enviar mensagem de finalização
+app.post('/send-finalize', async (req, res) => {
+  console.log('✅ Requisição para enviar mensagem de finalização');
+  
+  try {
+    const { phone } = req.body;
+    
+    if (!phone) {
+      return res.status(400).json({ error: 'Telefone é obrigatório' });
+    }
+
+    console.log(`📋 Enviando mensagem de finalização para ${phone}`);
+
+    const message = await composeFinalize();
+    const result = await sendWhatsAppMessage(phone, message, 'outgoing');
+    
+    console.log(`✅ Mensagem de finalização enviada com sucesso`);
+    res.json({ ...result, message });
+  } catch (error) {
+    console.error('❌ Erro ao enviar mensagem de finalização:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Listar todos os grupos WhatsApp
 app.get('/list-all-groups', async (req, res) => {
   console.log('📋 Requisição para listar todos os grupos');
@@ -759,8 +900,12 @@ app.listen(PORT, () => {
   console.log(`🌐 Servidor rodando na porta ${PORT}`);
   console.log(`📋 Status: http://localhost:${PORT}/status`);
   console.log(`📤 Enviar: POST http://localhost:${PORT}/send`);
+  console.log(`🛒 Item Adicionado: POST http://localhost:${PORT}/send-item-added`);
+  console.log(`💰 Pedido Pago: POST http://localhost:${PORT}/send-paid-order`);
+  console.log(`✅ Finalizar: POST http://localhost:${PORT}/send-finalize`);
   console.log(`📋 Listar grupos: GET http://localhost:${PORT}/list-all-groups`);
   console.log(`📤 Enviar para grupo: POST http://localhost:${PORT}/send-to-group`);
+  console.log(`📢 Broadcast: POST http://localhost:${PORT}/api/broadcast/orders`);
 });
 
 // Graceful shutdown
@@ -771,5 +916,17 @@ process.on('SIGINT', async () => {
 });
 
 console.log('\n📖 COMANDO PARA EXECUTAR:');
-console.log('node server1.js');
-console.log('\n✅ Service Role Key já está configurada! Sistema pronto para detectar códigos automaticamente!');
+console.log('node server-whatsapp-individual-no-env.js');
+console.log('\n✅ Service Role Key já está configurada! Sistema pronto!');
+console.log('\n📡 ENDPOINTS DISPONÍVEIS:');
+console.log('  POST /send - Enviar mensagem genérica');
+console.log('  POST /send-item-added - Enviar confirmação de item adicionado (pedido manual)');
+console.log('  POST /send-paid-order - Enviar confirmação de pagamento');
+console.log('  POST /send-finalize - Enviar mensagem de finalização');
+console.log('  GET  /list-all-groups - Listar todos os grupos WhatsApp');
+console.log('  POST /send-to-group - Enviar mensagem para grupo');
+console.log('  POST /api/broadcast/orders - Envio em massa por status de pedido');
+console.log('\n💡 EXEMPLO DE USO - Enviar item adicionado:');
+console.log('  curl -X POST http://localhost:3333/send-item-added \\');
+console.log('    -H "Content-Type: application/json" \\');
+console.log('    -d \'{"phone":"31999999999","product_id":123,"quantity":1}\'');
