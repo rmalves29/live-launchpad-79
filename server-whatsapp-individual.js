@@ -18,11 +18,8 @@ if (typeof fetch !== 'function') {
 }
 
 /* ============================ CONFIGURAÇÃO DA EMPRESA ============================ */
-// IMPORTANTE: Configure essas variáveis para cada empresa
-// Para encontrar o TENANT_ID correto, acesse o banco de dados e consulte a tabela 'tenants'
-
 const COMPANY_NAME = process.env.COMPANY_NAME || 'Mania de Mulher';
-const TENANT_ID = process.env.TENANT_ID || '08f2b1b9-3988-489e-8186-c60f0c0b0622'; // MANIA DE MULHER
+const TENANT_ID = process.env.TENANT_ID || '08f2b1b9-3988-489e-8186-c60f0c0b0622';
 const PORT = process.env.PORT || 3333;
 const AUTH_FOLDER = process.env.AUTH_FOLDER || '.wwebjs_auth';
 
@@ -30,67 +27,72 @@ const AUTH_FOLDER = process.env.AUTH_FOLDER || '.wwebjs_auth';
 const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
 
-/* ============================ VALIDAÇÃO ============================ */
-if (!TENANT_ID) {
-  console.error('❌ ERRO: TENANT_ID não configurado!');
-  console.error('Configure a variável de ambiente TENANT_ID com o UUID da empresa');
-  process.exit(1);
-}
-
-console.log(`🏢 Empresa: ${COMPANY_NAME}`);
+console.log(`\n${'='.repeat(60)}`);
+console.log(`🚀 WhatsApp Server Individual - ${COMPANY_NAME}`);
 console.log(`🆔 Tenant ID: ${TENANT_ID}`);
 console.log(`🔌 Porta: ${PORT}`);
-console.log(`📁 Pasta Auth: ${AUTH_FOLDER}`);
+console.log(`${'='.repeat(60)}\n`);
 
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-/**
- * Normaliza número de telefone brasileiro para WhatsApp
- */
 function normalizeDDD(phone) {
   if (!phone) return phone;
   
-  const cleanPhone = phone.replace(/\D/g, '');
-  const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
+  let clean = String(phone).replace(/\D/g, '');
   
-  let normalized = withoutDDI;
+  // Remove DDI 55 se presente
+  if (clean.startsWith('55')) {
+    clean = clean.substring(2);
+  }
   
-  if (normalized.length >= 10 && normalized.length <= 11) {
-    const ddd = parseInt(normalized.substring(0, 2));
-    
-    if (ddd >= 11 && ddd <= 99) {
-      if (normalized.length === 10) {
-        const firstDigitAfterDDD = normalized[2];
-        if (firstDigitAfterDDD !== '9') {
-          normalized = normalized.substring(0, 2) + '9' + normalized.substring(2);
-          console.log(`✅ 9º dígito adicionado: ${phone} -> ${normalized}`);
-        }
-      }
+  // Valida tamanho
+  if (clean.length < 10 || clean.length > 11) {
+    console.log(`⚠️ Telefone com tamanho inválido: ${phone} (${clean.length} dígitos)`);
+    return '55' + clean;
+  }
+  
+  const ddd = parseInt(clean.substring(0, 2));
+  
+  // Adiciona 9º dígito se necessário
+  if (clean.length === 10 && ddd >= 11 && ddd <= 99) {
+    const firstDigit = clean[2];
+    if (firstDigit !== '9') {
+      clean = clean.substring(0, 2) + '9' + clean.substring(2);
+      console.log(`✅ 9º dígito adicionado: ${phone} -> ${clean}`);
     }
   }
   
-  return '55' + normalized;
+  return '55' + clean;
 }
 
 /* ============================ SUPABASE ============================ */
 async function supaRaw(pathname, init) {
-  const url = `${SUPABASE_URL.replace(/\/+$/,'')}/rest/v1${pathname}`;
-  const headers = {
-    'apikey': SUPABASE_KEY,
-    'Authorization': `Bearer ${SUPABASE_KEY}`,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=minimal'
-  };
-  const res = await fetch(url, { ...init, headers: { ...headers, ...(init && init.headers) } });
-  if (!res.ok) throw new Error(`Supabase ${res.status} ${pathname} ${await res.text()}`);
-  
-  // Verificar se há conteúdo antes de fazer parse JSON
-  const text = await res.text();
-  if (!text || text.trim() === '') {
-    return null;
+  try {
+    const url = `${SUPABASE_URL}/rest/v1${pathname}`;
+    const headers = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    };
+    
+    const res = await fetch(url, { 
+      ...init, 
+      headers: { ...headers, ...(init?.headers || {}) } 
+    });
+    
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Supabase ${res.status}: ${text}`);
+    }
+    
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  } catch (error) {
+    console.error('❌ Erro Supabase:', error.message);
+    throw error;
   }
-  return JSON.parse(text);
 }
 
 /* ============================ WHATSAPP CLIENT ============================ */
@@ -99,18 +101,16 @@ let clientStatus = 'initializing';
 
 function getAuthDir() {
   const authDir = path.join(__dirname, AUTH_FOLDER);
-  
   if (!fs.existsSync(authDir)) {
     fs.mkdirSync(authDir, { recursive: true });
   }
-  
   return authDir;
 }
 
 async function createWhatsAppClient() {
   const authDir = getAuthDir();
   
-  console.log(`🔧 Criando cliente WhatsApp para ${COMPANY_NAME}...`);
+  console.log(`🔧 Criando cliente WhatsApp...`);
   
   const client = new Client({
     authStrategy: new LocalAuth({ 
@@ -123,180 +123,62 @@ async function createWhatsAppClient() {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
         '--disable-gpu',
-        '--disable-extensions',
-        '--disable-blink-features=AutomationControlled'
+        '--disable-extensions'
       ]
-    },
-    webVersionCache: {
-      type: 'remote',
-      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     }
   });
 
-  // QR Code
   client.on('qr', (qr) => {
-    console.log(`\n📱 Escaneie o QR Code para ${COMPANY_NAME}:\n`);
+    console.log(`\n📱 ESCANEIE O QR CODE:\n`);
     qrcode.generate(qr, { small: true });
     clientStatus = 'qr_code';
   });
 
-  // Conectado
   client.on('ready', () => {
-    console.log(`✅ WhatsApp conectado: ${COMPANY_NAME}`);
+    console.log(`✅ WhatsApp CONECTADO e PRONTO!`);
     clientStatus = 'online';
   });
 
-  // Autenticado
   client.on('authenticated', () => {
-    console.log(`🔐 Autenticado: ${COMPANY_NAME}`);
+    console.log(`🔐 Autenticado`);
     clientStatus = 'authenticated';
   });
 
-  // Falha autenticação
   client.on('auth_failure', (msg) => {
-    console.error(`❌ Falha na autenticação:`, msg);
+    console.error(`❌ Falha autenticação:`, msg);
     clientStatus = 'auth_failure';
   });
 
-  // Desconectado
   client.on('disconnected', (reason) => {
     console.log(`🔌 Desconectado:`, reason);
     clientStatus = 'offline';
   });
 
-  // Mensagens recebidas
   client.on('message', async (message) => {
     try {
-      await handleIncomingMessage(message);
-    } catch (error) {
-      console.error('❌ Erro no handler de mensagem:', error.message);
-      // Não deixar o erro propagar para evitar crash
-    }
-  });
-
-  whatsappClient = client;
-  
-  try {
-    await client.initialize();
-    console.log(`🚀 Cliente inicializado`);
-  } catch (error) {
-    console.error(`❌ Erro ao inicializar:`, error);
-    clientStatus = 'error';
-  }
-  
-  return client;
-}
-
-async function handleIncomingMessage(message) {
-  try {
-    // Verificar se o cliente ainda está conectado
-    if (!whatsappClient || clientStatus !== 'online') {
-      console.log(`⚠️ Cliente não está online, ignorando mensagem`);
-      return;
-    }
-
-    // Ignorar mensagens de status e broadcasts
-    if (message.from === 'status@broadcast' || message.broadcast) {
-      return;
-    }
-
-    let groupName = null;
-    let authorPhone = null;
-    let messageFrom = message.from;
-    
-    console.log(`📨 Mensagem recebida:`, {
-      from: message.from,
-      body: message.body?.substring(0, 50),
-      hasAuthor: !!message.author
-    });
-
-    // Verificar se é grupo
-    if (message.from && message.from.includes('@g.us')) {
-      try {
-        // Timeout de 5 segundos para getChat
-        const chatPromise = message.getChat();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout getChat')), 5000)
-        );
-        
-        const chat = await Promise.race([chatPromise, timeoutPromise]);
-        
-        if (chat && chat.isGroup) {
-          groupName = chat.name || 'Grupo WhatsApp';
-          
-          if (message.author) {
-            authorPhone = message.author.replace('@c.us', '');
-            messageFrom = message.author;
-          } else {
-            console.log(`⚠️ Mensagem grupo sem author`);
-            return;
-          }
-        }
-      } catch (chatError) {
-        // Se falhar ao obter chat de grupo, tentar extrair info do author
-        if (chatError.message && chatError.message.includes('Execution context was destroyed')) {
-          console.log('⚠️ Contexto destruído, usando author diretamente');
-          if (message.author) {
-            authorPhone = message.author.replace('@c.us', '');
-            messageFrom = message.author;
-            groupName = 'Grupo WhatsApp';
-          } else {
-            console.log('⚠️ Sem author, ignorando mensagem');
-            return;
-          }
-        } else {
-          console.error('❌ Erro obter grupo:', chatError.message);
-          return;
-        }
-      }
-    } else {
-      authorPhone = message.from.replace('@c.us', '');
-    }
-
-    if (!authorPhone) {
-      console.log(`⚠️ Telefone inválido`);
-      return;
-    }
-
-    // Webhook
-    const webhookPayload = {
-      from: messageFrom,
-      body: message.body || '',
-      groupName: groupName,
-      author: authorPhone,
-      chatName: groupName
-    };
-
-    // Chamar edge function
-    try {
-      const webhookUrl = `${SUPABASE_URL}/functions/v1/whatsapp-multitenant/${TENANT_ID}`;
+      if (message.from === 'status@broadcast' || message.broadcast) return;
       
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-          'apikey': SUPABASE_KEY
-        },
-        body: JSON.stringify(webhookPayload)
-      });
-
-      if (response.ok) {
-        console.log(`✅ Webhook enviado`);
-      } else {
-        const errorText = await response.text();
-        console.log(`⚠️ Webhook status: ${response.status} - ${errorText}`);
+      let groupName = null;
+      let authorPhone = message.from.replace('@c.us', '').replace('@g.us', '');
+      
+      if (message.from.includes('@g.us')) {
+        try {
+          const chat = await message.getChat();
+          if (chat.isGroup) {
+            groupName = chat.name || 'Grupo';
+            if (message.author) {
+              authorPhone = message.author.replace('@c.us', '');
+            }
+          }
+        } catch (error) {
+          console.error('⚠️ Erro getChat:', error.message);
+        }
       }
-    } catch (webhookError) {
-      console.error('❌ Erro webhook:', webhookError.message);
-    }
 
-    // Log no banco
-    try {
+      console.log(`📨 Mensagem de ${authorPhone}: ${message.body?.substring(0, 30)}`);
+
+      // Salvar no banco
       await supaRaw('/whatsapp_messages', {
         method: 'POST',
         body: JSON.stringify({
@@ -308,38 +190,62 @@ async function handleIncomingMessage(message) {
           whatsapp_group_name: groupName
         })
       });
-      console.log(`💾 Mensagem salva`);
-    } catch (dbError) {
-      console.error('❌ Erro salvar:', dbError.message);
-    }
 
+    } catch (error) {
+      console.error('❌ Erro processar mensagem:', error.message);
+    }
+  });
+
+  whatsappClient = client;
+  
+  try {
+    await client.initialize();
+    console.log(`🚀 Cliente inicializado`);
   } catch (error) {
-    console.error('❌ Erro processar mensagem:', error.message);
+    console.error(`❌ Erro inicializar:`, error);
+    clientStatus = 'error';
   }
+  
+  return client;
 }
 
 async function getClient() {
-  if (!whatsappClient || clientStatus !== 'online') {
+  if (!whatsappClient) {
+    console.log('⚠️ Cliente não existe');
+    return null;
+  }
+  
+  if (clientStatus !== 'online') {
+    console.log(`⚠️ Cliente não está online (status: ${clientStatus})`);
     return null;
   }
   
   try {
     const state = await whatsappClient.getState();
-    return state === 'CONNECTED' ? whatsappClient : null;
+    if (state !== 'CONNECTED') {
+      console.log(`⚠️ Cliente não conectado (state: ${state})`);
+      return null;
+    }
+    return whatsappClient;
   } catch (error) {
-    console.error(`❌ Erro verificar estado:`, error);
+    console.error(`❌ Erro verificar estado:`, error.message);
     return null;
   }
 }
 
 /* ============================ EXPRESS ============================ */
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use(cors());
+
+// Log de todas requisições
+app.use((req, res, next) => {
+  console.log(`📍 ${req.method} ${req.path}`);
+  next();
+});
 
 /* ============================ ROUTES ============================ */
 
-// Status
 app.get('/status', (req, res) => {
   res.json({
     success: true,
@@ -347,50 +253,53 @@ app.get('/status', (req, res) => {
     tenant_id: TENANT_ID,
     status: clientStatus,
     hasClient: !!whatsappClient,
-    port: PORT
-  });
-});
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    status: 'online',
-    company: COMPANY_NAME,
-    tenant_id: TENANT_ID,
+    port: PORT,
     timestamp: new Date().toISOString()
   });
 });
 
-// Enviar mensagem
+app.get('/health', (req, res) => {
+  res.json({ 
+    success: true, 
+    status: 'online',
+    whatsapp_status: clientStatus
+  });
+});
+
 app.post('/send', async (req, res) => {
+  console.log('\n📥 === REQUISIÇÃO /send ===');
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  
   try {
     const { number, message, phone } = req.body;
-    
     const phoneNumber = number || phone;
     
-    console.log(`📥 Requisição /send:`, { 
-      phoneNumber, 
-      messageLength: message?.length,
-      hasClient: !!whatsappClient,
-      clientStatus 
-    });
-    
-    if (!phoneNumber || !message) {
-      console.log(`❌ Parâmetros faltando`);
+    if (!phoneNumber) {
+      console.log('❌ Telefone não fornecido');
       return res.status(400).json({
         success: false,
-        error: 'Número e mensagem obrigatórios'
+        error: 'Telefone obrigatório (use "number" ou "phone")'
       });
     }
+    
+    if (!message) {
+      console.log('❌ Mensagem não fornecida');
+      return res.status(400).json({
+        success: false,
+        error: 'Mensagem obrigatória'
+      });
+    }
+    
+    console.log(`📞 Telefone original: ${phoneNumber}`);
+    console.log(`💬 Mensagem: ${message.substring(0, 50)}...`);
     
     const client = await getClient();
     
     if (!client) {
-      console.log(`❌ WhatsApp não conectado, status: ${clientStatus}`);
+      console.log(`❌ WhatsApp não disponível (status: ${clientStatus})`);
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp não conectado',
+        error: `WhatsApp não conectado. Status: ${clientStatus}`,
         status: clientStatus
       });
     }
@@ -398,17 +307,13 @@ app.post('/send', async (req, res) => {
     const normalizedPhone = normalizeDDD(phoneNumber);
     const chatId = `${normalizedPhone}@c.us`;
     
-    console.log(`📤 Enviando para ${normalizedPhone} (chatId: ${chatId})`);
+    console.log(`📤 Enviando para: ${chatId}`);
     
-    try {
-      await client.sendMessage(chatId, message);
-      console.log(`✅ Mensagem enviada com sucesso!`);
-    } catch (sendError) {
-      console.error(`❌ Erro ao enviar mensagem:`, sendError);
-      throw sendError;
-    }
+    await client.sendMessage(chatId, message);
     
-    // Log
+    console.log(`✅ MENSAGEM ENVIADA COM SUCESSO!`);
+    
+    // Salvar log
     try {
       await supaRaw('/whatsapp_messages', {
         method: 'POST',
@@ -420,36 +325,48 @@ app.post('/send', async (req, res) => {
           sent_at: new Date().toISOString()
         })
       });
-      console.log(`💾 Log salvo no banco`);
+      console.log(`💾 Log salvo`);
     } catch (dbError) {
-      console.error(`⚠️ Erro salvar log (não crítico):`, dbError.message);
+      console.error(`⚠️ Erro salvar log:`, dbError.message);
     }
+    
+    console.log('=== FIM /send ===\n');
     
     res.json({
       success: true,
-      message: 'Mensagem enviada',
+      message: 'Mensagem enviada com sucesso',
       phone: normalizedPhone,
       company: COMPANY_NAME
     });
     
   } catch (error) {
-    console.error(`❌ Erro geral no /send:`, error);
+    console.error(`\n❌ ERRO CRÍTICO em /send:`, error);
+    console.log('Stack:', error.stack);
+    console.log('=== FIM /send (ERRO) ===\n');
+    
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      details: error.stack
     });
   }
 });
 
-// Broadcast
 app.post('/broadcast', async (req, res) => {
   try {
     const { phones, message } = req.body;
     
-    if (!phones || !Array.isArray(phones) || !message) {
+    if (!phones || !Array.isArray(phones)) {
       return res.status(400).json({
         success: false,
-        error: 'Lista de telefones e mensagem obrigatórios'
+        error: 'Lista de telefones obrigatória'
+      });
+    }
+    
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mensagem obrigatória'
       });
     }
     
@@ -462,6 +379,8 @@ app.post('/broadcast', async (req, res) => {
       });
     }
     
+    console.log(`📤 Broadcast para ${phones.length} números`);
+    
     const results = [];
     
     for (const phone of phones) {
@@ -471,7 +390,6 @@ app.post('/broadcast', async (req, res) => {
         
         await client.sendMessage(chatId, message);
         
-        // Log
         await supaRaw('/whatsapp_messages', {
           method: 'POST',
           body: JSON.stringify({
@@ -483,27 +401,19 @@ app.post('/broadcast', async (req, res) => {
           })
         });
         
-        results.push({
-          phone: normalizedPhone,
-          success: true
-        });
+        results.push({ phone: normalizedPhone, success: true });
+        console.log(`✅ Enviado para ${normalizedPhone}`);
         
         await delay(2000);
         
       } catch (error) {
-        console.error(`❌ Erro enviar para ${phone}:`, error);
-        results.push({
-          phone: phone,
-          success: false,
-          error: error.message
-        });
+        console.error(`❌ Erro ${phone}:`, error.message);
+        results.push({ phone, success: false, error: error.message });
       }
     }
     
     res.json({
       success: true,
-      message: 'Broadcast processado',
-      company: COMPANY_NAME,
       total: phones.length,
       results
     });
@@ -517,7 +427,6 @@ app.post('/broadcast', async (req, res) => {
   }
 });
 
-// Broadcast by phones (para mensagens em massa)
 app.post('/api/broadcast/by-phones', async (req, res) => {
   try {
     const { phones, message } = req.body;
@@ -542,13 +451,14 @@ app.post('/api/broadcast/by-phones', async (req, res) => {
     res.json({
       success: true,
       message: 'Broadcast iniciado',
-      company: COMPANY_NAME,
       total: phones.length
     });
     
     // Processar em background
     (async () => {
-      const results = [];
+      console.log(`\n📤 Iniciando broadcast para ${phones.length} números`);
+      let success = 0;
+      let failed = 0;
       
       for (const phone of phones) {
         try {
@@ -568,28 +478,22 @@ app.post('/api/broadcast/by-phones', async (req, res) => {
             })
           });
           
-          results.push({
-            phone: normalizedPhone,
-            success: true
-          });
+          success++;
+          console.log(`✅ [${success}/${phones.length}] ${normalizedPhone}`);
           
           await delay(2000);
           
         } catch (error) {
-          console.error(`❌ Erro ${phone}:`, error);
-          results.push({
-            phone: phone,
-            success: false,
-            error: error.message
-          });
+          failed++;
+          console.error(`❌ Erro ${phone}:`, error.message);
         }
       }
       
-      console.log(`✅ Broadcast concluído: ${results.filter(r => r.success).length}/${phones.length}`);
+      console.log(`\n✅ Broadcast concluído: ${success} enviadas, ${failed} falhas\n`);
     })();
     
   } catch (error) {
-    console.error('❌ Erro broadcast by phones:', error);
+    console.error('❌ Erro broadcast:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -597,30 +501,23 @@ app.post('/api/broadcast/by-phones', async (req, res) => {
   }
 });
 
-// Reiniciar
 app.post('/restart', async (req, res) => {
   try {
-    console.log(`🔄 Reiniciando cliente WhatsApp...`);
+    console.log(`🔄 Reiniciando...`);
     
     if (whatsappClient) {
-      try {
-        await whatsappClient.destroy();
-      } catch (error) {
-        console.warn(`⚠️ Erro destruir cliente:`, error.message);
-      }
+      await whatsappClient.destroy();
     }
     
     await createWhatsAppClient();
     
     res.json({
       success: true,
-      message: 'Cliente reiniciado',
-      company: COMPANY_NAME,
+      message: 'Reiniciado',
       status: clientStatus
     });
     
   } catch (error) {
-    console.error('❌ Erro reiniciar:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -628,54 +525,33 @@ app.post('/restart', async (req, res) => {
   }
 });
 
-/* ============================ GRACEFUL SHUTDOWN ============================ */
-async function gracefulShutdown(signal) {
-  console.log(`\n⚠️ ${signal} recebido, encerrando servidor...`);
-  console.log('📱 WhatsApp permanecerá conectado');
-  
-  // Não destruir o cliente para manter WhatsApp conectado
-  // if (whatsappClient) {
-  //   try {
-  //     console.log('🔌 Desconectando WhatsApp...');
-  //     await whatsappClient.destroy();
-  //     console.log('✅ WhatsApp desconectado');
-  //   } catch (error) {
-  //     console.error('❌ Erro ao desconectar:', error.message);
-  //   }
-  // }
-  
-  process.exit(0);
-}
-
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-
 /* ============================ START ============================ */
 async function startServer() {
   try {
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`🚀 WhatsApp Server Individual - ${COMPANY_NAME}`);
-    console.log(`${'='.repeat(60)}\n`);
-    
-    // Criar cliente WhatsApp
     await createWhatsAppClient();
     
-    // Iniciar servidor HTTP
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`\n${'='.repeat(60)}`);
-      console.log(`🌐 Servidor rodando na porta ${PORT}`);
+      console.log(`🌐 Servidor ATIVO na porta ${PORT}`);
       console.log(`📊 Status: http://localhost:${PORT}/status`);
-      console.log(`💚 Health: http://localhost:${PORT}/health`);
+      console.log(`📤 Enviar: http://localhost:${PORT}/send`);
       console.log(`${'='.repeat(60)}\n`);
     });
     
   } catch (error) {
-    console.error('❌ Erro iniciar servidor:', error);
+    console.error('❌ Erro iniciar:', error);
     process.exit(1);
   }
 }
 
-// Graceful shutdown (já tratado acima via gracefulShutdown)
-// Removido para evitar duplicação
+process.on('SIGINT', () => {
+  console.log('\n⚠️ Encerrando...');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n⚠️ Encerrando...');
+  process.exit(0);
+});
 
 startServer();
