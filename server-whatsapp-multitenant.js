@@ -736,6 +736,95 @@ app.post('/broadcast', async (req, res) => {
   }
 });
 
+// Broadcast by phones (para mensagens em massa)
+app.post('/api/broadcast/by-phones', async (req, res) => {
+  try {
+    const { phones, message, tenantId: bodyTenantId } = req.body;
+    const tenantId = req.tenantId || bodyTenantId;
+    
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tenant ID é obrigatório'
+      });
+    }
+    
+    if (!phones || !Array.isArray(phones) || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Lista de telefones e mensagem são obrigatórios'
+      });
+    }
+    
+    const client = await getTenantClient(tenantId);
+    
+    if (!client) {
+      return res.status(503).json({
+        success: false,
+        error: 'Cliente WhatsApp não disponível para este tenant'
+      });
+    }
+    
+    // Responder imediatamente para não bloquear
+    res.json({
+      success: true,
+      message: 'Broadcast iniciado',
+      total: phones.length
+    });
+    
+    // Processar envios em background
+    (async () => {
+      const results = [];
+      
+      for (const phone of phones) {
+        try {
+          const normalizedPhone = normalizeDDD(phone);
+          const chatId = `${normalizedPhone}@c.us`;
+          
+          await client.sendMessage(chatId, message);
+          
+          // Log da mensagem enviada
+          await supaRaw('/whatsapp_messages', {
+            method: 'POST',
+            body: JSON.stringify({
+              tenant_id: tenantId,
+              phone: normalizedPhone,
+              message: message,
+              type: 'bulk',
+              sent_at: new Date().toISOString()
+            })
+          });
+          
+          results.push({
+            phone: normalizedPhone,
+            success: true
+          });
+          
+          // Delay entre mensagens para evitar bloqueio
+          await delay(2000);
+          
+        } catch (error) {
+          console.error(`❌ Erro ao enviar para ${phone}:`, error);
+          results.push({
+            phone: phone,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+      
+      console.log(`✅ [${tenantId}] Broadcast concluído: ${results.filter(r => r.success).length}/${phones.length} enviadas`);
+    })();
+    
+  } catch (error) {
+    console.error('❌ Erro no broadcast by phones:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Adicionar etiqueta (compatibilidade)
 app.post('/add-label', async (req, res) => {
   try {
