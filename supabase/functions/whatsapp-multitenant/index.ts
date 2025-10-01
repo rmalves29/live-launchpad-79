@@ -2,8 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 /**
  * Normaliza número para armazenamento no banco (sem DDI)
- * Entrada: 5531992904210 ou 31992904210 ou 31 99290-4210
- * Saída: 31992904210 (DDD + número com 9º dígito)
+ * Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
  */
 function normalizeForStorage(phone: string): string {
   if (!phone) return phone;
@@ -17,32 +16,37 @@ function normalizeForStorage(phone: string): string {
   // Validação: deve ter entre 10 e 11 dígitos após remoção do DDI
   if (phoneWithoutDDI.length < 10 || phoneWithoutDDI.length > 11) {
     console.warn(`Número de telefone inválido (${phoneWithoutDDI.length} dígitos): ${phone} -> ${phoneWithoutDDI}`);
-    return phone; // Retorna original se inválido para depuração
+    return phone;
   }
   
-  // Validar se DDD é válido (11-99)
+  // Validar DDD (11-99) e aplicar regra de normalização
   const ddd = parseInt(phoneWithoutDDI.substring(0, 2));
   if (ddd < 11 || ddd > 99) {
     console.warn(`DDD inválido: ${ddd} no número ${phone}`);
-    return phone; // Retorna original se DDD inválido
+    return phone;
   }
   
-  const restOfNumber = phoneWithoutDDI.substring(2);
-  
-  // Normalização do 9º dígito: todos os celulares brasileiros têm 9 dígitos
-  if (restOfNumber.length === 8 && !restOfNumber.startsWith('9')) {
-    // Número com 8 dígitos sem o 9: adicionar o 9 (celular antigo)
-    phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
+  // Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
+  if (ddd <= 30) {
+    // DDDs ≤ 30: adicionar 9º dígito se tiver 10 dígitos
+    if (phoneWithoutDDI.length === 10) {
+      phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
+      console.log(`✅ 9º dígito adicionado (DDD ≤ 30): ${phone} -> ${phoneWithoutDDI}`);
+    }
+  } else {
+    // DDDs ≥ 31: remover 9º dígito se tiver 11 dígitos
+    if (phoneWithoutDDI.length === 11 && phoneWithoutDDI[2] === '9') {
+      phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + phoneWithoutDDI.substring(3);
+      console.log(`✅ 9º dígito removido (DDD ≥ 31): ${phone} -> ${phoneWithoutDDI}`);
+    }
   }
-  // Se já tem 9 dígitos e começa com 9, está correto - não fazer nada
   
   return phoneWithoutDDI;
 }
 
 /**
  * Normaliza número para envio de mensagens (com DDI)
- * Entrada: 31992904210 ou 5531992904210
- * Saída: 5531992904210 (DDI 55 + DDD + número com 9º dígito)
+ * Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
  */
 function normalizeForSending(phone: string): string {
   if (!phone) return phone;
@@ -50,22 +54,26 @@ function normalizeForSending(phone: string): string {
   // Remove todos os caracteres não numéricos
   const cleanPhone = phone.replace(/\D/g, '');
   
-  // Adiciona DDI 55 se não tiver
-  let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+  const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
-  if (normalizedPhone.length >= 4) {
-    const ddd = parseInt(normalizedPhone.substring(2, 4));
-    const restOfNumber = normalizedPhone.substring(4);
-    
-    // Normalização do 9º dígito: todos os celulares brasileiros têm 9 dígitos
-    if (restOfNumber.length === 8 && !restOfNumber.startsWith('9')) {
-      // Número com 8 dígitos sem o 9: adicionar o 9 (celular antigo)
-      normalizedPhone = normalizedPhone.substring(0, 4) + '9' + normalizedPhone.substring(4);
+  let normalized = withoutDDI;
+  const ddd = parseInt(withoutDDI.substring(0, 2));
+  
+  if (ddd <= 30) {
+    // DDDs ≤ 30: adicionar 9º dígito se tiver 10 dígitos
+    if (normalized.length === 10) {
+      normalized = normalized.substring(0, 2) + '9' + normalized.substring(2);
+      console.log(`✅ 9º dígito adicionado para envio (DDD ≤ 30): ${phone} -> ${normalized}`);
     }
-    // Se já tem 9 dígitos e começa com 9, está correto - não fazer nada
+  } else {
+    // DDDs ≥ 31: remover 9º dígito se tiver 11 dígitos
+    if (normalized.length === 11 && normalized[2] === '9') {
+      normalized = normalized.substring(0, 2) + normalized.substring(3);
+      console.log(`✅ 9º dígito removido para envio (DDD ≥ 31): ${phone} -> ${normalized}`);
+    }
   }
   
-  return normalizedPhone;
+  return '55' + normalized;
 }
 
 const corsHeaders = {

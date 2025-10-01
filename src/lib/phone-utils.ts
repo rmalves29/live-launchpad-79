@@ -27,29 +27,26 @@ export function normalizeForStorage(phone: string): string {
     return phoneWithoutDDI;
   }
   
-  // Validar DDD (11-99)
+  // Validar DDD (11-99) e aplicar regra de normalização
   const ddd = parseInt(phoneWithoutDDI.substring(0, 2));
   if (ddd < 11 || ddd > 99) {
     console.warn('DDD inválido:', ddd);
     return phoneWithoutDDI;
   }
   
-  // Se tem 11 dígitos, já está correto
-  if (phoneWithoutDDI.length === 11) {
-    return phoneWithoutDDI;
-  }
+  // Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
   
-  // Se tem 10 dígitos, verificar se é celular antes de adicionar o 9º dígito
-  if (phoneWithoutDDI.length === 10) {
-    const firstDigitAfterDDD = phoneWithoutDDI[2];
-    
-    // Celulares começam com 6, 7 ou 8 (quando falta o 9)
-    // Fixos começam com 2, 3, 4 ou 5 (não devem receber o 9)
-    if (['6', '7', '8'].includes(firstDigitAfterDDD)) {
+  if (ddd <= 30) {
+    // DDDs ≤ 30: adicionar 9º dígito se tiver 10 dígitos
+    if (phoneWithoutDDI.length === 10) {
       phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
-      console.log('✅ 9º dígito adicionado (celular):', phone, '->', phoneWithoutDDI);
-    } else if (['2', '3', '4', '5'].includes(firstDigitAfterDDD)) {
-      console.log('ℹ️ Telefone fixo detectado (não adiciona 9):', phoneWithoutDDI);
+      console.log('✅ 9º dígito adicionado (DDD ≤ 30):', phone, '->', phoneWithoutDDI);
+    }
+  } else {
+    // DDDs ≥ 31: remover 9º dígito se tiver 11 dígitos
+    if (phoneWithoutDDI.length === 11 && phoneWithoutDDI[2] === '9') {
+      phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + phoneWithoutDDI.substring(3);
+      console.log('✅ 9º dígito removido (DDD ≥ 31):', phone, '->', phoneWithoutDDI);
     }
   }
   
@@ -71,19 +68,21 @@ export function normalizeForSending(phone: string): string {
   // Remove DDI se presente para processar
   const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
-  // Normalizar adicionando 9º dígito se necessário (apenas para celulares)
+  // Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
   let normalized = withoutDDI;
+  const ddd = parseInt(withoutDDI.substring(0, 2));
   
-  if (withoutDDI.length === 10) {
-    const firstDigitAfterDDD = withoutDDI[2];
-    
-    // Celulares começam com 6, 7 ou 8 (quando falta o 9)
-    // Fixos começam com 2, 3, 4 ou 5 (não devem receber o 9)
-    if (['6', '7', '8'].includes(firstDigitAfterDDD)) {
-      normalized = withoutDDI.substring(0, 2) + '9' + withoutDDI.substring(2);
-      console.log('✅ 9º dígito adicionado para envio (celular):', phone, '->', normalized);
-    } else if (['2', '3', '4', '5'].includes(firstDigitAfterDDD)) {
-      console.log('ℹ️ Telefone fixo para envio (não adiciona 9):', normalized);
+  if (ddd <= 30) {
+    // DDDs ≤ 30: adicionar 9º dígito se tiver 10 dígitos
+    if (normalized.length === 10) {
+      normalized = normalized.substring(0, 2) + '9' + normalized.substring(2);
+      console.log('✅ 9º dígito adicionado para envio (DDD ≤ 30):', phone, '->', normalized);
+    }
+  } else {
+    // DDDs ≥ 31: remover 9º dígito se tiver 11 dígitos
+    if (normalized.length === 11 && normalized[2] === '9') {
+      normalized = normalized.substring(0, 2) + normalized.substring(3);
+      console.log('✅ 9º dígito removido para envio (DDD ≥ 31):', phone, '->', normalized);
     }
   }
   

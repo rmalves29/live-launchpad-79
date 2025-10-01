@@ -100,16 +100,18 @@ function normalizeForSending(phone) {
     const ddd = parseInt(normalized.substring(0, 2));
     
     if (ddd >= 11 && ddd <= 99) {
-      if (normalized.length === 10) {
-        const firstDigitAfterDDD = normalized[2];
-        
-        // Celulares começam com 6, 7 ou 8 (quando falta o 9)
-        // Fixos começam com 2, 3, 4 ou 5 (não devem receber o 9)
-        if (['6', '7', '8'].includes(firstDigitAfterDDD)) {
+      // Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
+      if (ddd <= 30) {
+        // DDDs ≤ 30: adicionar 9º dígito se tiver 10 dígitos
+        if (normalized.length === 10) {
           normalized = normalized.substring(0, 2) + '9' + normalized.substring(2);
-          console.log(`✅ 9º dígito adicionado (celular): ${phone} -> ${normalized}`);
-        } else if (['2', '3', '4', '5'].includes(firstDigitAfterDDD)) {
-          console.log(`ℹ️ Telefone fixo detectado (não adiciona 9): ${normalized}`);
+          console.log(`✅ 9º dígito adicionado (DDD ≤ 30): ${phone} -> ${normalized}`);
+        }
+      } else {
+        // DDDs ≥ 31: remover 9º dígito se tiver 11 dígitos
+        if (normalized.length === 11 && normalized[2] === '9') {
+          normalized = normalized.substring(0, 2) + normalized.substring(3);
+          console.log(`✅ 9º dígito removido (DDD ≥ 31): ${phone} -> ${normalized}`);
         }
       }
     }

@@ -2,22 +2,32 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 /**
  * Normaliza número para envio (com DDI 55)
+ * Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
  */
 function normalizeForSending(phone: string): string {
   if (!phone) return phone;
   
   const cleanPhone = phone.replace(/\D/g, '');
-  let normalizedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+  const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
   
-  if (normalizedPhone.length >= 4) {
-    const restOfNumber = normalizedPhone.substring(4);
-    
-    if (restOfNumber.length === 8 && !restOfNumber.startsWith('9')) {
-      normalizedPhone = normalizedPhone.substring(0, 4) + '9' + normalizedPhone.substring(4);
+  let normalized = withoutDDI;
+  const ddd = parseInt(withoutDDI.substring(0, 2));
+  
+  if (ddd <= 30) {
+    // DDDs ≤ 30: adicionar 9º dígito se tiver 10 dígitos
+    if (normalized.length === 10) {
+      normalized = normalized.substring(0, 2) + '9' + normalized.substring(2);
+      console.log(`✅ 9º dígito adicionado para envio (DDD ≤ 30): ${phone} -> ${normalized}`);
+    }
+  } else {
+    // DDDs ≥ 31: remover 9º dígito se tiver 11 dígitos
+    if (normalized.length === 11 && normalized[2] === '9') {
+      normalized = normalized.substring(0, 2) + normalized.substring(3);
+      console.log(`✅ 9º dígito removido para envio (DDD ≥ 31): ${phone} -> ${normalized}`);
     }
   }
   
-  return normalizedPhone;
+  return '55' + normalized;
 }
 
 const corsHeaders = {
