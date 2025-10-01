@@ -356,7 +356,27 @@ const PedidosManual = () => {
       setPhones(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
       
-      // Mensagem enviada automaticamente via trigger do banco
+      // Enviar mensagem via Node.js
+      try {
+        const response = await fetch('http://localhost:3333/send-item-added', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: normalizedPhone,
+            product_id: product.id,
+            quantity: qty
+          })
+        });
+
+        if (response.ok) {
+          console.log('✅ Mensagem WhatsApp enviada com sucesso');
+        } else {
+          console.error('❌ Erro ao enviar mensagem WhatsApp:', await response.text());
+        }
+      } catch (error) {
+        console.error('❌ Erro ao conectar com servidor WhatsApp:', error);
+        // Não mostrar erro ao usuário, apenas logar
+      }
       
       // Reload orders to show the new one
       loadOrders();
