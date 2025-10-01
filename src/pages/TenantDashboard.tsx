@@ -20,7 +20,6 @@ import {
 import TenantProducts from '@/components/tenant/TenantProducts';
 import TenantCustomers from '@/components/tenant/TenantCustomers';
 import TenantOrders from '@/components/tenant/TenantOrders';
-import { TenantIntegrations } from '@/components/tenant/TenantIntegrations';
 import { TenantMessages } from '@/components/tenant/TenantMessages';
 
 interface DashboardStats {
@@ -128,12 +127,11 @@ export default function TenantDashboard() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="products">Produtos</TabsTrigger>
           <TabsTrigger value="customers">Clientes</TabsTrigger>
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
-          <TabsTrigger value="integrations">Integrações</TabsTrigger>
           <TabsTrigger value="messages">Mensagens</TabsTrigger>
         </TabsList>
 
@@ -228,7 +226,7 @@ export default function TenantDashboard() {
               <CardDescription>Acesse rapidamente as principais funcionalidades</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <Button 
                   variant="outline" 
                   className="h-20 flex-col"
@@ -253,14 +251,6 @@ export default function TenantDashboard() {
                   <ShoppingCart className="h-6 w-6 mb-2" />
                   Pedidos
                 </Button>
-                <Button 
-                  variant="outline" 
-                  className="h-20 flex-col"
-                  onClick={() => setActiveTab('integrations')}
-                >
-                  <Settings className="h-6 w-6 mb-2" />
-                  Integrações
-                </Button>
               </div>
             </CardContent>
           </Card>
@@ -276,10 +266,6 @@ export default function TenantDashboard() {
 
         <TabsContent value="orders">
           <TenantOrders />
-        </TabsContent>
-
-        <TabsContent value="integrations">
-          <TenantIntegrations />
         </TabsContent>
 
         <TabsContent value="messages">
