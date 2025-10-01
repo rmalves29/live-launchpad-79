@@ -231,7 +231,7 @@ const client = new Client({
 });
 
 let clientReady = false;
-let clientState = 'DISCONNECTED'; // DISCONNECTED, CONNECTING, CONNECTED, READY
+let clientState = 'DISCONNECTED'; // DISCONNECTED, CONNECTING, AUTHENTICATED, READY
 
 client.on('qr', (qr) => {
   console.log('📱 ========================================');
@@ -242,17 +242,21 @@ client.on('qr', (qr) => {
   clientState = 'CONNECTING';
 });
 
-client.on('ready', () => { 
+client.on('authenticated', () => {
+  console.log('🔑 WhatsApp autenticado com sucesso!');
+  clientState = 'AUTHENTICATED';
+});
+
+client.on('ready', async () => { 
   console.log('✅ ========================================');
   console.log('✅ WhatsApp CONECTADO E PRONTO!'); 
   console.log('✅ ========================================');
   clientReady = true;
   clientState = 'READY';
-});
-
-client.on('authenticated', () => {
-  console.log('🔑 WhatsApp autenticado com sucesso!');
-  clientState = 'CONNECTED';
+  
+  // Aguarda estabilização da conexão
+  await delay(3000);
+  console.log('✅ Cliente estabilizado e pronto para enviar mensagens');
 });
 
 client.on('auth_failure', (msg) => {
@@ -271,6 +275,18 @@ client.on('disconnected', (reason) => {
   console.error('❌ ========================================');
   clientState = 'DISCONNECTED';
   clientReady = false;
+});
+
+// Listener para ACK de mensagens
+client.on('message_ack', (msg, ack) => {
+  const ackStates = {
+    0: 'ENVIANDO (erro)',
+    1: 'ENVIADA ao servidor',
+    2: 'RECEBIDA pelo dispositivo',
+    3: 'LIDA pelo destinatário',
+    4: 'REPRODUZIDA (áudio/vídeo)'
+  };
+  console.log(`📬 ACK Mensagem ${msg.id._serialized}: ${ackStates[ack] || ack}`);
 });
 
 client.on('message', async (msg) => {
@@ -480,7 +496,7 @@ async function processProductCode(phone, product, groupName = null) {
   }
 }
 
-/* ============================ ENVIO COM RETRY ============================ */
+/* ============================ ENVIO COM RETRY E ACK ============================ */
 async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
   console.log(`📤 ========================================`);
   console.log(`📤 INICIANDO ENVIO DE MENSAGEM`);
@@ -488,8 +504,13 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
   console.log(`📤 Status cliente: ${clientState} | Ready: ${clientReady}`);
   console.log(`📤 ========================================`);
 
-  if (!clientReady || clientState !== 'READY') {
-    throw new Error(`WhatsApp não está pronto! Estado: ${clientState} | Ready: ${clientReady}`);
+  // VERIFICAÇÃO CRÍTICA: Cliente precisa estar READY, não apenas CONNECTED
+  if (!clientReady) {
+    throw new Error(`❌ WhatsApp não está pronto! clientReady: ${clientReady}`);
+  }
+  
+  if (clientState !== 'READY') {
+    throw new Error(`❌ WhatsApp não está no estado READY! Estado atual: ${clientState}`);
   }
 
   const normalizedPhone = normalizeForSending(phone);
@@ -503,21 +524,55 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
     try {
       console.log(`🔄 Tentativa ${attempt}/${maxRetries} de envio...`);
       
-      // Verifica se o cliente ainda está ready
+      // Dupla verificação: estado interno do Puppeteer
       const state = await client.getState();
-      console.log(`📡 Estado atual do cliente: ${state}`);
+      console.log(`📡 Estado atual do Puppeteer: ${state}`);
       
       if (state !== 'CONNECTED') {
-        throw new Error(`Cliente não conectado. Estado: ${state}`);
+        throw new Error(`Cliente Puppeteer não está conectado. Estado: ${state}`);
       }
 
+      // Verifica se o número existe no WhatsApp
+      console.log(`🔍 Verificando se o número ${normalizedPhone} existe no WhatsApp...`);
+      const isRegistered = await client.isRegisteredUser(chatId);
+      if (!isRegistered) {
+        throw new Error(`❌ Número ${normalizedPhone} NÃO está registrado no WhatsApp!`);
+      }
+      console.log(`✅ Número verificado: está registrado no WhatsApp`);
+
       // Envia a mensagem
+      console.log(`📨 Enviando mensagem...`);
       const result = await client.sendMessage(chatId, message);
       
+      console.log(`✅ Mensagem enviada ao servidor WhatsApp`);
+      console.log(`📬 ID da mensagem: ${result.id?._serialized || 'N/A'}`);
+      console.log(`⏰ Timestamp: ${result.timestamp || 'N/A'}`);
+      
+      // CRÍTICO: Aguardar processamento do WhatsApp antes de confirmar
+      console.log(`⏳ Aguardando 2 segundos para processamento do WhatsApp...`);
+      await delay(2000);
+      
+      // Verificar ACK inicial da mensagem
+      try {
+        const chat = await client.getChatById(chatId);
+        const messages = await chat.fetchMessages({ limit: 1 });
+        const lastMessage = messages[0];
+        
+        if (lastMessage && lastMessage.id._serialized === result.id._serialized) {
+          console.log(`📬 Status ACK da mensagem: ${lastMessage.ack}`);
+          // ACK: -1=erro, 0=clock, 1=sent, 2=received, 3=read, 4=played
+          if (lastMessage.ack === -1 || lastMessage.ack === 0) {
+            console.warn(`⚠️ Mensagem com ACK de erro ou pendente: ${lastMessage.ack}`);
+          } else {
+            console.log(`✅ Mensagem processada com sucesso! ACK: ${lastMessage.ack}`);
+          }
+        }
+      } catch (ackError) {
+        console.warn(`⚠️ Não foi possível verificar ACK: ${ackError.message}`);
+      }
+
       console.log(`✅ ========================================`);
-      console.log(`✅ MENSAGEM ENVIADA COM SUCESSO!`);
-      console.log(`✅ ID: ${result.id?._serialized || 'N/A'}`);
-      console.log(`✅ Timestamp: ${result.timestamp || 'N/A'}`);
+      console.log(`✅ ENVIO CONCLUÍDO COM SUCESSO!`);
       console.log(`✅ ========================================`);
 
       // Salva no banco
@@ -537,11 +592,22 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
 
     } catch (error) {
       console.error(`❌ Tentativa ${attempt} falhou:`, error.message);
+      console.error(`❌ Stack:`, error.stack);
       
       if (attempt < maxRetries) {
-        const waitTime = attempt * 2000; // 2s, 4s, 6s...
+        const waitTime = attempt * 3000; // 3s, 6s, 9s...
         console.log(`⏳ Aguardando ${waitTime}ms antes de tentar novamente...`);
         await delay(waitTime);
+        
+        // Revalidar estado do cliente antes de retry
+        console.log(`🔄 Revalidando estado do cliente...`);
+        const currentState = await client.getState();
+        console.log(`📡 Estado após falha: ${currentState}`);
+        
+        if (currentState !== 'CONNECTED') {
+          console.error(`❌ Cliente desconectou! Não é possível fazer retry. Estado: ${currentState}`);
+          throw new Error(`Cliente desconectou durante envio. Estado: ${currentState}`);
+        }
       } else {
         console.error(`❌ ========================================`);
         console.error(`❌ FALHA TOTAL APÓS ${maxRetries} TENTATIVAS`);
@@ -559,19 +625,27 @@ app.use(express.json());
 app.use(cors());
 
 app.get('/status', async (req, res) => {
-  let state = 'UNKNOWN';
+  let puppeteerState = 'UNKNOWN';
+  let canSendMessages = false;
+  
   try {
-    state = clientReady ? await client.getState() : 'NOT_READY';
+    if (clientReady) {
+      puppeteerState = await client.getState();
+      // Só pode enviar se estiver READY internamente E CONNECTED no Puppeteer
+      canSendMessages = clientReady && clientState === 'READY' && puppeteerState === 'CONNECTED';
+    }
   } catch (e) {
-    state = 'ERROR';
+    puppeteerState = 'ERROR: ' + e.message;
   }
 
   res.json({
     tenant: { id: TENANT_ID, slug: TENANT_SLUG },
     whatsapp: { 
-      ready: clientReady,
-      state: clientState,
-      actualState: state
+      clientReady: clientReady,
+      clientState: clientState,
+      puppeteerState: puppeteerState,
+      canSendMessages: canSendMessages,
+      readyToSend: canSendMessages ? '✅ SIM - Pronto para enviar' : '❌ NÃO - Aguarde estado READY'
     },
     supabase: {
       url: SUPABASE_URL,
