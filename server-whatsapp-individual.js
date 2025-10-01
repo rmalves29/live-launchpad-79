@@ -79,11 +79,18 @@ async function supaRaw(pathname, init) {
   const headers = {
     'apikey': SUPABASE_KEY,
     'Authorization': `Bearer ${SUPABASE_KEY}`,
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'Prefer': 'return=minimal'
   };
   const res = await fetch(url, { ...init, headers: { ...headers, ...(init && init.headers) } });
   if (!res.ok) throw new Error(`Supabase ${res.status} ${pathname} ${await res.text()}`);
-  return res.json();
+  
+  // Verificar se há conteúdo antes de fazer parse JSON
+  const text = await res.text();
+  if (!text || text.trim() === '') {
+    return null;
+  }
+  return JSON.parse(text);
 }
 
 /* ============================ WHATSAPP CLIENT ============================ */
@@ -192,6 +199,11 @@ async function handleIncomingMessage(message) {
       return;
     }
 
+    // Ignorar mensagens de status e broadcasts
+    if (message.from === 'status@broadcast' || message.broadcast) {
+      return;
+    }
+
     let groupName = null;
     let authorPhone = null;
     let messageFrom = message.from;
@@ -265,14 +277,19 @@ async function handleIncomingMessage(message) {
       
       const response = await fetch(webhookUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'apikey': SUPABASE_KEY
+        },
         body: JSON.stringify(webhookPayload)
       });
 
       if (response.ok) {
         console.log(`✅ Webhook enviado`);
       } else {
-        console.log(`⚠️ Webhook status: ${response.status}`);
+        const errorText = await response.text();
+        console.log(`⚠️ Webhook status: ${response.status} - ${errorText}`);
       }
     } catch (webhookError) {
       console.error('❌ Erro webhook:', webhookError.message);
