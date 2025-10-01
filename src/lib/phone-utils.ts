@@ -36,12 +36,20 @@ export function normalizeForStorage(phone: string): string {
     return clean;
   }
   
-  // REGRA CORRETA: Adicionar 9º dígito se tiver 10 dígitos e não começar com 9
-  if (clean.length === 10) {
-    const firstDigit = clean[2];
-    if (firstDigit !== '9') {
+  // REGRA POR DDD:
+  // DDD ≤ 30: adiciona 9º dígito se tiver 10 dígitos
+  // DDD ≥ 31: remove 9º dígito se tiver 11 dígitos
+  if (ddd <= 30) {
+    // DDDs antigos (≤30): garantir 9º dígito
+    if (clean.length === 10 && clean[2] !== '9') {
       clean = clean.substring(0, 2) + '9' + clean.substring(2);
-      console.log('✅ 9º dígito adicionado para armazenamento:', phone, '->', clean);
+      console.log('✅ 9º dígito adicionado (DDD ≤30):', phone, '->', clean);
+    }
+  } else {
+    // DDDs novos (≥31): remover 9º dígito se existir
+    if (clean.length === 11 && clean[2] === '9') {
+      clean = clean.substring(0, 2) + clean.substring(3);
+      console.log('✅ 9º dígito removido (DDD ≥31):', phone, '->', clean);
     }
   }
   
@@ -80,12 +88,20 @@ export function normalizeForSending(phone: string): string {
     return '55' + clean;
   }
   
-  // REGRA CORRETA: Adicionar 9º dígito se tiver 10 dígitos e não começar com 9
-  if (clean.length === 10) {
-    const firstDigit = clean[2];
-    if (firstDigit !== '9') {
+  // REGRA POR DDD:
+  // DDD ≤ 30: adiciona 9º dígito se tiver 10 dígitos
+  // DDD ≥ 31: remove 9º dígito se tiver 11 dígitos
+  if (ddd <= 30) {
+    // DDDs antigos (≤30): garantir 9º dígito
+    if (clean.length === 10 && clean[2] !== '9') {
       clean = clean.substring(0, 2) + '9' + clean.substring(2);
-      console.log('✅ 9º dígito adicionado para envio:', phone, '->', clean);
+      console.log('✅ 9º dígito adicionado para envio (DDD ≤30):', phone, '->', clean);
+    }
+  } else {
+    // DDDs novos (≥31): remover 9º dígito se existir
+    if (clean.length === 11 && clean[2] === '9') {
+      clean = clean.substring(0, 2) + clean.substring(3);
+      console.log('✅ 9º dígito removido para envio (DDD ≥31):', phone, '->', clean);
     }
   }
   
