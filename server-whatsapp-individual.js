@@ -117,9 +117,8 @@ async function createWhatsAppClient() {
       clientId: TENANT_ID,
       dataPath: authDir
     }),
-  puppeteer: {
-      headless: false, // Abre navegador visível
-      devtools: false,
+    puppeteer: {
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -128,12 +127,13 @@ async function createWhatsAppClient() {
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu',
-        '--single-process',
-        '--disable-extensions'
-      ],
-      handleSIGINT: false,
-      handleSIGTERM: false,
-      handleSIGHUP: false
+        '--disable-extensions',
+        '--disable-blink-features=AutomationControlled'
+      ]
+    },
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     }
   });
 
@@ -369,7 +369,15 @@ app.post('/send', async (req, res) => {
     
     const phoneNumber = number || phone;
     
+    console.log(`📥 Requisição /send:`, { 
+      phoneNumber, 
+      messageLength: message?.length,
+      hasClient: !!whatsappClient,
+      clientStatus 
+    });
+    
     if (!phoneNumber || !message) {
+      console.log(`❌ Parâmetros faltando`);
       return res.status(400).json({
         success: false,
         error: 'Número e mensagem obrigatórios'
@@ -379,6 +387,7 @@ app.post('/send', async (req, res) => {
     const client = await getClient();
     
     if (!client) {
+      console.log(`❌ WhatsApp não conectado, status: ${clientStatus}`);
       return res.status(503).json({
         success: false,
         error: 'WhatsApp não conectado',
@@ -389,21 +398,32 @@ app.post('/send', async (req, res) => {
     const normalizedPhone = normalizeDDD(phoneNumber);
     const chatId = `${normalizedPhone}@c.us`;
     
-    console.log(`📤 Enviando para ${normalizedPhone}`);
-    await client.sendMessage(chatId, message);
-    console.log(`✅ Enviado`);
+    console.log(`📤 Enviando para ${normalizedPhone} (chatId: ${chatId})`);
+    
+    try {
+      await client.sendMessage(chatId, message);
+      console.log(`✅ Mensagem enviada com sucesso!`);
+    } catch (sendError) {
+      console.error(`❌ Erro ao enviar mensagem:`, sendError);
+      throw sendError;
+    }
     
     // Log
-    await supaRaw('/whatsapp_messages', {
-      method: 'POST',
-      body: JSON.stringify({
-        tenant_id: TENANT_ID,
-        phone: normalizedPhone,
-        message: message,
-        type: 'outgoing',
-        sent_at: new Date().toISOString()
-      })
-    });
+    try {
+      await supaRaw('/whatsapp_messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: TENANT_ID,
+          phone: normalizedPhone,
+          message: message,
+          type: 'outgoing',
+          sent_at: new Date().toISOString()
+        })
+      });
+      console.log(`💾 Log salvo no banco`);
+    } catch (dbError) {
+      console.error(`⚠️ Erro salvar log (não crítico):`, dbError.message);
+    }
     
     res.json({
       success: true,
@@ -413,7 +433,7 @@ app.post('/send', async (req, res) => {
     });
     
   } catch (error) {
-    console.error(`❌ Erro enviar:`, error);
+    console.error(`❌ Erro geral no /send:`, error);
     res.status(500).json({
       success: false,
       error: error.message
