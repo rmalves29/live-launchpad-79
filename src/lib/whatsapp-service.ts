@@ -109,48 +109,32 @@ class WhatsAppService {
       product: orderData.product.name 
     });
 
-    // Buscar template ITEM_ADDED do tenant
-    const { data: template, error: templateError } = await supabase
-      .from('whatsapp_templates')
-      .select('content')
-      .eq('tenant_id', tenantId)
-      .eq('type', 'ITEM_ADDED')
-      .maybeSingle();
+    // Chamar diretamente o endpoint do Node.js
+    try {
+      const response = await fetch('http://localhost:3333/send-item-added', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phone: orderData.customer_phone,
+          product_id: orderData.product.code, // Assumindo que code é o ID
+          quantity: orderData.product.qty
+        })
+      });
 
-    if (templateError) {
-      console.error('❌ [sendItemAdded] Erro ao buscar template:', templateError);
-    }
-
-    console.log('📝 [sendItemAdded] Template encontrado:', template ? 'Sim' : 'Não (usando fallback)');
-
-    let message = template?.content || 
-      `🛒 *Item adicionado ao pedido*\n\n✅ ${orderData.product.name}\nQtd: *${orderData.product.qty}*\nValor: *R$ ${orderData.product.price.toFixed(2)}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
-
-    // Substituir placeholders
-    message = message.replace('{{produto}}', orderData.product.name);
-    message = message.replace('{{quantidade}}', orderData.product.qty.toString());
-    message = message.replace('{{valor}}', orderData.product.price.toFixed(2));
-
-    console.log('💬 [sendItemAdded] Mensagem preparada:', message.substring(0, 50) + '...');
-
-    // Usar edge function via Supabase
-    console.log('🌐 [sendItemAdded] Chamando edge function com:', { tenant_id: tenantId, phone: orderData.customer_phone });
-    
-    const { data, error } = await supabase.functions.invoke('whatsapp-send-template', {
-      body: {
-        tenant_id: tenantId,
-        phone: orderData.customer_phone,
-        message
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
       }
-    });
 
-    if (error) {
-      console.error('❌ [sendItemAdded] Erro na edge function:', error);
-      throw error;
+      const result = await response.json();
+      console.log('✅ [sendItemAdded] Resposta do Node.js:', result);
+      return { success: true, ...result };
+    } catch (error) {
+      console.error('❌ [sendItemAdded] Erro ao enviar via Node.js:', error);
+      throw new Error(`Não foi possível enviar mensagem WhatsApp: ${error.message}`);
     }
-    
-    console.log('✅ [sendItemAdded] Resposta da edge function:', data);
-    return data;
   }
 
   async sendItemCancelled(orderData: OrderData): Promise<WhatsAppResponse> {
