@@ -40,7 +40,7 @@ const Navbar = () => {
               <img 
                 src={orderZapsLogo} 
                 alt="Order Zaps" 
-                className="h-[90px] w-[90px] object-contain"
+                className="h-12 w-auto object-contain"
               />
             </NavLink>
           </div>
