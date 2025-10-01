@@ -672,6 +672,65 @@ export type Database = {
           },
         ]
       }
+      sending_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_index: number
+          error_message: string | null
+          id: string
+          job_data: Json
+          job_type: string
+          paused_at: string | null
+          processed_items: number
+          started_at: string
+          status: string
+          tenant_id: string
+          total_items: number
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_index?: number
+          error_message?: string | null
+          id?: string
+          job_data?: Json
+          job_type: string
+          paused_at?: string | null
+          processed_items?: number
+          started_at?: string
+          status?: string
+          tenant_id: string
+          total_items?: number
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_index?: number
+          error_message?: string | null
+          id?: string
+          job_data?: Json
+          job_type?: string
+          paused_at?: string | null
+          processed_items?: number
+          started_at?: string
+          status?: string
+          tenant_id?: string
+          total_items?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sending_jobs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shipping_integrations: {
         Row: {
           access_token: string

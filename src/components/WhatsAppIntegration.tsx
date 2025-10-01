@@ -1,25 +1,14 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Smartphone, Send, Save } from "lucide-react";
-import { whatsappService } from "@/lib/whatsapp-service";
-import { useToast } from "@/components/ui/use-toast";
+import { Smartphone } from "lucide-react";
 import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
+import MassMessageControl from "@/components/MassMessageControl";
 
 export default function WhatsAppIntegration() {
   const [message, setMessage] = useState("");
   const [orderStatus, setOrderStatus] = useState<'paid' | 'unpaid' | 'all'>('all');
   const [orderDate, setOrderDate] = useState("");
-  const [contactCount, setContactCount] = useState<number | null>(null);
-  const [loadingCount, setLoadingCount] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [savingTemplate, setSavingTemplate] = useState(false);
-  const { toast } = useToast();
   const { tenant } = useTenant();
 
   // Carregar template MSG_MASSA ao montar
@@ -48,103 +37,6 @@ export default function WhatsAppIntegration() {
     }
   };
 
-  const saveTemplate = async () => {
-    if (!tenant?.id || !message.trim()) return;
-    
-    setSavingTemplate(true);
-    try {
-      const { error } = await supabase
-        .from('whatsapp_templates')
-        .upsert({
-          tenant_id: tenant.id,
-          type: 'MSG_MASSA',
-          title: 'Mensagem em Massa',
-          content: message
-        }, {
-          onConflict: 'tenant_id,type'
-        });
-
-      if (error) throw error;
-      
-      toast({
-        title: "Sucesso",
-        description: "Template salvo com sucesso",
-      });
-    } catch (error) {
-      console.error('Erro ao salvar template:', error);
-      toast({
-        title: "Erro",
-        description: "Erro ao salvar template",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingTemplate(false);
-    }
-  };
-
-  const fetchContactCount = async () => {
-    if (!tenant?.id) return;
-    
-    setLoadingCount(true);
-    try {
-      const count = await whatsappService.getContactCount(
-        orderStatus,
-        tenant.id,
-        orderDate || undefined
-      );
-      setContactCount(count);
-    } catch (error) {
-      console.error('Erro ao buscar contagem:', error);
-      setContactCount(null);
-    } finally {
-      setLoadingCount(false);
-    }
-  };
-
-  const handleBroadcast = async () => {
-    if (!message.trim()) {
-      toast({
-        title: "Erro",
-        description: "Digite uma mensagem para enviar.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!tenant?.id) {
-      toast({
-        title: "Erro",
-        description: "Tenant não identificado.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await whatsappService.broadcastByOrderStatusAndDate(
-        orderStatus, 
-        message, 
-        tenant.id,
-        orderDate || undefined
-      );
-      
-      toast({
-        title: "Sucesso",
-        description: `Mensagem enviada para ${response.total || 0} contatos`,
-      });
-      
-      setMessage("");
-      setOrderDate("");
-      setContactCount(null);
-    } catch (error) {
-      console.error('Erro ao enviar broadcast:', error);
-      // Não mostrar erro de configuração para o usuário
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center gap-2 mb-6">
@@ -161,88 +53,14 @@ export default function WhatsAppIntegration() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="orderStatus">Status do Pedido</Label>
-              <Select value={orderStatus} onValueChange={(value: 'paid' | 'unpaid' | 'all') => {
-                setOrderStatus(value);
-                setContactCount(null);
-              }}>
-                <SelectTrigger id="orderStatus">
-                  <SelectValue placeholder="Selecione o status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os Clientes</SelectItem>
-                  <SelectItem value="paid">Pedidos Pagos</SelectItem>
-                  <SelectItem value="unpaid">Pedidos Não Pagos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="orderDate">Data do Pedido (opcional)</Label>
-              <Input
-                id="orderDate"
-                type="date"
-                value={orderDate}
-                onChange={(e) => {
-                  setOrderDate(e.target.value);
-                  setContactCount(null);
-                }}
-              />
-            </div>
-          </div>
-
-          <Button 
-            onClick={fetchContactCount} 
-            disabled={loadingCount}
-            variant="outline"
-            className="w-full"
-          >
-            {loadingCount ? 'Contando...' : 'Verificar Quantidade de Contatos'}
-          </Button>
-
-          {contactCount !== null && (
-            <Card className="bg-muted">
-              <CardContent className="pt-6">
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground mb-2">Contatos que receberão a mensagem:</p>
-                  <p className="text-3xl font-bold">{contactCount}</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <div>
-            <Label htmlFor="message">Mensagem</Label>
-            <Textarea
-              id="message"
-              placeholder="Digite a mensagem que será enviada para os clientes..."
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={4}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button 
-              onClick={saveTemplate} 
-              disabled={savingTemplate || !message.trim()}
-              variant="outline"
-              className="flex-1"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              {savingTemplate ? 'Salvando...' : 'Salvar Template'}
-            </Button>
-
-            <Button 
-              onClick={handleBroadcast} 
-              disabled={loading || !message.trim()}
-              className="flex-1"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              {loading ? 'Enviando...' : 'Enviar Mensagem'}
-            </Button>
-          </div>
+          <MassMessageControl
+            message={message}
+            setMessage={setMessage}
+            orderStatus={orderStatus}
+            setOrderStatus={setOrderStatus}
+            orderDate={orderDate}
+            setOrderDate={setOrderDate}
+          />
         </CardContent>
       </Card>
 

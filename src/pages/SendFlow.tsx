@@ -12,6 +12,7 @@ import { Play, Pause, Save, Phone, Clock, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTenant } from '@/hooks/useTenant';
+import SendingControl from '@/components/SendingControl';
 
 interface Product {
   id: number;
@@ -45,6 +46,7 @@ export default function SendFlow() {
   const [currentGroup, setCurrentGroup] = useState<string>('');
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [sentCount, setSentCount] = useState(0);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
 
   useEffect(() => {
     loadProducts();
@@ -292,18 +294,18 @@ export default function SendFlow() {
       .replace(/\{\{valor\}\}/g, formatPrice(product.price));
   };
 
-  const startSendFlow = async () => {
-    if (selectedProducts.size === 0) {
+  const startSendFlow = async (resumeJob = null) => {
+    if (!resumeJob && selectedProducts.size === 0) {
       toast.error('Selecione pelo menos um produto');
       return;
     }
 
-    if (selectedGroups.size === 0) {
+    if (!resumeJob && selectedGroups.size === 0) {
       toast.error('Selecione pelo menos um grupo WhatsApp');
       return;
     }
 
-    if (!messageTemplate) {
+    if (!resumeJob && !messageTemplate) {
       toast.error('Defina um template de mensagem');
       return;
     }
@@ -323,19 +325,61 @@ export default function SendFlow() {
       return;
     }
 
-    await saveTemplate();
+    if (!resumeJob) {
+      await saveTemplate();
+    }
     
     // Criar novo controller para cancelar operações
     const controller = new AbortController();
     setAbortController(controller);
     
     setIsRunning(true);
-    setCurrentIndex(0);
-    setCurrentProduct('');
-    setCurrentGroup('');
-    setSentCount(0);
     
-    toast.success('🚀 Iniciando SendFlow...');
+    if (resumeJob) {
+      // Retomar de onde parou
+      setCurrentIndex(resumeJob.current_index);
+      setCurrentJobId(resumeJob.id);
+      const jobData = resumeJob.job_data;
+      if (jobData.selectedProducts) setSelectedProducts(new Set(jobData.selectedProducts));
+      if (jobData.selectedGroups) setSelectedGroups(new Set(jobData.selectedGroups));
+      if (jobData.messageTemplate) setMessageTemplate(jobData.messageTemplate);
+      toast.success('🚀 Retomando SendFlow...');
+    } else {
+      // Criar novo job
+      try {
+        const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
+        const selectedGroupArray = Array.from(selectedGroups);
+        const totalItems = selectedProductArray.length * selectedGroupArray.length;
+        
+        const response = await fetch('http://localhost:3333/sending-job/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobType: 'sendflow',
+            totalItems,
+            jobData: {
+              selectedProducts: Array.from(selectedProducts),
+              selectedGroups: Array.from(selectedGroups),
+              messageTemplate,
+              timerSeconds
+            }
+          })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          setCurrentJobId(result.job?.id);
+        }
+      } catch (error) {
+        console.error('Erro ao criar job:', error);
+      }
+      
+      setCurrentIndex(0);
+      setCurrentProduct('');
+      setCurrentGroup('');
+      setSentCount(0);
+      toast.success('🚀 Iniciando SendFlow...');
+    }
     
     processSendFlow(controller);
   };
@@ -362,6 +406,19 @@ export default function SendFlow() {
         // Verificar se foi cancelado
         if (controller.signal.aborted) {
           console.log('❌ SendFlow cancelado pelo usuário');
+          // Salvar progresso ao pausar
+          if (currentJobId) {
+            await fetch('http://localhost:3333/sending-job/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jobId: currentJobId,
+                currentIndex: i,
+                processedItems: sentCount,
+                status: 'paused'
+              })
+            });
+          }
           break;
         }
         
@@ -398,7 +455,7 @@ export default function SendFlow() {
                 message: personalizedMessage,
                 imageUrl: product.image_url
               }),
-              signal: controller.signal // Adicionar abort signal na requisição
+              signal: controller.signal
             });
             
             if (controller.signal.aborted) return;
@@ -410,7 +467,22 @@ export default function SendFlow() {
             }
             
             successCount++;
-            setSentCount(prev => prev + 1);
+            setSentCount(prev => {
+              const newCount = prev + 1;
+              // Atualizar progresso no banco a cada 5 mensagens
+              if (currentJobId && newCount % 5 === 0) {
+                fetch('http://localhost:3333/sending-job/update', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jobId: currentJobId,
+                    currentIndex: i,
+                    processedItems: newCount
+                  })
+                }).catch(console.error);
+              }
+              return newCount;
+            });
             console.log(`✅ Sucesso no grupo ${groupName}:`, result);
             toast.success(`✅ ${product.code} → ${groupName.substring(0, 30)}...`);
             
@@ -457,12 +529,35 @@ export default function SendFlow() {
       if (!controller.signal.aborted) {
         console.log('🎉 SendFlow finalizado com sucesso!');
         toast.success('🎉 SendFlow finalizado com sucesso!');
+        // Marcar job como completo
+        if (currentJobId) {
+          await fetch('http://localhost:3333/sending-job/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jobId: currentJobId,
+              processedItems: sentCount,
+              status: 'completed'
+            })
+          });
+        }
       }
       
     } catch (error) {
       if (!controller.signal.aborted) {
         console.error('❌ Erro crítico no SendFlow:', error);
         toast.error(`❌ Erro crítico: ${error.message}`);
+        // Marcar job como erro
+        if (currentJobId) {
+          await fetch('http://localhost:3333/sending-job/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jobId: currentJobId,
+              status: 'error'
+            })
+          });
+        }
       }
     } finally {
       setIsRunning(false);
@@ -471,6 +566,7 @@ export default function SendFlow() {
       setCurrentGroup('');
       setAbortController(null);
       setSentCount(0);
+      setCurrentJobId(null);
     }
   };
 
@@ -484,6 +580,9 @@ export default function SendFlow() {
   };
 
   return (
+    <>
+      <SendingControl jobType="sendflow" onResume={(job) => startSendFlow(job)} />
+      
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">SendFlow</h1>
@@ -735,5 +834,6 @@ export default function SendFlow() {
         </Card>
       )}
     </div>
+    </>
   );
 }

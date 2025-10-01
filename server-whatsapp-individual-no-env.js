@@ -485,6 +485,79 @@ app.get('/status', (req, res) => {
   });
 });
 
+// ===== CONTROLE DE JOBS DE ENVIO =====
+
+// Criar/Atualizar job de envio
+app.post('/sending-job/start', async (req, res) => {
+  try {
+    const { jobType, totalItems, jobData } = req.body;
+    if (!jobType || !totalItems || !jobData) {
+      return res.status(400).json({ error: 'jobType, totalItems e jobData são obrigatórios' });
+    }
+
+    const job = await supa('/sending_jobs', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: TENANT_ID,
+        job_type: jobType,
+        status: 'running',
+        total_items: totalItems,
+        processed_items: 0,
+        current_index: 0,
+        job_data: jobData,
+        started_at: new Date().toISOString(),
+      }),
+    });
+
+    res.json({ success: true, job: job?.[0] });
+  } catch (error) {
+    console.error('❌ Erro ao criar job:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Atualizar progresso do job
+app.post('/sending-job/update', async (req, res) => {
+  try {
+    const { jobId, processedItems, currentIndex, status } = req.body;
+    if (!jobId) return res.status(400).json({ error: 'jobId é obrigatório' });
+
+    const updateData = { updated_at: new Date().toISOString() };
+    if (processedItems !== undefined) updateData.processed_items = processedItems;
+    if (currentIndex !== undefined) updateData.current_index = currentIndex;
+    if (status) {
+      updateData.status = status;
+      if (status === 'paused') updateData.paused_at = new Date().toISOString();
+      if (status === 'completed') updateData.completed_at = new Date().toISOString();
+    }
+
+    await supa(`/sending_jobs?id=eq.${jobId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updateData),
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Erro ao atualizar job:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Buscar job pausado
+app.get('/sending-job/pending', async (req, res) => {
+  try {
+    const { jobType } = req.query;
+    if (!jobType) return res.status(400).json({ error: 'jobType é obrigatório' });
+
+    const jobs = await supa(`/sending_jobs?job_type=eq.${jobType}&status=eq.paused&order=created_at.desc&limit=1`);
+    
+    res.json({ success: true, job: jobs?.[0] || null });
+  } catch (error) {
+    console.error('❌ Erro ao buscar job pendente:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/send', async (req, res) => {
   try {
     if (!clientReady) return res.status(503).json({ error: 'WhatsApp não está conectado' });
