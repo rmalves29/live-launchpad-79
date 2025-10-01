@@ -10,51 +10,47 @@
  * Garante que números mobile brasileiros tenham o 9º dígito.
  * 
  * Entrada: 5531992904210 ou 3193786530 ou (31) 99290-4210
- * Saída: 31993786530 (com 9º dígito adicionado automaticamente se necessário)
+ * Saída: 31993786530 (com 9º dígito garantido)
  */
 export function normalizeForStorage(phone: string): string {
   if (!phone) return phone;
   
   // Remove todos os caracteres não numéricos
-  const cleanPhone = phone.replace(/\D/g, '');
+  let clean = phone.replace(/\D/g, '');
   
   // Remove DDI 55 se presente
-  let phoneWithoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
+  if (clean.startsWith('55')) {
+    clean = clean.substring(2);
+  }
   
   // Validação básica de comprimento
-  if (phoneWithoutDDI.length < 10 || phoneWithoutDDI.length > 11) {
-    console.warn('Telefone com comprimento inválido:', phoneWithoutDDI);
-    return phoneWithoutDDI;
+  if (clean.length < 10 || clean.length > 11) {
+    console.warn('⚠️ Telefone com comprimento inválido:', clean);
+    return clean;
   }
   
-  // Validar DDD (11-99) e aplicar regra de normalização
-  const ddd = parseInt(phoneWithoutDDI.substring(0, 2));
+  // Validar DDD (11-99)
+  const ddd = parseInt(clean.substring(0, 2));
   if (ddd < 11 || ddd > 99) {
-    console.warn('DDD inválido:', ddd);
-    return phoneWithoutDDI;
+    console.warn('⚠️ DDD inválido:', ddd);
+    return clean;
   }
   
-  // Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
-  
-  if (ddd <= 30) {
-    // DDDs ≤ 30: adicionar 9º dígito se tiver 10 dígitos
-    if (phoneWithoutDDI.length === 10) {
-      phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + '9' + phoneWithoutDDI.substring(2);
-      console.log('✅ 9º dígito adicionado (DDD ≤ 30):', phone, '->', phoneWithoutDDI);
-    }
-  } else {
-    // DDDs ≥ 31: remover 9º dígito se tiver 11 dígitos
-    if (phoneWithoutDDI.length === 11 && phoneWithoutDDI[2] === '9') {
-      phoneWithoutDDI = phoneWithoutDDI.substring(0, 2) + phoneWithoutDDI.substring(3);
-      console.log('✅ 9º dígito removido (DDD ≥ 31):', phone, '->', phoneWithoutDDI);
+  // REGRA CORRETA: Adicionar 9º dígito se tiver 10 dígitos e não começar com 9
+  if (clean.length === 10) {
+    const firstDigit = clean[2];
+    if (firstDigit !== '9') {
+      clean = clean.substring(0, 2) + '9' + clean.substring(2);
+      console.log('✅ 9º dígito adicionado para armazenamento:', phone, '->', clean);
     }
   }
   
-  return phoneWithoutDDI;
+  return clean;
 }
 
 /**
- * Adiciona DDI 55 ao número e garante o 9º dígito para envio.
+ * Adiciona DDI 55 ao número e garante o 9º dígito para envio WhatsApp.
+ * REGRA: Celulares brasileiros SEMPRE precisam do 9º dígito!
  * 
  * Entrada: 31993786530 ou 3193786530 ou 5531993786530
  * Saída: 5531993786530 (com DDI e 9º dígito garantidos)
@@ -63,31 +59,38 @@ export function normalizeForSending(phone: string): string {
   if (!phone) return phone;
   
   // Remove todos os caracteres não numéricos
-  const cleanPhone = phone.replace(/\D/g, '');
+  let clean = phone.replace(/\D/g, '');
   
-  // Remove DDI se presente para processar
-  const withoutDDI = cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone;
+  // Remove DDI 55 se presente
+  if (clean.startsWith('55')) {
+    clean = clean.substring(2);
+  }
   
-  // Nova regra: DDD ≤ 30 adiciona 9º dígito, DDD ≥ 31 remove 9º dígito
-  let normalized = withoutDDI;
-  const ddd = parseInt(withoutDDI.substring(0, 2));
+  // Validação básica
+  if (clean.length < 10 || clean.length > 11) {
+    console.warn('⚠️ Telefone com tamanho inválido para envio:', phone);
+    return '55' + clean;
+  }
   
-  if (ddd <= 30) {
-    // DDDs ≤ 30: adicionar 9º dígito se tiver 10 dígitos
-    if (normalized.length === 10) {
-      normalized = normalized.substring(0, 2) + '9' + normalized.substring(2);
-      console.log('✅ 9º dígito adicionado para envio (DDD ≤ 30):', phone, '->', normalized);
-    }
-  } else {
-    // DDDs ≥ 31: remover 9º dígito se tiver 11 dígitos
-    if (normalized.length === 11 && normalized[2] === '9') {
-      normalized = normalized.substring(0, 2) + normalized.substring(3);
-      console.log('✅ 9º dígito removido para envio (DDD ≥ 31):', phone, '->', normalized);
+  const ddd = parseInt(clean.substring(0, 2));
+  
+  // Validar DDD
+  if (ddd < 11 || ddd > 99) {
+    console.warn('⚠️ DDD inválido:', ddd);
+    return '55' + clean;
+  }
+  
+  // REGRA CORRETA: Adicionar 9º dígito se tiver 10 dígitos e não começar com 9
+  if (clean.length === 10) {
+    const firstDigit = clean[2];
+    if (firstDigit !== '9') {
+      clean = clean.substring(0, 2) + '9' + clean.substring(2);
+      console.log('✅ 9º dígito adicionado para envio:', phone, '->', clean);
     }
   }
   
   // Adicionar DDI 55
-  return '55' + normalized;
+  return '55' + clean;
 }
 
 /**
