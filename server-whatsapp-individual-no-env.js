@@ -540,39 +540,76 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
       }
       console.log(`✅ Número verificado: está registrado no WhatsApp`);
 
+      // Aguardar confirmação de entrega via eventos
+      let messageAckReceived = false;
+      let finalAck = -1;
+      
+      const ackHandler = (msg, ack) => {
+        try {
+          if (msg.to === chatId) {
+            console.log(`📬 [EVENT] ACK recebido para ${chatId}: ${ack}`);
+            messageAckReceived = true;
+            finalAck = ack;
+          }
+        } catch (err) {
+          console.error('Erro no ackHandler:', err);
+        }
+      };
+
+      // Registrar listener ANTES de enviar
+      client.on('message_ack', ackHandler);
+
       // Envia a mensagem
       console.log(`📨 Enviando mensagem...`);
       const result = await client.sendMessage(chatId, message);
       
-      console.log(`✅ Mensagem enviada ao servidor WhatsApp`);
-      console.log(`📬 ID da mensagem: ${result.id?._serialized || 'N/A'}`);
+      console.log(`✅ Mensagem aceita pelo servidor WhatsApp`);
+      console.log(`📬 ID: ${result.id?._serialized || 'N/A'}`);
       console.log(`⏰ Timestamp: ${result.timestamp || 'N/A'}`);
       
-      // CRÍTICO: Aguardar processamento do WhatsApp antes de confirmar
-      console.log(`⏳ Aguardando 2 segundos para processamento do WhatsApp...`);
-      await delay(2000);
+      // Aguardar ACK por até 15 segundos
+      console.log(`⏳ Aguardando confirmação de entrega (até 15s)...`);
+      let waitedTime = 0;
+      const checkInterval = 500;
+      const maxWaitTime = 15000;
       
-      // Verificar ACK inicial da mensagem
-      try {
-        const chat = await client.getChatById(chatId);
-        const messages = await chat.fetchMessages({ limit: 1 });
-        const lastMessage = messages[0];
+      while (!messageAckReceived && waitedTime < maxWaitTime) {
+        await delay(checkInterval);
+        waitedTime += checkInterval;
         
-        if (lastMessage && lastMessage.id._serialized === result.id._serialized) {
-          console.log(`📬 Status ACK da mensagem: ${lastMessage.ack}`);
-          // ACK: -1=erro, 0=clock, 1=sent, 2=received, 3=read, 4=played
-          if (lastMessage.ack === -1 || lastMessage.ack === 0) {
-            console.warn(`⚠️ Mensagem com ACK de erro ou pendente: ${lastMessage.ack}`);
-          } else {
-            console.log(`✅ Mensagem processada com sucesso! ACK: ${lastMessage.ack}`);
-          }
+        // Log de progresso a cada 3 segundos
+        if (waitedTime % 3000 === 0) {
+          console.log(`⏳ Aguardando... ${waitedTime/1000}s`);
         }
-      } catch (ackError) {
-        console.warn(`⚠️ Não foi possível verificar ACK: ${ackError.message}`);
+      }
+      
+      // Remover listener
+      client.off('message_ack', ackHandler);
+      
+      // Verificar resultado
+      if (messageAckReceived) {
+        console.log(`✅ Confirmação recebida! ACK final: ${finalAck}`);
+        // ACK: -1=erro, 0=clock, 1=sent, 2=received, 3=read, 4=played
+        
+        if (finalAck === -1) {
+          throw new Error('Mensagem rejeitada pelo WhatsApp (ACK=-1)');
+        } else if (finalAck === 0) {
+          console.warn(`⚠️ Mensagem pendente (ACK=0 - relógio), mas aceita pelo servidor`);
+        } else {
+          console.log(`✅ Mensagem CONFIRMADA como ${finalAck === 1 ? 'enviada' : finalAck === 2 ? 'recebida' : 'lida'}!`);
+        }
+      } else {
+        console.warn(`⚠️ Nenhum ACK recebido em ${maxWaitTime/1000}s - Possível problema:`);
+        console.warn(`   1. Rate limiting do WhatsApp (muitas mensagens)`);
+        console.warn(`   2. Número bloqueou seu WhatsApp`);
+        console.warn(`   3. Problema de conexão intermitente`);
+        console.warn(`   4. WhatsApp pode estar marcando como spam`);
       }
 
       console.log(`✅ ========================================`);
-      console.log(`✅ ENVIO CONCLUÍDO COM SUCESSO!`);
+      console.log(`✅ ENVIO CONCLUÍDO!`);
+      console.log(`✅ ACK Recebido: ${messageAckReceived ? 'SIM' : 'NÃO'}`);
+      console.log(`✅ ACK Status: ${finalAck}`);
       console.log(`✅ ========================================`);
 
       // Salva no banco
@@ -588,11 +625,16 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
       });
       console.log(`💾 Registro salvo no banco`);
 
-      return { success: true, phone: normalizeForStorage(phone), messageId: result.id?._serialized };
+      return { 
+        success: true, 
+        phone: normalizeForStorage(phone), 
+        messageId: result.id?._serialized,
+        ackReceived: messageAckReceived,
+        ackStatus: finalAck
+      };
 
     } catch (error) {
       console.error(`❌ Tentativa ${attempt} falhou:`, error.message);
-      console.error(`❌ Stack:`, error.stack);
       
       if (attempt < maxRetries) {
         const waitTime = attempt * 3000; // 3s, 6s, 9s...
