@@ -610,13 +610,25 @@ async function sendWhatsAppMessage(phone, message, messageType = 'outgoing') {
 
 // Endpoint para enviar mensagem de item adicionado (pedido manual)
 app.post('/send-item-added', async (req, res) => {
-  console.log('🛒 Requisição para enviar mensagem de item adicionado');
+  console.log('🛒 ===== REQUISIÇÃO RECEBIDA: /send-item-added =====');
+  console.log('📥 Body recebido:', JSON.stringify(req.body, null, 2));
+  console.log('📱 WhatsApp Status:', clientReady ? '✅ CONECTADO' : '❌ DESCONECTADO');
   
   try {
     const { phone, product_id, quantity = 1 } = req.body;
     
     if (!phone || !product_id) {
+      console.log('❌ ERRO: Parâmetros faltando - phone:', phone, 'product_id:', product_id);
       return res.status(400).json({ error: 'Telefone e ID do produto são obrigatórios' });
+    }
+
+    // Verificar se WhatsApp está conectado
+    if (!clientReady) {
+      console.log('❌ ERRO: WhatsApp não está conectado! Conecte o WhatsApp primeiro.');
+      return res.status(503).json({ 
+        error: 'WhatsApp não está conectado. Por favor, escaneie o QR Code primeiro.',
+        clientReady: false
+      });
     }
 
     console.log(`📋 Buscando produto ${product_id} para telefone ${phone}`);
@@ -626,21 +638,51 @@ app.post('/send-item-added', async (req, res) => {
     const product = products?.[0];
 
     if (!product) {
-      console.log(`❌ Produto ${product_id} não encontrado`);
+      console.log(`❌ Produto ${product_id} não encontrado no banco`);
       return res.status(404).json({ error: 'Produto não encontrado' });
     }
 
-    console.log(`📦 Produto encontrado: ${product.name} (${product.code})`);
+    console.log(`📦 Produto encontrado: ${product.name} (${product.code}) - R$ ${product.price}`);
 
-    // Compor e enviar mensagem
+    // Normalizar telefone
+    const normalizedPhone = normalizeForSending(phone);
+    console.log(`📞 Telefone normalizado: ${phone} → ${normalizedPhone}`);
+
+    // Compor mensagem
     const message = await composeItemAdded(product, quantity);
-    const result = await sendWhatsAppMessage(phone, message, 'outgoing');
+    console.log(`📝 Mensagem composta (${message.length} caracteres):\n${message}`);
+
+    // Enviar mensagem
+    console.log(`📤 Enviando mensagem para ${normalizedPhone}@c.us...`);
+    await client.sendMessage(`${normalizedPhone}@c.us`, message);
+    console.log(`✅ Mensagem enviada via WhatsApp!`);
     
-    console.log(`✅ Mensagem de item adicionado enviada com sucesso`);
-    res.json({ ...result, product: product.name, message });
+    // Registrar no banco
+    await supa('/whatsapp_messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: TENANT_ID,
+        phone: normalizeForStorage(phone),
+        message,
+        type: 'outgoing',
+        sent_at: new Date().toISOString(),
+      }),
+    });
+    console.log(`💾 Mensagem registrada no banco`);
+    
+    console.log(`✅ ===== SUCESSO: Mensagem enviada =====`);
+    res.json({ 
+      success: true, 
+      phone: normalizeForStorage(phone),
+      normalizedPhone: normalizedPhone,
+      product: product.name, 
+      message 
+    });
   } catch (error) {
-    console.error('❌ Erro ao enviar mensagem de item adicionado:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ ===== ERRO CRÍTICO =====');
+    console.error('❌ Mensagem:', error.message);
+    console.error('❌ Stack:', error.stack);
+    res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
 
