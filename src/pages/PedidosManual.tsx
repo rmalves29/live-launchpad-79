@@ -11,7 +11,7 @@ import { Loader2, Search, RefreshCw, Edit, Trash2, Plus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
-import { normalizeForStorage, formatPhoneForDisplay } from '@/lib/phone-utils';
+import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
 
 
 interface Product {
@@ -356,13 +356,16 @@ const PedidosManual = () => {
       setPhones(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
       
-      // Enviar mensagem via Node.js
+      // Enviar mensagem via Node.js (com DDI 55 e 9º dígito garantido)
       try {
+        const phoneForWhatsApp = normalizeForSending(normalizedPhone);
+        console.log(`📱 Enviando para WhatsApp: ${normalizedPhone} -> ${phoneForWhatsApp}`);
+        
         const response = await fetch('http://localhost:3333/send-item-added', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            phone: normalizedPhone,
+            phone: phoneForWhatsApp,
             product_id: product.id,
             quantity: qty
           })
