@@ -175,11 +175,17 @@ function replaceVariables(template, variables) {
 }
 
 async function composeItemAdded(product, quantity = 1) {
+  console.log(`📝 ===== Compondo mensagem de item adicionado =====`);
+  console.log(`📦 Produto: ${product.name} (${product.code})`);
+  console.log(`🔢 Quantidade: ${quantity}`);
+  console.log(`💰 Preço unitário: R$ ${product.price}`);
+  
   const template = await getTemplate('ITEM_ADDED');
   const totalPrice = Number(product.price || 0) * Number(quantity);
   
   if (template) {
-    return replaceVariables(template.content, {
+    console.log(`📄 Template encontrado: ${template.title}`);
+    const message = replaceVariables(template.content, {
       produto: product.name || 'Produto',
       codigo: product.code ? `(${product.code})` : '',
       quantidade: String(quantity),
@@ -187,12 +193,20 @@ async function composeItemAdded(product, quantity = 1) {
       valor: fmtMoney(product.price),
       total: fmtMoney(totalPrice),
     });
+    console.log(`✅ Mensagem composta (${message.length} chars):\n${message}`);
+    return message;
   }
   
+  // Fallback caso não tenha template
   const productCode = product.code ? ` (${product.code})` : '';
   const price = fmtMoney(product.price);
   const total = fmtMoney(totalPrice);
-  return `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *${quantity}*\nPreço: *${price}*\nTotal: *${total}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
+  const fallbackMessage = `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *${quantity}*\nPreço: *${price}*\nTotal: *${total}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
+  
+  console.log(`⚠️ Template não encontrado, usando fallback`);
+  console.log(`✅ Mensagem fallback (${fallbackMessage.length} chars):\n${fallbackMessage}`);
+  
+  return fallbackMessage;
 }
 
 // Mensagem para finalizar compra
@@ -360,11 +374,32 @@ client.on('message', async (msg) => {
       
       const product = products?.[0];
       if (product) {
-        console.log(`🎯 Produto encontrado: ${product.name} (${product.code})`);
+        console.log(`🎯 Produto encontrado: ${product.name} (${product.code}) - R$ ${product.price}`);
+        
+        // Adicionar ao carrinho
         await processProductCode(authorPhone, product, groupName);
-        const message = await composeItemAdded(product);
+        console.log(`✅ Produto adicionado ao carrinho`);
+        
+        // Compor mensagem apenas deste produto específico
+        const message = await composeItemAdded(product, 1);
+        console.log(`📝 Mensagem composta para ESTE produto:\n${message}`);
+        
+        // Enviar mensagem apenas para o autor (privado) ou para o grupo
         await client.sendMessage(messageFrom, message);
-        console.log(`✅ Confirmação enviada para ${messageFrom}`);
+        console.log(`✅ Mensagem enviada APENAS para ${messageFrom} (não múltiplos produtos)`);
+        
+        // Registrar no banco
+        await supa('/whatsapp_messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            tenant_id: TENANT_ID,
+            phone: authorPhone,
+            message: message,
+            type: 'outgoing',
+            sent_at: new Date().toISOString(),
+            whatsapp_group_name: groupName
+          })
+        });
       } else {
         console.log(`❌ Nenhum produto encontrado para os códigos:`, candidates);
       }
