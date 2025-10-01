@@ -140,14 +140,20 @@ Deno.serve(async (req) => {
         groupName = payload.groupName || payload.chatName || 'Grupo WhatsApp';
         
         // For group messages, we need the individual phone number of the sender
+        // payload.author já vem sem @c.us do servidor JavaScript
         if (payload.author && typeof payload.author === 'string') {
+          // Remover @c.us caso ainda exista
           individualPhone = payload.author.replace('@c.us', '');
+          console.log(`👤 Author extraído de grupo: ${individualPhone}`);
         } else {
           console.log(`Group message without individual author: ${payload.from}`);
           return new Response(JSON.stringify({ success: true, message: 'Group message without individual author ignored' }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
           });
         }
+      } else {
+        // Mensagem individual - remover @c.us do from
+        individualPhone = payload.from.replace('@c.us', '').replace('@s.whatsapp.net', '');
       }
       
       // Validate individual phone number
@@ -159,13 +165,17 @@ Deno.serve(async (req) => {
         });
       }
       
-      const phone = normalizeForStorage(individualPhone);
-      console.log(`Normalized phone: ${individualPhone} -> ${phone} | Group: ${groupName || 'N/A'}`);
+      // Remover qualquer caractere não numérico antes de normalizar
+      const cleanedPhone = individualPhone.replace(/\D/g, '');
+      console.log(`📞 Telefone limpo (apenas números): ${cleanedPhone}`);
+      
+      const phone = normalizeForStorage(cleanedPhone);
+      console.log(`✅ Normalized phone: ${cleanedPhone} -> ${phone} | Group: ${groupName || 'N/A'}`);
       console.log(`🔍 DEBUG - Payload recebido:`, JSON.stringify(payload, null, 2));
       
       // Double check that normalized phone is valid
       if (!phone.match(/^[1-9]{2}[0-9]{8,9}$/)) {
-        console.log(`Invalid normalized phone number: ${phone}`);
+        console.log(`❌ Invalid normalized phone number: ${phone} (original: ${individualPhone}, cleaned: ${cleanedPhone})`);
         return new Response(JSON.stringify({ success: true, message: 'Invalid normalized phone number' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
