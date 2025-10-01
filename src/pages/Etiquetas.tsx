@@ -57,7 +57,7 @@ const Etiquetas = () => {
             .from('cart_items')
             .select(`
               id,
-              qty as quantity,
+              qty,
               unit_price,
               product:products(name, code)
             `)
@@ -342,7 +342,7 @@ const Etiquetas = () => {
                        {order.items.map((item, index) => (
                          <div key={index} className="text-sm flex justify-between">
                            <span>{item.product?.name || 'Produto'} ({item.product?.code || 'N/A'})</span>
-                           <span>{item.quantity}x R$ {Number(item.unit_price).toFixed(2)}</span>
+                            <span>{item.qty}x R$ {Number(item.unit_price).toFixed(2)}</span>
                          </div>
                        ))}
                     </div>
