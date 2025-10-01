@@ -217,13 +217,15 @@ async function composePaidOrder(orderData) {
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: TENANT_SLUG }),
   puppeteer: {
-    headless: true,
+    headless: false,  // 🖥️ ABRE O NAVEGADOR VISÍVEL
+    devtools: false,   // DevTools desabilitado para não atrapalhar
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
+      '--start-maximized',  // Abre maximizado
       '--no-zygote',
       '--disable-gpu'
     ]
