@@ -245,7 +245,21 @@ useEffect(() => {
 
       if (error) throw error;
 
-      // Mensagem de cancelamento enviada automaticamente via trigger do banco
+      // Enviar mensagem de cancelamento via Node.js
+      if (profile?.tenant_id) {
+        try {
+          await whatsappService.sendProductCanceledMessage(
+            order?.customer_phone || '',
+            productName,
+            item.product_id,
+            profile.tenant_id
+          );
+          console.log('✅ Mensagem de cancelamento enviada com sucesso');
+        } catch (whatsappError) {
+          console.error('❌ Erro ao enviar mensagem WhatsApp:', whatsappError);
+          // Não falha a operação se o WhatsApp falhar
+        }
+      }
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);

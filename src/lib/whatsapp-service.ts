@@ -279,6 +279,27 @@ class WhatsAppService {
     });
   }
 
+  async sendProductCanceledMessage(
+    phone: string, 
+    productName: string, 
+    productId: number,
+    tenantId?: string
+  ): Promise<WhatsAppResponse> {
+    console.log('📤 [sendProductCanceled] Enviando mensagem de cancelamento:', { 
+      phone, 
+      productName,
+      productId,
+      tenantId 
+    });
+
+    const message = `❌ *Produto Cancelado*\n\nO produto "${productName}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
+
+    return this.makeRequest('/send', {
+      number: normalizeForSending(phone),
+      message,
+    }, tenantId);
+  }
+
   async getStatus(tenantId?: string): Promise<any> {
     try {
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
