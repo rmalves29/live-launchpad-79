@@ -783,16 +783,21 @@ app.post('/send-to-group', async (req, res) => {
       try {
         // Tentar baixar a imagem com timeout e unsafeMime
         console.log('📥 Baixando imagem...');
+        console.log('🔍 URL completa:', imageUrl);
+        
         const media = await MessageMedia.fromUrl(imageUrl, { 
           unsafeMime: true,
           timeout: 45000 // 45 segundos
         });
         
-        console.log(`✅ Imagem baixada (${media.mimetype}), enviando com caption...`);
+        console.log(`✅ Imagem baixada com sucesso`);
+        console.log(`📊 Detalhes: mimetype=${media.mimetype}, tamanho=${media.data?.length || 0} bytes`);
+        
         result = await client.sendMessage(groupId, media, { caption: message });
         console.log('✅ Imagem + Caption enviados com sucesso');
       } catch (imageError) {
         console.error('❌ Erro ao processar imagem:', imageError.message);
+        console.error('Stack completo:', imageError.stack);
         console.log('📝 Enviando apenas texto como fallback...');
         // Fallback: enviar apenas texto se imagem falhar
         result = await client.sendMessage(groupId, message);
@@ -813,7 +818,7 @@ app.post('/send-to-group', async (req, res) => {
         tenant_id: TENANT_ID, 
         phone: groupId, // Usar o ID do grupo como phone para diferenciação
         message: message,
-        type: 'outgoing_group',
+        type: 'broadcast', // Tipo válido para mensagens de grupo
         sent_at: new Date().toISOString(),
         whatsapp_group_name: group.name
       })
