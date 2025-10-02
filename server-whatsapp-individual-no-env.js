@@ -1049,6 +1049,69 @@ app.post('/send-paid-order', async (req, res) => {
   }
 });
 
+app.post('/send-product-canceled', async (req, res) => {
+  console.log('\n❌ ===== POST /send-product-canceled =====');
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  
+  try {
+    const { phone, product_name, product_id } = req.body;
+    
+    if (!phone) {
+      return res.status(400).json({ error: 'Telefone é obrigatório' });
+    }
+
+    if (!product_name && !product_id) {
+      return res.status(400).json({ error: 'product_name ou product_id é obrigatório' });
+    }
+
+    // Normalizar telefone
+    const normalizedPhone = normalizeForStorage(phone);
+    console.log(`📞 Telefone recebido: ${phone} -> normalizado: ${normalizedPhone}`);
+
+    let productName = product_name;
+
+    // Se foi passado product_id, buscar o nome do produto
+    if (product_id && !product_name) {
+      const products = await supa(`/products?select=name&id=eq.${product_id}`);
+      const product = products?.[0];
+      
+      if (!product) {
+        return res.status(404).json({ error: 'Produto não encontrado' });
+      }
+      
+      productName = product.name;
+    }
+
+    console.log(`❌ Produto cancelado: ${productName}`);
+
+    // Buscar template PRODUCT_CANCELED do banco
+    const templates = await supa(`/whatsapp_templates?select=*&tenant_id=eq.${TENANT_ID}&type=eq.PRODUCT_CANCELED`);
+    const template = templates?.[0];
+
+    let message;
+    if (template && template.content) {
+      // Usar template personalizado e substituir variáveis
+      message = template.content.replace(/\{\{produto\}\}/g, productName);
+      console.log(`📝 Usando template personalizado PRODUCT_CANCELED`);
+    } else {
+      // Fallback para mensagem padrão
+      message = `❌ *Produto Cancelado*\n\nO produto "${productName}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
+      console.log(`📝 Usando mensagem padrão (template não encontrado)`);
+    }
+
+    console.log(`📝 Mensagem composta (${message.length} chars)`);
+    
+    // Enviar mensagem usando retry
+    const result = await sendWhatsAppMessageWithRetry(normalizedPhone, message);
+    
+    console.log(`✅ Mensagem de produto cancelado enviada para ${normalizedPhone}`);
+    res.json({ ...result, product: productName, message });
+  } catch (error) {
+    console.error('❌ Erro /send-product-canceled:', error);
+    res.status(500).json({ error: error.message, clientState, clientReady });
+  }
+});
+
 app.post('/send-finalize', async (req, res) => {
   console.log('\n✅ ===== POST /send-finalize =====');
   console.log('Body:', JSON.stringify(req.body, null, 2));
