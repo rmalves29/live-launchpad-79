@@ -82,6 +82,7 @@ export default function SendFlow() {
     if (!tenant?.id) return;
     
     try {
+      console.log('📋 Carregando template SENDFLOW para tenant:', tenant.id);
       const { data, error } = await supabase
         .from('whatsapp_templates')
         .select('*')
@@ -92,19 +93,22 @@ export default function SendFlow() {
       if (error && error.code !== 'PGRST116') throw error;
       
       if (data) {
+        console.log('✅ Template carregado do banco:', data.content);
         setMessageTemplate(data.content);
       } else {
         // Template padrão
-        setMessageTemplate(
+        const defaultTemplate = 
           '🛍️ *{{nome}}* ({{codigo}})\n\n' +
           '🎨 Cor: {{cor}}\n' +
           '📏 Tamanho: {{tamanho}}\n' +
           '💰 Valor: {{valor}}\n\n' +
-          '📱 Para comprar, digite apenas o código: *{{codigo}}*'
-        );
+          '📱 Para comprar, digite apenas o código: *{{codigo}}*';
+        console.log('⚠️ Nenhum template encontrado, usando template padrão');
+        setMessageTemplate(defaultTemplate);
       }
     } catch (error) {
-      console.error('Erro ao carregar template:', error);
+      console.error('❌ Erro ao carregar template:', error);
+      toast.error('Erro ao carregar template de mensagem');
     }
   };
 
@@ -286,12 +290,16 @@ export default function SendFlow() {
   };
 
   const personalizeMessage = (product: Product) => {
-    return messageTemplate
+    console.log('📝 Template original:', messageTemplate);
+    const personalizedMsg = messageTemplate
       .replace(/\{\{codigo\}\}/g, product.code)
       .replace(/\{\{nome\}\}/g, product.name)
       .replace(/\{\{cor\}\}/g, product.color || 'N/A')
       .replace(/\{\{tamanho\}\}/g, product.size || 'N/A')
       .replace(/\{\{valor\}\}/g, formatPrice(product.price));
+    console.log('✅ Mensagem personalizada:', personalizedMsg);
+    console.log('📦 Produto:', { code: product.code, name: product.name, color: product.color, size: product.size, price: product.price });
+    return personalizedMsg;
   };
 
   const startSendFlow = async (resumeJob = null) => {
@@ -448,6 +456,12 @@ export default function SendFlow() {
           try {
             const startTime = Date.now();
             console.log(`🚀 [${new Date().toLocaleTimeString()}] Enviando produto ${product.code} para grupo ${groupIndex + 1}/${selectedGroupArray.length}: ${groupName}`);
+            console.log('📤 Payload do envio:', {
+              groupId,
+              message: personalizedMessage.substring(0, 100) + '...',
+              imageUrl: product.image_url || 'sem imagem',
+              messageLength: personalizedMessage.length
+            });
             
             const response = await fetch(`http://localhost:3333/send-to-group`, {
               method: 'POST',
