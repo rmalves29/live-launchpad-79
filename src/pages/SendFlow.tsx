@@ -401,6 +401,7 @@ export default function SendFlow() {
       const selectedGroupArray = Array.from(selectedGroups);
       
       console.log(`🎯 Iniciando envio para ${selectedProductArray.length} produtos em ${selectedGroupArray.length} grupos`);
+      console.log(`⏱️ Delay configurado: ${timerSeconds} segundos (${timerSeconds * 1000}ms)`);
       
       for (let i = currentIndex; i < selectedProductArray.length; i++) {
         // Verificar se foi cancelado
@@ -445,7 +446,8 @@ export default function SendFlow() {
           setCurrentGroup(groupName);
           
           try {
-            console.log(`🚀 Enviando produto ${product.code} para grupo ${groupIndex + 1}/${selectedGroupArray.length}: ${groupName}`);
+            const startTime = Date.now();
+            console.log(`🚀 [${new Date().toLocaleTimeString()}] Enviando produto ${product.code} para grupo ${groupIndex + 1}/${selectedGroupArray.length}: ${groupName}`);
             
             const response = await fetch(`http://localhost:3333/send-to-group`, {
               method: 'POST',
@@ -461,6 +463,7 @@ export default function SendFlow() {
             if (controller.signal.aborted) return;
             
             const result = await response.json();
+            const sendDuration = Date.now() - startTime;
             
             if (!response.ok) {
               throw new Error(`Erro ${response.status}: ${result.message || result.error || 'Erro desconhecido'}`);
@@ -483,7 +486,7 @@ export default function SendFlow() {
               }
               return newCount;
             });
-            console.log(`✅ Sucesso no grupo ${groupName}:`, result);
+            console.log(`✅ [${new Date().toLocaleTimeString()}] Sucesso no grupo ${groupName} (levou ${sendDuration}ms)`);
             toast.success(`✅ ${product.code} → ${groupName.substring(0, 30)}...`);
             
           } catch (groupError) {
@@ -495,15 +498,23 @@ export default function SendFlow() {
             toast.error(`❌ ${groupName.substring(0, 20)}: ${errorMsg}`);
           }
           
-          // Aplicar delay entre grupos (exceto no último grupo)
+          // Aplicar delay entre TODOS os envios (incluindo entre grupos do mesmo produto)
           if (groupIndex < selectedGroupArray.length - 1) {
+            const delayMs = timerSeconds * 1000;
+            console.log(`⏳ [${new Date().toLocaleTimeString()}] Iniciando delay de ${timerSeconds}s (${delayMs}ms) antes do próximo grupo...`);
+            const delayStart = Date.now();
+            
             try {
-              console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo grupo...`);
               toast.info(`⏳ Aguardando ${timerSeconds}s para próximo grupo... (${groupIndex + 2}/${selectedGroupArray.length})`);
-              await cancelableDelay(timerSeconds * 1000, controller);
+              await cancelableDelay(delayMs, controller);
+              const actualDelay = Date.now() - delayStart;
+              console.log(`✅ [${new Date().toLocaleTimeString()}] Delay completado (${actualDelay}ms)`);
             } catch (error) {
-              if (controller.signal.aborted) return;
-              console.log('❌ Delay cancelado');
+              if (controller.signal.aborted) {
+                console.log('❌ Delay cancelado pelo usuário');
+                return;
+              }
+              console.log('❌ Erro durante delay:', error);
             }
           }
         }
@@ -515,13 +526,21 @@ export default function SendFlow() {
         
         // Aguardar antes do próximo produto (apenas se houver próximo produto)
         if (i < selectedProductArray.length - 1) {
+          const delayMs = timerSeconds * 1000;
+          console.log(`⏳ [${new Date().toLocaleTimeString()}] Iniciando delay de ${timerSeconds}s (${delayMs}ms) antes do próximo produto...`);
+          const delayStart = Date.now();
+          
           try {
-            console.log(`⏳ Aguardando ${timerSeconds}s antes do próximo produto...`);
             toast.info(`⏳ Aguardando ${timerSeconds}s para próximo produto... (${i + 2}/${selectedProductArray.length})`);
-            await cancelableDelay(timerSeconds * 1000, controller);
+            await cancelableDelay(delayMs, controller);
+            const actualDelay = Date.now() - delayStart;
+            console.log(`✅ [${new Date().toLocaleTimeString()}] Delay completado (${actualDelay}ms)`);
           } catch (error) {
-            if (controller.signal.aborted) return;
-            console.log('❌ Delay entre produtos cancelado');
+            if (controller.signal.aborted) {
+              console.log('❌ Delay entre produtos cancelado pelo usuário');
+              return;
+            }
+            console.log('❌ Erro durante delay entre produtos:', error);
           }
         }
       }
