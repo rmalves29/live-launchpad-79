@@ -686,7 +686,13 @@ app.get('/status', async (req, res) => {
     // Sistema mais flexível: pode enviar se o Puppeteer estiver CONNECTED
     canSendMessages = puppeteerState === 'CONNECTED';
     
-    info = await client.info.catch(() => ({}));
+    // Tentar obter informações do cliente
+    try {
+      info = await client.info;
+    } catch (infoError) {
+      console.log('⚠️ Não foi possível obter client.info:', infoError.message);
+      info = {};
+    }
   } catch (e) {
     puppeteerState = 'ERROR: ' + e.message;
     canSendMessages = false;
