@@ -587,7 +587,7 @@ app.get('/status', (req, res) => {
       hasServiceRole: !!SUPABASE_SERVICE_ROLE,
       keyPreview: SUPABASE_SERVICE_ROLE ? `${SUPABASE_SERVICE_ROLE.substring(0, 20)}...` : 'N/A'
     },
-    features: ['individual', 'groups', 'broadcast', 'templates', 'auto-payment', 'auto-cancel'],
+    features: ['individual', 'groups', 'broadcast', 'templates', 'auto-payment', 'auto-cancel', 'auto-item-added'],
     timestamp: new Date().toISOString()
   });
 });
@@ -848,6 +848,99 @@ app.post('/add-label', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Erro ao adicionar label:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// ===== SEND ITEM ADDED =====
+app.post('/send-item-added', async (req, res) => {
+  try {
+    if (!clientReady) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'WhatsApp não está conectado' 
+      });
+    }
+
+    const { phone, product_id, quantity } = req.body;
+    
+    if (!phone || !product_id) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Telefone e ID do produto são obrigatórios' 
+      });
+    }
+
+    console.log('🛒 [ITEM-ADDED] Enviando mensagem de item adicionado:', { 
+      phone, 
+      product_id,
+      quantity 
+    });
+
+    // Buscar dados do produto no banco
+    const products = await supa(`/products?select=*&id=eq.${product_id}&limit=1`);
+    
+    if (!products || products.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Produto não encontrado' 
+      });
+    }
+
+    const product = products[0];
+    console.log('📦 [ITEM-ADDED] Produto encontrado:', product.name, product.code);
+
+    // Buscar template e compor mensagem
+    const template = await getTemplate('ITEM_ADDED');
+    let message;
+    
+    if (template) {
+      const qty = quantity || 1;
+      const totalPrice = product.price * qty;
+      
+      message = replaceVariables(template.content, {
+        produto: product.name,
+        codigo: product.code || '',
+        quantidade: qty.toString(),
+        preco: fmtMoney(product.price),
+        total: fmtMoney(totalPrice)
+      });
+    } else {
+      // Mensagem padrão se não houver template
+      const productCode = product.code ? ` (${product.code})` : '';
+      const price = fmtMoney(product.price);
+      const qty = quantity || 1;
+      message = `🛒 *Item adicionado ao pedido*\n\n✅ ${product.name}${productCode}\nQtd: *${qty}*\nPreço: *${price}*`;
+    }
+
+    const normalizedNumber = normalizeForSending(phone);
+    await client.sendMessage(`${normalizedNumber}@c.us`, message);
+
+    // Salvar no histórico
+    await supa('/whatsapp_messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: TENANT_ID,
+        phone: normalizeForStorage(phone),
+        message,
+        type: 'item_added',
+        product_name: product.name,
+        sent_at: new Date().toISOString()
+      })
+    });
+
+    console.log('✅ [ITEM-ADDED] Mensagem de item adicionado enviada');
+    res.json({ 
+      success: true, 
+      phone: normalizeForStorage(phone),
+      product_name: product.name 
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao enviar mensagem de item adicionado:', error);
     res.status(500).json({ 
       success: false, 
       error: error.message 
@@ -1187,6 +1280,7 @@ app.listen(PORT, () => {
   console.log(`📋 Status: http://localhost:${PORT}/status`);
   console.log(`\n📤 ROTAS DISPONÍVEIS:`);
   console.log(`   POST /send - Enviar mensagem individual`);
+  console.log(`   POST /send-item-added - Enviar item adicionado`);
   console.log(`   POST /send-product-canceled - Enviar cancelamento`);
   console.log(`   POST /test-send - Enviar teste`);
   console.log(`   POST /add-label - Adicionar etiqueta`);
