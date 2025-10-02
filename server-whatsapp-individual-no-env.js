@@ -686,9 +686,11 @@ app.get('/status', async (req, res) => {
     // Sistema mais flexível: pode enviar se o Puppeteer estiver CONNECTED
     canSendMessages = puppeteerState === 'CONNECTED';
     
-    // Tentar obter informações do cliente
+    // Obter informações do cliente (propriedade síncrona, não Promise)
     try {
-      info = await client.info;
+      if (client.info) {
+        info = client.info;
+      }
     } catch (infoError) {
       console.log('⚠️ Não foi possível obter client.info:', infoError.message);
       info = {};
@@ -707,8 +709,8 @@ app.get('/status', async (req, res) => {
       puppeteerState: puppeteerState,
       canSendMessages: canSendMessages,
       readyToSend: canSendMessages ? '✅ SIM - Pronto para enviar' : '❌ NÃO - Aguarde conexão',
-      phoneNumber: info.wid?.user || 'N/A',
-      platform: info.platform || 'N/A'
+      phoneNumber: info?.wid?.user || 'N/A',
+      platform: info?.platform || 'N/A'
     },
     supabase: {
       url: SUPABASE_URL,
