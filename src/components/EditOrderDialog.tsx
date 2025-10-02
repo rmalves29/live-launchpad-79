@@ -230,14 +230,13 @@ useEffect(() => {
     const item = cartItems.find(i => i.id === itemId);
     if (!item) return;
 
-    // Confirmar cancelamento
     const productName = item.product?.name || 'produto';
     if (!confirm(`Tem certeza que deseja cancelar ${productName}? Uma mensagem será enviada ao cliente.`)) {
       return;
     }
 
     try {
-      // Remover item do carrinho
+      // Remover item do carrinho - a mensagem será enviada automaticamente
       const { error } = await supabaseTenant
         .from('cart_items')
         .delete()
@@ -245,11 +244,11 @@ useEffect(() => {
 
       if (error) throw error;
 
-      // Enviar mensagem de cancelamento via Node.js
-      if (profile?.tenant_id) {
+      // Enviar mensagem de cancelamento via WhatsApp
+      if (profile?.tenant_id && order?.customer_phone) {
         try {
           await whatsappService.sendProductCanceledMessage(
-            order?.customer_phone || '',
+            order.customer_phone,
             productName,
             item.product_id,
             profile.tenant_id
@@ -325,10 +324,6 @@ useEffect(() => {
       console.error('Error updating order total:', error);
     }
   };
-
-  // Mensagem enviada automaticamente via trigger - função removida
-
-  // Mensagem de cancelamento enviada automaticamente via trigger - função removida
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
