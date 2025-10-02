@@ -68,7 +68,10 @@ const Config = () => {
   const [mercadoPagoIntegration, setMercadoPagoIntegration] = useState<MercadoPagoIntegration | null>(null);
   const [melhorEnvioIntegration, setMelhorEnvioIntegration] = useState<MelhorEnvioIntegration | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
-  const [activeView, setActiveView] = useState<'dashboard' | 'config'>('dashboard');
+  // Se houver um query param 'tab', já inicia na view de config
+  const [activeView, setActiveView] = useState<'dashboard' | 'config'>(
+    searchParams.get('tab') ? 'config' : 'dashboard'
+  );
   const [appSettings, setAppSettings] = useState<any>(null);
 
   const loadSettings = async () => {
@@ -479,7 +482,7 @@ const Config = () => {
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Card className="cursor-pointer hover:shadow-md transition-shadow" 
-                onClick={() => setActiveView('config')}>
+                onClick={() => window.location.href = '/config?tab=config'}>
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Settings className="h-5 w-5 mr-2" />
