@@ -303,45 +303,66 @@ export default function SendFlow() {
   };
 
   const startSendFlow = async (resumeJob = null) => {
+    console.log('🚀 INICIANDO SENDFLOW');
+    console.log('📦 Produtos selecionados:', selectedProducts.size);
+    console.log('👥 Grupos selecionados:', selectedGroups.size);
+    console.log('📝 Template definido:', !!messageTemplate);
+    
     if (!resumeJob && selectedProducts.size === 0) {
+      console.error('❌ Nenhum produto selecionado');
       toast.error('Selecione pelo menos um produto');
       return;
     }
 
     if (!resumeJob && selectedGroups.size === 0) {
+      console.error('❌ Nenhum grupo selecionado');
       toast.error('Selecione pelo menos um grupo WhatsApp');
       return;
     }
 
     if (!resumeJob && !messageTemplate) {
+      console.error('❌ Template não definido');
       toast.error('Defina um template de mensagem');
       return;
     }
 
+    console.log('✅ Validações passaram, verificando servidor WhatsApp...');
+
     // Verificar se servidor está online
     try {
+      console.log('🔍 Conectando com http://localhost:3333/status');
       const statusResponse = await fetch(`http://localhost:3333/status`);
+      console.log('📡 Status response:', statusResponse.status, statusResponse.ok);
+      
       if (!statusResponse.ok) {
         throw new Error('Servidor WhatsApp offline');
       }
       const statusData = await statusResponse.json();
+      console.log('📊 Status data:', statusData);
+      
       if (!statusData.whatsapp?.ready) {
         throw new Error('WhatsApp não conectado');
       }
+      console.log('✅ Servidor WhatsApp conectado e pronto!');
     } catch (error) {
+      console.error('❌ Erro ao verificar servidor:', error);
       toast.error(`❌ ${error.message}. Verifique se o servidor está rodando.`);
       return;
     }
 
     if (!resumeJob) {
+      console.log('💾 Salvando template antes de iniciar...');
       await saveTemplate();
     }
+    
+    console.log('🎮 Criando controller e iniciando processo...');
     
     // Criar novo controller para cancelar operações
     const controller = new AbortController();
     setAbortController(controller);
     
     setIsRunning(true);
+    console.log('▶️ SendFlow INICIADO - isRunning: true');
     
     if (resumeJob) {
       // Retomar de onde parou
@@ -404,12 +425,27 @@ export default function SendFlow() {
   };
 
   const processSendFlow = async (controller: AbortController) => {
+    console.log('🔄 ===== INICIANDO processSendFlow =====');
     try {
       const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
       const selectedGroupArray = Array.from(selectedGroups);
       
       console.log(`🎯 Iniciando envio para ${selectedProductArray.length} produtos em ${selectedGroupArray.length} grupos`);
       console.log(`⏱️ Delay configurado: ${timerSeconds} segundos (${timerSeconds * 1000}ms)`);
+      console.log('📦 Produtos:', selectedProductArray.map(p => p.code).join(', '));
+      console.log('👥 Grupos:', selectedGroupArray.map(gId => whatsappGroups.find(g => g.id === gId)?.name || gId).join(', '));
+      
+      if (selectedProductArray.length === 0) {
+        console.error('❌ Array de produtos vazio!');
+        toast.error('Nenhum produto para enviar');
+        return;
+      }
+      
+      if (selectedGroupArray.length === 0) {
+        console.error('❌ Array de grupos vazio!');
+        toast.error('Nenhum grupo para enviar');
+        return;
+      }
       
       for (let i = currentIndex; i < selectedProductArray.length; i++) {
         // Verificar se foi cancelado
@@ -662,7 +698,13 @@ export default function SendFlow() {
             Salvar Template
           </Button>
           {!isRunning ? (
-            <Button onClick={startSendFlow} className="bg-green-600 hover:bg-green-700">
+            <Button 
+              onClick={() => {
+                console.log('🖱️ Botão "Iniciar SendFlow" clicado!');
+                startSendFlow();
+              }} 
+              className="bg-green-600 hover:bg-green-700"
+            >
               <Play className="w-4 h-4 mr-2" />
               Iniciar SendFlow
             </Button>
