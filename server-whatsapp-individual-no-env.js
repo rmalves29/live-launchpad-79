@@ -809,6 +809,10 @@ app.post('/send-item-added', async (req, res) => {
       return res.status(400).json({ error: 'Telefone e product_id são obrigatórios' });
     }
 
+    // NORMALIZAR telefone recebido (remove DDI se tiver)
+    const normalizedPhone = normalizeForStorage(phone);
+    console.log(`📞 Telefone recebido: ${phone} -> normalizado: ${normalizedPhone}`);
+
     const products = await supa(`/products?select=*&id=eq.${product_id}`);
     const product = products?.[0];
 
@@ -816,11 +820,16 @@ app.post('/send-item-added', async (req, res) => {
       return res.status(404).json({ error: 'Produto não encontrado' });
     }
 
-    console.log(`📦 Produto: ${product.name} (${product.code})`);
+    console.log(`📦 Produto encontrado: ${product.name} (${product.code}) - Preço: ${fmtMoney(product.price)}`);
+    console.log(`📊 Quantidade: ${quantity} - Total: ${fmtMoney(product.price * quantity)}`);
 
     const message = await composeItemAdded(product, quantity);
-    const result = await sendWhatsAppMessageWithRetry(phone, message);
+    console.log(`📝 Mensagem composta (${message.length} chars)`);
     
+    // sendWhatsAppMessageWithRetry já normaliza internamente para adicionar DDI
+    const result = await sendWhatsAppMessageWithRetry(normalizedPhone, message);
+    
+    console.log(`✅ Mensagem enviada com sucesso para ${normalizedPhone}`);
     res.json({ ...result, product: product.name, message });
   } catch (error) {
     console.error('❌ Erro /send-item-added:', error);
