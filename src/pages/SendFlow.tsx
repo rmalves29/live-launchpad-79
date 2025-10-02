@@ -366,12 +366,25 @@ export default function SendFlow() {
     
     if (resumeJob) {
       // Retomar de onde parou
-      setCurrentIndex(resumeJob.current_index);
+      console.log('🔄 Retomando job:', resumeJob);
+      setCurrentIndex(resumeJob.current_index || 0);
       setCurrentJobId(resumeJob.id);
-      const jobData = resumeJob.job_data;
-      if (jobData.selectedProducts) setSelectedProducts(new Set(jobData.selectedProducts));
-      if (jobData.selectedGroups) setSelectedGroups(new Set(jobData.selectedGroups));
-      if (jobData.messageTemplate) setMessageTemplate(jobData.messageTemplate);
+      
+      const jobData = resumeJob.job_data || {};
+      console.log('📋 Job data:', jobData);
+      
+      if (jobData.selectedProducts && Array.isArray(jobData.selectedProducts)) {
+        console.log('✅ Restaurando produtos selecionados:', jobData.selectedProducts);
+        setSelectedProducts(new Set(jobData.selectedProducts));
+      }
+      if (jobData.selectedGroups && Array.isArray(jobData.selectedGroups)) {
+        console.log('✅ Restaurando grupos selecionados:', jobData.selectedGroups);
+        setSelectedGroups(new Set(jobData.selectedGroups));
+      }
+      if (jobData.messageTemplate) {
+        console.log('✅ Restaurando template');
+        setMessageTemplate(jobData.messageTemplate);
+      }
       toast.success('🚀 Retomando SendFlow...');
     } else {
       // Criar novo job
