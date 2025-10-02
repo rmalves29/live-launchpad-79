@@ -923,7 +923,7 @@ const Checkout = () => {
         <CardContent>
           <div className="flex gap-4">
             <Input
-              placeholder="Telefone do cliente"
+              placeholder="digite seu telefone completo incluindo o DDD"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               className="flex-1"
