@@ -925,6 +925,14 @@ const Pedidos = () => {
                 <Printer className="h-4 w-4 mr-2" />
                 Marcar como Impresso
               </Button>
+              <Button 
+                onClick={deleteSelectedOrders} 
+                variant="destructive"
+                disabled={selectedOrders.size === 0}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Deletar Selecionados ({selectedOrders.size})
+              </Button>
               <Button onClick={exportToCSV} variant="outline">
                 <Download className="h-4 w-4 mr-2" />
                 Exportar CSV
