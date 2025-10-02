@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
+import WhatsAppConnectionTest from '@/components/WhatsAppConnectionTest';
 
 
 interface Product {
@@ -359,7 +360,8 @@ const PedidosManual = () => {
       // Enviar mensagem via Node.js (com DDI 55 e 9º dígito garantido)
       try {
         const phoneForWhatsApp = normalizeForSending(normalizedPhone);
-        console.log(`📱 Enviando para WhatsApp: ${normalizedPhone} -> ${phoneForWhatsApp}`);
+        console.log(`📱 Enviando mensagem WhatsApp...`);
+        console.log(`📞 De: ${normalizedPhone} -> Para WhatsApp: ${phoneForWhatsApp}`);
         
         const response = await fetch('http://localhost:3333/send-item-added', {
           method: 'POST',
@@ -371,14 +373,29 @@ const PedidosManual = () => {
           })
         });
 
+        const responseData = await response.json();
+        
         if (response.ok) {
-          console.log('✅ Mensagem WhatsApp enviada com sucesso');
+          console.log('✅ Mensagem WhatsApp enviada com sucesso:', responseData);
+          toast({
+            title: '✅ WhatsApp Enviado',
+            description: `Mensagem enviada para ${formatPhoneForDisplay(normalizedPhone)}`,
+          });
         } else {
-          console.error('❌ Erro ao enviar mensagem WhatsApp:', await response.text());
+          console.error('❌ Erro ao enviar mensagem WhatsApp:', responseData);
+          toast({
+            title: '⚠️ WhatsApp não enviado',
+            description: `Pedido criado, mas mensagem WhatsApp falhou: ${responseData.error || 'Erro desconhecido'}`,
+            variant: 'destructive'
+          });
         }
       } catch (error) {
         console.error('❌ Erro ao conectar com servidor WhatsApp:', error);
-        // Não mostrar erro ao usuário, apenas logar
+        toast({
+          title: '⚠️ Servidor WhatsApp offline',
+          description: 'Pedido criado com sucesso, mas o servidor WhatsApp não está respondendo. Inicie o Node.js.',
+          variant: 'destructive'
+        });
       }
       
       // Reload orders to show the new one
@@ -482,6 +499,9 @@ const PedidosManual = () => {
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold">Pedidos Manual</h1>
           </div>
+
+          {/* Componente de Teste do WhatsApp */}
+          <WhatsAppConnectionTest />
 
           <Tabs defaultValue="create" className="w-full">
             <TabsList className="grid w-full grid-cols-2">

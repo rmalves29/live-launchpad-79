@@ -387,9 +387,15 @@ client.on('message', async (msg) => {
     
     // Comando FINALIZAR
     if (text === 'FINALIZAR') {
+      console.log(`📤 Comando FINALIZAR recebido de ${authorPhone}`);
       const message = await composeFinalize();
-      await client.sendMessage(messageFrom, message);
-      console.log(`✅ FINALIZAR enviado`);
+      
+      try {
+        await sendWhatsAppMessageWithRetry(authorPhone, message);
+        console.log(`✅ Mensagem FINALIZAR enviada com sucesso`);
+      } catch (sendError) {
+        console.error(`❌ Erro ao enviar mensagem FINALIZAR:`, sendError.message);
+      }
       return;
     }
     
@@ -405,11 +411,24 @@ client.on('message', async (msg) => {
       
       const product = products?.[0];
       if (product) {
-        console.log(`📦 Produto: ${product.name} (${product.code})`);
+        console.log(`📦 Produto encontrado: ${product.name} (${product.code})`);
+        
+        // Processar produto (adicionar ao carrinho/pedido)
         await processProductCode(authorPhone, product, groupName);
+        
+        // Enviar mensagem de confirmação usando a função com retry
         const message = await composeItemAdded(product);
-        await client.sendMessage(messageFrom, message);
-        console.log(`✅ Confirmação enviada`);
+        console.log(`📤 Enviando mensagem de confirmação...`);
+        
+        try {
+          await sendWhatsAppMessageWithRetry(authorPhone, message);
+          console.log(`✅ Mensagem enviada com sucesso para ${authorPhone}`);
+        } catch (sendError) {
+          console.error(`❌ Erro ao enviar mensagem de confirmação:`, sendError.message);
+          // Não propaga o erro para não interromper o processamento
+        }
+      } else {
+        console.log(`❌ Produto não encontrado para os códigos:`, candidates);
       }
     }
   } catch (error) {
@@ -691,6 +710,40 @@ app.get('/status', async (req, res) => {
     },
     timestamp: new Date().toISOString()
   });
+});
+
+// Endpoint de teste simples
+app.post('/test-send', async (req, res) => {
+  console.log('\n🧪 ===== POST /test-send (TESTE) =====');
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  
+  try {
+    const { phone, message = '🧪 Teste de mensagem do OrderZaps!' } = req.body;
+    
+    if (!phone) {
+      return res.status(400).json({ error: 'Telefone é obrigatório' });
+    }
+
+    console.log(`🧪 Testando envio para: ${phone}`);
+    console.log(`📝 Mensagem: ${message}`);
+    
+    const result = await sendWhatsAppMessageWithRetry(phone, message);
+    
+    console.log(`✅ Teste concluído com sucesso!`);
+    res.json({ 
+      success: true,
+      result,
+      message: 'Teste de envio concluído com sucesso!'
+    });
+  } catch (error) {
+    console.error('❌ Erro no teste:', error);
+    res.status(500).json({ 
+      error: error.message, 
+      stack: error.stack,
+      clientState, 
+      clientReady 
+    });
+  }
 });
 
 // Endpoint para forçar reconexão
