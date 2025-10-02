@@ -515,6 +515,7 @@ export default function SendFlow() {
           // Aplicar delay entre TODOS os envios (incluindo entre grupos do mesmo produto)
           if (groupIndex < selectedGroupArray.length - 1) {
             const delayMs = timerSeconds * 1000;
+            console.log(`⏳ [${new Date().toLocaleTimeString()}] DELAY CONFIGURADO: ${timerSeconds} segundos = ${delayMs} milissegundos`);
             console.log(`⏳ [${new Date().toLocaleTimeString()}] Iniciando delay de ${timerSeconds}s (${delayMs}ms) antes do próximo grupo...`);
             const delayStart = Date.now();
             
@@ -522,7 +523,7 @@ export default function SendFlow() {
               toast.info(`⏳ Aguardando ${timerSeconds}s para próximo grupo... (${groupIndex + 2}/${selectedGroupArray.length})`);
               await cancelableDelay(delayMs, controller);
               const actualDelay = Date.now() - delayStart;
-              console.log(`✅ [${new Date().toLocaleTimeString()}] Delay completado (${actualDelay}ms)`);
+              console.log(`✅ [${new Date().toLocaleTimeString()}] Delay completado - Tempo real: ${actualDelay}ms (esperado: ${delayMs}ms)`);
             } catch (error) {
               if (controller.signal.aborted) {
                 console.log('❌ Delay cancelado pelo usuário');
@@ -541,6 +542,7 @@ export default function SendFlow() {
         // Aguardar antes do próximo produto (apenas se houver próximo produto)
         if (i < selectedProductArray.length - 1) {
           const delayMs = timerSeconds * 1000;
+          console.log(`⏳ [${new Date().toLocaleTimeString()}] DELAY ENTRE PRODUTOS: ${timerSeconds} segundos = ${delayMs} milissegundos`);
           console.log(`⏳ [${new Date().toLocaleTimeString()}] Iniciando delay de ${timerSeconds}s (${delayMs}ms) antes do próximo produto...`);
           const delayStart = Date.now();
           
@@ -548,7 +550,7 @@ export default function SendFlow() {
             toast.info(`⏳ Aguardando ${timerSeconds}s para próximo produto... (${i + 2}/${selectedProductArray.length})`);
             await cancelableDelay(delayMs, controller);
             const actualDelay = Date.now() - delayStart;
-            console.log(`✅ [${new Date().toLocaleTimeString()}] Delay completado (${actualDelay}ms)`);
+            console.log(`✅ [${new Date().toLocaleTimeString()}] Delay completado - Tempo real: ${actualDelay}ms (esperado: ${delayMs}ms)`);
           } catch (error) {
             if (controller.signal.aborted) {
               console.log('❌ Delay entre produtos cancelado pelo usuário');
@@ -638,7 +640,16 @@ export default function SendFlow() {
                 <Clock className="w-4 h-4 text-orange-600" />
                 <span className="font-medium">Tempo estimado:</span>
                 <span className="text-orange-700 font-bold">
-                  {Math.ceil((selectedProducts.size * selectedGroups.size * timerSeconds) / 60)}min
+                  {(() => {
+                    const totalSeconds = selectedProducts.size * selectedGroups.size * timerSeconds;
+                    if (totalSeconds < 60) {
+                      return `${totalSeconds}s`;
+                    } else {
+                      const minutes = Math.floor(totalSeconds / 60);
+                      const seconds = totalSeconds % 60;
+                      return seconds > 0 ? `${minutes}min ${seconds}s` : `${minutes}min`;
+                    }
+                  })()}
                 </span>
               </div>
             </>
