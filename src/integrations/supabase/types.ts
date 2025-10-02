@@ -1163,6 +1163,7 @@ export type Database = {
         | "system_log"
         | "bulk"
         | "mass"
+        | "item_added"
       whatsapp_template_type:
         | "BROADCAST"
         | "ITEM_ADDED"
@@ -1324,6 +1325,7 @@ export const Constants = {
         "system_log",
         "bulk",
         "mass",
+        "item_added",
       ],
       whatsapp_template_type: [
         "BROADCAST",
