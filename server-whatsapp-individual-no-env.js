@@ -1176,56 +1176,93 @@ app.post('/send-to-group', async (req, res) => {
   
   try {
     if (!clientReady) {
+      console.log('❌ WhatsApp não está pronto');
       return res.status(503).json({ success: false, error: 'WhatsApp não conectado' });
     }
 
     const { groupId, message, imageUrl } = req.body;
     
     if (!groupId || !message) {
+      console.log('❌ Dados inválidos:', { groupId: !!groupId, message: !!message });
       return res.status(400).json({ error: 'groupId e message são obrigatórios' });
     }
 
+    console.log(`🔍 Buscando grupo: ${groupId}`);
     const chats = await client.getChats();
     const group = chats.find(chat => chat.id._serialized === groupId && chat.isGroup);
     
     if (!group) {
+      console.log(`❌ Grupo ${groupId} não encontrado`);
+      console.log(`📋 Grupos disponíveis: ${chats.filter(c => c.isGroup).map(c => c.name).join(', ')}`);
       return res.status(404).json({ success: false, error: 'Grupo não encontrado' });
     }
 
     console.log(`👥 Enviando para: ${group.name} (${group.participants?.length || 0} participantes)`);
+    console.log(`📝 Mensagem: ${message.substring(0, 50)}...`);
+    console.log(`🖼️ Imagem: ${imageUrl ? 'SIM' : 'NÃO'}`);
 
     let result;
+    
     if (imageUrl) {
-      const media = await MessageMedia.fromUrl(imageUrl);
-      result = await client.sendMessage(groupId, media, { caption: message });
+      try {
+        console.log(`📥 Baixando imagem de: ${imageUrl}`);
+        const media = await MessageMedia.fromUrl(imageUrl, { 
+          unsafeMime: true,
+          timeout: 30000 // 30 segundos timeout
+        });
+        console.log(`✅ Imagem baixada (${media.mimetype}), enviando com caption...`);
+        result = await client.sendMessage(groupId, media, { caption: message });
+        console.log(`✅ Imagem + Caption enviados com sucesso`);
+      } catch (imageError) {
+        console.error('❌ Erro ao processar imagem:', imageError.message);
+        console.log('📝 Enviando apenas texto como fallback...');
+        // Fallback: enviar apenas texto se imagem falhar
+        result = await client.sendMessage(groupId, message);
+        console.log(`✅ Texto enviado (sem imagem - fallback)`);
+      }
     } else {
+      console.log(`📝 Enviando apenas texto...`);
       result = await client.sendMessage(groupId, message);
+      console.log(`✅ Texto enviado com sucesso`);
     }
 
-    console.log(`✅ Mensagem enviada para grupo`);
+    console.log(`✅ Mensagem enviada para grupo ${group.name}`);
+    console.log(`📬 ID da mensagem: ${result.id._serialized}`);
 
-    await supa('/whatsapp_messages', {
-      method: 'POST',
-      body: JSON.stringify({
-        tenant_id: TENANT_ID, 
-        phone: groupId,
-        message: message,
-        type: 'outgoing_group',
-        sent_at: new Date().toISOString(),
-        group_name: group.name
-      })
-    });
+    // Salvar no banco
+    try {
+      await supa('/whatsapp_messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: TENANT_ID, 
+          phone: groupId,
+          message: message,
+          type: 'outgoing_group',
+          sent_at: new Date().toISOString(),
+          whatsapp_group_name: group.name
+        })
+      });
+      console.log(`💾 Mensagem salva no banco`);
+    } catch (dbError) {
+      console.error('⚠️ Erro ao salvar no banco (mas mensagem foi enviada):', dbError.message);
+    }
 
     res.json({ 
       success: true, 
       groupId, 
       groupName: group.name,
       messageId: result.id._serialized,
-      participantCount: group.participants?.length || 0
+      participantCount: group.participants?.length || 0,
+      imageSent: !!imageUrl
     });
   } catch (error) {
-    console.error('❌ Erro enviar para grupo:', error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ ERRO CRÍTICO ao enviar para grupo:', error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      details: error.stack?.split('\n')[0] // Primeira linha do stack
+    });
   }
 });
 
