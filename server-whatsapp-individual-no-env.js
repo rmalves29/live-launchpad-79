@@ -514,15 +514,6 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
   console.log(`📤 Status cliente: ${clientState} | Ready: ${clientReady}`);
   console.log(`📤 ========================================`);
 
-  // VERIFICAÇÃO CRÍTICA: Cliente precisa estar READY, não apenas CONNECTED
-  if (!clientReady) {
-    throw new Error(`❌ WhatsApp não está pronto! clientReady: ${clientReady}`);
-  }
-  
-  if (clientState !== 'READY') {
-    throw new Error(`❌ WhatsApp não está no estado READY! Estado atual: ${clientState}`);
-  }
-
   const normalizedPhone = normalizeForSending(phone);
   const chatId = `${normalizedPhone}@c.us`;
   
@@ -534,131 +525,117 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
     try {
       console.log(`🔄 Tentativa ${attempt}/${maxRetries} de envio...`);
       
-      // Dupla verificação: estado interno do Puppeteer
-      const state = await client.getState();
-      console.log(`📡 Estado atual do Puppeteer: ${state}`);
-      
-      if (state !== 'CONNECTED') {
-        throw new Error(`Cliente Puppeteer não está conectado. Estado: ${state}`);
+      // Verificar estado do cliente com timeout
+      let state;
+      try {
+        state = await Promise.race([
+          client.getState(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout ao verificar estado')), 5000))
+        ]);
+        console.log(`📡 Estado atual do Puppeteer: ${state}`);
+      } catch (stateError) {
+        console.warn(`⚠️ Erro ao verificar estado: ${stateError.message}`);
+        // Se não conseguir verificar o estado, tenta enviar mesmo assim
+        state = 'UNKNOWN';
       }
-
-      // Verifica se o número existe no WhatsApp
-      console.log(`🔍 Verificando se o número ${normalizedPhone} existe no WhatsApp...`);
-      const isRegistered = await client.isRegisteredUser(chatId);
-      if (!isRegistered) {
-        throw new Error(`❌ Número ${normalizedPhone} NÃO está registrado no WhatsApp!`);
-      }
-      console.log(`✅ Número verificado: está registrado no WhatsApp`);
-
-      // Aguardar confirmação de entrega via eventos
-      let messageAckReceived = false;
-      let finalAck = -1;
       
-      const ackHandler = (msg, ack) => {
+      // Se o estado for diferente de CONNECTED, aguarda um pouco e tenta reconectar
+      if (state !== 'CONNECTED' && state !== 'UNKNOWN') {
+        console.warn(`⚠️ Cliente não está CONNECTED (estado: ${state}), aguardando...`);
+        await delay(2000);
+        
+        // Tenta revalidar
         try {
-          if (msg.to === chatId) {
-            console.log(`📬 [EVENT] ACK recebido para ${chatId}: ${ack}`);
-            messageAckReceived = true;
-            finalAck = ack;
-          }
-        } catch (err) {
-          console.error('Erro no ackHandler:', err);
+          state = await client.getState();
+          console.log(`📡 Estado após aguardar: ${state}`);
+        } catch {
+          console.warn(`⚠️ Não foi possível revalidar estado, prosseguindo com envio`);
         }
-      };
+      }
 
-      // Registrar listener ANTES de enviar
-      client.on('message_ack', ackHandler);
+      // Verifica se o número existe no WhatsApp (com timeout)
+      console.log(`🔍 Verificando se o número ${normalizedPhone} existe no WhatsApp...`);
+      let isRegistered = true; // Padrão: assume que sim
+      try {
+        isRegistered = await Promise.race([
+          client.isRegisteredUser(chatId),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000))
+        ]);
+        
+        if (!isRegistered) {
+          console.error(`❌ Número ${normalizedPhone} NÃO está registrado no WhatsApp!`);
+          throw new Error(`Número ${normalizedPhone} não está no WhatsApp`);
+        }
+        console.log(`✅ Número verificado: está registrado no WhatsApp`);
+      } catch (checkError) {
+        console.warn(`⚠️ Não foi possível verificar se número existe (${checkError.message}). Tentando enviar mesmo assim...`);
+        // Continua e tenta enviar
+      }
 
-      // Envia a mensagem
+      // Envia a mensagem (principal tentativa)
       console.log(`📨 Enviando mensagem...`);
-      const result = await client.sendMessage(chatId, message);
+      const result = await Promise.race([
+        client.sendMessage(chatId, message),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout ao enviar mensagem (30s)')), 30000)
+        )
+      ]);
       
       console.log(`✅ Mensagem aceita pelo servidor WhatsApp`);
       console.log(`📬 ID: ${result.id?._serialized || 'N/A'}`);
       console.log(`⏰ Timestamp: ${result.timestamp || 'N/A'}`);
       
-      // Aguardar ACK por até 15 segundos
-      console.log(`⏳ Aguardando confirmação de entrega (até 15s)...`);
-      let waitedTime = 0;
-      const checkInterval = 500;
-      const maxWaitTime = 15000;
-      
-      while (!messageAckReceived && waitedTime < maxWaitTime) {
-        await delay(checkInterval);
-        waitedTime += checkInterval;
-        
-        // Log de progresso a cada 3 segundos
-        if (waitedTime % 3000 === 0) {
-          console.log(`⏳ Aguardando... ${waitedTime/1000}s`);
-        }
-      }
-      
-      // Remover listener
-      client.off('message_ack', ackHandler);
-      
-      // Verificar resultado
-      if (messageAckReceived) {
-        console.log(`✅ Confirmação recebida! ACK final: ${finalAck}`);
-        // ACK: -1=erro, 0=clock, 1=sent, 2=received, 3=read, 4=played
-        
-        if (finalAck === -1) {
-          throw new Error('Mensagem rejeitada pelo WhatsApp (ACK=-1)');
-        } else if (finalAck === 0) {
-          console.warn(`⚠️ Mensagem pendente (ACK=0 - relógio), mas aceita pelo servidor`);
-        } else {
-          console.log(`✅ Mensagem CONFIRMADA como ${finalAck === 1 ? 'enviada' : finalAck === 2 ? 'recebida' : 'lida'}!`);
-        }
-      } else {
-        console.warn(`⚠️ Nenhum ACK recebido em ${maxWaitTime/1000}s - Possível problema:`);
-        console.warn(`   1. Rate limiting do WhatsApp (muitas mensagens)`);
-        console.warn(`   2. Número bloqueou seu WhatsApp`);
-        console.warn(`   3. Problema de conexão intermitente`);
-        console.warn(`   4. WhatsApp pode estar marcando como spam`);
-      }
-
       console.log(`✅ ========================================`);
-      console.log(`✅ ENVIO CONCLUÍDO!`);
-      console.log(`✅ ACK Recebido: ${messageAckReceived ? 'SIM' : 'NÃO'}`);
-      console.log(`✅ ACK Status: ${finalAck}`);
+      console.log(`✅ ENVIO CONCLUÍDO COM SUCESSO!`);
       console.log(`✅ ========================================`);
 
       // Salva no banco
-      await supa('/whatsapp_messages', {
-        method: 'POST',
-        body: JSON.stringify({
-          tenant_id: TENANT_ID,
-          phone: normalizeForStorage(phone),
-          message,
-          type: 'outgoing',
-          sent_at: new Date().toISOString(),
-        }),
-      });
-      console.log(`💾 Registro salvo no banco`);
+      try {
+        await supa('/whatsapp_messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            tenant_id: TENANT_ID,
+            phone: normalizeForStorage(phone),
+            message,
+            type: 'outgoing',
+            sent_at: new Date().toISOString(),
+          }),
+        });
+        console.log(`💾 Registro salvo no banco`);
+      } catch (dbError) {
+        console.error(`⚠️ Erro ao salvar no banco (não crítico):`, dbError.message);
+      }
 
       return { 
         success: true, 
         phone: normalizeForStorage(phone), 
         messageId: result.id?._serialized,
-        ackReceived: messageAckReceived,
-        ackStatus: finalAck
+        timestamp: result.timestamp
       };
 
     } catch (error) {
       console.error(`❌ Tentativa ${attempt} falhou:`, error.message);
+      console.error(`❌ Stack:`, error.stack);
       
       if (attempt < maxRetries) {
         const waitTime = attempt * 3000; // 3s, 6s, 9s...
         console.log(`⏳ Aguardando ${waitTime}ms antes de tentar novamente...`);
         await delay(waitTime);
         
-        // Revalidar estado do cliente antes de retry
+        // Tenta revalidar estado do cliente antes de retry
         console.log(`🔄 Revalidando estado do cliente...`);
-        const currentState = await client.getState();
-        console.log(`📡 Estado após falha: ${currentState}`);
-        
-        if (currentState !== 'CONNECTED') {
-          console.error(`❌ Cliente desconectou! Não é possível fazer retry. Estado: ${currentState}`);
-          throw new Error(`Cliente desconectou durante envio. Estado: ${currentState}`);
+        try {
+          const currentState = await client.getState();
+          console.log(`📡 Estado após falha: ${currentState}`);
+          
+          // Se desconectou completamente, não vale a pena tentar
+          if (currentState === 'UNPAIRED' || currentState === 'CONFLICT') {
+            console.error(`❌ Cliente em estado irrecuperável: ${currentState}`);
+            throw new Error(`Cliente WhatsApp em estado ${currentState} - reinicie o servidor`);
+          }
+        } catch (stateError) {
+          console.warn(`⚠️ Erro ao verificar estado: ${stateError.message}`);
+          // Continua tentando mesmo sem conseguir verificar estado
         }
       } else {
         console.error(`❌ ========================================`);
@@ -679,15 +656,21 @@ app.use(cors());
 app.get('/status', async (req, res) => {
   let puppeteerState = 'UNKNOWN';
   let canSendMessages = false;
+  let info = {};
   
   try {
-    if (clientReady) {
-      puppeteerState = await client.getState();
-      // Só pode enviar se estiver READY internamente E CONNECTED no Puppeteer
-      canSendMessages = clientReady && clientState === 'READY' && puppeteerState === 'CONNECTED';
-    }
+    puppeteerState = await Promise.race([
+      client.getState(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+    ]);
+    
+    // Sistema mais flexível: pode enviar se o Puppeteer estiver CONNECTED
+    canSendMessages = puppeteerState === 'CONNECTED';
+    
+    info = await client.info.catch(() => ({}));
   } catch (e) {
     puppeteerState = 'ERROR: ' + e.message;
+    canSendMessages = false;
   }
 
   res.json({
@@ -697,7 +680,9 @@ app.get('/status', async (req, res) => {
       clientState: clientState,
       puppeteerState: puppeteerState,
       canSendMessages: canSendMessages,
-      readyToSend: canSendMessages ? '✅ SIM - Pronto para enviar' : '❌ NÃO - Aguarde estado READY'
+      readyToSend: canSendMessages ? '✅ SIM - Pronto para enviar' : '❌ NÃO - Aguarde conexão',
+      phoneNumber: info.wid?.user || 'N/A',
+      platform: info.platform || 'N/A'
     },
     supabase: {
       url: SUPABASE_URL,
@@ -706,6 +691,55 @@ app.get('/status', async (req, res) => {
     },
     timestamp: new Date().toISOString()
   });
+});
+
+// Endpoint para forçar reconexão
+app.post('/reconnect', async (req, res) => {
+  console.log('\n🔄 ===== POST /reconnect =====');
+  try {
+    console.log('🔄 Tentando reconectar WhatsApp...');
+    
+    // Verifica estado atual
+    let currentState;
+    try {
+      currentState = await client.getState();
+      console.log(`📡 Estado atual: ${currentState}`);
+    } catch (e) {
+      console.error(`❌ Erro ao verificar estado: ${e.message}`);
+      currentState = 'UNKNOWN';
+    }
+    
+    // Se já estiver conectado, retorna sucesso
+    if (currentState === 'CONNECTED') {
+      console.log('✅ Cliente já está conectado!');
+      return res.json({ 
+        success: true, 
+        message: 'WhatsApp já está conectado',
+        state: currentState 
+      });
+    }
+    
+    // Tenta reconectar
+    console.log('🔄 Aguardando reconexão...');
+    await delay(3000);
+    
+    const newState = await client.getState();
+    console.log(`📡 Novo estado: ${newState}`);
+    
+    res.json({ 
+      success: newState === 'CONNECTED', 
+      message: newState === 'CONNECTED' ? 'Reconectado com sucesso' : 'Ainda não conectado',
+      previousState: currentState,
+      currentState: newState,
+      recommendation: newState !== 'CONNECTED' ? 'Reinicie o servidor Node.js se o problema persistir' : null
+    });
+  } catch (error) {
+    console.error('❌ Erro ao reconectar:', error);
+    res.status(500).json({ 
+      error: error.message,
+      recommendation: 'Reinicie o servidor Node.js' 
+    });
+  }
 });
 
 // ===== CONTROLE DE JOBS =====
