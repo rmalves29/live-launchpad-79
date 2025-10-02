@@ -695,6 +695,7 @@ app.get('/status', async (req, res) => {
   res.json({
     tenant: { id: TENANT_ID, slug: TENANT_SLUG },
     whatsapp: { 
+      ready: clientReady && canSendMessages, // Campo que o frontend espera
       clientReady: clientReady,
       clientState: clientState,
       puppeteerState: puppeteerState,
