@@ -37,66 +37,28 @@ Deno.serve(async (req) => {
 
     console.log('📋 Pedido encontrado:', order.unique_order_id)
 
-    // Buscar template PAID_ORDER
-    const { data: template } = await supabase
-      .from('whatsapp_templates')
-      .select('content')
-      .eq('tenant_id', tenant_id)
-      .eq('type', 'PAID_ORDER')
-      .maybeSingle()
-
-    // Montar mensagem
-    let message = template?.content || 
-      `🎉 *Pagamento Confirmado - Pedido #${order.id}*\n\n` +
-      `✅ Recebemos seu pagamento!\n` +
-      `💰 Valor: *R$ ${order.total_amount.toFixed(2).replace('.', ',')}*\n\n` +
-      `Seu pedido está sendo preparado para envio.\n\n` +
-      `Obrigado pela preferência! 💚`
-
-    // Substituir variáveis
-    message = message
-      .replace(/\{\{order_id\}\}/g, order.id.toString())
-      .replace(/\{\{total\}\}/g, order.total_amount.toFixed(2).replace('.', ','))
-      .replace(/\{\{customer_name\}\}/g, order.customer_name || 'Cliente')
-
-    console.log('💬 Mensagem montada:', message.substring(0, 100) + '...')
-
     // Buscar integração WhatsApp ativa
-    const { data: integration, error: integrationError } = await supabase
+    const { data: integration } = await supabase
       .from('integration_whatsapp')
       .select('api_url')
       .eq('tenant_id', tenant_id)
       .eq('is_active', true)
       .maybeSingle()
 
-    if (integrationError) {
-      console.error('❌ Erro ao buscar integração:', integrationError)
-      throw integrationError
-    }
+    // Usar servidor local se não houver integração configurada
+    const nodeServerUrl = integration?.api_url || 'http://localhost:3333'
+    console.log('🌐 Servidor WhatsApp:', nodeServerUrl)
 
-    if (!integration?.api_url) {
-      console.log('⚠️ WhatsApp não configurado para este tenant')
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: 'WhatsApp não configurado' 
-        }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
-    }
-
-    console.log('🌐 Enviando para:', integration.api_url)
-
-    // Enviar mensagem via servidor WhatsApp
-    const whatsappResponse = await fetch(`${integration.api_url}/send`, {
+    // Enviar via servidor Node.js - ele vai buscar template e processar tudo
+    console.log('📤 Enviando para:', order.customer_phone)
+    console.log('📋 Order ID:', order_id)
+    
+    const whatsappResponse = await fetch(`${nodeServerUrl}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         number: order.customer_phone,
-        message: message
+        order_id: order_id
       })
     })
 
@@ -107,19 +69,7 @@ Deno.serve(async (req) => {
       throw new Error(`Erro ao enviar WhatsApp: ${whatsappResult.error || 'Erro desconhecido'}`)
     }
 
-    // Salvar no log de mensagens
-    await supabase
-      .from('whatsapp_messages')
-      .insert({
-        tenant_id: tenant_id,
-        phone: order.customer_phone,
-        message: message,
-        type: 'outgoing',
-        order_id: order.id,
-        sent_at: new Date().toISOString()
-      })
-
-    console.log('✅ Mensagem enviada e registrada com sucesso')
+    console.log('✅ Mensagem enviada com sucesso via Node.js')
 
     return new Response(
       JSON.stringify({ 
