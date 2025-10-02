@@ -6,13 +6,20 @@ const corsHeaders = {
 }
 
 Deno.serve(async (req) => {
+  console.log('🚀 Edge function whatsapp-send-product-canceled iniciada')
+  console.log('Method:', req.method)
+  console.log('Headers:', Object.fromEntries(req.headers.entries()))
+  
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { cart_item_id, product_id, tenant_id, customer_phone } = await req.json()
+    const body = await req.json()
+    console.log('📦 Body recebido:', JSON.stringify(body))
+    
+    const { cart_item_id, product_id, tenant_id, customer_phone } = body
     console.log('🗑️ Processando produto cancelado:', { cart_item_id, product_id, tenant_id, customer_phone })
 
     if (!product_id || !tenant_id || !customer_phone) {
