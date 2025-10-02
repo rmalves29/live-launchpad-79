@@ -7,7 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Loader2, CalendarIcon, Trophy, Sparkles } from 'lucide-react';
+import { Loader2, CalendarIcon, Trophy, Sparkles, Gift } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -254,18 +254,14 @@ const Sorteio = () => {
             <div className="text-center space-y-6">
                 <div className="bg-white/50 rounded-lg p-6 space-y-4">
                   <div className="flex flex-col items-center space-y-4">
-                    <Avatar className="w-32 h-32 border-4 border-primary/20 shadow-lg">
-                      <AvatarImage 
-                        src={winner.profile_image || getProfileImage(winner.customer_phone)} 
-                        alt={`Foto de perfil do WhatsApp de ${winner.customer_name || winner.customer_phone}`} 
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).src = getProfileImage(winner.customer_phone);
-                        }}
-                      />
-                      <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                        {winner.customer_name?.charAt(0) || winner.customer_phone.slice(-2)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="relative">
+                      <div className="w-32 h-32 bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 rounded-2xl shadow-2xl flex items-center justify-center transform hover:scale-105 transition-all duration-300 rotate-3 hover:rotate-6 animate-pulse">
+                        <Gift className="w-20 h-20 text-white" strokeWidth={2.5} />
+                      </div>
+                      <div className="absolute -top-2 -right-2 w-12 h-12 bg-red-500 rounded-full shadow-lg flex items-center justify-center text-2xl font-bold text-white border-4 border-white">
+                        {eligibleCount}
+                      </div>
+                    </div>
                     <div className="text-center">
                       <div className="text-xl font-bold">{winner.customer_name}</div>
                       <div className="text-sm text-muted-foreground">Pedido #{winner.order_id}</div>
