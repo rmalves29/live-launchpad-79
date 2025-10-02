@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.whatsapp-send-paid-order]
 verify_jwt = false
+
+[functions.whatsapp-send-product-canceled]
+verify_jwt = false
