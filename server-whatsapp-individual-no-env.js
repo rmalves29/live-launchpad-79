@@ -865,6 +865,101 @@ app.get('/sending-job/pending', async (req, res) => {
 });
 
 // ===== ENVIO DE MENSAGENS =====
+
+// Endpoint para broadcast (mensagens em massa)
+app.post('/api/broadcast/by-phones', async (req, res) => {
+  const { phones, message, key, interval = 2000, batchSize = 5, batchDelay = 3000 } = req.body;
+
+  console.log('📢 [BROADCAST] Requisição recebida:', {
+    phonesCount: phones?.length,
+    messageLength: message?.length,
+    interval,
+    batchSize,
+    batchDelay
+  });
+
+  if (!phones || !Array.isArray(phones) || phones.length === 0) {
+    return res.status(400).json({ 
+      error: 'Lista de telefones inválida',
+      ok: false 
+    });
+  }
+
+  if (!message || message.trim() === '') {
+    return res.status(400).json({ 
+      error: 'Mensagem não pode estar vazia',
+      ok: false 
+    });
+  }
+
+  let successCount = 0;
+  let errorCount = 0;
+  const errors = [];
+
+  try {
+    // Processar em lotes
+    for (let i = 0; i < phones.length; i += batchSize) {
+      const batch = phones.slice(i, i + batchSize);
+      
+      console.log(`📦 [BROADCAST] Processando lote ${Math.floor(i/batchSize) + 1}/${Math.ceil(phones.length/batchSize)}`);
+      
+      // Processar lote em paralelo
+      const batchPromises = batch.map(async (phone, index) => {
+        try {
+          // Aguardar intervalo entre mensagens do mesmo lote
+          await new Promise(resolve => setTimeout(resolve, index * interval));
+          
+          const result = await sendWhatsAppMessageWithRetry(phone, message);
+          
+          if (result.success) {
+            successCount++;
+            console.log(`✅ [BROADCAST] ${phone}: Sucesso`);
+          } else {
+            errorCount++;
+            errors.push({ phone, error: result.error });
+            console.error(`❌ [BROADCAST] ${phone}: ${result.error}`);
+          }
+          
+          return result;
+        } catch (error) {
+          errorCount++;
+          errors.push({ phone, error: error.message });
+          console.error(`❌ [BROADCAST] ${phone}: Exceção - ${error.message}`);
+          return { success: false, error: error.message };
+        }
+      });
+      
+      await Promise.all(batchPromises);
+      
+      // Aguardar antes do próximo lote (exceto no último)
+      if (i + batchSize < phones.length) {
+        console.log(`⏸️ [BROADCAST] Aguardando ${batchDelay}ms antes do próximo lote...`);
+        await new Promise(resolve => setTimeout(resolve, batchDelay));
+      }
+    }
+
+    const summary = {
+      success: true,
+      total: phones.length,
+      sent: successCount,
+      failed: errorCount,
+      errors: errors.length > 0 ? errors : undefined
+    };
+
+    console.log('✅ [BROADCAST] Concluído:', summary);
+    res.json(summary);
+
+  } catch (error) {
+    console.error('❌ [BROADCAST] Erro geral:', error);
+    res.status(500).json({ 
+      error: error.message,
+      ok: false,
+      sent: successCount,
+      failed: errorCount
+    });
+  }
+});
+
 app.post('/send', async (req, res) => {
   console.log('\n📥 ===== POST /send =====');
   console.log('Body:', JSON.stringify(req.body, null, 2));
