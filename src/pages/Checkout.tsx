@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent } from 'lucide-react';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent, Gift } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
@@ -77,6 +78,11 @@ const Checkout = () => {
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [loadingCoupon, setLoadingCoupon] = useState(false);
   const [couponDiscount, setCouponDiscount] = useState(0);
+  
+  // Estados para brindes
+  const [activeGifts, setActiveGifts] = useState<any[]>([]);
+  const [eligibleGift, setEligibleGift] = useState<any>(null);
+  const [progressGift, setProgressGift] = useState<any>(null);
 
   // Detectar retorno da página de pagamento e limpar dados duplicados  
   useEffect(() => {
@@ -107,6 +113,64 @@ const Checkout = () => {
       window.history.replaceState({}, '', newUrl);
     }
   }, []);
+
+  const loadActiveGifts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("gifts")
+        .select("*")
+        .eq("is_active", true)
+        .order("minimum_purchase_amount", { ascending: true });
+
+      if (error) throw error;
+      setActiveGifts(data || []);
+    } catch (error) {
+      console.error("Erro ao carregar brindes:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadActiveGifts();
+  }, []);
+
+  useEffect(() => {
+    if (activeGifts.length === 0 || !selectedOrder) return;
+
+    const order = selectedOrder || openOrders[0];
+    if (!order) return;
+
+    const productsTotal = order.items.reduce((sum: number, item: any) => {
+      return sum + (parseFloat(item.unit_price) * item.qty);
+    }, 0);
+
+    // Encontrar o brinde elegível (maior valor mínimo que o cliente atingiu)
+    const eligible = activeGifts
+      .filter(gift => productsTotal >= gift.minimum_purchase_amount)
+      .sort((a, b) => b.minimum_purchase_amount - a.minimum_purchase_amount)[0];
+
+    if (eligible) {
+      setEligibleGift(eligible);
+      setProgressGift(null);
+    } else {
+      // Encontrar o próximo brinde (menor valor mínimo maior que o total)
+      const nextGift = activeGifts
+        .filter(gift => productsTotal < gift.minimum_purchase_amount)
+        .sort((a, b) => a.minimum_purchase_amount - b.minimum_purchase_amount)[0];
+
+      if (nextGift) {
+        const percentageAchieved = (productsTotal / nextGift.minimum_purchase_amount) * 100;
+        const percentageMissing = 100 - percentageAchieved;
+        setProgressGift({
+          ...nextGift,
+          percentageAchieved: Math.min(percentageAchieved, 100),
+          percentageMissing: Math.max(percentageMissing, 0)
+        });
+      } else {
+        setProgressGift(null);
+      }
+      setEligibleGift(null);
+    }
+  }, [selectedOrder, openOrders, activeGifts]);
 
   const loadOpenOrders = async () => {
     if (!phone) {
@@ -1217,6 +1281,71 @@ const Checkout = () => {
                           </div>
                         ))}
                       </div>
+
+                      {/* Brinde Elegível */}
+                      {eligibleGift && (
+                        <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-2 border-green-500 rounded-lg animate-fade-in">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
+                              <Gift className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-semibold text-green-700 dark:text-green-400">
+                                  🎉 Parabéns! Você ganhou um brinde
+                                </h4>
+                                <Badge variant="secondary" className="bg-green-600 text-white">
+                                  GRÁTIS
+                                </Badge>
+                              </div>
+                              <p className="text-sm font-medium text-green-900 dark:text-green-300 mt-1">
+                                {eligibleGift.name}
+                              </p>
+                              {eligibleGift.description && (
+                                <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
+                                  {eligibleGift.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Progresso para Próximo Brinde */}
+                      {progressGift && (
+                        <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border border-purple-200 dark:border-purple-800 rounded-lg animate-fade-in">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center flex-shrink-0">
+                              <Gift className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-purple-900 dark:text-purple-300">
+                                Falta {progressGift.percentageMissing.toFixed(0)}% para você ganhar{" "}
+                                <span className="font-bold">{progressGift.name}</span>
+                              </p>
+                              {progressGift.description && (
+                                <p className="text-xs text-purple-700 dark:text-purple-400 mt-0.5">
+                                  {progressGift.description}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="relative">
+                            <Progress 
+                              value={progressGift.percentageAchieved} 
+                              className="h-3 bg-purple-100 dark:bg-purple-900/50"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="text-xs font-bold text-white drop-shadow-md">
+                                {progressGift.percentageAchieved.toFixed(0)}%
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-center text-purple-600 dark:text-purple-400 mt-2">
+                            Compre mais R$ {(progressGift.minimum_purchase_amount - order.items.reduce((sum: number, item: any) => sum + (parseFloat(item.unit_price) * item.qty), 0)).toFixed(2)}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="text-xl font-bold text-primary">R$ {Number(order.total_amount).toFixed(2)}</div>
