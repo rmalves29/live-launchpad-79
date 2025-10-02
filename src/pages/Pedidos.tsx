@@ -595,66 +595,61 @@ const Pedidos = () => {
               <span><strong>CPF:</strong> ${customerCPF}</span>
               <span><strong>Celular:</strong> ${formatPhoneForDisplay(order.customer_phone)}</span>
             </div>
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;">
+              <div style="font-size: 10px; line-height: 1.5;">
+                <strong style="display: block; margin-bottom: 3px;">Endereço de entrega:</strong>
+                ${customerAddress}
+              </div>
+            </div>
           </div>
 
-          <!-- Two Column Layout -->
-          <div style="display: flex; gap: 20px; margin-bottom: 20px;">
-            <!-- Left Column - Order Summary -->
-            <div style="flex: 2;">
-              <h3 style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 3px;">
-                Resumo do pedido (${order.cart_items?.length || 0})
-              </h3>
-              
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 10px;">
-                <thead>
-                  <tr style="background-color: #f8f9fa;">
-                    <th style="border: 1px solid #ddd; padding: 5px; text-align: left; font-size: 10px;">Produto</th>
-                    <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 60px; font-size: 10px;">Unitário</th>
-                    <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 40px; font-size: 10px;">Qtd</th>
-                    <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 60px; font-size: 10px;">Valor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${cartItemsRows}
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Right Column - Shipping Info -->
-            <div style="flex: 1;">
-              <h3 style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold;">Informações do envio</h3>
-              
-              <div style="background-color: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
-                <div style="font-size: 10px; line-height: 1.4;">
-                  <div style="margin-bottom: 6px;">${customerAddress}</div>
-                </div>
-              </div>
-
-              <div style="margin-bottom: 14px;">
-                <h4 style="margin: 0 0 6px 0; font-size: 11px; font-weight: bold;">Dados do envio</h4>
-                <div style="font-size: 10px; line-height: 1.4;">
-                  <div><strong>PAC</strong></div>
-                  <div>R$ 23,00 - até 9 dias úteis</div>
-                </div>
-              </div>
-            </div>
+          <!-- Order Summary -->
+          <div style="margin-bottom: 20px;">
+            <h3 style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 3px;">
+              Resumo do pedido (${order.cart_items?.length || 0})
+            </h3>
+            
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 10px;">
+              <thead>
+                <tr style="background-color: #f8f9fa;">
+                  <th style="border: 1px solid #ddd; padding: 5px; text-align: left; font-size: 10px;">Produto</th>
+                  <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 60px; font-size: 10px;">Unitário</th>
+                  <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 40px; font-size: 10px;">Qtd</th>
+                  <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 60px; font-size: 10px;">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${cartItemsRows}
+              </tbody>
+            </table>
           </div>
 
           <!-- Payment Information -->
           <div style="border-top: 1px solid #ddd; padding-top: 14px;">
-            <h3 style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold;">Forma de pagamento (1)</h3>
-            
-            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 6px;">
-              <div style="font-size: 10px; line-height: 1.4;">
-                <div style="margin-bottom: 6px;"><strong>Pix - mercado pago</strong></div>
-                <div style="margin-bottom: 3px;">R$ ${order.total_amount.toFixed(2)} - Data do pagamento: ${format(new Date(order.created_at), 'dd/MM/yy')}</div>
-                ${order.observation ? `
-                  <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #ddd;">
-                    <div style="font-weight: bold; margin-bottom: 3px;">Observações do pagamento</div>
-                    <div>${order.observation}</div>
+            <div style="display: flex; gap: 16px;">
+              <!-- Payment Method -->
+              <div style="flex: 1;">
+                <h3 style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold;">Forma de pagamento</h3>
+                <div style="background-color: #f8f9fa; padding: 10px; border-radius: 6px; height: 100%;">
+                  <div style="font-size: 10px; line-height: 1.5;">
+                    <div style="margin-bottom: 4px;"><strong>Pix - mercado pago</strong></div>
+                    <div>R$ ${order.total_amount.toFixed(2)}</div>
+                    <div style="color: #666; margin-top: 4px;">Data: ${format(new Date(order.created_at), 'dd/MM/yy')}</div>
                   </div>
-                ` : ''}
+                </div>
               </div>
+
+              <!-- Payment Observations -->
+              ${order.observation ? `
+                <div style="flex: 1;">
+                  <h3 style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold;">Observações do pagamento</h3>
+                  <div style="background-color: #f8f9fa; padding: 10px; border-radius: 6px; height: 100%;">
+                    <div style="font-size: 10px; line-height: 1.5;">
+                      ${order.observation}
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
             </div>
           </div>
 
