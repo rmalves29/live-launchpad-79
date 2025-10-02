@@ -60,6 +60,20 @@ interface WhatsAppGroupStats {
   unpaid_revenue: number;
 }
 
+interface CustomerStats {
+  customer_phone: string;
+  customer_name: string;
+  total_orders: number;
+  paid_orders: number;
+  unpaid_orders: number;
+  total_products: number;
+  total_revenue: number;
+  paid_revenue: number;
+  unpaid_revenue: number;
+  first_order_date: string;
+  last_order_date: string;
+}
+
 const Relatorios = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
@@ -72,6 +86,7 @@ const Relatorios = () => {
   } | null>(null);
   const [topProducts, setTopProducts] = useState<ProductSales[]>([]);
   const [whatsappGroupStats, setWhatsappGroupStats] = useState<WhatsAppGroupStats[]>([]);
+  const [topCustomers, setTopCustomers] = useState<CustomerStats[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'month' | 'year' | 'custom'>('today');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -83,6 +98,11 @@ const Relatorios = () => {
   const [whatsappFilter, setWhatsappFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
   const [whatsappStartDate, setWhatsappStartDate] = useState('');
   const [whatsappEndDate, setWhatsappEndDate] = useState('');
+
+  // Filtros específicos para Clientes
+  const [customersFilter, setCustomersFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
+  const [customersStartDate, setCustomersStartDate] = useState('');
+  const [customersEndDate, setCustomersEndDate] = useState('');
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -491,6 +511,140 @@ const Relatorios = () => {
     }
   };
 
+  const loadTopCustomers = async () => {
+    try {
+      let dateFilter = '';
+      let endDateFilter = '';
+      
+      switch (customersFilter) {
+        case 'today':
+          dateFilter = new Date().toISOString().split('T')[0];
+          break;
+        case 'month':
+          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+          dateFilter = startOfMonth.toISOString().split('T')[0];
+          break;
+        case 'year':
+          const startOfYear = new Date(new Date().getFullYear(), 0, 1);
+          dateFilter = startOfYear.toISOString().split('T')[0];
+          break;
+        case 'custom':
+          if (!customersStartDate || !customersEndDate) return;
+          dateFilter = customersStartDate;
+          endDateFilter = customersEndDate;
+          break;
+        case 'all':
+          // No date filter
+          break;
+      }
+
+      // Buscar pedidos com filtro de data
+      let query = supabaseTenant
+        .from('orders')
+        .select(`
+          id, 
+          customer_phone,
+          customer_name,
+          total_amount, 
+          is_paid, 
+          cart_id,
+          created_at
+        `);
+
+      if (customersFilter === 'custom' && dateFilter && endDateFilter) {
+        query = query
+          .gte('created_at', `${dateFilter}T00:00:00`)
+          .lte('created_at', `${endDateFilter}T23:59:59`);
+      } else if (dateFilter) {
+        query = query.gte('created_at', `${dateFilter}T00:00:00`);
+      }
+
+      const { data: orders, error } = await query;
+
+      if (error) throw error;
+
+      console.log('📦 Orders encontrados para clientes:', orders?.length);
+
+      // Criar mapa para agrupar estatísticas por cliente
+      const customerMap = new Map<string, CustomerStats>();
+
+      // Coletar cart items para contar produtos
+      const cartIds = orders?.map(o => o.cart_id).filter(Boolean) as number[];
+      let cartItemsMap = new Map<number, any[]>();
+      if (cartIds.length > 0) {
+        const { data: cartItems } = await supabaseTenant
+          .from('cart_items')
+          .select('cart_id, qty')
+          .in('cart_id', cartIds);
+        cartItems?.forEach(item => {
+          if (!cartItemsMap.has(item.cart_id)) cartItemsMap.set(item.cart_id, []);
+          cartItemsMap.get(item.cart_id)!.push(item);
+        });
+      }
+
+      // Processar cada pedido e agrupar por cliente
+      orders?.forEach(order => {
+        const phone = order.customer_phone || 'Sem telefone';
+        const amount = Number(order.total_amount);
+        const items = cartItemsMap.get(order.cart_id) || [];
+        const productsCount = items.reduce((sum, it) => sum + it.qty, 0);
+
+        // Inicializar cliente se não existir
+        if (!customerMap.has(phone)) {
+          customerMap.set(phone, {
+            customer_phone: phone,
+            customer_name: order.customer_name || phone,
+            total_orders: 0,
+            paid_orders: 0,
+            unpaid_orders: 0,
+            total_products: 0,
+            total_revenue: 0,
+            paid_revenue: 0,
+            unpaid_revenue: 0,
+            first_order_date: order.created_at,
+            last_order_date: order.created_at
+          });
+        }
+
+        const customer = customerMap.get(phone)!;
+        customer.total_orders += 1;
+        customer.total_revenue += amount;
+        customer.total_products += productsCount;
+        
+        // Atualizar datas
+        if (order.created_at < customer.first_order_date) {
+          customer.first_order_date = order.created_at;
+        }
+        if (order.created_at > customer.last_order_date) {
+          customer.last_order_date = order.created_at;
+        }
+        
+        if (order.is_paid) {
+          customer.paid_orders += 1;
+          customer.paid_revenue += amount;
+        } else {
+          customer.unpaid_orders += 1;
+          customer.unpaid_revenue += amount;
+        }
+      });
+
+      // Converter para array e ordenar por total de pedidos (clientes com mais compras)
+      const customersArray = Array.from(customerMap.values())
+        .sort((a, b) => b.total_orders - a.total_orders)
+        .slice(0, 50); // Top 50 clientes
+      
+      console.log('📊 Top clientes:', customersArray);
+      setTopCustomers(customersArray);
+    } catch (error) {
+      console.error('Error loading top customers:', error);
+      toast({ 
+        title: 'Erro', 
+        description: 'Erro ao carregar clientes com mais compras', 
+        variant: 'destructive' 
+      });
+    }
+  };
+
   const loadAllReports = async () => {
     setLoading(true);
     try {
@@ -498,7 +652,8 @@ const Relatorios = () => {
         loadTodaySales(),
         loadPeriodStats(),
         loadTopProducts(),
-        loadWhatsAppGroupStats()
+        loadWhatsAppGroupStats(),
+        loadTopCustomers()
       ]);
     } finally {
       setLoading(false);
@@ -523,6 +678,10 @@ const Relatorios = () => {
     loadWhatsAppGroupStats();
   }, [whatsappFilter, whatsappStartDate, whatsappEndDate]);
 
+  useEffect(() => {
+    loadTopCustomers();
+  }, [customersFilter, customersStartDate, customersEndDate]);
+
   return (
     <div className="container mx-auto py-6 max-w-7xl space-y-6">
       <div className="flex justify-between items-center">
@@ -542,6 +701,7 @@ const Relatorios = () => {
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="products">Produtos Mais Vendidos</TabsTrigger>
+          <TabsTrigger value="customers">Clientes com Mais Compras</TabsTrigger>
           <TabsTrigger value="whatsapp">Grupos WhatsApp</TabsTrigger>
         </TabsList>
 
@@ -815,6 +975,144 @@ const Relatorios = () => {
                           </TableCell>
                         </TableRow>
                       ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="customers" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center">
+                  <Users className="h-5 w-5 mr-2" />
+                  Clientes com Mais Compras
+                </span>
+                <div className="flex items-center space-x-4">
+                  <Select value={customersFilter} onValueChange={(value: any) => setCustomersFilter(value)}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Geral</SelectItem>
+                      <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="month">Este Mês</SelectItem>
+                      <SelectItem value="year">Este Ano</SelectItem>
+                      <SelectItem value="custom">Personalizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {customersFilter === 'custom' && (
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        type="date"
+                        value={customersStartDate}
+                        onChange={(e) => setCustomersStartDate(e.target.value)}
+                        className="w-36"
+                      />
+                      <span>até</span>
+                      <Input
+                        type="date"
+                        value={customersEndDate}
+                        onChange={(e) => setCustomersEndDate(e.target.value)}
+                        className="w-36"
+                      />
+                    </div>
+                  )}
+                </div>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                  <span>Carregando...</span>
+                </div>
+              ) : topCustomers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhum cliente encontrado no período selecionado
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Posição</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead className="text-center">Total Pedidos</TableHead>
+                        <TableHead className="text-center">Pedidos Pagos</TableHead>
+                        <TableHead className="text-center">Total Produtos</TableHead>
+                        <TableHead className="text-right">Receita Total</TableHead>
+                        <TableHead className="text-right">Receita Paga</TableHead>
+                        <TableHead className="text-right">Receita Pendente</TableHead>
+                        <TableHead className="text-center">Taxa Pagamento</TableHead>
+                        <TableHead>Primeira Compra</TableHead>
+                        <TableHead>Última Compra</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {topCustomers.map((customer, index) => {
+                        const conversionRate = customer.total_orders > 0 
+                          ? (customer.paid_orders / customer.total_orders) * 100 
+                          : 0;
+                        
+                        return (
+                          <TableRow key={customer.customer_phone}>
+                            <TableCell>
+                              <Badge variant={index < 3 ? "default" : "secondary"}>
+                                {index + 1}º
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {customer.customer_name}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {customer.customer_phone}
+                            </TableCell>
+                            <TableCell className="text-center font-semibold">
+                              {customer.total_orders}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                {customer.paid_orders}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-center font-semibold text-orange-600">
+                              {customer.total_products}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold">
+                              {formatCurrency(customer.total_revenue)}
+                            </TableCell>
+                            <TableCell className="text-right text-green-600 font-semibold">
+                              {formatCurrency(customer.paid_revenue)}
+                            </TableCell>
+                            <TableCell className="text-right text-yellow-600 font-semibold">
+                              {formatCurrency(customer.unpaid_revenue)}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge 
+                                variant={conversionRate >= 90 ? "default" : conversionRate >= 50 ? "secondary" : "outline"}
+                                className={
+                                  conversionRate >= 90 ? "bg-green-100 text-green-800" :
+                                  conversionRate >= 50 ? "bg-yellow-100 text-yellow-800" :
+                                  "bg-red-100 text-red-800"
+                                }
+                              >
+                                {conversionRate.toFixed(1)}%
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDate(customer.first_order_date)}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {formatDate(customer.last_order_date)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>
