@@ -565,6 +565,19 @@ const Relatorios = () => {
 
       console.log('📦 Orders encontrados para clientes:', orders?.length);
 
+      // Buscar dados dos clientes cadastrados
+      const phones = [...new Set(orders?.map(o => o.customer_phone).filter(Boolean))] as string[];
+      const { data: customers } = await supabaseTenant
+        .from('customers')
+        .select('phone, name')
+        .in('phone', phones);
+      
+      // Criar mapa de telefone -> nome cadastrado
+      const customerNamesMap = new Map<string, string>();
+      customers?.forEach(customer => {
+        customerNamesMap.set(customer.phone, customer.name);
+      });
+
       // Criar mapa para agrupar estatísticas por cliente
       const customerMap = new Map<string, CustomerStats>();
 
@@ -589,11 +602,19 @@ const Relatorios = () => {
         const items = cartItemsMap.get(order.cart_id) || [];
         const productsCount = items.reduce((sum, it) => sum + it.qty, 0);
 
+        // Buscar nome do cadastro se existir, caso contrário usar telefone
+        let displayName = phone;
+        const registeredName = customerNamesMap.get(phone);
+        if (registeredName) {
+          // Pegar apenas o primeiro nome
+          displayName = registeredName.split(' ')[0];
+        }
+
         // Inicializar cliente se não existir
         if (!customerMap.has(phone)) {
           customerMap.set(phone, {
             customer_phone: phone,
-            customer_name: order.customer_name || phone,
+            customer_name: displayName,
             total_orders: 0,
             paid_orders: 0,
             unpaid_orders: 0,
