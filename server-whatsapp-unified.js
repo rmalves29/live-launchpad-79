@@ -779,11 +779,29 @@ app.post('/send-to-group', async (req, res) => {
     // Enviar mensagem
     let result;
     if (imageUrl) {
-      console.log(`🖼️ Enviando imagem: ${imageUrl}`);
-      const media = await MessageMedia.fromUrl(imageUrl);
-      result = await client.sendMessage(groupId, media, { caption: message });
+      console.log(`🖼️ Processando imagem: ${imageUrl}`);
+      try {
+        // Tentar baixar a imagem com timeout e unsafeMime
+        console.log('📥 Baixando imagem...');
+        const media = await MessageMedia.fromUrl(imageUrl, { 
+          unsafeMime: true,
+          timeout: 45000 // 45 segundos
+        });
+        
+        console.log(`✅ Imagem baixada (${media.mimetype}), enviando com caption...`);
+        result = await client.sendMessage(groupId, media, { caption: message });
+        console.log('✅ Imagem + Caption enviados com sucesso');
+      } catch (imageError) {
+        console.error('❌ Erro ao processar imagem:', imageError.message);
+        console.log('📝 Enviando apenas texto como fallback...');
+        // Fallback: enviar apenas texto se imagem falhar
+        result = await client.sendMessage(groupId, message);
+        console.log(`✅ Texto enviado (sem imagem - fallback)`);
+      }
     } else {
+      console.log('📝 Enviando apenas texto...');
       result = await client.sendMessage(groupId, message);
+      console.log('✅ Texto enviado com sucesso');
     }
 
     console.log(`✅ Mensagem enviada com sucesso para ${group.name}`);
