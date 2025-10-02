@@ -63,62 +63,6 @@ try {
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 function fmtMoney(v) { return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`; }
 
-/**
- * Gera URL assinada para imagens do Supabase Storage
- * @param {string} imageUrl - URL da imagem (pode ser pública ou não)
- * @returns {Promise<string>} - URL assinada ou URL original se não for do Supabase
- */
-async function getSignedImageUrl(imageUrl) {
-  if (!imageUrl) return imageUrl;
-  
-  try {
-    // Detectar se é uma URL do Supabase Storage
-    const supabaseStoragePattern = /\/storage\/v1\/object\/(public|sign|authenticated)\/([^/]+)\/(.+)$/;
-    const match = imageUrl.match(supabaseStoragePattern);
-    
-    if (!match) {
-      console.log('🔗 URL não é do Supabase Storage, usando URL original');
-      return imageUrl;
-    }
-    
-    const bucketName = match[2];
-    const filePath = match[3];
-    
-    console.log(`🔐 Gerando URL assinada para: ${bucketName}/${filePath}`);
-    
-    // Gerar URL assinada válida por 1 hora (3600 segundos)
-    const signedUrlResponse = await fetch(
-      `${SUPABASE_URL}/storage/v1/object/sign/${bucketName}/${filePath}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE}`,
-          'apikey': SUPABASE_SERVICE_ROLE
-        },
-        body: JSON.stringify({
-          expiresIn: 3600 // 1 hora
-        })
-      }
-    );
-    
-    if (!signedUrlResponse.ok) {
-      console.error('❌ Erro ao gerar URL assinada:', await signedUrlResponse.text());
-      return imageUrl; // Fallback para URL original
-    }
-    
-    const { signedURL } = await signedUrlResponse.json();
-    const fullSignedUrl = `${SUPABASE_URL}${signedURL}`;
-    
-    console.log(`✅ URL assinada gerada com sucesso`);
-    return fullSignedUrl;
-    
-  } catch (error) {
-    console.error('❌ Erro ao processar URL da imagem:', error.message);
-    return imageUrl; // Fallback para URL original em caso de erro
-  }
-}
-
 // Normalização para armazenamento (sem DDI)
 function normalizeForStorage(phone) {
   if (!phone) return phone;
@@ -837,13 +781,9 @@ app.post('/send-to-group', async (req, res) => {
     if (imageUrl) {
       console.log(`🖼️ Processando imagem: ${imageUrl}`);
       try {
-        // Gerar URL assinada se for do Supabase Storage
-        const finalImageUrl = await getSignedImageUrl(imageUrl);
-        console.log(`🔗 URL final para download: ${finalImageUrl.substring(0, 80)}...`);
-        
         // Tentar baixar a imagem com timeout e unsafeMime
         console.log('📥 Baixando imagem...');
-        const media = await MessageMedia.fromUrl(finalImageUrl, { 
+        const media = await MessageMedia.fromUrl(imageUrl, { 
           unsafeMime: true,
           timeout: 45000 // 45 segundos
         });
