@@ -250,7 +250,7 @@ useEffect(() => {
           await whatsappService.sendProductCanceledMessage(
             order.customer_phone,
             productName,
-            item.product_id,
+            item.product?.code || '',
             profile.tenant_id
           );
           console.log('✅ Mensagem de cancelamento enviada com sucesso');

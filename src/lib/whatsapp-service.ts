@@ -282,22 +282,49 @@ class WhatsAppService {
   async sendProductCanceledMessage(
     phone: string, 
     productName: string, 
-    productId: number,
+    productCode: string,
     tenantId?: string
   ): Promise<WhatsAppResponse> {
     console.log('📤 [sendProductCanceled] Enviando mensagem de cancelamento:', { 
       phone, 
       productName,
-      productId,
+      productCode,
       tenantId 
     });
 
-    const message = `❌ *Produto Cancelado*\n\nO produto "${productName}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
+    // Usar endpoint específico do servidor Node.js
+    try {
+      const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
+      
+      const response = await fetch(`${serverUrl}/send-product-canceled`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': tenantId || '',
+        },
+        body: JSON.stringify({
+          phone: normalizeForSending(phone),
+          product_name: productName,
+          product_code: productCode,
+          tenant_id: tenantId
+        }),
+      });
 
-    return this.makeRequest('/send', {
-      number: normalizeForSending(phone),
-      message,
-    }, tenantId);
+      console.log('📥 [WS] Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [WS] Erro na resposta:', errorText);
+        throw new Error(`Erro ao enviar mensagem: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ [WS] Resposta sucesso:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ [sendProductCanceled] Erro:', error);
+      throw error;
+    }
   }
 
   async getStatus(tenantId?: string): Promise<any> {
