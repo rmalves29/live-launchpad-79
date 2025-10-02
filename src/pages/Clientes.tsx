@@ -154,10 +154,10 @@ const Clientes = () => {
     }
 
     const normalizedPhone = normalizePhone(newCustomer.phone);
-    if (normalizedPhone.length < 12 || normalizedPhone.length > 15) {
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
       toast({
         title: 'Erro',
-        description: 'Telefone inválido',
+        description: 'Telefone deve ter 10 ou 11 dígitos (DDD + número)',
         variant: 'destructive'
       });
       return;
