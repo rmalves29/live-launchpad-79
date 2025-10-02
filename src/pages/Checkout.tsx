@@ -1538,7 +1538,7 @@ const Checkout = () => {
                 <div className="p-3 rounded-lg bg-blue-50 mr-4">
                   <CreditCard className="h-8 w-8 text-blue-600" />
                 </div>
-                Finalizar Compra
+                Pagar Pedido Realizado
               </CardTitle>
               <CardDescription className="text-base">
                 Buscar pedidos e processar pagamentos
