@@ -7,10 +7,10 @@
 
 /**
  * Normaliza número para armazenamento no banco (sem DDI).
- * Garante que números mobile brasileiros tenham o 9º dígito.
+ * Armazena EXATAMENTE como digitado, sem ajustar 9º dígito.
  * 
  * Entrada: 5531992904210 ou 3193786530 ou (31) 99290-4210
- * Saída: 31993786530 (com 9º dígito garantido)
+ * Saída: 31992904210 ou 3193786530 (como digitado)
  */
 export function normalizeForStorage(phone: string): string {
   if (!phone) return phone;
@@ -23,45 +23,19 @@ export function normalizeForStorage(phone: string): string {
     clean = clean.substring(2);
   }
   
-  // Validação básica de comprimento
-  if (clean.length < 10 || clean.length > 11) {
-    console.warn('⚠️ Telefone com comprimento inválido:', clean);
-    return clean;
-  }
-  
-  // Validar DDD (11-99)
-  const ddd = parseInt(clean.substring(0, 2));
-  if (ddd < 11 || ddd > 99) {
-    console.warn('⚠️ DDD inválido:', ddd);
-    return clean;
-  }
-  
-  // REGRA POR DDD:
-  // DDD ≤ 30: adiciona 9º dígito se tiver 10 dígitos
-  // DDD ≥ 31: remove 9º dígito se tiver 11 dígitos
-  if (ddd <= 30) {
-    // DDDs antigos (≤30): garantir 9º dígito
-    if (clean.length === 10 && clean[2] !== '9') {
-      clean = clean.substring(0, 2) + '9' + clean.substring(2);
-      console.log('✅ 9º dígito adicionado (DDD ≤30):', phone, '->', clean);
-    }
-  } else {
-    // DDDs novos (≥31): remover 9º dígito se existir
-    if (clean.length === 11 && clean[2] === '9') {
-      clean = clean.substring(0, 2) + clean.substring(3);
-      console.log('✅ 9º dígito removido (DDD ≥31):', phone, '->', clean);
-    }
-  }
-  
   return clean;
 }
 
 /**
- * Adiciona DDI 55 ao número e garante o 9º dígito para envio WhatsApp.
- * REGRA: Celulares brasileiros SEMPRE precisam do 9º dígito!
+ * Adiciona DDI 55 e ajusta 9º dígito para envio WhatsApp.
+ * APENAS para uso no Node.js antes de enviar mensagens!
  * 
- * Entrada: 31993786530 ou 3193786530 ou 5531993786530
- * Saída: 5531993786530 (com DDI e 9º dígito garantidos)
+ * Regra do 9º dígito:
+ * - DDD ≤ 30: Celular precisa ter 9º dígito (11 dígitos total)
+ * - DDD ≥ 31: Celular NÃO deve ter 9º dígito (10 dígitos total)
+ * 
+ * Entrada: 31992904210 ou 3193786530 ou 5531992904210
+ * Saída: 5531992904210 ou 553193786530 (ajustado para WhatsApp)
  */
 export function normalizeForSending(phone: string): string {
   if (!phone) return phone;
@@ -88,20 +62,18 @@ export function normalizeForSending(phone: string): string {
     return '55' + clean;
   }
   
-  // REGRA POR DDD:
-  // DDD ≤ 30: adiciona 9º dígito se tiver 10 dígitos
-  // DDD ≥ 31: remove 9º dígito se tiver 11 dígitos
+  // REGRA POR DDD para envio WhatsApp:
   if (ddd <= 30) {
-    // DDDs antigos (≤30): garantir 9º dígito
+    // DDDs antigos (≤30): adicionar 9º dígito se não tiver
     if (clean.length === 10 && clean[2] !== '9') {
       clean = clean.substring(0, 2) + '9' + clean.substring(2);
-      console.log('✅ 9º dígito adicionado para envio (DDD ≤30):', phone, '->', clean);
+      console.log('✅ 9º dígito adicionado para envio WhatsApp (DDD ≤30):', phone, '->', clean);
     }
   } else {
-    // DDDs novos (≥31): remover 9º dígito se existir
+    // DDDs novos (≥31): remover 9º dígito se tiver
     if (clean.length === 11 && clean[2] === '9') {
       clean = clean.substring(0, 2) + clean.substring(3);
-      console.log('✅ 9º dígito removido para envio (DDD ≥31):', phone, '->', clean);
+      console.log('✅ 9º dígito removido para envio WhatsApp (DDD ≥31):', phone, '->', clean);
     }
   }
   
@@ -111,9 +83,10 @@ export function normalizeForSending(phone: string): string {
 
 /**
  * Formata número de telefone para exibição
- * SEMPRE adiciona o 9º dígito para celulares brasileiros na visualização
+ * Exibe exatamente como está armazenado no banco
+ * 
  * Entrada: 3192904210 ou 31992904210
- * Saída: (31) 99290-4210
+ * Saída: (31) 9290-4210 ou (31) 99290-4210
  */
 export function formatPhoneForDisplay(phone: string): string {
   if (!phone) return phone;
@@ -125,13 +98,7 @@ export function formatPhoneForDisplay(phone: string): string {
   
   if (phoneWithoutDDI.length >= 10) {
     const ddd = phoneWithoutDDI.substring(0, 2);
-    let number = phoneWithoutDDI.substring(2);
-    
-    // Garantir 9º dígito para celulares (número começa com 9)
-    if (number.length === 8 && number[0] === '9') {
-      // Adiciona o 9º dígito se não tiver
-      number = '9' + number;
-    }
+    const number = phoneWithoutDDI.substring(2);
     
     if (number.length === 9) {
       // Celular: (31) 99999-9999
