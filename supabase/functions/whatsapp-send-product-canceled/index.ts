@@ -56,32 +56,21 @@ Deno.serve(async (req) => {
     const nodeServerUrl = integration?.api_url || 'http://localhost:3333'
     console.log('🌐 Servidor WhatsApp:', nodeServerUrl)
 
-    // Buscar template PRODUCT_CANCELED
-    const { data: templates } = await supabase
-      .from('whatsapp_templates')
-      .select('content')
-      .eq('tenant_id', tenant_id)
-      .eq('type', 'PRODUCT_CANCELED')
-      .maybeSingle()
-
-    const template = templates?.content || `❌ *Produto Cancelado*\n\nO produto "{{produto}}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`
-
-    // Substituir variáveis do template
-    const message = template
-      .replace(/\{\{produto\}\}/g, product.name)
-      .replace(/\{\{codigo\}\}/g, product.code || '')
-      .replace(/\{\{quantidade\}\}/g, '1')
-
     console.log('📤 Enviando para:', customer_phone)
-    console.log('💬 Mensagem:', message)
+    console.log('📦 Produto:', product.name, '(', product.code, ')')
     
-    // Enviar via servidor Node.js
-    const whatsappResponse = await fetch(`${nodeServerUrl}/send`, {
+    // Enviar via servidor Node.js (nova rota específica)
+    const whatsappResponse = await fetch(`${nodeServerUrl}/send-product-canceled`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-tenant-id': tenant_id
+      },
       body: JSON.stringify({
-        number: customer_phone,
-        message: message
+        phone: customer_phone,
+        product_name: product.name,
+        product_code: product.code,
+        tenant_id: tenant_id
       })
     })
 

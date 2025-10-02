@@ -573,6 +573,102 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Enviar mensagem de produto cancelado (com template)
+app.post('/send-product-canceled', async (req, res) => {
+  try {
+    const { phone, product_name, product_code, tenant_id } = req.body;
+    const tenantId = tenant_id || req.tenantId;
+    
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tenant ID obrigatório (headers: x-tenant-id ou body: tenant_id)'
+      });
+    }
+    
+    if (!phone || !product_name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Telefone e nome do produto obrigatórios'
+      });
+    }
+    
+    // Buscar template PRODUCT_CANCELED do banco
+    console.log(`🔍 [${tenantId}] Buscando template PRODUCT_CANCELED...`);
+    let template;
+    try {
+      const templates = await supaRaw(`/whatsapp_templates?select=*&tenant_id=eq.${tenantId}&type=eq.PRODUCT_CANCELED&limit=1`);
+      template = templates[0];
+      
+      if (!template) {
+        console.log(`⚠️ Template PRODUCT_CANCELED não encontrado, usando padrão`);
+        template = {
+          content: '❌ *Produto Cancelado*\n\nO produto "{{produto}}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.'
+        };
+      } else {
+        console.log(`✅ Template encontrado: ${template.title || 'PRODUCT_CANCELED'}`);
+      }
+    } catch (templateError) {
+      console.error('❌ Erro buscar template:', templateError);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar template'
+      });
+    }
+    
+    // Substituir variáveis no template
+    let message = template.content
+      .replace(/\{\{produto\}\}/g, product_name || 'Produto')
+      .replace(/\{\{codigo\}\}/g, product_code || '');
+    
+    console.log(`📝 [${tenantId}] Mensagem preparada:`, message.substring(0, 100));
+    
+    // Buscar cliente WhatsApp
+    const client = await getTenantClient(tenantId);
+    
+    if (!client) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp não conectado para este tenant'
+      });
+    }
+    
+    // Normalizar telefone e enviar
+    const normalizedPhone = normalizeDDD(phone);
+    const chatId = `${normalizedPhone}@c.us`;
+    
+    console.log(`📤 [${tenantId}] Enviando produto cancelado para ${normalizedPhone}`);
+    await client.sendMessage(chatId, message);
+    console.log(`✅ [${tenantId}] Mensagem de produto cancelado enviada`);
+    
+    // Log no banco
+    await supaRaw('/whatsapp_messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        phone: normalizedPhone,
+        message: message,
+        type: 'outgoing',
+        product_name: product_name,
+        sent_at: new Date().toISOString()
+      })
+    });
+    
+    res.json({
+      success: true,
+      message: 'Mensagem de produto cancelado enviada',
+      phone: normalizedPhone
+    });
+    
+  } catch (error) {
+    console.error(`❌ Erro enviar produto cancelado:`, error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 /* ============================ SERVER START ============================ */
 async function startServer() {
   try {
