@@ -12,7 +12,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
-import WhatsAppConnectionTest from '@/components/WhatsAppConnectionTest';
 
 
 interface Product {
@@ -499,9 +498,6 @@ const PedidosManual = () => {
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold">Pedidos Manual</h1>
           </div>
-
-          {/* Componente de Teste do WhatsApp */}
-          <WhatsAppConnectionTest />
 
           <Tabs defaultValue="create" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
