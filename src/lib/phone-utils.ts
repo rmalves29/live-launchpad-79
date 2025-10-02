@@ -111,7 +111,8 @@ export function normalizeForSending(phone: string): string {
 
 /**
  * Formata número de telefone para exibição
- * Entrada: 31992904210
+ * SEMPRE adiciona o 9º dígito para celulares brasileiros na visualização
+ * Entrada: 3192904210 ou 31992904210
  * Saída: (31) 99290-4210
  */
 export function formatPhoneForDisplay(phone: string): string {
@@ -124,7 +125,13 @@ export function formatPhoneForDisplay(phone: string): string {
   
   if (phoneWithoutDDI.length >= 10) {
     const ddd = phoneWithoutDDI.substring(0, 2);
-    const number = phoneWithoutDDI.substring(2);
+    let number = phoneWithoutDDI.substring(2);
+    
+    // Garantir 9º dígito para celulares (número começa com 9)
+    if (number.length === 8 && number[0] === '9') {
+      // Adiciona o 9º dígito se não tiver
+      number = '9' + number;
+    }
     
     if (number.length === 9) {
       // Celular: (31) 99999-9999
