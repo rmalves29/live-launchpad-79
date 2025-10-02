@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package } from 'lucide-react';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
@@ -71,6 +71,12 @@ const Checkout = () => {
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [handlingDays, setHandlingDays] = useState<number>(3);
+  
+  // Estados para cupom de desconto
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+  const [loadingCoupon, setLoadingCoupon] = useState(false);
+  const [couponDiscount, setCouponDiscount] = useState(0);
 
   // Detectar retorno da página de pagamento e limpar dados duplicados  
   useEffect(() => {
@@ -90,6 +96,11 @@ const Checkout = () => {
         delivery_time: 'Imediato',
         custom_price: '0.00'
       }]);
+      
+      // Limpar cupom de desconto
+      setAppliedCoupon(null);
+      setCouponDiscount(0);
+      setCouponCode('');
       
       // Limpar a URL para evitar que o efeito rode novamente desnecessariamente
       const newUrl = window.location.pathname;
@@ -195,11 +206,21 @@ const Checkout = () => {
         
         // Se carregou dados do cliente com CEP válido E não está voltando do pagamento, calcular frete automaticamente
         if (loadedCustomerData && loadedCustomerData.cep && loadedCustomerData.cep.replace(/[^0-9]/g, '').length === 8 && !isReturningFromPayment) {
-          // Se há apenas um pedido, calcular frete automaticamente
-          if (ordersWithItems.length === 1) {
-            setTimeout(() => {
-              calculateShipping(loadedCustomerData.cep, ordersWithItems[0]);
-            }, 500); // Pequeno delay para garantir que o estado foi atualizado
+          // Sempre calcular frete automaticamente quando há pedidos
+          if (ordersWithItems.length >= 1) {
+            // Se há apenas um pedido, selecionar e calcular frete
+            if (ordersWithItems.length === 1) {
+              setTimeout(() => {
+                calculateShipping(loadedCustomerData.cep, ordersWithItems[0]);
+              }, 500);
+            } else {
+              // Se há múltiplos pedidos, calcular frete para todos
+              ordersWithItems.forEach(order => {
+                setTimeout(() => {
+                  calculateShipping(loadedCustomerData.cep, order);
+                }, 500);
+              });
+            }
           }
         }
       }
@@ -664,6 +685,113 @@ const Checkout = () => {
     }
   };
 
+  const applyCoupon = async (order: Order) => {
+    if (!couponCode.trim()) {
+      toast({
+        title: 'Erro',
+        description: 'Digite um código de cupom',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setLoadingCoupon(true);
+    try {
+      // Buscar cupom no banco
+      const { data: coupon, error } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('code', couponCode.toUpperCase())
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!coupon) {
+        toast({
+          title: 'Cupom Inválido',
+          description: 'Cupom não encontrado ou inativo',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Verificar expiração
+      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+        toast({
+          title: 'Cupom Expirado',
+          description: 'Este cupom já expirou',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Verificar limite de uso
+      if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) {
+        toast({
+          title: 'Cupom Esgotado',
+          description: 'Este cupom atingiu o limite de uso',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Calcular total dos produtos
+      const productsTotal = order.items.reduce((sum, item) => {
+        return sum + (Number(item.unit_price) * item.qty);
+      }, 0);
+
+      let discount = 0;
+
+      // Calcular desconto baseado no tipo
+      if (coupon.discount_type === 'progressive') {
+        // Desconto progressivo
+        const tiers = coupon.progressive_tiers as Array<{min_value: number, max_value: number | null, discount: number}>;
+        const applicableTier = tiers.find(tier => {
+          if (tier.max_value === null) {
+            return productsTotal >= tier.min_value;
+          }
+          return productsTotal >= tier.min_value && productsTotal <= tier.max_value;
+        });
+
+        if (applicableTier) {
+          discount = (productsTotal * applicableTier.discount) / 100;
+        }
+      } else if (coupon.discount_type === 'percentage') {
+        discount = (productsTotal * coupon.discount_value) / 100;
+      } else if (coupon.discount_type === 'fixed') {
+        discount = Math.min(coupon.discount_value, productsTotal);
+      }
+
+      setAppliedCoupon(coupon);
+      setCouponDiscount(discount);
+
+      toast({
+        title: 'Cupom Aplicado!',
+        description: `Desconto de R$ ${discount.toFixed(2)} aplicado`,
+      });
+    } catch (error) {
+      console.error('Erro ao aplicar cupom:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao aplicar cupom',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingCoupon(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponCode('');
+    toast({
+      title: 'Cupom Removido',
+      description: 'O cupom foi removido do pedido'
+    });
+  };
+
   const processPayment = async (order: Order) => {
     if (!tenantId) {
       toast({
@@ -705,7 +833,22 @@ const Checkout = () => {
         shippingCost = selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
       }
 
-      const totalAmount = Number(order.total_amount) + shippingCost;
+      // Calcular total com desconto do cupom
+      const productsTotal = Number(order.total_amount);
+      const totalWithDiscount = Math.max(0, productsTotal - couponDiscount);
+      const totalAmount = totalWithDiscount + shippingCost;
+
+      // Incrementar uso do cupom se aplicado
+      if (appliedCoupon) {
+        const { error: couponError } = await supabase
+          .from('coupons')
+          .update({ used_count: appliedCoupon.used_count + 1 })
+          .eq('id', appliedCoupon.id);
+        
+        if (couponError) {
+          console.error('Erro ao atualizar contador do cupom:', couponError);
+        }
+      }
 
       // Preparar dados do frete selecionado
       let shippingData = null;
@@ -747,7 +890,8 @@ const Checkout = () => {
         shippingCost: shippingCost,
         shippingData: shippingData, // Informações detalhadas do frete
         total: totalAmount.toString(),
-        coupon_discount: 0, // Por enquanto sem cupom de desconto
+        coupon_discount: couponDiscount,
+        coupon_code: appliedCoupon?.code || null,
         tenant_id: tenantId
       };
 
@@ -987,7 +1131,13 @@ const Checkout = () => {
               </div>
               
               <div className="mt-6 flex justify-end space-x-4">
-                <Button variant="outline" onClick={() => setOpenOrders([])}>
+                <Button variant="outline" onClick={() => {
+                  setOpenOrders([]);
+                  // Limpar cupom ao cancelar
+                  setAppliedCoupon(null);
+                  setCouponDiscount(0);
+                  setCouponCode('');
+                }}>
                   Cancelar
                 </Button>
                 <Button 
@@ -1021,7 +1171,13 @@ const Checkout = () => {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setSelectedOrder(null)}
+                            onClick={() => {
+                              setSelectedOrder(null);
+                              // Limpar cupom ao voltar para seleção de pedido
+                              setAppliedCoupon(null);
+                              setCouponDiscount(0);
+                              setCouponCode('');
+                            }}
                             className="ml-4"
                           >
                             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -1312,6 +1468,61 @@ const Checkout = () => {
                       </div>
                     )}
 
+                    {/* Campo de Cupom de Desconto */}
+                    <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <h4 className="font-medium mb-3 flex items-center">
+                        <Percent className="h-4 w-4 mr-2 text-green-600" />
+                        Cupom de Desconto
+                      </h4>
+                      
+                      {!appliedCoupon ? (
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Digite o código do cupom"
+                            value={couponCode}
+                            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                            className="flex-1"
+                          />
+                          <Button
+                            onClick={() => applyCoupon(order)}
+                            disabled={loadingCoupon || !couponCode.trim()}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            {loadingCoupon ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              'Aplicar'
+                            )}
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between p-3 bg-white border border-green-300 rounded">
+                            <div>
+                              <Badge className="bg-green-600">{appliedCoupon.code}</Badge>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {appliedCoupon.discount_type === 'progressive' ? 'Desconto Progressivo' :
+                                 appliedCoupon.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% de desconto` :
+                                 `R$ ${appliedCoupon.discount_value.toFixed(2)} de desconto`}
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={removeCoupon}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              Remover
+                            </Button>
+                          </div>
+                          <div className="flex justify-between items-center text-green-700 font-semibold">
+                            <span>Desconto Aplicado:</span>
+                            <span>- R$ {couponDiscount.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="flex justify-between items-center mb-6 text-xl font-bold border-t pt-4">
                       <span>Total Geral:</span>
                       <span className="text-green-600">
@@ -1321,13 +1532,15 @@ const Checkout = () => {
                              return sum + (parseFloat(item.unit_price) * item.qty);
                            }, 0);
                           
+                          // Subtrair desconto do cupom
+                          let total = productsTotal - couponDiscount;
+                          
                           // Adicionar frete apenas se não for retirada
-                          let total = productsTotal;
                           if (selectedShipping !== 'retirada') {
                             const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
                             total += selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
                           }
-                          return total.toFixed(2);
+                          return Math.max(0, total).toFixed(2);
                         })()}
                       </span>
                     </div>
