@@ -13,12 +13,17 @@ import { useToast } from '@/hooks/use-toast';
 interface Coupon {
   id: number;
   code: string;
-  discount_type: 'percentage' | 'fixed';
+  discount_type: 'percentage' | 'fixed' | 'progressive';
   discount_value: number;
   expires_at?: string;
   is_active: boolean;
   usage_limit?: number;
   used_count: number;
+  progressive_tiers?: Array<{
+    min_value: number;
+    max_value: number | null;
+    discount: number;
+  }>;
 }
 
 export const CouponsManager = () => {
@@ -30,11 +35,12 @@ export const CouponsManager = () => {
 
   const [newCoupon, setNewCoupon] = useState({
     code: '',
-    discount_type: 'percentage' as 'percentage' | 'fixed',
+    discount_type: 'percentage' as 'percentage' | 'fixed' | 'progressive',
     discount_value: 0,
     expires_at: '',
     usage_limit: '',
-    is_active: true
+    is_active: true,
+    progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
   });
 
   useEffect(() => {
@@ -50,7 +56,10 @@ export const CouponsManager = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCoupons((data || []) as Coupon[]);
+      setCoupons((data || []).map(coupon => ({
+        ...coupon,
+        progressive_tiers: coupon.progressive_tiers as any || undefined
+      })) as Coupon[]);
     } catch (error) {
       console.error('Erro ao carregar cupons:', error);
       toast({
@@ -64,23 +73,43 @@ export const CouponsManager = () => {
   };
 
   const saveCoupon = async () => {
-    if (!newCoupon.code || !newCoupon.discount_value) {
+    if (!newCoupon.code) {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Preencha todos os campos obrigatórios"
+        description: "Preencha o código do cupom"
+      });
+      return;
+    }
+
+    // Validação específica para cada tipo
+    if (newCoupon.discount_type === 'progressive') {
+      if (!newCoupon.progressive_tiers || newCoupon.progressive_tiers.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: "Adicione pelo menos uma faixa de desconto"
+        });
+        return;
+      }
+    } else if (!newCoupon.discount_value) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Preencha o valor do desconto"
       });
       return;
     }
 
     try {
-      const couponData = {
+      const couponData: any = {
         code: newCoupon.code.toUpperCase(),
         discount_type: newCoupon.discount_type,
-        discount_value: newCoupon.discount_value,
+        discount_value: newCoupon.discount_type === 'progressive' ? 0 : newCoupon.discount_value,
         expires_at: newCoupon.expires_at || null,
         usage_limit: newCoupon.usage_limit ? parseInt(newCoupon.usage_limit) : null,
-        is_active: newCoupon.is_active
+        is_active: newCoupon.is_active,
+        progressive_tiers: newCoupon.discount_type === 'progressive' ? newCoupon.progressive_tiers : null
       };
 
       if (editingCoupon) {
@@ -149,7 +178,8 @@ export const CouponsManager = () => {
       discount_value: 0,
       expires_at: '',
       usage_limit: '',
-      is_active: true
+      is_active: true,
+      progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(false);
     setEditingCoupon(null);
@@ -163,9 +193,35 @@ export const CouponsManager = () => {
       discount_value: coupon.discount_value,
       expires_at: coupon.expires_at ? coupon.expires_at.split('T')[0] : '',
       usage_limit: coupon.usage_limit?.toString() || '',
-      is_active: coupon.is_active
+      is_active: coupon.is_active,
+      progressive_tiers: coupon.progressive_tiers || [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(true);
+  };
+
+  const addTier = () => {
+    const lastTier = newCoupon.progressive_tiers[newCoupon.progressive_tiers.length - 1];
+    const newMinValue = lastTier.max_value || 0;
+    setNewCoupon({
+      ...newCoupon,
+      progressive_tiers: [
+        ...newCoupon.progressive_tiers,
+        { min_value: newMinValue, max_value: newMinValue + 100, discount: 5 }
+      ]
+    });
+  };
+
+  const removeTier = (index: number) => {
+    if (newCoupon.progressive_tiers.length > 1) {
+      const newTiers = newCoupon.progressive_tiers.filter((_, i) => i !== index);
+      setNewCoupon({ ...newCoupon, progressive_tiers: newTiers });
+    }
+  };
+
+  const updateTier = (index: number, field: 'min_value' | 'max_value' | 'discount', value: number | null) => {
+    const newTiers = [...newCoupon.progressive_tiers];
+    newTiers[index] = { ...newTiers[index], [field]: value };
+    setNewCoupon({ ...newCoupon, progressive_tiers: newTiers });
   };
 
   return (
@@ -195,30 +251,33 @@ export const CouponsManager = () => {
               
               <div>
                 <Label htmlFor="discount_type">Tipo de Desconto</Label>
-                <Select value={newCoupon.discount_type} onValueChange={(value) => setNewCoupon({ ...newCoupon, discount_type: value as 'percentage' | 'fixed' })}>
+                <Select value={newCoupon.discount_type} onValueChange={(value) => setNewCoupon({ ...newCoupon, discount_type: value as 'percentage' | 'fixed' | 'progressive' })}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="percentage">Porcentagem (%)</SelectItem>
                     <SelectItem value="fixed">Valor Fixo (R$)</SelectItem>
+                    <SelectItem value="progressive">Desconto Progressivo</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div>
-                <Label htmlFor="discount_value">
-                  Valor do Desconto {newCoupon.discount_type === 'percentage' ? '(%)' : '(R$)'}
-                </Label>
-                <Input
-                  id="discount_value"
-                  type="number"
-                  value={newCoupon.discount_value}
-                  onChange={(e) => setNewCoupon({ ...newCoupon, discount_value: parseFloat(e.target.value) || 0 })}
-                  placeholder={newCoupon.discount_type === 'percentage' ? '10' : '5.00'}
-                  step={newCoupon.discount_type === 'percentage' ? '1' : '0.01'}
-                />
-              </div>
+              {newCoupon.discount_type !== 'progressive' && (
+                <div>
+                  <Label htmlFor="discount_value">
+                    Valor do Desconto {newCoupon.discount_type === 'percentage' ? '(%)' : '(R$)'}
+                  </Label>
+                  <Input
+                    id="discount_value"
+                    type="number"
+                    value={newCoupon.discount_value}
+                    onChange={(e) => setNewCoupon({ ...newCoupon, discount_value: parseFloat(e.target.value) || 0 })}
+                    placeholder={newCoupon.discount_type === 'percentage' ? '10' : '5.00'}
+                    step={newCoupon.discount_type === 'percentage' ? '1' : '0.01'}
+                  />
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="expires_at">Data de Expiração (opcional)</Label>
@@ -251,6 +310,67 @@ export const CouponsManager = () => {
               </div>
             </div>
 
+            {/* Faixas de Desconto Progressivo */}
+            {newCoupon.discount_type === 'progressive' && (
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold">Faixas de Desconto</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addTier}>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Adicionar Faixa
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Quanto mais o cliente compra, maior o desconto aplicado
+                </p>
+                {newCoupon.progressive_tiers.map((tier, index) => (
+                  <div key={index} className="grid grid-cols-12 gap-2 items-end p-3 border rounded">
+                    <div className="col-span-3">
+                      <Label className="text-xs">Valor Mínimo (R$)</Label>
+                      <Input
+                        type="number"
+                        value={tier.min_value}
+                        onChange={(e) => updateTier(index, 'min_value', parseFloat(e.target.value) || 0)}
+                        step="0.01"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-xs">Valor Máximo (R$)</Label>
+                      <Input
+                        type="number"
+                        value={tier.max_value || ''}
+                        onChange={(e) => updateTier(index, 'max_value', e.target.value ? parseFloat(e.target.value) : null)}
+                        placeholder="Sem limite"
+                        step="0.01"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-xs">Desconto (%)</Label>
+                      <Input
+                        type="number"
+                        value={tier.discount}
+                        onChange={(e) => updateTier(index, 'discount', parseFloat(e.target.value) || 0)}
+                        step="1"
+                        max="100"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => removeTier(index)}
+                        disabled={newCoupon.progressive_tiers.length === 1}
+                        className="w-full"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex justify-end space-x-2 mt-4">
               <Button variant="outline" onClick={resetForm}>
                 Cancelar
@@ -275,11 +395,26 @@ export const CouponsManager = () => {
                     {coupon.code}
                   </Badge>
                   <div>
-                    <span className="font-medium">
-                      {coupon.discount_type === 'percentage' 
-                        ? `${coupon.discount_value}%` 
-                        : `R$ ${coupon.discount_value.toFixed(2)}`} de desconto
-                    </span>
+                    {coupon.discount_type === 'progressive' ? (
+                      <>
+                        <span className="font-medium">Desconto Progressivo</span>
+                        <div className="text-sm text-muted-foreground mt-1 space-y-1">
+                          {coupon.progressive_tiers?.map((tier, idx) => (
+                            <div key={idx}>
+                              • R$ {tier.min_value.toFixed(2)} 
+                              {tier.max_value ? ` - R$ ${tier.max_value.toFixed(2)}` : '+'}: 
+                              <span className="font-semibold text-primary"> {tier.discount}% off</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="font-medium">
+                        {coupon.discount_type === 'percentage' 
+                          ? `${coupon.discount_value}%` 
+                          : `R$ ${coupon.discount_value.toFixed(2)}`} de desconto
+                      </span>
+                    )}
                     {coupon.expires_at && (
                       <p className="text-sm text-muted-foreground">
                         Expira em: {new Date(coupon.expires_at).toLocaleDateString('pt-BR')}

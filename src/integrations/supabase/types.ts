@@ -209,6 +209,7 @@ export type Database = {
           expires_at: string | null
           id: number
           is_active: boolean
+          progressive_tiers: Json | null
           updated_at: string
           usage_limit: number | null
           used_count: number
@@ -221,6 +222,7 @@ export type Database = {
           expires_at?: string | null
           id?: number
           is_active?: boolean
+          progressive_tiers?: Json | null
           updated_at?: string
           usage_limit?: number | null
           used_count?: number
@@ -233,6 +235,7 @@ export type Database = {
           expires_at?: string | null
           id?: number
           is_active?: boolean
+          progressive_tiers?: Json | null
           updated_at?: string
           usage_limit?: number | null
           used_count?: number
