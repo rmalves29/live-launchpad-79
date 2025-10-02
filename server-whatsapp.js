@@ -1008,6 +1008,115 @@ app.post('/add-label', async (req,res)=> {
   } catch (e) { res.status(500).json({ success:false, error:e.message }); }
 });
 
+/* ============================ Enviar Produto Cancelado ============================ */
+app.post('/send-product-canceled', async (req, res) => {
+  try {
+    const { phone, product_name, product_code, tenant_id } = req.body || {};
+    const tenantId = tenant_id || req.tenant?.id || null;
+
+    console.log('🗑️ Produto cancelado:', { phone, product_name, product_code, tenant_id: tenantId });
+
+    if (!phone || !product_name) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Telefone e nome do produto obrigatórios' 
+      });
+    }
+
+    // Buscar template PRODUCT_CANCELED do banco
+    console.log('🔍 Buscando template PRODUCT_CANCELED...');
+    let template;
+    try {
+      const templates = await supa(
+        '/whatsapp_templates?select=*&type=eq.PRODUCT_CANCELED&limit=1',
+        {},
+        tenantId
+      );
+      template = templates[0];
+
+      if (!template) {
+        console.log('⚠️ Template PRODUCT_CANCELED não encontrado, usando padrão');
+        template = {
+          content: '❌ *Produto Cancelado*\n\nO produto "{{produto}}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.'
+        };
+      } else {
+        console.log('✅ Template encontrado:', template.title || 'PRODUCT_CANCELED');
+      }
+    } catch (templateError) {
+      console.error('❌ Erro buscar template:', templateError);
+      // Usar template padrão se falhar
+      template = {
+        content: '❌ *Produto Cancelado*\n\nO produto "{{produto}}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.'
+      };
+    }
+
+    // Substituir variáveis no template
+    const message = template.content
+      .replace(/\{\{produto\}\}/g, product_name || 'Produto')
+      .replace(/\{\{codigo\}\}/g, product_code || '');
+
+    console.log('📝 Mensagem preparada:', message.substring(0, 100));
+
+    // Verificar duplicatas
+    if (dupBlocked(phone, message)) {
+      return res.status(409).json({ 
+        success: false, 
+        error: 'Mensagem duplicada bloqueada' 
+      });
+    }
+
+    // Enviar mensagem
+    const inst = await waitUntilOnline(30000);
+    if (!inst) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'Nenhuma instância online' 
+      });
+    }
+
+    const client = clients[inst];
+    const messageId = `${inst}-${phone}-${Date.now()}`;
+
+    console.log('📤 Enviando produto cancelado para', phone);
+    await sendSingleMessage(inst, client, phone, message, null, messageId);
+    markSent(phone, message);
+
+    console.log('✅ Mensagem de produto cancelado enviada com sucesso');
+
+    // Log no banco
+    try {
+      await supa('/whatsapp_messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          phone: digits(phone),
+          message: message,
+          type: 'outgoing',
+          product_name: product_name,
+          sent_at: new Date().toISOString()
+        })
+      }, tenantId);
+    } catch (logError) {
+      console.warn('⚠️ Erro ao salvar log:', logError.message);
+    }
+
+    res.json({
+      success: true,
+      message: 'Mensagem de produto cancelado enviada',
+      instanceUsed: inst,
+      phone: digits(phone)
+    });
+
+  } catch (e) {
+    console.error('❌ Erro enviar produto cancelado:', e);
+    inQueue.delete(keyFor(req.body?.phone, 'product-canceled'));
+    res.status(500).json({ 
+      success: false, 
+      error: e.message 
+    });
+  }
+});
+
 /* ============================ Start ============================ */
 app.listen(PORT, () => {
   console.log('🟢 WHATSAPP BOT iniciado');
