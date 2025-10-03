@@ -1138,6 +1138,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      is_tenant_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       list_active_tenants_basic: {
         Args: Record<PropertyKey, never>
         Returns: {
