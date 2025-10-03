@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
@@ -32,6 +33,7 @@ const Produtos = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -258,6 +260,59 @@ const Produtos = () => {
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedProducts.length === 0) {
+      toast({
+        title: 'Nenhum produto selecionado',
+        description: 'Selecione pelo menos um produto para deletar',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!confirm(`Tem certeza que deseja excluir ${selectedProducts.length} produto(s)?`)) return;
+
+    try {
+      const { error } = await supabaseTenant
+        .from('products')
+        .delete()
+        .in('id', selectedProducts);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Produtos excluídos',
+        description: `${selectedProducts.length} produto(s) removido(s) com sucesso`
+      });
+      
+      setSelectedProducts([]);
+      loadProducts();
+    } catch (error) {
+      console.error('Error deleting products:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao excluir produtos',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedProducts(filteredProducts.map(p => p.id));
+    } else {
+      setSelectedProducts([]);
+    }
+  };
+
+  const handleSelectProduct = (productId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedProducts([...selectedProducts, productId]);
+    } else {
+      setSelectedProducts(selectedProducts.filter(id => id !== productId));
+    }
+  };
+
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.code.toLowerCase().includes(searchTerm.toLowerCase())
@@ -439,7 +494,19 @@ const Produtos = () => {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>Lista de Produtos ({filteredProducts.length})</span>
+              <div className="flex items-center space-x-4">
+                <span>Lista de Produtos ({filteredProducts.length})</span>
+                {selectedProducts.length > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDeleteSelected}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Deletar Selecionados ({selectedProducts.length})
+                  </Button>
+                )}
+              </div>
               <div className="flex items-center space-x-2">
                 <Search className="h-4 w-4 text-muted-foreground" />
                 <Input
@@ -466,6 +533,12 @@ const Produtos = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-[50px]">
+                          <Checkbox
+                            checked={selectedProducts.length === filteredProducts.length && filteredProducts.length > 0}
+                            onCheckedChange={handleSelectAll}
+                          />
+                        </TableHead>
                         <TableHead>Imagem</TableHead>
                         <TableHead>Código</TableHead>
                         <TableHead>Nome</TableHead>
@@ -479,6 +552,12 @@ const Produtos = () => {
                     <TableBody>
                       {filteredProducts.map((product) => (
                         <TableRow key={product.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedProducts.includes(product.id)}
+                              onCheckedChange={(checked) => handleSelectProduct(product.id, checked as boolean)}
+                            />
+                          </TableCell>
                           <TableCell>
                             {product.image_url ? (
                               <img 
