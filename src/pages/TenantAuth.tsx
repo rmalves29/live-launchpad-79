@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useTenantContext } from "@/contexts/TenantContext";
 import { Building2, Shield } from "lucide-react";
+import orderZapsLogo from '@/assets/order-zaps-logo.png';
 
 export default function TenantAuth() {
   const { toast } = useToast();
@@ -124,6 +125,13 @@ export default function TenantAuth() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
       <main className="w-full max-w-md p-4">
+        <div className="flex justify-center mb-6">
+          <img 
+            src={orderZapsLogo} 
+            alt="Order Zaps" 
+            className="h-[150px] w-[150px] object-contain"
+          />
+        </div>
         <Card>
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
