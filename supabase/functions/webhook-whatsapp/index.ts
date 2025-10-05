@@ -214,8 +214,51 @@ Deno.serve(async (req) => {
               customer = newCustomer;
             }
 
-            // Find or create open cart for today
+            // Find or create order for today (unpaid)
             const today = new Date().toISOString().split('T')[0];
+            let { data: existingOrder } = await supabase
+              .from('orders')
+              .select('*')
+              .eq('tenant_id', tenant.id)
+              .eq('customer_phone', phone)
+              .eq('event_date', today)
+              .eq('is_paid', false)
+              .order('created_at', { ascending: false })
+              .maybeSingle();
+
+            let orderId: number;
+            let cartId: number | null = null;
+
+            if (existingOrder) {
+              // Use existing order
+              orderId = existingOrder.id;
+              cartId = existingOrder.cart_id;
+              console.log(`Found existing order ${orderId} for ${phone} on ${today}`);
+            } else {
+              // Create new order
+              const { data: newOrder, error: orderError } = await supabase
+                .from('orders')
+                .insert({
+                  tenant_id: tenant.id,
+                  customer_phone: phone,
+                  event_date: today,
+                  event_type: 'whatsapp',
+                  total_amount: 0, // Will be updated when items are added
+                  is_paid: false
+                })
+                .select()
+                .single();
+
+              if (orderError) {
+                console.error('Error creating order:', orderError);
+                throw orderError;
+              }
+
+              orderId = newOrder.id;
+              console.log(`Created new order ${orderId} for ${phone} on ${today}`);
+            }
+
+            // Find or create cart linked to the order
             let { data: cart } = await supabase
               .from('carts')
               .select('*')
@@ -238,6 +281,22 @@ Deno.serve(async (req) => {
                 .select()
                 .single();
               cart = newCart;
+
+              // Link cart to order if not already linked
+              if (cart && !cartId) {
+                await supabase
+                  .from('orders')
+                  .update({ cart_id: cart.id })
+                  .eq('id', orderId);
+                console.log(`Linked cart ${cart.id} to order ${orderId}`);
+              }
+            } else if (cart && !cartId) {
+              // If cart exists but order doesn't have cart_id, link them
+              await supabase
+                .from('orders')
+                .update({ cart_id: cart.id })
+                .eq('id', orderId);
+              console.log(`Linked existing cart ${cart.id} to order ${orderId}`);
             }
 
             // Add item to cart
@@ -252,7 +311,26 @@ Deno.serve(async (req) => {
                   unit_price: product.price
                 });
 
-              console.log(`Added product ${product.code} to cart for ${phone} in tenant ${tenantKey}`);
+              console.log(`Added product ${product.code} to cart ${cart.id} for ${phone} in tenant ${tenantKey}`);
+
+              // Update order total amount
+              const { data: cartItems } = await supabase
+                .from('cart_items')
+                .select('qty, unit_price')
+                .eq('cart_id', cart.id);
+
+              if (cartItems && cartItems.length > 0) {
+                const newTotal = cartItems.reduce((sum, item) => 
+                  sum + (Number(item.qty) * Number(item.unit_price)), 0
+                );
+
+                await supabase
+                  .from('orders')
+                  .update({ total_amount: newTotal })
+                  .eq('id', orderId);
+
+                console.log(`Updated order ${orderId} total to ${newTotal}`);
+              }
 
               // Send automatic message using template
               try {
