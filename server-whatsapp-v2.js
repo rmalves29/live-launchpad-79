@@ -144,13 +144,16 @@ async function createTenantClient(tenant) {
 
   // Setup events
   client.on('qr', (qr) => {
-    console.log(`📱 QR Code para ${tenant.name}:`);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`📱 ESCANEIE O QR CODE ABAIXO PARA: ${tenant.name}`);
+    console.log(`${'='.repeat(60)}`);
     qrcode.generate(qr, { small: true });
+    console.log(`${'='.repeat(60)}\n`);
     tenantStatus.set(tenant.id, 'qr_code');
   });
 
   client.on('ready', () => {
-    console.log(`✅ WhatsApp conectado: ${tenant.name}`);
+    console.log(`✅ WhatsApp CONECTADO: ${tenant.name}`);
     tenantStatus.set(tenant.id, 'online');
   });
 
@@ -176,13 +179,15 @@ async function createTenantClient(tenant) {
   tenantClients.set(tenant.id, client);
   tenantStatus.set(tenant.id, 'initializing');
   
-  try {
-    await client.initialize();
-    console.log(`🚀 Inicializado: ${tenant.name}`);
-  } catch (error) {
-    console.error(`❌ Erro inicializar ${tenant.name}:`, error);
-    tenantStatus.set(tenant.id, 'error');
-  }
+  // Inicializar de forma assíncrona (não bloqueia)
+  client.initialize()
+    .then(() => {
+      console.log(`🚀 Inicializado: ${tenant.name}`);
+    })
+    .catch((error) => {
+      console.error(`❌ Erro inicializar ${tenant.name}:`, error);
+      tenantStatus.set(tenant.id, 'error');
+    });
   
   return client;
 }
@@ -286,16 +291,26 @@ async function initializeTenants() {
   console.log('🏢 Carregando tenants...');
   const tenants = await loadTenants();
   
+  if (tenants.length === 0) {
+    console.log('⚠️ Nenhum tenant ativo encontrado');
+    return;
+  }
+  
+  console.log(`📋 Encontrados ${tenants.length} tenant(s) ativo(s)`);
+  
+  // Inicializar todos os clientes em paralelo (não bloqueia)
   for (const tenant of tenants) {
     const integration = await getWhatsAppIntegration(tenant.id);
     
     if (integration) {
       console.log(`🔧 Inicializando: ${tenant.name}`);
-      await createTenantClient(tenant);
+      createTenantClient(tenant); // Sem await - não bloqueia
     } else {
       console.log(`⚠️ Sem integração WhatsApp: ${tenant.name}`);
     }
   }
+  
+  console.log(`✅ Inicialização dos clientes WhatsApp em andamento...`);
 }
 
 async function getTenantClient(tenantId) {
@@ -675,15 +690,24 @@ async function startServer() {
     console.log('🚀 Iniciando WhatsApp Server v2.0...');
     console.log('📋 Sistema de triggers automáticos ativado');
     
-    await initializeTenants();
-    
+    // Iniciar servidor HTTP PRIMEIRO
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🌐 Servidor rodando em TODAS as interfaces de rede`);
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`🌐 SERVIDOR HTTP ONLINE`);
+      console.log(`${'='.repeat(70)}`);
       console.log(`📍 Acesso local: http://localhost:${PORT}`);
-      console.log(`📍 Acesso rede: http://[SEU_IP]:${PORT}`);
-      console.log(`📊 Status: http://[SEU_IP]:${PORT}/status`);
-      console.log(`💚 Health: http://[SEU_IP]:${PORT}/health`);
-      console.log(`\n⚠️  IMPORTANTE: Configure a URL no sistema como http://[IP_DESTE_PC]:${PORT}`);
+      console.log(`📍 Acesso rede: http://192.168.1.20:${PORT}`);
+      console.log(`📊 Status: http://192.168.1.20:${PORT}/status`);
+      console.log(`💚 Health: http://192.168.1.20:${PORT}/health`);
+      console.log(`${'='.repeat(70)}`);
+      console.log(`\n⚠️  IMPORTANTE: Configure a URL no sistema como http://192.168.1.20:${PORT}`);
+      console.log(`\n📱 Agora os clientes WhatsApp serão inicializados em background...`);
+      console.log(`   Se aparecer um QR Code, escaneie com seu WhatsApp!\n`);
+    });
+    
+    // Inicializar clientes WhatsApp em background (não bloqueia)
+    initializeTenants().catch(error => {
+      console.error('❌ Erro ao inicializar tenants:', error);
     });
     
   } catch (error) {
