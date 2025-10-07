@@ -232,22 +232,21 @@ async function createTenantClient(tenant) {
   console.log(`📂 Diretório de autenticação: ${authDir}`);
   console.log(`🔄 Tentativa: ${retryCount + 1}/${MAX_RETRIES}`);
   
-  // VALIDAÇÃO PREVENTIVA: Verificar e limpar cache corrompido ANTES de inicializar
-  if (isCacheCorrupted(authDir)) {
-    console.log(`⚠️ Cache corrompido detectado ANTES da inicialização`);
-    console.log(`🧹 Limpando preventivamente...`);
-    
-    const cleaned = cleanCorruptedCache(authDir);
-    if (!cleaned) {
-      console.error(`❌ Falha ao limpar cache corrompido`);
-      console.error(`   SOLUÇÃO MANUAL: Delete a pasta: ${authDir}`);
-      tenantStatus.set(tenant.id, 'cache_clean_failed');
-      return null;
-    }
-    
-    console.log(`✅ Cache limpo preventivamente, continuando inicialização...`);
+  // SOLUÇÃO RADICAL: SEMPRE limpar cache antes de inicializar
+  // Isso força autenticação via QR code, mas evita erros de cache corrompido
+  console.log(`🧹 LIMPEZA PREVENTIVA: Deletando cache antigo para evitar corrupção...`);
+  
+  const cleaned = cleanCorruptedCache(authDir);
+  if (!cleaned) {
+    console.error(`❌ Falha ao limpar cache`);
+    console.error(`   SOLUÇÃO MANUAL: Delete a pasta: ${authDir}`);
+    console.error(`   Use: rmdir /s /q "${authDir}"`);
+    tenantStatus.set(tenant.id, 'cache_clean_failed');
+    return null;
   }
   
+  console.log(`✅ Cache limpo com sucesso`);
+  console.log(`📱 Um novo QR Code será gerado - você precisará escanear novamente`);
   console.log(`🌐 Configurando Puppeteer...`);
   const client = new Client({
     authStrategy: new LocalAuth({ 
@@ -1036,6 +1035,50 @@ process.on('SIGINT', async () => {
   }
   
   process.exit(0);
+});
+
+// Proteção contra erros não tratados
+process.on('uncaughtException', (error) => {
+  console.error('\n❌ ERRO NÃO TRATADO:');
+  console.error(`   Tipo: ${error.name}`);
+  console.error(`   Mensagem: ${error.message}`);
+  console.error(`   Stack: ${error.stack}`);
+  
+  // Se for erro de cache corrompido, tentar limpar
+  if (error.message?.includes('Cannot read properties of null')) {
+    console.error('\n🧹 Detectado erro de cache corrompido');
+    console.error('   Limpando todos os caches...');
+    
+    for (const [tenantId, authDir] of tenantAuthDir) {
+      try {
+        cleanCorruptedCache(authDir);
+        console.log(`✅ Cache limpo para tenant: ${tenantId}`);
+      } catch (cleanError) {
+        console.error(`❌ Erro ao limpar cache do tenant ${tenantId}:`, cleanError.message);
+      }
+    }
+    
+    console.error('\n💡 SOLUÇÃO: Reinicie o servidor agora');
+  }
+  
+  // Não encerrar o processo, apenas logar
+  console.error('\n⚠️ Servidor continua rodando, mas pode estar instável');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('\n❌ PROMISE REJEITADA NÃO TRATADA:');
+  console.error(`   Motivo:`, reason);
+  console.error(`   Promise:`, promise);
+  
+  // Se for erro de cache corrompido, logar
+  if (reason && typeof reason === 'object' && 'message' in reason) {
+    const errorMessage = (reason as Error).message;
+    if (errorMessage?.includes('Cannot read properties of null') || 
+        errorMessage?.includes('Execution context was destroyed')) {
+      console.error('\n🧹 Detectado erro de cache corrompido via Promise');
+      console.error('   Os caches serão limpos na próxima reconexão automática');
+    }
+  }
 });
 
 startServer();
