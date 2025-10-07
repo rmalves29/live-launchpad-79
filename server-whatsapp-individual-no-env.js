@@ -5,7 +5,7 @@
  * Node 18+ | whatsapp-web.js | express | cors
  */
 
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, NoAuth } = require('whatsapp-web.js');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -247,12 +247,11 @@ async function createTenantClient(tenant) {
   
   console.log(`✅ Cache limpo com sucesso`);
   console.log(`📱 Um novo QR Code será gerado - você precisará escanear novamente`);
-  console.log(`🌐 Configurando Puppeteer...`);
+  console.log(`🌐 Configurando Puppeteer SEM CACHE LOCAL...`);
+  console.log(`⚠️ ATENÇÃO: Usando NoAuth - você precisará escanear o QR toda vez que reiniciar`);
+  
   const client = new Client({
-    authStrategy: new LocalAuth({ 
-      clientId: `tenant_${tenant.id}`,
-      dataPath: authDir
-    }),
+    authStrategy: new NoAuth(),
     puppeteer: {
       headless: false,
       args: [
@@ -264,10 +263,15 @@ async function createTenantClient(tenant) {
         '--no-zygote',
         '--disable-extensions',
         '--disable-blink-features=AutomationControlled',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
         '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       ],
       defaultViewport: null,
       timeout: 60000
+    },
+    webVersionCache: {
+      type: 'none'
     }
   });
   
