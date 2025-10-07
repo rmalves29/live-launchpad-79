@@ -166,30 +166,62 @@ const Clientes = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabaseTenant
+      // Verificar se cliente já existe
+      const { data: existingCustomer } = await supabaseTenant
         .from('customers')
-        .insert({
-          phone: normalizedPhone,
+        .select('*')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+
+      if (existingCustomer) {
+        // Cliente existe - atualizar dados incluindo Instagram
+        const updateData: any = {
           name: newCustomer.name,
-          instagram: newCustomer.instagram || null
+        };
+
+        // Adicionar Instagram se fornecido
+        if (newCustomer.instagram) {
+          updateData.instagram = newCustomer.instagram;
+        }
+
+        const { error: updateError } = await supabaseTenant
+          .from('customers')
+          .update(updateData)
+          .eq('phone', normalizedPhone);
+
+        if (updateError) throw updateError;
+
+        toast({
+          title: 'Sucesso',
+          description: newCustomer.instagram 
+            ? 'Cliente atualizado com sucesso (Instagram adicionado)'
+            : 'Cliente atualizado com sucesso',
         });
+      } else {
+        // Cliente não existe - criar novo
+        const { error } = await supabaseTenant
+          .from('customers')
+          .insert({
+            phone: normalizedPhone,
+            name: newCustomer.name,
+            instagram: newCustomer.instagram || null
+          });
 
-      if (error) throw error;
+        if (error) throw error;
 
-      toast({
-        title: 'Sucesso',
-        description: 'Cliente cadastrado com sucesso'
-      });
+        toast({
+          title: 'Sucesso',
+          description: 'Cliente cadastrado com sucesso'
+        });
+      }
       
       setNewCustomer({ phone: '', name: '', instagram: '' });
       loadCustomers();
     } catch (error: any) {
-      console.error('Error creating customer:', error);
+      console.error('Error creating/updating customer:', error);
       toast({
         title: 'Erro',
-        description: error.message?.includes('duplicate') 
-          ? 'Cliente já cadastrado com este telefone'
-          : 'Erro ao cadastrar cliente',
+        description: 'Erro ao salvar cliente',
         variant: 'destructive'
       });
     } finally {
