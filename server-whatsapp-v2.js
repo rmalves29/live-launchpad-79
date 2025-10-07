@@ -142,7 +142,9 @@ async function createTenantClient(tenant) {
     }
   });
 
-  // Setup events
+  // Setup events com logs detalhados
+  console.log(`📝 Configurando eventos para: ${tenant.name}`);
+  
   client.on('qr', (qr) => {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`📱 ESCANEIE O QR CODE ABAIXO PARA: ${tenant.name}`);
@@ -150,6 +152,10 @@ async function createTenantClient(tenant) {
     qrcode.generate(qr, { small: true });
     console.log(`${'='.repeat(60)}\n`);
     tenantStatus.set(tenant.id, 'qr_code');
+  });
+  
+  client.on('loading_screen', (percent, message) => {
+    console.log(`⏳ ${tenant.name} - Loading: ${percent}% - ${message}`);
   });
 
   client.on('ready', () => {
@@ -179,13 +185,18 @@ async function createTenantClient(tenant) {
   tenantClients.set(tenant.id, client);
   tenantStatus.set(tenant.id, 'initializing');
   
+  console.log(`🔄 Iniciando cliente WhatsApp para: ${tenant.name}`);
+  
   // Inicializar de forma assíncrona (não bloqueia)
   client.initialize()
     .then(() => {
-      console.log(`🚀 Inicializado: ${tenant.name}`);
+      console.log(`🚀 Cliente inicializado com sucesso: ${tenant.name}`);
     })
     .catch((error) => {
-      console.error(`❌ Erro inicializar ${tenant.name}:`, error);
+      console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
+      console.error(`   Tipo: ${error.name}`);
+      console.error(`   Mensagem: ${error.message}`);
+      console.error(`   Stack: ${error.stack}`);
       tenantStatus.set(tenant.id, 'error');
     });
   
