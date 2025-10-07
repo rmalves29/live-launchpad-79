@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
+import { getBrasiliaDateISO, formatBrasiliaDate } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -169,7 +170,7 @@ const PedidosManual = () => {
 
     try {
       const subtotal = product.price * qty;
-      const today = new Date().toISOString().split('T')[0];
+      const today = getBrasiliaDateISO();
       
       // Function to get or create order with retry logic
       const getOrCreateOrder = async (): Promise<{ orderId: number; cartId: number | null; isNew: boolean }> => {
@@ -700,7 +701,7 @@ const PedidosManual = () => {
                             <TableRow key={order.id}>
                               <TableCell>#{order.id}</TableCell>
                               <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
-                              <TableCell>{new Date(order.created_at).toLocaleDateString('pt-BR')}</TableCell>
+                              <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
                               <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
                               <TableCell>
                                 <Badge variant={order.is_paid ? 'default' : 'secondary'}>
