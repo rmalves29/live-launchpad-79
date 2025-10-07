@@ -39,7 +39,11 @@ interface CustomerData {
 const Checkout = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { tenantId } = useTenantContext();
+  const { tenantId: contextTenantId } = useTenantContext();
+  
+  // Detectar tenant de múltiplas fontes (contexto, URL params, localStorage)
+  const [effectiveTenantId, setEffectiveTenantId] = useState<string | null>(null);
+  
   const [phone, setPhone] = useState('');
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -83,6 +87,31 @@ const Checkout = () => {
   const [activeGifts, setActiveGifts] = useState<any[]>([]);
   const [eligibleGift, setEligibleGift] = useState<any>(null);
   const [progressGift, setProgressGift] = useState<any>(null);
+
+  // Detectar tenant de múltiplas fontes ao carregar a página
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTenantId = urlParams.get('tenant_id') || urlParams.get('tenantId');
+    const previewTenantId = localStorage.getItem('previewTenantId');
+    
+    // Prioridade: URL params > Context > localStorage
+    const detectedTenantId = urlTenantId || contextTenantId || previewTenantId;
+    
+    console.log('🔍 Detectando tenant para checkout:', {
+      urlTenantId,
+      contextTenantId,
+      previewTenantId,
+      detectedTenantId
+    });
+    
+    if (detectedTenantId) {
+      setEffectiveTenantId(detectedTenantId);
+      supabaseTenant.setTenantId(detectedTenantId);
+      console.log('✅ Tenant configurado para checkout:', detectedTenantId);
+    } else {
+      console.warn('⚠️ Nenhum tenant detectado para checkout');
+    }
+  }, [contextTenantId]);
 
   // Detectar retorno da página de pagamento e limpar dados duplicados  
   useEffect(() => {
@@ -182,10 +211,10 @@ const Checkout = () => {
       return;
     }
 
-    if (!tenantId) {
+    if (!effectiveTenantId) {
       toast({
         title: 'Erro',
-        description: 'Tenant não identificado',
+        description: 'Tenant não identificado. Por favor, acesse através do link correto.',
         variant: 'destructive'
       });
       return;
@@ -353,15 +382,15 @@ const Checkout = () => {
     console.log('🚚 Iniciando cálculo de frete...', { 
       cep, 
       order_id: order.id, 
-      tenantId,
+      effectiveTenantId,
       hasSupabaseTenant: !!supabaseTenant,
       hasRaw: !!supabaseTenant?.raw,
       hasFunctions: !!supabaseTenant?.raw?.functions
     });
     
     // Proteção inicial
-    if (!cep || !order || !tenantId) {
-      console.log('⚠️ Dados insuficientes para calcular frete:', { cep, order: !!order, tenantId });
+    if (!cep || !order || !effectiveTenantId) {
+      console.log('⚠️ Dados insuficientes para calcular frete:', { cep, order: !!order, effectiveTenantId });
       return;
     }
 
@@ -380,7 +409,7 @@ const Checkout = () => {
     }
     
     console.log('🚚 Iniciando cálculo de frete para CEP:', cep);
-    console.log('📋 Tenant ID:', tenantId);
+    console.log('📋 Tenant ID:', effectiveTenantId);
     console.log('📦 Order items:', order.items);
     
     // Definir opção de retirada como fallback imediato
@@ -427,8 +456,8 @@ const Checkout = () => {
         throw new Error('Sistema de integração não disponível');
       }
 
-      if (!tenantId) {
-        console.error('❌ tenantId não definido');
+      if (!effectiveTenantId) {
+        console.error('❌ effectiveTenantId não definido');
         throw new Error('ID do tenant não identificado');
       }
 
@@ -436,7 +465,7 @@ const Checkout = () => {
       
       // Testar token primeiro
       const tokenTestResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-test-token', {
-        body: { tenant_id: tenantId }
+        body: { tenant_id: effectiveTenantId }
       });
       
       console.log('🧪 Resposta do teste de token:', tokenTestResponse);
@@ -472,7 +501,7 @@ const Checkout = () => {
       const shippingResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
-          tenant_id: tenantId,
+          tenant_id: effectiveTenantId,
           products: products
         }
       });
@@ -857,10 +886,10 @@ const Checkout = () => {
   };
 
   const processPayment = async (order: Order) => {
-    if (!tenantId) {
+    if (!effectiveTenantId) {
       toast({
         title: 'Erro',
-        description: 'Tenant não identificado',
+        description: 'Tenant não identificado. Por favor, acesse através do link correto.',
         variant: 'destructive'
       });
       return;
@@ -956,7 +985,7 @@ const Checkout = () => {
         total: totalAmount.toString(),
         coupon_discount: couponDiscount,
         coupon_code: appliedCoupon?.code || null,
-        tenant_id: tenantId
+        tenant_id: effectiveTenantId
       };
 
       console.log('Calling create-payment with data:', paymentData);
