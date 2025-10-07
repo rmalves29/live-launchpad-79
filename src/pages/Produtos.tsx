@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,6 +24,7 @@ interface Product {
   size?: string;
   image_url?: string;
   is_active: boolean;
+  sale_type: 'LIVE' | 'BAZAR';
 }
 
 const Produtos = () => {
@@ -43,7 +45,8 @@ const Produtos = () => {
     color: '',
     size: '',
     image_url: '',
-    is_active: true
+    is_active: true,
+    sale_type: 'BAZAR' as 'LIVE' | 'BAZAR'
   });
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -113,7 +116,8 @@ const Produtos = () => {
         color: formData.color || null,
         size: formData.size || null,
         image_url: imageUrl,
-        is_active: formData.is_active
+        is_active: formData.is_active,
+        sale_type: formData.sale_type
       };
 
       if (editingProduct) {
@@ -151,7 +155,8 @@ const Produtos = () => {
         color: '',
         size: '',
         image_url: '',
-        is_active: true
+        is_active: true,
+        sale_type: 'BAZAR'
       });
       setSelectedFile(null);
       loadProducts();
@@ -227,7 +232,8 @@ const Produtos = () => {
         color: product.color || '',
         size: product.size || '',
         image_url: product.image_url || '',
-        is_active: product.is_active
+        is_active: product.is_active,
+        sale_type: product.sale_type || 'BAZAR'
     });
     setSelectedFile(null);
     setIsDialogOpen(true);
@@ -398,6 +404,22 @@ const Produtos = () => {
                       placeholder="0"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="sale_type">Tipo de Venda *</Label>
+                  <Select
+                    value={formData.sale_type}
+                    onValueChange={(value: 'LIVE' | 'BAZAR') => setFormData({ ...formData, sale_type: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BAZAR">BAZAR (Pedidos Manual)</SelectItem>
+                      <SelectItem value="LIVE">LIVE</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

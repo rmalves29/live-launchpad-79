@@ -23,6 +23,7 @@ interface Product {
   stock: number;
   image_url?: string;
   is_active: boolean;
+  sale_type: 'LIVE' | 'BAZAR';
 }
 
 interface Order {
@@ -64,6 +65,7 @@ const Live = () => {
         .from('products')
         .select('*')
         .eq('is_active', true)
+        .eq('sale_type', 'LIVE')
         .order('code');
 
       if (searchQuery) {
