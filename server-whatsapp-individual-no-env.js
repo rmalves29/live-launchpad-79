@@ -1072,7 +1072,7 @@ process.on('unhandledRejection', (reason, promise) => {
   
   // Se for erro de cache corrompido, logar
   if (reason && typeof reason === 'object' && 'message' in reason) {
-    const errorMessage = (reason as Error).message;
+    const errorMessage = reason.message;
     if (errorMessage?.includes('Cannot read properties of null') || 
         errorMessage?.includes('Execution context was destroyed')) {
       console.error('\n🧹 Detectado erro de cache corrompido via Promise');
