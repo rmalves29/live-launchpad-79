@@ -6,6 +6,9 @@ interface Tenant {
   name: string;
   slug: string;
   is_active: boolean;
+  enable_live?: boolean;
+  enable_sendflow?: boolean;
+  max_whatsapp_groups?: number | null;
 }
 
 interface UseTenantReturn {

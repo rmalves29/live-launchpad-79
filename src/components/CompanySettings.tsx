@@ -21,6 +21,9 @@ interface CompanyData {
   company_city: string;
   company_state: string;
   company_cep: string;
+  enable_live: boolean;
+  enable_sendflow: boolean;
+  max_whatsapp_groups: number | null;
 }
 
 export const CompanySettings = () => {
@@ -39,6 +42,9 @@ export const CompanySettings = () => {
     company_city: '',
     company_state: '',
     company_cep: '',
+    enable_live: true,
+    enable_sendflow: true,
+    max_whatsapp_groups: null,
   });
 
   useEffect(() => {
@@ -51,7 +57,7 @@ export const CompanySettings = () => {
     try {
       const { data, error } = await supabaseTenant.raw
         .from('tenants')
-        .select('company_name, company_document, company_email, company_phone, company_address, company_number, company_complement, company_district, company_city, company_state, company_cep')
+        .select('company_name, company_document, company_email, company_phone, company_address, company_number, company_complement, company_district, company_city, company_state, company_cep, enable_live, enable_sendflow, max_whatsapp_groups')
         .eq('id', tenantId)
         .single();
 
@@ -70,6 +76,9 @@ export const CompanySettings = () => {
           company_city: data.company_city || '',
           company_state: data.company_state || '',
           company_cep: data.company_cep || '',
+          enable_live: data.enable_live ?? true,
+          enable_sendflow: data.enable_sendflow ?? true,
+          max_whatsapp_groups: data.max_whatsapp_groups || null,
         });
       }
     } catch (error) {
@@ -250,6 +259,62 @@ export const CompanySettings = () => {
                 placeholder="00000-000"
               />
             </div>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Funcionalidades Ativas</h3>
+          
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="space-y-0.5">
+              <Label htmlFor="enable_live">Habilitar Live</Label>
+              <p className="text-sm text-muted-foreground">
+                Permite que a empresa acesse a funcionalidade de Lives
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              id="enable_live"
+              checked={formData.enable_live}
+              onChange={(e) => setFormData({ ...formData, enable_live: e.target.checked })}
+              className="h-4 w-4"
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="space-y-0.5">
+              <Label htmlFor="enable_sendflow">Habilitar SendFlow</Label>
+              <p className="text-sm text-muted-foreground">
+                Permite que a empresa acesse a funcionalidade de SendFlow
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              id="enable_sendflow"
+              checked={formData.enable_sendflow}
+              onChange={(e) => setFormData({ ...formData, enable_sendflow: e.target.checked })}
+              className="h-4 w-4"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="max_whatsapp_groups">Limite de Grupos WhatsApp</Label>
+            <p className="text-sm text-muted-foreground">
+              Quantidade máxima de grupos que aparecerão na lista do SendFlow (deixe vazio para sem limite)
+            </p>
+            <Input
+              id="max_whatsapp_groups"
+              type="number"
+              min="0"
+              value={formData.max_whatsapp_groups || ''}
+              onChange={(e) => setFormData({ 
+                ...formData, 
+                max_whatsapp_groups: e.target.value ? parseInt(e.target.value) : null 
+              })}
+              placeholder="Ex: 10"
+            />
           </div>
         </div>
 

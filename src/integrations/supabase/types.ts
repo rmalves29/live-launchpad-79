@@ -860,8 +860,11 @@ export type Database = {
           company_phone: string | null
           company_state: string | null
           created_at: string
+          enable_live: boolean
+          enable_sendflow: boolean
           id: string
           is_active: boolean
+          max_whatsapp_groups: number | null
           name: string
           slug: string
           tenant_key: string | null
@@ -882,8 +885,11 @@ export type Database = {
           company_phone?: string | null
           company_state?: string | null
           created_at?: string
+          enable_live?: boolean
+          enable_sendflow?: boolean
           id?: string
           is_active?: boolean
+          max_whatsapp_groups?: number | null
           name: string
           slug: string
           tenant_key?: string | null
@@ -904,8 +910,11 @@ export type Database = {
           company_phone?: string | null
           company_state?: string | null
           created_at?: string
+          enable_live?: boolean
+          enable_sendflow?: boolean
           id?: string
           is_active?: boolean
+          max_whatsapp_groups?: number | null
           name?: string
           slug?: string
           tenant_key?: string | null
