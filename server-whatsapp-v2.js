@@ -121,7 +121,9 @@ async function createTenantClient(tenant) {
   tenantAuthDir.set(tenant.id, authDir);
   
   console.log(`🔧 Criando cliente WhatsApp para: ${tenant.name} (${tenant.id})`);
+  console.log(`📂 Diretório de autenticação: ${authDir}`);
   
+  console.log(`🌐 Configurando Puppeteer...`);
   const client = new Client({
     authStrategy: new LocalAuth({ 
       clientId: `tenant_${tenant.id}`,
@@ -130,6 +132,7 @@ async function createTenantClient(tenant) {
     puppeteer: {
       headless: true,
       devtools: false,
+      timeout: 60000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -137,10 +140,16 @@ async function createTenantClient(tenant) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-extensions',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
       ]
     }
   });
+  
+  console.log(`✅ Cliente criado, configurando eventos...`);
 
   // Setup events com logs detalhados
   console.log(`📝 Configurando eventos para: ${tenant.name}`);
@@ -186,17 +195,33 @@ async function createTenantClient(tenant) {
   tenantStatus.set(tenant.id, 'initializing');
   
   console.log(`🔄 Iniciando cliente WhatsApp para: ${tenant.name}`);
+  console.log(`⏰ Aguardando inicialização... (timeout: 60s)`);
+  
+  // Adicionar timeout de segurança
+  const timeoutId = setTimeout(() => {
+    console.error(`⏱️ TIMEOUT: Cliente ${tenant.name} não inicializou em 60 segundos`);
+    console.error(`   Possíveis causas:`);
+    console.error(`   - Chromium/Puppeteer travado`);
+    console.error(`   - Falta de dependências do sistema`);
+    console.error(`   - Problemas de rede com WhatsApp Web`);
+    tenantStatus.set(tenant.id, 'timeout');
+  }, 60000);
   
   // Inicializar de forma assíncrona (não bloqueia)
   client.initialize()
     .then(() => {
+      clearTimeout(timeoutId);
       console.log(`🚀 Cliente inicializado com sucesso: ${tenant.name}`);
     })
     .catch((error) => {
+      clearTimeout(timeoutId);
       console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
       console.error(`   Tipo: ${error.name}`);
       console.error(`   Mensagem: ${error.message}`);
-      console.error(`   Stack: ${error.stack}`);
+      if (error.stack) {
+        console.error(`   Stack (primeiras linhas):`);
+        console.error(error.stack.split('\n').slice(0, 5).join('\n'));
+      }
       tenantStatus.set(tenant.id, 'error');
     });
   
