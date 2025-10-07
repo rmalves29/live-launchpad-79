@@ -432,7 +432,7 @@ const PedidosManual = () => {
       const { error } = await supabaseTenant
         .from('orders')
         .update({
-          customer_phone: editPhone,
+          customer_phone: normalizeForStorage(editPhone),
           total_amount: parseFloat(editAmount)
         })
         .eq('id', editingOrder.id);
