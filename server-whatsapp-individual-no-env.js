@@ -150,10 +150,12 @@ async function createTenantClient(tenant) {
   
   client.on('qr', (qr) => {
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`📱 ESCANEIE O QR CODE ABAIXO PARA: ${tenant.name}`);
+    console.log(`📱 QR CODE GERADO PARA: ${tenant.name}`);
+    console.log(`📱 ESCANEIE O QR CODE NO NAVEGADOR PUPPETEER`);
     console.log(`${'='.repeat(60)}`);
     qrcode.generate(qr, { small: true });
     console.log(`${'='.repeat(60)}\n`);
+    console.log(`✅ QR Code também deve aparecer na janela do navegador`);
     tenantStatus.set(tenant.id, 'qr_code');
   });
   
@@ -189,17 +191,20 @@ async function createTenantClient(tenant) {
   tenantStatus.set(tenant.id, 'initializing');
   
   console.log(`🔄 Iniciando cliente WhatsApp para: ${tenant.name}`);
-  console.log(`⏰ Aguardando inicialização... (timeout: 60s)`);
+  console.log(`⏰ Aguardando inicialização... (timeout: 120s)`);
+  console.log(`📂 Diretório de autenticação: ${authDir}`);
+  console.log(`💡 DICA: Se não aparecer QR code, delete a pasta: ${authDir}`);
   
   // Adicionar timeout de segurança
   const timeoutId = setTimeout(() => {
-    console.error(`⏱️ TIMEOUT: Cliente ${tenant.name} não inicializou em 60 segundos`);
+    console.error(`⏱️ TIMEOUT: Cliente ${tenant.name} não inicializou em 120 segundos`);
     console.error(`   Possíveis causas:`);
-    console.error(`   - Chromium/Puppeteer travado`);
-    console.error(`   - Falta de dependências do sistema`);
+    console.error(`   - WhatsApp Web não carregou completamente`);
+    console.error(`   - Sessão antiga corrompida (delete a pasta: ${authDir})`);
     console.error(`   - Problemas de rede com WhatsApp Web`);
+    console.error(`   - Chromium/Puppeteer travado`);
     tenantStatus.set(tenant.id, 'timeout');
-  }, 60000);
+  }, 120000);
   
   // Inicializar de forma assíncrona (não bloqueia)
   client.initialize()
