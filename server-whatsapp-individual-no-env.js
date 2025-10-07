@@ -130,21 +130,15 @@ async function createTenantClient(tenant) {
       dataPath: authDir
     }),
     puppeteer: {
-      headless: true,
+      headless: false,
       devtools: false,
       timeout: 60000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
         '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-        '--disable-extensions',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding'
+        '--disable-extensions'
       ]
     }
   });
