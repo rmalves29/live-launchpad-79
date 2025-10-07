@@ -677,10 +677,13 @@ async function startServer() {
     
     await initializeTenants();
     
-    app.listen(PORT, () => {
-      console.log(`🌐 Servidor rodando: http://localhost:${PORT}`);
-      console.log(`📊 Status: http://localhost:${PORT}/status`);
-      console.log(`💚 Health: http://localhost:${PORT}/health`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🌐 Servidor rodando em TODAS as interfaces de rede`);
+      console.log(`📍 Acesso local: http://localhost:${PORT}`);
+      console.log(`📍 Acesso rede: http://[SEU_IP]:${PORT}`);
+      console.log(`📊 Status: http://[SEU_IP]:${PORT}/status`);
+      console.log(`💚 Health: http://[SEU_IP]:${PORT}/health`);
+      console.log(`\n⚠️  IMPORTANTE: Configure a URL no sistema como http://[IP_DESTE_PC]:${PORT}`);
     });
     
   } catch (error) {

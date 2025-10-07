@@ -70,11 +70,26 @@ export function WhatsAppConfig() {
       
       if (response.ok) {
         setServerStatus('online');
+        toast({
+          title: '✅ Servidor Online',
+          description: 'Conexão estabelecida com sucesso!',
+        });
       } else {
         setServerStatus('offline');
+        toast({
+          title: '❌ Servidor respondeu com erro',
+          description: `Status: ${response.status}`,
+          variant: 'destructive'
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       setServerStatus('offline');
+      const errorMsg = error.message || 'Não foi possível conectar';
+      toast({
+        title: '❌ Servidor Offline',
+        description: `${errorMsg}. Verifique se o servidor está rodando e a URL está correta.`,
+        variant: 'destructive'
+      });
     }
   };
 
@@ -271,9 +286,9 @@ export function WhatsAppConfig() {
         </div>
 
         {/* Help Section */}
-        <div className="mt-6 p-4 bg-muted rounded-lg space-y-2">
+        <div className="mt-6 p-4 bg-muted rounded-lg space-y-3">
           <h4 className="font-medium text-sm">📌 Como configurar:</h4>
-          <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+          <ul className="text-xs text-muted-foreground space-y-2 list-disc list-inside">
             <li>
               <strong>Mesma rede:</strong> Use o IP local do computador com Node.js (ex: <code>http://192.168.0.100:3333</code>)
             </li>
@@ -281,12 +296,24 @@ export function WhatsAppConfig() {
               <strong>Acesso externo:</strong> Use IP público ou domínio (ex: <code>http://seu-ip-publico:3333</code>)
             </li>
             <li>
-              <strong>Importante:</strong> O servidor Node.js precisa estar rodando e acessível pela rede
+              <strong>IMPORTANTE:</strong> O servidor deve escutar em <code>0.0.0.0</code> (todas interfaces), não apenas <code>localhost</code>
             </li>
             <li>
               <strong>Porta:</strong> A porta padrão é <code>3333</code>, mas pode ser alterada no servidor
             </li>
           </ul>
+          
+          {serverStatus === 'offline' && apiUrl && (
+            <div className="mt-3 p-3 bg-destructive/10 rounded border border-destructive/20">
+              <p className="text-xs font-medium text-destructive mb-2">🔧 Problemas de Conexão?</p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                <li>Verifique se o servidor Node.js está rodando</li>
+                <li>Confirme que o servidor escuta em <code>0.0.0.0</code>, não <code>localhost</code></li>
+                <li>Teste se firewall/antivírus não está bloqueando a porta</li>
+                <li>Certifique-se que o IP está correto (use <code>ipconfig</code> no Windows ou <code>ifconfig</code> no Linux)</li>
+              </ul>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
