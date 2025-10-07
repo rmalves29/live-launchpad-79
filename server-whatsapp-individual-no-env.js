@@ -132,14 +132,21 @@ async function createTenantClient(tenant) {
     puppeteer: {
       headless: false,
       devtools: false,
-      timeout: 60000,
+      timeout: 120000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--no-first-run',
-        '--disable-extensions'
+        '--disable-extensions',
+        '--disable-blink-features=AutomationControlled',
+        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       ]
+    },
+    // Aumentar timeouts para evitar ProtocolError
+    webVersionCache: {
+      type: 'remote',
+      remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html`
     }
   });
   
@@ -207,22 +214,34 @@ async function createTenantClient(tenant) {
   }, 120000);
   
   // Inicializar de forma assíncrona (não bloqueia)
-  client.initialize()
-    .then(() => {
-      clearTimeout(timeoutId);
-      console.log(`🚀 Cliente inicializado com sucesso: ${tenant.name}`);
-    })
-    .catch((error) => {
-      clearTimeout(timeoutId);
-      console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
-      console.error(`   Tipo: ${error.name}`);
-      console.error(`   Mensagem: ${error.message}`);
-      if (error.stack) {
-        console.error(`   Stack (primeiras linhas):`);
-        console.error(error.stack.split('\n').slice(0, 5).join('\n'));
-      }
-      tenantStatus.set(tenant.id, 'error');
-    });
+  // Delay pequeno para garantir que o Puppeteer está pronto
+  setTimeout(() => {
+    client.initialize()
+      .then(() => {
+        clearTimeout(timeoutId);
+        console.log(`🚀 Cliente inicializado com sucesso: ${tenant.name}`);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
+        console.error(`   Tipo: ${error.name}`);
+        console.error(`   Mensagem: ${error.message}`);
+        
+        // Tratar erro específico de ProtocolError
+        if (error.name === 'ProtocolError' || error.message?.includes('Execution context was destroyed')) {
+          console.error(`\n⚠️ SOLUÇÃO:`);
+          console.error(`   1. Delete COMPLETAMENTE a pasta: ${authDir}`);
+          console.error(`   2. Reinicie o servidor`);
+          console.error(`   3. Se persistir, reinstale whatsapp-web.js: npm install whatsapp-web.js@latest\n`);
+        }
+        
+        if (error.stack) {
+          console.error(`   Stack (primeiras linhas):`);
+          console.error(error.stack.split('\n').slice(0, 5).join('\n'));
+        }
+        tenantStatus.set(tenant.id, 'error');
+      });
+  }, 2000); // Delay de 2 segundos
   
   return client;
 }
