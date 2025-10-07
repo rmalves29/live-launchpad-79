@@ -101,6 +101,31 @@ async function getWhatsAppIntegration(tenantId) {
 }
 
 /* ============================ WHATSAPP CLIENT MANAGEMENT ============================ */
+
+/**
+ * Limpa cache corrompido do WhatsApp Web
+ */
+function cleanCorruptedCache(authDir) {
+  try {
+    console.log(`🧹 Limpando cache corrompido: ${authDir}`);
+    
+    // Deletar pasta inteira se existir
+    if (fs.existsSync(authDir)) {
+      fs.rmSync(authDir, { recursive: true, force: true });
+      console.log(`✅ Cache deletado com sucesso`);
+    }
+    
+    // Recriar pasta limpa
+    fs.mkdirSync(authDir, { recursive: true });
+    console.log(`✅ Pasta recriada limpa`);
+    
+    return true;
+  } catch (error) {
+    console.error(`❌ Erro ao limpar cache:`, error.message);
+    return false;
+  }
+}
+
 function getTenantAuthDir(tenantId) {
   const baseDir = path.join(__dirname, '.wwebjs_auth_v2');
   const tenantDir = path.join(baseDir, `tenant_${tenantId}`);
@@ -179,12 +204,50 @@ async function createTenantClient(tenant) {
 
   client.on('auth_failure', (msg) => {
     console.error(`❌ Falha autenticação ${tenant.name}:`, msg);
+    console.error(`💡 SOLUÇÃO: Limpando cache corrompido...`);
+    
     tenantStatus.set(tenant.id, 'auth_failure');
+    
+    // Limpar cache e tentar reconectar após 5 segundos
+    setTimeout(async () => {
+      console.log(`🔄 Tentando reconectar ${tenant.name}...`);
+      const cleaned = cleanCorruptedCache(authDir);
+      
+      if (cleaned) {
+        console.log(`✅ Cache limpo, reiniciando cliente em 3 segundos...`);
+        await delay(3000);
+        
+        try {
+          // Remover cliente antigo
+          if (tenantClients.has(tenant.id)) {
+            const oldClient = tenantClients.get(tenant.id);
+            try {
+              await oldClient.destroy();
+            } catch (e) {
+              console.log(`⚠️ Erro ao destruir cliente antigo: ${e.message}`);
+            }
+            tenantClients.delete(tenant.id);
+          }
+          
+          // Criar novo cliente
+          console.log(`🔄 Recriando cliente ${tenant.name}...`);
+          await createTenantClient(tenant);
+        } catch (error) {
+          console.error(`❌ Erro ao recriar cliente:`, error.message);
+        }
+      }
+    }, 5000);
   });
 
   client.on('disconnected', (reason) => {
     console.log(`🔌 Desconectado ${tenant.name}:`, reason);
     tenantStatus.set(tenant.id, 'offline');
+    
+    // Se foi um logout, limpar cache
+    if (reason === 'LOGOUT' || reason === 'NAVIGATION') {
+      console.log(`🧹 Limpando cache após desconexão: ${reason}`);
+      cleanCorruptedCache(authDir);
+    }
   });
 
   client.on('message', async (message) => {
@@ -211,23 +274,52 @@ async function createTenantClient(tenant) {
   }, 120000);
   
   // Inicializar cliente
-  client.initialize().catch((error) => {
+  client.initialize().catch(async (error) => {
     clearTimeout(timeoutId);
     console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
     console.error(`   Tipo: ${error.name}`);
     console.error(`   Mensagem: ${error.message}`);
     
-    if (error.name === 'ProtocolError' || error.message?.includes('Execution context was destroyed')) {
-      console.error(`\n⚠️ SOLUÇÃO DEFINITIVA:`);
-      console.error(`   1. Pare o servidor (Ctrl+C)`);
-      console.error(`   2. Delete: ${authDir}`);
-      console.error(`   3. Execute: npm cache clean --force`);
-      console.error(`   4. Execute: npm uninstall whatsapp-web.js`);
-      console.error(`   5. Execute: npm install whatsapp-web.js@1.23.0`);
-      console.error(`   6. Reinicie o servidor\n`);
-    }
+    // Detectar erros de cache corrompido
+    const isCorruptedCache = 
+      error.message?.includes('Cannot read properties of null') ||
+      error.message?.includes('Execution context was destroyed') ||
+      error.message?.includes('Protocol error') ||
+      error.name === 'ProtocolError';
     
-    tenantStatus.set(tenant.id, 'error');
+    if (isCorruptedCache) {
+      console.error(`\n🧹 Cache corrompido detectado! Limpando automaticamente...`);
+      
+      const cleaned = cleanCorruptedCache(authDir);
+      
+      if (cleaned) {
+        console.log(`✅ Cache limpo! Reiniciando cliente em 5 segundos...`);
+        tenantStatus.set(tenant.id, 'restarting');
+        
+        await delay(5000);
+        
+        try {
+          // Remover cliente antigo
+          if (tenantClients.has(tenant.id)) {
+            tenantClients.delete(tenant.id);
+          }
+          
+          // Criar novo cliente
+          console.log(`🔄 Recriando cliente ${tenant.name}...`);
+          await createTenantClient(tenant);
+        } catch (retryError) {
+          console.error(`❌ Erro ao recriar cliente:`, retryError.message);
+          tenantStatus.set(tenant.id, 'error');
+        }
+      } else {
+        console.error(`❌ Não foi possível limpar o cache automaticamente`);
+        console.error(`   SOLUÇÃO MANUAL: Delete manualmente: ${authDir}`);
+        tenantStatus.set(tenant.id, 'error');
+      }
+    } else {
+      console.error(`❌ Erro desconhecido. Verifique os logs.`);
+      tenantStatus.set(tenant.id, 'error');
+    }
   });
   
   return client;
