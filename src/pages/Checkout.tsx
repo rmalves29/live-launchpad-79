@@ -226,22 +226,24 @@ const Checkout = () => {
     setLoadingOpenOrders(true);
     
     try {
-      // Buscar todos os pedidos não pagos do tenant
-      const { data: allOrders, error } = await supabaseTenant
+      console.log('🔍 Buscando pedidos para telefone:', normalizedPhone, 'no tenant:', effectiveTenantId);
+      
+      // Buscar pedidos não pagos do tenant filtrados por telefone
+      // Usando supabase client regular para funcionar sem autenticação
+      const { data: orders, error } = await supabase
         .from('orders')
         .select('*')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('customer_phone', normalizedPhone)
         .eq('is_paid', false)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao buscar pedidos:', error);
+        throw error;
+      }
 
-      // Filtrar pedidos que correspondem ao telefone normalizado
-      const orders = (allOrders || []).filter(order => {
-        const orderPhone = normalizeForStorage(order.customer_phone);
-        return orderPhone === normalizedPhone;
-      });
-
-      if (error) throw error;
+      console.log('✅ Pedidos encontrados:', orders?.length || 0);
 
       // Load cart items for each order
       const ordersWithItems = await Promise.all(
@@ -250,7 +252,7 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          const { data: cartItems, error: itemsError } = await supabaseTenant
+          const { data: cartItems, error: itemsError } = await supabase
             .from('cart_items')
             .select(`
               id,
@@ -262,7 +264,8 @@ const Checkout = () => {
                 image_url
               )
             `)
-            .eq('cart_id', order.cart_id);
+            .eq('cart_id', order.cart_id)
+            .eq('tenant_id', effectiveTenantId);
 
           if (itemsError) {
             console.error('Error loading cart items:', itemsError);
@@ -1065,18 +1068,37 @@ const Checkout = () => {
       return;
     }
 
-    const normalizedPhone = phone.replace(/[^0-9]/g, '');
+    if (!effectiveTenantId) {
+      toast({
+        title: 'Erro',
+        description: 'Tenant não identificado. Por favor, acesse através do link correto.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const normalizedPhone = normalizeForStorage(phone);
     setLoadingHistory(true);
     
     try {
-      const { data: orders, error } = await supabaseTenant
+      console.log('🔍 Buscando histórico para telefone:', normalizedPhone, 'no tenant:', effectiveTenantId);
+      
+      // Buscar pedidos pagos do tenant filtrados por telefone
+      // Usando supabase client regular para funcionar sem autenticação
+      const { data: orders, error } = await supabase
         .from('orders')
         .select('*')
+        .eq('tenant_id', effectiveTenantId)
         .eq('customer_phone', normalizedPhone)
         .eq('is_paid', true)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao buscar histórico:', error);
+        throw error;
+      }
+
+      console.log('✅ Pedidos no histórico:', orders?.length || 0);
 
       // Load cart items for each order
       const ordersWithItems = await Promise.all(
@@ -1085,7 +1107,7 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          const { data: cartItems, error: itemsError } = await supabaseTenant
+          const { data: cartItems, error: itemsError } = await supabase
             .from('cart_items')
             .select(`
               id,
@@ -1097,7 +1119,8 @@ const Checkout = () => {
                 image_url
               )
             `)
-            .eq('cart_id', order.cart_id);
+            .eq('cart_id', order.cart_id)
+            .eq('tenant_id', effectiveTenantId);
 
           if (itemsError) {
             console.error('Error loading cart items:', itemsError);
