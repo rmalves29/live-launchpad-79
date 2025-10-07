@@ -31,7 +31,8 @@ export function normalizeForStorage(phone: string): string {
  * 
  * Regra do 9º dígito no Brasil:
  * - TODOS os celulares devem ter 9 dígitos após o DDD (total 11 dígitos sem DDI)
- * - Se o número tiver 10 dígitos e o 3º dígito não for 9, adiciona o 9
+ * - Celulares começam com 9 após o DDD
+ * - Se tiver 10 dígitos e começar com 9, adiciona outro 9 no início
  * 
  * Entrada: 31992904210 ou 3192904210 ou 5531992904210
  * Saída: 5531992904210 (sempre com 9º dígito para celulares)
@@ -62,11 +63,17 @@ export function normalizeForSending(phone: string): string {
   }
   
   // Garantir 9º dígito para celulares
-  // Celulares no Brasil sempre têm 9 dígitos após o DDD (começando com 9)
-  if (clean.length === 10 && clean[2] !== '9') {
-    // Número com 10 dígitos sem o 9º - adicionar
+  // Se tem 10 dígitos e o 3º dígito é '9', significa que é celular mas falta o 9º dígito
+  // Exemplo: 3192904210 -> deve virar 31992904210
+  if (clean.length === 10 && clean[2] === '9') {
+    // É um celular (começa com 9) mas tem apenas 10 dígitos - adicionar o 9º dígito
     clean = clean.substring(0, 2) + '9' + clean.substring(2);
-    console.log('✅ 9º dígito adicionado:', phone, '->', clean);
+    console.log('✅ 9º dígito adicionado para celular:', phone, '->', clean);
+  } else if (clean.length === 10 && clean[2] !== '9') {
+    // Número com 10 dígitos que não começa com 9 - pode ser fixo ou celular sem nenhum 9
+    // Assumir que é celular e adicionar o 9
+    clean = clean.substring(0, 2) + '9' + clean.substring(2);
+    console.log('✅ 9º dígito adicionado (não começava com 9):', phone, '->', clean);
   }
   
   // Adicionar DDI 55
