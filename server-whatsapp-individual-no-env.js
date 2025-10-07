@@ -132,18 +132,16 @@ async function createTenantClient(tenant) {
     puppeteer: {
       headless: false,
       devtools: false,
-      timeout: 0, // Sem timeout - deixar carregar completamente
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
+        '--disable-accelerated-2d-canvas',
         '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-extensions'
-      ]
+        '--disable-extensions',
+        '--disable-blink-features=AutomationControlled'
+      ],
+      defaultViewport: null
     }
   });
   
