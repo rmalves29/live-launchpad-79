@@ -17,6 +17,7 @@ const Navbar = () => {
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
+    { path: '/live', label: 'Live' },
     { path: '/checkout', label: 'Checkout' },
     { path: '/produtos', label: 'Produtos' },
     { path: '/clientes', label: 'Clientes' },

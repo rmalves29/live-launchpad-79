@@ -9,6 +9,7 @@ import Navbar from "./components/Navbar";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import PedidosManual from "./pages/PedidosManual";
+import Live from "./pages/Live";
 import Checkout from "./pages/Checkout";
 import Pedidos from "./pages/Pedidos";
 import Sorteio from "./pages/Sorteio";
@@ -78,6 +79,9 @@ const AppContent = () => {
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/pedidos-manual" element={
           <RequireTenantAuth><PedidosManual /></RequireTenantAuth>
+        } />
+        <Route path="/live" element={
+          <RequireTenantAuth><Live /></RequireTenantAuth>
         } />
         <Route path="/pedidos" element={
           <RequireTenantAuth><Pedidos /></RequireTenantAuth>

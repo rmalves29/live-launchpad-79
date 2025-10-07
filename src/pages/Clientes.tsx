@@ -21,6 +21,7 @@ interface Customer {
   phone: string;
   name: string;
   email?: string;
+  instagram?: string;
   cpf?: string;
   street?: string;
   number?: string;
@@ -65,7 +66,7 @@ const Clientes = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [newCustomer, setNewCustomer] = useState({ phone: '', name: '' });
+  const [newCustomer, setNewCustomer] = useState({ phone: '', name: '', instagram: '' });
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
@@ -170,6 +171,7 @@ const Clientes = () => {
         .insert({
           phone: normalizedPhone,
           name: newCustomer.name,
+          instagram: newCustomer.instagram || null
         });
 
       if (error) throw error;
@@ -179,7 +181,7 @@ const Clientes = () => {
         description: 'Cliente cadastrado com sucesso'
       });
       
-      setNewCustomer({ phone: '', name: '' });
+      setNewCustomer({ phone: '', name: '', instagram: '' });
       loadCustomers();
     } catch (error: any) {
       console.error('Error creating customer:', error);
@@ -238,6 +240,7 @@ const Clientes = () => {
         .from('customers')
         .update({
           name: editingCustomer.name,
+          instagram: editingCustomer.instagram || null,
           cpf: editingCustomer.cpf || null,
           street: editingCustomer.street || null,
           number: editingCustomer.number || null,
@@ -416,6 +419,11 @@ const Clientes = () => {
                   value={newCustomer.name}
                   onChange={(e) => setNewCustomer(prev => ({ ...prev, name: e.target.value }))}
                 />
+                <Input
+                  placeholder="@usuario (Instagram)"
+                  value={newCustomer.instagram}
+                  onChange={(e) => setNewCustomer(prev => ({ ...prev, instagram: e.target.value }))}
+                />
               </div>
               
               <div className="flex justify-end mt-4">
@@ -478,6 +486,7 @@ const Clientes = () => {
                         <TableRow>
                             <TableHead>Nome</TableHead>
                             <TableHead>Telefone</TableHead>
+                            <TableHead>Instagram</TableHead>
                             <TableHead className="text-right">Ações</TableHead>
                           </TableRow>
                        </TableHeader>
@@ -506,10 +515,13 @@ const Clientes = () => {
                                    )}
                                  </div>
                                </TableCell>
-                               <TableCell className="font-mono">
-                                 {formatPhone(customer.phone)}
-                               </TableCell>
-                              <TableCell className="text-right">
+                                <TableCell className="font-mono">
+                                  {formatPhone(customer.phone)}
+                                </TableCell>
+                                <TableCell>
+                                  {customer.instagram ? `@${customer.instagram.replace('@', '')}` : '-'}
+                                </TableCell>
+                               <TableCell className="text-right">
                                 <div className="flex justify-end space-x-2">
                                   <Dialog>
                                     <DialogTrigger asChild>
@@ -542,14 +554,18 @@ const Clientes = () => {
                                                <Label className="text-sm font-medium">Telefone</Label>
                                                 <p className="text-sm font-mono">{selectedCustomer ? formatPhone(selectedCustomer.phone) : ''}</p>
                                              </div>
-                                             <div>
-                                               <Label className="text-sm font-medium">E-mail</Label>
-                                               <p className="text-sm">{selectedCustomer?.email || '-'}</p>
-                                             </div>
-                                             <div>
-                                               <Label className="text-sm font-medium">CPF</Label>
-                                               <p className="text-sm">{selectedCustomer?.cpf || '-'}</p>
-                                             </div>
+                                              <div>
+                                                <Label className="text-sm font-medium">Instagram</Label>
+                                                <p className="text-sm">{selectedCustomer?.instagram ? `@${selectedCustomer.instagram.replace('@', '')}` : '-'}</p>
+                                              </div>
+                                              <div>
+                                                <Label className="text-sm font-medium">E-mail</Label>
+                                                <p className="text-sm">{selectedCustomer?.email || '-'}</p>
+                                              </div>
+                                              <div>
+                                                <Label className="text-sm font-medium">CPF</Label>
+                                                <p className="text-sm">{selectedCustomer?.cpf || '-'}</p>
+                                              </div>
                                              <div>
                                                <Label className="text-sm font-medium">Cadastrado em</Label>
                                                <p className="text-sm">{selectedCustomer ? formatDate(selectedCustomer.created_at) : ''}</p>
@@ -686,24 +702,33 @@ const Clientes = () => {
                                                 onChange={(e) => setEditingCustomer(prev => prev ? {...prev, name: e.target.value} : null)}
                                               />
                                             </div>
-                                            <div>
-                                              <Label htmlFor="phone">Telefone *</Label>
-                                              <Input
-                                                id="phone"
-                                                value={editingCustomer.phone}
-                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, phone: e.target.value} : null)}
-                                                disabled
-                                                className="bg-muted"
-                                              />
-                                            </div>
-                                            <div>
-                                              <Label htmlFor="cpf">CPF</Label>
-                                              <Input
-                                                id="cpf"
-                                                value={editingCustomer.cpf || ''}
-                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, cpf: e.target.value} : null)}
-                                              />
-                                            </div>
+                                             <div>
+                                               <Label htmlFor="phone">Telefone *</Label>
+                                               <Input
+                                                 id="phone"
+                                                 value={editingCustomer.phone}
+                                                 onChange={(e) => setEditingCustomer(prev => prev ? {...prev, phone: e.target.value} : null)}
+                                                 disabled
+                                                 className="bg-muted"
+                                               />
+                                             </div>
+                                             <div>
+                                               <Label htmlFor="instagram">Instagram</Label>
+                                               <Input
+                                                 id="instagram"
+                                                 placeholder="@usuario"
+                                                 value={editingCustomer.instagram || ''}
+                                                 onChange={(e) => setEditingCustomer(prev => prev ? {...prev, instagram: e.target.value} : null)}
+                                               />
+                                             </div>
+                                             <div>
+                                               <Label htmlFor="cpf">CPF</Label>
+                                               <Input
+                                                 id="cpf"
+                                                 value={editingCustomer.cpf || ''}
+                                                 onChange={(e) => setEditingCustomer(prev => prev ? {...prev, cpf: e.target.value} : null)}
+                                               />
+                                             </div>
                                             <div>
                                               <Label htmlFor="cep">CEP</Label>
                                               <Input
