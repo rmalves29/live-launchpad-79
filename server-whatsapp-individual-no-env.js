@@ -136,7 +136,10 @@ async function createTenantClient(tenant) {
       timeout: 0
     },
     qrMaxRetries: 5,
-    authTimeoutMs: 0
+    authTimeoutMs: 0,
+    restartOnAuthFail: true,
+    takeoverOnConflict: true,
+    takeoverTimeoutMs: 0
   });
 
   client.on('qr', (qr) => {
@@ -173,6 +176,17 @@ async function createTenantClient(tenant) {
   client.on('disconnected', (reason) => {
     console.log(`🔌 Desconectado ${tenant.name}:`, reason);
     tenantStatus.set(tenant.id, 'offline');
+    
+    // Tentar reconectar automaticamente após 10 segundos
+    console.log(`🔄 Tentando reconectar ${tenant.name} em 10 segundos...`);
+    setTimeout(async () => {
+      try {
+        console.log(`🔄 Reconectando ${tenant.name}...`);
+        await client.initialize();
+      } catch (error) {
+        console.error(`❌ Erro ao reconectar ${tenant.name}:`, error.message);
+      }
+    }, 10000);
   });
 
   client.on('message', async (message) => {
@@ -395,27 +409,42 @@ app.post('/send', async (req, res) => {
     const client = await getTenantClient(tenantId);
     
     if (!client) {
+      console.error(`❌ [${tenantId}] Cliente não conectado ao tentar enviar para ${phoneNumber}`);
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp não conectado'
+        error: 'WhatsApp não conectado. Por favor, aguarde a conexão ou escaneie o QR Code.'
       });
     }
     
     const normalizedPhone = normalizeDDD(phoneNumber);
     const chatId = `${normalizedPhone}@c.us`;
     
-    await client.sendMessage(chatId, message);
+    console.log(`📤 [${tenantId}] Tentando enviar para ${normalizedPhone}...`);
     
-    await supaRaw('/whatsapp_messages', {
-      method: 'POST',
-      body: JSON.stringify({
-        tenant_id: tenantId,
-        phone: normalizedPhone,
-        message: message,
-        type: 'outgoing',
-        sent_at: new Date().toISOString()
-      })
-    });
+    try {
+      await client.sendMessage(chatId, message);
+      console.log(`✅ [${tenantId}] Mensagem enviada para ${normalizedPhone}`);
+    } catch (sendError) {
+      console.error(`❌ [${tenantId}] Erro ao enviar mensagem:`, sendError.message);
+      throw new Error(`Erro ao enviar: ${sendError.message}`);
+    }
+    
+    // Salvar no banco (não bloquear resposta se falhar)
+    try {
+      await supaRaw('/whatsapp_messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          phone: normalizedPhone,
+          message: message,
+          type: 'outgoing',
+          sent_at: new Date().toISOString()
+        })
+      });
+    } catch (dbError) {
+      console.error(`⚠️ [${tenantId}] Erro ao salvar no banco:`, dbError.message);
+      // Não falha a requisição se apenas o log falhar
+    }
     
     res.json({
       success: true,
@@ -424,9 +453,10 @@ app.post('/send', async (req, res) => {
     });
     
   } catch (error) {
+    console.error(`❌ Erro no endpoint /send:`, error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || 'Erro ao enviar mensagem'
     });
   }
 });
