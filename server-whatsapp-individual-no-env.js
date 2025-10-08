@@ -404,20 +404,21 @@ async function createTenantClient(tenant) {
   tenantStatus.set(tenant.id, 'initializing');
   
   console.log(`🔄 Iniciando cliente WhatsApp para: ${tenant.name}`);
-  console.log(`⏰ Aguardando inicialização... (timeout: 120s)`);
-  console.log(`📂 Diretório de autenticação: ${authDir}`);
-  console.log(`💡 DICA: Se não aparecer QR code, delete a pasta: ${authDir}`);
+  console.log(`⏰ Aguardando inicialização... (timeout: 300s = 5 minutos)`);
+  console.log(`📱 Você precisará escanear o QR code toda vez que reiniciar`);
+  console.log(`💡 DICA: Aguarde a janela do Chrome abrir e escaneie o QR`);
   
-  // Adicionar timeout de segurança
+  // Adicionar timeout de segurança (5 minutos)
   const timeoutId = setTimeout(() => {
-    console.error(`⏱️ TIMEOUT: Cliente ${tenant.name} não inicializou em 120 segundos`);
+    console.error(`⏱️ TIMEOUT: Cliente ${tenant.name} não inicializou em 300 segundos (5 minutos)`);
     console.error(`   Possíveis causas:`);
     console.error(`   - WhatsApp Web não carregou completamente`);
-    console.error(`   - Sessão antiga corrompida (delete a pasta: ${authDir})`);
+    console.error(`   - QR Code não foi escaneado a tempo`);
     console.error(`   - Problemas de rede com WhatsApp Web`);
     console.error(`   - Chromium/Puppeteer travado`);
+    console.error(`   💡 SOLUÇÃO: Reinicie o servidor e tente novamente`);
     tenantStatus.set(tenant.id, 'timeout');
-  }, 120000);
+  }, 300000);
   
   // Incrementar contador de tentativas
   tenantRetryCount.set(tenant.id, (tenantRetryCount.get(tenant.id) || 0) + 1);
@@ -429,58 +430,31 @@ async function createTenantClient(tenant) {
     console.error(`   Tipo: ${error.name}`);
     console.error(`   Mensagem: ${error.message}`);
     
-    // Detectar erros de cache corrompido
-    const isCorruptedCache = 
-      error.message?.includes('Cannot read properties of null') ||
-      error.message?.includes('Execution context was destroyed') ||
-      error.message?.includes('Protocol error') ||
-      error.message?.includes('Target closed') ||
-      error.name === 'ProtocolError';
+    // Como estamos usando NoAuth, não há cache para limpar
+    const currentRetries = tenantRetryCount.get(tenant.id) || 0;
     
-    if (isCorruptedCache) {
-      console.error(`\n🧹 Cache corrompido detectado! Limpando automaticamente...`);
+    if (currentRetries < MAX_RETRIES) {
+      console.log(`🔄 Tentando reiniciar cliente... (${currentRetries}/${MAX_RETRIES})`);
+      tenantStatus.set(tenant.id, 'restarting');
       
-      const cleaned = cleanCorruptedCache(authDir);
+      await delay(10000);
       
-      if (cleaned) {
-        const currentRetries = tenantRetryCount.get(tenant.id) || 0;
+      try {
+        // Remover cliente antigo
+        tenantClients.delete(tenant.id);
         
-        if (currentRetries < MAX_RETRIES) {
-          console.log(`✅ Cache limpo! Reiniciando cliente em 10 segundos...`);
-          console.log(`🔄 Tentativa ${currentRetries}/${MAX_RETRIES}`);
-          tenantStatus.set(tenant.id, 'restarting');
-          
-          await delay(10000);
-          
-          try {
-            // Remover cliente antigo
-            tenantClients.delete(tenant.id);
-            
-            // Criar novo cliente
-            console.log(`🔄 Recriando cliente ${tenant.name}...`);
-            await createTenantClient(tenant);
-          } catch (retryError) {
-            console.error(`❌ Erro ao recriar cliente:`, retryError.message);
-            tenantStatus.set(tenant.id, 'error');
-          }
-        } else {
-          console.error(`❌ Máximo de ${MAX_RETRIES} tentativas atingido`);
-          console.error(`   Não será feita nova tentativa automática.`);
-          console.error(`   SOLUÇÃO MANUAL: DELETE a pasta: ${authDir}`);
-          console.error(`   Depois reinicie via: POST /restart/${tenant.id}`);
-          tenantStatus.set(tenant.id, 'max_retries_exceeded');
-        }
-      } else {
-        console.error(`❌ Não foi possível limpar o cache automaticamente`);
-        console.error(`   SOLUÇÃO MANUAL: DELETE a pasta: ${authDir}`);
-        console.error(`   Use o comando: rmdir /s /q "${authDir}"`);
-        console.error(`   Depois reinicie via: POST /restart/${tenant.id}`);
-        tenantStatus.set(tenant.id, 'cache_clean_failed');
+        // Criar novo cliente
+        console.log(`🔄 Recriando cliente ${tenant.name}...`);
+        await createTenantClient(tenant);
+      } catch (retryError) {
+        console.error(`❌ Erro ao recriar cliente:`, retryError.message);
+        tenantStatus.set(tenant.id, 'error');
       }
     } else {
-      console.error(`❌ Erro desconhecido. Verifique os logs.`);
-      console.error(`   Stack: ${error.stack}`);
-      tenantStatus.set(tenant.id, 'error');
+      console.error(`❌ Máximo de ${MAX_RETRIES} tentativas atingido`);
+      console.error(`   💡 SOLUÇÃO: Reinicie o servidor manualmente`);
+      console.error(`   Ou use: POST /restart/${tenant.id}`);
+      tenantStatus.set(tenant.id, 'max_retries_exceeded');
     }
   });
   
