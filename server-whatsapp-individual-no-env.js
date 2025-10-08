@@ -341,8 +341,38 @@ client.on('disconnected', (reason) => {
   console.error('❌ WhatsApp DESCONECTADO');
   console.error('❌ Motivo:', reason);
   console.error('❌ ========================================');
+  
   clientState = 'DISCONNECTED';
   clientReady = false;
+  
+  // Identificar tipo de desconexão
+  if (reason === 'LOGOUT') {
+    console.log('⚠️  LOGOUT detectado - sessão removida pelo WhatsApp');
+    console.log('📋 Possíveis causas:');
+    console.log('   1. Múltiplas conexões no mesmo número');
+    console.log('   2. QR code escaneado em outro servidor');
+    console.log('   3. Sessão expirada ou inválida');
+    console.log('');
+    console.log('💡 Solução: Escaneie o QR code novamente quando aparecer');
+    console.log('');
+    
+    // NÃO tenta limpar arquivos durante LOGOUT (evita EBUSY)
+    // O whatsapp-web.js já está limpando internamente
+    
+  } else {
+    console.log('🔄 Tentando reconectar em 10 segundos...');
+    
+    // Reconexão automática para outros tipos de desconexão
+    setTimeout(async () => {
+      try {
+        console.log('🔄 Reinicializando cliente WhatsApp...');
+        await client.initialize();
+      } catch (error) {
+        console.error('❌ Erro ao reconectar:', error.message);
+        console.log('⚠️  Reinicie o servidor manualmente se necessário');
+      }
+    }, 10000);
+  }
 });
 
 // Listener para ACK de mensagens
@@ -1431,6 +1461,12 @@ console.log('🚀 INICIANDO SERVIDOR WHATSAPP');
 console.log(`🏢 Tenant: ${TENANT_SLUG} (${TENANT_ID})`);
 console.log('🚀 ========================================\n');
 
+// AVISO IMPORTANTE: Múltiplas instâncias
+console.log('⚠️  IMPORTANTE: Certifique-se de que NÃO há outras instâncias rodando!');
+console.log('   Execute antes de iniciar:');
+console.log('   taskkill /F /IM node.exe');
+console.log('');
+
 client.initialize();
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -1447,10 +1483,24 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   POST /send-to-group`);
   console.log(`   POST /api/broadcast/orders`);
   console.log('========================================\n');
+  console.log('💡 Se o WhatsApp desconectar com LOGOUT:');
+  console.log('   1. Pare o servidor (Ctrl+C)');
+  console.log('   2. Execute: .\\fix-lockfile.ps1');
+  console.log('   3. Reinicie o servidor');
+  console.log('');
 });
 
 process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
-  if (clientReady) await client.destroy();
+  try {
+    if (clientReady) {
+      console.log('🔌 Desconectando WhatsApp...');
+      await client.destroy();
+      console.log('✅ WhatsApp desconectado');
+    }
+  } catch (error) {
+    console.warn('⚠️  Erro ao desconectar:', error.message);
+  }
+  console.log('👋 Servidor encerrado');
   process.exit();
 });
