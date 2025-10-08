@@ -66,15 +66,23 @@ export default function WhatsAppIntegration() {
         .select("*")
         .eq("tenant_id", tenant.id)
         .eq("is_active", true)
-        .single();
+        .maybeSingle();
 
       if (integration?.api_url) {
-        const response = await fetch(`${integration.api_url}/status/${tenant.id}`);
-        const status = await response.json();
-        setIsConnected(status.connected || false);
+        try {
+          const response = await fetch(`${integration.api_url}/status/${tenant.id}`);
+          const status = await response.json();
+          setIsConnected(status.connected || false);
+        } catch (fetchError) {
+          console.log("Servidor WhatsApp não disponível, considerando desconectado");
+          setIsConnected(false);
+        }
+      } else {
+        setIsConnected(false);
       }
     } catch (error) {
       console.error("Erro ao verificar status:", error);
+      setIsConnected(false);
     }
   };
 
@@ -86,7 +94,7 @@ export default function WhatsAppIntegration() {
       .select("*")
       .eq("tenant_id", tenant.id)
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(5);
 
     if (data) setLogs(data);
   };
