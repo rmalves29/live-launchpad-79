@@ -60,12 +60,21 @@ function normalizeDDD(phone) {
   
   const ddd = parseInt(clean.substring(0, 2));
   
-  // Adiciona 9º dígito se necessário
-  if (clean.length === 10 && ddd >= 11 && ddd <= 99) {
-    const firstDigit = clean[2];
-    if (firstDigit !== '9') {
+  // Regra por região:
+  // DDD ≤ 30: adiciona 9º dígito se tiver 10 dígitos
+  // DDD ≥ 31: remove 9º dígito se tiver 11 dígitos
+  
+  if (ddd <= 30) {
+    // Região Norte/Nordeste - deve ter 11 dígitos (9º dígito obrigatório)
+    if (clean.length === 10) {
       clean = clean.substring(0, 2) + '9' + clean.substring(2);
-      console.log(`✅ 9º dígito adicionado: ${phone} -> ${clean}`);
+      console.log(`✅ [DDD ${ddd}] 9º dígito adicionado: ${phone} -> ${clean}`);
+    }
+  } else {
+    // Região Sul/Sudeste/Centro-Oeste - deve ter 10 dígitos (sem 9º dígito)
+    if (clean.length === 11 && clean[2] === '9') {
+      clean = clean.substring(0, 2) + clean.substring(3);
+      console.log(`✅ [DDD ${ddd}] 9º dígito removido: ${phone} -> ${clean}`);
     }
   }
   
