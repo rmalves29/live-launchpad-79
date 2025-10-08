@@ -390,8 +390,9 @@ client.on('ready', async () => {
   console.log('✅ WhatsApp conectado!'); 
   clientReady = true; 
   
-  // Verificar e enviar mensagens de confirmação pendentes
-  await checkAndSendPendingPaymentConfirmations();
+  // NÃO verificar automaticamente ao conectar - pode causar sobrecarga
+  // Use o endpoint /check-pending-payments manualmente quando necessário
+  console.log('💡 Use POST /check-pending-payments para enviar confirmações pendentes');
 });
 
 client.on('authenticated', () => console.log('🔑 WhatsApp autenticado!'));
@@ -1211,6 +1212,34 @@ app.get('/group/:groupId/participants', async (req, res) => {
       success: false,
       error: error.message,
       details: 'Erro ao buscar participantes do grupo'
+    });
+  }
+});
+
+// ===== CHECK PENDING PAYMENTS =====
+app.post('/check-pending-payments', async (req, res) => {
+  console.log('📋 Verificação manual de pagamentos pendentes solicitada');
+  
+  try {
+    if (!clientReady) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'WhatsApp não está conectado' 
+      });
+    }
+
+    await checkAndSendPendingPaymentConfirmations();
+    
+    res.json({
+      success: true,
+      message: 'Verificação de pagamentos concluída'
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao verificar pagamentos:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
     });
   }
 });
