@@ -195,7 +195,8 @@ serve(async (req) => {
     const { error: updateError } = await supabase
       .from('orders')
       .update({ 
-        is_paid: true
+        is_paid: true,
+        payment_confirmation_sent: true
       })
       .eq('id', order.id);
 
@@ -206,6 +207,56 @@ serve(async (req) => {
 
     console.log(`Order ${order.id} marked as paid via webhook`);
 
+    // Send WhatsApp confirmation message via edge function
+    try {
+      console.log('📤 Sending WhatsApp confirmation...');
+      
+      const { data: whatsappConfig } = await supabase
+        .from('integration_whatsapp')
+        .select('api_url')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (whatsappConfig?.api_url) {
+        // Get template PAID_ORDER
+        const { data: template } = await supabase
+          .from('whatsapp_templates')
+          .select('content')
+          .eq('tenant_id', tenant.id)
+          .eq('type', 'PAID_ORDER')
+          .maybeSingle();
+
+        let message = template?.content || `🎉 *Pagamento Confirmado - Pedido #{{order_id}}*\n\n✅ Recebemos seu pagamento!\n💰 Valor: *R$ {{total}}*\n\nSeu pedido está sendo preparado para envio.\n\nObrigado pela preferência! 💚`;
+        
+        // Replace variables
+        message = message
+          .replace(/{{order_id}}/g, order.id.toString())
+          .replace(/{{total}}/g, order.total_amount.toFixed(2));
+
+        // Send message via WhatsApp server
+        const whatsappResponse = await fetch(`${whatsappConfig.api_url}/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            number: order.customer_phone,
+            message: message
+          })
+        });
+
+        if (whatsappResponse.ok) {
+          console.log('✅ WhatsApp confirmation sent successfully');
+        } else {
+          console.error('⚠️ Failed to send WhatsApp confirmation:', await whatsappResponse.text());
+        }
+      } else {
+        console.log('⚠️ WhatsApp not configured for this tenant');
+      }
+    } catch (whatsappError) {
+      console.error('⚠️ Error sending WhatsApp confirmation (non-blocking):', whatsappError);
+      // Don't fail the webhook if WhatsApp fails
+    }
+
     // Log successful payment processing
     await supabase
       .from('webhook_logs')
@@ -214,7 +265,7 @@ serve(async (req) => {
         webhook_type: 'mercadopago_payment_success',
         status_code: 200,
         payload: { payment_id: paymentId, order_id: order.id },
-        response: `Order ${order.id} marked as paid`
+        response: `Order ${order.id} marked as paid and WhatsApp sent`
       });
 
     return new Response('Payment processed successfully', { 

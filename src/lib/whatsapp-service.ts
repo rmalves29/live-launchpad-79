@@ -2,6 +2,48 @@
 import { normalizeForSending } from './phone-utils';
 import { supabase } from '@/integrations/supabase/client';
 
+// Função para buscar template do tenant
+async function getTemplate(tenantId: string, templateType: string): Promise<string | null> {
+  try {
+    console.log('🎨 [Template] Buscando template:', { tenantId, templateType });
+    
+    const { data, error } = await supabase
+      .from('whatsapp_templates')
+      .select('content')
+      .eq('tenant_id', tenantId)
+      .eq('type', templateType as any)
+      .maybeSingle();
+    
+    if (error) {
+      console.error('❌ [Template] Erro ao buscar:', error);
+      return null;
+    }
+    
+    if (!data) {
+      console.warn('⚠️ [Template] Template não encontrado:', templateType);
+      return null;
+    }
+    
+    console.log('✅ [Template] Template encontrado');
+    return data.content;
+  } catch (error) {
+    console.error('❌ [Template] Falha crítica:', error);
+    return null;
+  }
+}
+
+// Função para substituir variáveis no template
+function replaceTemplateVars(template: string, vars: Record<string, any>): string {
+  let result = template;
+  
+  Object.entries(vars).forEach(([key, value]) => {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    result = result.replace(regex, String(value ?? ''));
+  });
+  
+  return result;
+}
+
 // Função para obter a URL do servidor WhatsApp configurada
 async function getWhatsAppServerUrl(tenantId: string): Promise<string> {
   try {
@@ -109,10 +151,25 @@ class WhatsAppService {
       product: orderData.product.name 
     });
 
-    // Montar mensagem formatada
-    const message = `🛒 *Item adicionado ao pedido*\n\n✅ ${orderData.product.name}\nQtd: *${orderData.product.qty}*\nValor: *R$ ${orderData.product.price.toFixed(2)}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
+    // Buscar template ITEM_ADDED do tenant
+    let message = await getTemplate(tenantId, 'ITEM_ADDED');
+    
+    if (!message) {
+      // Fallback para mensagem padrão
+      console.warn('⚠️ [sendItemAdded] Usando template padrão');
+      message = `🛒 *Item adicionado ao pedido*\n\n✅ {{produto}}\nQtd: *{{quantidade}}*\nValor: *R$ {{valor}}*\n\nDigite *FINALIZAR* para concluir seu pedido.`;
+    }
+    
+    // Substituir variáveis do template
+    message = replaceTemplateVars(message, {
+      produto: orderData.product.name,
+      quantidade: orderData.product.qty,
+      valor: orderData.product.price.toFixed(2)
+    });
 
-    // Usar endpoint correto /send do Node.js
+    console.log('📝 [sendItemAdded] Mensagem final:', message.substring(0, 100) + '...');
+
+    // Usar endpoint /send do Node.js
     return this.makeRequest('/send', {
       number: normalizeForSending(orderData.customer_phone),
       message,
@@ -285,6 +342,10 @@ class WhatsAppService {
     productCode: string,
     tenantId?: string
   ): Promise<WhatsAppResponse> {
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
+    }
+
     console.log('📤 [sendProductCanceled] Enviando mensagem de cancelamento:', { 
       phone, 
       productName,
@@ -292,39 +353,65 @@ class WhatsAppService {
       tenantId 
     });
 
-    // Usar endpoint específico do servidor Node.js
-    try {
-      const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
-      
-      const response = await fetch(`${serverUrl}/send-product-canceled`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': tenantId || '',
-        },
-        body: JSON.stringify({
-          phone: normalizeForSending(phone),
-          product_name: productName,
-          product_code: productCode,
-          tenant_id: tenantId
-        }),
-      });
-
-      console.log('📥 [WS] Response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ [WS] Erro na resposta:', errorText);
-        throw new Error(`Erro ao enviar mensagem: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ [WS] Resposta sucesso:', result);
-      return result;
-    } catch (error) {
-      console.error('❌ [sendProductCanceled] Erro:', error);
-      throw error;
+    // Buscar template PRODUCT_CANCELED do tenant
+    let message = await getTemplate(tenantId, 'PRODUCT_CANCELED');
+    
+    if (!message) {
+      // Fallback para mensagem padrão
+      console.warn('⚠️ [sendProductCanceled] Usando template padrão');
+      message = `❌ *Produto Cancelado*\n\nO produto "{{produto}}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
     }
+    
+    // Substituir variáveis do template
+    message = replaceTemplateVars(message, {
+      produto: productName,
+      codigo: productCode
+    });
+
+    console.log('📝 [sendProductCanceled] Mensagem final:', message.substring(0, 100) + '...');
+
+    // Usar endpoint /send do Node.js
+    return this.makeRequest('/send', {
+      number: normalizeForSending(phone),
+      message,
+    }, tenantId);
+  }
+
+  async sendPaidOrderMessage(
+    phone: string,
+    orderId: number,
+    totalAmount: number,
+    tenantId: string
+  ): Promise<WhatsAppResponse> {
+    console.log('📤 [sendPaidOrder] Enviando confirmação de pagamento:', { 
+      phone, 
+      orderId,
+      totalAmount,
+      tenantId 
+    });
+
+    // Buscar template PAID_ORDER do tenant
+    let message = await getTemplate(tenantId, 'PAID_ORDER');
+    
+    if (!message) {
+      // Fallback para mensagem padrão
+      console.warn('⚠️ [sendPaidOrder] Usando template padrão');
+      message = `🎉 *Pagamento Confirmado - Pedido #{{order_id}}*\n\n✅ Recebemos seu pagamento!\n💰 Valor: *R$ {{total}}*\n\nSeu pedido está sendo preparado para envio.\n\nObrigado pela preferência! 💚`;
+    }
+    
+    // Substituir variáveis do template
+    message = replaceTemplateVars(message, {
+      order_id: orderId,
+      total: totalAmount.toFixed(2)
+    });
+
+    console.log('📝 [sendPaidOrder] Mensagem final:', message.substring(0, 100) + '...');
+
+    // Usar endpoint /send do Node.js
+    return this.makeRequest('/send', {
+      number: normalizeForSending(phone),
+      message,
+    }, tenantId);
   }
 
   async getStatus(tenantId?: string): Promise<any> {

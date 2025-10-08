@@ -198,31 +198,71 @@ const Pedidos = () => {
   }, [filterPaid, filterEventType, filterDate]);
 
   const togglePaidStatus = async (orderId: number, currentStatus: boolean) => {
-    console.log('🔄 TOGGLE PAID STATUS INICIADO', { orderId, currentStatus });
+    // Se está DESMARCANDO como pago, apenas faz o update sem confirmação
+    if (currentStatus) {
+      setProcessingIds(prev => new Set(prev).add(orderId));
+      
+      try {
+        const { error } = await supabaseTenant
+          .from('orders')
+          .update({ is_paid: false, payment_confirmation_sent: false })
+          .eq('id', orderId);
+
+        if (error) throw error;
+        
+        setOrders(prev => prev.map(order => 
+          order.id === orderId 
+            ? { ...order, is_paid: false, payment_confirmation_sent: false }
+            : order
+        ));
+
+        toast({
+          title: 'Sucesso',
+          description: 'Pedido desmarcado como pago'
+        });
+      } catch (error) {
+        toast({
+          title: 'Erro',
+          description: 'Erro ao atualizar status',
+          variant: 'destructive'
+        });
+      } finally {
+        setProcessingIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(orderId);
+          return newSet;
+        });
+      }
+      return;
+    }
+
+    // Se está MARCANDO como pago, pede confirmação
+    const confirmed = confirm('Deseja marcar este pedido como pago e enviar a confirmação por WhatsApp?');
+    
+    if (!confirmed) {
+      return;
+    }
+
     setProcessingIds(prev => new Set(prev).add(orderId));
     
     try {
       let messageSent = false;
       
-      // Se está marcando como pago (de false para true)
-      if (!currentStatus) {
-        console.log('💰 Pedido sendo marcado como PAGO - tentando enviar mensagem');
-        try {
-          messageSent = await sendPaidOrderMessage(orderId);
-          console.log('📨 Resultado do envio:', messageSent);
-        } catch (msgError) {
-          console.error('❌ Erro ao enviar mensagem:', msgError);
-          // Continua mesmo se falhar o envio
-        }
+      console.log('💰 Pedido sendo marcado como PAGO - enviando mensagem');
+      try {
+        messageSent = await sendPaidOrderMessage(orderId);
+        console.log('📨 Resultado do envio:', messageSent);
+      } catch (msgError) {
+        console.error('❌ Erro ao enviar mensagem:', msgError);
+        // Continua mesmo se falhar o envio
       }
 
       // Update payment status in database
-      const updateData: any = { is_paid: !currentStatus };
+      const updateData: any = { is_paid: true };
       if (messageSent) {
         updateData.payment_confirmation_sent = true;
       }
 
-      console.log('💾 Atualizando banco de dados:', updateData);
       const { error } = await supabaseTenant
         .from('orders')
         .update(updateData)
@@ -233,14 +273,13 @@ const Pedidos = () => {
       // Update local state
       setOrders(prev => prev.map(order => 
         order.id === orderId 
-          ? { ...order, is_paid: !currentStatus, payment_confirmation_sent: messageSent }
+          ? { ...order, is_paid: true, payment_confirmation_sent: messageSent }
           : order
       ));
 
-      console.log('✅ Status atualizado com sucesso');
       toast({
         title: 'Sucesso',
-        description: `Pedido ${!currentStatus ? 'marcado como pago' : 'desmarcado como pago'}`
+        description: 'Pedido marcado como pago'
       });
     } catch (error) {
       console.error('❌ Erro ao atualizar status:', error);
@@ -259,21 +298,13 @@ const Pedidos = () => {
   };
 
   const sendPaidOrderMessage = async (orderId: number) => {
-    console.log('');
-    console.log('═══════════════════════════════════════════════');
-    console.log('🚀 INÍCIO ENVIO CONFIRMAÇÃO PAGAMENTO');
-    console.log('═══════════════════════════════════════════════');
-    console.log('Order ID:', orderId);
+    console.log('🚀 [sendPaidOrder] Iniciando envio confirmação pagamento');
     
     try {
-      // Passo 1: Buscar pedido
-      console.log('');
-      console.log('📋 PASSO 1: Buscando pedido nos dados locais...');
       const order = orders.find(o => o.id === orderId);
       
       if (!order) {
-        console.error('❌ ERRO: Pedido não encontrado!');
-        alert('ERRO: Pedido não encontrado!');
+        console.error('❌ Pedido não encontrado!');
         return false;
       }
 
@@ -284,83 +315,30 @@ const Pedidos = () => {
         amount: order.total_amount
       });
 
-      // Passo 2: Buscar configuração WhatsApp
-      console.log('');
-      console.log('🔍 PASSO 2: Buscando configuração WhatsApp...');
-      const { data: config, error: configError } = await supabaseTenant
-        .from('integration_whatsapp')
-        .select('api_url, is_active')
-        .eq('tenant_id', order.tenant_id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      console.log('Resultado da query:', { config, configError });
-
-      if (configError) {
-        console.error('❌ ERRO ao buscar config:', configError);
-        alert('ERRO ao buscar configuração WhatsApp: ' + configError.message);
-        throw configError;
-      }
-
-      if (!config?.api_url) {
-        console.error('❌ ERRO: URL não configurada!');
-        // Configuração ausente - retornar silenciosamente
-        return;
-      }
-
-      console.log('✅ Configuração encontrada:', config.api_url);
-
-      // Passo 3: Enviar via Node.js (template será buscado no servidor)
-      console.log('');
-      console.log('📤 PASSO 3: Enviando para servidor Node.js...');
-      console.log('🎨 O servidor buscará o template PAID_ORDER do banco');
-      console.log('URL:', `${config.api_url}/send`);
-      console.log('Payload:', {
-        phone: order.customer_phone,
-        order_id: order.id
-      });
-
-      const response = await fetch(`${config.api_url}/send`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          phone: order.customer_phone,
-          order_id: order.id
-        })
-      });
-
-      console.log('📥 Response status:', response.status, response.statusText);
-
-      const result = await response.json();
-      console.log('📥 Response body:', result);
-
-      if (!response.ok) {
-        console.error('❌ ERRO na resposta:', result);
-        throw new Error(result.error || 'Erro ao enviar');
-      }
-
-      console.log('');
-      console.log('✅✅✅ SUCESSO! Mensagem enviada via template! ✅✅✅');
-      console.log('═══════════════════════════════════════════════');
-      console.log('');
+      // Enviar usando whatsappService (buscará template do tenant)
+      await whatsappService.sendPaidOrderMessage(
+        order.customer_phone,
+        order.id,
+        order.total_amount,
+        order.tenant_id
+      );
+      
+      console.log('✅ Mensagem enviada com sucesso!');
       
       toast({
         title: 'Confirmação Enviada',
-        description: 'Mensagem de pagamento enviada via WhatsApp usando template personalizado'
+        description: 'Mensagem de pagamento enviada via WhatsApp'
       });
+      
       return true;
       
     } catch (error) {
-      console.log('');
-      console.log('❌❌❌ ERRO FATAL ❌❌❌');
-      console.error('Erro completo:', error);
-      console.log('Stack trace:', error instanceof Error ? error.stack : 'N/A');
-      console.log('═══════════════════════════════════════════════');
-      console.log('');
-      
-      // Toast de erro removido conforme solicitado
+      console.error('❌ Erro ao enviar confirmação:', error);
+      toast({
+        title: 'Aviso',
+        description: 'Pedido marcado como pago, mas não foi possível enviar mensagem WhatsApp',
+        variant: 'default'
+      });
       return false;
     }
   };
