@@ -12,9 +12,9 @@ const path = require('path');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
 
-// Fetch polyfill
+// Fetch polyfill para Node.js
 if (typeof fetch !== 'function') {
-  global.fetch = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
+  global.fetch = require('node-fetch');
 }
 
 /* ============================ CONFIGURAÇÃO DA EMPRESA ============================ */
@@ -98,6 +98,7 @@ async function supaRaw(pathname, init) {
 /* ============================ WHATSAPP CLIENT ============================ */
 let whatsappClient = null;
 let clientStatus = 'initializing';
+let currentQRCode = null;
 
 function getAuthDir() {
   const authDir = path.join(__dirname, AUTH_FOLDER);
@@ -130,13 +131,15 @@ async function createWhatsAppClient() {
   });
 
   client.on('qr', (qr) => {
-    console.log(`\n📱 ESCANEIE O QR CODE:\n`);
+    console.log(`\n📱 QR CODE GERADO! Acesse http://localhost:${PORT} no navegador\n`);
     qrcode.generate(qr, { small: true });
+    currentQRCode = qr;
     clientStatus = 'qr_code';
   });
 
   client.on('ready', () => {
     console.log(`✅ WhatsApp CONECTADO e PRONTO!`);
+    currentQRCode = null;
     clientStatus = 'online';
   });
 
@@ -246,6 +249,244 @@ app.use((req, res, next) => {
 
 /* ============================ ROUTES ============================ */
 
+// Página inicial com QR Code
+app.get('/', (req, res) => {
+  const statusEmoji = {
+    'initializing': '⏳',
+    'qr_code': '📱',
+    'authenticated': '🔐',
+    'online': '✅',
+    'offline': '⚠️',
+    'auth_failure': '❌',
+    'error': '❌'
+  };
+
+  const statusText = {
+    'initializing': 'Inicializando...',
+    'qr_code': 'Aguardando leitura do QR Code',
+    'authenticated': 'Autenticado',
+    'online': 'Conectado e Online',
+    'offline': 'Desconectado',
+    'auth_failure': 'Falha na Autenticação',
+    'error': 'Erro ao conectar'
+  };
+
+  const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp - ${COMPANY_NAME}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .company {
+            color: #667eea;
+            font-size: 20px;
+            margin-bottom: 30px;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 20px;
+            background: #f7f7f7;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            font-size: 18px;
+        }
+        .status-emoji {
+            font-size: 32px;
+        }
+        .qr-container {
+            text-align: center;
+            padding: 30px;
+            background: #f7f7f7;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        #qrcode {
+            display: inline-block;
+            padding: 20px;
+            background: white;
+            border-radius: 12px;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+        }
+        .instructions h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+        .instructions ol {
+            margin-left: 20px;
+            color: #555;
+            line-height: 1.8;
+        }
+        .info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .info-item {
+            background: #f7f7f7;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .info-label {
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 16px;
+            color: #333;
+            font-weight: 500;
+        }
+        .refresh-btn {
+            width: 100%;
+            padding: 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+        .refresh-btn:hover {
+            background: #764ba2;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 WhatsApp Server</h1>
+        <div class="company">${COMPANY_NAME}</div>
+        
+        <div class="status">
+            <span class="status-emoji">${statusEmoji[clientStatus] || '❓'}</span>
+            <span>${statusText[clientStatus] || 'Status desconhecido'}</span>
+        </div>
+
+        ${currentQRCode ? `
+        <div class="qr-container">
+            <div id="qrcode"></div>
+        </div>
+        
+        <div class="instructions">
+            <h3>📱 Como conectar:</h3>
+            <ol>
+                <li>Abra o WhatsApp no seu celular</li>
+                <li>Toque em Mais opções (⋮) ou Configurações</li>
+                <li>Toque em "Aparelhos conectados"</li>
+                <li>Toque em "Conectar um aparelho"</li>
+                <li>Aponte seu celular para esta tela e escaneie o QR Code</li>
+            </ol>
+        </div>
+        ` : clientStatus === 'online' ? `
+        <div class="qr-container">
+            <div style="font-size: 64px; margin-bottom: 20px;">✅</div>
+            <h2 style="color: #4caf50;">WhatsApp Conectado!</h2>
+            <p style="color: #666; margin-top: 10px;">O servidor está online e pronto para enviar mensagens.</p>
+        </div>
+        ` : `
+        <div class="loading">
+            <p>Aguardando conexão...</p>
+        </div>
+        `}
+
+        <div class="info">
+            <div class="info-item">
+                <div class="info-label">Tenant ID</div>
+                <div class="info-value">${TENANT_ID.substring(0, 8)}...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Porta</div>
+                <div class="info-value">${PORT}</div>
+            </div>
+        </div>
+
+        <button class="refresh-btn" onclick="location.reload()">
+            🔄 Atualizar Status
+        </button>
+    </div>
+
+    <script>
+        ${currentQRCode ? `
+        // Gerar QR Code
+        QRCode.toCanvas(
+            document.createElement('canvas'),
+            '${currentQRCode}',
+            {
+                width: 280,
+                margin: 2,
+                color: {
+                    dark: '#000000',
+                    light: '#FFFFFF'
+                }
+            },
+            function (error, canvas) {
+                if (error) {
+                    console.error(error);
+                    return;
+                }
+                document.getElementById('qrcode').appendChild(canvas);
+            }
+        );
+
+        // Auto-refresh a cada 5 segundos se estiver aguardando QR
+        setTimeout(() => location.reload(), 5000);
+        ` : clientStatus === 'initializing' || clientStatus === 'authenticated' ? `
+        // Auto-refresh a cada 3 segundos se estiver inicializando
+        setTimeout(() => location.reload(), 3000);
+        ` : ''}
+    </script>
+</body>
+</html>
+  `;
+
+  res.send(html);
+});
+
 app.get('/status', (req, res) => {
   res.json({
     success: true,
@@ -253,6 +494,7 @@ app.get('/status', (req, res) => {
     tenant_id: TENANT_ID,
     status: clientStatus,
     hasClient: !!whatsappClient,
+    hasQR: !!currentQRCode,
     port: PORT,
     timestamp: new Date().toISOString()
   });
