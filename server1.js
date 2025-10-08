@@ -1,7 +1,7 @@
 // Configuração das variáveis de ambiente
-process.env.SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
 process.env.PORT = process.env.PORT || '3333';
+process.env.SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 
 // Verificar se a chave do Supabase foi fornecida
 if (!process.env.SUPABASE_SERVICE_KEY) {
