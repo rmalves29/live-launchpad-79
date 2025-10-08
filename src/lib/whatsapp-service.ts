@@ -151,7 +151,7 @@ class WhatsAppService {
 
     // Usar endpoint correto /send do Node.js
     return this.makeRequest('/send', {
-      number: normalizeForSending(orderData.customer_phone),
+      phone: normalizeForSending(orderData.customer_phone),
       message,
     }, tenantId);
   }
@@ -164,7 +164,7 @@ class WhatsAppService {
     const message = `❌ *Produto Cancelado*\n\nO produto "${orderData.product.name}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
 
     return this.makeRequest('/send', {
-      number: normalizeForSending(orderData.customer_phone),
+      phone: normalizeForSending(orderData.customer_phone),
       message,
     });
   }
@@ -173,19 +173,15 @@ class WhatsAppService {
     const message = `🎉 *Pedido Criado - #${orderData.order_id}*\n\nOlá ${orderData.customer_name || 'Cliente'}!\n\nSeu pedido foi criado com sucesso!\n💰 Total: *R$ ${orderData.total_amount?.toFixed(2)}*\n\nEm breve você receberá o link de pagamento.`;
 
     return this.makeRequest('/send', {
-      number: normalizeForSending(orderData.customer_phone),
+      phone: normalizeForSending(orderData.customer_phone),
       message,
     });
   }
 
   async broadcastByPhones(phones: string[], message: string, tenantId?: string): Promise<WhatsAppResponse> {
-    return this.makeRequest('/api/broadcast/by-phones', {
-      key: 'whatsapp-broadcast-2024', // BROADCAST_SECRET
+    return this.makeRequest('/broadcast', {
       phones: phones.map(phone => normalizeForSending(phone)),
       message,
-      interval: 2000,
-      batchSize: 5,
-      batchDelay: 3000,
     }, tenantId);
   }
 
@@ -227,35 +223,9 @@ class WhatsAppService {
 
     const uniquePhones = [...new Set(orders?.map(o => o.customer_phone) || [])];
     
-    // Enviar mensagens via Node.js local
-    console.log(`📤 Enviando ${uniquePhones.length} mensagens via Node.js`);
-    
-    try {
-      const response = await fetch('http://localhost:3333/api/broadcast/by-phones', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          key: 'whatsapp-broadcast-2024',
-          phones: uniquePhones.map(phone => normalizeForSending(phone)),
-          message,
-          interval: 2000,
-          batchSize: 5,
-          batchDelay: 3000,
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Broadcast via Node.js concluído:', result);
-      
-      return { success: true, total: uniquePhones.length };
-    } catch (error) {
-      console.error('❌ Erro ao enviar via Node.js:', error);
-      throw error;
-    }
+    // Usar o método broadcastByPhones que já está configurado
+    console.log(`📤 Enviando broadcast para ${uniquePhones.length} números`);
+    return this.broadcastByPhones(uniquePhones, message, tenantId);
   }
 
   async getContactCount(
@@ -304,7 +274,7 @@ class WhatsAppService {
     });
     
     return this.makeRequest('/send', {
-      number: normalizedPhone,
+      phone: normalizedPhone,
       message,
     }, tenantId);
   }
@@ -341,9 +311,8 @@ class WhatsAppService {
         },
         body: JSON.stringify({
           phone: normalizeForSending(phone),
-          product_name: productName,
-          product_code: productCode,
-          tenant_id: tenantId
+          productName: productName,
+          productCode: productCode
         }),
       });
 
@@ -367,7 +336,7 @@ class WhatsAppService {
   async getStatus(tenantId?: string): Promise<any> {
     try {
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
-      const response = await fetch(`${serverUrl}/api/status`);
+      const response = await fetch(`${serverUrl}/status`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
@@ -379,7 +348,7 @@ class WhatsAppService {
   async getLogs(tenantId?: string): Promise<any> {
     try {
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
-      const response = await fetch(`${serverUrl}/api/logs`);
+      const response = await fetch(`${serverUrl}/logs`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
@@ -391,7 +360,7 @@ class WhatsAppService {
   async getMessageStatus(tenantId?: string): Promise<any> {
     try {
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
-      const response = await fetch(`${serverUrl}/api/message-status`);
+      const response = await fetch(`${serverUrl}/message-status`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
