@@ -16,7 +16,8 @@ console.log('\n🚀 Iniciando Servidor WhatsApp Simples...\n');
 // Criar cliente WhatsApp
 const client = new Client({
   authStrategy: new LocalAuth({
-    clientId: 'whatsapp-simples'
+    clientId: 'whatsapp-simples',
+    dataPath: './.wwebjs_auth'
   }),
   puppeteer: {
     headless: false,
@@ -24,8 +25,15 @@ const client = new Client({
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--no-first-run',
+      '--no-zygote'
     ]
+  },
+  webVersionCache: {
+    type: 'remote',
+    remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
   }
 });
 
@@ -49,6 +57,16 @@ client.on('ready', () => {
   console.log('📤 Enviar mensagem: POST http://localhost:3000/enviar\n');
   statusConexao = 'conectado';
   clienteWhatsApp = client;
+});
+
+// Evento: Loading screen
+client.on('loading_screen', (percent, message) => {
+  console.log(`⏳ Carregando: ${percent}%`);
+});
+
+// Evento: Change state
+client.on('change_state', state => {
+  console.log(`🔄 Estado mudou para: ${state}`);
 });
 
 // Evento: Autenticação
@@ -133,10 +151,36 @@ app.post('/enviar', async (req, res) => {
 
     console.log(`📤 Enviando mensagem para ${numeroWhatsApp}...`);
 
-    // Enviar mensagem
-    await clienteWhatsApp.sendMessage(numeroWhatsApp, mensagem);
+    // Verificar se o número está registrado no WhatsApp
+    const isRegistered = await clienteWhatsApp.isRegisteredUser(numeroWhatsApp);
+    if (!isRegistered) {
+      return res.status(400).json({
+        success: false,
+        error: 'Número não está registrado no WhatsApp',
+        telefone: telefone
+      });
+    }
 
-    console.log(`✅ Mensagem enviada com sucesso para ${telefone}`);
+    // Enviar mensagem com retry
+    let tentativas = 0;
+    const maxTentativas = 3;
+    let enviado = false;
+
+    while (tentativas < maxTentativas && !enviado) {
+      try {
+        await clienteWhatsApp.sendMessage(numeroWhatsApp, mensagem);
+        enviado = true;
+        console.log(`✅ Mensagem enviada com sucesso para ${telefone}`);
+      } catch (sendError) {
+        tentativas++;
+        console.log(`⚠️ Tentativa ${tentativas}/${maxTentativas} falhou: ${sendError.message}`);
+        if (tentativas < maxTentativas) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } else {
+          throw sendError;
+        }
+      }
+    }
 
     res.json({
       success: true,
@@ -201,7 +245,34 @@ app.post('/enviar-massa', async (req, res) => {
 
         numeroWhatsApp = numeroWhatsApp + '@c.us';
 
-        await clienteWhatsApp.sendMessage(numeroWhatsApp, mensagem);
+        // Verificar se está registrado
+        const isRegistered = await clienteWhatsApp.isRegisteredUser(numeroWhatsApp);
+        if (!isRegistered) {
+          resultados.push({
+            telefone,
+            status: 'erro',
+            erro: 'Número não registrado no WhatsApp'
+          });
+          console.log(`⚠️ ${telefone} não está registrado no WhatsApp`);
+          continue;
+        }
+
+        // Enviar com retry
+        let enviado = false;
+        let tentativas = 0;
+        while (tentativas < 2 && !enviado) {
+          try {
+            await clienteWhatsApp.sendMessage(numeroWhatsApp, mensagem);
+            enviado = true;
+          } catch (sendError) {
+            tentativas++;
+            if (tentativas < 2) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            } else {
+              throw sendError;
+            }
+          }
+        }
         
         resultados.push({
           telefone,
@@ -211,7 +282,7 @@ app.post('/enviar-massa', async (req, res) => {
         console.log(`✅ Enviado para ${telefone}`);
 
         // Delay entre mensagens para evitar bloqueio
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
       } catch (error) {
         console.error(`❌ Erro ao enviar para ${telefone}:`, error.message);
