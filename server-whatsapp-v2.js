@@ -130,7 +130,7 @@ async function createTenantClient(tenant) {
       dataPath: authDir
     }),
     puppeteer: {
-      headless: true,
+      headless: false,
       devtools: false,
       args: [
         '--no-sandbox',
