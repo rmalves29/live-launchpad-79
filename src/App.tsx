@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-route
 import { ReactNode } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Navbar from "./components/Navbar";
+import { WhatsAppFloatingStatus } from "./components/WhatsAppFloatingStatus";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import PedidosManual from "./pages/PedidosManual";
@@ -38,6 +39,7 @@ const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
   const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback';
+  const showWhatsAppStatus = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/mp/return';
 
   // Se estamos em um subdomínio de tenant, usar autenticação específica
   const TenantAuthComponent = tenant ? TenantAuth : Auth;
@@ -56,6 +58,7 @@ const AppContent = () => {
   return (
     <>
       {showNavbar && <Navbar />}
+      {showWhatsAppStatus && <WhatsAppFloatingStatus />}
       <Routes>
         {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
         <Route path="/" element={
