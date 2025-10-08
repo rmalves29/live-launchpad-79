@@ -101,7 +101,18 @@ class WhatsAppService {
     try {
       console.log('🔍 [WS] makeRequest chamado:', { endpoint, tenantId, hasData: !!data });
       
-      const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
+      if (!tenantId) {
+        throw new Error('Tenant ID é obrigatório para enviar mensagens WhatsApp');
+      }
+
+      let serverUrl: string;
+      
+      try {
+        serverUrl = await getWhatsAppServerUrl(tenantId);
+      } catch (configError: any) {
+        console.error('❌ [WS] Falha ao obter configuração:', configError);
+        throw new Error(`❌ Servidor WhatsApp offline\n\nPedido criado com sucesso, mas o servidor WhatsApp não está respondendo. Inicie o NodeJs.`);
+      }
       
       console.log('🌐 [WS] URL do servidor:', serverUrl);
       console.log('📤 [WS] Dados a enviar:', JSON.stringify(data, null, 2));
@@ -109,13 +120,31 @@ class WhatsAppService {
       const fullUrl = `${serverUrl}${endpoint}`;
       console.log('🔗 [WS] URL completa:', fullUrl);
       
-      const response = await fetch(fullUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      
+      let response: Response;
+      
+      try {
+        response = await fetch(fullUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        console.error('❌ [WS] Erro de conexão:', fetchError);
+        
+        if (fetchError.name === 'AbortError') {
+          throw new Error(`❌ Servidor WhatsApp offline\n\nTimeout ao conectar com ${serverUrl}. Verifique se o servidor Node.js está rodando.`);
+        }
+        
+        throw new Error(`❌ Servidor WhatsApp offline\n\nNão foi possível conectar em ${serverUrl}. Verifique se o servidor Node.js está rodando e acessível.`);
+      }
 
       console.log('📥 [WS] Response status:', response.status, response.statusText);
 
@@ -125,16 +154,16 @@ class WhatsAppService {
         
         try {
           const errorData = JSON.parse(errorText);
-          throw new Error(errorData.error || `HTTP ${response.status}`);
+          throw new Error(errorData.error || `Erro HTTP ${response.status}`);
         } catch {
-          throw new Error(`Erro ao conectar com servidor WhatsApp: ${response.status}. Verifique se a integração está configurada corretamente.`);
+          throw new Error(`Servidor WhatsApp retornou erro ${response.status}. Verifique os logs do Node.js.`);
         }
       }
 
       const result = await response.json();
       console.log('✅ [WS] Resposta sucesso:', result);
       return result;
-    } catch (error) {
+    } catch (error: any) {
       console.error(`❌ [WS] Erro ao chamar ${endpoint}:`, error);
       throw error;
     }
