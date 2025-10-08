@@ -141,7 +141,6 @@ async function createTenantClient(tenant) {
     }),
     puppeteer: {
       headless: false,
-      devtools: false,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -149,25 +148,29 @@ async function createTenantClient(tenant) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
-      ]
-    },
-    webVersionCache: {
-      type: 'remote',
-      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+        '--disable-gpu',
+        '--disable-software-rasterizer'
+      ],
+      executablePath: undefined // usa Chrome padrão do sistema
     }
   });
+  
+  console.log(`📋 Cliente configurado para ${tenant.name}`);
 
-  // Setup events
+  // Setup events com logs detalhados
   client.on('qr', (qr) => {
-    console.log(`\n${'='.repeat(50)}`);
+    console.log(`\n${'='.repeat(60)}`);
     console.log(`📱 QR CODE GERADO - ${tenant.name}`);
-    console.log(`${'='.repeat(50)}\n`);
+    console.log(`${'='.repeat(60)}\n`);
     qrcode.generate(qr, { small: true });
-    console.log(`\n${'='.repeat(50)}`);
-    console.log(`✅ Escaneie o QR code acima no WhatsApp`);
-    console.log(`${'='.repeat(50)}\n`);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`✅ Escaneie o QR code acima no WhatsApp do seu celular`);
+    console.log(`${'='.repeat(60)}\n`);
     tenantStatus.set(tenant.id, 'qr_code');
+  });
+  
+  client.on('change_state', state => {
+    console.log(`🔄 [${tenant.name}] Estado mudou para: ${state}`);
   });
   
   client.on('loading_screen', (percent, message) => {
