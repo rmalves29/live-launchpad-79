@@ -816,6 +816,71 @@ app.post('/api/broadcast/by-phones', async (req, res) => {
   }
 });
 
+// Endpoint para listar TODOS os grupos do WhatsApp
+app.get('/list-all-groups', async (req, res) => {
+  console.log('\n📋 === LISTAR TODOS OS GRUPOS ===');
+  
+  try {
+    const client = await getClient();
+    
+    if (!client) {
+      console.log(`❌ WhatsApp não disponível (status: ${clientStatus})`);
+      return res.status(503).json({
+        success: false,
+        error: `WhatsApp não conectado. Status: ${clientStatus}`,
+        status: clientStatus,
+        groups: []
+      });
+    }
+    
+    console.log('🔍 Buscando chats...');
+    const chats = await client.getChats();
+    console.log(`📊 Total de chats encontrados: ${chats.length}`);
+    
+    // Filtrar apenas grupos
+    const groups = chats
+      .filter(chat => chat.isGroup)
+      .map(chat => ({
+        id: chat.id._serialized,
+        name: chat.name,
+        participantCount: chat.participants?.length || 0
+      }));
+    
+    console.log(`✅ Total de grupos filtrados: ${groups.length}`);
+    
+    if (groups.length > 0) {
+      console.log('📋 Grupos encontrados:');
+      groups.forEach((g, i) => {
+        console.log(`  ${i + 1}. ${g.name} (${g.participantCount} participantes) - ID: ${g.id}`);
+      });
+    } else {
+      console.log('⚠️ Nenhum grupo encontrado no WhatsApp conectado');
+    }
+    
+    console.log('=== FIM LISTAR GRUPOS ===\n');
+    
+    res.json({
+      success: true,
+      groups,
+      total: groups.length,
+      company: COMPANY_NAME,
+      tenant_id: TENANT_ID
+    });
+    
+  } catch (error) {
+    console.error('❌ ERRO ao listar grupos:', error);
+    console.log('Stack:', error.stack);
+    console.log('=== FIM LISTAR GRUPOS (ERRO) ===\n');
+    
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      details: error.stack,
+      groups: []
+    });
+  }
+});
+
 // Disconnect por tenant_id (SEM limpeza de sessão)
 app.post('/disconnect/:tenantId', async (req, res) => {
   const { tenantId } = req.params;
