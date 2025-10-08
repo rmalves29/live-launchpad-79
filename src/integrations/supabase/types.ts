@@ -429,7 +429,7 @@ export type Database = {
           id: string
           instance_name: string
           is_active: boolean
-          tenant_id: string | null
+          tenant_id: string
           updated_at: string | null
           webhook_secret: string
         }
@@ -439,7 +439,7 @@ export type Database = {
           id?: string
           instance_name: string
           is_active?: boolean
-          tenant_id?: string | null
+          tenant_id: string
           updated_at?: string | null
           webhook_secret: string
         }
@@ -449,7 +449,7 @@ export type Database = {
           id?: string
           instance_name?: string
           is_active?: boolean
-          tenant_id?: string | null
+          tenant_id?: string
           updated_at?: string | null
           webhook_secret?: string
         }
