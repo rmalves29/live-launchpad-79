@@ -146,9 +146,18 @@ async function createTenantClient(tenant) {
 
   // Setup events
   client.on('qr', (qr) => {
-    console.log(`📱 QR Code para ${tenant.name}:`);
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`📱 QR CODE GERADO - ${tenant.name}`);
+    console.log(`${'='.repeat(50)}\n`);
     qrcode.generate(qr, { small: true });
+    console.log(`\n${'='.repeat(50)}`);
+    console.log(`✅ Escaneie o QR code acima no WhatsApp`);
+    console.log(`${'='.repeat(50)}\n`);
     tenantStatus.set(tenant.id, 'qr_code');
+  });
+  
+  client.on('loading_screen', (percent, message) => {
+    console.log(`⏳ [${tenant.name}] Carregando: ${percent}% - ${message}`);
   });
 
   client.on('ready', () => {

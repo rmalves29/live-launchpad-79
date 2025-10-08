@@ -26,9 +26,34 @@ node server-whatsapp-v2.js
 http://localhost:3333/status
 ```
 
-## ❌ Se der erro
+## ❌ Se QR Code não aparecer ou ficar carregando
+
+### 1️⃣ Parar o servidor
 ```powershell
+Ctrl + C (no terminal onde está rodando)
+ou
 taskkill /F /IM node.exe
-Remove-Item -Recurse -Force .wwebjs_auth
+```
+
+### 2️⃣ Limpar sessões antigas
+```powershell
+Remove-Item -Recurse -Force .wwebjs_auth_v2
+```
+
+### 3️⃣ Reiniciar
+```powershell
 node server-whatsapp-v2.js
+```
+
+## 🔍 Logs importantes
+
+Quando o QR code for gerado, você verá:
+```
+==================================================
+📱 QR CODE GERADO - Nome da Empresa
+==================================================
+(QR code aparece aqui)
+==================================================
+✅ Escaneie o QR code acima no WhatsApp
+==================================================
 ```
