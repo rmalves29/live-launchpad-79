@@ -399,6 +399,12 @@ client.on('auth_failure', () => console.log('❌ Falha na autenticação do What
 
 client.on('message', async (msg) => {
   try {
+    // Ignorar mensagens enviadas pelo próprio bot
+    if (msg.fromMe) {
+      console.log('⏭️ Ignorando mensagem enviada pelo próprio bot');
+      return;
+    }
+
     let groupName = null;
     let authorPhone = null;
     let messageFrom = msg.from;
