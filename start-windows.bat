@@ -45,8 +45,11 @@ echo.
 
 echo [INFO] Iniciando servidor...
 echo [DICA] O QR Code vai aparecer aqui no terminal!
-echo [DICA] Se travar, pressione CTRL+C e tente:
-echo        node server-debug-visual.js
+echo.
+echo [IMPORTANTE] Se der TIMEOUT:
+echo    1. Execute: reinstalar-puppeteer.bat
+echo    2. Teste: node server-simples-1-tenant.js
+echo    3. Veja: SOLUCAO_TIMEOUT.md
 echo.
 
 node server1.js
