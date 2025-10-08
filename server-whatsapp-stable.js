@@ -15,6 +15,13 @@ const QUEUE_DELAY = 2000; // 2 segundos entre mensagens
 const MAX_RETRIES = 3;
 const RECONNECT_DELAY = 5000;
 
+// Credenciais Supabase
+const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
+
+// Tenant padrão (pode ser sobrescrito por variável de ambiente)
+const TENANT_ID = process.env.TENANT_ID || '3c92bf57-a114-4690-b4cf-642078fc9df9';
+
 // ==========================================
 // ESTADO GLOBAL
 // ==========================================
@@ -87,6 +94,57 @@ async function cleanupSessionFiles() {
     } catch (error) {
       log.warn(`Não foi possível remover ${file}:`, error.message);
     }
+  }
+}
+
+// ==========================================
+// SUPABASE
+// ==========================================
+async function supabaseRequest(endpoint, options = {}) {
+  const url = `${SUPABASE_URL}/rest/v1${endpoint}`;
+  const headers = {
+    'apikey': SUPABASE_SERVICE_KEY,
+    'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation',
+    ...options.headers
+  };
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      log.error(`Supabase ${response.status}:`, error);
+      throw new Error(`Supabase error: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    log.error('Erro ao conectar com Supabase:', error.message);
+    throw error;
+  }
+}
+
+async function saveMessageToDatabase(phone, message, type = 'outgoing') {
+  try {
+    await supabaseRequest('/whatsapp_messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: TENANT_ID,
+        phone: phone.replace(/\D/g, ''),
+        message,
+        type,
+        sent_at: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      })
+    });
+    log.success(`Mensagem salva no banco para ${phone}`);
+  } catch (error) {
+    log.error('Erro ao salvar mensagem:', error.message);
   }
 }
 

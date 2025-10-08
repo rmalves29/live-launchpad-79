@@ -20,9 +20,11 @@ if (typeof fetch !== 'function') {
 /* ============================ CONFIG ============================ */
 const PORT = process.env.PORT || 3333;
 
-// Supabase
+// Supabase - USANDO SERVICE ROLE PARA ACESSO COMPLETO
 const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
+
+console.log('✅ Usando SERVICE ROLE do Supabase (acesso total ao banco)');
 
 // Multi-tenant storage
 const tenantClients = new Map(); // tenantId -> WhatsApp Client
