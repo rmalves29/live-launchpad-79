@@ -12,7 +12,9 @@ import { Loader2, Search, RefreshCw, Edit, Trash2, Plus } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
+import { useTenant } from '@/hooks/useTenant';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
+import { whatsappService } from '@/lib/whatsapp-service';
 
 
 interface Product {
@@ -44,6 +46,7 @@ interface Customer {
 const Live = () => {
   const { toast } = useToast();
   const { profile } = useAuth();
+  const { tenant } = useTenant();
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -386,43 +389,33 @@ const Live = () => {
       setInstagrams(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
       
-      // Enviar mensagem via Node.js (com DDI 55 e 9º dígito garantido)
+      // Enviar mensagem via WhatsApp usando o serviço configurado
       try {
-        const phoneForWhatsApp = normalizeForSending(normalizedPhone);
-        console.log(`📱 Enviando mensagem WhatsApp...`);
-        console.log(`📞 De: ${normalizedPhone} -> Para WhatsApp: ${phoneForWhatsApp}`);
+        console.log(`📱 Enviando mensagem WhatsApp via whatsappService...`);
+        console.log(`📞 Telefone: ${normalizedPhone}`);
+        console.log(`📦 Produto: ${product.name} (${product.code})`);
+        console.log(`🆔 Tenant: ${tenant?.id}`);
         
-        const response = await fetch('http://localhost:3333/send-item-added', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: phoneForWhatsApp,
-            product_id: product.id,
-            quantity: qty
-          })
-        });
-
-        const responseData = await response.json();
+        await whatsappService.sendItemAdded({
+          customer_phone: normalizedPhone,
+          product: {
+            name: product.name,
+            code: product.code,
+            qty: qty,
+            price: product.price
+          }
+        }, tenant!.id);
         
-        if (response.ok) {
-          console.log('✅ Mensagem WhatsApp enviada com sucesso:', responseData);
-          toast({
-            title: '✅ WhatsApp Enviado',
-            description: `Mensagem enviada para ${formatPhoneForDisplay(normalizedPhone)}`,
-          });
-        } else {
-          console.error('❌ Erro ao enviar mensagem WhatsApp:', responseData);
-          toast({
-            title: '⚠️ WhatsApp não enviado',
-            description: `Pedido criado, mas mensagem WhatsApp falhou: ${responseData.error || 'Erro desconhecido'}`,
-            variant: 'destructive'
-          });
-        }
-      } catch (error) {
-        console.error('❌ Erro ao conectar com servidor WhatsApp:', error);
+        console.log('✅ Mensagem WhatsApp enviada com sucesso');
         toast({
-          title: '⚠️ Servidor WhatsApp offline',
-          description: 'Pedido criado com sucesso, mas o servidor WhatsApp não está respondendo. Inicie o Node.js.',
+          title: '✅ WhatsApp Enviado',
+          description: `Mensagem enviada para ${formatPhoneForDisplay(normalizedPhone)}`,
+        });
+      } catch (error: any) {
+        console.error('❌ Erro ao enviar mensagem WhatsApp:', error);
+        toast({
+          title: '⚠️ WhatsApp não enviado',
+          description: error.message || 'Erro ao conectar com servidor WhatsApp. Verifique se o Node.js está rodando.',
           variant: 'destructive'
         });
       }
