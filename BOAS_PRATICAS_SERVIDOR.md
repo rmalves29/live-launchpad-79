@@ -1,5 +1,27 @@
 # 🛡️ Boas Práticas - Servidor WhatsApp
 
+## 🎉 NOVIDADE: Limpeza Automática Integrada!
+
+O servidor agora faz **limpeza automática** ao iniciar! 
+
+**O que ele faz sozinho:**
+- ✅ Mata processos Node.js antigos (exceto o atual)
+- ✅ Remove arquivos de lock travados
+- ✅ Aguarda tempo necessário para liberação de recursos
+- ✅ Shutdown gracioso ao encerrar (Ctrl+C)
+
+**Basta executar:**
+```powershell
+node server-whatsapp-unified.js
+```
+
+**OU usar o script completo:**
+```powershell
+.\start-safe.ps1
+```
+
+---
+
 ## 📋 Problemas Comuns e Soluções
 
 ### 1. ❌ Erro: "Cannot read properties of undefined (reading 'getChat')"

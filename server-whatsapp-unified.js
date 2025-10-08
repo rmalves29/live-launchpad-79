@@ -19,11 +19,123 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 // fetch (fallback)
 if (typeof fetch !== 'function') {
   global.fetch = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
 }
+
+/* ============================ AUTO-CLEANUP ============================ */
+console.log('🧹 Iniciando limpeza automática...');
+
+/**
+ * Limpa processos Node.js antigos (exceto o atual)
+ */
+function cleanupOldProcesses() {
+  try {
+    const currentPid = process.pid;
+    console.log(`📍 PID atual: ${currentPid}`);
+    
+    if (process.platform === 'win32') {
+      // Windows: Listar e matar outros processos node.exe
+      try {
+        const tasklist = execSync('tasklist /FI "IMAGENAME eq node.exe" /FO CSV /NH', { encoding: 'utf8' });
+        const lines = tasklist.split('\n').filter(line => line.includes('node.exe'));
+        
+        let killedCount = 0;
+        lines.forEach(line => {
+          const match = line.match(/"(\d+)"/);
+          if (match) {
+            const pid = parseInt(match[1]);
+            if (pid !== currentPid) {
+              try {
+                execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+                killedCount++;
+              } catch (e) {
+                // Ignorar erros ao matar processos
+              }
+            }
+          }
+        });
+        
+        if (killedCount > 0) {
+          console.log(`✅ ${killedCount} processo(s) Node.js antigo(s) encerrado(s)`);
+        } else {
+          console.log(`✅ Nenhum processo Node.js antigo encontrado`);
+        }
+      } catch (e) {
+        console.log('⚠️ Não foi possível verificar processos antigos');
+      }
+    } else {
+      // Linux/Mac: usar pkill
+      try {
+        execSync(`pkill -9 node || true`, { stdio: 'ignore' });
+        console.log('✅ Processos Node.js antigos limpos (Linux/Mac)');
+      } catch (e) {
+        console.log('⚠️ Nenhum processo antigo para limpar');
+      }
+    }
+  } catch (error) {
+    console.log('⚠️ Erro ao limpar processos:', error.message);
+  }
+}
+
+/**
+ * Remove arquivos travados de sessões anteriores
+ */
+function cleanupLockedFiles() {
+  const authPath = path.join(__dirname, '.wwebjs_auth');
+  const cachePath = path.join(__dirname, '.wwebjs_cache');
+  
+  try {
+    // Tentar remover arquivos de lock específicos
+    const lockFiles = [
+      path.join(authPath, 'session-app', 'SingletonLock'),
+      path.join(authPath, 'session-app', 'SingletonCookie'),
+      path.join(authPath, 'session-app', 'SingletonSocket'),
+      path.join(authPath, 'session-app', 'first_party_sets.db-journal'),
+    ];
+    
+    let removedCount = 0;
+    lockFiles.forEach(file => {
+      try {
+        if (fs.existsSync(file)) {
+          fs.unlinkSync(file);
+          removedCount++;
+        }
+      } catch (e) {
+        // Ignorar erros individuais
+      }
+    });
+    
+    if (removedCount > 0) {
+      console.log(`✅ ${removedCount} arquivo(s) de lock removido(s)`);
+    } else {
+      console.log('✅ Nenhum arquivo de lock encontrado');
+    }
+  } catch (error) {
+    console.log('⚠️ Erro ao limpar arquivos de lock:', error.message);
+  }
+}
+
+/**
+ * Aguarda um tempo antes de continuar
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Executar limpeza antes de iniciar
+(async () => {
+  cleanupOldProcesses();
+  await sleep(2000); // Aguardar 2 segundos
+  cleanupLockedFiles();
+  await sleep(1000); // Aguardar mais 1 segundo
+  console.log('✅ Limpeza automática concluída!\n');
+})();
 
 /* ============================ CONFIG ============================ */
 const PORT = process.env.PORT || 3333;
@@ -1467,6 +1579,53 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
-  if (clientReady) await client.destroy();
-  process.exit();
+  
+  try {
+    if (clientReady) {
+      console.log('📱 Desconectando WhatsApp...');
+      await client.destroy();
+      console.log('✅ WhatsApp desconectado');
+    }
+  } catch (error) {
+    console.log('⚠️ Erro ao desconectar WhatsApp:', error.message);
+  }
+  
+  console.log('👋 Servidor encerrado com segurança');
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 SIGTERM recebido, encerrando...');
+  
+  try {
+    if (clientReady) {
+      await client.destroy();
+    }
+  } catch (error) {
+    console.log('⚠️ Erro no shutdown:', error.message);
+  }
+  
+  process.exit(0);
+});
+
+// Handler para erros não capturados
+process.on('uncaughtException', (error) => {
+  console.error('❌ Erro não capturado:', error);
+  console.error('Stack:', error.stack);
+  
+  // Tentar fazer cleanup antes de sair
+  try {
+    if (clientReady) {
+      client.destroy().catch(() => {});
+    }
+  } catch (e) {
+    // Ignorar erros no cleanup de emergência
+  }
+  
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Promise não tratada rejeitada:', reason);
+  console.error('Promise:', promise);
 });
