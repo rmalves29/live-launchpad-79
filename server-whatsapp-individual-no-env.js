@@ -1,5 +1,5 @@
 /**
- * server-whatsapp-individual-no-env.js — WhatsApp Multi-Tenant Server v2.0
+ * server-whatsapp-v2.js — WhatsApp Multi-Tenant Server v2.0
  * Servidor WhatsApp otimizado com triggers automáticos do banco de dados
  * Compatível com todas as empresas (multi-tenant)
  * Node 18+ | whatsapp-web.js | express | cors
@@ -28,8 +28,6 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsIn
 const tenantClients = new Map(); // tenantId -> WhatsApp Client
 const tenantStatus = new Map();  // tenantId -> status
 const tenantAuthDir = new Map(); // tenantId -> auth directory path
-const tenantRetryCount = new Map(); // tenantId -> retry count
-const MAX_RETRIES = 3; // Máximo de tentativas antes de desistir
 
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -103,101 +101,6 @@ async function getWhatsAppIntegration(tenantId) {
 }
 
 /* ============================ WHATSAPP CLIENT MANAGEMENT ============================ */
-
-/**
- * Verifica se o cache está corrompido
- */
-function isCacheCorrupted(authDir) {
-  try {
-    // Verificar se a pasta existe
-    if (!fs.existsSync(authDir)) {
-      return false; // Não está corrompido, só não existe
-    }
-    
-    // Verificar se há arquivos suspeitos ou vazios
-    const sessionPath = path.join(authDir, 'session');
-    if (fs.existsSync(sessionPath)) {
-      const files = fs.readdirSync(sessionPath);
-      
-      // Se não há arquivos, está corrompido
-      if (files.length === 0) {
-        console.log(`⚠️ Cache corrompido: pasta session vazia`);
-        return true;
-      }
-      
-      // Verificar arquivos específicos que podem estar corrompidos
-      for (const file of files) {
-        const filePath = path.join(sessionPath, file);
-        try {
-          const stats = fs.statSync(filePath);
-          // Se arquivo tem 0 bytes, está corrompido
-          if (stats.size === 0) {
-            console.log(`⚠️ Cache corrompido: arquivo vazio ${file}`);
-            return true;
-          }
-        } catch (e) {
-          console.log(`⚠️ Cache corrompido: erro ao ler ${file}`);
-          return true;
-        }
-      }
-    }
-    
-    return false;
-  } catch (error) {
-    console.error(`❌ Erro ao verificar cache:`, error.message);
-    return true; // Em caso de dúvida, considerar corrompido
-  }
-}
-
-/**
- * Limpa cache corrompido do WhatsApp Web
- */
-function cleanCorruptedCache(authDir) {
-  try {
-    console.log(`🧹 Limpando cache corrompido: ${authDir}`);
-    
-    // Tentar múltiplas vezes se necessário
-    let attempts = 0;
-    const maxAttempts = 3;
-    
-    while (attempts < maxAttempts) {
-      try {
-        // Deletar pasta inteira se existir
-        if (fs.existsSync(authDir)) {
-          fs.rmSync(authDir, { recursive: true, force: true, maxRetries: 3 });
-          console.log(`✅ Cache deletado (tentativa ${attempts + 1})`);
-        }
-        
-        // Pequeno delay para garantir que o sistema operacional liberou os arquivos
-        const start = Date.now();
-        while (Date.now() - start < 500) { } // Busy wait de 500ms
-        
-        // Recriar pasta limpa
-        fs.mkdirSync(authDir, { recursive: true });
-        console.log(`✅ Pasta recriada limpa`);
-        
-        return true;
-      } catch (retryError) {
-        attempts++;
-        console.warn(`⚠️ Tentativa ${attempts} falhou: ${retryError.message}`);
-        
-        if (attempts >= maxAttempts) {
-          throw retryError;
-        }
-        
-        // Aguardar antes de tentar novamente
-        const start = Date.now();
-        while (Date.now() - start < 1000) { } // Busy wait de 1s
-      }
-    }
-    
-    return false;
-  } catch (error) {
-    console.error(`❌ Erro ao limpar cache:`, error.message);
-    return false;
-  }
-}
-
 function getTenantAuthDir(tenantId) {
   const baseDir = path.join(__dirname, '.wwebjs_auth_v2');
   const tenantDir = path.join(baseDir, `tenant_${tenantId}`);
@@ -217,31 +120,19 @@ async function createTenantClient(tenant) {
   const authDir = getTenantAuthDir(tenant.id);
   tenantAuthDir.set(tenant.id, authDir);
   
-  // Verificar contador de tentativas
-  const retryCount = tenantRetryCount.get(tenant.id) || 0;
-  if (retryCount >= MAX_RETRIES) {
-    console.error(`❌ Máximo de tentativas atingido para ${tenant.name}`);
-    console.error(`   Não será feita nova tentativa automática.`);
-    console.error(`   SOLUÇÃO: Delete manualmente a pasta: ${authDir}`);
-    console.error(`   Depois chame: POST /restart/${tenant.id}`);
-    tenantStatus.set(tenant.id, 'max_retries_exceeded');
-    return null;
-  }
-  
   console.log(`🔧 Criando cliente WhatsApp para: ${tenant.name} (${tenant.id})`);
   console.log(`📂 Diretório de autenticação: ${authDir}`);
-  console.log(`🔄 Tentativa: ${retryCount + 1}/${MAX_RETRIES}`);
   
-  console.log(`🌐 Configurando Puppeteer com LocalAuth...`);
-  console.log(`📂 Usando clientId: tenant_${tenant.id}`);
-  
+  console.log(`🌐 Configurando Puppeteer...`);
   const client = new Client({
-    authStrategy: new LocalAuth({
+    authStrategy: new LocalAuth({ 
       clientId: `tenant_${tenant.id}`,
       dataPath: authDir
     }),
     puppeteer: {
-      headless: false,
+      headless: true,
+      devtools: false,
+      timeout: 60000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -249,16 +140,12 @@ async function createTenantClient(tenant) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
+        '--disable-gpu',
         '--disable-extensions',
-        '--disable-blink-features=AutomationControlled',
-        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      ],
-      defaultViewport: null,
-      timeout: 60000
-    },
-    webVersionCache: {
-      type: 'remote',
-      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
+      ]
     }
   });
   
@@ -269,12 +156,10 @@ async function createTenantClient(tenant) {
   
   client.on('qr', (qr) => {
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`📱 QR CODE GERADO PARA: ${tenant.name}`);
-    console.log(`📱 ESCANEIE O QR CODE NO NAVEGADOR PUPPETEER`);
+    console.log(`📱 ESCANEIE O QR CODE ABAIXO PARA: ${tenant.name}`);
     console.log(`${'='.repeat(60)}`);
     qrcode.generate(qr, { small: true });
     console.log(`${'='.repeat(60)}\n`);
-    console.log(`✅ QR Code também deve aparecer na janela do navegador`);
     tenantStatus.set(tenant.id, 'qr_code');
   });
   
@@ -292,95 +177,14 @@ async function createTenantClient(tenant) {
     tenantStatus.set(tenant.id, 'authenticated');
   });
 
-  client.on('auth_failure', async (msg) => {
+  client.on('auth_failure', (msg) => {
     console.error(`❌ Falha autenticação ${tenant.name}:`, msg);
-    console.error(`💡 SOLUÇÃO: Limpando cache corrompido...`);
-    
     tenantStatus.set(tenant.id, 'auth_failure');
-    
-    // Incrementar contador de tentativas
-    const currentRetries = tenantRetryCount.get(tenant.id) || 0;
-    tenantRetryCount.set(tenant.id, currentRetries + 1);
-    
-    // Verificar se já atingiu o máximo
-    if (currentRetries + 1 >= MAX_RETRIES) {
-      console.error(`❌ Máximo de tentativas de reconexão atingido para ${tenant.name}`);
-      console.error(`   Não será feita nova tentativa automática.`);
-      tenantStatus.set(tenant.id, 'max_retries_exceeded');
-      
-      // Destruir cliente
-      try {
-        await client.destroy();
-      } catch (e) {
-        console.log(`⚠️ Erro ao destruir cliente: ${e.message}`);
-      }
-      tenantClients.delete(tenant.id);
-      return;
-    }
-    
-    // Limpar cache imediatamente
-    const cleaned = cleanCorruptedCache(authDir);
-    
-    if (!cleaned) {
-      console.error(`❌ Falha ao limpar cache`);
-      tenantStatus.set(tenant.id, 'cache_clean_failed');
-      return;
-    }
-    
-    console.log(`✅ Cache limpo, aguardando 10 segundos antes de reconectar...`);
-    
-    // Aguardar mais tempo antes de reconectar (10s)
-    await delay(10000);
-    
-    try {
-      // Destruir cliente antigo
-      await client.destroy();
-      tenantClients.delete(tenant.id);
-      
-      // Criar novo cliente
-      console.log(`🔄 Recriando cliente ${tenant.name}...`);
-      await createTenantClient(tenant);
-    } catch (error) {
-      console.error(`❌ Erro ao recriar cliente:`, error.message);
-      tenantStatus.set(tenant.id, 'reconnect_failed');
-    }
   });
 
-  client.on('disconnected', async (reason) => {
+  client.on('disconnected', (reason) => {
     console.log(`🔌 Desconectado ${tenant.name}:`, reason);
     tenantStatus.set(tenant.id, 'offline');
-    
-    // Incrementar contador de desconexões
-    const currentRetries = tenantRetryCount.get(tenant.id) || 0;
-    
-    // Se foi um logout ou navegação, limpar cache e tentar reconectar
-    if (reason === 'LOGOUT' || reason === 'NAVIGATION' || reason === 'CONFLICT') {
-      console.log(`🧹 Limpando cache após desconexão: ${reason}`);
-      
-      const cleaned = cleanCorruptedCache(authDir);
-      
-      if (cleaned && currentRetries < MAX_RETRIES) {
-        console.log(`✅ Cache limpo, tentando reconectar em 10 segundos...`);
-        tenantRetryCount.set(tenant.id, currentRetries + 1);
-        
-        await delay(10000);
-        
-        try {
-          // Destruir cliente antigo
-          await client.destroy();
-          tenantClients.delete(tenant.id);
-          
-          // Criar novo cliente
-          console.log(`🔄 Recriando cliente ${tenant.name} após desconexão...`);
-          await createTenantClient(tenant);
-        } catch (error) {
-          console.error(`❌ Erro ao reconectar após desconexão:`, error.message);
-        }
-      } else if (currentRetries >= MAX_RETRIES) {
-        console.error(`❌ Máximo de tentativas atingido após desconexão`);
-        tenantStatus.set(tenant.id, 'max_retries_exceeded');
-      }
-    }
   });
 
   client.on('message', async (message) => {
@@ -391,59 +195,35 @@ async function createTenantClient(tenant) {
   tenantStatus.set(tenant.id, 'initializing');
   
   console.log(`🔄 Iniciando cliente WhatsApp para: ${tenant.name}`);
-  console.log(`⏰ Aguardando inicialização... (timeout: 300s = 5 minutos)`);
-  console.log(`📱 Você precisará escanear o QR code toda vez que reiniciar`);
-  console.log(`💡 DICA: Aguarde a janela do Chrome abrir e escaneie o QR`);
+  console.log(`⏰ Aguardando inicialização... (timeout: 60s)`);
   
-  // Adicionar timeout de segurança (5 minutos)
+  // Adicionar timeout de segurança
   const timeoutId = setTimeout(() => {
-    console.error(`⏱️ TIMEOUT: Cliente ${tenant.name} não inicializou em 300 segundos (5 minutos)`);
+    console.error(`⏱️ TIMEOUT: Cliente ${tenant.name} não inicializou em 60 segundos`);
     console.error(`   Possíveis causas:`);
-    console.error(`   - WhatsApp Web não carregou completamente`);
-    console.error(`   - QR Code não foi escaneado a tempo`);
-    console.error(`   - Problemas de rede com WhatsApp Web`);
     console.error(`   - Chromium/Puppeteer travado`);
-    console.error(`   💡 SOLUÇÃO: Reinicie o servidor e tente novamente`);
+    console.error(`   - Falta de dependências do sistema`);
+    console.error(`   - Problemas de rede com WhatsApp Web`);
     tenantStatus.set(tenant.id, 'timeout');
-  }, 300000);
+  }, 60000);
   
-  // Incrementar contador de tentativas
-  tenantRetryCount.set(tenant.id, (tenantRetryCount.get(tenant.id) || 0) + 1);
-  
-  // Inicializar cliente
-  client.initialize().catch(async (error) => {
-    clearTimeout(timeoutId);
-    console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
-    console.error(`   Tipo: ${error.name}`);
-    console.error(`   Mensagem: ${error.message}`);
-    
-    // Como estamos usando NoAuth, não há cache para limpar
-    const currentRetries = tenantRetryCount.get(tenant.id) || 0;
-    
-    if (currentRetries < MAX_RETRIES) {
-      console.log(`🔄 Tentando reiniciar cliente... (${currentRetries}/${MAX_RETRIES})`);
-      tenantStatus.set(tenant.id, 'restarting');
-      
-      await delay(10000);
-      
-      try {
-        // Remover cliente antigo
-        tenantClients.delete(tenant.id);
-        
-        // Criar novo cliente
-        console.log(`🔄 Recriando cliente ${tenant.name}...`);
-        await createTenantClient(tenant);
-      } catch (retryError) {
-        console.error(`❌ Erro ao recriar cliente:`, retryError.message);
-        tenantStatus.set(tenant.id, 'error');
+  // Inicializar de forma assíncrona (não bloqueia)
+  client.initialize()
+    .then(() => {
+      clearTimeout(timeoutId);
+      console.log(`🚀 Cliente inicializado com sucesso: ${tenant.name}`);
+    })
+    .catch((error) => {
+      clearTimeout(timeoutId);
+      console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
+      console.error(`   Tipo: ${error.name}`);
+      console.error(`   Mensagem: ${error.message}`);
+      if (error.stack) {
+        console.error(`   Stack (primeiras linhas):`);
+        console.error(error.stack.split('\n').slice(0, 5).join('\n'));
       }
-    } else {
-      console.error(`❌ Máximo de ${MAX_RETRIES} tentativas atingido`);
-      console.error(`   💡 SOLUÇÃO: Reinicie o servidor manualmente`);
-      console.error(`   Ou use: POST /restart/${tenant.id}`);
-      tenantStatus.set(tenant.id, 'max_retries_exceeded');
-    }
-  });
+      tenantStatus.set(tenant.id, 'error');
+    });
   
   return client;
 }
@@ -786,27 +566,15 @@ app.post('/restart/:tenantId', async (req, res) => {
   try {
     const { tenantId } = req.params;
     
-    console.log(`🔄 Solicitação de restart para: ${tenantId}`);
-    
-    // Resetar contador de tentativas
-    tenantRetryCount.delete(tenantId);
-    console.log(`✅ Contador de tentativas resetado`);
-    
     // Desconectar existente
     const existingClient = tenantClients.get(tenantId);
     if (existingClient) {
       try {
-        console.log(`🔌 Destruindo cliente existente...`);
         await existingClient.destroy();
       } catch (error) {
         console.warn(`⚠️ Erro destruir cliente: ${error.message}`);
       }
     }
-    
-    // Limpar cache antes de reiniciar
-    const authDir = tenantAuthDir.get(tenantId) || getTenantAuthDir(tenantId);
-    console.log(`🧹 Limpando cache: ${authDir}`);
-    cleanCorruptedCache(authDir);
     
     // Carregar tenant
     const tenants = await supaRaw(`/tenants?select=*&id=eq.${tenantId}&is_active=eq.true&limit=1`);
@@ -829,14 +597,12 @@ app.post('/restart/:tenantId', async (req, res) => {
     }
     
     // Criar novo cliente
-    console.log(`🔧 Criando novo cliente...`);
     await createTenantClient(tenant);
     
     res.json({
       success: true,
       message: `Cliente reinicializado: ${tenant.name}`,
-      tenantId: tenantId,
-      info: 'Cache limpo e contador resetado'
+      tenantId: tenantId
     });
     
   } catch (error) {
@@ -1000,50 +766,6 @@ process.on('SIGINT', async () => {
   }
   
   process.exit(0);
-});
-
-// Proteção contra erros não tratados
-process.on('uncaughtException', (error) => {
-  console.error('\n❌ ERRO NÃO TRATADO:');
-  console.error(`   Tipo: ${error.name}`);
-  console.error(`   Mensagem: ${error.message}`);
-  console.error(`   Stack: ${error.stack}`);
-  
-  // Se for erro de cache corrompido, tentar limpar
-  if (error.message?.includes('Cannot read properties of null')) {
-    console.error('\n🧹 Detectado erro de cache corrompido');
-    console.error('   Limpando todos os caches...');
-    
-    for (const [tenantId, authDir] of tenantAuthDir) {
-      try {
-        cleanCorruptedCache(authDir);
-        console.log(`✅ Cache limpo para tenant: ${tenantId}`);
-      } catch (cleanError) {
-        console.error(`❌ Erro ao limpar cache do tenant ${tenantId}:`, cleanError.message);
-      }
-    }
-    
-    console.error('\n💡 SOLUÇÃO: Reinicie o servidor agora');
-  }
-  
-  // Não encerrar o processo, apenas logar
-  console.error('\n⚠️ Servidor continua rodando, mas pode estar instável');
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('\n❌ PROMISE REJEITADA NÃO TRATADA:');
-  console.error(`   Motivo:`, reason);
-  console.error(`   Promise:`, promise);
-  
-  // Se for erro de cache corrompido, logar
-  if (reason && typeof reason === 'object' && 'message' in reason) {
-    const errorMessage = reason.message;
-    if (errorMessage?.includes('Cannot read properties of null') || 
-        errorMessage?.includes('Execution context was destroyed')) {
-      console.error('\n🧹 Detectado erro de cache corrompido via Promise');
-      console.error('   Os caches serão limpos na próxima reconexão automática');
-    }
-  }
 });
 
 startServer();
