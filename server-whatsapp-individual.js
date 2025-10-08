@@ -42,37 +42,6 @@ console.log(`${'='.repeat(60)}\n`);
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-// Cria diretório com segurança (ignora se já existe)
-function ensureDir(p) {
-  try {
-    fs.mkdirSync(p, { recursive: true });
-    return true;
-  } catch (error) {
-    console.warn(`⚠️ Erro ao criar diretório ${p}:`, error.message);
-    return false;
-  }
-}
-
-// Remove arquivo/diretório com segurança (ignora EBUSY/EPERM)
-function safeRm(p) {
-  try {
-    if (fs.existsSync(p)) {
-      fs.rmSync(p, { recursive: true, force: true });
-      console.log(`🗑️ Removido: ${p}`);
-      return true;
-    }
-    return true;
-  } catch (error) {
-    // Ignora erros EBUSY/EPERM no Windows (arquivo em uso)
-    if (error.code === 'EBUSY' || error.code === 'EPERM') {
-      console.warn(`⚠️ Arquivo em uso (ignorado): ${p}`);
-      return false;
-    }
-    console.error(`❌ Erro ao remover ${p}:`, error.message);
-    throw error;
-  }
-}
-
 function normalizeDDD(phone) {
   if (!phone) return phone;
   
@@ -138,56 +107,15 @@ let clientStatus = 'initializing';
 let currentQRCode = null;
 let isReconnecting = false;
 
-// Limpeza leve antes de inicializar (evita EBUSY)
-function performStartupHygiene() {
-  console.log('🧹 Executando limpeza leve...');
-  
-  // Criar estrutura de diretórios
-  ensureDir(PROGRAM_DATA);
-  ensureDir(AUTH_BASE);
-  ensureDir(SESSION_DIR);
-  
-  // Remover lockfile (pode causar travamento)
-  const lockfilePath = path.join(SESSION_DIR, 'lockfile');
-  if (fs.existsSync(lockfilePath)) {
-    safeRm(lockfilePath);
-  }
-  
-  // Remover cache (pode estar corrompido)
-  if (fs.existsSync(CACHE_BASE)) {
-    safeRm(CACHE_BASE);
-  }
-  
-  console.log('✅ Limpeza concluída');
-}
-
-// Limpeza completa da sessão (apenas em casos de LOGOUT/UNPAIRED)
-async function wipeSessionWithRetry() {
-  console.log('🗑️ Limpando sessão completa...');
-  
-  const delays = [500, 1000, 2000];
-  
-  for (const ms of delays) {
-    await new Promise(r => setTimeout(r, ms));
-    
-    const ok1 = safeRm(SESSION_DIR);
-    const ok2 = safeRm(CACHE_BASE);
-    
-    if (ok1 && ok2) {
-      console.log('✅ Sessão limpa com sucesso');
-      return true;
-    }
-    
-    console.log(`⏳ Aguardando ${ms}ms para retry...`);
-  }
-  
-  console.warn('⚠️ Não foi possível limpar completamente a sessão (arquivos em uso)');
-  return false;
-}
-
 async function createWhatsAppClient() {
-  // Limpeza leve antes de criar o cliente
-  performStartupHygiene();
+  // Garantir que diretórios existam (sem remover nada)
+  try {
+    fs.mkdirSync(PROGRAM_DATA, { recursive: true });
+    fs.mkdirSync(AUTH_BASE, { recursive: true });
+    fs.mkdirSync(SESSION_DIR, { recursive: true });
+  } catch (error) {
+    console.warn(`⚠️ Erro ao criar diretórios:`, error.message);
+  }
   
   console.log(`🔧 Criando cliente WhatsApp...`);
   
@@ -234,7 +162,7 @@ async function createWhatsAppClient() {
     currentQRCode = null;
   });
 
-  // Handler de desconexão seguro (SEM logout)
+  // Handler de desconexão: destroy + initialize (SEM limpeza de sessão)
   client.on('disconnected', async (reason) => {
     console.log(`🔌 Desconectado: ${reason}`);
     clientStatus = 'offline';
@@ -249,31 +177,19 @@ async function createWhatsAppClient() {
     isReconnecting = true;
     
     try {
-      // Destroy limpo (NÃO usar logout!)
       console.log('🔄 Destruindo cliente...');
       await client.destroy();
-      
-      // Verifica se é uma desconexão que requer limpeza completa
-      const reasonStr = String(reason || '').toUpperCase();
-      const mustWipe = ['LOGOUT', 'UNPAIRED', 'NAVIGATION'].includes(reasonStr);
-      
-      if (mustWipe) {
-        console.log(`⚠️ Desconexão permanente detectada: ${reason}`);
-        await wipeSessionWithRetry();
-        clientStatus = 'qr_code';
-      }
-      
-      // Aguarda 2s antes de reinicializar
-      await delay(2000);
-      
-      // Reinicializar cliente
-      console.log('🔄 Reinicializando cliente...');
-      whatsappClient = null;
-      await createWhatsAppClient();
-      
     } catch (error) {
-      console.error('❌ Erro ao reconectar:', error);
+      console.error('⚠️ Erro ao destruir cliente:', error.message);
+    }
+    
+    try {
+      console.log('🔄 Reinicializando cliente...');
+      await client.initialize();
+    } catch (error) {
+      console.error('❌ Erro ao reinicializar:', error);
       clientStatus = 'error';
+    } finally {
       isReconnecting = false;
     }
   });
@@ -891,12 +807,10 @@ app.post('/api/broadcast/by-phones', async (req, res) => {
   }
 });
 
-// Disconnect por tenant_id (compatibilidade com frontend)
-// IMPORTANTE: NÃO usa logout() para evitar EBUSY no Windows
+// Disconnect por tenant_id (SEM limpeza de sessão)
 app.post('/disconnect/:tenantId', async (req, res) => {
   const { tenantId } = req.params;
   
-  // Verifica se é o tenant correto
   if (tenantId !== TENANT_ID) {
     return res.status(404).json({
       success: false,
@@ -905,15 +819,10 @@ app.post('/disconnect/:tenantId', async (req, res) => {
   }
   
   try {
-    console.log(`🔌 Desconectando WhatsApp (sem logout)...`);
+    console.log(`🔌 Desconectando WhatsApp (sem limpar sessão)...`);
     
     if (whatsappClient) {
-      // Usa destroy ao invés de logout (evita EBUSY)
       await whatsappClient.destroy();
-      
-      // Limpa sessão completamente
-      await wipeSessionWithRetry();
-      
       clientStatus = 'offline';
       currentQRCode = null;
       whatsappClient = null;
@@ -921,12 +830,82 @@ app.post('/disconnect/:tenantId', async (req, res) => {
     
     res.json({
       success: true,
-      message: 'WhatsApp desconectado (sessão limpa)',
+      message: 'WhatsApp desconectado (sessão preservada)',
       status: clientStatus
     });
     
   } catch (error) {
     console.error('❌ Erro ao desconectar:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Endpoint MANUAL para limpeza de sessão (protegido por header)
+app.post('/admin/wipe-session', async (req, res) => {
+  const adminKey = req.headers['x-admin-key'];
+  const expectedKey = process.env.ADMIN_KEY;
+  
+  // Validar chave admin
+  if (!expectedKey) {
+    return res.status(500).json({
+      success: false,
+      error: 'ADMIN_KEY não configurada no servidor'
+    });
+  }
+  
+  if (adminKey !== expectedKey) {
+    return res.status(403).json({
+      success: false,
+      error: 'Chave de administrador inválida'
+    });
+  }
+  
+  try {
+    console.log('\n🗑️ === LIMPEZA MANUAL DE SESSÃO ===');
+    
+    // Destruir cliente se existir
+    if (whatsappClient) {
+      console.log('🔄 Destruindo cliente...');
+      await whatsappClient.destroy();
+      whatsappClient = null;
+    }
+    
+    clientStatus = 'offline';
+    currentQRCode = null;
+    
+    // Limpar sessão e cache
+    const pathsToRemove = [SESSION_DIR, CACHE_BASE];
+    const removed = [];
+    const failed = [];
+    
+    for (const p of pathsToRemove) {
+      try {
+        if (fs.existsSync(p)) {
+          fs.rmSync(p, { recursive: true, force: true });
+          removed.push(p);
+          console.log(`✅ Removido: ${p}`);
+        }
+      } catch (error) {
+        failed.push({ path: p, error: error.message });
+        console.error(`❌ Erro ao remover ${p}:`, error.message);
+      }
+    }
+    
+    console.log('=== FIM LIMPEZA MANUAL ===\n');
+    
+    res.json({
+      success: true,
+      message: 'Sessão limpa manualmente. Inicie o servidor novamente para reconectar.',
+      removed,
+      failed,
+      note: 'Cliente não será reiniciado automaticamente'
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro na limpeza manual:', error);
     res.status(500).json({
       success: false,
       error: error.message
