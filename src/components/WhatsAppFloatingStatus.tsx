@@ -81,22 +81,55 @@ export function WhatsAppFloatingStatus() {
     setQrCode(null);
 
     try {
-      const { data: integration } = await supabase
+      const { data: integration, error: integrationError } = await supabase
         .from("integration_whatsapp")
         .select("api_url")
         .eq("tenant_id", tenant.id)
         .eq("is_active", true)
-        .single();
+        .maybeSingle();
 
-      if (!integration?.api_url) {
-        toast.error("Configuração de WhatsApp não encontrada");
+      if (integrationError) {
+        toast.error("Erro ao buscar configuração do WhatsApp");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!integration || !integration.api_url) {
+        toast.error("Servidor WhatsApp não configurado. Configure em Integração WhatsApp.");
+        setIsLoading(false);
+        return;
+      }
+
+      // Testar se o servidor está respondendo
+      try {
+        const testResponse = await fetch(`${integration.api_url}/health`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000) // 5 segundos timeout
+        });
+        
+        if (!testResponse.ok) {
+          throw new Error("Servidor não responde");
+        }
+      } catch (healthError) {
+        toast.error("Servidor WhatsApp não está rodando. Inicie o servidor primeiro.");
+        logEvent("error", "Servidor WhatsApp não está rodando");
+        setIsLoading(false);
         return;
       }
 
       const wsUrl = integration.api_url.replace("http", "ws") + `/ws/${tenant.id}`;
       const websocket = new WebSocket(wsUrl);
 
+      let connectionTimeout = setTimeout(() => {
+        websocket.close();
+        toast.error("Timeout: Servidor WhatsApp não respondeu");
+        logEvent("error", "Timeout ao conectar WebSocket");
+        setIsLoading(false);
+      }, 10000); // 10 segundos timeout
+
       websocket.onopen = () => {
+        clearTimeout(connectionTimeout);
+        console.log("WebSocket conectado");
         toast.info("Aguardando QR Code...");
       };
 
@@ -120,18 +153,24 @@ export function WhatsAppFloatingStatus() {
         }
       };
 
-      websocket.onerror = () => {
-        toast.error("Erro na conexão");
+      websocket.onerror = (error) => {
+        clearTimeout(connectionTimeout);
+        console.error("Erro no WebSocket:", error);
+        toast.error("Erro ao conectar com servidor WhatsApp");
         logEvent("error", "Erro ao conectar WebSocket");
+        setIsLoading(false);
       };
 
       websocket.onclose = () => {
+        clearTimeout(connectionTimeout);
         setIsLoading(false);
       };
 
       setWs(websocket);
     } catch (error: any) {
+      console.error("Erro ao conectar:", error);
       toast.error(error.message || "Erro ao conectar WhatsApp");
+      logEvent("error", error.message || "Erro desconhecido");
       setIsLoading(false);
     }
   };
@@ -217,6 +256,18 @@ export function WhatsAppFloatingStatus() {
         </SheetHeader>
 
         <div className="space-y-6 mt-6">
+          {/* Aviso sobre configuração */}
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2">
+              ℹ️ Antes de conectar:
+            </h4>
+            <ul className="text-xs text-blue-800 dark:text-blue-200 space-y-1">
+              <li>1. Configure o servidor em "WhatsApp → Integração WhatsApp"</li>
+              <li>2. Certifique-se que o servidor Node.js está rodando</li>
+              <li>3. Verifique se a URL do servidor está correta</li>
+            </ul>
+          </div>
+
           {/* Status da Conexão */}
           <div className="space-y-4">
             {!isConnected ? (
