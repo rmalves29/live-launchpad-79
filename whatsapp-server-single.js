@@ -247,7 +247,27 @@ function createWhatsAppClient() {
     clientNumber = null;
     addLog('warning', `Cliente desconectado: ${reason}`);
     
-    // Tentar reconectar após 30 segundos
+    // Se for LOGOUT, NÃO reconectar automaticamente
+    if (reason === 'LOGOUT') {
+      console.log('\n' + '='.repeat(60));
+      console.log('❌ LOGOUT DETECTADO - Sessão removida pelo WhatsApp');
+      console.log('='.repeat(60));
+      console.log('📋 Possíveis causas:');
+      console.log('   1. Múltiplas conexões no mesmo número');
+      console.log('   2. QR code escaneado em outro servidor');
+      console.log('   3. Sessão expirada ou inválida');
+      console.log('');
+      console.log('🔧 Para corrigir:');
+      console.log('   1. Pare o servidor (Ctrl+C)');
+      console.log('   2. Execute: .\\fix-lockfile.ps1');
+      console.log('   3. Reinicie: node whatsapp-server-single.js');
+      console.log('='.repeat(60) + '\n');
+      
+      addLog('error', 'LOGOUT detectado - Reconexão automática desabilitada');
+      return;
+    }
+    
+    // Para outros tipos de desconexão, tentar reconectar
     console.log('🔄 Tentando reconectar em 30 segundos...');
     setTimeout(() => {
       console.log('🔄 Iniciando reconexão...');
