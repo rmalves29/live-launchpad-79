@@ -21,7 +21,12 @@ if (typeof fetch !== 'function') {
 const COMPANY_NAME = process.env.COMPANY_NAME || 'Mania de Mulher';
 const TENANT_ID = process.env.TENANT_ID || '08f2b1b9-3988-489e-8186-c60f0c0b0622';
 const PORT = process.env.PORT || 3333;
-const AUTH_FOLDER = process.env.AUTH_FOLDER || '.wwebjs_auth';
+
+// Estrutura de pastas estável (evita EBUSY no Windows)
+const PROGRAM_DATA = process.env.ORDERZAPS_PROGRAMDATA || 'C:\\ProgramData\\OrderZaps';
+const AUTH_BASE = path.join(PROGRAM_DATA, '.wwebjs_auth');
+const SESSION_DIR = path.join(AUTH_BASE, `session-${TENANT_ID}`);
+const CACHE_BASE = path.join(PROGRAM_DATA, '.wwebjs_cache');
 
 // Supabase
 const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
@@ -31,10 +36,42 @@ console.log(`\n${'='.repeat(60)}`);
 console.log(`🚀 WhatsApp Server Individual - ${COMPANY_NAME}`);
 console.log(`🆔 Tenant ID: ${TENANT_ID}`);
 console.log(`🔌 Porta: ${PORT}`);
+console.log(`📁 Sessão: ${SESSION_DIR}`);
 console.log(`${'='.repeat(60)}\n`);
 
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Cria diretório com segurança (ignora se já existe)
+function ensureDir(p) {
+  try {
+    fs.mkdirSync(p, { recursive: true });
+    return true;
+  } catch (error) {
+    console.warn(`⚠️ Erro ao criar diretório ${p}:`, error.message);
+    return false;
+  }
+}
+
+// Remove arquivo/diretório com segurança (ignora EBUSY/EPERM)
+function safeRm(p) {
+  try {
+    if (fs.existsSync(p)) {
+      fs.rmSync(p, { recursive: true, force: true });
+      console.log(`🗑️ Removido: ${p}`);
+      return true;
+    }
+    return true;
+  } catch (error) {
+    // Ignora erros EBUSY/EPERM no Windows (arquivo em uso)
+    if (error.code === 'EBUSY' || error.code === 'EPERM') {
+      console.warn(`⚠️ Arquivo em uso (ignorado): ${p}`);
+      return false;
+    }
+    console.error(`❌ Erro ao remover ${p}:`, error.message);
+    throw error;
+  }
+}
 
 function normalizeDDD(phone) {
   if (!phone) return phone;
@@ -99,24 +136,65 @@ async function supaRaw(pathname, init) {
 let whatsappClient = null;
 let clientStatus = 'initializing';
 let currentQRCode = null;
+let isReconnecting = false;
 
-function getAuthDir() {
-  const authDir = path.join(__dirname, AUTH_FOLDER);
-  if (!fs.existsSync(authDir)) {
-    fs.mkdirSync(authDir, { recursive: true });
+// Limpeza leve antes de inicializar (evita EBUSY)
+function performStartupHygiene() {
+  console.log('🧹 Executando limpeza leve...');
+  
+  // Criar estrutura de diretórios
+  ensureDir(PROGRAM_DATA);
+  ensureDir(AUTH_BASE);
+  ensureDir(SESSION_DIR);
+  
+  // Remover lockfile (pode causar travamento)
+  const lockfilePath = path.join(SESSION_DIR, 'lockfile');
+  if (fs.existsSync(lockfilePath)) {
+    safeRm(lockfilePath);
   }
-  return authDir;
+  
+  // Remover cache (pode estar corrompido)
+  if (fs.existsSync(CACHE_BASE)) {
+    safeRm(CACHE_BASE);
+  }
+  
+  console.log('✅ Limpeza concluída');
+}
+
+// Limpeza completa da sessão (apenas em casos de LOGOUT/UNPAIRED)
+async function wipeSessionWithRetry() {
+  console.log('🗑️ Limpando sessão completa...');
+  
+  const delays = [500, 1000, 2000];
+  
+  for (const ms of delays) {
+    await new Promise(r => setTimeout(r, ms));
+    
+    const ok1 = safeRm(SESSION_DIR);
+    const ok2 = safeRm(CACHE_BASE);
+    
+    if (ok1 && ok2) {
+      console.log('✅ Sessão limpa com sucesso');
+      return true;
+    }
+    
+    console.log(`⏳ Aguardando ${ms}ms para retry...`);
+  }
+  
+  console.warn('⚠️ Não foi possível limpar completamente a sessão (arquivos em uso)');
+  return false;
 }
 
 async function createWhatsAppClient() {
-  const authDir = getAuthDir();
+  // Limpeza leve antes de criar o cliente
+  performStartupHygiene();
   
   console.log(`🔧 Criando cliente WhatsApp...`);
   
   const client = new Client({
     authStrategy: new LocalAuth({ 
       clientId: TENANT_ID,
-      dataPath: authDir
+      dataPath: AUTH_BASE
     }),
     puppeteer: {
       headless: true,
@@ -125,7 +203,8 @@ async function createWhatsAppClient() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
-        '--disable-extensions'
+        '--disable-extensions',
+        '--disable-software-rasterizer'
       ]
     }
   });
@@ -141,6 +220,7 @@ async function createWhatsAppClient() {
     console.log(`✅ WhatsApp CONECTADO e PRONTO!`);
     currentQRCode = null;
     clientStatus = 'online';
+    isReconnecting = false;
   });
 
   client.on('authenticated', () => {
@@ -151,11 +231,51 @@ async function createWhatsAppClient() {
   client.on('auth_failure', (msg) => {
     console.error(`❌ Falha autenticação:`, msg);
     clientStatus = 'auth_failure';
+    currentQRCode = null;
   });
 
-  client.on('disconnected', (reason) => {
-    console.log(`🔌 Desconectado:`, reason);
+  // Handler de desconexão seguro (SEM logout)
+  client.on('disconnected', async (reason) => {
+    console.log(`🔌 Desconectado: ${reason}`);
     clientStatus = 'offline';
+    currentQRCode = null;
+    
+    // Evita múltiplas tentativas simultâneas de reconexão
+    if (isReconnecting) {
+      console.log('⏭️ Reconexão já em andamento, ignorando...');
+      return;
+    }
+    
+    isReconnecting = true;
+    
+    try {
+      // Destroy limpo (NÃO usar logout!)
+      console.log('🔄 Destruindo cliente...');
+      await client.destroy();
+      
+      // Verifica se é uma desconexão que requer limpeza completa
+      const reasonStr = String(reason || '').toUpperCase();
+      const mustWipe = ['LOGOUT', 'UNPAIRED', 'NAVIGATION'].includes(reasonStr);
+      
+      if (mustWipe) {
+        console.log(`⚠️ Desconexão permanente detectada: ${reason}`);
+        await wipeSessionWithRetry();
+        clientStatus = 'qr_code';
+      }
+      
+      // Aguarda 2s antes de reinicializar
+      await delay(2000);
+      
+      // Reinicializar cliente
+      console.log('🔄 Reinicializando cliente...');
+      whatsappClient = null;
+      await createWhatsAppClient();
+      
+    } catch (error) {
+      console.error('❌ Erro ao reconectar:', error);
+      clientStatus = 'error';
+      isReconnecting = false;
+    }
   });
 
   client.on('message', async (message) => {
@@ -772,6 +892,7 @@ app.post('/api/broadcast/by-phones', async (req, res) => {
 });
 
 // Disconnect por tenant_id (compatibilidade com frontend)
+// IMPORTANTE: NÃO usa logout() para evitar EBUSY no Windows
 app.post('/disconnect/:tenantId', async (req, res) => {
   const { tenantId } = req.params;
   
@@ -784,17 +905,23 @@ app.post('/disconnect/:tenantId', async (req, res) => {
   }
   
   try {
-    console.log(`🔌 Desconectando WhatsApp...`);
+    console.log(`🔌 Desconectando WhatsApp (sem logout)...`);
     
     if (whatsappClient) {
-      await whatsappClient.logout();
+      // Usa destroy ao invés de logout (evita EBUSY)
+      await whatsappClient.destroy();
+      
+      // Limpa sessão completamente
+      await wipeSessionWithRetry();
+      
       clientStatus = 'offline';
       currentQRCode = null;
+      whatsappClient = null;
     }
     
     res.json({
       success: true,
-      message: 'WhatsApp desconectado',
+      message: 'WhatsApp desconectado (sessão limpa)',
       status: clientStatus
     });
     
