@@ -9,10 +9,15 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-# Verificar dependências
-if [ ! -d "node_modules" ]; then
-    echo "📦 Instalando dependências..."
-    npm install whatsapp-web.js express cors qrcode-terminal node-fetch
+echo "📦 Verificando dependências..."
+
+# Instalar dependências usando o package.json específico
+if [ ! -d "node_modules" ] || [ ! -f "node_modules/.package-lock.json" ]; then
+    echo "📦 Instalando dependências do servidor WhatsApp..."
+    npm install --prefix . --package-lock-only=false
+    
+    # Instalar dependências individuais se o package.json não funcionar
+    npm install whatsapp-web.js@latest express@latest cors@latest qrcode-terminal@latest node-fetch@2.7.0
 fi
 
 # Criar diretório de autenticação

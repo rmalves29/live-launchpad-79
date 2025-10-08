@@ -1,0 +1,23 @@
+{
+  "name": "whatsapp-server-v3",
+  "version": "3.0.0",
+  "description": "WhatsApp Multi-Tenant Server v3 - Integrado com Supabase",
+  "main": "server-whatsapp-v3.js",
+  "scripts": {
+    "start": "node server-whatsapp-v3.js",
+    "dev": "nodemon server-whatsapp-v3.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.25.0",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "qrcode-terminal": "^0.12.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
