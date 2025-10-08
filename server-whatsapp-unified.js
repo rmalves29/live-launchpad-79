@@ -19,123 +19,11 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
 
 // fetch (fallback)
 if (typeof fetch !== 'function') {
   global.fetch = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
 }
-
-/* ============================ AUTO-CLEANUP ============================ */
-console.log('🧹 Iniciando limpeza automática...');
-
-/**
- * Limpa processos Node.js antigos (exceto o atual)
- */
-function cleanupOldProcesses() {
-  try {
-    const currentPid = process.pid;
-    console.log(`📍 PID atual: ${currentPid}`);
-    
-    if (process.platform === 'win32') {
-      // Windows: Listar e matar outros processos node.exe
-      try {
-        const tasklist = execSync('tasklist /FI "IMAGENAME eq node.exe" /FO CSV /NH', { encoding: 'utf8' });
-        const lines = tasklist.split('\n').filter(line => line.includes('node.exe'));
-        
-        let killedCount = 0;
-        lines.forEach(line => {
-          const match = line.match(/"(\d+)"/);
-          if (match) {
-            const pid = parseInt(match[1]);
-            if (pid !== currentPid) {
-              try {
-                execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
-                killedCount++;
-              } catch (e) {
-                // Ignorar erros ao matar processos
-              }
-            }
-          }
-        });
-        
-        if (killedCount > 0) {
-          console.log(`✅ ${killedCount} processo(s) Node.js antigo(s) encerrado(s)`);
-        } else {
-          console.log(`✅ Nenhum processo Node.js antigo encontrado`);
-        }
-      } catch (e) {
-        console.log('⚠️ Não foi possível verificar processos antigos');
-      }
-    } else {
-      // Linux/Mac: usar pkill
-      try {
-        execSync(`pkill -9 node || true`, { stdio: 'ignore' });
-        console.log('✅ Processos Node.js antigos limpos (Linux/Mac)');
-      } catch (e) {
-        console.log('⚠️ Nenhum processo antigo para limpar');
-      }
-    }
-  } catch (error) {
-    console.log('⚠️ Erro ao limpar processos:', error.message);
-  }
-}
-
-/**
- * Remove arquivos travados de sessões anteriores
- */
-function cleanupLockedFiles() {
-  const authPath = path.join(__dirname, '.wwebjs_auth');
-  const cachePath = path.join(__dirname, '.wwebjs_cache');
-  
-  try {
-    // Tentar remover arquivos de lock específicos
-    const lockFiles = [
-      path.join(authPath, 'session-app', 'SingletonLock'),
-      path.join(authPath, 'session-app', 'SingletonCookie'),
-      path.join(authPath, 'session-app', 'SingletonSocket'),
-      path.join(authPath, 'session-app', 'first_party_sets.db-journal'),
-    ];
-    
-    let removedCount = 0;
-    lockFiles.forEach(file => {
-      try {
-        if (fs.existsSync(file)) {
-          fs.unlinkSync(file);
-          removedCount++;
-        }
-      } catch (e) {
-        // Ignorar erros individuais
-      }
-    });
-    
-    if (removedCount > 0) {
-      console.log(`✅ ${removedCount} arquivo(s) de lock removido(s)`);
-    } else {
-      console.log('✅ Nenhum arquivo de lock encontrado');
-    }
-  } catch (error) {
-    console.log('⚠️ Erro ao limpar arquivos de lock:', error.message);
-  }
-}
-
-/**
- * Aguarda um tempo antes de continuar
- */
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Executar limpeza antes de iniciar
-(async () => {
-  cleanupOldProcesses();
-  await sleep(2000); // Aguardar 2 segundos
-  cleanupLockedFiles();
-  await sleep(1000); // Aguardar mais 1 segundo
-  console.log('✅ Limpeza automática concluída!\n');
-})();
 
 /* ============================ CONFIG ============================ */
 const PORT = process.env.PORT || 3333;
@@ -184,62 +72,6 @@ try {
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 function fmtMoney(v) { return `R$ ${Number(v||0).toFixed(2).replace('.', ',')}`; }
-
-/**
- * Gera URL assinada para imagens do Supabase Storage
- * @param {string} imageUrl - URL da imagem (pode ser pública ou não)
- * @returns {Promise<string>} - URL assinada ou URL original se não for do Supabase
- */
-async function getSignedImageUrl(imageUrl) {
-  if (!imageUrl) return imageUrl;
-  
-  try {
-    // Detectar se é uma URL do Supabase Storage
-    const supabaseStoragePattern = /\/storage\/v1\/object\/(public|sign|authenticated)\/([^/]+)\/(.+)$/;
-    const match = imageUrl.match(supabaseStoragePattern);
-    
-    if (!match) {
-      console.log('🔗 URL não é do Supabase Storage, usando URL original');
-      return imageUrl;
-    }
-    
-    const bucketName = match[2];
-    const filePath = match[3];
-    
-    console.log(`🔐 Gerando URL assinada para: ${bucketName}/${filePath}`);
-    
-    // Gerar URL assinada válida por 1 hora (3600 segundos)
-    const signedUrlResponse = await fetch(
-      `${SUPABASE_URL}/storage/v1/object/sign/${bucketName}/${filePath}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE}`,
-          'apikey': SUPABASE_SERVICE_ROLE
-        },
-        body: JSON.stringify({
-          expiresIn: 3600 // 1 hora
-        })
-      }
-    );
-    
-    if (!signedUrlResponse.ok) {
-      console.error('❌ Erro ao gerar URL assinada:', await signedUrlResponse.text());
-      return imageUrl; // Fallback para URL original
-    }
-    
-    const { signedURL } = await signedUrlResponse.json();
-    const fullSignedUrl = `${SUPABASE_URL}${signedURL}`;
-    
-    console.log(`✅ URL assinada gerada com sucesso`);
-    return fullSignedUrl;
-    
-  } catch (error) {
-    console.error('❌ Erro ao processar URL da imagem:', error.message);
-    return imageUrl; // Fallback para URL original em caso de erro
-  }
-}
 
 // Normalização para armazenamento (sem DDI)
 function normalizeForStorage(phone) {
@@ -502,40 +334,15 @@ client.on('ready', async () => {
   console.log('✅ WhatsApp conectado!'); 
   clientReady = true; 
   
-  // NÃO verificar automaticamente ao conectar - pode causar sobrecarga
-  // Use o endpoint /check-pending-payments manualmente quando necessário
-  console.log('💡 Use POST /check-pending-payments para enviar confirmações pendentes');
+  // Verificar e enviar mensagens de confirmação pendentes
+  await checkAndSendPendingPaymentConfirmations();
 });
 
 client.on('authenticated', () => console.log('🔑 WhatsApp autenticado!'));
-client.on('auth_failure', (msg) => {
-  console.log('❌ Falha na autenticação do WhatsApp:', msg);
-  console.log('💡 Dica: Delete a pasta .wwebjs_auth e escaneie o QR code novamente');
-});
-
-client.on('disconnected', (reason) => {
-  console.log('❌ WhatsApp desconectado. Motivo:', reason);
-  clientReady = false;
-  
-  if (reason === 'LOGOUT') {
-    console.log('⚠️ LOGOUT detectado - será necessário escanear QR code novamente');
-  }
-});
+client.on('auth_failure', () => console.log('❌ Falha na autenticação do WhatsApp'));
 
 client.on('message', async (msg) => {
   try {
-    // Ignorar mensagens enviadas pelo próprio bot
-    if (msg.fromMe) {
-      console.log('⏭️ Ignorando mensagem enviada pelo próprio bot');
-      return;
-    }
-
-    // Verificações de segurança básicas
-    if (!msg || !msg.from) {
-      console.log('⚠️ Mensagem inválida recebida (sem from)');
-      return;
-    }
-
     let groupName = null;
     let authorPhone = null;
     let messageFrom = msg.from;
@@ -550,54 +357,30 @@ client.on('message', async (msg) => {
     // Verificar se é mensagem de grupo
     if (msg.from && msg.from.includes('@g.us')) {
       try {
-        // Verificar se tem author antes de tentar getChat
-        if (!msg.author) {
-          console.log(`⚠️ Mensagem de grupo sem author definido, ignorando`);
-          return;
-        }
-
-        // Tentar obter informações do chat com timeout
-        const getChatWithTimeout = () => {
-          return Promise.race([
-            msg.getChat(),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Timeout')), 5000)
-            )
-          ]);
-        };
-
-        const chat = await getChatWithTimeout();
-        
+        const chat = await msg.getChat();
         if (chat && chat.isGroup) {
           groupName = chat.name || 'Grupo WhatsApp';
           console.log(`📱 Grupo identificado: ${groupName}`);
+          
+          if (msg.author) {
+            authorPhone = normalizeForStorage(msg.author.replace('@c.us', ''));
+            messageFrom = msg.author;
+            console.log(`👤 Autor do grupo: ${authorPhone}`);
+          } else {
+            console.log(`⚠️ Mensagem de grupo sem author definido`);
+            return;
+          }
         }
-        
-        // Para grupos, usar o author como remetente individual
-        authorPhone = normalizeForStorage(msg.author.replace('@c.us', ''));
-        messageFrom = msg.author;
-        console.log(`👤 Autor do grupo: ${authorPhone}`);
-        
       } catch (chatError) {
         console.error('❌ Erro ao obter informações do grupo:', chatError.message);
-        
-        // Mesmo com erro no getChat, se temos author, processamos
-        if (msg.author) {
-          authorPhone = normalizeForStorage(msg.author.replace('@c.us', ''));
-          messageFrom = msg.author;
-          groupName = 'Grupo (nome indisponível)';
-          console.log(`⚠️ Processando sem nome do grupo: ${authorPhone}`);
-        } else {
-          console.log(`❌ Impossível processar: sem author`);
-          return;
-        }
+        return;
       }
     } else {
       authorPhone = normalizeForStorage(msg.from.replace('@c.us', ''));
     }
 
     if (!authorPhone) {
-      console.log(`⚠️ Não foi possível determinar telefone válido`);
+      console.log(`⚠️ Não foi possível determinar telefone válido para a mensagem`);
       return;
     }
 
@@ -651,24 +434,14 @@ client.on('message', async (msg) => {
       console.error('❌ Erro ao salvar no banco:', dbError.message);
     }
 
-    // Verificar se a mensagem tem corpo
-    if (!msg.body || msg.body.trim() === '') {
-      console.log('⏭️ Mensagem sem corpo de texto, ignorando');
-      return;
-    }
-
     const text = String(msg.body || '').trim().toUpperCase();
     console.log(`🔍 Texto processado: "${text}"`);
     
     // Se o cliente digitar apenas "finalizar", responder com o template FINALIZAR
     if (text === 'FINALIZAR') {
-      try {
-        const message = await composeFinalize();
-        await client.sendMessage(messageFrom, message);
-        console.log(`✅ Mensagem FINALIZAR enviada para ${messageFrom}`);
-      } catch (sendError) {
-        console.error('❌ Erro ao enviar mensagem FINALIZAR:', sendError.message);
-      }
+      const message = await composeFinalize();
+      await client.sendMessage(messageFrom, message);
+      console.log(`✅ Mensagem FINALIZAR enviada para ${messageFrom}`);
       return;
     }
     
@@ -676,51 +449,29 @@ client.on('message', async (msg) => {
     console.log(`🎯 Match encontrado:`, match);
     
     if (match) {
-      try {
-        const numeric = match[1];
-        const candidates = [`C${numeric}`, `P${numeric}`, `A${numeric}`, numeric];
-        console.log(`🔍 Buscando produtos com códigos:`, candidates);
-        
-        const products = await supa(`/products?select=*&is_active=eq.true&code=in.(${candidates.map(c => `"${c}"`).join(',')})`);
-        console.log(`📦 Produtos encontrados:`, products?.length || 0);
-        
-        const product = products?.[0];
-        if (product) {
-          console.log(`🎯 Produto encontrado: ${product.name} (${product.code})`);
-          
-          // Processar produto e enviar confirmação
-          await processProductCode(authorPhone, product, groupName);
-          const message = await composeItemAdded(product);
-          await client.sendMessage(messageFrom, message);
-          console.log(`✅ Confirmação enviada para ${messageFrom}`);
-        } else {
-          console.log(`❌ Nenhum produto encontrado para os códigos:`, candidates);
-        }
-      } catch (productError) {
-        console.error('❌ Erro ao processar produto:', productError.message);
+      const numeric = match[1];
+      const candidates = [`C${numeric}`, `P${numeric}`, `A${numeric}`, numeric];
+      console.log(`🔍 Buscando produtos com códigos:`, candidates);
+      
+      const products = await supa(`/products?select=*&is_active=eq.true&code=in.(${candidates.map(c => `"${c}"`).join(',')})`);
+      console.log(`📦 Produtos encontrados:`, products?.length || 0);
+      
+      const product = products?.[0];
+      if (product) {
+        console.log(`🎯 Produto encontrado: ${product.name} (${product.code})`);
+        await processProductCode(authorPhone, product, groupName);
+        const message = await composeItemAdded(product);
+        await client.sendMessage(messageFrom, message);
+        console.log(`✅ Confirmação enviada para ${messageFrom}`);
+      } else {
+        console.log(`❌ Nenhum produto encontrado para os códigos:`, candidates);
       }
     } else {
-      console.log(`⏭️ Mensagem não corresponde ao padrão de código: "${text}"`);
+      console.log(`❌ Mensagem não corresponde ao padrão de código: "${text}"`);
     }
   } catch (error) {
-    console.error('❌ Erro CRÍTICO ao processar mensagem:', error.message);
+    console.error('❌ Erro geral ao processar mensagem:', error.message);
     console.error('Stack trace:', error.stack);
-    
-    // Tentar salvar erro no banco para análise
-    try {
-      await supa('/whatsapp_messages', {
-        method: 'POST',
-        body: JSON.stringify({
-          tenant_id: TENANT_ID,
-          phone: 'SYSTEM_ERROR',
-          message: `Erro ao processar mensagem: ${error.message}`,
-          type: 'error_log',
-          received_at: new Date().toISOString()
-        })
-      });
-    } catch (logError) {
-      console.error('❌ Não foi possível salvar log de erro:', logError.message);
-    }
   }
 });
 
@@ -1279,29 +1030,21 @@ app.post('/send-to-group', async (req, res) => {
 
     console.log(`👥 Grupo encontrado: ${group.name} (${group.participants ? group.participants.length : 0} participantes)`);
 
-    // Enviar mensagem
     let result;
     if (imageUrl) {
       console.log(`🖼️ Processando imagem: ${imageUrl}`);
       try {
-        // Gerar URL assinada se for do Supabase Storage
-        const finalImageUrl = await getSignedImageUrl(imageUrl);
-        console.log(`🔗 URL final para download: ${finalImageUrl.substring(0, 80)}...`);
-        
-        // Tentar baixar a imagem com timeout e unsafeMime
-        console.log('📥 Baixando imagem...');
-        const media = await MessageMedia.fromUrl(finalImageUrl, { 
+        const media = await MessageMedia.fromUrl(imageUrl, { 
           unsafeMime: true,
-          timeout: 45000 // 45 segundos
+          timeout: 45000
         });
         
-        console.log(`✅ Imagem baixada (${media.mimetype}), enviando com caption...`);
+        console.log(`✅ Imagem baixada com sucesso`);
         result = await client.sendMessage(groupId, media, { caption: message });
         console.log('✅ Imagem + Caption enviados com sucesso');
       } catch (imageError) {
         console.error('❌ Erro ao processar imagem:', imageError.message);
         console.log('📝 Enviando apenas texto como fallback...');
-        // Fallback: enviar apenas texto se imagem falhar
         result = await client.sendMessage(groupId, message);
         console.log(`✅ Texto enviado (sem imagem - fallback)`);
       }
@@ -1398,34 +1141,6 @@ app.get('/group/:groupId/participants', async (req, res) => {
       success: false,
       error: error.message,
       details: 'Erro ao buscar participantes do grupo'
-    });
-  }
-});
-
-// ===== CHECK PENDING PAYMENTS =====
-app.post('/check-pending-payments', async (req, res) => {
-  console.log('📋 Verificação manual de pagamentos pendentes solicitada');
-  
-  try {
-    if (!clientReady) {
-      return res.status(503).json({ 
-        success: false, 
-        error: 'WhatsApp não está conectado' 
-      });
-    }
-
-    await checkAndSendPendingPaymentConfirmations();
-    
-    res.json({
-      success: true,
-      message: 'Verificação de pagamentos concluída'
-    });
-
-  } catch (error) {
-    console.error('❌ Erro ao verificar pagamentos:', error);
-    res.status(500).json({ 
-      success: false,
-      error: error.message 
     });
   }
 });
@@ -1579,53 +1294,6 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
-  
-  try {
-    if (clientReady) {
-      console.log('📱 Desconectando WhatsApp...');
-      await client.destroy();
-      console.log('✅ WhatsApp desconectado');
-    }
-  } catch (error) {
-    console.log('⚠️ Erro ao desconectar WhatsApp:', error.message);
-  }
-  
-  console.log('👋 Servidor encerrado com segurança');
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  console.log('\n🛑 SIGTERM recebido, encerrando...');
-  
-  try {
-    if (clientReady) {
-      await client.destroy();
-    }
-  } catch (error) {
-    console.log('⚠️ Erro no shutdown:', error.message);
-  }
-  
-  process.exit(0);
-});
-
-// Handler para erros não capturados
-process.on('uncaughtException', (error) => {
-  console.error('❌ Erro não capturado:', error);
-  console.error('Stack:', error.stack);
-  
-  // Tentar fazer cleanup antes de sair
-  try {
-    if (clientReady) {
-      client.destroy().catch(() => {});
-    }
-  } catch (e) {
-    // Ignorar erros no cleanup de emergência
-  }
-  
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Promise não tratada rejeitada:', reason);
-  console.error('Promise:', promise);
+  if (clientReady) await client.destroy();
+  process.exit();
 });

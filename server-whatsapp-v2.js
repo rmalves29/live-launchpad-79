@@ -20,11 +20,9 @@ if (typeof fetch !== 'function') {
 /* ============================ CONFIG ============================ */
 const PORT = process.env.PORT || 3333;
 
-// Supabase - USANDO SERVICE ROLE PARA ACESSO COMPLETO
+// Supabase
 const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
-
-console.log('✅ Usando SERVICE ROLE do Supabase (acesso total ao banco)');
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
 
 // Multi-tenant storage
 const tenantClients = new Map(); // tenantId -> WhatsApp Client
@@ -123,16 +121,6 @@ async function createTenantClient(tenant) {
   tenantAuthDir.set(tenant.id, authDir);
   
   console.log(`🔧 Criando cliente WhatsApp para: ${tenant.name} (${tenant.id})`);
-  console.log(`📁 Auth directory: ${authDir}`);
-  
-  // Verificar se existe sessão salva
-  const sessionExists = fs.existsSync(path.join(authDir, 'session'));
-  if (sessionExists) {
-    console.log(`⚠️ Sessão existente encontrada para ${tenant.name}`);
-    console.log(`   Tentando reconectar com sessão salva...`);
-  } else {
-    console.log(`✨ Nova sessão para ${tenant.name}`);
-  }
   
   const client = new Client({
     authStrategy: new LocalAuth({ 
@@ -140,7 +128,8 @@ async function createTenantClient(tenant) {
       dataPath: authDir
     }),
     puppeteer: {
-      headless: false,
+      headless: true,
+      devtools: false,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -148,33 +137,16 @@ async function createTenantClient(tenant) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu',
-        '--disable-software-rasterizer'
-      ],
-      executablePath: undefined // usa Chrome padrão do sistema
+        '--disable-gpu'
+      ]
     }
   });
-  
-  console.log(`📋 Cliente configurado para ${tenant.name}`);
 
-  // Setup events com logs detalhados
+  // Setup events
   client.on('qr', (qr) => {
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`📱 QR CODE GERADO - ${tenant.name}`);
-    console.log(`${'='.repeat(60)}\n`);
+    console.log(`📱 QR Code para ${tenant.name}:`);
     qrcode.generate(qr, { small: true });
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`✅ Escaneie o QR code acima no WhatsApp do seu celular`);
-    console.log(`${'='.repeat(60)}\n`);
     tenantStatus.set(tenant.id, 'qr_code');
-  });
-  
-  client.on('change_state', state => {
-    console.log(`🔄 [${tenant.name}] Estado mudou para: ${state}`);
-  });
-  
-  client.on('loading_screen', (percent, message) => {
-    console.log(`⏳ [${tenant.name}] Carregando: ${percent}% - ${message}`);
   });
 
   client.on('ready', () => {
@@ -205,17 +177,11 @@ async function createTenantClient(tenant) {
   tenantStatus.set(tenant.id, 'initializing');
   
   try {
-    console.log(`🚀 Iniciando WhatsApp client: ${tenant.name}...`);
     await client.initialize();
-    console.log(`✅ Cliente inicializado: ${tenant.name}`);
+    console.log(`🚀 Inicializado: ${tenant.name}`);
   } catch (error) {
     console.error(`❌ Erro inicializar ${tenant.name}:`, error);
     tenantStatus.set(tenant.id, 'error');
-    
-    // Se der erro, sugerir limpar sessão
-    console.log(`\n💡 SOLUÇÃO: Pare o servidor e execute:`);
-    console.log(`   Remove-Item -Recurse -Force "${authDir}"`);
-    console.log(`   node server-whatsapp-v2.js\n`);
   }
   
   return client;

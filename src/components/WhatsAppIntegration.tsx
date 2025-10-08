@@ -4,7 +4,6 @@ import { Smartphone } from "lucide-react";
 import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
 import MassMessageControl from "@/components/MassMessageControl";
-import WhatsAppStatus from "@/components/WhatsAppStatus";
 
 export default function WhatsAppIntegration() {
   const [message, setMessage] = useState("");
@@ -44,9 +43,6 @@ export default function WhatsAppIntegration() {
         <Smartphone className="h-6 w-6" />
         <h1 className="text-2xl font-bold">Integração WhatsApp</h1>
       </div>
-
-      {/* Status da Conexão WhatsApp */}
-      <WhatsAppStatus />
 
       {/* Envio de Mensagem em Massa */}
       <Card>

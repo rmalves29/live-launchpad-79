@@ -55,19 +55,6 @@ interface OrderData {
 }
 
 class WhatsAppService {
-  private async checkServerConnection(serverUrl: string): Promise<boolean> {
-    try {
-      const response = await fetch(`${serverUrl}/status`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000), // 5s timeout
-      });
-      return response.ok;
-    } catch (error) {
-      console.error('❌ [WS] Servidor não responde:', error);
-      return false;
-    }
-  }
-
   private async makeRequest(endpoint: string, data: any, tenantId?: string): Promise<WhatsAppResponse> {
     try {
       console.log('🔍 [WS] makeRequest chamado:', { endpoint, tenantId, hasData: !!data });
@@ -75,17 +62,6 @@ class WhatsAppService {
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
       
       console.log('🌐 [WS] URL do servidor:', serverUrl);
-      
-      // Verificar se servidor está online
-      const isOnline = await this.checkServerConnection(serverUrl);
-      if (!isOnline) {
-        throw new Error(`❌ Servidor WhatsApp não está respondendo em ${serverUrl}.\n\n` +
-          `💡 Certifique-se de que:\n` +
-          `1. O servidor Node.js está rodando (node server-whatsapp-individual-no-env.js)\n` +
-          `2. A porta está correta na configuração\n` +
-          `3. Não há firewall bloqueando a conexão`);
-      }
-      
       console.log('📤 [WS] Dados a enviar:', JSON.stringify(data, null, 2));
       
       const fullUrl = `${serverUrl}${endpoint}`;
@@ -109,28 +85,15 @@ class WhatsAppService {
           const errorData = JSON.parse(errorText);
           throw new Error(errorData.error || `HTTP ${response.status}`);
         } catch {
-          throw new Error(`Erro ao enviar mensagem: ${response.status}. O WhatsApp pode não estar conectado. Verifique o QR Code no servidor Node.js.`);
+          throw new Error(`Erro ao conectar com servidor WhatsApp: ${response.status}. Verifique se a integração está configurada corretamente.`);
         }
       }
 
       const result = await response.json();
       console.log('✅ [WS] Resposta sucesso:', result);
-      
-      // Verificar se a mensagem foi realmente enviada
-      if (!result.success && !result.ok) {
-        throw new Error(result.error || 'Falha ao enviar mensagem. Verifique se o WhatsApp está conectado no servidor.');
-      }
-      
       return result;
     } catch (error) {
       console.error(`❌ [WS] Erro ao chamar ${endpoint}:`, error);
-      
-      // Melhorar mensagem de erro para o usuário
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        throw new Error(`❌ Não foi possível conectar ao servidor WhatsApp.\n\n` +
-          `Verifique se o servidor Node.js está rodando e acessível.`);
-      }
-      
       throw error;
     }
   }
@@ -151,7 +114,7 @@ class WhatsAppService {
 
     // Usar endpoint correto /send do Node.js
     return this.makeRequest('/send', {
-      phone: normalizeForSending(orderData.customer_phone),
+      number: normalizeForSending(orderData.customer_phone),
       message,
     }, tenantId);
   }
@@ -164,7 +127,7 @@ class WhatsAppService {
     const message = `❌ *Produto Cancelado*\n\nO produto "${orderData.product.name}" foi cancelado do seu pedido.\n\nQualquer dúvida, entre em contato conosco.`;
 
     return this.makeRequest('/send', {
-      phone: normalizeForSending(orderData.customer_phone),
+      number: normalizeForSending(orderData.customer_phone),
       message,
     });
   }
@@ -173,15 +136,19 @@ class WhatsAppService {
     const message = `🎉 *Pedido Criado - #${orderData.order_id}*\n\nOlá ${orderData.customer_name || 'Cliente'}!\n\nSeu pedido foi criado com sucesso!\n💰 Total: *R$ ${orderData.total_amount?.toFixed(2)}*\n\nEm breve você receberá o link de pagamento.`;
 
     return this.makeRequest('/send', {
-      phone: normalizeForSending(orderData.customer_phone),
+      number: normalizeForSending(orderData.customer_phone),
       message,
     });
   }
 
   async broadcastByPhones(phones: string[], message: string, tenantId?: string): Promise<WhatsAppResponse> {
-    return this.makeRequest('/broadcast', {
+    return this.makeRequest('/api/broadcast/by-phones', {
+      key: 'whatsapp-broadcast-2024', // BROADCAST_SECRET
       phones: phones.map(phone => normalizeForSending(phone)),
       message,
+      interval: 2000,
+      batchSize: 5,
+      batchDelay: 3000,
     }, tenantId);
   }
 
@@ -223,9 +190,35 @@ class WhatsAppService {
 
     const uniquePhones = [...new Set(orders?.map(o => o.customer_phone) || [])];
     
-    // Usar o método broadcastByPhones que já está configurado
-    console.log(`📤 Enviando broadcast para ${uniquePhones.length} números`);
-    return this.broadcastByPhones(uniquePhones, message, tenantId);
+    // Enviar mensagens via Node.js local
+    console.log(`📤 Enviando ${uniquePhones.length} mensagens via Node.js`);
+    
+    try {
+      const response = await fetch('http://localhost:3333/api/broadcast/by-phones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: 'whatsapp-broadcast-2024',
+          phones: uniquePhones.map(phone => normalizeForSending(phone)),
+          message,
+          interval: 2000,
+          batchSize: 5,
+          batchDelay: 3000,
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Broadcast via Node.js concluído:', result);
+      
+      return { success: true, total: uniquePhones.length };
+    } catch (error) {
+      console.error('❌ Erro ao enviar via Node.js:', error);
+      throw error;
+    }
   }
 
   async getContactCount(
@@ -274,7 +267,7 @@ class WhatsAppService {
     });
     
     return this.makeRequest('/send', {
-      phone: normalizedPhone,
+      number: normalizedPhone,
       message,
     }, tenantId);
   }
@@ -311,8 +304,9 @@ class WhatsAppService {
         },
         body: JSON.stringify({
           phone: normalizeForSending(phone),
-          productName: productName,
-          productCode: productCode
+          product_name: productName,
+          product_code: productCode,
+          tenant_id: tenantId
         }),
       });
 
@@ -336,7 +330,7 @@ class WhatsAppService {
   async getStatus(tenantId?: string): Promise<any> {
     try {
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
-      const response = await fetch(`${serverUrl}/status`);
+      const response = await fetch(`${serverUrl}/api/status`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
@@ -348,7 +342,7 @@ class WhatsAppService {
   async getLogs(tenantId?: string): Promise<any> {
     try {
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
-      const response = await fetch(`${serverUrl}/logs`);
+      const response = await fetch(`${serverUrl}/api/logs`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {
@@ -360,7 +354,7 @@ class WhatsAppService {
   async getMessageStatus(tenantId?: string): Promise<any> {
     try {
       const serverUrl = tenantId ? await getWhatsAppServerUrl(tenantId) : 'http://localhost:3333';
-      const response = await fetch(`${serverUrl}/message-status`);
+      const response = await fetch(`${serverUrl}/api/message-status`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.json();
     } catch (error) {

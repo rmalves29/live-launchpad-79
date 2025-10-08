@@ -225,45 +225,16 @@ async function composePaidOrder(orderData) {
 }
 
 /* ============================ WHATSAPP CLIENT ============================ */
-// CORREÇÃO: Limpar lockfile e cache antes de iniciar
-const authPath = path.join(__dirname, '.wwebjs_auth', `session-${TENANT_SLUG}`);
+// CORREÇÃO: Limpar cache corrompido antes de iniciar
+const authPath = path.join(__dirname, '.wwebjs_auth', TENANT_SLUG);
 const cachePath = path.join(__dirname, '.wwebjs_cache');
-const lockfilePath = path.join(authPath, 'lockfile');
 
-console.log('🧹 Verificando e limpando arquivos travados do WhatsApp...');
-
-// Limpar lockfile travado (EBUSY fix)
+console.log('🧹 Verificando cache do WhatsApp...');
 try {
-  if (fs.existsSync(lockfilePath)) {
-    console.log('🔓 Removendo lockfile travado...');
-    try {
-      fs.unlinkSync(lockfilePath);
-      console.log('✅ Lockfile removido');
-    } catch (unlinkError) {
-      console.warn(`⚠️  Lockfile em uso, forçando remoção...`);
-      // Se o lockfile estiver travado, tenta remover com delay
-      setTimeout(() => {
-        try {
-          fs.unlinkSync(lockfilePath);
-          console.log('✅ Lockfile removido (retry)');
-        } catch {
-          console.error('❌ Não foi possível remover lockfile. Feche TODOS os Node.js e execute:');
-          console.error('   taskkill /F /IM node.exe');
-          console.error('   Remove-Item -Recurse -Force ".wwebjs_auth"');
-        }
-      }, 1000);
-    }
-  }
-} catch (error) {
-  console.warn('⚠️  Erro ao verificar lockfile:', error.message);
-}
-
-// Limpar cache corrompido
-try {
+  // Se existe cache corrompido, remove
   if (fs.existsSync(cachePath)) {
     console.log('⚠️  Cache encontrado, removendo para evitar erros...');
     fs.rmSync(cachePath, { recursive: true, force: true });
-    console.log('✅ Cache removido');
   }
 } catch (error) {
   console.warn('⚠️  Erro ao limpar cache:', error.message);
@@ -341,38 +312,8 @@ client.on('disconnected', (reason) => {
   console.error('❌ WhatsApp DESCONECTADO');
   console.error('❌ Motivo:', reason);
   console.error('❌ ========================================');
-  
   clientState = 'DISCONNECTED';
   clientReady = false;
-  
-  // Identificar tipo de desconexão
-  if (reason === 'LOGOUT') {
-    console.log('⚠️  LOGOUT detectado - sessão removida pelo WhatsApp');
-    console.log('📋 Possíveis causas:');
-    console.log('   1. Múltiplas conexões no mesmo número');
-    console.log('   2. QR code escaneado em outro servidor');
-    console.log('   3. Sessão expirada ou inválida');
-    console.log('');
-    console.log('💡 Solução: Escaneie o QR code novamente quando aparecer');
-    console.log('');
-    
-    // NÃO tenta limpar arquivos durante LOGOUT (evita EBUSY)
-    // O whatsapp-web.js já está limpando internamente
-    
-  } else {
-    console.log('🔄 Tentando reconectar em 10 segundos...');
-    
-    // Reconexão automática para outros tipos de desconexão
-    setTimeout(async () => {
-      try {
-        console.log('🔄 Reinicializando cliente WhatsApp...');
-        await client.initialize();
-      } catch (error) {
-        console.error('❌ Erro ao reconectar:', error.message);
-        console.log('⚠️  Reinicie o servidor manualmente se necessário');
-      }
-    }, 10000);
-  }
 });
 
 // Listener para ACK de mensagens
@@ -620,21 +561,6 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
   console.log(`📤 Para: ${phone}`);
   console.log(`📤 Status cliente: ${clientState} | Ready: ${clientReady}`);
   console.log(`📤 ========================================`);
-
-  // VERIFICAÇÃO CRÍTICA: Cliente deve estar pronto
-  if (!clientReady || clientState !== 'READY') {
-    const error = new Error(`WhatsApp não está pronto! Estado: ${clientState} | Ready: ${clientReady}`);
-    console.error(`❌ ${error.message}`);
-    console.error(`⚠️  Aguarde o WhatsApp conectar ou escaneie o QR Code`);
-    throw error;
-  }
-
-  // Verificar se o cliente ainda existe
-  if (!client) {
-    const error = new Error('Cliente WhatsApp não inicializado!');
-    console.error(`❌ ${error.message}`);
-    throw error;
-  }
 
   const normalizedPhone = normalizeForSending(phone);
   const chatId = `${normalizedPhone}@c.us`;
@@ -1461,12 +1387,6 @@ console.log('🚀 INICIANDO SERVIDOR WHATSAPP');
 console.log(`🏢 Tenant: ${TENANT_SLUG} (${TENANT_ID})`);
 console.log('🚀 ========================================\n');
 
-// AVISO IMPORTANTE: Múltiplas instâncias
-console.log('⚠️  IMPORTANTE: Certifique-se de que NÃO há outras instâncias rodando!');
-console.log('   Execute antes de iniciar:');
-console.log('   taskkill /F /IM node.exe');
-console.log('');
-
 client.initialize();
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -1483,24 +1403,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   POST /send-to-group`);
   console.log(`   POST /api/broadcast/orders`);
   console.log('========================================\n');
-  console.log('💡 Se o WhatsApp desconectar com LOGOUT:');
-  console.log('   1. Pare o servidor (Ctrl+C)');
-  console.log('   2. Execute: .\\fix-lockfile.ps1');
-  console.log('   3. Reinicie o servidor');
-  console.log('');
 });
 
 process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
-  try {
-    if (clientReady) {
-      console.log('🔌 Desconectando WhatsApp...');
-      await client.destroy();
-      console.log('✅ WhatsApp desconectado');
-    }
-  } catch (error) {
-    console.warn('⚠️  Erro ao desconectar:', error.message);
-  }
-  console.log('👋 Servidor encerrado');
+  if (clientReady) await client.destroy();
   process.exit();
 });
