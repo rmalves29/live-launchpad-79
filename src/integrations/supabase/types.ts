@@ -429,7 +429,7 @@ export type Database = {
           id: string
           instance_name: string
           is_active: boolean
-          tenant_id: string | null
+          tenant_id: string
           updated_at: string | null
           webhook_secret: string
         }
@@ -439,7 +439,7 @@ export type Database = {
           id?: string
           instance_name: string
           is_active?: boolean
-          tenant_id?: string | null
+          tenant_id: string
           updated_at?: string | null
           webhook_secret: string
         }
@@ -449,7 +449,7 @@ export type Database = {
           id?: string
           instance_name?: string
           is_active?: boolean
-          tenant_id?: string | null
+          tenant_id?: string
           updated_at?: string | null
           webhook_secret?: string
         }
@@ -956,6 +956,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "webhook_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_connection_logs: {
+        Row: {
+          created_at: string | null
+          event_type: string
+          id: string
+          message: string | null
+          metadata: Json | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          event_type: string
+          id?: string
+          message?: string | null
+          metadata?: Json | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          event_type?: string
+          id?: string
+          message?: string | null
+          metadata?: Json | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_connection_logs_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
