@@ -5,7 +5,7 @@
  * Node 18+ | whatsapp-web.js | express | cors
  */
 
-const { Client, NoAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -232,26 +232,14 @@ async function createTenantClient(tenant) {
   console.log(`📂 Diretório de autenticação: ${authDir}`);
   console.log(`🔄 Tentativa: ${retryCount + 1}/${MAX_RETRIES}`);
   
-  // SOLUÇÃO RADICAL: SEMPRE limpar cache antes de inicializar
-  // Isso força autenticação via QR code, mas evita erros de cache corrompido
-  console.log(`🧹 LIMPEZA PREVENTIVA: Deletando cache antigo para evitar corrupção...`);
-  
-  const cleaned = cleanCorruptedCache(authDir);
-  if (!cleaned) {
-    console.error(`❌ Falha ao limpar cache`);
-    console.error(`   SOLUÇÃO MANUAL: Delete a pasta: ${authDir}`);
-    console.error(`   Use: rmdir /s /q "${authDir}"`);
-    tenantStatus.set(tenant.id, 'cache_clean_failed');
-    return null;
-  }
-  
-  console.log(`✅ Cache limpo com sucesso`);
-  console.log(`📱 Um novo QR Code será gerado - você precisará escanear novamente`);
-  console.log(`🌐 Configurando Puppeteer SEM CACHE LOCAL...`);
-  console.log(`⚠️ ATENÇÃO: Usando NoAuth - você precisará escanear o QR toda vez que reiniciar`);
+  console.log(`🌐 Configurando Puppeteer com LocalAuth...`);
+  console.log(`📂 Usando clientId: tenant_${tenant.id}`);
   
   const client = new Client({
-    authStrategy: new NoAuth(),
+    authStrategy: new LocalAuth({
+      clientId: `tenant_${tenant.id}`,
+      dataPath: authDir
+    }),
     puppeteer: {
       headless: false,
       args: [
@@ -263,8 +251,6 @@ async function createTenantClient(tenant) {
         '--no-zygote',
         '--disable-extensions',
         '--disable-blink-features=AutomationControlled',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
         '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       ],
       defaultViewport: null,
