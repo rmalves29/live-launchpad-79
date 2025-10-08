@@ -226,6 +226,8 @@ class WhatsAppService {
     tenantId: string,
     orderDate?: string
   ): Promise<WhatsAppResponse> {
+    console.log('📤 [broadcastByOrderStatusAndDate] Iniciando:', { status, tenantId, orderDate });
+
     // Buscar telefones únicos dos pedidos
     let query = supabase
       .from('orders')
@@ -246,36 +248,17 @@ class WhatsAppService {
     if (error) throw error;
 
     const uniquePhones = [...new Set(orders?.map(o => o.customer_phone) || [])];
+    console.log(`📤 [broadcast] ${uniquePhones.length} telefones únicos encontrados`);
     
-    // Enviar mensagens via Node.js local
-    console.log(`📤 Enviando ${uniquePhones.length} mensagens via Node.js`);
-    
-    try {
-      const response = await fetch('http://localhost:3333/api/broadcast/by-phones', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          key: 'whatsapp-broadcast-2024',
-          phones: uniquePhones.map(phone => normalizeForSending(phone)),
-          message,
-          interval: 2000,
-          batchSize: 5,
-          batchDelay: 3000,
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ Broadcast via Node.js concluído:', result);
-      
-      return { success: true, total: uniquePhones.length };
-    } catch (error) {
-      console.error('❌ Erro ao enviar via Node.js:', error);
-      throw error;
-    }
+    // Usar servidor Node do tenant
+    return this.makeRequest('/api/broadcast/by-phones', {
+      key: 'whatsapp-broadcast-2024',
+      phones: uniquePhones.map(phone => normalizeForSending(phone)),
+      message,
+      interval: 2000,
+      batchSize: 5,
+      batchDelay: 3000,
+    }, tenantId);
   }
 
   async getContactCount(
