@@ -1,27 +1,50 @@
 # ⚡ INÍCIO RÁPIDO - Servidor WhatsApp
 
-## ✅ PROBLEMA CORRIGIDO!
+## 🔍 PRIMEIRO: Diagnóstico
 
-O erro 401 do Supabase foi corrigido. Agora usa a chave SERVICE ROLE correta.
+Antes de iniciar, execute o diagnóstico para verificar se está tudo configurado:
 
-## 🚀 Iniciar em 3 Passos
-
-### 1️⃣ Abrir PowerShell
 ```powershell
-cd C:\whatsapp-automacao
+node diagnostico-whatsapp.js
 ```
 
-### 2️⃣ Iniciar servidor
+Este script verifica:
+- ✅ Conexão com Supabase
+- ✅ Tenants cadastrados
+- ✅ Integrações WhatsApp ativas
+- ✅ Dependências instaladas
+- ✅ Sessões antigas
+
+## 🚀 Iniciar Servidor
+
+### 1️⃣ Vá para o diretório do projeto
+```powershell
+cd caminho\do\seu\projeto\lovable
+```
+
+### 2️⃣ Instale dependências (se necessário)
+```powershell
+npm install whatsapp-web.js qrcode-terminal express cors
+```
+
+### 3️⃣ Limpe sessões antigas
+```powershell
+Remove-Item -Recurse -Force .wwebjs_auth_v2 -ErrorAction SilentlyContinue
+taskkill /F /IM chrome.exe /T -ErrorAction SilentlyContinue
+```
+
+### 4️⃣ Inicie o servidor
 ```powershell
 node server-whatsapp-v2.js
 ```
 
-### 3️⃣ Escanear QR Code
+### 5️⃣ Escaneie o QR Code
 - Chrome abrirá automaticamente
-- Escaneie o QR Code com WhatsApp
-- Pronto! ✅
+- QR Code aparecerá no terminal
+- Escaneie com WhatsApp do celular
+- Aguarde "Cliente pronto!"
 
-## 📊 Ver Status
+## 📊 Verificar Status
 ```
 http://localhost:3333/status
 ```
