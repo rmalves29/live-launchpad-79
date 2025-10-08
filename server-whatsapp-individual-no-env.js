@@ -129,14 +129,14 @@ async function createTenantClient(tenant) {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu'
-      ]
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions'
+      ],
+      timeout: 0
     },
-    qrMaxRetries: 5
+    qrMaxRetries: 5,
+    authTimeoutMs: 0
   });
 
   client.on('qr', (qr) => {
@@ -183,17 +183,33 @@ async function createTenantClient(tenant) {
   tenantStatus.set(tenant.id, 'initializing');
   
   console.log(`🔄 Iniciando WhatsApp Web para: ${tenant.name}...`);
-  console.log(`⏰ Aguarde o QR Code aparecer (pode levar até 30 segundos)...`);
+  console.log(`⏰ Aguarde o QR Code aparecer (pode levar até 60 segundos)...`);
+  console.log(`📂 Logs serão exibidos abaixo conforme o WhatsApp Web carregar...`);
+  
+  // Timeout de segurança maior para Windows
+  const initTimeout = setTimeout(() => {
+    console.error(`\n⏱️ TIMEOUT: ${tenant.name} não gerou QR Code em 60 segundos`);
+    console.error(`💡 Possíveis causas:`);
+    console.error(`   1. Chromium travado - Tente fechar outros processos Chrome`);
+    console.error(`   2. Falta de memória - Feche outros programas`);
+    console.error(`   3. Antivírus bloqueando - Adicione exceção`);
+    console.error(`\n🔧 Tente: node server-debug-visual.js (abre o navegador)`);
+    tenantStatus.set(tenant.id, 'timeout');
+  }, 60000);
   
   client.initialize()
     .then(() => {
-      console.log(`🚀 Cliente inicializado com sucesso: ${tenant.name}`);
+      clearTimeout(initTimeout);
+      console.log(`✅ Cliente inicializado: ${tenant.name}`);
     })
     .catch((error) => {
-      console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
+      clearTimeout(initTimeout);
+      console.error(`\n❌ ERRO ao inicializar ${tenant.name}:`);
+      console.error(`   Tipo: ${error.name}`);
       console.error(`   Mensagem: ${error.message}`);
       if (error.stack) {
-        console.error(`   Stack: ${error.stack.split('\n')[0]}`);
+        console.error(`\n📋 Stack trace completo:`);
+        console.error(error.stack);
       }
       tenantStatus.set(tenant.id, 'error');
     });
