@@ -487,12 +487,40 @@ app.get('/', (req, res) => {
   res.send(html);
 });
 
+// Status geral (sem tenant_id)
 app.get('/status', (req, res) => {
   res.json({
     success: true,
     company: COMPANY_NAME,
     tenant_id: TENANT_ID,
     status: clientStatus,
+    connected: clientStatus === 'online',
+    hasClient: !!whatsappClient,
+    hasQR: !!currentQRCode,
+    port: PORT,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Status por tenant_id (compatibilidade com frontend)
+app.get('/status/:tenantId', (req, res) => {
+  const { tenantId } = req.params;
+  
+  // Verifica se é o tenant correto
+  if (tenantId !== TENANT_ID) {
+    return res.status(404).json({
+      success: false,
+      error: 'Tenant não encontrado neste servidor',
+      tenant_id: tenantId
+    });
+  }
+  
+  res.json({
+    success: true,
+    company: COMPANY_NAME,
+    tenant_id: TENANT_ID,
+    status: clientStatus,
+    connected: clientStatus === 'online',
     hasClient: !!whatsappClient,
     hasQR: !!currentQRCode,
     port: PORT,
@@ -736,6 +764,42 @@ app.post('/api/broadcast/by-phones', async (req, res) => {
     
   } catch (error) {
     console.error('❌ Erro broadcast:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Disconnect por tenant_id (compatibilidade com frontend)
+app.post('/disconnect/:tenantId', async (req, res) => {
+  const { tenantId } = req.params;
+  
+  // Verifica se é o tenant correto
+  if (tenantId !== TENANT_ID) {
+    return res.status(404).json({
+      success: false,
+      error: 'Tenant não encontrado neste servidor'
+    });
+  }
+  
+  try {
+    console.log(`🔌 Desconectando WhatsApp...`);
+    
+    if (whatsappClient) {
+      await whatsappClient.logout();
+      clientStatus = 'offline';
+      currentQRCode = null;
+    }
+    
+    res.json({
+      success: true,
+      message: 'WhatsApp desconectado',
+      status: clientStatus
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao desconectar:', error);
     res.status(500).json({
       success: false,
       error: error.message
