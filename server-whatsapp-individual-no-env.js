@@ -10,9 +10,9 @@ const path = require('path');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
 
-// Fetch polyfill
+// Fetch polyfill para Node.js
 if (typeof fetch !== 'function') {
-  global.fetch = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
+  global.fetch = require('node-fetch');
 }
 
 /* ============================ CONFIG ============================ */
