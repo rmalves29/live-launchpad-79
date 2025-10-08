@@ -225,16 +225,45 @@ async function composePaidOrder(orderData) {
 }
 
 /* ============================ WHATSAPP CLIENT ============================ */
-// CORREÇÃO: Limpar cache corrompido antes de iniciar
-const authPath = path.join(__dirname, '.wwebjs_auth', TENANT_SLUG);
+// CORREÇÃO: Limpar lockfile e cache antes de iniciar
+const authPath = path.join(__dirname, '.wwebjs_auth', `session-${TENANT_SLUG}`);
 const cachePath = path.join(__dirname, '.wwebjs_cache');
+const lockfilePath = path.join(authPath, 'lockfile');
 
-console.log('🧹 Verificando cache do WhatsApp...');
+console.log('🧹 Verificando e limpando arquivos travados do WhatsApp...');
+
+// Limpar lockfile travado (EBUSY fix)
 try {
-  // Se existe cache corrompido, remove
+  if (fs.existsSync(lockfilePath)) {
+    console.log('🔓 Removendo lockfile travado...');
+    try {
+      fs.unlinkSync(lockfilePath);
+      console.log('✅ Lockfile removido');
+    } catch (unlinkError) {
+      console.warn(`⚠️  Lockfile em uso, forçando remoção...`);
+      // Se o lockfile estiver travado, tenta remover com delay
+      setTimeout(() => {
+        try {
+          fs.unlinkSync(lockfilePath);
+          console.log('✅ Lockfile removido (retry)');
+        } catch {
+          console.error('❌ Não foi possível remover lockfile. Feche TODOS os Node.js e execute:');
+          console.error('   taskkill /F /IM node.exe');
+          console.error('   Remove-Item -Recurse -Force ".wwebjs_auth"');
+        }
+      }, 1000);
+    }
+  }
+} catch (error) {
+  console.warn('⚠️  Erro ao verificar lockfile:', error.message);
+}
+
+// Limpar cache corrompido
+try {
   if (fs.existsSync(cachePath)) {
     console.log('⚠️  Cache encontrado, removendo para evitar erros...');
     fs.rmSync(cachePath, { recursive: true, force: true });
+    console.log('✅ Cache removido');
   }
 } catch (error) {
   console.warn('⚠️  Erro ao limpar cache:', error.message);
@@ -561,6 +590,21 @@ async function sendWhatsAppMessageWithRetry(phone, message, maxRetries = 3) {
   console.log(`📤 Para: ${phone}`);
   console.log(`📤 Status cliente: ${clientState} | Ready: ${clientReady}`);
   console.log(`📤 ========================================`);
+
+  // VERIFICAÇÃO CRÍTICA: Cliente deve estar pronto
+  if (!clientReady || clientState !== 'READY') {
+    const error = new Error(`WhatsApp não está pronto! Estado: ${clientState} | Ready: ${clientReady}`);
+    console.error(`❌ ${error.message}`);
+    console.error(`⚠️  Aguarde o WhatsApp conectar ou escaneie o QR Code`);
+    throw error;
+  }
+
+  // Verificar se o cliente ainda existe
+  if (!client) {
+    const error = new Error('Cliente WhatsApp não inicializado!');
+    console.error(`❌ ${error.message}`);
+    throw error;
+  }
 
   const normalizedPhone = normalizeForSending(phone);
   const chatId = `${normalizedPhone}@c.us`;
