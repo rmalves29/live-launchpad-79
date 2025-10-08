@@ -125,8 +125,6 @@ async function createTenantClient(tenant) {
     }),
     puppeteer: {
       headless: true,
-      devtools: false,
-      timeout: 60000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -134,23 +132,31 @@ async function createTenantClient(tenant) {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu',
-        '--disable-extensions'
+        '--single-process',
+        '--disable-gpu'
       ]
-    }
+    },
+    qrMaxRetries: 5
   });
 
   client.on('qr', (qr) => {
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`📱 QR CODE - ${tenant.name}`);
-    console.log(`${'='.repeat(60)}`);
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`📱 QR CODE GERADO - ${tenant.name}`);
+    console.log(`${'='.repeat(70)}`);
+    console.log(`\n⚠️ IMPORTANTE: O QR code está sendo exibido ABAIXO:\n`);
     qrcode.generate(qr, { small: true });
-    console.log(`${'='.repeat(60)}\n`);
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`✅ Escaneie o QR code acima com seu WhatsApp`);
+    console.log(`${'='.repeat(70)}\n`);
     tenantStatus.set(tenant.id, 'qr_code');
   });
 
+  client.on('loading_screen', (percent, message) => {
+    console.log(`⏳ ${tenant.name} - Carregando: ${percent}%`);
+  });
+
   client.on('ready', () => {
-    console.log(`✅ WhatsApp CONECTADO: ${tenant.name}`);
+    console.log(`\n✅✅✅ WhatsApp CONECTADO: ${tenant.name} ✅✅✅\n`);
     tenantStatus.set(tenant.id, 'online');
   });
 
@@ -176,10 +182,19 @@ async function createTenantClient(tenant) {
   tenantClients.set(tenant.id, client);
   tenantStatus.set(tenant.id, 'initializing');
   
+  console.log(`🔄 Iniciando WhatsApp Web para: ${tenant.name}...`);
+  console.log(`⏰ Aguarde o QR Code aparecer (pode levar até 30 segundos)...`);
+  
   client.initialize()
-    .then(() => console.log(`🚀 Cliente inicializado: ${tenant.name}`))
+    .then(() => {
+      console.log(`🚀 Cliente inicializado com sucesso: ${tenant.name}`);
+    })
     .catch((error) => {
-      console.error(`❌ Erro inicializar ${tenant.name}:`, error.message);
+      console.error(`❌ ERRO ao inicializar ${tenant.name}:`);
+      console.error(`   Mensagem: ${error.message}`);
+      if (error.stack) {
+        console.error(`   Stack: ${error.stack.split('\n')[0]}`);
+      }
       tenantStatus.set(tenant.id, 'error');
     });
   
