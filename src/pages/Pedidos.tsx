@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 import { useAuth } from '@/hooks/useAuth';
-import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
+import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 import { whatsappService } from '@/lib/whatsapp-service';
 
 interface Order {
@@ -1088,7 +1088,7 @@ const Pedidos = () => {
                       <TableCell>
                         <Badge variant="outline">#{order.id}</Badge>
                       </TableCell>
-                      <TableCell>{formatPhoneForDisplay(normalizeForStorage(normalizeForSending(order.customer_phone)))}</TableCell>
+                      <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                       <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">

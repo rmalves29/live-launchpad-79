@@ -13,7 +13,6 @@ import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
 import TenantsManager from '@/components/TenantsManager';
 import { AvailabilitySettings } from '@/components/AvailabilitySettings';
 import { TenantSimulator } from '@/components/TenantSimulator';
-import { WhatsAppConfig } from '@/components/WhatsAppConfig';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -255,14 +254,10 @@ const Config = () => {
 
           <div className="space-y-6">
             <Tabs defaultValue={searchParams.get('tab') || 'config'} className="w-full">
-              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-6' : 'grid-cols-5'}`}>
+              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-5' : 'grid-cols-4'}`}>
                 <TabsTrigger value="config" className="flex items-center">
                   <Settings className="h-4 w-4 mr-2" />
                   Configurações
-                </TabsTrigger>
-                <TabsTrigger value="whatsapp" className="flex items-center">
-                  <MessageSquare className="h-4 w-4 mr-2" />
-                  WhatsApp
                 </TabsTrigger>
                 <TabsTrigger value="company" className="flex items-center">
                   <Building2 className="h-4 w-4 mr-2" />
@@ -282,10 +277,6 @@ const Config = () => {
                   </TabsTrigger>
                 )}
               </TabsList>
-
-              <TabsContent value="whatsapp" className="space-y-6 mt-6">
-                <WhatsAppConfig />
-              </TabsContent>
 
               <TabsContent value="config" className="space-y-6 mt-6">
                 {/* Status do Melhor Envio */}

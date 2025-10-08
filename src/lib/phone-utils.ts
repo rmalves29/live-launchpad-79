@@ -27,15 +27,15 @@ export function normalizeForStorage(phone: string): string {
 }
 
 /**
- * Adiciona DDI 55 e garante que celulares tenham o 9º dígito.
+ * Adiciona DDI 55 e ajusta 9º dígito para envio WhatsApp.
+ * APENAS para uso no Node.js antes de enviar mensagens!
  * 
- * Regra do 9º dígito no Brasil:
- * - TODOS os celulares devem ter 9 dígitos após o DDD (total 11 dígitos sem DDI)
- * - Celulares começam com 9 após o DDD
- * - Se tiver 10 dígitos e começar com 9, adiciona outro 9 no início
+ * Regra do 9º dígito:
+ * - DDD ≤ 30: Celular precisa ter 9º dígito (11 dígitos total)
+ * - DDD ≥ 31: Celular NÃO deve ter 9º dígito (10 dígitos total)
  * 
- * Entrada: 31992904210 ou 3192904210 ou 5531992904210
- * Saída: 5531992904210 (sempre com 9º dígito para celulares)
+ * Entrada: 31992904210 ou 3193786530 ou 5531992904210
+ * Saída: 5531992904210 ou 553193786530 (ajustado para WhatsApp)
  */
 export function normalizeForSending(phone: string): string {
   if (!phone) return phone;
@@ -62,18 +62,19 @@ export function normalizeForSending(phone: string): string {
     return '55' + clean;
   }
   
-  // Garantir 9º dígito para celulares
-  // Se tem 10 dígitos e o 3º dígito é '9', significa que é celular mas falta o 9º dígito
-  // Exemplo: 3192904210 -> deve virar 31992904210
-  if (clean.length === 10 && clean[2] === '9') {
-    // É um celular (começa com 9) mas tem apenas 10 dígitos - adicionar o 9º dígito
-    clean = clean.substring(0, 2) + '9' + clean.substring(2);
-    console.log('✅ 9º dígito adicionado para celular:', phone, '->', clean);
-  } else if (clean.length === 10 && clean[2] !== '9') {
-    // Número com 10 dígitos que não começa com 9 - pode ser fixo ou celular sem nenhum 9
-    // Assumir que é celular e adicionar o 9
-    clean = clean.substring(0, 2) + '9' + clean.substring(2);
-    console.log('✅ 9º dígito adicionado (não começava com 9):', phone, '->', clean);
+  // REGRA POR DDD para envio WhatsApp:
+  if (ddd <= 30) {
+    // DDDs antigos (≤30): adicionar 9º dígito se não tiver
+    if (clean.length === 10 && clean[2] !== '9') {
+      clean = clean.substring(0, 2) + '9' + clean.substring(2);
+      console.log('✅ 9º dígito adicionado para envio WhatsApp (DDD ≤30):', phone, '->', clean);
+    }
+  } else {
+    // DDDs novos (≥31): remover 9º dígito se tiver
+    if (clean.length === 11 && clean[2] === '9') {
+      clean = clean.substring(0, 2) + clean.substring(3);
+      console.log('✅ 9º dígito removido para envio WhatsApp (DDD ≥31):', phone, '->', clean);
+    }
   }
   
   // Adicionar DDI 55

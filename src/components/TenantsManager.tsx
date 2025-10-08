@@ -53,10 +53,7 @@ export default function TenantsManager() {
     name: "",
     slug: "",
     adminEmail: "",
-    adminPassword: "",
-    enable_live: true,
-    enable_sendflow: true,
-    max_whatsapp_groups: null as number | null
+    adminPassword: ""
   });
 
   useEffect(() => {
@@ -168,10 +165,7 @@ export default function TenantsManager() {
         .insert({
           name: formData.name,
           slug: uniqueSlug,
-          is_active: true,
-          enable_live: formData.enable_live,
-          enable_sendflow: formData.enable_sendflow,
-          max_whatsapp_groups: formData.max_whatsapp_groups
+          is_active: true
         })
         .select()
         .single();
@@ -198,15 +192,7 @@ export default function TenantsManager() {
         description: `Empresa "${formData.name}" criada com sucesso!`,
       });
 
-      setFormData({ 
-        name: "", 
-        slug: "", 
-        adminEmail: "", 
-        adminPassword: "",
-        enable_live: true,
-        enable_sendflow: true,
-        max_whatsapp_groups: null
-      });
+      setFormData({ name: "", slug: "", adminEmail: "", adminPassword: "" });
       setShowCreateDialog(false);
       loadData();
 
@@ -286,15 +272,7 @@ export default function TenantsManager() {
       });
 
       setEditingTenant(null);
-      setFormData({ 
-        name: "", 
-        slug: "", 
-        adminEmail: "", 
-        adminPassword: "",
-        enable_live: true,
-        enable_sendflow: true,
-        max_whatsapp_groups: null
-      });
+      setFormData({ name: "", slug: "", adminEmail: "", adminPassword: "" });
       loadData();
 
     } catch (error: any) {
@@ -354,15 +332,7 @@ export default function TenantsManager() {
   };
 
   const resetForm = () => {
-    setFormData({ 
-      name: "", 
-      slug: "", 
-      adminEmail: "", 
-      adminPassword: "",
-      enable_live: true,
-      enable_sendflow: true,
-      max_whatsapp_groups: null
-    });
+    setFormData({ name: "", slug: "", adminEmail: "", adminPassword: "" });
     setEditingTenant(null);
   };
 
@@ -422,62 +392,6 @@ export default function TenantsManager() {
                   onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
                   placeholder="Senha forte"
                 />
-              </div>
-
-              <Separator />
-
-              <div className="space-y-4">
-                <h3 className="font-semibold">Funcionalidades da Empresa</h3>
-                
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="enable_live">Habilitar Live</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Permite que a empresa acesse a funcionalidade de Lives
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    id="enable_live"
-                    checked={formData.enable_live}
-                    onChange={(e) => setFormData({ ...formData, enable_live: e.target.checked })}
-                    className="h-4 w-4"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="enable_sendflow">Habilitar SendFlow</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Permite que a empresa acesse a funcionalidade de SendFlow
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    id="enable_sendflow"
-                    checked={formData.enable_sendflow}
-                    onChange={(e) => setFormData({ ...formData, enable_sendflow: e.target.checked })}
-                    className="h-4 w-4"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="max_whatsapp_groups">Limite de Grupos WhatsApp</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Quantidade máxima de grupos que aparecerão no SendFlow (deixe vazio para sem limite)
-                  </p>
-                  <Input
-                    id="max_whatsapp_groups"
-                    type="number"
-                    min="0"
-                    value={formData.max_whatsapp_groups || ''}
-                    onChange={(e) => setFormData({ 
-                      ...formData, 
-                      max_whatsapp_groups: e.target.value ? parseInt(e.target.value) : null 
-                    })}
-                    placeholder="Ex: 10"
-                  />
-                </div>
               </div>
 
               <div className="flex gap-2">
@@ -556,10 +470,7 @@ export default function TenantsManager() {
                             name: tenant.name,
                             slug: tenant.slug,
                             adminEmail: credential?.email || "",
-                            adminPassword: "",
-                            enable_live: true,
-                            enable_sendflow: true,
-                            max_whatsapp_groups: null
+                            adminPassword: ""
                           });
                         }}
                       >

@@ -39,11 +39,7 @@ interface CustomerData {
 const Checkout = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { tenantId: contextTenantId } = useTenantContext();
-  
-  // Detectar tenant de múltiplas fontes (contexto, URL params, localStorage)
-  const [effectiveTenantId, setEffectiveTenantId] = useState<string | null>(null);
-  
+  const { tenantId } = useTenantContext();
   const [phone, setPhone] = useState('');
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -87,31 +83,6 @@ const Checkout = () => {
   const [activeGifts, setActiveGifts] = useState<any[]>([]);
   const [eligibleGift, setEligibleGift] = useState<any>(null);
   const [progressGift, setProgressGift] = useState<any>(null);
-
-  // Detectar tenant de múltiplas fontes ao carregar a página
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlTenantId = urlParams.get('tenant_id') || urlParams.get('tenantId');
-    const previewTenantId = localStorage.getItem('previewTenantId');
-    
-    // Prioridade: URL params > Context > localStorage
-    const detectedTenantId = urlTenantId || contextTenantId || previewTenantId;
-    
-    console.log('🔍 Detectando tenant para checkout:', {
-      urlTenantId,
-      contextTenantId,
-      previewTenantId,
-      detectedTenantId
-    });
-    
-    if (detectedTenantId) {
-      setEffectiveTenantId(detectedTenantId);
-      supabaseTenant.setTenantId(detectedTenantId);
-      console.log('✅ Tenant configurado para checkout:', detectedTenantId);
-    } else {
-      console.warn('⚠️ Nenhum tenant detectado para checkout');
-    }
-  }, [contextTenantId]);
 
   // Detectar retorno da página de pagamento e limpar dados duplicados  
   useEffect(() => {
@@ -211,10 +182,10 @@ const Checkout = () => {
       return;
     }
 
-    if (!effectiveTenantId) {
+    if (!tenantId) {
       toast({
         title: 'Erro',
-        description: 'Tenant não identificado. Por favor, acesse através do link correto.',
+        description: 'Tenant não identificado',
         variant: 'destructive'
       });
       return;
@@ -226,24 +197,22 @@ const Checkout = () => {
     setLoadingOpenOrders(true);
     
     try {
-      console.log('🔍 Buscando pedidos para telefone:', normalizedPhone, 'no tenant:', effectiveTenantId);
-      
-      // Buscar pedidos não pagos do tenant filtrados por telefone
-      // Usando supabase client regular para funcionar sem autenticação
-      const { data: orders, error } = await supabase
+      // Buscar todos os pedidos não pagos do tenant
+      const { data: allOrders, error } = await supabaseTenant
         .from('orders')
         .select('*')
-        .eq('tenant_id', effectiveTenantId)
-        .eq('customer_phone', normalizedPhone)
         .eq('is_paid', false)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Erro ao buscar pedidos:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('✅ Pedidos encontrados:', orders?.length || 0);
+      // Filtrar pedidos que correspondem ao telefone normalizado
+      const orders = (allOrders || []).filter(order => {
+        const orderPhone = normalizeForStorage(order.customer_phone);
+        return orderPhone === normalizedPhone;
+      });
+
+      if (error) throw error;
 
       // Load cart items for each order
       const ordersWithItems = await Promise.all(
@@ -252,7 +221,7 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          const { data: cartItems, error: itemsError } = await supabase
+          const { data: cartItems, error: itemsError } = await supabaseTenant
             .from('cart_items')
             .select(`
               id,
@@ -264,8 +233,7 @@ const Checkout = () => {
                 image_url
               )
             `)
-            .eq('cart_id', order.cart_id)
-            .eq('tenant_id', effectiveTenantId);
+            .eq('cart_id', order.cart_id);
 
           if (itemsError) {
             console.error('Error loading cart items:', itemsError);
@@ -385,15 +353,15 @@ const Checkout = () => {
     console.log('🚚 Iniciando cálculo de frete...', { 
       cep, 
       order_id: order.id, 
-      effectiveTenantId,
+      tenantId,
       hasSupabaseTenant: !!supabaseTenant,
       hasRaw: !!supabaseTenant?.raw,
       hasFunctions: !!supabaseTenant?.raw?.functions
     });
     
     // Proteção inicial
-    if (!cep || !order || !effectiveTenantId) {
-      console.log('⚠️ Dados insuficientes para calcular frete:', { cep, order: !!order, effectiveTenantId });
+    if (!cep || !order || !tenantId) {
+      console.log('⚠️ Dados insuficientes para calcular frete:', { cep, order: !!order, tenantId });
       return;
     }
 
@@ -412,7 +380,7 @@ const Checkout = () => {
     }
     
     console.log('🚚 Iniciando cálculo de frete para CEP:', cep);
-    console.log('📋 Tenant ID:', effectiveTenantId);
+    console.log('📋 Tenant ID:', tenantId);
     console.log('📦 Order items:', order.items);
     
     // Definir opção de retirada como fallback imediato
@@ -459,8 +427,8 @@ const Checkout = () => {
         throw new Error('Sistema de integração não disponível');
       }
 
-      if (!effectiveTenantId) {
-        console.error('❌ effectiveTenantId não definido');
+      if (!tenantId) {
+        console.error('❌ tenantId não definido');
         throw new Error('ID do tenant não identificado');
       }
 
@@ -468,7 +436,7 @@ const Checkout = () => {
       
       // Testar token primeiro
       const tokenTestResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-test-token', {
-        body: { tenant_id: effectiveTenantId }
+        body: { tenant_id: tenantId }
       });
       
       console.log('🧪 Resposta do teste de token:', tokenTestResponse);
@@ -504,7 +472,7 @@ const Checkout = () => {
       const shippingResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
-          tenant_id: effectiveTenantId,
+          tenant_id: tenantId,
           products: products
         }
       });
@@ -889,10 +857,10 @@ const Checkout = () => {
   };
 
   const processPayment = async (order: Order) => {
-    if (!effectiveTenantId) {
+    if (!tenantId) {
       toast({
         title: 'Erro',
-        description: 'Tenant não identificado. Por favor, acesse através do link correto.',
+        description: 'Tenant não identificado',
         variant: 'destructive'
       });
       return;
@@ -988,7 +956,7 @@ const Checkout = () => {
         total: totalAmount.toString(),
         coupon_discount: couponDiscount,
         coupon_code: appliedCoupon?.code || null,
-        tenant_id: effectiveTenantId
+        tenant_id: tenantId
       };
 
       console.log('Calling create-payment with data:', paymentData);
@@ -1068,37 +1036,18 @@ const Checkout = () => {
       return;
     }
 
-    if (!effectiveTenantId) {
-      toast({
-        title: 'Erro',
-        description: 'Tenant não identificado. Por favor, acesse através do link correto.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    const normalizedPhone = normalizeForStorage(phone);
+    const normalizedPhone = phone.replace(/[^0-9]/g, '');
     setLoadingHistory(true);
     
     try {
-      console.log('🔍 Buscando histórico para telefone:', normalizedPhone, 'no tenant:', effectiveTenantId);
-      
-      // Buscar pedidos pagos do tenant filtrados por telefone
-      // Usando supabase client regular para funcionar sem autenticação
-      const { data: orders, error } = await supabase
+      const { data: orders, error } = await supabaseTenant
         .from('orders')
         .select('*')
-        .eq('tenant_id', effectiveTenantId)
         .eq('customer_phone', normalizedPhone)
         .eq('is_paid', true)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Erro ao buscar histórico:', error);
-        throw error;
-      }
-
-      console.log('✅ Pedidos no histórico:', orders?.length || 0);
+      if (error) throw error;
 
       // Load cart items for each order
       const ordersWithItems = await Promise.all(
@@ -1107,7 +1056,7 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          const { data: cartItems, error: itemsError } = await supabase
+          const { data: cartItems, error: itemsError } = await supabaseTenant
             .from('cart_items')
             .select(`
               id,
@@ -1119,8 +1068,7 @@ const Checkout = () => {
                 image_url
               )
             `)
-            .eq('cart_id', order.cart_id)
-            .eq('tenant_id', effectiveTenantId);
+            .eq('cart_id', order.cart_id);
 
           if (itemsError) {
             console.error('Error loading cart items:', itemsError);

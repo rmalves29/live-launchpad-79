@@ -6,23 +6,18 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Menu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { useTenant } from '@/hooks/useTenant';
 import { TenantSwitcher } from '@/components/TenantSwitcher';
 import orderZapsLogo from '@/assets/order-zaps-logo.png';
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const { user, profile } = useAuth();
-  const { tenant } = useTenant();
   const location = useLocation();
   const isWhatsAppActive = ['/whatsapp-templates', '/whatsapp-integration', '/sendflow'].includes(location.pathname);
 
-  const enableLive = tenant?.enable_live ?? true;
-  const enableSendFlow = tenant?.enable_sendflow ?? true;
-
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
-    ...(enableLive ? [{ path: '/live', label: 'Live' }] : []),
+    { path: '/live', label: 'Live' },
     { path: '/checkout', label: 'Checkout' },
     { path: '/produtos', label: 'Produtos' },
     { path: '/clientes', label: 'Clientes' },
@@ -91,11 +86,9 @@ const Navbar = () => {
                 <DropdownMenuItem asChild>
                   <NavLink to="/whatsapp-templates">Templates WPP</NavLink>
                 </DropdownMenuItem>
-                {enableSendFlow && (
-                  <DropdownMenuItem asChild>
-                    <NavLink to="/sendflow">SendFlow</NavLink>
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem asChild>
+                  <NavLink to="/sendflow">SendFlow</NavLink>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -167,21 +160,19 @@ const Navbar = () => {
                         >
                           Templates WPP
                         </NavLink>
-                        {enableSendFlow && (
-                          <NavLink
-                            to="/sendflow"
-                            onClick={() => setOpen(false)}
-                            className={({ isActive }) =>
-                              `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                                isActive
-                                  ? 'bg-primary text-primary-foreground'
-                                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                              }`
-                            }
-                          >
-                            SendFlow
-                          </NavLink>
-                        )}
+                        <NavLink
+                          to="/sendflow"
+                          onClick={() => setOpen(false)}
+                          className={({ isActive }) =>
+                            `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                              isActive
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                            }`
+                          }
+                        >
+                          SendFlow
+                        </NavLink>
                       </div>
                     </div>
                 </div>
