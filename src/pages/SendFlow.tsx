@@ -120,6 +120,10 @@ export default function SendFlow() {
       console.log('🔍 Carregando todos os grupos do WhatsApp...');
       console.log('🌐 Tentando conectar com servidor na porta 3333...');
       
+      // Verificar limite de grupos configurado para o tenant
+      const maxGroups = tenant?.max_whatsapp_groups;
+      console.log(`📊 Limite de grupos configurado: ${maxGroups || 'sem limite'}`);
+      
       // Criar AbortController para timeout
       const timeoutController = new AbortController();
       const timeoutId = setTimeout(() => timeoutController.abort(), 5000); // 5 segundos
@@ -201,8 +205,18 @@ export default function SendFlow() {
       
       if (data.success && data.groups && Array.isArray(data.groups)) {
         console.log(`✅ ${data.groups.length} grupos carregados com sucesso`);
-        setWhatsappGroups(data.groups);
-        toast.success(`✅ ${data.groups.length} grupos WhatsApp encontrados`);
+        
+        // Aplicar limite de grupos se configurado
+        let limitedGroups = data.groups;
+        if (maxGroups && maxGroups > 0) {
+          limitedGroups = data.groups.slice(0, maxGroups);
+          console.log(`⚡ Aplicando limite: mostrando ${limitedGroups.length} de ${data.groups.length} grupos`);
+          toast.success(`✅ ${limitedGroups.length} grupos WhatsApp carregados (limite: ${maxGroups})`);
+        } else {
+          toast.success(`✅ ${data.groups.length} grupos WhatsApp encontrados`);
+        }
+        
+        setWhatsappGroups(limitedGroups);
       } else if (data.success && (!data.groups || data.groups.length === 0)) {
         console.log('ℹ️ Nenhum grupo encontrado (array vazio ou null)');
         setWhatsappGroups([]);

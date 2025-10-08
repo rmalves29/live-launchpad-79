@@ -600,6 +600,7 @@ export type Database = {
           is_active: boolean
           name: string
           price: number
+          sale_type: string
           size: string | null
           stock: number
           tenant_id: string
@@ -614,6 +615,7 @@ export type Database = {
           is_active?: boolean
           name: string
           price: number
+          sale_type?: string
           size?: string | null
           stock?: number
           tenant_id: string
@@ -628,6 +630,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           price?: number
+          sale_type?: string
           size?: string | null
           stock?: number
           tenant_id?: string
@@ -857,8 +860,11 @@ export type Database = {
           company_phone: string | null
           company_state: string | null
           created_at: string
+          enable_live: boolean
+          enable_sendflow: boolean
           id: string
           is_active: boolean
+          max_whatsapp_groups: number | null
           name: string
           slug: string
           tenant_key: string | null
@@ -879,8 +885,11 @@ export type Database = {
           company_phone?: string | null
           company_state?: string | null
           created_at?: string
+          enable_live?: boolean
+          enable_sendflow?: boolean
           id?: string
           is_active?: boolean
+          max_whatsapp_groups?: number | null
           name: string
           slug: string
           tenant_key?: string | null
@@ -901,8 +910,11 @@ export type Database = {
           company_phone?: string | null
           company_state?: string | null
           created_at?: string
+          enable_live?: boolean
+          enable_sendflow?: boolean
           id?: string
           is_active?: boolean
+          max_whatsapp_groups?: number | null
           name?: string
           slug?: string
           tenant_key?: string | null
@@ -1071,8 +1083,11 @@ export type Database = {
       get_tenant_by_id: {
         Args: { tenant_id_param: string }
         Returns: {
+          enable_live: boolean
+          enable_sendflow: boolean
           id: string
           is_active: boolean
+          max_whatsapp_groups: number
           name: string
           slug: string
         }[]
@@ -1080,8 +1095,11 @@ export type Database = {
       get_tenant_by_slug: {
         Args: { slug_param: string }
         Returns: {
+          enable_live: boolean
+          enable_sendflow: boolean
           id: string
           is_active: boolean
+          max_whatsapp_groups: number
           name: string
           slug: string
         }[]
@@ -1148,8 +1166,11 @@ export type Database = {
       list_active_tenants_basic: {
         Args: Record<PropertyKey, never>
         Returns: {
+          enable_live: boolean
+          enable_sendflow: boolean
           id: string
           is_active: boolean
+          max_whatsapp_groups: number
           name: string
           slug: string
         }[]

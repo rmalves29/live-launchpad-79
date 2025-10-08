@@ -23,6 +23,7 @@ interface Product {
   stock: number;
   image_url?: string;
   is_active: boolean;
+  sale_type: 'LIVE' | 'BAZAR';
 }
 
 interface Order {
@@ -64,6 +65,7 @@ const Live = () => {
         .from('products')
         .select('*')
         .eq('is_active', true)
+        .eq('sale_type', 'LIVE')
         .order('code');
 
       if (searchQuery) {
@@ -194,7 +196,8 @@ const Live = () => {
         return;
       }
 
-      const normalizedPhone = normalizeForStorage(phone);
+      // Normalizar para envio e depois para armazenamento garante que o 9º dígito seja corrigido
+      const normalizedPhone = normalizeForStorage(normalizeForSending(phone));
       const subtotal = product.price * qty;
       const today = getBrasiliaDateISO();
       
@@ -456,7 +459,7 @@ const Live = () => {
       const { error } = await supabaseTenant
         .from('orders')
         .update({
-          customer_phone: editPhone,
+          customer_phone: normalizeForStorage(editPhone),
           total_amount: parseFloat(editAmount)
         })
         .eq('id', editingOrder.id);

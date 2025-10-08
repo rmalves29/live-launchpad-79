@@ -23,6 +23,7 @@ interface Product {
   stock: number;
   image_url?: string;
   is_active: boolean;
+  sale_type: 'LIVE' | 'BAZAR';
 }
 
 interface Order {
@@ -59,6 +60,7 @@ const PedidosManual = () => {
         .from('products')
         .select('*')
         .eq('is_active', true)
+        .eq('sale_type', 'BAZAR')
         .order('code');
 
       if (searchQuery) {
@@ -430,7 +432,7 @@ const PedidosManual = () => {
       const { error } = await supabaseTenant
         .from('orders')
         .update({
-          customer_phone: editPhone,
+          customer_phone: normalizeForStorage(editPhone),
           total_amount: parseFloat(editAmount)
         })
         .eq('id', editingOrder.id);
