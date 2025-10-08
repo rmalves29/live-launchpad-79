@@ -86,9 +86,6 @@ const Navbar = () => {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
-                  <NavLink to="/whatsapp-connection">Conexão WhatsApp</NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
                   <NavLink to="/whatsapp-integration">Integração WhatsApp</NavLink>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
