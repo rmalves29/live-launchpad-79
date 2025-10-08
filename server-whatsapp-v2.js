@@ -123,6 +123,16 @@ async function createTenantClient(tenant) {
   tenantAuthDir.set(tenant.id, authDir);
   
   console.log(`🔧 Criando cliente WhatsApp para: ${tenant.name} (${tenant.id})`);
+  console.log(`📁 Auth directory: ${authDir}`);
+  
+  // Verificar se existe sessão salva
+  const sessionExists = fs.existsSync(path.join(authDir, 'session'));
+  if (sessionExists) {
+    console.log(`⚠️ Sessão existente encontrada para ${tenant.name}`);
+    console.log(`   Tentando reconectar com sessão salva...`);
+  } else {
+    console.log(`✨ Nova sessão para ${tenant.name}`);
+  }
   
   const client = new Client({
     authStrategy: new LocalAuth({ 
@@ -141,6 +151,10 @@ async function createTenantClient(tenant) {
         '--no-zygote',
         '--disable-gpu'
       ]
+    },
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     }
   });
 
@@ -188,11 +202,17 @@ async function createTenantClient(tenant) {
   tenantStatus.set(tenant.id, 'initializing');
   
   try {
+    console.log(`🚀 Iniciando WhatsApp client: ${tenant.name}...`);
     await client.initialize();
-    console.log(`🚀 Inicializado: ${tenant.name}`);
+    console.log(`✅ Cliente inicializado: ${tenant.name}`);
   } catch (error) {
     console.error(`❌ Erro inicializar ${tenant.name}:`, error);
     tenantStatus.set(tenant.id, 'error');
+    
+    // Se der erro, sugerir limpar sessão
+    console.log(`\n💡 SOLUÇÃO: Pare o servidor e execute:`);
+    console.log(`   Remove-Item -Recurse -Force "${authDir}"`);
+    console.log(`   node server-whatsapp-v2.js\n`);
   }
   
   return client;
