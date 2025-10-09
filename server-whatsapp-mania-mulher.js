@@ -28,9 +28,97 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 let whatsappClient = null;
 let clientStatus = 'initializing';
+let messageQueue = [];
+let isProcessingQueue = false;
+let reconnecting = false;
 
 /* ============================ UTILS ============================ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+/* ============================ MESSAGE QUEUE ============================ */
+async function processMessageQueue() {
+  if (isProcessingQueue || messageQueue.length === 0) return;
+  
+  isProcessingQueue = true;
+  
+  while (messageQueue.length > 0) {
+    const item = messageQueue[0];
+    
+    try {
+      const client = await getClient();
+      
+      if (!client) {
+        console.log(`⚠️ Cliente offline - mantendo ${messageQueue.length} mensagens na fila`);
+        break;
+      }
+      
+      console.log(`📤 Processando fila (${messageQueue.length} restantes): ${item.phone}`);
+      
+      await client.sendMessage(item.chatId, item.message);
+      console.log(`✅ Enviado da fila: ${item.phone}`);
+      
+      // Remover item da fila apenas após sucesso
+      messageQueue.shift();
+      
+      // Salvar no banco
+      try {
+        await supaRaw('/whatsapp_messages', {
+          method: 'POST',
+          headers: { 'Prefer': 'return=minimal' },
+          body: JSON.stringify({
+            tenant_id: TENANT_ID,
+            phone: item.phone,
+            message: item.message,
+            type: item.type || 'outgoing',
+            sent_at: new Date().toISOString()
+          })
+        });
+      } catch (dbError) {
+        console.error('⚠️ Erro ao salvar no banco:', dbError.message);
+      }
+      
+      // Delay entre mensagens
+      await delay(2000);
+      
+    } catch (error) {
+      console.error(`❌ Erro ao processar item da fila:`, error.message);
+      
+      // Incrementar tentativas
+      item.retries = (item.retries || 0) + 1;
+      
+      if (item.retries >= 3) {
+        console.log(`❌ Removendo da fila após 3 tentativas: ${item.phone}`);
+        messageQueue.shift();
+      } else {
+        console.log(`🔄 Tentativa ${item.retries}/3 - mantendo na fila`);
+        break;
+      }
+    }
+  }
+  
+  isProcessingQueue = false;
+  
+  // Continuar processando se ainda há itens
+  if (messageQueue.length > 0) {
+    setTimeout(() => processMessageQueue(), 5000);
+  }
+}
+
+function addToQueue(phone, chatId, message, type = 'outgoing') {
+  messageQueue.push({
+    phone,
+    chatId,
+    message,
+    type,
+    retries: 0,
+    timestamp: new Date().toISOString()
+  });
+  
+  console.log(`📥 Adicionado à fila: ${phone} (total: ${messageQueue.length})`);
+  
+  // Iniciar processamento
+  processMessageQueue();
+}
 
 function normalizeDDD(phone) {
   if (!phone) return phone;
@@ -157,13 +245,36 @@ async function createWhatsAppClient() {
     clientStatus = 'auth_failure';
   });
 
-  client.on('disconnected', (reason) => {
+  client.on('disconnected', async (reason) => {
     console.log(`⚠️ Desconectado ${TENANT_NAME}:`, reason);
-    console.log(`⚠️ ATENÇÃO: Conexão perdida - reinicie o servidor manualmente se necessário`);
     clientStatus = 'offline';
+    
+    // Não tentar reconectar automaticamente para evitar loops
+    if (reason === 'LOGOUT' || reason === 'UNPAIRED') {
+      console.log(`❌ ${reason} detectado - Necessário escanear QR Code novamente`);
+      return;
+    }
+    
+    // Para outros erros, aguardar e tentar reconectar UMA vez
+    if (!reconnecting) {
+      reconnecting = true;
+      console.log(`🔄 Aguardando 10 segundos para tentar reconectar...`);
+      
+      setTimeout(async () => {
+        try {
+          console.log(`🔄 Tentando reconectar...`);
+          await client.initialize();
+          console.log(`✅ Reconexão iniciada`);
+        } catch (error) {
+          console.error(`❌ Erro ao reconectar:`, error.message);
+        } finally {
+          reconnecting = false;
+        }
+      }, 10000);
+    }
   });
 
-  // Heartbeat para manter conexão ativa
+  // Heartbeat para manter conexão ativa e processar fila
   setInterval(async () => {
     if (whatsappClient && clientStatus === 'online') {
       try {
@@ -172,14 +283,18 @@ async function createWhatsAppClient() {
           console.log(`⚠️ Estado alterado: ${state} - Marcando como offline`);
           clientStatus = 'offline';
         } else {
-          console.log(`✅ Heartbeat OK - WhatsApp conectado (${new Date().toISOString()})`);
+          console.log(`✅ Heartbeat OK - Fila: ${messageQueue.length} mensagens`);
+          // Processar fila se houver mensagens
+          if (messageQueue.length > 0 && !isProcessingQueue) {
+            processMessageQueue();
+          }
         }
       } catch (error) {
         console.error(`❌ Erro no heartbeat:`, error.message);
         clientStatus = 'offline';
       }
     }
-  }, 30000); // Check a cada 30 segundos
+  }, 15000); // Check a cada 15 segundos
 
   client.on('message', async (message) => {
     await handleIncomingMessage(message);
@@ -310,6 +425,11 @@ app.get('/status', async (req, res) => {
       // Se conectado, atualizar status
       if (state === 'CONNECTED' && clientStatus !== 'online') {
         clientStatus = 'online';
+        // Processar fila quando reconectar
+        if (messageQueue.length > 0) {
+          console.log(`🔄 Reconectado - processando ${messageQueue.length} mensagens na fila`);
+          processMessageQueue();
+        }
       }
     } catch (error) {
       state = 'error';
@@ -319,7 +439,7 @@ app.get('/status', async (req, res) => {
   
   const isConnected = state === 'CONNECTED';
   
-  console.log(`📊 Status check: client=${hasClient}, clientStatus=${clientStatus}, whatsappState=${state}, connected=${isConnected}`);
+  console.log(`📊 Status: ${state}, Fila: ${messageQueue.length}, Processando: ${isProcessingQueue}`);
   
   res.json({
     success: true,
@@ -329,6 +449,8 @@ app.get('/status', async (req, res) => {
     whatsapp_state: state,
     connected: isConnected,
     has_client: hasClient,
+    queue_size: messageQueue.length,
+    processing_queue: isProcessingQueue,
     timestamp: new Date().toISOString()
   });
 });
@@ -360,35 +482,90 @@ app.post('/send', async (req, res) => {
     const normalizedPhone = normalizeDDD(phoneNumber);
     const chatId = `${normalizedPhone}@c.us`;
     
-    console.log(`📤 Enviando para ${normalizedPhone}...`);
-    
-    await client.sendMessage(chatId, message);
-    console.log(`✅ Mensagem enviada para ${normalizedPhone}`);
-    
-    // Salvar no banco
+    // Verificar estado da conexão
     try {
-      await supaRaw('/whatsapp_messages', {
-        method: 'POST',
-        headers: {
-          'Prefer': 'return=minimal'
-        },
-        body: JSON.stringify({
-          tenant_id: TENANT_ID,
+      const state = await client.getState();
+      console.log(`📊 Estado atual: ${state}`);
+      
+      if (state !== 'CONNECTED') {
+        console.log(`⚠️ WhatsApp não conectado (${state}) - adicionando à fila`);
+        addToQueue(normalizedPhone, chatId, message, 'outgoing');
+        
+        return res.json({
+          success: true,
+          message: 'Mensagem adicionada à fila (WhatsApp reconectando)',
           phone: normalizedPhone,
-          message: message,
-          type: 'outgoing',
-          sent_at: new Date().toISOString()
-        })
+          queued: true
+        });
+      }
+    } catch (stateError) {
+      console.error(`❌ Erro ao verificar estado:`, stateError.message);
+      addToQueue(normalizedPhone, chatId, message, 'outgoing');
+      
+      return res.json({
+        success: true,
+        message: 'Mensagem adicionada à fila (erro ao verificar conexão)',
+        phone: normalizedPhone,
+        queued: true
       });
-      console.log('✅ Mensagem outgoing salva no banco');
-    } catch (dbError) {
-      console.error(`⚠️ Erro ao salvar no banco:`, dbError.message);
+    }
+    
+    // Tentar enviar direto com retry
+    let attempts = 0;
+    let sent = false;
+    
+    while (attempts < 2 && !sent) {
+      try {
+        attempts++;
+        console.log(`📤 Tentativa ${attempts}/2: Enviando para ${normalizedPhone}...`);
+        
+        await client.sendMessage(chatId, message);
+        console.log(`✅ Mensagem enviada para ${normalizedPhone}`);
+        sent = true;
+        
+        // Salvar no banco
+        try {
+          await supaRaw('/whatsapp_messages', {
+            method: 'POST',
+            headers: { 'Prefer': 'return=minimal' },
+            body: JSON.stringify({
+              tenant_id: TENANT_ID,
+              phone: normalizedPhone,
+              message: message,
+              type: 'outgoing',
+              sent_at: new Date().toISOString()
+            })
+          });
+        } catch (dbError) {
+          console.error(`⚠️ Erro ao salvar no banco:`, dbError.message);
+        }
+        
+      } catch (sendError) {
+        console.error(`❌ Erro na tentativa ${attempts}:`, sendError.message);
+        
+        if (attempts < 2) {
+          await delay(2000);
+        }
+      }
+    }
+    
+    if (!sent) {
+      console.log(`⚠️ Falha após 2 tentativas - adicionando à fila`);
+      addToQueue(normalizedPhone, chatId, message, 'outgoing');
+      
+      return res.json({
+        success: true,
+        message: 'Mensagem adicionada à fila (falha no envio direto)',
+        phone: normalizedPhone,
+        queued: true
+      });
     }
     
     res.json({
       success: true,
       message: 'Mensagem enviada',
-      phone: normalizedPhone
+      phone: normalizedPhone,
+      queued: false
     });
     
   } catch (error) {
@@ -411,50 +588,22 @@ app.post('/broadcast', async (req, res) => {
       });
     }
     
-    const client = await getClient();
+    console.log(`📢 Broadcast para ${phones.length} números`);
     
-    if (!client) {
-      return res.status(503).json({
-        success: false,
-        error: 'WhatsApp não conectado'
-      });
-    }
-    
-    const results = [];
-    
+    // Adicionar todos à fila
+    let added = 0;
     for (const phone of phones) {
-      try {
-        const normalizedPhone = normalizeDDD(phone);
-        const chatId = `${normalizedPhone}@c.us`;
-        
-        await client.sendMessage(chatId, message);
-        
-        await supaRaw('/whatsapp_messages', {
-          method: 'POST',
-          headers: {
-            'Prefer': 'return=minimal'
-          },
-          body: JSON.stringify({
-            tenant_id: TENANT_ID,
-            phone: normalizedPhone,
-            message: message,
-            type: 'bulk',
-            sent_at: new Date().toISOString()
-          })
-        });
-        
-        results.push({ phone: normalizedPhone, success: true });
-        await delay(2000);
-        
-      } catch (error) {
-        results.push({ phone: phone, success: false, error: error.message });
-      }
+      const normalizedPhone = normalizeDDD(phone);
+      const chatId = `${normalizedPhone}@c.us`;
+      addToQueue(normalizedPhone, chatId, message, 'bulk');
+      added++;
     }
     
     res.json({
       success: true,
+      message: `${added} mensagens adicionadas à fila`,
       total: phones.length,
-      results
+      queue_size: messageQueue.length
     });
     
   } catch (error) {
@@ -624,7 +773,26 @@ app.get('/health', (req, res) => {
     success: true,
     status: 'online',
     tenant: TENANT_NAME,
-    version: '1.0'
+    version: '2.0',
+    features: {
+      message_queue: true,
+      auto_retry: true,
+      heartbeat: true
+    }
+  });
+});
+
+app.get('/queue', (req, res) => {
+  res.json({
+    success: true,
+    queue_size: messageQueue.length,
+    processing: isProcessingQueue,
+    items: messageQueue.map(item => ({
+      phone: item.phone,
+      retries: item.retries,
+      timestamp: item.timestamp,
+      type: item.type
+    }))
   });
 });
 
