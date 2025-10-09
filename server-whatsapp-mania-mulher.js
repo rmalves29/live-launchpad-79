@@ -151,6 +151,24 @@ async function createWhatsAppClient() {
     clientStatus = 'offline';
   });
 
+  // Heartbeat para manter conexão ativa
+  setInterval(async () => {
+    if (whatsappClient && clientStatus === 'online') {
+      try {
+        const state = await whatsappClient.getState();
+        if (state !== 'CONNECTED') {
+          console.log(`⚠️ Estado alterado: ${state} - Marcando como offline`);
+          clientStatus = 'offline';
+        } else {
+          console.log(`✅ Heartbeat OK - WhatsApp conectado (${new Date().toISOString()})`);
+        }
+      } catch (error) {
+        console.error(`❌ Erro no heartbeat:`, error.message);
+        clientStatus = 'offline';
+      }
+    }
+  }, 30000); // Check a cada 30 segundos
+
   client.on('message', async (message) => {
     await handleIncomingMessage(message);
   });
@@ -268,14 +286,24 @@ app.use(cors());
 
 app.get('/status', async (req, res) => {
   let state = 'unknown';
+  let hasClient = !!whatsappClient;
   
   if (whatsappClient) {
     try {
       state = await whatsappClient.getState();
+      // Se conectado, atualizar status
+      if (state === 'CONNECTED' && clientStatus !== 'online') {
+        clientStatus = 'online';
+      }
     } catch (error) {
       state = 'error';
+      console.error('❌ Erro ao obter estado:', error.message);
     }
   }
+  
+  const isConnected = state === 'CONNECTED';
+  
+  console.log(`📊 Status check: client=${hasClient}, clientStatus=${clientStatus}, whatsappState=${state}, connected=${isConnected}`);
   
   res.json({
     success: true,
@@ -283,7 +311,9 @@ app.get('/status', async (req, res) => {
     tenant_id: TENANT_ID,
     status: clientStatus,
     whatsapp_state: state,
-    connected: state === 'CONNECTED'
+    connected: isConnected,
+    has_client: hasClient,
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -299,12 +329,15 @@ app.post('/send', async (req, res) => {
       });
     }
     
+    console.log(`📞 Tentando enviar para ${phoneNumber} - clientStatus: ${clientStatus}`);
+    
     const client = await getClient();
     
     if (!client) {
+      console.error(`❌ Cliente não disponível - clientStatus: ${clientStatus}, hasClient: ${!!whatsappClient}`);
       return res.status(503).json({
         success: false,
-        error: 'WhatsApp não conectado'
+        error: `WhatsApp não conectado. Status: ${clientStatus}. Por favor, verifique o QR Code ou reinicie o servidor.`
       });
     }
     
