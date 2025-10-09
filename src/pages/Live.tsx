@@ -394,7 +394,15 @@ const Live = () => {
         console.log(`📱 Enviando mensagem WhatsApp via whatsappService...`);
         console.log(`📞 Telefone: ${normalizedPhone}`);
         console.log(`📦 Produto: ${product.name} (${product.code})`);
-        console.log(`🆔 Tenant: ${tenant?.id}`);
+        console.log(`🆔 Tenant object:`, tenant);
+        console.log(`🆔 Tenant ID:`, tenant?.id);
+        
+        if (!tenant || !tenant.id) {
+          console.error('❌ Tenant não disponível! tenant:', tenant);
+          throw new Error('Erro: Informações da empresa não disponíveis. Recarregue a página.');
+        }
+        
+        console.log(`✅ Tenant validado: ${tenant.id}`);
         
         await whatsappService.sendItemAdded({
           customer_phone: normalizedPhone,
@@ -404,7 +412,7 @@ const Live = () => {
             qty: qty,
             price: product.price
           }
-        }, tenant!.id);
+        }, tenant.id);
         
         console.log('✅ Mensagem WhatsApp enviada com sucesso');
         toast({

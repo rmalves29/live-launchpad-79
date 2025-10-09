@@ -376,16 +376,30 @@ app.use(express.json({ limit: '5mb' }));
 app.use(cors());
 
 app.use((req, res, next) => {
-  const tenantId = req.headers['x-tenant-id'] || req.query.tenant_id || req.body.tenant_id;
+  // Tentar múltiplas fontes para tenant_id (case-insensitive headers)
+  const tenantId = 
+    req.headers['x-tenant-id'] || 
+    req.headers['X-Tenant-Id'] ||
+    req.query.tenant_id || 
+    req.body?.tenant_id;
+    
   console.log('🔍 [Middleware] Extraindo tenant_id:', {
-    header: req.headers['x-tenant-id'],
-    query: req.query.tenant_id,
-    body: req.body?.tenant_id,
-    final: tenantId,
-    url: req.url,
-    method: req.method
+    'header x-tenant-id (lowercase)': req.headers['x-tenant-id'],
+    'header X-Tenant-Id (pascal)': req.headers['X-Tenant-Id'],
+    'query tenant_id': req.query.tenant_id,
+    'body tenant_id': req.body?.tenant_id,
+    'final tenantId': tenantId,
+    'url': req.url,
+    'method': req.method
   });
-  if (tenantId) req.tenantId = tenantId;
+  
+  if (tenantId) {
+    req.tenantId = tenantId;
+    console.log(`✅ [Middleware] TenantId definido: ${tenantId}`);
+  } else {
+    console.warn(`⚠️ [Middleware] TenantId NÃO encontrado em nenhuma fonte!`);
+  }
+  
   next();
 });
 

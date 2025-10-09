@@ -103,8 +103,12 @@ class WhatsAppService {
       console.log('📦 [WS] Data recebido:', JSON.stringify(data, null, 2));
       
       if (!tenantId) {
-        throw new Error('Tenant ID é obrigatório para enviar mensagens WhatsApp');
+        const errorMsg = 'Tenant ID é obrigatório para enviar mensagens WhatsApp';
+        console.error('❌ [WS]', errorMsg);
+        throw new Error(errorMsg);
       }
+
+      console.log('✅ [WS] TenantId validado:', tenantId);
 
       let serverUrl: string;
       
@@ -117,13 +121,16 @@ class WhatsAppService {
       
       console.log('🌐 [WS] URL do servidor:', serverUrl);
       
-      // Garantir que tenant_id está no data
+      // SEMPRE garantir que tenant_id está no data (mesmo que já esteja)
       const requestData = {
+        tenant_id: tenantId,
         ...data,
-        tenant_id: tenantId
       };
       
-      console.log('📤 [WS] Dados finais a enviar:', JSON.stringify(requestData, null, 2));
+      // Forçar tenant_id novamente para ter certeza
+      requestData.tenant_id = tenantId;
+      
+      console.log('📤 [WS] Dados finais a enviar (com tenant_id garantido):', JSON.stringify(requestData, null, 2));
       
       const fullUrl = `${serverUrl}${endpoint}`;
       console.log('🔗 [WS] URL completa:', fullUrl);
@@ -139,7 +146,8 @@ class WhatsAppService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-tenant-id': tenantId
+            'x-tenant-id': tenantId,
+            'X-Tenant-Id': tenantId, // Maiúscula também para garantir
           },
           body: JSON.stringify(requestData),
           signal: controller.signal,
