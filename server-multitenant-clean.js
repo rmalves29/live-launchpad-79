@@ -621,34 +621,18 @@ async function main() {
     console.warn('⚠️ Nenhum tenant ativo encontrado no banco de dados');
     console.log('💡 Certifique-se de ter tenants com is_active=true\n');
   } else {
-    console.log(`📋 ${tenants.length} tenant(s) encontrado(s):\n`);
-    
-    // Mostrar lista de tenants
-    tenants.forEach((t, i) => {
-      console.log(`   ${i + 1}. ${t.name} (${t.slug})`);
-      console.log(`      ID: ${t.id}\n`);
-    });
+    console.log(`✅ ${tenants.length} tenant(s) ativo(s) no banco\n`);
 
-    // Inicializar apenas MANIA DE MULHER (ou comentar para inicializar todos)
+    // Inicializar apenas MANIA DE MULHER
     const maniaDeMulher = tenants.find(
       t => t.id === CONFIG.TENANTS.MANIA_DE_MULHER
     );
 
     if (maniaDeMulher) {
-      console.log('🎯 Inicializando apenas: MANIA DE MULHER\n');
+      console.log('🎯 Inicializando: MANIA DE MULHER\n');
       await tenantManager.createClient(maniaDeMulher);
     } else {
-      console.warn('⚠️ Tenant MANIA DE MULHER não encontrado\n');
-      
-      // Descomentar para inicializar todos os tenants
-      // console.log('🔄 Inicializando todos os tenants...\n');
-      // for (const tenant of tenants) {
-      //   const integration = await SupabaseHelper.getWhatsAppIntegration(tenant.id);
-      //   if (integration) {
-      //     await tenantManager.createClient(tenant);
-      //     await delay(20000); // 20s entre cada tenant
-      //   }
-      // }
+      console.warn('⚠️ Tenant MANIA DE MULHER não encontrado no banco\n');
     }
   }
 
