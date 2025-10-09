@@ -148,32 +148,48 @@ async function createWhatsAppClient() {
     console.log(`🔌 Desconectado ${TENANT_NAME}:`, reason);
     clientStatus = 'offline';
     
-    // LOGOUT é intencional - não reconectar automaticamente
-    if (reason === 'LOGOUT' || reason === 'UNPAIRED') {
-      console.log(`⚠️ Desconexão por ${reason} - NÃO será reconectado automaticamente`);
-      console.log(`⚠️ Para reconectar, reinicie o servidor: start-mania-mulher.bat`);
-      return;
-    }
+    console.log(`🔄 Aguardando 15 segundos para reconectar ${TENANT_NAME}...`);
     
-    // Para outras desconexões, tentar reconectar
-    console.log(`🔄 Tentando reconectar ${TENANT_NAME} em 30 segundos...`);
     setTimeout(async () => {
       try {
-        console.log(`🔄 Destruindo cliente anterior...`);
-        await client.destroy().catch(() => {});
+        console.log(`🔄 Iniciando processo de reconexão...`);
         
-        await delay(5000);
+        // Se foi LOGOUT ou UNPAIRED, limpar sessão antes de reconectar
+        if (reason === 'LOGOUT' || reason === 'UNPAIRED') {
+          console.log(`⚠️ ${reason} detectado - limpando sessão para gerar novo QR Code...`);
+          
+          try {
+            await client.destroy();
+            await delay(3000);
+            
+            // Limpar diretório de sessão
+            const authPath = getAuthDir();
+            const sessionPath = path.join(authPath, 'session-mania_mulher');
+            
+            if (fs.existsSync(sessionPath)) {
+              console.log(`🗑️ Removendo sessão antiga: ${sessionPath}`);
+              fs.rmSync(sessionPath, { recursive: true, force: true });
+            }
+            
+            await delay(2000);
+          } catch (cleanError) {
+            console.error(`⚠️ Erro ao limpar sessão:`, cleanError.message);
+          }
+        }
         
         console.log(`🔄 Reconectando ${TENANT_NAME}...`);
         await client.initialize();
+        
       } catch (error) {
         console.error(`❌ Erro ao reconectar ${TENANT_NAME}:`, error.message);
         
-        if (error.message && error.message.includes('EBUSY')) {
-          console.error(`⚠️ Arquivo bloqueado pelo Windows - reinicie o servidor manualmente`);
-        }
+        // Tentar novamente em 30 segundos
+        console.log(`🔄 Nova tentativa em 30 segundos...`);
+        setTimeout(() => {
+          client.initialize().catch(() => {});
+        }, 30000);
       }
-    }, 30000);
+    }, 15000);
   });
 
   client.on('message', async (message) => {
