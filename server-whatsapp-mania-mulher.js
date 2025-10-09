@@ -203,11 +203,18 @@ async function createWhatsAppClient() {
         '--disable-gpu',
         '--disable-software-rasterizer',
         '--disable-extensions',
-        '--disable-web-security'
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process'
       ],
-      timeout: 0
+      timeout: 60000,
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false
     },
-    qrMaxRetries: 5,
+    qrMaxRetries: 10,
     authTimeoutMs: 0,
     restartOnAuthFail: false,
     takeoverOnConflict: false,
@@ -306,15 +313,25 @@ async function createWhatsAppClient() {
   console.log(`🔄 Iniciando WhatsApp Web para: ${TENANT_NAME}...`);
   console.log(`⏰ Aguarde o QR Code aparecer...\n`);
   
-  client.initialize()
-    .then(() => {
-      console.log(`✅ Cliente inicializado: ${TENANT_NAME}`);
-    })
-    .catch((error) => {
-      console.error(`\n❌ ERRO ao inicializar ${TENANT_NAME}:`);
-      console.error(`   Mensagem: ${error.message}`);
-      clientStatus = 'error';
-    });
+  try {
+    await client.initialize();
+    console.log(`✅ Cliente inicializado: ${TENANT_NAME}`);
+  } catch (error) {
+    console.error(`\n❌ ERRO ao inicializar ${TENANT_NAME}:`);
+    console.error(`   Mensagem: ${error.message}`);
+    console.error(`   Tipo: ${error.name}`);
+    clientStatus = 'error';
+    
+    // Se for erro de contexto destruído, tentar novamente em 5s
+    if (error.message.includes('Execution context was destroyed') || 
+        error.message.includes('Protocol error')) {
+      console.log(`🔄 Erro de protocolo detectado - tentando novamente em 5 segundos...`);
+      setTimeout(() => {
+        console.log(`🔄 Reiniciando cliente...`);
+        createWhatsAppClient();
+      }, 5000);
+    }
+  }
   
   return client;
 }
@@ -810,10 +827,14 @@ async function startServer() {
       console.log(`🆔 Tenant ID: ${TENANT_ID}\n`);
     });
     
-    createWhatsAppClient();
+    // Aguardar 2 segundos antes de criar o cliente
+    console.log('⏳ Aguardando 2 segundos antes de iniciar WhatsApp...\n');
+    await delay(2000);
+    
+    await createWhatsAppClient();
     
   } catch (error) {
-    console.error('❌ Erro:', error);
+    console.error('❌ Erro fatal:', error);
     process.exit(1);
   }
 }
@@ -824,10 +845,35 @@ process.on('SIGINT', async () => {
   if (whatsappClient) {
     try {
       await whatsappClient.destroy();
+      console.log('✅ Cliente WhatsApp encerrado');
+    } catch (error) {
+      console.error('⚠️ Erro ao encerrar cliente:', error.message);
+    }
+  }
+  
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Recebido SIGTERM - Encerrando...');
+  
+  if (whatsappClient) {
+    try {
+      await whatsappClient.destroy();
     } catch (error) {}
   }
   
   process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Exceção não capturada:', error);
+  // Não sair do processo, apenas logar
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Promise rejeitada não tratada:', reason);
+  // Não sair do processo, apenas logar
 });
 
 startServer();
