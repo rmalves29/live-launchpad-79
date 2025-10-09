@@ -2,19 +2,20 @@
 
 ## 📋 Descrição
 
-Servidor Node.js **dedicado** exclusivamente para o tenant **MANIA DE MULHER**.
+Servidor Node.js **dedicado** e **estável** para o tenant **MANIA DE MULHER**.
 
-Este servidor roda de forma independente e gerencia apenas as conexões WhatsApp deste tenant específico.
+Este servidor possui sistema de fila de mensagens, auto-retry e proteção contra rate limiting do WhatsApp.
 
 ---
 
-## ✅ Vantagens do Servidor Dedicado
+## ✅ Recursos de Estabilidade
 
-- 🎯 **Focado**: Gerencia apenas 1 tenant
-- ⚡ **Mais rápido**: Sem competição por recursos
-- 🔧 **Mais estável**: Sem timeouts multi-tenant
-- 📊 **Mais simples**: Logs e debug mais fáceis
-- 🔒 **Isolado**: Problemas não afetam outros tenants
+- 📥 **Fila de Mensagens**: Processa mensagens sequencialmente
+- 🔄 **Auto-Retry**: Até 3 tentativas por mensagem
+- ⏱️ **Delay Inteligente**: 2-3s entre mensagens (proteção rate limit)
+- 💚 **Heartbeat**: Verifica conexão a cada 15s
+- 🔌 **Auto-Reconexão**: Reconecta automaticamente se desconectar
+- 📊 **Monitoramento**: Endpoints para status e fila
 
 ---
 
@@ -54,7 +55,7 @@ node server-whatsapp-mania-mulher.js
 ```bash
 GET http://localhost:3334/status
 ```
-Retorna o status da conexão WhatsApp
+Retorna o status da conexão WhatsApp e tamanho da fila
 
 ### Enviar Mensagem
 ```bash
@@ -64,6 +65,7 @@ POST http://localhost:3334/send
   "message": "Olá!"
 }
 ```
+Se WhatsApp estiver desconectado, adiciona à fila automaticamente
 
 ### Broadcast (Múltiplos Destinatários)
 ```bash
@@ -73,6 +75,13 @@ POST http://localhost:3334/broadcast
   "message": "Mensagem em massa"
 }
 ```
+Todas mensagens são adicionadas à fila para envio sequencial
+
+### Ver Fila
+```bash
+GET http://localhost:3334/queue
+```
+Mostra mensagens pendentes na fila
 
 ### Listar Grupos
 ```bash
@@ -108,6 +117,29 @@ GET http://localhost:3334/health
 
 ---
 
+## 🔄 Sistema de Fila
+
+O servidor possui um sistema inteligente de fila que:
+
+1. **Adiciona mensagens à fila** quando:
+   - WhatsApp está desconectado
+   - Envio direto falha após 2 tentativas
+   - É um broadcast (sempre usa fila)
+
+2. **Processa a fila** com:
+   - Delay de 2-3s entre mensagens
+   - Até 3 tentativas por mensagem
+   - Salvamento automático no banco
+   - Processamento sequencial (não paralelo)
+
+3. **Benefícios**:
+   - ✅ Evita bloqueio por spam
+   - ✅ Não perde mensagens
+   - ✅ Funciona mesmo offline
+   - ✅ Auto-recuperação
+
+---
+
 ## 🔄 Configurar no Sistema
 
 Para que o sistema use este servidor, atualize a tabela `integration_whatsapp` no Supabase:
@@ -127,6 +159,24 @@ Ou pelo Supabase Dashboard:
 ---
 
 ## 🛠️ Solução de Problemas
+
+### Servidor desconecta ao enviar mensagens
+
+**Causa**: Rate limiting do WhatsApp (muitas mensagens rápido demais)
+
+**Solução**: O servidor agora usa fila automática com delay de 2-3s entre mensagens
+
+### Mensagens não estão sendo enviadas
+
+```bash
+# Verificar status
+curl http://localhost:3334/status
+
+# Verificar fila
+curl http://localhost:3334/queue
+```
+
+Se houver mensagens na fila e `processing: false`, o servidor tentará processar no próximo heartbeat (15s)
 
 ### QR Code não aparece
 ```bash
@@ -149,18 +199,12 @@ taskkill /PID <PID> /F         (Windows)
 kill -9 <PID>                  (Linux/Mac)
 ```
 
-### Desconexões frequentes
-- Verifique a conexão de internet
-- Mantenha o WhatsApp do celular online
-- Não deslogue do WhatsApp Web manualmente
-
 ---
 
-## 📊 Monitoramento
+## 📊 Monitoramento em Tempo Real
 
-### Ver Status em Tempo Real
+### Ver Status
 ```bash
-# Em outro terminal, execute:
 curl http://localhost:3334/status
 
 # Resposta esperada:
@@ -170,18 +214,46 @@ curl http://localhost:3334/status
   "tenant_id": "08f2b1b9-3988-489e-8186-c60f0c0b0622",
   "status": "online",
   "whatsapp_state": "CONNECTED",
-  "connected": true
+  "connected": true,
+  "queue_size": 0,
+  "processing_queue": false
+}
+```
+
+### Ver Fila
+```bash
+curl http://localhost:3334/queue
+
+# Resposta esperada:
+{
+  "success": true,
+  "queue_size": 2,
+  "processing": true,
+  "items": [
+    {
+      "phone": "11999999999",
+      "retries": 0,
+      "timestamp": 1234567890,
+      "type": "single"
+    }
+  ]
 }
 ```
 
 ---
 
-## 🔄 Reiniciar o Servidor
+## 🔄 Como Funciona o Auto-Retry
 
-1. Pressione `CTRL + C` no terminal
-2. Execute novamente: `start-mania-mulher.bat`
-3. Se já estava conectado, conectará automaticamente (sem QR Code)
-4. Se precisar reconectar, escaneie o novo QR Code
+1. Mensagem é adicionada à fila
+2. Servidor tenta enviar
+3. **Se falhar**:
+   - Incrementa contador de tentativas
+   - Aguarda 5s
+   - Tenta novamente
+4. **Após 3 falhas**:
+   - Remove da fila
+   - Salva erro no banco
+   - Continua com próxima mensagem
 
 ---
 
@@ -189,37 +261,29 @@ curl http://localhost:3334/status
 
 ✅ **Deixe o terminal aberto** enquanto usar o WhatsApp
 ✅ **Mantenha o celular conectado** à internet
-✅ **Não desconecte** do WhatsApp Web manualmente
-✅ **Monitore os logs** para detectar problemas
+✅ **Use broadcast** para envios em massa (usa fila automaticamente)
+✅ **Monitore a fila** via `/queue` endpoint
+✅ **Verifique logs** no terminal para debug
 
 ❌ **Não feche o terminal** enquanto usar o sistema
-❌ **Não use o mesmo número** em múltiplos servidores
-❌ **Não escaneie o QR Code** se já está conectado
-
----
-
-## 🔧 Outros Servidores
-
-Se você tem outros tenants, pode criar servidores dedicados seguindo este modelo:
-
-1. Copie `server-whatsapp-mania-mulher.js`
-2. Altere `TENANT_ID` e `TENANT_NAME`
-3. Altere a `PORT` (ex: 3335, 3336, etc.)
-4. Crie um novo script de start
-5. Atualize a `api_url` no banco de dados
+❌ **Não envie mais de 50 mensagens/minuto** (limite WhatsApp)
+❌ **Não use múltiplos servidores** com mesmo número
 
 ---
 
 ## 📝 Logs
 
-O servidor mostra logs detalhados no terminal:
+O servidor mostra logs detalhados:
 
 - 📱 QR Code gerado
 - 🔐 Autenticação bem-sucedida
 - ✅ WhatsApp conectado
-- 📤 Mensagens enviadas
-- 📥 Mensagens recebidas
-- ❌ Erros e falhas
+- 📥 Mensagem adicionada à fila (X itens)
+- 📤 Enviando para 5511999999999
+- ✅ Mensagem enviada com sucesso
+- ⏱️ Aguardando 2s antes da próxima mensagem
+- 💚 Heartbeat: Conexão ativa
+- 🔄 Tentativa 2/3 falhou, tentando novamente
 
 ---
 
@@ -227,7 +291,21 @@ O servidor mostra logs detalhados no terminal:
 
 Se tiver problemas:
 
-1. Verifique os logs no terminal
-2. Teste o endpoint `/status`
-3. Limpe a sessão e tente novamente
-4. Consulte `SOLUCAO_TIMEOUT.md` para problemas comuns
+1. ✅ Verifique os logs no terminal
+2. ✅ Teste o endpoint `/status`
+3. ✅ Verifique a fila com `/queue`
+4. ✅ Limpe a sessão e tente novamente
+5. ✅ Consulte `TROUBLESHOOTING.md` para problemas comuns
+
+---
+
+## 🎯 Por que este servidor é mais estável?
+
+| Problema Antigo | Solução Nova |
+|----------------|--------------|
+| Desconecta ao enviar rápido | Fila com delay de 2-3s |
+| Perde mensagens se offline | Fila persiste mensagens |
+| Sem retry em falhas | Auto-retry (3x) |
+| Rate limiting do WhatsApp | Delay inteligente |
+| Desconexões não tratadas | Auto-reconexão |
+| Sem monitoramento | Endpoints /status e /queue |
