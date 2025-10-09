@@ -47,6 +47,17 @@ export const TenantSwitcher = () => {
             setSelected(undefined);
           }
         }
+        
+        // Se não há tenant selecionado mas existe "MANIA DE MULHER", selecionar automaticamente
+        if (!current && data) {
+          const maniaDeMulher = data.find((t: Tenant) => t.name === 'MANIA DE MULHER');
+          if (maniaDeMulher) {
+            console.log('✅ Auto-selecionando tenant MANIA DE MULHER:', maniaDeMulher.id);
+            localStorage.setItem(PREVIEW_TENANT_KEY, maniaDeMulher.id);
+            setSelected(maniaDeMulher.id);
+            supabaseTenant.setTenantId(maniaDeMulher.id);
+          }
+        }
       } catch (e) {
         console.error('Erro ao listar empresas:', e);
       } finally {

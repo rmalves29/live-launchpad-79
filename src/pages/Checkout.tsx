@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
+import { TenantDebugInfo } from '@/components/TenantDebugInfo';
 
 interface OrderItem {
   id: number;
@@ -1125,9 +1126,15 @@ const Checkout = () => {
       
       <p className="text-muted-foreground mb-6">Processe pagamentos e finalize pedidos</p>
 
+      {/* Componente de Debug - mostra apenas em localhost/preview */}
+      {window.location.hostname === 'localhost' || 
+       window.location.hostname.includes('lovable') ? (
+        <TenantDebugInfo />
+      ) : null}
+
       {/* Alerta quando não há tenant selecionado no modo preview */}
       {!tenantId && (
-        <Alert className="mb-6 border-orange-500 bg-orange-50">
+        <Alert className="mb-6 mt-4 border-orange-500 bg-orange-50">
           <AlertTriangle className="h-4 w-4 text-orange-600" />
           <AlertDescription className="text-orange-900">
             <strong>Modo Preview:</strong> Você precisa selecionar uma empresa no seletor acima para visualizar e processar pedidos. 
@@ -1136,7 +1143,7 @@ const Checkout = () => {
         </Alert>
       )}
 
-      <Card>
+      <Card className="mt-4">
         <CardHeader>
           <CardTitle className="flex items-center">
             <Search className="h-5 w-5 mr-2" />
