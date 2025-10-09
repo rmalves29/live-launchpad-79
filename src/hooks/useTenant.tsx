@@ -70,7 +70,9 @@ export const useTenant = (): UseTenantReturn => {
               return;
             }
 
-            console.warn('Preview tenant inválido ou não encontrado:', previewErr);
+            // Se o tenant preview não foi encontrado ou é inválido, limpar localStorage
+            console.warn('⚠️ Preview tenant inválido ou não encontrado, limpando localStorage:', previewErr);
+            localStorage.removeItem(PREVIEW_TENANT_KEY);
           }
 
           console.log(isLovablePreview ? '🧪 Preview Lovable - sem tenant' : '🏠 Modo desenvolvimento - sem tenant');

@@ -17,11 +17,20 @@ interface TenantLoaderProps {
 export const TenantLoader = ({ children }: TenantLoaderProps) => {
   const { tenant, loading, error, isValidSubdomain, tenantId, isMainSite } = useTenantContext();
 
-  // Configurar o cliente Supabase com o tenant atual (com fallback de preview)
+  // Configurar o cliente Supabase com o tenant atual (apenas se válido)
   useEffect(() => {
-    const previewId = localStorage.getItem('previewTenantId');
-    const effective = tenantId ?? previewId ?? null;
-    supabaseTenant.setTenantId(effective);
+    // Apenas usar tenantId se for válido (não usar previewId do localStorage aqui)
+    // O hook useTenant já cuidou de validar o previewId
+    supabaseTenant.setTenantId(tenantId);
+    
+    // Se não há tenant válido, limpar qualquer previewId antigo
+    if (!tenantId) {
+      const previewId = localStorage.getItem('previewTenantId');
+      if (previewId) {
+        console.log('🧹 Limpando preview tenant ID inválido do localStorage');
+        localStorage.removeItem('previewTenantId');
+      }
+    }
   }, [tenantId]);
 
   // Loading state

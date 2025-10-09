@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent, Gift } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent, Gift, AlertTriangle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
@@ -184,12 +185,15 @@ const Checkout = () => {
 
     if (!tenantId) {
       toast({
-        title: 'Erro',
-        description: 'Tenant não identificado',
+        title: 'Erro - Tenant não identificado',
+        description: 'Por favor, selecione uma empresa no modo preview ou acesse via subdomínio correto',
         variant: 'destructive'
       });
+      console.error('❌ tenantId não definido. Não é possível carregar pedidos.');
       return;
     }
+
+    console.log('📋 Carregando pedidos para tenant:', tenantId);
 
     // Normalizar o telefone para busca
     const normalizedPhone = normalizeForStorage(phone);
@@ -1120,6 +1124,17 @@ const Checkout = () => {
       </div>
       
       <p className="text-muted-foreground mb-6">Processe pagamentos e finalize pedidos</p>
+
+      {/* Alerta quando não há tenant selecionado no modo preview */}
+      {!tenantId && (
+        <Alert className="mb-6 border-orange-500 bg-orange-50">
+          <AlertTriangle className="h-4 w-4 text-orange-600" />
+          <AlertDescription className="text-orange-900">
+            <strong>Modo Preview:</strong> Você precisa selecionar uma empresa no seletor acima para visualizar e processar pedidos. 
+            Os dados mostrados serão referentes à empresa selecionada.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>

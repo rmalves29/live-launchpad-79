@@ -36,6 +36,17 @@ export const TenantSwitcher = () => {
           .rpc('list_active_tenants_basic');
         if (error) throw error;
         setTenants(data || []);
+        
+        // Verificar se o tenant selecionado ainda é válido
+        const current = localStorage.getItem(PREVIEW_TENANT_KEY);
+        if (current && data) {
+          const exists = data.find((t: Tenant) => t.id === current);
+          if (!exists) {
+            console.warn('⚠️ Tenant selecionado não encontrado, limpando localStorage');
+            localStorage.removeItem(PREVIEW_TENANT_KEY);
+            setSelected(undefined);
+          }
+        }
       } catch (e) {
         console.error('Erro ao listar empresas:', e);
       } finally {
