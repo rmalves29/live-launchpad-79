@@ -131,15 +131,24 @@ async function createTenantClient(tenant) {
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--disable-software-rasterizer',
-        '--disable-extensions'
+        '--disable-extensions',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor'
       ],
-      timeout: 0
+      timeout: 60000,
+      protocolTimeout: 240000
+    },
+    webVersionCache: {
+      type: 'remote',
+      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
     },
     qrMaxRetries: 5,
-    authTimeoutMs: 0,
+    authTimeoutMs: 60000,
     restartOnAuthFail: true,
     takeoverOnConflict: true,
-    takeoverTimeoutMs: 0
+    takeoverTimeoutMs: 60000
   });
 
   client.on('qr', (qr) => {
