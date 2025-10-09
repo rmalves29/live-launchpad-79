@@ -94,6 +94,7 @@ class TenantManager {
     }
 
     console.log(`⚙️ ${tenant.name}: Configurando Puppeteer...`);
+    console.log(`📁 Diretório de autenticação: ${authDir}`);
     
     const client = new Client({
       authStrategy: new LocalAuth({
@@ -107,13 +108,16 @@ class TenantManager {
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-gpu',
-          '--disable-software-rasterizer'
-        ]
+          '--disable-software-rasterizer',
+          '--disable-web-security'
+        ],
+        timeout: 60000
       },
-      qrMaxRetries: 5
+      qrMaxRetries: 10
     });
     
     console.log(`✅ ${tenant.name}: Cliente WhatsApp configurado`);
+    console.log(`⏰ ${tenant.name}: Timeout configurado para 60 segundos`);
 
     // Event: QR Code gerado
     client.on('qr', (qr) => {
@@ -186,18 +190,33 @@ class TenantManager {
     this.clients.set(tenantId, client);
     this.status.set(tenantId, 'initializing');
 
-    // Inicializar
+    // Inicializar com timeout forçado
     console.log(`\n🚀 ${tenant.name}: INICIANDO WHATSAPP WEB`);
     console.log(`📡 Conectando ao servidor do WhatsApp...`);
-    console.log(`⏰ Isso pode demorar 30-60 segundos...\n`);
+    console.log(`⏰ Timeout máximo: 90 segundos\n`);
     
     let initStartTime = Date.now();
+    let initializationComplete = false;
 
     try {
-      console.log(`⚙️ [${new Date().toLocaleTimeString()}] Inicializando Puppeteer (Chrome)...`);
+      console.log(`⚙️ [${new Date().toLocaleTimeString()}] Passo 1/3: Inicializando Puppeteer...`);
       
-      await client.initialize();
+      // Criar um timeout manual de 90 segundos
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          if (!initializationComplete) {
+            reject(new Error('Timeout: Puppeteer demorou mais de 90 segundos para inicializar'));
+          }
+        }, 90000);
+      });
+
+      // Inicializar com race entre a inicialização e o timeout
+      await Promise.race([
+        client.initialize(),
+        timeoutPromise
+      ]);
       
+      initializationComplete = true;
       const elapsed = Math.round((Date.now() - initStartTime) / 1000);
       console.log(`\n✅ ${tenant.name}: INICIALIZAÇÃO COMPLETA em ${elapsed}s!`);
     } catch (error) {
@@ -205,22 +224,33 @@ class TenantManager {
       console.error(`\n❌ ${tenant.name}: FALHA após ${elapsed}s`);
       console.error(`📋 Erro: ${error.message}`);
       
-      if (error.message.includes('Protocol error') || error.message.includes('Target closed')) {
-        console.error(`\n🔧 SOLUÇÃO: Esse erro geralmente indica Chrome corrompido`);
-        console.error(`   Execute estes comandos:`);
-        console.error(`   1. npm uninstall whatsapp-web.js`);
+      if (error.message.includes('Timeout')) {
+        console.error(`\n⏰ TIMEOUT DETECTADO!`);
+        console.error(`\n🔧 SOLUÇÕES POSSÍVEIS (tente nesta ordem):`);
+        console.error(`\n   OPÇÃO 1 - Limpar cache (mais rápido):`);
+        console.error(`   1. Pare o servidor (Ctrl+C)`);
+        console.error(`   2. Delete: rmdir /s /q .wwebjs_auth_clean`);
+        console.error(`   3. Reinicie: start-clean.bat`);
+        console.error(`\n   OPÇÃO 2 - Reinstalar Puppeteer (recomendado):`);
+        console.error(`   1. npm uninstall whatsapp-web.js puppeteer`);
         console.error(`   2. npm cache clean --force`);
-        console.error(`   3. npm install whatsapp-web.js`);
-        console.error(`   4. Delete a pasta: node_modules\\puppeteer\\.local-chromium\n`);
-      } else if (error.message.includes('timeout')) {
-        console.error(`\n🔧 SOLUÇÃO: Timeout - tente:`);
-        console.error(`   1. Feche todos os navegadores Chrome/Edge`);
-        console.error(`   2. Delete a pasta: ${authDir}`);
-        console.error(`   3. Desative temporariamente o antivírus`);
-        console.error(`   4. Reinicie o PC\n`);
+        console.error(`   3. npm install whatsapp-web.js@latest`);
+        console.error(`   4. Delete: rmdir /s /q .wwebjs_auth_clean`);
+        console.error(`   5. Reinicie: start-clean.bat`);
+        console.error(`\n   OPÇÃO 3 - Se nada funcionar:`);
+        console.error(`   1. Feche TODOS os navegadores Chrome/Edge/Brave`);
+        console.error(`   2. Desative antivírus temporariamente`);
+        console.error(`   3. Reinicie o computador`);
+        console.error(`   4. Tente novamente\n`);
+      } else if (error.message.includes('Protocol error') || error.message.includes('Target closed')) {
+        console.error(`\n🔧 SOLUÇÃO: Chrome corrompido`);
+        console.error(`   1. npm uninstall whatsapp-web.js puppeteer`);
+        console.error(`   2. npm cache clean --force`);
+        console.error(`   3. npm install whatsapp-web.js@latest`);
+        console.error(`   4. Delete: rmdir /s /q .wwebjs_auth_clean\n`);
       } else {
         console.error(`\n🔧 SOLUÇÃO GERAL:`);
-        console.error(`   1. Delete: ${authDir}`);
+        console.error(`   1. Delete: rmdir /s /q .wwebjs_auth_clean`);
         console.error(`   2. Reinicie o servidor`);
         console.error(`   3. Se persistir, reinstale as dependências\n`);
       }
