@@ -148,15 +148,32 @@ async function createWhatsAppClient() {
     console.log(`🔌 Desconectado ${TENANT_NAME}:`, reason);
     clientStatus = 'offline';
     
-    console.log(`🔄 Tentando reconectar ${TENANT_NAME} em 10 segundos...`);
+    // LOGOUT é intencional - não reconectar automaticamente
+    if (reason === 'LOGOUT' || reason === 'UNPAIRED') {
+      console.log(`⚠️ Desconexão por ${reason} - NÃO será reconectado automaticamente`);
+      console.log(`⚠️ Para reconectar, reinicie o servidor: start-mania-mulher.bat`);
+      return;
+    }
+    
+    // Para outras desconexões, tentar reconectar
+    console.log(`🔄 Tentando reconectar ${TENANT_NAME} em 30 segundos...`);
     setTimeout(async () => {
       try {
+        console.log(`🔄 Destruindo cliente anterior...`);
+        await client.destroy().catch(() => {});
+        
+        await delay(5000);
+        
         console.log(`🔄 Reconectando ${TENANT_NAME}...`);
         await client.initialize();
       } catch (error) {
         console.error(`❌ Erro ao reconectar ${TENANT_NAME}:`, error.message);
+        
+        if (error.message && error.message.includes('EBUSY')) {
+          console.error(`⚠️ Arquivo bloqueado pelo Windows - reinicie o servidor manualmente`);
+        }
       }
-    }, 10000);
+    }, 30000);
   });
 
   client.on('message', async (message) => {
