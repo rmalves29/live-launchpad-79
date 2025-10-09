@@ -102,14 +102,15 @@ async function createWhatsAppClient() {
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--disable-software-rasterizer',
-        '--disable-extensions'
+        '--disable-extensions',
+        '--disable-web-security'
       ],
       timeout: 0
     },
     qrMaxRetries: 5,
     authTimeoutMs: 0,
-    restartOnAuthFail: true,
-    takeoverOnConflict: true,
+    restartOnAuthFail: false,
+    takeoverOnConflict: false,
     takeoverTimeoutMs: 0
   });
 
@@ -145,51 +146,9 @@ async function createWhatsAppClient() {
   });
 
   client.on('disconnected', (reason) => {
-    console.log(`🔌 Desconectado ${TENANT_NAME}:`, reason);
+    console.log(`⚠️ Desconectado ${TENANT_NAME}:`, reason);
+    console.log(`⚠️ ATENÇÃO: Conexão perdida - reinicie o servidor manualmente se necessário`);
     clientStatus = 'offline';
-    
-    console.log(`🔄 Aguardando 15 segundos para reconectar ${TENANT_NAME}...`);
-    
-    setTimeout(async () => {
-      try {
-        console.log(`🔄 Iniciando processo de reconexão...`);
-        
-        // Se foi LOGOUT ou UNPAIRED, limpar sessão antes de reconectar
-        if (reason === 'LOGOUT' || reason === 'UNPAIRED') {
-          console.log(`⚠️ ${reason} detectado - limpando sessão para gerar novo QR Code...`);
-          
-          try {
-            await client.destroy();
-            await delay(3000);
-            
-            // Limpar diretório de sessão
-            const authPath = getAuthDir();
-            const sessionPath = path.join(authPath, 'session-mania_mulher');
-            
-            if (fs.existsSync(sessionPath)) {
-              console.log(`🗑️ Removendo sessão antiga: ${sessionPath}`);
-              fs.rmSync(sessionPath, { recursive: true, force: true });
-            }
-            
-            await delay(2000);
-          } catch (cleanError) {
-            console.error(`⚠️ Erro ao limpar sessão:`, cleanError.message);
-          }
-        }
-        
-        console.log(`🔄 Reconectando ${TENANT_NAME}...`);
-        await client.initialize();
-        
-      } catch (error) {
-        console.error(`❌ Erro ao reconectar ${TENANT_NAME}:`, error.message);
-        
-        // Tentar novamente em 30 segundos
-        console.log(`🔄 Nova tentativa em 30 segundos...`);
-        setTimeout(() => {
-          client.initialize().catch(() => {});
-        }, 30000);
-      }
-    }, 15000);
   });
 
   client.on('message', async (message) => {
