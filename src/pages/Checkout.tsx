@@ -223,37 +223,62 @@ const Checkout = () => {
       const ordersWithItems = await Promise.all(
         (orders || []).map(async (order) => {
           if (!order.cart_id) {
+            console.log(`⚠️ Pedido ${order.id} sem cart_id`);
             return { ...order, items: [] };
           }
 
+          console.log(`🔍 Buscando items para pedido ${order.id}, cart_id: ${order.cart_id}, tenant_id: ${tenantId}`);
+
+          // Buscar cart_items - o supabaseTenant já adiciona o filtro tenant_id automaticamente
           const { data: cartItems, error: itemsError } = await supabaseTenant
             .from('cart_items')
             .select(`
               id,
               qty,
               unit_price,
-              product:products!cart_items_product_id_fkey(
+              product_id,
+              products!cart_items_product_id_fkey(
+                id,
                 name,
                 code,
-                image_url
+                image_url,
+                tenant_id
               )
             `)
             .eq('cart_id', order.cart_id);
 
+          console.log(`📦 Items encontrados para pedido ${order.id}:`, cartItems?.length || 0);
+          
           if (itemsError) {
-            console.error('Error loading cart items:', itemsError);
+            console.error(`❌ Erro ao carregar items do pedido ${order.id}:`, itemsError);
             return { ...order, items: [] };
           }
 
-          const items = (cartItems || []).map(item => ({
-            id: item.id,
-            product_name: item.product?.name || '',
-            product_code: item.product?.code || '',
-            qty: item.qty,
-            unit_price: Number(item.unit_price),
-            image_url: item.product?.image_url
-          }));
+          if (!cartItems || cartItems.length === 0) {
+            console.warn(`⚠️ Nenhum item encontrado para cart_id ${order.cart_id}`);
+          }
 
+          const items = (cartItems || []).map(item => {
+            const product = item.products;
+            console.log(`📦 Item:`, { 
+              id: item.id, 
+              product_id: item.product_id,
+              product_name: product?.name,
+              product_tenant_id: product?.tenant_id,
+              expected_tenant_id: tenantId
+            });
+            
+            return {
+              id: item.id,
+              product_name: product?.name || 'Produto não encontrado',
+              product_code: product?.code || '',
+              qty: item.qty,
+              unit_price: Number(item.unit_price),
+              image_url: product?.image_url
+            };
+          });
+
+          console.log(`✅ Pedido ${order.id} processado com ${items.length} items`);
           return { ...order, items };
         })
       );
