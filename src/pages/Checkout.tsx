@@ -229,14 +229,15 @@ const Checkout = () => {
 
           console.log(`🔍 Buscando items para pedido ${order.id}, cart_id: ${order.cart_id}, tenant_id: ${tenantId}`);
 
-          // Buscar cart_items - o supabaseTenant já adiciona o filtro tenant_id automaticamente
-          const { data: cartItems, error: itemsError } = await supabaseTenant
+          // Usar o cliente raw e adicionar filtros manualmente para evitar problemas com o join
+          const { data: cartItems, error: itemsError } = await supabaseTenant.raw
             .from('cart_items')
             .select(`
               id,
               qty,
               unit_price,
               product_id,
+              tenant_id,
               products!cart_items_product_id_fkey(
                 id,
                 name,
@@ -245,7 +246,8 @@ const Checkout = () => {
                 tenant_id
               )
             `)
-            .eq('cart_id', order.cart_id);
+            .eq('cart_id', order.cart_id)
+            .eq('tenant_id', tenantId);
 
           console.log(`📦 Items encontrados para pedido ${order.id}:`, cartItems?.length || 0);
           
