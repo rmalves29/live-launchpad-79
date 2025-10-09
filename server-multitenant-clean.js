@@ -96,6 +96,11 @@ class TenantManager {
     console.log(`⚙️ ${tenant.name}: Configurando Puppeteer...`);
     console.log(`📁 Diretório de autenticação: ${authDir}`);
     
+    console.log(`\n🔍 [DEBUG] Verificando configuração Puppeteer:`);
+    console.log(`   - headless: 'new'`);
+    console.log(`   - args: ${JSON.stringify(['--no-sandbox', '--disable-setuid-sandbox', '...'])}`);
+    console.log(`   - timeout: 60000ms\n`);
+    
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: `tenant_${tenantId}`,
@@ -122,7 +127,7 @@ class TenantManager {
     });
     
     console.log(`✅ ${tenant.name}: Cliente WhatsApp configurado`);
-    console.log(`⏰ ${tenant.name}: Timeout configurado para 60 segundos`);
+    console.log(`⏰ ${tenant.name}: Timeout configurado para 60 segundos\n`);
 
     // Event: QR Code gerado
     client.on('qr', (qr) => {
