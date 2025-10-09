@@ -67,7 +67,19 @@ async function supaRaw(pathname, init) {
   };
   const res = await fetch(url, { ...init, headers: { ...headers, ...(init && init.headers) } });
   if (!res.ok) throw new Error(`Supabase ${res.status} ${pathname} ${await res.text()}`);
-  return res.json();
+  
+  // Verificar se há conteúdo antes de parsear JSON
+  const text = await res.text();
+  if (!text || text.trim() === '') {
+    return null;
+  }
+  
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    console.error('❌ Erro ao parsear JSON:', text.substring(0, 100));
+    return null;
+  }
 }
 
 /* ============================ WHATSAPP CLIENT ============================ */
@@ -244,8 +256,11 @@ async function handleIncomingMessage(message) {
 
     // Log no banco
     try {
-      await supaRaw('/whatsapp_messages', {
+      const result = await supaRaw('/whatsapp_messages', {
         method: 'POST',
+        headers: {
+          'Prefer': 'return=minimal'
+        },
         body: JSON.stringify({
           tenant_id: TENANT_ID,
           phone: authorPhone,
@@ -255,6 +270,7 @@ async function handleIncomingMessage(message) {
           whatsapp_group_name: groupName
         })
       });
+      console.log('✅ Mensagem salva no banco');
     } catch (dbError) {
       console.error('❌ Erro salvar banco:', dbError.message);
     }
@@ -353,6 +369,9 @@ app.post('/send', async (req, res) => {
     try {
       await supaRaw('/whatsapp_messages', {
         method: 'POST',
+        headers: {
+          'Prefer': 'return=minimal'
+        },
         body: JSON.stringify({
           tenant_id: TENANT_ID,
           phone: normalizedPhone,
@@ -361,6 +380,7 @@ app.post('/send', async (req, res) => {
           sent_at: new Date().toISOString()
         })
       });
+      console.log('✅ Mensagem outgoing salva no banco');
     } catch (dbError) {
       console.error(`⚠️ Erro ao salvar no banco:`, dbError.message);
     }
@@ -411,6 +431,9 @@ app.post('/broadcast', async (req, res) => {
         
         await supaRaw('/whatsapp_messages', {
           method: 'POST',
+          headers: {
+            'Prefer': 'return=minimal'
+          },
           body: JSON.stringify({
             tenant_id: TENANT_ID,
             phone: normalizedPhone,
