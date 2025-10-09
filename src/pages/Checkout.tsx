@@ -229,50 +229,54 @@ const Checkout = () => {
 
           console.log(`🔍 Buscando items para pedido ${order.id}, cart_id: ${order.cart_id}, tenant_id: ${tenantId}`);
 
-          // Usar o cliente raw e adicionar filtros manualmente para evitar problemas com o join
+          // Buscar cart_items do tenant
           const { data: cartItems, error: itemsError } = await supabaseTenant.raw
             .from('cart_items')
-            .select(`
-              id,
-              qty,
-              unit_price,
-              product_id,
-              tenant_id,
-              products!cart_items_product_id_fkey(
-                id,
-                name,
-                code,
-                image_url,
-                tenant_id
-              )
-            `)
+            .select('id, qty, unit_price, product_id, tenant_id')
             .eq('cart_id', order.cart_id)
             .eq('tenant_id', tenantId);
 
-          console.log(`📦 Items encontrados para pedido ${order.id}:`, cartItems?.length || 0);
-          
+          console.log(`📦 Cart items brutos encontrados:`, cartItems?.length || 0, cartItems);
+
           if (itemsError) {
-            console.error(`❌ Erro ao carregar items do pedido ${order.id}:`, itemsError);
+            console.error(`❌ Erro ao carregar cart items:`, itemsError);
             return { ...order, items: [] };
           }
 
           if (!cartItems || cartItems.length === 0) {
-            console.warn(`⚠️ Nenhum item encontrado para cart_id ${order.cart_id}`);
+            console.warn(`⚠️ Nenhum cart item encontrado para cart_id ${order.cart_id}`);
+            return { ...order, items: [] };
           }
 
+          // Buscar produtos correspondentes
+          const productIds = cartItems.map(item => item.product_id);
+          const { data: products, error: productsError } = await supabaseTenant.raw
+            .from('products')
+            .select('id, name, code, image_url, tenant_id')
+            .in('id', productIds)
+            .eq('tenant_id', tenantId);
+
+          console.log(`📦 Produtos encontrados:`, products?.length || 0, products);
+
+          if (productsError) {
+            console.error(`❌ Erro ao carregar produtos:`, productsError);
+            return { ...order, items: [] };
+          }
+
+          // Mapear cart_items com produtos
           const items = (cartItems || []).map(item => {
-            const product = item.products;
-            console.log(`📦 Item:`, { 
-              id: item.id, 
+            const product = (products || []).find(p => p.id === item.product_id);
+            console.log(`📦 Item ${item.id}:`, { 
               product_id: item.product_id,
+              product_found: !!product,
               product_name: product?.name,
-              product_tenant_id: product?.tenant_id,
-              expected_tenant_id: tenantId
+              qty: item.qty,
+              unit_price: item.unit_price
             });
             
             return {
               id: item.id,
-              product_name: product?.name || 'Produto não encontrado',
+              product_name: product?.name || `Produto ID ${item.product_id}`,
               product_code: product?.code || '',
               qty: item.qty,
               unit_price: Number(item.unit_price),
