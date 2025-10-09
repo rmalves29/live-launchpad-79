@@ -121,16 +121,13 @@ class WhatsAppService {
       
       console.log('🌐 [WS] URL do servidor:', serverUrl);
       
-      // SEMPRE garantir que tenant_id está no data (mesmo que já esteja)
+      // Preparar dados da requisição (tenant_id apenas no body, NÃO duplicar)
       const requestData = {
-        tenant_id: tenantId,
         ...data,
+        tenant_id: tenantId, // Sobrescrever para garantir valor correto
       };
       
-      // Forçar tenant_id novamente para ter certeza
-      requestData.tenant_id = tenantId;
-      
-      console.log('📤 [WS] Dados finais a enviar (com tenant_id garantido):', JSON.stringify(requestData, null, 2));
+      console.log('📤 [WS] Dados finais a enviar:', JSON.stringify(requestData, null, 2));
       
       const fullUrl = `${serverUrl}${endpoint}`;
       console.log('🔗 [WS] URL completa:', fullUrl);
@@ -147,7 +144,6 @@ class WhatsAppService {
           headers: {
             'Content-Type': 'application/json',
             'x-tenant-id': tenantId,
-            'X-Tenant-Id': tenantId, // Maiúscula também para garantir
           },
           body: JSON.stringify(requestData),
           signal: controller.signal,

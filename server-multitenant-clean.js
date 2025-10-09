@@ -500,11 +500,22 @@ async function createApp(tenantManager) {
   app.post('/send', async (req, res) => {
     try {
       const { number, message, phone } = req.body;
-      const tenantId = req.tenantId;
-
+      
+      // Debug: verificar todas as fontes de tenant_id
+      const rawTenantId = {
+        header: req.headers['x-tenant-id'],
+        headerAlt: req.headers['X-Tenant-Id'],
+        query: req.query.tenant_id,
+        body: req.body?.tenant_id,
+        processed: req.tenantId
+      };
+      
       console.log('\n📨 [POST /send] Nova requisição');
-      console.log('🔑 Tenant ID:', tenantId);
+      console.log('🔍 Debug Tenant ID (raw):', JSON.stringify(rawTenantId, null, 2));
+      console.log('🔑 Tenant ID (processado):', req.tenantId);
       console.log('📞 Telefone:', number || phone);
+      
+      const tenantId = req.tenantId;
 
       // Validar tenant_id
       if (!tenantId) {
