@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Menu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,11 +13,7 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
   const { user, profile } = useAuth();
   const { tenant } = useTenant();
-  const location = useLocation();
-  const isWhatsAppActive = ['/whatsapp-templates', '/whatsapp-integration', '/sendflow'].includes(location.pathname);
-
   const enableLive = tenant?.enable_live ?? true;
-  const enableSendFlow = tenant?.enable_sendflow ?? true;
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Pedidos Manual' },
@@ -28,14 +23,10 @@ const Navbar = () => {
     { path: '/clientes', label: 'Clientes' },
     { path: '/pedidos', label: 'Pedidos' },
     { path: '/relatorios', label: 'Relatórios' },
-    { path: '/whatsapp-templates', label: 'Templates WPP' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/etiquetas', label: 'Etiquetas' },
     ...(user?.email === 'rmalves21@hotmail.com' ? [{ path: '/config', label: 'Configurações' }] : [])
   ];
-
-  const whatsappItems = ['/whatsapp-templates', '/whatsapp-integration', '/sendflow'];
-  const filteredNavItems = navItems.filter((item) => !whatsappItems.includes(item.path));
 
   return (
     <nav className="bg-card border-b shadow-sm">
@@ -53,7 +44,7 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-4">
-            {filteredNavItems.map((item) => (
+            {navItems.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
@@ -70,34 +61,6 @@ const Navbar = () => {
             ))}
 
             <TenantSwitcher />
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    isWhatsAppActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                  }`}
-                >
-                  WhatsApp
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <NavLink to="/whatsapp-integration">Integração WhatsApp</NavLink>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <NavLink to="/whatsapp-templates">Templates WPP</NavLink>
-                </DropdownMenuItem>
-                {enableSendFlow && (
-                  <DropdownMenuItem asChild>
-                    <NavLink to="/sendflow">SendFlow</NavLink>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
 
             {user ? (
               <div className="flex items-center space-x-2">
@@ -121,7 +84,7 @@ const Navbar = () => {
               </SheetTrigger>
               <SheetContent side="right" className="w-[300px]">
                 <div className="flex flex-col space-y-4 mt-8">
-                  {filteredNavItems.map((item) => (
+                  {navItems.map((item) => (
                     <NavLink
                       key={item.path}
                       to={item.path}
@@ -137,53 +100,6 @@ const Navbar = () => {
                       {item.label}
                     </NavLink>
                   ))}
-
-                    <div className="pt-2">
-                      <div className="px-3 pb-1 text-xs uppercase text-muted-foreground">WhatsApp</div>
-                      <div className="flex flex-col space-y-2">
-                        <NavLink
-                          to="/whatsapp-integration"
-                          onClick={() => setOpen(false)}
-                          className={({ isActive }) =>
-                            `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                              isActive
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                            }`
-                          }
-                        >
-                          Integração WhatsApp
-                        </NavLink>
-                        <NavLink
-                          to="/whatsapp-templates"
-                          onClick={() => setOpen(false)}
-                          className={({ isActive }) =>
-                            `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                              isActive
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                            }`
-                          }
-                        >
-                          Templates WPP
-                        </NavLink>
-                        {enableSendFlow && (
-                          <NavLink
-                            to="/sendflow"
-                            onClick={() => setOpen(false)}
-                            className={({ isActive }) =>
-                              `px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                                isActive
-                                  ? 'bg-primary text-primary-foreground'
-                                  : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                              }`
-                            }
-                          >
-                            SendFlow
-                          </NavLink>
-                        )}
-                      </div>
-                    </div>
                 </div>
               </SheetContent>
             </Sheet>
