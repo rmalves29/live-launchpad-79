@@ -4,12 +4,26 @@ Sistema moderno e eficiente de integração WhatsApp multi-tenant.
 
 ## 🚀 Inicialização Rápida
 
-### Windows
+### 1. Instalar Dependências
+
+**Windows:**
+```bash
+instalar-dependencias-whatsapp.bat
+```
+
+**Linux/Mac:**
+```bash
+npm install whatsapp-web.js@latest express@latest cors@latest qrcode-terminal@latest node-fetch@2.7.0
+```
+
+### 2. Iniciar o Servidor
+
+**Windows**
 ```bash
 start-whatsapp.bat
 ```
 
-### Linux/Mac
+**Linux/Mac**
 ```bash
 chmod +x start-whatsapp.sh
 ./start-whatsapp.sh
@@ -112,6 +126,22 @@ O sistema utiliza as seguintes tabelas do Supabase:
 - Comunicação com Supabase via Service Role Key
 
 ## 🐛 Troubleshooting
+
+### ❌ Erro: "Could not find Chromium"
+
+Se aparecer erro sobre Chromium não encontrado:
+
+1. **Execute o instalador de dependências:**
+   ```bash
+   instalar-dependencias-whatsapp.bat  # Windows
+   npm install puppeteer@latest        # Linux/Mac
+   ```
+
+2. **O servidor tentará automaticamente usar o Chrome instalado no seu sistema**
+
+3. **Se persistir, instale o Google Chrome:**
+   - Windows: https://www.google.com/chrome/
+   - Linux: `sudo apt install google-chrome-stable`
 
 ### QR Code não aparece
 - Verifique se o servidor está rodando

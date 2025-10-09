@@ -12,4 +12,11 @@ export PORT=3333
 echo "Iniciando servidor WhatsApp..."
 echo ""
 
+echo "📦 Instalando/verificando dependências..."
+npm install whatsapp-web.js@latest express@latest cors@latest qrcode-terminal@latest node-fetch@2.7.0
+
+echo ""
+echo "🚀 Iniciando servidor..."
+echo ""
+
 node server-multitenant-clean.js

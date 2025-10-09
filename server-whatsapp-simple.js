@@ -60,6 +60,26 @@ async function createClient(tenantId, tenantName) {
 
   console.log(`🚀 Criando cliente WhatsApp para tenant: ${tenantName} (${tenantId})`);
 
+  // Tentar encontrar Chrome/Chromium instalado no sistema
+  const chromePaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  ];
+  
+  const fs = require('fs');
+  let executablePath = undefined;
+  
+  for (const path of chromePaths) {
+    if (fs.existsSync(path)) {
+      executablePath = path;
+      console.log(`✅ Chrome encontrado: ${path}`);
+      break;
+    }
+  }
+
   const client = new Client({
     authStrategy: new LocalAuth({
       clientId: tenantId,
@@ -67,6 +87,7 @@ async function createClient(tenantId, tenantName) {
     }),
     puppeteer: {
       headless: true,
+      executablePath, // Usar Chrome do sistema se encontrado
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
