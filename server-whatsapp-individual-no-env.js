@@ -197,19 +197,19 @@ async function createTenantClient(tenant) {
   tenantStatus.set(tenant.id, 'initializing');
   
   console.log(`🔄 Iniciando WhatsApp Web para: ${tenant.name}...`);
-  console.log(`⏰ Aguarde o QR Code aparecer (pode levar até 60 segundos)...`);
+  console.log(`⏰ Aguarde o QR Code aparecer (pode levar até 90 segundos)...`);
   console.log(`📂 Logs serão exibidos abaixo conforme o WhatsApp Web carregar...`);
   
-  // Timeout de segurança maior para Windows
+  // Timeout de segurança maior para Windows (90 segundos)
   const initTimeout = setTimeout(() => {
-    console.error(`\n⏱️ TIMEOUT: ${tenant.name} não gerou QR Code em 60 segundos`);
+    console.error(`\n⏱️ TIMEOUT: ${tenant.name} não gerou QR Code em 90 segundos`);
     console.error(`💡 Possíveis causas:`);
     console.error(`   1. Chromium travado - Tente fechar outros processos Chrome`);
     console.error(`   2. Falta de memória - Feche outros programas`);
     console.error(`   3. Antivírus bloqueando - Adicione exceção`);
     console.error(`\n🔧 Tente: node server-debug-visual.js (abre o navegador)`);
     tenantStatus.set(tenant.id, 'timeout');
-  }, 60000);
+  }, 90000);
   
   client.initialize()
     .then(() => {
@@ -314,13 +314,21 @@ async function initializeTenants() {
   }
   
   console.log(`📋 ${tenants.length} tenant(s) ativo(s)`);
+  console.log(`⏱️ Inicializando tenants sequencialmente (delay de 5s entre cada)...`);
   
+  // Inicializar sequencialmente com delay para evitar sobrecarga
   for (const tenant of tenants) {
     const integration = await getWhatsAppIntegration(tenant.id);
     
     if (integration) {
       console.log(`🔧 Inicializando: ${tenant.name}`);
       createTenantClient(tenant);
+      
+      // Aguardar 5 segundos antes do próximo tenant
+      if (tenants.indexOf(tenant) < tenants.length - 1) {
+        console.log(`⏳ Aguardando 5s antes do próximo tenant...`);
+        await delay(5000);
+      }
     } else {
       console.log(`⚠️ Sem integração WhatsApp: ${tenant.name}`);
     }

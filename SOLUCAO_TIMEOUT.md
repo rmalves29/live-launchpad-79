@@ -1,14 +1,33 @@
 # 🔧 SOLUÇÃO: Timeout do QR Code
 
 ## ⚠️ Problema
-O servidor inicia mas o QR Code não aparece, dando TIMEOUT após 60 segundos.
+O servidor inicia mas o QR Code não aparece, dando TIMEOUT após 60-90 segundos.
 
-## 🎯 Causa
-O Puppeteer (que controla o navegador Chrome) está travando no Windows.
+## 🎯 Causas Principais
+1. **Multi-tenant simultâneo**: Múltiplos tenants tentando inicializar ao mesmo tempo sobrecarregam o Chromium
+2. **Falta de memória RAM**: O Puppeteer precisa de recursos para cada instância do Chrome
+3. **Antivírus bloqueando**: Windows Defender ou outros antivírus podem bloquear o Chromium
 
 ---
 
-## ✅ SOLUÇÃO RÁPIDA (Siga nesta ordem)
+## ✅ SOLUÇÃO IMPLEMENTADA (v2.1)
+
+### Melhorias Automáticas
+- ✅ **Inicialização sequencial**: Tenants agora inicializam um por vez com delay de 5s
+- ✅ **Timeout aumentado**: 90 segundos para dar mais tempo no Windows
+- ✅ **Menos sobrecarga**: Chromium não é iniciado simultaneamente
+
+### Passo 1: Reiniciar o Servidor
+```cmd
+# Feche o servidor atual (CTRL+C)
+# Inicie novamente
+node server1.js
+```
+
+**O que você vai ver:**
+- ✅ Cada tenant inicia com 5 segundos de intervalo
+- ✅ "Aguardando 5s antes do próximo tenant..."
+- ✅ QR Code aparece para cada tenant sequencialmente
 
 ### Passo 1: Fechar Chrome
 ```
