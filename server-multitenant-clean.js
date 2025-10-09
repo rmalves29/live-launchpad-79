@@ -543,9 +543,37 @@ async function createApp(tenantManager) {
 
       if (!client) {
         console.error(`❌ Cliente não conectado: ${tenantId}`);
+        const statusInfo = tenantManager.getTenantStatus(tenantId);
+        
+        let errorMessage = '❌ WhatsApp não conectado para este tenant';
+        let solution = '';
+        
+        if (statusInfo.status === 'not_found') {
+          errorMessage = '❌ Tenant não encontrado no servidor';
+          solution = 'Verifique se o tenant_id está correto e se o servidor foi iniciado com este tenant.';
+        } else if (statusInfo.status === 'qr_code') {
+          errorMessage = '📱 WhatsApp aguardando QR Code';
+          solution = 'Abra o terminal do Node.js e escaneie o QR Code com seu WhatsApp.\n\n1. WhatsApp > Aparelhos conectados\n2. Conectar um aparelho\n3. Escaneie o QR Code';
+        } else if (statusInfo.status === 'initializing') {
+          errorMessage = '⏳ WhatsApp ainda está inicializando';
+          solution = 'Aguarde alguns segundos e tente novamente. O processo de inicialização pode levar até 60 segundos.';
+        } else if (statusInfo.status === 'auth_failure') {
+          errorMessage = '🔐 Falha na autenticação do WhatsApp';
+          solution = 'Execute no terminal:\n1. Pare o servidor (Ctrl+C)\n2. Delete: rmdir /s /q .wwebjs_auth_clean\n3. Reinicie: start-clean.bat';
+        } else if (statusInfo.status === 'error') {
+          errorMessage = '💥 Erro ao conectar WhatsApp';
+          solution = 'Consulte o terminal do Node.js para detalhes do erro. Pode ser necessário reinstalar as dependências (reinstalar-completo.bat).';
+        } else {
+          errorMessage = `⚠️ WhatsApp offline (status: ${statusInfo.status})`;
+          solution = 'Verifique o terminal do Node.js para mais informações.';
+        }
+        
         return res.status(503).json({
           success: false,
-          error: 'WhatsApp não conectado. Escaneie o QR Code primeiro.'
+          error: errorMessage,
+          solution: solution,
+          status: statusInfo.status,
+          tenant_id: tenantId
         });
       }
 

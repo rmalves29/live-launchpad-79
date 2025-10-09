@@ -169,11 +169,23 @@ class WhatsAppService {
         
         try {
           const errorData = JSON.parse(errorText);
-          const errorMsg = errorData.error || `Erro HTTP ${response.status}`;
+          
+          // Se o servidor retornou uma mensagem estruturada, usar ela
+          if (errorData.error && errorData.solution) {
+            const fullMessage = `${errorData.error}\n\n${errorData.solution}`;
+            console.error('❌ [WS] Erro estruturado:', fullMessage);
+            throw new Error(fullMessage);
+          }
+          
+          // Fallback para erro simples
+          const errorMsg = errorData.error || errorData.message || `Erro HTTP ${response.status}`;
           console.error('❌ [WS] Mensagem de erro:', errorMsg);
           throw new Error(errorMsg);
-        } catch {
-          throw new Error(`Servidor WhatsApp retornou erro ${response.status}. Verifique os logs do Node.js.`);
+        } catch (parseError) {
+          // Se não for JSON válido, usar texto puro
+          const errorMsg = errorText || `Erro HTTP ${response.status}`;
+          console.error('❌ [WS] Erro não-JSON:', errorMsg);
+          throw new Error(errorMsg);
         }
       }
 
