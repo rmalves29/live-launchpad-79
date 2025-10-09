@@ -93,6 +93,8 @@ class TenantManager {
       console.log(`📸 QR Code será exibido em breve...\n`);
     }
 
+    console.log(`⚙️ ${tenant.name}: Configurando Puppeteer...`);
+    
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: `tenant_${tenantId}`,
@@ -104,34 +106,44 @@ class TenantManager {
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
           '--disable-gpu',
           '--disable-software-rasterizer',
           '--disable-extensions',
           '--no-first-run',
-          '--no-default-browser-check',
+          '--no-zygote',
+          '--single-process',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
           '--disable-features=IsolateOrigins,site-per-process',
           '--disable-blink-features=AutomationControlled',
         ],
-        timeout: 90000,
-        protocolTimeout: 300000
+        timeout: 0,
+        protocolTimeout: 0
       },
       webVersionCache: {
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
       },
       qrMaxRetries: 5,
-      authTimeoutMs: 90000,
+      authTimeoutMs: 0,
       restartOnAuthFail: true,
       takeoverOnConflict: true,
-      takeoverTimeoutMs: 90000
+      takeoverTimeoutMs: 0
     });
+    
+    console.log(`✅ ${tenant.name}: Cliente WhatsApp configurado`);
 
     // Event: QR Code gerado
     client.on('qr', (qr) => {
       console.log(`\n${'='.repeat(70)}`);
-      console.log(`📱 QR CODE - ${tenant.name}`);
+      console.log(`📱 QR CODE GERADO - ${tenant.name}`);
       console.log(`${'='.repeat(70)}`);
-      console.log(`\n⚠️ Abra o WhatsApp no celular e escaneie o código:\n`);
+      console.log(`\n🔥 SUCESSO! Abra o WhatsApp no celular:`);
+      console.log(`   1. WhatsApp > Aparelhos conectados`);
+      console.log(`   2. Conectar um aparelho`);
+      console.log(`   3. Escaneie o QR Code abaixo:\n`);
       
       try {
         // Gerar QR Code no terminal
@@ -139,11 +151,12 @@ class TenantManager {
         qrcode.generate(qr, { small: true });
         
         console.log(`\n${'='.repeat(70)}`);
-        console.log(`💡 Dica: Se o QR está muito pequeno, aumente o zoom do terminal`);
+        console.log(`⏰ Tempo: 60 segundos para escanear`);
+        console.log(`💡 QR pequeno? Dê zoom no terminal (Ctrl + Scroll)`);
         console.log(`${'='.repeat(70)}\n`);
       } catch (error) {
-        console.error(`❌ Erro ao gerar QR no terminal:`, error.message);
-        console.log(`\n📋 QR Code (texto):\n${qr}\n`);
+        console.error(`❌ Erro ao gerar QR visual:`, error.message);
+        console.log(`\n📋 Use este QR Code em um gerador online:\n${qr}\n`);
       }
       
       this.status.set(tenantId, 'qr_code');
@@ -194,40 +207,45 @@ class TenantManager {
     this.status.set(tenantId, 'initializing');
 
     // Inicializar
-    console.log(`🔄 ${tenant.name}: Iniciando conexão com WhatsApp Web...`);
-    console.log(`⏰ Aguarde - pode levar até 2 minutos...\n`);
-
-    // Timeout de segurança aumentado
-    const initTimeout = setTimeout(() => {
-      const currentStatus = this.status.get(tenantId);
-      if (currentStatus !== 'online' && currentStatus !== 'authenticated') {
-        console.error(`\n⏱️ TIMEOUT: ${tenant.name} - Não conectou em 150s`);
-        console.error(`📊 Status atual: ${currentStatus}`);
-        console.error(`\n💡 Soluções:`);
-        console.error(`   1. Feche TODAS as abas do WhatsApp Web no navegador`);
-        console.error(`   2. Tente limpar a pasta de autenticação:`);
-        console.error(`      ${authDir}`);
-        console.error(`   3. Reinicie este servidor (Ctrl+C e rode novamente)`);
-        console.error(`   4. Se persistir, reinicie o computador\n`);
-        this.status.set(tenantId, 'timeout');
-      }
-    }, 150000);
+    console.log(`\n🚀 ${tenant.name}: INICIANDO WHATSAPP WEB`);
+    console.log(`📡 Conectando ao servidor do WhatsApp...`);
+    console.log(`⏰ Isso pode demorar 30-60 segundos...\n`);
+    
+    let initStartTime = Date.now();
 
     try {
-      console.log(`⚙️ ${tenant.name}: Inicializando Puppeteer...`);
-      await client.initialize();
-      clearTimeout(initTimeout);
-      console.log(`✅ ${tenant.name}: Inicialização completa!`);
-    } catch (error) {
-      clearTimeout(initTimeout);
-      console.error(`❌ ${tenant.name}: Erro na inicialização:`, error.message);
-      console.error(`📋 Detalhes do erro:`, error.stack);
-      this.status.set(tenantId, 'error');
+      console.log(`⚙️ [${new Date().toLocaleTimeString()}] Inicializando Puppeteer (Chrome)...`);
       
-      console.log(`\n🔧 Tentativas de solução:`);
-      console.log(`   1. Delete a pasta: ${authDir}`);
-      console.log(`   2. Reinicie o servidor`);
-      console.log(`   3. Verifique se há outro WhatsApp Web aberto\n`);
+      await client.initialize();
+      
+      const elapsed = Math.round((Date.now() - initStartTime) / 1000);
+      console.log(`\n✅ ${tenant.name}: INICIALIZAÇÃO COMPLETA em ${elapsed}s!`);
+    } catch (error) {
+      const elapsed = Math.round((Date.now() - initStartTime) / 1000);
+      console.error(`\n❌ ${tenant.name}: FALHA após ${elapsed}s`);
+      console.error(`📋 Erro: ${error.message}`);
+      
+      if (error.message.includes('Protocol error') || error.message.includes('Target closed')) {
+        console.error(`\n🔧 SOLUÇÃO: Esse erro geralmente indica Chrome corrompido`);
+        console.error(`   Execute estes comandos:`);
+        console.error(`   1. npm uninstall whatsapp-web.js`);
+        console.error(`   2. npm cache clean --force`);
+        console.error(`   3. npm install whatsapp-web.js`);
+        console.error(`   4. Delete a pasta: node_modules\\puppeteer\\.local-chromium\n`);
+      } else if (error.message.includes('timeout')) {
+        console.error(`\n🔧 SOLUÇÃO: Timeout - tente:`);
+        console.error(`   1. Feche todos os navegadores Chrome/Edge`);
+        console.error(`   2. Delete a pasta: ${authDir}`);
+        console.error(`   3. Desative temporariamente o antivírus`);
+        console.error(`   4. Reinicie o PC\n`);
+      } else {
+        console.error(`\n🔧 SOLUÇÃO GERAL:`);
+        console.error(`   1. Delete: ${authDir}`);
+        console.error(`   2. Reinicie o servidor`);
+        console.error(`   3. Se persistir, reinstale as dependências\n`);
+      }
+      
+      this.status.set(tenantId, 'error');
     }
 
     return client;
