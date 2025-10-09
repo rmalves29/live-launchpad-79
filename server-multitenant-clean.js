@@ -97,6 +97,7 @@ class TenantManager {
     console.log(`📁 Diretório de autenticação: ${authDir}`);
     
     console.log(`\n🔍 [DEBUG] Verificando configuração Puppeteer:`);
+    console.log(`   - executablePath: C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe`);
     console.log(`   - headless: 'new'`);
     console.log(`   - args: ${JSON.stringify(['--no-sandbox', '--disable-setuid-sandbox', '...'])}`);
     console.log(`   - timeout: 60000ms\n`);
@@ -107,6 +108,7 @@ class TenantManager {
         dataPath: authDir
       }),
       puppeteer: {
+        executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         headless: 'new',
         args: [
           '--no-sandbox',
