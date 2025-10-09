@@ -44,6 +44,37 @@ let processingQueue = false;
 /* ==================== UTILS ==================== */
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Função para limpar sessão com retry (apenas para LOGOUT/UNPAIRED)
+async function wipeSessionWithRetry(maxAttempts = 3) {
+  const rimraf = async (dirPath) => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        if (fs.existsSync(dirPath)) {
+          console.log(`🗑️ Tentativa ${attempt}/${maxAttempts}: Removendo ${dirPath}...`);
+          fs.rmSync(dirPath, { recursive: true, force: true, maxRetries: 3 });
+          console.log(`✅ ${dirPath} removido com sucesso`);
+          return true;
+        } else {
+          console.log(`ℹ️ ${dirPath} não existe`);
+          return true;
+        }
+      } catch (error) {
+        console.error(`⚠️ Tentativa ${attempt}/${maxAttempts} falhou:`, error.message);
+        if (attempt < maxAttempts) {
+          await delay(2000 * attempt); // Delay progressivo
+        } else {
+          console.error(`❌ Não foi possível remover ${dirPath} após ${maxAttempts} tentativas`);
+          return false;
+        }
+      }
+    }
+  };
+
+  await rimraf(SESSION_DIR);
+  await rimraf(path.join(SESSION_DIR, 'session'));
+  await rimraf(path.join(SESSION_DIR, 'session-' + TENANT_ID));
+}
+
 function normalizeDDD(phone) {
   if (!phone) return phone;
   let clean = String(phone).replace(/\D/g, '');
@@ -213,29 +244,52 @@ async function createWhatsAppClient() {
     console.warn('⚠️ Erro ao criar diretório:', error.message);
   }
   
+  // Detectar se é Windows
+  const isWindows = process.platform === 'win32';
+  
+  const puppeteerConfig = {
+    headless: isWindows ? false : true, // Headless false no Windows
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-extensions',
+      '--disable-software-rasterizer',
+      '--disable-features=FirstPartySets', // Flag crítico para estabilidade
+      '--single-process',
+      '--no-zygote',
+      '--no-first-run'
+    ],
+    timeout: 60000,
+    handleSIGINT: false,
+    handleSIGTERM: false,
+    handleSIGHUP: false
+  };
+
+  // Se Windows, tentar usar Chrome instalado
+  if (isWindows) {
+    const chromePaths = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
+    ];
+    
+    for (const chromePath of chromePaths) {
+      if (fs.existsSync(chromePath)) {
+        puppeteerConfig.executablePath = chromePath;
+        console.log(`✅ Chrome encontrado: ${chromePath}`);
+        break;
+      }
+    }
+  }
+
   const client = new Client({
     authStrategy: new LocalAuth({ 
       clientId: TENANT_ID,
       dataPath: SESSION_DIR
     }),
-    puppeteer: {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-extensions',
-        '--disable-software-rasterizer',
-        '--single-process',
-        '--no-zygote',
-        '--no-first-run'
-      ],
-      timeout: 60000,
-      handleSIGINT: false,
-      handleSIGTERM: false,
-      handleSIGHUP: false
-    }
+    puppeteer: puppeteerConfig
   });
   
   client.on('qr', (qr) => {
@@ -281,21 +335,27 @@ async function createWhatsAppClient() {
       return;
     }
     
-    // Se foi LOGOUT manual, não reconectar automaticamente
+    // Se foi LOGOUT ou UNPAIRED, limpar sessão com retry
     if (reason === 'LOGOUT' || reason === 'UNPAIRED') {
-      console.log('⚠️ Logout manual detectado, aguardando novo QR Code...');
+      console.log(`⚠️ ${reason} detectado - limpando sessão...`);
+      await wipeSessionWithRetry();
+      console.log('ℹ️ Sessão limpa. Reinicie o servidor para novo QR Code.');
       return;
     }
     
+    // Para outras desconexões, apenas reconectar (NÃO apagar sessão)
     reconnecting = true;
     
     try {
       console.log('🔄 Aguardando 10s antes de reconectar...');
       await delay(10000);
       
-      console.log('🔄 Tentando reconectar...');
+      console.log('🔄 Destruindo cliente...');
       await client.destroy();
-      await delay(2000);
+      
+      await delay(3000);
+      
+      console.log('🔄 Reinicializando cliente...');
       await client.initialize();
     } catch (error) {
       console.error('❌ Erro ao reconectar:', error.message);
@@ -887,8 +947,27 @@ process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error.message);
 });
 
-process.on('unhandledRejection', (error) => {
-  console.error('❌ Unhandled Rejection:', error.message);
+process.on('unhandledRejection', (err) => {
+  const m = String(err?.message || '');
+  
+  // Ignorar erro EBUSY relacionado ao arquivo Cookies da sessão
+  if (m.includes('EBUSY') && m.includes('\\Default\\Cookies') && m.includes('.wwebjs_auth')) {
+    console.error('⚠️ Ignorando EBUSY ao apagar Cookies da sessão.');
+    return;
+  }
+  
+  // Ignorar outros erros EBUSY relacionados à sessão
+  if (m.includes('EBUSY') && m.includes('.wwebjs_auth')) {
+    console.error('⚠️ Ignorando erro EBUSY na sessão:', m);
+    return;
+  }
+  
+  console.error('❌ Unhandled Rejection:', err);
+  
+  // Apenas sair em erros críticos
+  if (!m.includes('EBUSY') && !m.includes('ENOENT')) {
+    process.exit(1);
+  }
 });
 
 /* ==================== START SERVER ==================== */
