@@ -70,18 +70,36 @@ export default function WhatsAppIntegration() {
 
       if (integration?.api_url) {
         try {
-          const response = await fetch(`${integration.api_url}/status/${tenant.id}`);
+          console.log(`🔍 Verificando status em: ${integration.api_url}/status/${tenant.id}`);
+          
+          const response = await fetch(`${integration.api_url}/status/${tenant.id}`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000)
+          });
+          
+          if (!response.ok) {
+            console.warn(`⚠️ Servidor retornou status ${response.status}`);
+            setIsConnected(false);
+            return;
+          }
+          
           const status = await response.json();
-          setIsConnected(status.connected || false);
+          console.log('📊 Status recebido:', status);
+          
+          // Verificar se tem cliente E se está online
+          const connected = status.hasClient && status.status === 'online';
+          console.log(`✅ Status da conexão: ${connected ? 'CONECTADO' : 'DESCONECTADO'}`);
+          setIsConnected(connected);
         } catch (fetchError) {
-          console.log("Servidor WhatsApp não disponível, considerando desconectado");
+          console.warn("⚠️ Servidor WhatsApp não disponível:", fetchError);
           setIsConnected(false);
         }
       } else {
+        console.warn("⚠️ api_url não configurada");
         setIsConnected(false);
       }
     } catch (error) {
-      console.error("Erro ao verificar status:", error);
+      console.error("❌ Erro ao verificar status:", error);
       setIsConnected(false);
     }
   };

@@ -405,6 +405,15 @@ app.use((req, res, next) => {
 
 /* ============================ ROUTES ============================ */
 
+// Health check simples
+app.get('/health', (req, res) => {
+  res.json({
+    success: true,
+    status: 'online',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/status', (req, res) => {
   const status = {};
   
