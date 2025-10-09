@@ -597,6 +597,190 @@ app.post('/send-product-canceled', async (req, res) => {
   }
 });
 
+// Listar todos os grupos do WhatsApp
+app.get('/list-all-groups', async (req, res) => {
+  try {
+    const tenantId = req.tenantId;
+    
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tenant ID obrigatório'
+      });
+    }
+    
+    const client = await getTenantClient(tenantId);
+    
+    if (!client) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp não conectado'
+      });
+    }
+    
+    console.log(`📋 [${tenantId}] Listando grupos do WhatsApp...`);
+    
+    const chats = await client.getChats();
+    const groups = chats
+      .filter(chat => chat.isGroup)
+      .map(group => ({
+        id: group.id._serialized,
+        name: group.name,
+        participantCount: group.participants ? group.participants.length : 0
+      }));
+    
+    console.log(`✅ [${tenantId}] Encontrados ${groups.length} grupos`);
+    
+    res.json({
+      success: true,
+      groups,
+      total: groups.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao listar grupos:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Enviar mensagem para grupo específico
+app.post('/send-to-group', async (req, res) => {
+  try {
+    const { groupId, message } = req.body;
+    const tenantId = req.tenantId;
+    
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tenant ID obrigatório'
+      });
+    }
+    
+    if (!groupId || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Group ID e mensagem obrigatórios'
+      });
+    }
+    
+    const client = await getTenantClient(tenantId);
+    
+    if (!client) {
+      return res.status(503).json({
+        success: false,
+        error: 'WhatsApp não conectado'
+      });
+    }
+    
+    console.log(`📤 [${tenantId}] Enviando mensagem para grupo ${groupId}`);
+    
+    await client.sendMessage(groupId, message);
+    
+    console.log(`✅ [${tenantId}] Mensagem enviada para grupo ${groupId}`);
+    
+    res.json({
+      success: true,
+      groupId,
+      message: 'Mensagem enviada com sucesso'
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao enviar para grupo:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Iniciar job de envio
+app.post('/sending-job/start', async (req, res) => {
+  try {
+    const { jobType, totalItems, jobData } = req.body;
+    const tenantId = req.tenantId;
+    
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tenant ID obrigatório'
+      });
+    }
+    
+    const job = await supaRaw('/sending_jobs', {
+      method: 'POST',
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        job_type: jobType,
+        total_items: totalItems,
+        job_data: jobData,
+        status: 'running',
+        current_index: 0,
+        processed_items: 0
+      }),
+      headers: {
+        'Prefer': 'return=representation'
+      }
+    });
+    
+    res.json({
+      success: true,
+      job: Array.isArray(job) ? job[0] : job
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao criar job:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Atualizar job de envio
+app.post('/sending-job/update', async (req, res) => {
+  try {
+    const { jobId, currentIndex, processedItems, status } = req.body;
+    const tenantId = req.tenantId;
+    
+    if (!tenantId || !jobId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tenant ID e Job ID obrigatórios'
+      });
+    }
+    
+    const updateData = {
+      updated_at: new Date().toISOString()
+    };
+    
+    if (currentIndex !== undefined) updateData.current_index = currentIndex;
+    if (processedItems !== undefined) updateData.processed_items = processedItems;
+    if (status) updateData.status = status;
+    if (status === 'paused') updateData.paused_at = new Date().toISOString();
+    if (status === 'completed') updateData.completed_at = new Date().toISOString();
+    
+    await supaRaw(`/sending_jobs?id=eq.${jobId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updateData)
+    });
+    
+    res.json({
+      success: true,
+      jobId
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao atualizar job:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({
     success: true,

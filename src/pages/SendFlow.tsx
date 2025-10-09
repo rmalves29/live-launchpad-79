@@ -182,7 +182,9 @@ export default function SendFlow() {
       const statusData = await statusResponse.json();
       console.log('📊 Status:', statusData);
       
-      if (!statusData.whatsapp?.ready) {
+      // Verificar se o tenant está conectado (formato do servidor multi-tenant)
+      const tenantStatus = statusData.tenants?.[tenant.id];
+      if (!tenantStatus || tenantStatus.status !== 'online') {
         throw new Error('WhatsApp não conectado. Escaneie o QR Code primeiro.');
       }
 
@@ -347,7 +349,8 @@ export default function SendFlow() {
       }
       
       const statusData = await statusResponse.json();
-      if (!statusData.whatsapp?.ready) {
+      const tenantStatus = statusData.tenants?.[tenant.id];
+      if (!tenantStatus || tenantStatus.status !== 'online') {
         throw new Error('WhatsApp não conectado');
       }
       console.log('✅ Servidor pronto!');
