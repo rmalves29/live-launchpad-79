@@ -104,10 +104,11 @@ start-clean.bat
 
 Ative o modo headless=false para VER o Chrome abrindo:
 
-**Edite `server-multitenant-clean.js` linha 105:**
+**Edite `server-multitenant-clean.js` linha 112:**
 
 ```javascript
 puppeteer: {
+  executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   headless: false,  // ← MUDE PARA false
   args: [
     '--no-sandbox',
