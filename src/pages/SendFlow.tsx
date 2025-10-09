@@ -47,17 +47,48 @@ export default function SendFlow() {
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [sentCount, setSentCount] = useState(0);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    loadProducts();
-    loadTemplate();
+    if (tenant?.id) {
+      loadServerUrl();
+      loadProducts();
+      loadTemplate();
+    }
   }, [tenant?.id]);
 
   useEffect(() => {
-    loadProducts();
-    loadTemplate();
-    loadAllWhatsAppGroups();
-  }, [tenant?.id]);
+    if (serverUrl) {
+      loadAllWhatsAppGroups();
+    }
+  }, [serverUrl]);
+
+  const loadServerUrl = async () => {
+    if (!tenant?.id) return;
+    
+    try {
+      console.log('🔍 Buscando URL do servidor WhatsApp para tenant:', tenant.id);
+      const { data, error } = await supabase
+        .from('integration_whatsapp')
+        .select('api_url')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      if (data?.api_url) {
+        console.log('✅ URL do servidor encontrada:', data.api_url);
+        setServerUrl(data.api_url);
+      } else {
+        console.warn('⚠️ Nenhuma URL configurada para este tenant');
+        toast.error('Configure a URL do servidor WhatsApp nas configurações');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar URL do servidor:', error);
+      toast.error('Erro ao buscar configuração do WhatsApp');
+    }
+  };
 
   const loadProducts = async () => {
     if (!tenant?.id) return;
@@ -113,137 +144,100 @@ export default function SendFlow() {
   };
 
   const loadAllWhatsAppGroups = async () => {
-    if (!tenant?.id) return;
+    if (!tenant?.id || !serverUrl) {
+      console.log('⚠️ Não é possível carregar grupos: tenant ou serverUrl não disponível');
+      return;
+    }
     
     setIsLoadingGroups(true);
     try {
-      console.log('🔍 Carregando todos os grupos do WhatsApp...');
-      console.log('🌐 Tentando conectar com servidor na porta 3333...');
+      console.log('🔍 Carregando grupos do WhatsApp via:', serverUrl);
       
-      // Verificar limite de grupos configurado para o tenant
       const maxGroups = tenant?.max_whatsapp_groups;
-      console.log(`📊 Limite de grupos configurado: ${maxGroups || 'sem limite'}`);
+      console.log(`📊 Limite de grupos: ${maxGroups || 'sem limite'}`);
       
-      // Criar AbortController para timeout
+      // Verificar status do servidor
       const timeoutController = new AbortController();
-      const timeoutId = setTimeout(() => timeoutController.abort(), 5000); // 5 segundos
+      const timeoutId = setTimeout(() => timeoutController.abort(), 5000);
       
-      // Verificar se o servidor está online primeiro
       let statusResponse;
       try {
-        statusResponse = await fetch(`http://localhost:3333/status`, {
-          signal: timeoutController.signal
+        statusResponse = await fetch(`${serverUrl}/status`, {
+          signal: timeoutController.signal,
+          headers: { 'x-tenant-id': tenant.id }
         });
         clearTimeout(timeoutId);
       } catch (fetchError) {
         clearTimeout(timeoutId);
-        console.error('❌ Erro de conexão com servidor:', fetchError);
         if (fetchError.name === 'AbortError') {
-          throw new Error('Timeout na conexão com servidor WhatsApp na porta 3333');
+          throw new Error('Timeout na conexão com servidor WhatsApp');
         }
-        throw new Error('Não foi possível conectar ao servidor WhatsApp na porta 3333. Verifique se o servidor está rodando.');
+        throw new Error('Não foi possível conectar ao servidor WhatsApp. Verifique se está rodando.');
       }
 
       if (!statusResponse.ok) {
-        const errorText = await statusResponse.text();
-        console.error('❌ Status response não OK:', statusResponse.status, errorText);
-        throw new Error(`Servidor WhatsApp retornou erro ${statusResponse.status}: ${errorText}`);
+        throw new Error(`Servidor retornou erro ${statusResponse.status}`);
       }
       
-      let statusData;
-      try {
-        statusData = await statusResponse.json();
-        console.log('📊 Status do servidor:', statusData);
-      } catch (parseError) {
-        console.error('❌ Erro ao fazer parse do status:', parseError);
-        throw new Error('Resposta inválida do servidor WhatsApp');
-      }
+      const statusData = await statusResponse.json();
+      console.log('📊 Status:', statusData);
       
       if (!statusData.whatsapp?.ready) {
-        console.error('❌ WhatsApp não conectado:', statusData.whatsapp);
-        throw new Error('WhatsApp não está conectado no servidor. Escaneie o QR Code primeiro.');
+        throw new Error('WhatsApp não conectado. Escaneie o QR Code primeiro.');
       }
 
-      console.log('✅ Servidor conectado, listando grupos...');
+      console.log('✅ Servidor conectado, buscando grupos...');
 
-      // Criar novo AbortController para a requisição de grupos
+      // Buscar grupos
       const groupsController = new AbortController();
-      const groupsTimeoutId = setTimeout(() => groupsController.abort(), 10000); // 10 segundos
+      const groupsTimeoutId = setTimeout(() => groupsController.abort(), 10000);
       
-      // Fazer chamada para o servidor Node.js para listar todos os grupos
       let response;
       try {
-        response = await fetch(`http://localhost:3333/list-all-groups`, {
+        response = await fetch(`${serverUrl}/list-all-groups`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-tenant-id': tenant.id
+          },
           signal: groupsController.signal
         });
         clearTimeout(groupsTimeoutId);
       } catch (fetchError) {
         clearTimeout(groupsTimeoutId);
-        console.error('❌ Erro ao buscar grupos:', fetchError);
         if (fetchError.name === 'AbortError') {
-          throw new Error('Timeout ao listar grupos do WhatsApp');
+          throw new Error('Timeout ao listar grupos');
         }
-        throw new Error('Falha na comunicação com servidor para listar grupos');
+        throw new Error('Falha ao buscar grupos');
       }
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Erro na resposta de grupos:', response.status, errorText);
-        throw new Error(`Erro ${response.status} ao listar grupos: ${errorText}`);
+        throw new Error(`Erro ${response.status}: ${errorText}`);
       }
       
-      let data;
-      try {
-        data = await response.json();
-        console.log('📋 Resposta completa dos grupos:', data);
-      } catch (parseError) {
-        console.error('❌ Erro ao fazer parse da resposta de grupos:', parseError);
-        throw new Error('Resposta inválida ao listar grupos');
-      }
+      const data = await response.json();
+      console.log('📋 Grupos recebidos:', data);
       
       if (data.success && data.groups && Array.isArray(data.groups)) {
-        console.log(`✅ ${data.groups.length} grupos carregados com sucesso`);
-        
-        // Aplicar limite de grupos se configurado
         let limitedGroups = data.groups;
         if (maxGroups && maxGroups > 0) {
           limitedGroups = data.groups.slice(0, maxGroups);
-          console.log(`⚡ Aplicando limite: mostrando ${limitedGroups.length} de ${data.groups.length} grupos`);
-          toast.success(`✅ ${limitedGroups.length} grupos WhatsApp carregados (limite: ${maxGroups})`);
+          toast.success(`✅ ${limitedGroups.length} grupos carregados (limite: ${maxGroups})`);
         } else {
-          toast.success(`✅ ${data.groups.length} grupos WhatsApp encontrados`);
+          toast.success(`✅ ${data.groups.length} grupos encontrados`);
         }
-        
         setWhatsappGroups(limitedGroups);
       } else if (data.success && (!data.groups || data.groups.length === 0)) {
-        console.log('ℹ️ Nenhum grupo encontrado (array vazio ou null)');
         setWhatsappGroups([]);
-        toast.info('Nenhum grupo WhatsApp encontrado');
+        toast.info('Nenhum grupo encontrado');
       } else {
-        console.error('❌ Resposta inesperada:', data);
         setWhatsappGroups([]);
         toast.error('Resposta inesperada do servidor');
       }
     } catch (error) {
-      console.error('❌ ERRO COMPLETO ao carregar grupos WhatsApp:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      
-      // Mensagem mais específica baseada no tipo de erro
-      let userMessage = error.message;
-      if (error.message.includes('conectar')) {
-        userMessage = '🔌 Servidor WhatsApp offline. Inicie o servidor na porta 3333.';
-      } else if (error.message.includes('QR Code')) {
-        userMessage = '📱 Conecte o WhatsApp escaneando o QR Code no servidor.';
-      } else if (error.message.includes('Timeout')) {
-        userMessage = '⏱️ Timeout na conexão. Verifique se o servidor está respondendo.';
-      }
-      
-      toast.error(userMessage);
+      console.error('❌ Erro ao carregar grupos:', error);
+      toast.error(error.message || 'Erro ao carregar grupos WhatsApp');
       setWhatsappGroups([]);
     } finally {
       setIsLoadingGroups(false);
@@ -317,99 +311,81 @@ export default function SendFlow() {
   };
 
   const startSendFlow = async (resumeJob = null) => {
+    if (!serverUrl) {
+      toast.error('URL do servidor WhatsApp não configurada');
+      return;
+    }
+
     console.log('🚀 INICIANDO SENDFLOW');
-    console.log('📦 Produtos selecionados:', selectedProducts.size);
-    console.log('👥 Grupos selecionados:', selectedGroups.size);
-    console.log('📝 Template definido:', !!messageTemplate);
+    console.log('📦 Produtos:', selectedProducts.size);
+    console.log('👥 Grupos:', selectedGroups.size);
+    console.log('🌐 Servidor:', serverUrl);
     
     if (!resumeJob && selectedProducts.size === 0) {
-      console.error('❌ Nenhum produto selecionado');
       toast.error('Selecione pelo menos um produto');
       return;
     }
 
     if (!resumeJob && selectedGroups.size === 0) {
-      console.error('❌ Nenhum grupo selecionado');
       toast.error('Selecione pelo menos um grupo WhatsApp');
       return;
     }
 
     if (!resumeJob && !messageTemplate) {
-      console.error('❌ Template não definido');
       toast.error('Defina um template de mensagem');
       return;
     }
 
-    console.log('✅ Validações passaram, verificando servidor WhatsApp...');
-
-    // Verificar se servidor está online
+    // Verificar servidor
     try {
-      console.log('🔍 Conectando com http://localhost:3333/status');
-      const statusResponse = await fetch(`http://localhost:3333/status`);
-      console.log('📡 Status response:', statusResponse.status, statusResponse.ok);
+      const statusResponse = await fetch(`${serverUrl}/status`, {
+        headers: { 'x-tenant-id': tenant.id }
+      });
       
       if (!statusResponse.ok) {
         throw new Error('Servidor WhatsApp offline');
       }
-      const statusData = await statusResponse.json();
-      console.log('📊 Status data:', statusData);
       
+      const statusData = await statusResponse.json();
       if (!statusData.whatsapp?.ready) {
         throw new Error('WhatsApp não conectado');
       }
-      console.log('✅ Servidor WhatsApp conectado e pronto!');
+      console.log('✅ Servidor pronto!');
     } catch (error) {
-      console.error('❌ Erro ao verificar servidor:', error);
-      toast.error(`❌ ${error.message}. Verifique se o servidor está rodando.`);
+      console.error('❌ Erro servidor:', error);
+      toast.error(error.message);
       return;
     }
 
     if (!resumeJob) {
-      console.log('💾 Salvando template antes de iniciar...');
       await saveTemplate();
     }
     
-    console.log('🎮 Criando controller e iniciando processo...');
-    
-    // Criar novo controller para cancelar operações
     const controller = new AbortController();
     setAbortController(controller);
-    
     setIsRunning(true);
-    console.log('▶️ SendFlow INICIADO - isRunning: true');
     
     if (resumeJob) {
-      // Retomar de onde parou
-      console.log('🔄 Retomando job:', resumeJob);
       setCurrentIndex(resumeJob.current_index || 0);
       setCurrentJobId(resumeJob.id);
       
       const jobData = resumeJob.job_data || {};
-      console.log('📋 Job data:', jobData);
+      if (jobData.selectedProducts) setSelectedProducts(new Set(jobData.selectedProducts));
+      if (jobData.selectedGroups) setSelectedGroups(new Set(jobData.selectedGroups));
+      if (jobData.messageTemplate) setMessageTemplate(jobData.messageTemplate);
       
-      if (jobData.selectedProducts && Array.isArray(jobData.selectedProducts)) {
-        console.log('✅ Restaurando produtos selecionados:', jobData.selectedProducts);
-        setSelectedProducts(new Set(jobData.selectedProducts));
-      }
-      if (jobData.selectedGroups && Array.isArray(jobData.selectedGroups)) {
-        console.log('✅ Restaurando grupos selecionados:', jobData.selectedGroups);
-        setSelectedGroups(new Set(jobData.selectedGroups));
-      }
-      if (jobData.messageTemplate) {
-        console.log('✅ Restaurando template');
-        setMessageTemplate(jobData.messageTemplate);
-      }
       toast.success('🚀 Retomando SendFlow...');
     } else {
-      // Criar novo job
       try {
         const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
-        const selectedGroupArray = Array.from(selectedGroups);
-        const totalItems = selectedProductArray.length * selectedGroupArray.length;
+        const totalItems = selectedProductArray.length * selectedGroups.size;
         
-        const response = await fetch('http://localhost:3333/sending-job/start', {
+        const response = await fetch(`${serverUrl}/sending-job/start`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-tenant-id': tenant.id
+          },
           body: JSON.stringify({
             jobType: 'sendflow',
             totalItems,
@@ -427,7 +403,7 @@ export default function SendFlow() {
           setCurrentJobId(result.job?.id);
         }
       } catch (error) {
-        console.error('Erro ao criar job:', error);
+        console.error('Erro criar job:', error);
       }
       
       setCurrentIndex(0);
@@ -475,14 +451,15 @@ export default function SendFlow() {
       }
       
       for (let i = currentIndex; i < selectedProductArray.length; i++) {
-        // Verificar se foi cancelado
         if (controller.signal.aborted) {
-          console.log('❌ SendFlow cancelado pelo usuário');
-          // Salvar progresso ao pausar
-          if (currentJobId) {
-            await fetch('http://localhost:3333/sending-job/update', {
+          console.log('❌ SendFlow cancelado');
+          if (currentJobId && serverUrl) {
+            await fetch(`${serverUrl}/sending-job/update`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-tenant-id': tenant.id
+              },
               body: JSON.stringify({
                 jobId: currentJobId,
                 currentIndex: i,
@@ -526,9 +503,12 @@ export default function SendFlow() {
               messageLength: personalizedMessage.length
             });
             
-            const response = await fetch(`http://localhost:3333/send-to-group`, {
+            const response = await fetch(`${serverUrl}/send-to-group`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-tenant-id': tenant.id
+              },
               body: JSON.stringify({
                 groupId,
                 message: personalizedMessage,
@@ -549,11 +529,13 @@ export default function SendFlow() {
             successCount++;
             setSentCount(prev => {
               const newCount = prev + 1;
-              // Atualizar progresso no banco a cada 5 mensagens
               if (currentJobId && newCount % 5 === 0) {
-                fetch('http://localhost:3333/sending-job/update', {
+                fetch(`${serverUrl}/sending-job/update`, {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: { 
+                    'Content-Type': 'application/json',
+                    'x-tenant-id': tenant.id
+                  },
                   body: JSON.stringify({
                     jobId: currentJobId,
                     currentIndex: i,
@@ -625,13 +607,15 @@ export default function SendFlow() {
       }
 
       if (!controller.signal.aborted) {
-        console.log('🎉 SendFlow finalizado com sucesso!');
+        console.log('🎉 SendFlow finalizado!');
         toast.success('🎉 SendFlow finalizado com sucesso!');
-        // Marcar job como completo
-        if (currentJobId) {
-          await fetch('http://localhost:3333/sending-job/update', {
+        if (currentJobId && serverUrl) {
+          await fetch(`${serverUrl}/sending-job/update`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-tenant-id': tenant.id
+            },
             body: JSON.stringify({
               jobId: currentJobId,
               processedItems: sentCount,
@@ -643,13 +627,15 @@ export default function SendFlow() {
       
     } catch (error) {
       if (!controller.signal.aborted) {
-        console.error('❌ Erro crítico no SendFlow:', error);
-        toast.error(`❌ Erro crítico: ${error.message}`);
-        // Marcar job como erro
-        if (currentJobId) {
-          await fetch('http://localhost:3333/sending-job/update', {
+        console.error('❌ Erro crítico:', error);
+        toast.error(`❌ Erro: ${error.message}`);
+        if (currentJobId && serverUrl) {
+          await fetch(`${serverUrl}/sending-job/update`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-tenant-id': tenant.id
+            },
             body: JSON.stringify({
               jobId: currentJobId,
               status: 'error'

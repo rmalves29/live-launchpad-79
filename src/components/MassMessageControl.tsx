@@ -35,7 +35,35 @@ export default function MassMessageControl({
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [sendingProgress, setSendingProgress] = useState({ sent: 0, total: 0 });
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
   const { tenant } = useTenant();
+
+  useEffect(() => {
+    if (tenant?.id) {
+      loadServerUrl();
+    }
+  }, [tenant?.id]);
+
+  const loadServerUrl = async () => {
+    if (!tenant?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('integration_whatsapp')
+        .select('api_url')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      if (data?.api_url) {
+        setServerUrl(data.api_url);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar URL do servidor:', error);
+    }
+  };
 
   const fetchContactCount = async () => {
     if (!tenant?.id) return;
@@ -97,6 +125,11 @@ export default function MassMessageControl({
       return;
     }
 
+    if (!serverUrl) {
+      toast.error('URL do servidor WhatsApp não configurada.');
+      return;
+    }
+
     setLoading(true);
     try {
       let jobId = currentJobId;
@@ -112,9 +145,12 @@ export default function MassMessageControl({
         // Criar novo job
         const count = contactCount || (await whatsappService.getContactCount(orderStatus, tenant.id, orderDate || undefined));
         
-        const response = await fetch('http://localhost:3333/sending-job/start', {
+        const response = await fetch(`${serverUrl}/sending-job/start`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-tenant-id': tenant.id
+          },
           body: JSON.stringify({
             jobType: 'mass_message',
             totalItems: count,
@@ -146,10 +182,13 @@ export default function MassMessageControl({
       toast.success(`Mensagem enviada para ${response.total || 0} contatos`);
 
       // Marcar como completo
-      if (jobId) {
-        await fetch('http://localhost:3333/sending-job/update', {
+      if (jobId && serverUrl) {
+        await fetch(`${serverUrl}/sending-job/update`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-tenant-id': tenant.id
+          },
           body: JSON.stringify({
             jobId,
             status: 'completed',
@@ -166,10 +205,13 @@ export default function MassMessageControl({
       toast.error('Erro ao enviar mensagem em massa');
       
       // Marcar como pausado em caso de erro
-      if (currentJobId) {
-        await fetch('http://localhost:3333/sending-job/update', {
+      if (currentJobId && serverUrl) {
+        await fetch(`${serverUrl}/sending-job/update`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-tenant-id': tenant.id
+          },
           body: JSON.stringify({
             jobId: currentJobId,
             status: 'paused',
