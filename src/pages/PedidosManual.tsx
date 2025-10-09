@@ -14,7 +14,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
-import { whatsappService } from '@/lib/whatsapp-service';
 
 
 interface Product {
@@ -361,45 +360,6 @@ const PedidosManual = () => {
       // Clear inputs for this product
       setPhones(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
-      
-      // Enviar mensagem via WhatsApp usando o serviço configurado
-      try {
-        console.log(`📱 Enviando mensagem WhatsApp via whatsappService...`);
-        console.log(`📞 Telefone: ${normalizedPhone}`);
-        console.log(`📦 Produto: ${product.name} (${product.code})`);
-        console.log(`🆔 Tenant object:`, tenant);
-        console.log(`🆔 Tenant ID:`, tenant?.id);
-        
-        if (!tenant || !tenant.id) {
-          console.error('❌ Tenant não disponível! tenant:', tenant);
-          throw new Error('Erro: Informações da empresa não disponíveis. Recarregue a página.');
-        }
-        
-        console.log(`✅ Tenant validado: ${tenant.id}`);
-        
-        await whatsappService.sendItemAdded({
-          customer_phone: normalizedPhone,
-          product: {
-            name: product.name,
-            code: product.code,
-            qty: qty,
-            price: product.price
-          }
-        }, tenant.id);
-        
-        console.log('✅ Mensagem WhatsApp enviada com sucesso');
-        toast({
-          title: '✅ WhatsApp Enviado',
-          description: `Mensagem enviada para ${formatPhoneForDisplay(normalizedPhone)}`,
-        });
-      } catch (error: any) {
-        console.error('❌ Erro ao enviar mensagem WhatsApp:', error);
-        toast({
-          title: '⚠️ WhatsApp não enviado',
-          description: error.message || 'Erro ao conectar com servidor WhatsApp. Verifique se o Node.js está rodando.',
-          variant: 'destructive'
-        });
-      }
       
       // Reload orders to show the new one
       loadOrders();

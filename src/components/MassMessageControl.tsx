@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Send, Save, Loader2 } from 'lucide-react';
-import { whatsappService } from '@/lib/whatsapp-service';
 import { toast } from 'sonner';
 import { useTenant } from '@/hooks/useTenant';
 import { supabase } from '@/integrations/supabase/client';
@@ -70,12 +69,26 @@ export default function MassMessageControl({
 
     setLoadingCount(true);
     try {
-      const count = await whatsappService.getContactCount(
-        orderStatus,
-        tenant.id,
-        orderDate || undefined
-      );
-      setContactCount(count);
+      // Buscar contagem diretamente do banco
+      let query = supabase
+        .from('orders')
+        .select('customer_phone', { count: 'exact', head: true })
+        .eq('tenant_id', tenant.id);
+
+      if (orderStatus === 'paid') {
+        query = query.eq('is_paid', true);
+      } else if (orderStatus === 'unpaid') {
+        query = query.eq('is_paid', false);
+      }
+
+      if (orderDate) {
+        query = query.eq('event_date', orderDate);
+      }
+
+      const { count, error } = await query;
+      if (error) throw error;
+      
+      setContactCount(count || 0);
     } catch (error) {
       console.error('Erro ao buscar contagem:', error);
       setContactCount(null);
@@ -115,113 +128,7 @@ export default function MassMessageControl({
   };
 
   const handleBroadcast = async (resumeJob = null) => {
-    if (!message.trim() && !resumeJob) {
-      toast.error('Digite uma mensagem para enviar.');
-      return;
-    }
-
-    if (!tenant?.id) {
-      toast.error('Tenant não identificado.');
-      return;
-    }
-
-    if (!serverUrl) {
-      toast.error('URL do servidor WhatsApp não configurada.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      let jobId = currentJobId;
-      let startIndex = 0;
-
-      if (resumeJob) {
-        // Retomar de onde parou
-        jobId = resumeJob.id;
-        startIndex = resumeJob.current_index;
-        setSendingProgress({ sent: resumeJob.processed_items, total: resumeJob.total_items });
-        toast.success('Retomando envio de onde parou...');
-      } else {
-        // Criar novo job
-        const count = contactCount || (await whatsappService.getContactCount(orderStatus, tenant.id, orderDate || undefined));
-        
-        const response = await fetch(`${serverUrl}/sending-job/start`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-tenant-id': tenant.id
-          },
-          body: JSON.stringify({
-            jobType: 'mass_message',
-            totalItems: count,
-            jobData: {
-              orderStatus,
-              orderDate,
-              message,
-            },
-          }),
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          jobId = result.job?.id;
-          setCurrentJobId(jobId);
-        }
-
-        setSendingProgress({ sent: 0, total: count });
-      }
-
-      // Enviar mensagens
-      const response = await whatsappService.broadcastByOrderStatusAndDate(
-        orderStatus,
-        message,
-        tenant.id,
-        orderDate || undefined
-      );
-
-      toast.success(`Mensagem enviada para ${response.total || 0} contatos`);
-
-      // Marcar como completo
-      if (jobId && serverUrl) {
-        await fetch(`${serverUrl}/sending-job/update`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-tenant-id': tenant.id
-          },
-          body: JSON.stringify({
-            jobId,
-            status: 'completed',
-          }),
-        });
-      }
-
-      setMessage('');
-      setOrderDate('');
-      setContactCount(null);
-      setCurrentJobId(null);
-    } catch (error) {
-      console.error('Erro ao enviar broadcast:', error);
-      toast.error('Erro ao enviar mensagem em massa');
-      
-      // Marcar como pausado em caso de erro
-      if (currentJobId && serverUrl) {
-        await fetch(`${serverUrl}/sending-job/update`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-tenant-id': tenant.id
-          },
-          body: JSON.stringify({
-            jobId: currentJobId,
-            status: 'paused',
-            processedItems: sendingProgress.sent,
-          }),
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
+    toast.error('Funcionalidade de WhatsApp foi removida do sistema.');
   };
 
   return (

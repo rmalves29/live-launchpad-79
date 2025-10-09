@@ -20,7 +20,6 @@ import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
-import { whatsappService } from '@/lib/whatsapp-service';
 
 interface Order {
   id: number;
@@ -298,49 +297,8 @@ const Pedidos = () => {
   };
 
   const sendPaidOrderMessage = async (orderId: number) => {
-    console.log('🚀 [sendPaidOrder] Iniciando envio confirmação pagamento');
-    
-    try {
-      const order = orders.find(o => o.id === orderId);
-      
-      if (!order) {
-        console.error('❌ Pedido não encontrado!');
-        return false;
-      }
-
-      console.log('✅ Pedido encontrado:', {
-        id: order.id,
-        phone: order.customer_phone,
-        tenant: order.tenant_id,
-        amount: order.total_amount
-      });
-
-      // Enviar usando whatsappService (buscará template do tenant)
-      await whatsappService.sendPaidOrderMessage(
-        order.customer_phone,
-        order.id,
-        order.total_amount,
-        order.tenant_id
-      );
-      
-      console.log('✅ Mensagem enviada com sucesso!');
-      
-      toast({
-        title: 'Confirmação Enviada',
-        description: 'Mensagem de pagamento enviada via WhatsApp'
-      });
-      
-      return true;
-      
-    } catch (error) {
-      console.error('❌ Erro ao enviar confirmação:', error);
-      toast({
-        title: 'Aviso',
-        description: 'Pedido marcado como pago, mas não foi possível enviar mensagem WhatsApp',
-        variant: 'default'
-      });
-      return false;
-    }
+    // WhatsApp functionality removed
+    return false;
   };
 
   const saveObservation = async (orderId: number) => {
@@ -778,10 +736,9 @@ const Pedidos = () => {
         return template.content.replace('{{nome_cliente}}', customerName);
       });
 
-      // Usar o whatsappService para envio de broadcast
-      const result = await whatsappService.broadcastByPhones(uniquePhones, template.content, currentTenantId);
+      // WhatsApp functionality removed - only log to database
       
-      // Registrar no banco independente do sucesso
+      // Registrar no banco
       for (let i = 0; i < uniquePhones.length; i++) {
         const phone = uniquePhones[i];
         const message = messages[i % messages.length];
@@ -795,20 +752,10 @@ const Pedidos = () => {
         });
       }
 
-      let successCount, errorCount;
-      
-      if (result && result.success) {
-        successCount = result.total || uniquePhones.length;
-        errorCount = 0;
-      } else {
-        successCount = 0;
-        errorCount = uniquePhones.length;
-      }
-
       toast({
-        title: 'Mensagem em Massa Concluída',
-        description: `${successCount} mensagem(s) enviada(s). ${errorCount > 0 ? `${errorCount} erro(s).` : ''}`,
-        variant: successCount > 0 ? 'default' : 'destructive'
+        title: 'Funcionalidade Removida',
+        description: 'O envio de WhatsApp foi removido do sistema.',
+        variant: 'destructive'
       });
 
     } catch (error) {

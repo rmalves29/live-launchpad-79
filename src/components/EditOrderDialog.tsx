@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
-import { whatsappService } from '@/lib/whatsapp-service';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2, Plus, Trash2, Search } from 'lucide-react';
 
@@ -243,22 +242,6 @@ useEffect(() => {
         .eq('id', itemId);
 
       if (error) throw error;
-
-      // Enviar mensagem de cancelamento via WhatsApp
-      if (profile?.tenant_id && order?.customer_phone) {
-        try {
-          await whatsappService.sendProductCanceledMessage(
-            order.customer_phone,
-            productName,
-            item.product?.code || '',
-            profile.tenant_id
-          );
-          console.log('✅ Mensagem de cancelamento enviada com sucesso');
-        } catch (whatsappError) {
-          console.error('❌ Erro ao enviar mensagem WhatsApp:', whatsappError);
-          // Não falha a operação se o WhatsApp falhar
-        }
-      }
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);

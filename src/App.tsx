@@ -17,9 +17,7 @@ import Config from "./pages/Config";
 import Produtos from "./pages/Produtos";
 import Clientes from "./pages/Clientes";
 import Relatorios from "./pages/Relatorios";
-import WhatsAppTemplates from "./pages/WhatsAppTemplates";
 import SendFlow from "./pages/SendFlow";
-import WhatsAppSimple from "./components/WhatsAppSimple";
 import Etiquetas from "./pages/Etiquetas";
 import MpReturn from "./pages/MpReturn";
 
@@ -108,14 +106,8 @@ const AppContent = () => {
         <Route path="/relatorios" element={
           <RequireTenantAuth><Relatorios /></RequireTenantAuth>
         } />
-        <Route path="/whatsapp-templates" element={
-          <RequireTenantAuth><WhatsAppTemplates /></RequireTenantAuth>
-        } />
         <Route path="/sendflow" element={
           <RequireTenantAuth><SendFlow /></RequireTenantAuth>
-        } />
-        <Route path="/whatsapp-integration" element={
-          <RequireTenantAuth><WhatsAppSimple /></RequireTenantAuth>
         } />
         
         {/* Rota para etiquetas */}
