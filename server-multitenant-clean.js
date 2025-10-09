@@ -106,31 +106,11 @@ class TenantManager {
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
           '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--disable-extensions',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-features=IsolateOrigins,site-per-process',
-          '--disable-blink-features=AutomationControlled',
-        ],
-        timeout: 0,
-        protocolTimeout: 0
+          '--disable-software-rasterizer'
+        ]
       },
-      webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-      },
-      qrMaxRetries: 5,
-      authTimeoutMs: 0,
-      restartOnAuthFail: true,
-      takeoverOnConflict: true,
-      takeoverTimeoutMs: 0
+      qrMaxRetries: 5
     });
     
     console.log(`✅ ${tenant.name}: Cliente WhatsApp configurado`);
