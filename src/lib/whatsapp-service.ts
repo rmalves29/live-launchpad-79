@@ -126,12 +126,19 @@ class WhatsAppService {
       let response: Response;
       
       try {
+        // Adicionar tenant_id ao body E ao header
+        const requestData = {
+          ...data,
+          tenant_id: tenantId
+        };
+        
         response = await fetch(fullUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'x-tenant-id': tenantId
           },
-          body: JSON.stringify(data),
+          body: JSON.stringify(requestData),
           signal: controller.signal,
         });
         clearTimeout(timeoutId);
