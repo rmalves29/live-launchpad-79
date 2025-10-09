@@ -429,13 +429,32 @@ async function createApp(tenantManager) {
 
   // Middleware: Extrair tenant_id
   app.use((req, res, next) => {
-    const tenantId = 
+    let tenantId = 
       req.headers['x-tenant-id'] ||
       req.headers['X-Tenant-Id'] ||
       req.query.tenant_id ||
       req.body?.tenant_id;
 
     if (tenantId) {
+      // Limpar e validar o tenant_id
+      tenantId = String(tenantId).trim();
+      
+      // Se vier duplicado (ex: "id1, id2"), pegar apenas o primeiro
+      if (tenantId.includes(',')) {
+        tenantId = tenantId.split(',')[0].trim();
+        console.warn('⚠️ Tenant ID duplicado detectado - usando primeiro:', tenantId);
+      }
+      
+      // Validar formato UUID (8-4-4-4-12)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(tenantId)) {
+        console.error('❌ Tenant ID inválido (não é UUID):', tenantId);
+        return res.status(400).json({
+          success: false,
+          error: 'Tenant ID deve ser um UUID válido'
+        });
+      }
+      
       req.tenantId = tenantId;
     }
 
