@@ -325,35 +325,31 @@ async function initializeTenants() {
     return;
   }
   
-  console.log(`📋 ${tenants.length} tenant(s) ativo(s)`);
-  console.log(`⏱️ Inicializando tenants SEQUENCIALMENTE com delay de 20s entre cada...`);
-  console.log(`⚠️ IMPORTANTE: Aguarde cada tenant conectar antes do próximo iniciar\n`);
+  // FILTRAR APENAS MANIA DE MULHER
+  const MANIA_DE_MULHER_ID = '08f2b1b9-3988-489e-8186-c60f0c0b0622';
+  const maniaDeMulher = tenants.find(t => t.id === MANIA_DE_MULHER_ID);
   
-  // Inicializar UM por vez com delay GRANDE
-  for (let i = 0; i < tenants.length; i++) {
-    const tenant = tenants[i];
-    const integration = await getWhatsAppIntegration(tenant.id);
-    
-    if (integration) {
-      console.log(`\n${'='.repeat(70)}`);
-      console.log(`🔧 [${i + 1}/${tenants.length}] Inicializando: ${tenant.name}`);
-      console.log(`${'='.repeat(70)}\n`);
-      
-      createTenantClient(tenant);
-      
-      // Aguardar 20 segundos antes do próximo tenant (tempo para Chromium estabilizar)
-      if (i < tenants.length - 1) {
-        console.log(`\n⏳ Aguardando 20 segundos antes do próximo tenant...`);
-        console.log(`💡 Isso evita sobrecarga de memória e garante estabilidade\n`);
-        await delay(20000);
-      }
-    } else {
-      console.log(`⚠️ Sem integração WhatsApp: ${tenant.name}`);
-    }
+  if (!maniaDeMulher) {
+    console.error('❌ Tenant MANIA DE MULHER não encontrado!');
+    console.log('📋 Tenants disponíveis:', tenants.map(t => `${t.name} (${t.id})`).join(', '));
+    return;
   }
   
   console.log(`\n${'='.repeat(70)}`);
-  console.log(`✅ Processo de inicialização concluído!`);
+  console.log(`🎯 Inicializando APENAS: ${maniaDeMulher.name}`);
+  console.log(`🆔 Tenant ID: ${maniaDeMulher.id}`);
+  console.log(`${'='.repeat(70)}\n`);
+  
+  const integration = await getWhatsAppIntegration(maniaDeMulher.id);
+  
+  if (integration) {
+    createTenantClient(maniaDeMulher);
+  } else {
+    console.log(`⚠️ Sem integração WhatsApp configurada para: ${maniaDeMulher.name}`);
+  }
+  
+  console.log(`\n${'='.repeat(70)}`);
+  console.log(`✅ Inicialização concluída!`);
   console.log(`📊 Verifique o status em: http://localhost:${PORT}/status`);
   console.log(`${'='.repeat(70)}\n`);
 }
