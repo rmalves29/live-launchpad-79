@@ -302,6 +302,20 @@ async function start() {
     // Buscar tenants ativos
     const tenants = await supabaseQuery('/rest/v1/tenants?is_active=eq.true&select=id,name,slug');
     
+    // Validar se tenants é um array
+    if (!Array.isArray(tenants)) {
+      console.error('❌ Erro: resposta de tenants não é um array:', tenants);
+      console.log('⚠️  Continuando sem inicializar clientes automaticamente');
+      
+      app.listen(PORT, () => {
+        console.log(`\n🚀 Servidor WhatsApp rodando na porta ${PORT}`);
+        console.log(`📊 Status: http://localhost:${PORT}/status`);
+        console.log(`🏥 Health: http://localhost:${PORT}/health`);
+        console.log(`\n💡 Use POST /init/:tenantId para inicializar manualmente\n`);
+      });
+      return;
+    }
+    
     console.log(`🏢 ${tenants.length} tenants ativos encontrados`);
     
     // Buscar integrações WhatsApp ativas
