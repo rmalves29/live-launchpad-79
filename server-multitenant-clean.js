@@ -102,14 +102,19 @@ class TenantManager {
         dataPath: authDir
       }),
       puppeteer: {
-        headless: true,
+        headless: 'new',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
           '--disable-gpu',
           '--disable-software-rasterizer',
-          '--disable-web-security'
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins',
+          '--disable-site-isolation-trials'
         ],
         timeout: 60000
       },

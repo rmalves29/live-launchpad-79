@@ -28,9 +28,9 @@ echo [5/6] Desinstalando pacotes antigos...
 call npm uninstall whatsapp-web.js puppeteer qrcode-terminal
 echo    ✓ Pacotes desinstalados
 
-echo [6/6] Instalando versoes estaveis...
-call npm install whatsapp-web.js@1.23.0
-call npm install puppeteer@21.0.0
+echo [6/6] Instalando versoes mais recentes e estaveis...
+call npm install whatsapp-web.js@latest
+call npm install puppeteer@latest
 call npm install qrcode-terminal@latest
 echo    ✓ Pacotes instalados
 
