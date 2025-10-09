@@ -1,11 +1,12 @@
 # 🚀 Como Reiniciar o Servidor WhatsApp
 
-## ✅ Melhorias Implementadas (v2.1)
+## ✅ Melhorias Implementadas (v2.2)
 
 O servidor agora inicializa os tenants **sequencialmente** para evitar sobrecarga:
-- ⏱️ Delay de 5 segundos entre cada tenant
-- 🕐 Timeout aumentado para 90 segundos
-- 🔄 Menos chance de conflitos e timeouts
+- ⏱️ Delay de **20 segundos** entre cada tenant (aumentado!)
+- 🕐 Timeout aumentado para **120 segundos** (2 minutos)
+- 🔄 Muito menos chance de conflitos e timeouts
+- 📊 Logs detalhados com progresso visual
 
 ---
 
@@ -39,23 +40,37 @@ node server1.js
 
 🏢 Carregando tenants...
 📋 2 tenant(s) ativo(s)
-⏱️ Inicializando tenants sequencialmente (delay de 5s entre cada)...
+⏱️ Inicializando tenants SEQUENCIALMENTE com delay de 20s entre cada...
+⚠️ IMPORTANTE: Aguarde cada tenant conectar antes do próximo iniciar
 
-🔧 Inicializando: MANIA DE MULHER
+======================================================================
+🔧 [1/2] Inicializando: MANIA DE MULHER
+======================================================================
+
 🔄 Iniciando WhatsApp Web para: MANIA DE MULHER...
-⏰ Aguarde o QR Code aparecer (pode levar até 90 segundos)...
+⏰ Aguarde o QR Code aparecer (pode levar até 120 segundos)...
+💡 Se demorar muito, feche outros programas para liberar memória
 
 📱 QR CODE GERADO - MANIA DE MULHER
 [QR Code aqui]
 
-⏳ Aguardando 5s antes do próximo tenant...
+⏳ Aguardando 20 segundos antes do próximo tenant...
+💡 Isso evita sobrecarga de memória e garante estabilidade
 
-🔧 Inicializando: teste
+======================================================================
+🔧 [2/2] Inicializando: teste
+======================================================================
+
 🔄 Iniciando WhatsApp Web para: teste...
-⏰ Aguarde o QR Code aparecer (pode levar até 90 segundos)...
+⏰ Aguarde o QR Code aparecer (pode levar até 120 segundos)...
 
 📱 QR CODE GERADO - teste
 [QR Code aqui]
+
+======================================================================
+✅ Processo de inicialização concluído!
+📊 Verifique o status em: http://localhost:3333/status
+======================================================================
 ```
 
 ### ✅ Sucesso Final:

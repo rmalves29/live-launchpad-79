@@ -7,15 +7,17 @@ O servidor inicia mas o QR Code não aparece, dando TIMEOUT após 60-90 segundos
 1. **Multi-tenant simultâneo**: Múltiplos tenants tentando inicializar ao mesmo tempo sobrecarregam o Chromium
 2. **Falta de memória RAM**: O Puppeteer precisa de recursos para cada instância do Chrome
 3. **Antivírus bloqueando**: Windows Defender ou outros antivírus podem bloquear o Chromium
+4. **Delay insuficiente**: Chromium precisa de mais tempo para estabilizar entre tenants
 
 ---
 
-## ✅ SOLUÇÃO IMPLEMENTADA (v2.1)
+## ✅ SOLUÇÃO IMPLEMENTADA (v2.2)
 
 ### Melhorias Automáticas
-- ✅ **Inicialização sequencial**: Tenants agora inicializam um por vez com delay de 5s
-- ✅ **Timeout aumentado**: 90 segundos para dar mais tempo no Windows
+- ✅ **Inicialização sequencial**: Tenants agora inicializam um por vez com delay de **20 segundos**
+- ✅ **Timeout aumentado**: **120 segundos** para dar mais tempo no Windows
 - ✅ **Menos sobrecarga**: Chromium não é iniciado simultaneamente
+- ✅ **Logs detalhados**: Mostra progresso de cada tenant (1/2, 2/2, etc.)
 
 ### Passo 1: Reiniciar o Servidor
 ```cmd
@@ -25,9 +27,11 @@ node server1.js
 ```
 
 **O que você vai ver:**
-- ✅ Cada tenant inicia com 5 segundos de intervalo
-- ✅ "Aguardando 5s antes do próximo tenant..."
+- ✅ Cada tenant inicia com **20 segundos** de intervalo
+- ✅ "Aguardando 20 segundos antes do próximo tenant..."
+- ✅ Mensagem: "Isso evita sobrecarga de memória e garante estabilidade"
 - ✅ QR Code aparece para cada tenant sequencialmente
+- ✅ Contador de progresso: [1/2] Inicializando: MANIA DE MULHER
 
 ### Passo 1: Fechar Chrome
 ```
