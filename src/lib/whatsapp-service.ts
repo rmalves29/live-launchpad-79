@@ -100,6 +100,7 @@ class WhatsAppService {
   private async makeRequest(endpoint: string, data: any, tenantId?: string): Promise<WhatsAppResponse> {
     try {
       console.log('🔍 [WS] makeRequest chamado:', { endpoint, tenantId, hasData: !!data });
+      console.log('📦 [WS] Data recebido:', JSON.stringify(data, null, 2));
       
       if (!tenantId) {
         throw new Error('Tenant ID é obrigatório para enviar mensagens WhatsApp');
@@ -115,23 +116,25 @@ class WhatsAppService {
       }
       
       console.log('🌐 [WS] URL do servidor:', serverUrl);
-      console.log('📤 [WS] Dados a enviar:', JSON.stringify(data, null, 2));
+      
+      // Garantir que tenant_id está no data
+      const requestData = {
+        ...data,
+        tenant_id: tenantId
+      };
+      
+      console.log('📤 [WS] Dados finais a enviar:', JSON.stringify(requestData, null, 2));
       
       const fullUrl = `${serverUrl}${endpoint}`;
       console.log('🔗 [WS] URL completa:', fullUrl);
+      console.log('🔑 [WS] Header x-tenant-id:', tenantId);
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
       
       let response: Response;
       
-      try {
-        // Adicionar tenant_id ao body E ao header
-        const requestData = {
-          ...data,
-          tenant_id: tenantId
-        };
-        
+      try {        
         response = await fetch(fullUrl, {
           method: 'POST',
           headers: {
@@ -158,10 +161,13 @@ class WhatsAppService {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ [WS] Erro na resposta:', errorText);
+        console.error('❌ [WS] Status code:', response.status);
         
         try {
           const errorData = JSON.parse(errorText);
-          throw new Error(errorData.error || `Erro HTTP ${response.status}`);
+          const errorMsg = errorData.error || `Erro HTTP ${response.status}`;
+          console.error('❌ [WS] Mensagem de erro:', errorMsg);
+          throw new Error(errorMsg);
         } catch {
           throw new Error(`Servidor WhatsApp retornou erro ${response.status}. Verifique os logs do Node.js.`);
         }
@@ -204,12 +210,18 @@ class WhatsAppService {
     });
 
     console.log('📝 [sendItemAdded] Mensagem final:', message.substring(0, 100) + '...');
+    console.log('🔑 [sendItemAdded] TenantId a ser enviado:', tenantId);
 
-    // Usar endpoint /send do Node.js
-    return this.makeRequest('/send', {
+    // Usar endpoint /send do Node.js com tenant_id explícito
+    const payload = {
+      tenant_id: tenantId,
       number: normalizeForSending(orderData.customer_phone),
       message,
-    }, tenantId);
+    };
+    
+    console.log('📦 [sendItemAdded] Payload completo:', JSON.stringify(payload, null, 2));
+    
+    return this.makeRequest('/send', payload, tenantId);
   }
 
   async sendItemCancelled(orderData: OrderData): Promise<WhatsAppResponse> {

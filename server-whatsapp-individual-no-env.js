@@ -381,6 +381,14 @@ app.use(cors());
 
 app.use((req, res, next) => {
   const tenantId = req.headers['x-tenant-id'] || req.query.tenant_id || req.body.tenant_id;
+  console.log('🔍 [Middleware] Extraindo tenant_id:', {
+    header: req.headers['x-tenant-id'],
+    query: req.query.tenant_id,
+    body: req.body?.tenant_id,
+    final: tenantId,
+    url: req.url,
+    method: req.method
+  });
   if (tenantId) req.tenantId = tenantId;
   next();
 });
@@ -418,10 +426,18 @@ app.get('/status/:tenantId', (req, res) => {
 
 app.post('/send', async (req, res) => {
   try {
+    console.log('📨 [/send] Requisição recebida');
+    console.log('📨 [/send] Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('📨 [/send] Body:', JSON.stringify(req.body, null, 2));
+    console.log('📨 [/send] Query:', JSON.stringify(req.query, null, 2));
+    
     const { number, message, phone } = req.body;
     const tenantId = req.tenantId;
     
+    console.log('🔑 [/send] TenantId extraído:', tenantId);
+    
     if (!tenantId) {
+      console.error('❌ [/send] Tenant ID não encontrado!');
       return res.status(400).json({
         success: false,
         error: 'Tenant ID obrigatório'
@@ -431,12 +447,14 @@ app.post('/send', async (req, res) => {
     const phoneNumber = number || phone;
     
     if (!phoneNumber || !message) {
+      console.error('❌ [/send] Dados incompletos:', { phoneNumber: !!phoneNumber, message: !!message });
       return res.status(400).json({
         success: false,
         error: 'Número e mensagem obrigatórios'
       });
     }
     
+    console.log(`📞 [${tenantId}] Buscando cliente WhatsApp...`);
     const client = await getTenantClient(tenantId);
     
     if (!client) {
