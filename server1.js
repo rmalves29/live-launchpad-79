@@ -4,6 +4,7 @@ const cors = require('cors');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
+const fetch = require('node-fetch');
 
 // ==================== CONFIGURAÇÃO ====================
 const PORT = process.env.PORT || 3333;
