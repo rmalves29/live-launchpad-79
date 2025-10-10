@@ -34,11 +34,11 @@ const Navbar = () => {
         <div className="flex justify-between h-[120px]">
           <div className="flex items-center">
             <NavLink to="/" className="flex items-center">
-              <img 
-                src={orderZapsLogo} 
-                alt="Order Zaps" 
-                className="h-[100px] w-[100px] object-contain"
-              />
+            <img 
+              src={orderZapsLogo} 
+              alt="Order Zaps" 
+              className="h-[200px] w-[200px] object-contain"
+            />
             </NavLink>
           </div>
 

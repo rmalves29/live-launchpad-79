@@ -129,7 +129,7 @@ export default function TenantAuth() {
           <img 
             src={orderZapsLogo} 
             alt="Order Zaps" 
-            className="h-[100px] w-[100px] object-contain"
+            className="h-[200px] w-[200px] object-contain"
           />
         </div>
         <Card>
