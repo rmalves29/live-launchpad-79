@@ -38,7 +38,6 @@ class TenantManager {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--single-process',
         '--disable-gpu'
       ]
     };
@@ -588,10 +587,20 @@ async function main() {
   const supabaseHelper = new SupabaseHelper(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const tenantManager = new TenantManager();
 
-  // Carregar tenants ativos
-  console.log('📋 Carregando tenants ativos...');
-  const tenants = await supabaseHelper.loadActiveTenants();
-  console.log(`✅ ${tenants.length} tenant(s) encontrado(s)\n`);
+  // Carregar apenas o tenant MANIA DE MULHER
+  console.log('📋 Carregando tenant MANIA DE MULHER...');
+  const MANIA_DE_MULHER_ID = '08f2b1b9-3988-489e-8186-c60f0c0b0622';
+  
+  const allTenants = await supabaseHelper.loadActiveTenants();
+  const tenants = allTenants.filter(t => t.id === MANIA_DE_MULHER_ID);
+  
+  if (tenants.length === 0) {
+    console.error('❌ Tenant MANIA DE MULHER não encontrado!');
+    console.log('Tenants disponíveis:', allTenants.map(t => `${t.name} (${t.id})`).join(', '));
+    process.exit(1);
+  }
+  
+  console.log(`✅ Tenant encontrado: ${tenants[0].name}\n`);
 
   // Inicializar clientes WhatsApp para cada tenant
   for (const tenant of tenants) {
