@@ -28,24 +28,44 @@ class TenantManager {
     
     console.log(`📱 Criando cliente WhatsApp para tenant: ${tenant.name} (${tenantId})`);
 
+    // Configuração do Puppeteer com detecção de Chrome
+    const puppeteerConfig = {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    };
+
+    // Tentar usar Chrome do sistema no Windows se Chromium não estiver disponível
+    if (process.platform === 'win32') {
+      const possiblePaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
+      ];
+
+      for (const chromePath of possiblePaths) {
+        if (fs.existsSync(chromePath)) {
+          console.log(`✅ Chrome encontrado: ${chromePath}`);
+          puppeteerConfig.executablePath = chromePath;
+          break;
+        }
+      }
+    }
+
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: tenantId,
         dataPath: AUTH_DIR
       }),
-      puppeteer: {
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
-        ]
-      }
+      puppeteer: puppeteerConfig
     });
 
     // Status inicial

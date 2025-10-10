@@ -249,6 +249,17 @@ O servidor exibe logs detalhados:
 
 ## 🚨 Troubleshooting
 
+### ❌ Erro: "Could not find expected browser (chrome)"
+
+**Solução Rápida:**
+
+1. Execute `instalar-chromium.bat` (Windows) ou `./instalar-chromium.sh` (Linux/Mac)
+2. OU certifique-se que o Google Chrome está instalado no Windows
+
+**O servidor agora detecta automaticamente o Chrome do sistema!**
+
+Ver documentação completa: `SOLUCAO_CHROME_WINDOWS.md`
+
 ### Problema: QR Code não aparece
 **Solução**: Verifique se a porta 3333 está livre e se o Node.js tem permissões
 
