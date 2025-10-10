@@ -36,9 +36,6 @@ function cleanupLockfiles(dirPath) {
   }
 }
 
-// Limpar lockfiles antes de iniciar
-cleanupLockfiles(AUTH_DIR);
-
 // Criar diretório se não existir
 if (!fs.existsSync(AUTH_DIR)) {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
@@ -140,11 +137,7 @@ class TenantManager {
       if (clientData) {
         clientData.status = 'offline';
       }
-      
-      // Limpar lockfiles após desconexão
-      setTimeout(() => {
-        cleanupLockfiles(AUTH_DIR);
-      }, 2000);
+      // LocalAuth gerencia a sessão automaticamente
     });
 
     // Erro de autenticação
