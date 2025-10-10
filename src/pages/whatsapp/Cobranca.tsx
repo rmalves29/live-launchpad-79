@@ -15,8 +15,7 @@ import { normalizeForSending } from '@/lib/phone-utils';
 interface FilterCriteria {
   isPaid: string;
   eventType: string;
-  dateFrom: string;
-  dateTo: string;
+  orderDate: string;
 }
 
 interface Customer {
@@ -35,8 +34,7 @@ export default function Cobranca() {
   const [filters, setFilters] = useState<FilterCriteria>({
     isPaid: 'all',
     eventType: 'all',
-    dateFrom: '',
-    dateTo: ''
+    orderDate: ''
   });
   
   const [messageTemplate, setMessageTemplate] = useState('');
@@ -69,7 +67,7 @@ export default function Cobranca() {
   };
 
   const loadCustomers = async () => {
-    if (!filters.dateFrom || !filters.dateTo) {
+    if (!filters.orderDate) {
       setCustomers([]);
       return;
     }
@@ -80,8 +78,7 @@ export default function Cobranca() {
       let query = supabaseTenant
         .from('orders')
         .select('customer_phone, customer_name, event_type, event_date, total_amount, is_paid')
-        .gte('event_date', filters.dateFrom)
-        .lte('event_date', filters.dateTo);
+        .eq('event_date', filters.orderDate);
 
       // Aplicar filtro de pagamento
       if (filters.isPaid === 'paid') {
@@ -127,7 +124,7 @@ export default function Cobranca() {
   };
 
   useEffect(() => {
-    if (filters.dateFrom && filters.dateTo) {
+    if (filters.orderDate) {
       loadCustomers();
     }
   }, [filters]);
@@ -218,8 +215,7 @@ export default function Cobranca() {
       setFilters({
         isPaid: 'all',
         eventType: 'all',
-        dateFrom: '',
-        dateTo: ''
+        orderDate: ''
       });
 
     } catch (error) {
@@ -256,7 +252,7 @@ export default function Cobranca() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Filtro de Pagamento */}
             <div className="space-y-2">
               <Label htmlFor="isPaid">Status de Pagamento</Label>
@@ -294,25 +290,14 @@ export default function Cobranca() {
               </Select>
             </div>
 
-            {/* Filtro de Data Inicial */}
+            {/* Filtro de Data do Pedido */}
             <div className="space-y-2">
-              <Label htmlFor="dateFrom">Data Inicial</Label>
+              <Label htmlFor="orderDate">Data do Pedido</Label>
               <Input
-                id="dateFrom"
+                id="orderDate"
                 type="date"
-                value={filters.dateFrom}
-                onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
-              />
-            </div>
-
-            {/* Filtro de Data Final */}
-            <div className="space-y-2">
-              <Label htmlFor="dateTo">Data Final</Label>
-              <Input
-                id="dateTo"
-                type="date"
-                value={filters.dateTo}
-                onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                value={filters.orderDate}
+                onChange={(e) => setFilters({ ...filters, orderDate: e.target.value })}
               />
             </div>
           </div>
@@ -339,10 +324,10 @@ export default function Cobranca() {
                   <Users className="w-4 h-4 mr-2" />
                   {customers.length} cliente(s)
                 </Badge>
-                {filters.dateFrom && filters.dateTo && (
+                {filters.orderDate && (
                   <Badge variant="outline" className="text-sm px-3 py-1">
                     <Calendar className="w-3 h-3 mr-2" />
-                    {filters.dateFrom} até {filters.dateTo}
+                    {filters.orderDate}
                   </Badge>
                 )}
               </div>
@@ -367,9 +352,9 @@ export default function Cobranca() {
                 </div>
               )}
 
-              {!filters.dateFrom || !filters.dateTo ? (
+              {!filters.orderDate ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Selecione as datas para visualizar os clientes
+                  Selecione a data do pedido para visualizar os clientes
                 </p>
               ) : customers.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
