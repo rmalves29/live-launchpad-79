@@ -13,6 +13,33 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 // Diretório de autenticação
 const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
+
+// Função para limpar lockfiles antigos
+function cleanupLockfiles(dirPath) {
+  try {
+    if (fs.existsSync(dirPath)) {
+      const files = fs.readdirSync(dirPath, { recursive: true });
+      files.forEach(file => {
+        const fullPath = path.join(dirPath, file);
+        if (file.includes('lockfile') || file.includes('.lock')) {
+          try {
+            fs.unlinkSync(fullPath);
+            console.log(`🧹 Lockfile removido: ${fullPath}`);
+          } catch (err) {
+            // Ignorar erros ao deletar lockfiles
+          }
+        }
+      });
+    }
+  } catch (error) {
+    console.log('⚠️ Aviso ao limpar lockfiles:', error.message);
+  }
+}
+
+// Limpar lockfiles antes de iniciar
+cleanupLockfiles(AUTH_DIR);
+
+// Criar diretório se não existir
 if (!fs.existsSync(AUTH_DIR)) {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 }
@@ -112,6 +139,20 @@ class TenantManager {
       const clientData = this.clients.get(tenantId);
       if (clientData) {
         clientData.status = 'offline';
+      }
+      
+      // Limpar lockfiles após desconexão
+      setTimeout(() => {
+        cleanupLockfiles(AUTH_DIR);
+      }, 2000);
+    });
+
+    // Erro de autenticação
+    client.on('auth_failure', (msg) => {
+      console.error(`❌ Falha de autenticação para ${tenant.name}:`, msg);
+      const clientData = this.clients.get(tenantId);
+      if (clientData) {
+        clientData.status = 'auth_failed';
       }
     });
 
