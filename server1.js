@@ -50,6 +50,12 @@ class TenantManager {
   async createClient(tenant) {
     const tenantId = tenant.id;
     
+    // Evitar inicialização duplicada
+    if (this.clients.has(tenantId)) {
+      console.log(`⚠️ Cliente já existe para ${tenant.name}, pulando...`);
+      return this.clients.get(tenantId).client;
+    }
+    
     console.log(`📱 Criando cliente WhatsApp para tenant: ${tenant.name} (${tenantId})`);
 
     // Configuração do Puppeteer com detecção de Chrome
@@ -131,13 +137,18 @@ class TenantManager {
     });
 
     // Desconectado
-    client.on('disconnected', (reason) => {
+    client.on('disconnected', async (reason) => {
       console.log(`❌ ${tenant.name} desconectado:`, reason);
       const clientData = this.clients.get(tenantId);
       if (clientData) {
         clientData.status = 'offline';
       }
-      // LocalAuth gerencia a sessão automaticamente
+      // Encerrar cliente graciosamente (NÃO chamar logout)
+      try {
+        await client.destroy();
+      } catch (error) {
+        console.log(`⚠️ Erro ao destruir cliente ${tenant.name}:`, error.message);
+      }
     });
 
     // Erro de autenticação
@@ -147,6 +158,7 @@ class TenantManager {
       if (clientData) {
         clientData.status = 'auth_failed';
       }
+      // NÃO chamar LocalAuth.logout() - deixe o LocalAuth gerenciar
     });
 
     // Mensagens recebidas - DETECÇÃO AUTOMÁTICA DE CÓDIGOS
@@ -608,6 +620,35 @@ function createApp(tenantManager, supabaseHelper) {
   return app;
 }
 
+// ==================== ENCERRAMENTO GRACIOSO ====================
+const tenantManager = new TenantManager();
+
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Encerrando servidor...');
+  for (const [tenantId, data] of tenantManager.clients.entries()) {
+    try {
+      console.log(`🔄 Destruindo cliente ${data.tenant.name}...`);
+      await data.client.destroy();
+    } catch (error) {
+      console.log(`⚠️ Erro ao destruir ${data.tenant.name}:`, error.message);
+    }
+  }
+  console.log('✅ Servidor encerrado');
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n🛑 Encerrando servidor (SIGTERM)...');
+  for (const [tenantId, data] of tenantManager.clients.entries()) {
+    try {
+      await data.client.destroy();
+    } catch (error) {
+      console.log(`⚠️ Erro ao destruir ${data.tenant.name}:`, error.message);
+    }
+  }
+  process.exit(0);
+});
+
 // ==================== INICIALIZAÇÃO ====================
 async function main() {
   console.log('🚀 Iniciando servidor WhatsApp Multi-Tenant...\n');
@@ -619,7 +660,6 @@ async function main() {
   }
 
   const supabaseHelper = new SupabaseHelper(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-  const tenantManager = new TenantManager();
 
   // Carregar apenas o tenant MANIA DE MULHER
   console.log('📋 Carregando tenant MANIA DE MULHER...');
