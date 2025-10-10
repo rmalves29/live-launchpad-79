@@ -8,24 +8,31 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Navbar from "./components/Navbar";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import PedidosManual from "./pages/PedidosManual";
-import Live from "./pages/Live";
-import Checkout from "./pages/Checkout";
-import Pedidos from "./pages/Pedidos";
-import Sorteio from "./pages/Sorteio";
-import Config from "./pages/Config";
-import Produtos from "./pages/Produtos";
-import Clientes from "./pages/Clientes";
-import Relatorios from "./pages/Relatorios";
-import SendFlow from "./pages/SendFlow";
-import Etiquetas from "./pages/Etiquetas";
-import MpReturn from "./pages/MpReturn";
-import WhatsappTemplates from "./pages/WhatsappTemplates";
-import Cobranca from "./pages/whatsapp/Cobranca";
-
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
-import MercadoPagoCallback from "./pages/MercadoPagoCallback";
+
+// Callbacks
+import MercadoPagoCallback from "./pages/callbacks/MercadoPagoCallback";
+import MpReturn from "./pages/callbacks/MpReturn";
+
+// Pedidos
+import PedidosManual from "./pages/pedidos/Manual";
+import Live from "./pages/pedidos/Live";
+import Checkout from "./pages/pedidos/Checkout";
+import Pedidos from "./pages/pedidos/Index";
+
+// Módulos
+import Sorteio from "./pages/sorteio/Index";
+import Config from "./pages/config/Index";
+import Produtos from "./pages/produtos/Index";
+import Clientes from "./pages/clientes/Index";
+import Relatorios from "./pages/relatorios/Index";
+import SendFlow from "./pages/sendflow/Index";
+import Etiquetas from "./pages/etiquetas/Index";
+
+// WhatsApp
+import WhatsappTemplates from "./pages/whatsapp/Templates";
+import Cobranca from "./pages/whatsapp/Cobranca";
 import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
