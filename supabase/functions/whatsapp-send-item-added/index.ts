@@ -60,21 +60,17 @@ Deno.serve(async (req) => {
 
     console.log(`📤 Enviando para ${phoneFinal}:`, mensagem);
 
-    // Enviar via API do servidor Node.js WhatsApp
+    // Enviar via API do servidor Node.js WhatsApp (endpoint /send)
     const whatsappPayload = {
-      data: JSON.stringify({
-        numeros: [phoneFinal],
-        mensagens: [mensagem],
-        interval: 1000,
-        batchSize: 1,
-        batchDelay: 1000
-      })
+      phone: phoneFinal,
+      message: mensagem
     };
 
-    const whatsappResponse = await fetch(`${whatsappApiUrl}/api/send-config`, {
+    const whatsappResponse = await fetch(`${whatsappApiUrl}/send`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-tenant-id': tenant_id
       },
       body: JSON.stringify(whatsappPayload),
     });
