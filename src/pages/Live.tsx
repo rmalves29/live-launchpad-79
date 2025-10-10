@@ -384,6 +384,27 @@ const Live = () => {
           : `Novo pedido criado: ${product.code} x${qty} para @${normalizeInstagram(instagram)}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
 
+      // Enviar WhatsApp ITEM_ADDED
+      try {
+        const { data: { session } } = await supabaseTenant.raw.auth.getSession();
+        if (session && tenant?.id) {
+          await supabaseTenant.raw.functions.invoke('whatsapp-send-item-added', {
+            body: {
+              tenant_id: tenant.id,
+              customer_phone: normalizedPhone,
+              product_name: product.name,
+              product_code: product.code,
+              quantity: qty,
+              unit_price: product.price
+            }
+          });
+          console.log('✅ WhatsApp ITEM_ADDED enviado');
+        }
+      } catch (whatsappError) {
+        console.error('⚠️ Erro ao enviar WhatsApp:', whatsappError);
+        // Não impede o fluxo se o WhatsApp falhar
+      }
+
       // Clear inputs for this product
       setInstagrams(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
