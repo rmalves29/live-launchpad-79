@@ -136,19 +136,16 @@ class TenantManager {
       }
     });
 
-    // Desconectado
-    client.on('disconnected', async (reason) => {
-      console.log(`❌ ${tenant.name} desconectado:`, reason);
+    // Desconectado - NÃO destruir, deixar tentar reconectar
+    client.on('disconnected', (reason) => {
+      console.log(`⚠️ ${tenant.name} desconectado:`, reason);
       const clientData = this.clients.get(tenantId);
       if (clientData) {
-        clientData.status = 'offline';
+        clientData.status = 'disconnected';
+        clientData.qr = null;
       }
-      // Encerrar cliente graciosamente (NÃO chamar logout)
-      try {
-        await client.destroy();
-      } catch (error) {
-        console.log(`⚠️ Erro ao destruir cliente ${tenant.name}:`, error.message);
-      }
+      // NÃO destruir - deixar o WhatsApp Web tentar reconectar automaticamente
+      console.log(`🔄 ${tenant.name} tentará reconectar automaticamente...`);
     });
 
     // Erro de autenticação
