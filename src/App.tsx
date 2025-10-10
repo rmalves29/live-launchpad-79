@@ -21,6 +21,7 @@ import SendFlow from "./pages/SendFlow";
 import Etiquetas from "./pages/Etiquetas";
 import MpReturn from "./pages/MpReturn";
 import WhatsappTemplates from "./pages/WhatsappTemplates";
+import Cobranca from "./pages/whatsapp/Cobranca";
 
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
@@ -119,6 +120,11 @@ const AppContent = () => {
         {/* Rota para templates de WhatsApp */}
         <Route path="/whatsapp/templates" element={
           <RequireTenantAuth><WhatsappTemplates /></RequireTenantAuth>
+        } />
+        
+        {/* Rota para cobrança em massa */}
+        <Route path="/whatsapp/cobranca" element={
+          <RequireTenantAuth><Cobranca /></RequireTenantAuth>
         } />
         
         <Route path="*" element={<NotFound />} />
