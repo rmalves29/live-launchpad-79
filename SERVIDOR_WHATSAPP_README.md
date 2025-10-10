@@ -1,6 +1,18 @@
-# 🚀 Servidor WhatsApp Multi-Tenant
+# 🚀 Servidor WhatsApp Multi-Tenant - MANIA DE MULHER
 
 Servidor Node.js para gerenciar múltiplas conexões WhatsApp com detecção automática de códigos de produtos.
+
+## ⚠️ IMPORTANTE: Configuração da Chave
+
+Este servidor precisa da **SERVICE_ROLE_KEY** do Supabase, não da ANON_KEY!
+
+- ❌ **ANON_KEY**: Chave pública (limitada)
+- ✅ **SERVICE_ROLE_KEY**: Chave administrativa (necessária)
+
+**Como obter a SERVICE_ROLE_KEY:**
+1. Acesse: https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/settings/api
+2. Procure por "service_role" na seção "Project API keys"
+3. Copie a chave (é diferente da anon/public key)
 
 ## 📋 Funcionalidades
 
@@ -24,37 +36,68 @@ Servidor Node.js para gerenciar múltiplas conexões WhatsApp com detecção aut
 ### 1. Instalar Dependências
 
 ```bash
-npm install whatsapp-web.js express cors qrcode-terminal
+npm install
 ```
 
-### 2. Configurar Variáveis de Ambiente
+### 2. Configurar SERVICE_ROLE_KEY
 
-Criar arquivo `.env`:
+**📝 SCRIPT RÁPIDO (Recomendado)**
 
-```env
-PORT=3333
-SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role_aqui
+Edite o arquivo correspondente ao seu sistema:
+
+**Windows** (`start-server.bat`):
+```batch
+set SUPABASE_SERVICE_ROLE_KEY=COLE_SUA_SERVICE_ROLE_KEY_AQUI
 ```
 
-### 3. Iniciar Servidor
+**Linux/Mac** (`start-server.sh`):
+```bash
+export SUPABASE_SERVICE_ROLE_KEY="COLE_SUA_SERVICE_ROLE_KEY_AQUI"
+```
+
+Depois execute:
+- Windows: `start-server.bat`
+- Linux/Mac: `chmod +x start-server.sh && ./start-server.sh`
+
+**💻 LINHA DE COMANDO (Alternativa)**
 
 ```bash
+# Windows (CMD)
+set SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key_aqui
+node server1.js
+
+# Windows (PowerShell)
+$env:SUPABASE_SERVICE_ROLE_KEY="sua_service_role_key_aqui"
+node server1.js
+
+# Linux/Mac
+export SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key_aqui
 node server1.js
 ```
 
-ou com auto-reload:
+### 3. Conectar WhatsApp do MANIA DE MULHER
 
-```bash
-npm install -g nodemon
-nodemon server1.js
+Quando o servidor iniciar, você verá:
+
+```
+📱 Criando cliente WhatsApp para tenant: MANIA DE MULHER (08f2b1b9-3988-489e-8186-c60f0c0b0622)
+
+🔲 QR Code para MANIA DE MULHER:
+████ ████ ████ ████ ████
+████ ████ ████ ████ ████
+...
+
+✅ Servidor rodando na porta 3333
 ```
 
-## 📱 Conectar WhatsApp
+**Para conectar:**
+1. Abra o WhatsApp do MANIA DE MULHER
+2. Vá em **Configurações** → **Aparelhos conectados**
+3. Clique em **"Conectar um aparelho"**
+4. Escaneie o QR code mostrado no terminal
+5. Aguarde a mensagem: `✅ MANIA DE MULHER autenticado!`
 
-1. Inicie o servidor
-2. QR Codes aparecerão no terminal para cada tenant
-3. Escaneie cada QR Code com o WhatsApp do respectivo tenant
-4. Aguarde a mensagem "✅ [Tenant] está pronto!"
+**Nota**: O servidor carrega TODOS os tenants ativos automaticamente. Você verá um QR code para cada tenant.
 
 ## 🔌 Endpoints da API
 
