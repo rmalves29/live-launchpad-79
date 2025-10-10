@@ -62,3 +62,9 @@ verify_jwt = false
 
 [functions.whatsapp-send-paid-order]
 verify_jwt = false
+
+[functions.whatsapp-send-item-added]
+verify_jwt = false
+
+[functions.whatsapp-process-message]
+verify_jwt = false
