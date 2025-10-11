@@ -27,6 +27,12 @@ interface Customer {
   is_paid: boolean;
 }
 
+interface SendStatus {
+  phone: string;
+  status: 'pending' | 'sending' | 'sent' | 'error';
+  error?: string;
+}
+
 export default function Cobranca() {
   const { toast } = useToast();
   const { tenant } = useTenant();
@@ -43,6 +49,7 @@ export default function Cobranca() {
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
   const [whatsappApiUrl, setWhatsappApiUrl] = useState<string | null>(null);
+  const [sendStatuses, setSendStatuses] = useState<Record<string, SendStatus>>({});
 
   // Carregar template padrão MSG_MASSA e URL do WhatsApp
   useEffect(() => {
@@ -61,10 +68,13 @@ export default function Cobranca() {
       if (error) throw error;
       
       if (data?.api_url) {
+        console.log('✅ WhatsApp API URL carregada:', data.api_url);
         setWhatsappApiUrl(data.api_url);
+      } else {
+        console.warn('⚠️ Nenhuma integração WhatsApp ativa encontrada');
       }
     } catch (error) {
-      console.error('Erro ao carregar URL do WhatsApp:', error);
+      console.error('❌ Erro ao carregar URL do WhatsApp:', error);
     }
   };
 
@@ -127,6 +137,13 @@ export default function Cobranca() {
 
       setCustomers(uniqueCustomers);
       
+      // Inicializar status como pendente para todos
+      const initialStatuses: Record<string, SendStatus> = {};
+      uniqueCustomers.forEach(c => {
+        initialStatuses[c.customer_phone] = { phone: c.customer_phone, status: 'pending' };
+      });
+      setSendStatuses(initialStatuses);
+      
       toast({
         title: 'Filtro aplicado',
         description: `${uniqueCustomers.length} cliente(s) encontrado(s)`,
@@ -171,11 +188,15 @@ export default function Cobranca() {
     if (!whatsappApiUrl) {
       toast({
         title: 'Erro',
-        description: 'Servidor WhatsApp não configurado',
+        description: 'Servidor WhatsApp não configurado. Verifique as configurações.',
         variant: 'destructive'
       });
+      console.error('❌ whatsappApiUrl não está definido');
       return;
     }
+
+    console.log('🚀 Iniciando envio em massa para', customers.length, 'clientes');
+    console.log('📡 URL do servidor:', whatsappApiUrl);
 
     setSending(true);
     setSendProgress({ current: 0, total: customers.length });
@@ -185,6 +206,12 @@ export default function Cobranca() {
         const customer = customers[i];
         setSendProgress({ current: i + 1, total: customers.length });
 
+        // Atualizar status para "enviando"
+        setSendStatuses(prev => ({
+          ...prev,
+          [customer.customer_phone]: { phone: customer.customer_phone, status: 'sending' }
+        }));
+
         // Personalizar mensagem com nome do cliente se disponível
         let personalizedMessage = messageTemplate;
         if (customer.customer_name) {
@@ -193,6 +220,7 @@ export default function Cobranca() {
 
         // Normalizar telefone para envio
         const phoneToSend = normalizeForSending(customer.customer_phone);
+        console.log(`📱 Enviando para ${phoneToSend} (${i + 1}/${customers.length})`);
 
         // Enviar mensagem diretamente para o servidor Node.js WhatsApp
         try {
@@ -209,7 +237,26 @@ export default function Cobranca() {
           });
 
           if (!response.ok) {
-            console.error(`Erro ao enviar para ${phoneToSend}:`, await response.text());
+            const errorText = await response.text();
+            console.error(`❌ Erro ao enviar para ${phoneToSend}:`, errorText);
+            
+            // Atualizar status para erro
+            setSendStatuses(prev => ({
+              ...prev,
+              [customer.customer_phone]: { 
+                phone: customer.customer_phone, 
+                status: 'error',
+                error: `Erro HTTP ${response.status}`
+              }
+            }));
+          } else {
+            console.log(`✅ Mensagem enviada com sucesso para ${phoneToSend}`);
+            
+            // Atualizar status para enviado
+            setSendStatuses(prev => ({
+              ...prev,
+              [customer.customer_phone]: { phone: customer.customer_phone, status: 'sent' }
+            }));
           }
 
           // Registrar no banco de dados
@@ -222,7 +269,17 @@ export default function Cobranca() {
           });
 
         } catch (error) {
-          console.error(`Erro ao enviar mensagem para ${customer.customer_phone}:`, error);
+          console.error(`❌ Erro ao enviar mensagem para ${customer.customer_phone}:`, error);
+          
+          // Atualizar status para erro
+          setSendStatuses(prev => ({
+            ...prev,
+            [customer.customer_phone]: { 
+              phone: customer.customer_phone, 
+              status: 'error',
+              error: error instanceof Error ? error.message : 'Erro desconhecido'
+            }
+          }));
         }
 
         // Delay de 2 segundos entre mensagens (exceto na última)
@@ -231,18 +288,16 @@ export default function Cobranca() {
         }
       }
 
+      const successCount = Object.values(sendStatuses).filter(s => s.status === 'sent').length;
+      const errorCount = Object.values(sendStatuses).filter(s => s.status === 'error').length;
+
       toast({
         title: 'Envio concluído',
-        description: `${customers.length} mensagem(ns) enviada(s) com sucesso`,
+        description: `${successCount} enviada(s), ${errorCount} erro(s)`,
       });
 
-      // Limpar seleção após envio
-      setCustomers([]);
-      setFilters({
-        isPaid: 'all',
-        eventType: 'all',
-        orderDate: ''
-      });
+      console.log('✅ Processo de envio finalizado');
+      console.log(`📊 Sucesso: ${successCount}, Erros: ${errorCount}`);
 
     } catch (error) {
       console.error('Erro ao enviar mensagens:', error);
@@ -359,22 +414,30 @@ export default function Cobranca() {
               </div>
 
               {customers.length > 0 && (
-                <div className="mt-4 max-h-40 overflow-y-auto border rounded-md p-4 space-y-2">
-                  {customers.slice(0, 10).map((customer, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm">
-                      <span className="font-medium">
-                        {customer.customer_name || customer.customer_phone}
-                      </span>
-                      <Badge variant={customer.is_paid ? 'default' : 'secondary'}>
-                        {customer.is_paid ? 'Pago' : 'Pendente'}
-                      </Badge>
-                    </div>
-                  ))}
-                  {customers.length > 10 && (
-                    <p className="text-xs text-muted-foreground text-center pt-2">
-                      ... e mais {customers.length - 10} cliente(s)
-                    </p>
-                  )}
+                <div className="mt-4 max-h-60 overflow-y-auto border rounded-md p-4 space-y-2">
+                  {customers.map((customer, index) => {
+                    const status = sendStatuses[customer.customer_phone];
+                    return (
+                      <div key={index} className="flex items-center justify-between text-sm">
+                        <span className="font-medium">
+                          {customer.customer_name || customer.customer_phone}
+                        </span>
+                        <Badge 
+                          variant={
+                            status?.status === 'sent' ? 'default' :
+                            status?.status === 'sending' ? 'outline' :
+                            status?.status === 'error' ? 'destructive' :
+                            'secondary'
+                          }
+                        >
+                          {status?.status === 'sent' ? '✓ Enviado' :
+                           status?.status === 'sending' ? '⏳ Enviando...' :
+                           status?.status === 'error' ? '✗ Erro' :
+                           'Pendente'}
+                        </Badge>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
