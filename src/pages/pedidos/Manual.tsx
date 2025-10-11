@@ -357,14 +357,9 @@ const PedidosManual = () => {
           : `Novo pedido criado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
 
-      // Enviar WhatsApp ITEM_ADDED
+      // Enviar WhatsApp ITEM_ADDED (chamada direta ao servidor local)
       try {
-        console.log('🔍 Verificando sessão e tenant para WhatsApp...');
-        const { data: { session } } = await supabaseTenant.raw.auth.getSession();
-        console.log('📱 Session:', session ? 'OK' : 'NULL');
-        console.log('🏢 Tenant ID:', tenant?.id);
-        
-        if (session && tenant?.id) {
+        if (tenant?.id) {
           console.log('📤 Enviando WhatsApp ITEM_ADDED:', {
             tenant_id: tenant.id,
             customer_phone: normalizedPhone,
@@ -373,21 +368,51 @@ const PedidosManual = () => {
             quantity: qty,
             unit_price: product.price
           });
-          
-          const result = await supabaseTenant.raw.functions.invoke('whatsapp-send-item-added', {
-            body: {
-              tenant_id: tenant.id,
-              customer_phone: normalizedPhone,
-              product_name: product.name,
-              product_code: product.code,
-              quantity: qty,
-              unit_price: product.price
-            }
-          });
-          
-          console.log('✅ Resposta WhatsApp:', result);
-        } else {
-          console.warn('⚠️ Não enviou WhatsApp - session ou tenant ausente');
+
+          // Buscar template ITEM_ADDED
+          const { data: template } = await supabaseTenant.from('whatsapp_templates')
+            .select('content')
+            .eq('type', 'ITEM_ADDED')
+            .maybeSingle();
+
+          if (template) {
+            const valorTotal = (qty * product.price).toFixed(2);
+            let mensagem = template.content
+              .replace(/\{\{produto\}\}/g, `${product.name} (${product.code})`)
+              .replace(/\{\{quantidade\}\}/g, qty.toString())
+              .replace(/\{\{valor\}\}/g, valorTotal);
+
+            // Normalizar telefone com DDI
+            const phoneClean = normalizedPhone.replace(/\D/g, '');
+            const phoneFinal = phoneClean.startsWith('55') ? phoneClean : `55${phoneClean}`;
+
+            console.log('📱 Enviando para:', phoneFinal);
+
+            // Enviar diretamente ao servidor WhatsApp local
+            const response = await fetch('http://localhost:3333/send', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-tenant-id': tenant.id
+              },
+              body: JSON.stringify({
+                phone: phoneFinal,
+                message: mensagem
+              })
+            });
+
+            const result = await response.json();
+            console.log('✅ WhatsApp enviado:', result);
+
+            // Registrar no banco
+            await supabaseTenant.from('whatsapp_messages').insert({
+              phone: phoneFinal,
+              message: mensagem,
+              type: 'item_added',
+              sent_at: new Date().toISOString(),
+              processed: true
+            });
+          }
         }
       } catch (whatsappError) {
         console.error('❌ Erro ao enviar WhatsApp:', whatsappError);
