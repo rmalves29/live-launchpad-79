@@ -24,12 +24,14 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const whatsappApiUrl = Deno.env.get('WHATSAPP_MULTITENANT_URL') || 'http://localhost:3333';
     
+    console.log('🔧 WhatsApp API URL configurada:', whatsappApiUrl);
+    
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: SendItemAddedRequest = await req.json();
     const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price } = body;
 
-    console.log('📱 Sending ITEM_ADDED WhatsApp for tenant:', tenant_id);
+    console.log('📱 Recebido pedido ITEM_ADDED:', { tenant_id, customer_phone, product_name, product_code, quantity, unit_price });
 
     // Buscar template ITEM_ADDED do tenant
     const { data: template, error: templateError } = await supabase

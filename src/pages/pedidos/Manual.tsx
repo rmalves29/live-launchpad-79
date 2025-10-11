@@ -359,9 +359,22 @@ const PedidosManual = () => {
 
       // Enviar WhatsApp ITEM_ADDED
       try {
+        console.log('🔍 Verificando sessão e tenant para WhatsApp...');
         const { data: { session } } = await supabaseTenant.raw.auth.getSession();
+        console.log('📱 Session:', session ? 'OK' : 'NULL');
+        console.log('🏢 Tenant ID:', tenant?.id);
+        
         if (session && tenant?.id) {
-          await supabaseTenant.raw.functions.invoke('whatsapp-send-item-added', {
+          console.log('📤 Enviando WhatsApp ITEM_ADDED:', {
+            tenant_id: tenant.id,
+            customer_phone: normalizedPhone,
+            product_name: product.name,
+            product_code: product.code,
+            quantity: qty,
+            unit_price: product.price
+          });
+          
+          const result = await supabaseTenant.raw.functions.invoke('whatsapp-send-item-added', {
             body: {
               tenant_id: tenant.id,
               customer_phone: normalizedPhone,
@@ -371,10 +384,13 @@ const PedidosManual = () => {
               unit_price: product.price
             }
           });
-          console.log('✅ WhatsApp ITEM_ADDED enviado');
+          
+          console.log('✅ Resposta WhatsApp:', result);
+        } else {
+          console.warn('⚠️ Não enviou WhatsApp - session ou tenant ausente');
         }
       } catch (whatsappError) {
-        console.error('⚠️ Erro ao enviar WhatsApp:', whatsappError);
+        console.error('❌ Erro ao enviar WhatsApp:', whatsappError);
         // Não impede o fluxo se o WhatsApp falhar
       }
 
