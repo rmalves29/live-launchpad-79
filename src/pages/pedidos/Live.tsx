@@ -386,6 +386,9 @@ const Live = () => {
 
       // Enviar WhatsApp ITEM_ADDED (chamada direta ao servidor local)
       try {
+        console.log('🚀 INICIANDO ENVIO DE WHATSAPP');
+        console.log('Tenant ID:', tenant?.id);
+        
         if (tenant?.id) {
           console.log('📤 Enviando WhatsApp ITEM_ADDED:', {
             tenant_id: tenant.id,
@@ -397,10 +400,14 @@ const Live = () => {
           });
 
           // Buscar template ITEM_ADDED
-          const { data: template } = await supabaseTenant.from('whatsapp_templates')
+          console.log('🔍 Buscando template ITEM_ADDED...');
+          const { data: template, error: templateError } = await supabaseTenant.from('whatsapp_templates')
             .select('content')
             .eq('type', 'ITEM_ADDED')
             .maybeSingle();
+
+          console.log('Template encontrado:', template ? 'SIM' : 'NÃO');
+          if (templateError) console.error('Erro ao buscar template:', templateError);
 
           if (template) {
             const valorTotal = (qty * product.price).toFixed(2);
@@ -413,7 +420,9 @@ const Live = () => {
             const phoneClean = normalizedPhone.replace(/\D/g, '');
             const phoneFinal = phoneClean.startsWith('55') ? phoneClean : `55${phoneClean}`;
 
-            console.log('📱 Enviando para:', phoneFinal);
+            console.log('📱 Telefone final:', phoneFinal);
+            console.log('💬 Mensagem:', mensagem);
+            console.log('🌐 Chamando API:', 'http://localhost:3333/send');
 
             // Enviar diretamente ao servidor WhatsApp local
             const response = await fetch('http://localhost:3333/send', {
@@ -428,6 +437,7 @@ const Live = () => {
               })
             });
 
+            console.log('📊 Response status:', response.status);
             const result = await response.json();
             console.log('✅ WhatsApp enviado:', result);
 
@@ -439,10 +449,19 @@ const Live = () => {
               sent_at: new Date().toISOString(),
               processed: true
             });
+            
+            console.log('💾 Mensagem registrada no banco');
+          } else {
+            console.warn('⚠️ Template ITEM_ADDED não encontrado!');
           }
+        } else {
+          console.warn('⚠️ Tenant ID não disponível');
         }
-      } catch (whatsappError) {
-        console.error('❌ Erro ao enviar WhatsApp:', whatsappError);
+      } catch (whatsappError: any) {
+        console.error('❌ ERRO COMPLETO:', whatsappError);
+        console.error('Erro nome:', whatsappError?.name);
+        console.error('Erro message:', whatsappError?.message);
+        console.error('Erro stack:', whatsappError?.stack);
         // Não impede o fluxo se o WhatsApp falhar
       }
 
