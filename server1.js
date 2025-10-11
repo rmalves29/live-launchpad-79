@@ -297,7 +297,14 @@ class SupabaseHelper {
       throw new Error(`Supabase error: ${response.status} - ${error}`);
     }
 
-    return response.json();
+    // Se não houver conteúdo (204 No Content ou 201 Created sem body), retornar null
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return null;
+    }
+
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
   }
 
   async loadActiveTenants() {
