@@ -159,11 +159,14 @@ class TenantManager {
     });
 
     // Mensagens recebidas - DETECÇÃO AUTOMÁTICA DE CÓDIGOS
+    console.log(`👂 Configurando listener de mensagens para ${tenant.name}`);
     client.on('message', async (msg) => {
+      console.log(`\n⚡ EVENTO MESSAGE RECEBIDO - Tenant: ${tenant.name}`);
       try {
         await this.handleIncomingMessage(tenantId, msg);
       } catch (error) {
-        console.error(`❌ Erro ao processar mensagem do tenant ${tenantId}:`, error);
+        console.error(`❌ ERRO CRÍTICO ao processar mensagem do tenant ${tenantId}:`, error);
+        console.error(`Stack:`, error.stack);
       }
     });
 
@@ -174,67 +177,93 @@ class TenantManager {
   }
 
   async handleIncomingMessage(tenantId, msg) {
-    const clientData = this.clients.get(tenantId);
-    if (!clientData) return;
+    try {
+      const clientData = this.clients.get(tenantId);
+      if (!clientData) {
+        console.log('⚠️ Cliente não encontrado para tenant:', tenantId);
+        return;
+      }
 
-    const tenant = clientData.tenant;
-    const messageText = msg.body || '';
-    
-    console.log(`📨 Mensagem recebida (${tenant.name}):`, messageText);
+      const tenant = clientData.tenant;
+      const messageText = msg.body || '';
+      
+      console.log(`\n📨 ========== NOVA MENSAGEM ==========`);
+      console.log(`📱 Tenant: ${tenant.name} (${tenantId})`);
+      console.log(`💬 Mensagem: "${messageText}"`);
+      
+      // Detectar códigos de produtos (C seguido de números, case insensitive)
+      const productCodeRegex = /C(\d+)/gi;
+      const matches = [...messageText.matchAll(productCodeRegex)];
+      
+      if (matches.length === 0) {
+        console.log(`ℹ️ Nenhum código de produto detectado (formato esperado: C1, C123, etc.)`);
+        return;
+      }
 
-    // Detectar códigos de produtos (C seguido de números)
-    const productCodeRegex = /C(\d+)/gi;
-    const matches = [...messageText.matchAll(productCodeRegex)];
-    
-    if (matches.length === 0) {
-      return; // Não é uma mensagem com código de produto
-    }
+      const codes = matches.map(match => match[0].toUpperCase());
+      console.log(`✅ Códigos detectados:`, codes.join(', '));
 
-    const codes = matches.map(match => match[0].toUpperCase());
-    console.log(`🔍 Códigos detectados:`, codes);
+      // Obter telefone do remetente
+      const contact = await msg.getContact();
+      const customerPhone = contact.number;
+      
+      // Verificar se é mensagem de grupo
+      const chat = await msg.getChat();
+      const isGroup = chat.isGroup;
+      const groupName = isGroup ? chat.name : null;
 
-    // Obter telefone do remetente
-    const contact = await msg.getContact();
-    const customerPhone = contact.number;
-    
-    // Verificar se é mensagem de grupo
-    const chat = await msg.getChat();
-    const isGroup = chat.isGroup;
-    const groupName = isGroup ? chat.name : null;
+      console.log(`👤 Cliente: ${customerPhone}`);
+      if (isGroup) {
+        console.log(`👥 Grupo: ${groupName}`);
+      }
 
-    console.log(`👤 Cliente: ${customerPhone}${isGroup ? ` | Grupo: ${groupName}` : ''}`);
-
-    // Processar cada código detectado via Edge Function
-    for (const code of codes) {
-      try {
-        console.log(`🔄 Processando código ${code}...`);
-        
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-process-message`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
-          },
-          body: JSON.stringify({
+      // Processar cada código detectado via Edge Function
+      for (const code of codes) {
+        try {
+          console.log(`\n🔄 Processando código ${code}...`);
+          console.log(`📞 API: ${SUPABASE_URL}/functions/v1/whatsapp-process-message`);
+          
+          const requestBody = {
             tenant_id: tenantId,
             customer_phone: customerPhone,
             message: code,
             group_name: groupName
-          })
-        });
+          };
+          
+          console.log(`📤 Enviando dados:`, JSON.stringify(requestBody, null, 2));
+          
+          const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-process-message`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
+            },
+            body: JSON.stringify(requestBody)
+          });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`❌ Erro na edge function para ${code}:`, errorText);
-          continue;
+          console.log(`📥 Status da resposta: ${response.status} ${response.statusText}`);
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`❌ Erro na edge function para ${code}:`, errorText);
+            continue;
+          }
+
+          const result = await response.json();
+          console.log(`✅ Código ${code} processado com sucesso!`);
+          console.log(`📊 Resultado:`, JSON.stringify(result, null, 2));
+
+        } catch (error) {
+          console.error(`❌ Erro crítico ao processar código ${code}:`, error.message);
+          console.error(`🔍 Stack trace:`, error.stack);
         }
-
-        const result = await response.json();
-        console.log(`✅ Código ${code} processado:`, result);
-
-      } catch (error) {
-        console.error(`❌ Erro ao processar código ${code}:`, error);
       }
+      
+      console.log(`\n========== FIM DO PROCESSAMENTO ==========\n`);
+      
+    } catch (error) {
+      console.error(`❌ Erro fatal em handleIncomingMessage:`, error.message);
+      console.error(`🔍 Stack trace:`, error.stack);
     }
   }
 
@@ -574,46 +603,67 @@ function createApp(tenantManager, supabaseHelper) {
     }
   });
 
-  // Processar mensagem recebida manualmente (opcional)
+  // Processar mensagem recebida manualmente (para testes)
   app.post('/process-incoming-message', async (req, res) => {
     const { tenantId } = req;
     const { customer_phone, message, group_name } = req.body;
 
+    console.log(`\n🧪 ========== TESTE MANUAL DE PROCESSAMENTO ==========`);
+    console.log(`📱 Tenant ID: ${tenantId}`);
+    console.log(`📞 Telefone: ${customer_phone}`);
+    console.log(`💬 Mensagem: "${message}"`);
+    console.log(`👥 Grupo: ${group_name || 'N/A'}`);
+
     if (!tenantId) {
+      console.error(`❌ tenant_id não fornecido`);
       return res.status(400).json({ 
         success: false, 
-        error: 'tenant_id obrigatório' 
+        error: 'tenant_id obrigatório (via header x-tenant-id ou query ?tenantId=xxx)' 
       });
     }
 
     try {
+      console.log(`🔄 Chamando edge function...`);
+      console.log(`📍 URL: ${SUPABASE_URL}/functions/v1/whatsapp-process-message`);
+      
+      const requestBody = {
+        tenant_id: tenantId,
+        customer_phone,
+        message,
+        group_name
+      };
+      
+      console.log(`📤 Body:`, JSON.stringify(requestBody, null, 2));
+      
       const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-process-message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
         },
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          customer_phone,
-          message,
-          group_name
-        })
+        body: JSON.stringify(requestBody)
       });
+
+      console.log(`📥 Status: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error(`❌ Erro da edge function:`, errorText);
         throw new Error(errorText);
       }
 
       const result = await response.json();
+      console.log(`✅ Resultado:`, JSON.stringify(result, null, 2));
+      console.log(`========== FIM DO TESTE ==========\n`);
 
       res.json({ 
         success: true, 
         result 
       });
     } catch (error) {
-      console.error('❌ Erro ao processar mensagem:', error);
+      console.error('❌ Erro ao processar mensagem:', error.message);
+      console.error('Stack:', error.stack);
+      console.log(`========== FIM DO TESTE (COM ERRO) ==========\n`);
       res.status(500).json({ 
         success: false, 
         error: error.message 
@@ -692,9 +742,26 @@ async function main() {
 
   // Iniciar servidor
   app.listen(PORT, () => {
-    console.log(`\n✅ Servidor rodando na porta ${PORT}`);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`✅ SERVIDOR WHATSAPP MULTI-TENANT ATIVO`);
+    console.log(`${'='.repeat(60)}`);
     console.log(`📍 URL: http://localhost:${PORT}`);
-    console.log(`\n🔐 Escaneie os QR Codes acima para conectar cada tenant\n`);
+    console.log(`🔌 Porta: ${PORT}`);
+    console.log(`📊 Supabase: ${SUPABASE_URL}`);
+    console.log(`\n📱 FUNCIONALIDADES ATIVAS:`);
+    console.log(`   ✓ Envio de mensagens individuais`);
+    console.log(`   ✓ Envio de mensagens em grupo`);
+    console.log(`   ✓ Detecção automática de códigos de produtos`);
+    console.log(`   ✓ Criação automática de pedidos`);
+    console.log(`\n🤖 DETECÇÃO AUTOMÁTICA:`);
+    console.log(`   Quando receber mensagens com códigos (C1, C2, C123, etc)`);
+    console.log(`   o sistema irá:`);
+    console.log(`   1. Buscar o produto no banco de dados`);
+    console.log(`   2. Verificar/criar pedido do cliente`);
+    console.log(`   3. Adicionar produto ao pedido`);
+    console.log(`   4. Enviar confirmação via WhatsApp`);
+    console.log(`\n🔐 Escaneie os QR Codes acima para conectar cada tenant`);
+    console.log(`${'='.repeat(60)}\n`);
   });
 }
 
