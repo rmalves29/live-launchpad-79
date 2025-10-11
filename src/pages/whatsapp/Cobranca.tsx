@@ -42,11 +42,31 @@ export default function Cobranca() {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
+  const [whatsappApiUrl, setWhatsappApiUrl] = useState<string | null>(null);
 
-  // Carregar template padrão MSG_MASSA
+  // Carregar template padrão MSG_MASSA e URL do WhatsApp
   useEffect(() => {
     loadDefaultTemplate();
+    loadWhatsAppUrl();
   }, [tenant]);
+
+  const loadWhatsAppUrl = async () => {
+    try {
+      const { data, error } = await supabaseTenant
+        .from('integration_whatsapp')
+        .select('api_url')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      if (data?.api_url) {
+        setWhatsappApiUrl(data.api_url);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar URL do WhatsApp:', error);
+    }
+  };
 
   const loadDefaultTemplate = async () => {
     try {
@@ -148,12 +168,19 @@ export default function Cobranca() {
       return;
     }
 
+    if (!whatsappApiUrl) {
+      toast({
+        title: 'Erro',
+        description: 'Servidor WhatsApp não configurado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setSending(true);
     setSendProgress({ current: 0, total: customers.length });
 
     try {
-      const whatsappApiUrl = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1';
-
       for (let i = 0; i < customers.length; i++) {
         const customer = customers[i];
         setSendProgress({ current: i + 1, total: customers.length });
@@ -167,18 +194,17 @@ export default function Cobranca() {
         // Normalizar telefone para envio
         const phoneToSend = normalizeForSending(customer.customer_phone);
 
-        // Enviar mensagem via edge function
+        // Enviar mensagem diretamente para o servidor Node.js WhatsApp
         try {
-          const response = await fetch(`${whatsappApiUrl}/whatsapp-send-item-added`, {
+          const response = await fetch(`${whatsappApiUrl}/send`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'x-tenant-id': tenant?.id || ''
             },
             body: JSON.stringify({
-              tenant_id: tenant?.id,
-              customer_phone: phoneToSend,
-              message: personalizedMessage,
-              type: 'mass_message'
+              phone: phoneToSend,
+              message: personalizedMessage
             })
           });
 
@@ -188,7 +214,7 @@ export default function Cobranca() {
 
           // Registrar no banco de dados
           await supabaseTenant.from('whatsapp_messages').insert({
-            phone: customer.customer_phone,
+            phone: phoneToSend,
             message: personalizedMessage,
             type: 'bulk',
             sent_at: new Date().toISOString(),
