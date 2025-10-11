@@ -14,7 +14,7 @@ interface WhatsAppMessage {
   id: number;
   phone: string;
   message: string;
-  type: 'incoming' | 'outgoing' | 'broadcast' | 'system_log' | 'bulk' | 'mass' | 'item_added';
+  type: 'incoming' | 'outgoing' | 'broadcast' | 'system_log' | 'bulk' | 'mass' | 'item_added' | 'individual';
   sent_at?: string;
   received_at?: string;
   processed: boolean;
