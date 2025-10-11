@@ -17,6 +17,7 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const enableLive = tenant?.enable_live ?? true;
+  const enableSendflow = tenant?.enable_sendflow ?? true;
   
   const isWhatsappActive = location.pathname.startsWith('/whatsapp');
 
@@ -27,6 +28,7 @@ const Navbar = () => {
     { path: '/produtos', label: 'Produtos' },
     { path: '/clientes', label: 'Clientes' },
     { path: '/pedidos', label: 'Pedidos' },
+    ...(enableSendflow ? [{ path: '/sendflow', label: 'SendFlow' }] : []),
     { path: '/relatorios', label: 'Relatórios' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/etiquetas', label: 'Etiquetas' },
