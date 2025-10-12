@@ -380,17 +380,48 @@ function normalizePhone(phone) {
   // Remover caracteres especiais
   let clean = phone.replace(/\D/g, '');
   
-  // Adicionar DDI 55 se não tiver
-  if (!clean.startsWith('55')) {
-    clean = '55' + clean;
+  // Remover DDI 55 se tiver para processar apenas DDD+número
+  if (clean.startsWith('55')) {
+    clean = clean.substring(2);
   }
   
-  // Garantir 9º dígito para celulares
-  if (clean.length === 12 && clean[4] !== '9') {
-    clean = clean.slice(0, 4) + '9' + clean.slice(4);
+  // Validar tamanho mínimo
+  if (clean.length < 10) {
+    console.warn(`⚠️ Telefone muito curto: ${phone}`);
+    return '55' + clean + '@c.us';
   }
   
-  return clean + '@c.us';
+  // Extrair DDD (2 primeiros dígitos)
+  const ddd = parseInt(clean.substring(0, 2));
+  
+  console.log(`📞 Normalizando: ${phone} → DDD: ${ddd}, Número: ${clean}`);
+  
+  // Aplicar regra específica baseada no DDD
+  if (ddd >= 31) {
+    // DDD >= 31: REMOVER 9º dígito se presente
+    if (clean.length === 11 && clean[2] === '9') {
+      // Tem 11 dígitos e 3º é '9' → remover o 9
+      clean = clean.substring(0, 2) + clean.substring(3);
+      console.log(`✅ DDD ${ddd} >= 31: 9º dígito removido → ${clean}`);
+    } else if (clean.length === 10) {
+      console.log(`✅ DDD ${ddd} >= 31: já está sem 9º dígito → ${clean}`);
+    }
+  } else {
+    // DDD < 31: ADICIONAR 9º dígito se não presente
+    if (clean.length === 10 && clean[2] !== '9') {
+      // Tem 10 dígitos e 3º não é '9' → adicionar o 9
+      clean = clean.substring(0, 2) + '9' + clean.substring(2);
+      console.log(`✅ DDD ${ddd} < 31: 9º dígito adicionado → ${clean}`);
+    } else if (clean.length === 11 && clean[2] === '9') {
+      console.log(`✅ DDD ${ddd} < 31: já tem 9º dígito → ${clean}`);
+    }
+  }
+  
+  // Adicionar DDI 55 e formato WhatsApp
+  const normalized = '55' + clean + '@c.us';
+  console.log(`📱 Número final para WhatsApp: ${normalized}`);
+  
+  return normalized;
 }
 
 function delay(ms) {
