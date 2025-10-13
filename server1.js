@@ -101,7 +101,10 @@ class TenantManager {
         dataPath: AUTH_DIR
       }),
       puppeteer: puppeteerConfig,
-      // REMOVIDO webVersionCache - usar versão local/padrão para evitar problemas
+      webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+      },
       qrMaxRetries: 5 // Tentar gerar QR até 5 vezes se falhar
     });
 
