@@ -109,32 +109,28 @@ class TenantManager {
     // Configuração do Puppeteer com detecção de Chrome
     const showBrowser = process.env.SHOW_BROWSER === 'true';
     const puppeteerConfig = {
-      headless: !showBrowser,
+      headless: false, // Sempre visível para debug
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-blink-features=AutomationControlled'
-      ],
-      timeout: 0, // Sem timeout
-      protocolTimeout: 0
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins',
+        '--disable-site-isolation-trials',
+        '--disable-features=VizDisplayCompositor'
+      ]
     };
     
     if (showBrowser) {
-      console.log('🌐 Modo navegador visível ativado - você verá o Chrome');
+      console.log('🌐 Modo navegador visível ativado');
     }
 
-    // Tentar usar Chrome do sistema no Windows se Chromium não estiver disponível
+    // Tentar usar Chrome do sistema no Windows
     if (process.platform === 'win32') {
       const possiblePaths = [
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-        process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe'
+        path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe')
       ];
 
       for (const chromePath of possiblePaths) {
@@ -143,6 +139,10 @@ class TenantManager {
           puppeteerConfig.executablePath = chromePath;
           break;
         }
+      }
+      
+      if (!puppeteerConfig.executablePath) {
+        console.log('⚠️ Chrome não encontrado, usando Chromium do Puppeteer');
       }
     }
 
@@ -154,13 +154,12 @@ class TenantManager {
         dataPath: AUTH_DIR
       }),
       puppeteer: puppeteerConfig,
-      webVersionCache: {
+      webVersionCache: fs.existsSync(cacheFile) ? {
         type: 'local',
         path: cacheFile
-      },
+      } : undefined,
       qrMaxRetries: 5,
-      authTimeoutMs: 0,
-      bypassCSP: true
+      authTimeoutMs: 0
     });
 
     // Status inicial
