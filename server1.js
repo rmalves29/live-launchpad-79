@@ -122,16 +122,18 @@ class TenantManager {
     console.log('🌐 Usando configuração padrão do WhatsApp Web');
     console.log(`💾 Sessões em: ${AUTH_DIR}`);
 
-    // Cliente sem webVersionCache - deixar o whatsapp-web.js gerenciar
+    // Cliente com cache desabilitado - resolve erro do LocalWebCache
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: tenantId,
         dataPath: AUTH_DIR
       }),
       puppeteer: puppeteerConfig,
+      webVersionCache: {
+        type: 'none'
+      },
       qrMaxRetries: 5,
-      authTimeoutMs: 0,
-      webVersion: '2.2412.54' // Versão estável conhecida
+      authTimeoutMs: 0
     });
 
     // Status inicial
