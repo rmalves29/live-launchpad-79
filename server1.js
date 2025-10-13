@@ -104,31 +104,89 @@ class TenantManager {
       }
 
       if (connection === 'close') {
-        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-        const reason = lastDisconnect?.error?.output?.statusCode || 'unknown';
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const reason = statusCode || 'unknown';
         
-        console.log(`⚠️ ${tenant.name} desconectado:`, reason);
-        console.log(`   DisconnectReason:`, DisconnectReason);
+        console.log(`\n⚠️ ${tenant.name} desconectado - Código: ${reason}`);
         
         clientData.status = 'disconnected';
         clientData.qr = null;
 
-        if (reason === DisconnectReason.loggedOut) {
-          console.log(`🔴 ${tenant.name} - LOGOUT detectado, limpando sessão...`);
+        // Tratar cada tipo de desconexão
+        if (statusCode === DisconnectReason.loggedOut) {
+          // 401 - Usuário fez logout, limpar sessão
+          console.log(`🔴 LOGOUT (401) - limpando sessão...`);
           
-          // Limpar pasta de autenticação
           try {
             if (fs.existsSync(authPath)) {
               fs.rmSync(authPath, { recursive: true, force: true });
-              console.log(`🧹 Sessão removida para ${tenant.name}`);
+              console.log(`🧹 Sessão removida`);
             }
           } catch (error) {
             console.error(`⚠️ Erro ao limpar sessão:`, error.message);
           }
           
           this.clients.delete(tenantId);
-        } else if (shouldReconnect) {
-          console.log(`🔄 ${tenant.name} tentará reconectar automaticamente...`);
+          
+          console.log(`📱 Reiniciando para gerar novo QR Code em 3s...`);
+          setTimeout(() => this.createClient(tenant), 3000);
+          
+        } else if (statusCode === DisconnectReason.restartRequired) {
+          // 515 - WhatsApp pediu restart, reconectar imediatamente
+          console.log(`🔄 RESTART NECESSÁRIO (515) - reconectando em 2s...`);
+          this.clients.delete(tenantId);
+          setTimeout(() => this.createClient(tenant), 2000);
+          
+        } else if (statusCode === DisconnectReason.timedOut) {
+          // 408 - Timeout, reconectar
+          console.log(`⏱️ TIMEOUT (408) - reconectando em 5s...`);
+          setTimeout(() => this.createClient(tenant), 5000);
+          
+        } else if (statusCode === DisconnectReason.connectionClosed) {
+          // 428 - Conexão fechada, reconectar
+          console.log(`🔌 CONEXÃO FECHADA (428) - reconectando em 3s...`);
+          setTimeout(() => this.createClient(tenant), 3000);
+          
+        } else if (statusCode === DisconnectReason.connectionReplaced) {
+          // 440 - Outra conexão substituiu essa, não reconectar
+          console.log(`🔄 CONEXÃO SUBSTITUÍDA (440) - não reconectando`);
+          this.clients.delete(tenantId);
+          
+        } else if (statusCode === DisconnectReason.badSession) {
+          // 500 - Sessão inválida, limpar e gerar novo QR
+          console.log(`❌ SESSÃO INVÁLIDA (500) - limpando...`);
+          
+          try {
+            if (fs.existsSync(authPath)) {
+              fs.rmSync(authPath, { recursive: true, force: true });
+              console.log(`🧹 Sessão removida`);
+            }
+          } catch (error) {
+            console.error(`⚠️ Erro ao limpar sessão:`, error.message);
+          }
+          
+          console.log(`📱 Reiniciando para gerar novo QR Code em 3s...`);
+          setTimeout(() => this.createClient(tenant), 3000);
+          
+        } else if (statusCode === DisconnectReason.multideviceMismatch) {
+          // 411 - Mismatch de multi-device, limpar sessão
+          console.log(`📱 MULTI-DEVICE MISMATCH (411) - limpando sessão...`);
+          
+          try {
+            if (fs.existsSync(authPath)) {
+              fs.rmSync(authPath, { recursive: true, force: true });
+              console.log(`🧹 Sessão removida`);
+            }
+          } catch (error) {
+            console.error(`⚠️ Erro ao limpar sessão:`, error.message);
+          }
+          
+          console.log(`📱 Reiniciando para gerar novo QR Code em 3s...`);
+          setTimeout(() => this.createClient(tenant), 3000);
+          
+        } else {
+          // Outros erros - tentar reconectar
+          console.log(`🔄 Erro ${reason} - tentando reconectar em 5s...`);
           setTimeout(() => this.createClient(tenant), 5000);
         }
       } else if (connection === 'open') {
