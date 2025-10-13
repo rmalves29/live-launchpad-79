@@ -119,26 +119,32 @@ class TenantManager {
         '--disable-blink-features=AutomationControlled',
         '--disable-features=IsolateOrigins,site-per-process',
         '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions',
         '--window-size=1920,1080',
-        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--metrics-recording-only',
+        '--mute-audio'
       ]
     };
     
     console.log('🌐 Usando configuração padrão do WhatsApp Web');
     console.log(`💾 Sessões em: ${AUTH_DIR}`);
 
-    // Cliente com cache desabilitado - resolve erro do LocalWebCache
+    // Cliente com LocalAuth
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: tenantId,
         dataPath: AUTH_DIR
       }),
       puppeteer: puppeteerConfig,
-      webVersionCache: {
-        type: 'none'
-      },
-      qrMaxRetries: 5,
-      authTimeoutMs: 0
+      qrMaxRetries: 0,       // ilimitado
+      authTimeoutMs: 0,      // sem timeout
+      restartOnAuthFail: false  // não reiniciar automaticamente
     });
 
     // Status inicial
