@@ -106,45 +106,30 @@ class TenantManager {
     
     console.log(`📱 Criando cliente WhatsApp para tenant: ${tenant.name} (${tenantId})`);
 
-    // Configuração do Puppeteer com detecção de Chrome
+    // Configuração do Puppeteer - usar Chromium do Puppeteer em vez de Chrome do sistema
     const showBrowser = process.env.SHOW_BROWSER === 'true';
+    const userDataDir = path.join(__dirname, '.wwebjs_cache', `session-${tenantId}`);
+    
+    // Criar diretório de dados do usuário
+    if (!fs.existsSync(userDataDir)) {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    }
+    
     const puppeteerConfig = {
-      headless: false, // Sempre visível para debug
+      headless: false,
+      userDataDir: userDataDir,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins',
-        '--disable-site-isolation-trials',
-        '--disable-features=VizDisplayCompositor'
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions'
       ]
     };
     
-    if (showBrowser) {
-      console.log('🌐 Modo navegador visível ativado');
-    }
-
-    // Tentar usar Chrome do sistema no Windows
-    if (process.platform === 'win32') {
-      const possiblePaths = [
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-        path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe')
-      ];
-
-      for (const chromePath of possiblePaths) {
-        if (fs.existsSync(chromePath)) {
-          console.log(`✅ Chrome encontrado: ${chromePath}`);
-          puppeteerConfig.executablePath = chromePath;
-          break;
-        }
-      }
-      
-      if (!puppeteerConfig.executablePath) {
-        console.log('⚠️ Chrome não encontrado, usando Chromium do Puppeteer');
-      }
-    }
+    console.log('🌐 Usando Chromium do Puppeteer (mais estável)');
+    console.log(`📁 Dados do usuário em: ${userDataDir}`);
 
     const cacheFile = path.join(__dirname, '.wwebjs_cache', 'whatsapp-web.html');
     
