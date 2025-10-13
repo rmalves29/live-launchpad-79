@@ -22,7 +22,7 @@ echo ""
 # Verificar se package.json existe
 if [ ! -f "package.json" ]; then
     echo "[INFO] Copiando package.json..."
-    cp package-servidor-whatsapp.json package.json
+    cp package-server.json package.json
 fi
 
 # Instalar dependências

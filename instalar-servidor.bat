@@ -23,7 +23,7 @@ echo.
 REM Verificar se package.json existe
 if not exist package.json (
     echo [INFO] Copiando package.json...
-    copy package-servidor-whatsapp.json package.json >nul
+    copy package-server.json package.json >nul
 )
 
 REM Instalar dependências
