@@ -22,6 +22,32 @@ O servidor Node.js **trava** em "Inicializando Puppeteer..." sem conseguir conec
 
 ---
 
+## 📋 Problema 3: WhatsApp Web Detecta Automação
+
+O navegador abre mas fica travado em "Carregando suas conversas" e mostra mensagem "O Chrome está sendo controlado por um software de teste automatizado".
+
+**Causa raiz:** O WhatsApp Web detecta que é um navegador automatizado e bloqueia o carregamento completo.
+
+**Solução:** Adicionar flags no Puppeteer para esconder a automação:
+
+```javascript
+puppeteer: {
+  headless: false,
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-blink-features=AutomationControlled',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--disable-gpu',
+    '--window-size=1920,1080',
+    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  ]
+}
+```
+
+---
+
 ## ✅ Soluções (tente na ordem)
 
 ### 🔥 SOLUÇÃO 1: Limpeza Completa + Reinstalação (RECOMENDADA)
