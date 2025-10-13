@@ -1,6 +1,20 @@
-# 🔧 Diagnóstico e Soluções - Puppeteer Travando
+# 🔧 Diagnóstico e Soluções - Erros do WhatsApp Server
 
-## 📋 Problema Identificado
+## 📋 Problema 1: "Client is not defined"
+
+**Erro:**
+```
+❌ Erro fatal: ReferenceError: Client is not defined
+    at TenantManager.createClient (C:\whatsapp-automacao\server1.js:92:20)
+```
+
+**Causa raiz:** As dependências do Node.js **NÃO estão instaladas**.
+
+**Como resolver:** Veja `INSTALAR_DEPENDENCIAS.md` ou execute `diagnostico-instalacao.bat`
+
+---
+
+## 📋 Problema 2: Puppeteer Travando
 
 O servidor Node.js **trava** em "Inicializando Puppeteer..." sem conseguir conectar ao WhatsApp Web.
 
