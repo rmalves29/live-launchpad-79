@@ -70,7 +70,8 @@ class TenantManager {
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu'
-      ]
+      ],
+      timeout: 60000 // 60 segundos de timeout
     };
     
     if (showBrowser) {
@@ -100,10 +101,8 @@ class TenantManager {
         dataPath: AUTH_DIR
       }),
       puppeteer: puppeteerConfig,
-      webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-      }
+      // REMOVIDO webVersionCache - usar versão local/padrão para evitar problemas
+      qrMaxRetries: 5 // Tentar gerar QR até 5 vezes se falhar
     });
 
     // Status inicial
@@ -112,6 +111,15 @@ class TenantManager {
       status: 'initializing',
       qr: null,
       tenant
+    });
+
+    // Log de debug para eventos do Puppeteer
+    client.pupBrowser?.on('targetcreated', () => {
+      console.log(`🔍 ${tenant.name} - Puppeteer: Nova aba criada`);
+    });
+    
+    client.pupBrowser?.on('disconnected', () => {
+      console.log(`⚠️ ${tenant.name} - Puppeteer: Navegador desconectado`);
     });
 
     // QR Code
@@ -214,19 +222,30 @@ class TenantManager {
     console.log(`\n${'='.repeat(70)}`);
     console.log(`🔌 INICIALIZANDO ${tenant.name.toUpperCase()}`);
     console.log(`ID: ${tenantId}`);
+    console.log(`${'='.repeat(70)}`);
+    console.log(`⏳ Carregando WhatsApp Web...`);
+    console.log(`⏳ Isso pode levar até 60 segundos...`);
     console.log(`${'='.repeat(70)}\n`);
     
-    client.initialize().catch(err => {
-      console.error(`\n❌ ERRO AO INICIALIZAR ${tenant.name}:`);
-      console.error(`Mensagem: ${err.message}`);
-      console.error(`Stack: ${err.stack}\n`);
-      
-      const clientData = this.clients.get(tenantId);
-      if (clientData) {
-        clientData.status = 'error';
-        clientData.error = err.message;
-      }
-    });
+    client.initialize()
+      .then(() => {
+        console.log(`✅ ${tenant.name} - Initialize() concluído com sucesso`);
+      })
+      .catch(err => {
+        console.error(`\n${'='.repeat(70)}`);
+        console.error(`❌ ERRO CRÍTICO AO INICIALIZAR ${tenant.name}`);
+        console.error(`${'='.repeat(70)}`);
+        console.error(`Tipo: ${err.name}`);
+        console.error(`Mensagem: ${err.message}`);
+        console.error(`Stack: ${err.stack}`);
+        console.error(`${'='.repeat(70)}\n`);
+        
+        const clientData = this.clients.get(tenantId);
+        if (clientData) {
+          clientData.status = 'error';
+          clientData.error = err.message;
+        }
+      });
 
     return client;
   }
