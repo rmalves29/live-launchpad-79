@@ -9,7 +9,16 @@ echo.
 
 echo 🛑 Parando processos Node.js...
 taskkill /F /IM node.exe 2>nul
-timeout /t 2 /nobreak >nul
+taskkill /F /IM chrome.exe 2>nul
+timeout /t 3 /nobreak >nul
+
+echo 🗑️ Removendo lockfiles travados...
+if exist ".wwebjs_auth" (
+    for /r ".wwebjs_auth" %%f in (lockfile*) do (
+        del /f /q "%%f" 2>nul
+        echo ✅ Removido: %%f
+    )
+)
 
 echo 🗑️ Removendo sessões antigas...
 if exist ".wwebjs_auth" (

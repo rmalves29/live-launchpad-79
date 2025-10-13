@@ -71,10 +71,26 @@ function cleanupLockfiles(dirPath) {
         const fullPath = path.join(dirPath, file);
         if (file.includes('lockfile') || file.includes('.lock')) {
           try {
-            fs.unlinkSync(fullPath);
-            console.log(`🧹 Lockfile removido: ${fullPath}`);
+            // Tentar várias vezes com delay se estiver travado
+            let attempts = 0;
+            while (attempts < 3) {
+              try {
+                fs.unlinkSync(fullPath);
+                console.log(`🧹 Lockfile removido: ${fullPath}`);
+                break;
+              } catch (err) {
+                if (err.code === 'EBUSY' && attempts < 2) {
+                  attempts++;
+                  // Esperar 100ms antes de tentar novamente
+                  const start = Date.now();
+                  while (Date.now() - start < 100) {}
+                  continue;
+                }
+                throw err;
+              }
+            }
           } catch (err) {
-            // Ignorar erros ao deletar lockfiles
+            console.log(`⚠️ Não foi possível remover ${file}: ${err.code}`);
           }
         }
       });
@@ -229,7 +245,7 @@ class TenantManager {
       console.log(`${'='.repeat(70)}\n`);
     });
 
-    // Desconectado - NÃO destruir, deixar tentar reconectar
+    // Desconectado - prevenir logout automático
     client.on('disconnected', (reason) => {
       console.log(`⚠️ ${tenant.name} desconectado:`, reason);
       const clientData = this.clients.get(tenantId);
@@ -237,7 +253,15 @@ class TenantManager {
         clientData.status = 'disconnected';
         clientData.qr = null;
       }
-      // NÃO destruir - deixar o WhatsApp Web tentar reconectar automaticamente
+      
+      // Se for LOGOUT, remover lockfiles manualmente antes que o LocalAuth tente
+      if (reason === 'LOGOUT') {
+        console.log(`🧹 ${tenant.name} - Limpando lockfiles após LOGOUT...`);
+        setTimeout(() => {
+          cleanupLockfiles(path.join(AUTH_DIR, `session-${tenantId}`));
+        }, 1000);
+      }
+      
       console.log(`🔄 ${tenant.name} tentará reconectar automaticamente...`);
     });
 
@@ -248,7 +272,12 @@ class TenantManager {
       if (clientData) {
         clientData.status = 'auth_failed';
       }
-      // NÃO chamar LocalAuth.logout() - deixe o LocalAuth gerenciar
+    });
+
+    // Capturar erros não tratados do cliente
+    client.on('error', (error) => {
+      console.error(`❌ Erro no cliente ${tenant.name}:`, error.message);
+      // Não deixar o processo crashar
     });
 
     // Mensagens recebidas - DETECÇÃO AUTOMÁTICA DE CÓDIGOS
