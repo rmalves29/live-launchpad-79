@@ -356,9 +356,22 @@ function normalizePhone(phone) {
     clean = '55' + clean;
   }
   
-  // Garantir 9º dígito para celulares
-  if (clean.length === 12 && clean[4] !== '9') {
-    clean = clean.slice(0, 4) + '9' + clean.slice(4);
+  // Extrair DDD (posições 2-3 após o DDI 55)
+  const ddd = parseInt(clean.substring(2, 4));
+  
+  // Regra: DDD >= 31 remove o 9º dígito, DDD < 31 adiciona o 9º dígito
+  if (ddd >= 31) {
+    // DDD >= 31: remover o 9º dígito se existir
+    if (clean.length === 13 && clean[4] === '9') {
+      clean = clean.slice(0, 4) + clean.slice(5);
+      console.log(`📱 DDD ${ddd} >= 31: removido 9º dígito → ${clean}`);
+    }
+  } else {
+    // DDD < 31: adicionar o 9º dígito se não existir
+    if (clean.length === 12 && clean[4] !== '9') {
+      clean = clean.slice(0, 4) + '9' + clean.slice(4);
+      console.log(`📱 DDD ${ddd} < 31: adicionado 9º dígito → ${clean}`);
+    }
   }
   
   return clean + '@c.us';
