@@ -1,3 +1,6 @@
+// Carregar variáveis de ambiente do arquivo .env
+require('dotenv').config();
+
 const makeWASocket = require('@whiskeysockets/baileys').default;
 const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
 const express = require('express');
@@ -11,12 +14,17 @@ const P = require('pino');
 
 // ==================== CONFIGURAÇÃO ====================
 const PORT = process.env.PORT || 3333;
-const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_SERVICE_KEY) {
-  console.error('❌ ERRO: SUPABASE_SERVICE_ROLE_KEY não encontrada!');
-  console.error('Execute usando: .\\start-baileys.bat');
+// Validar configuração
+if (!SUPABASE_SERVICE_KEY || SUPABASE_SERVICE_KEY === 'SUA_SERVICE_ROLE_KEY_AQUI') {
+  console.error('\n❌ ERRO: SUPABASE_SERVICE_ROLE_KEY não configurada!\n');
+  console.error('📝 COMO CORRIGIR:');
+  console.error('1. Acesse: https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/settings/api');
+  console.error('2. Copie a chave "service_role" (secret)');
+  console.error('3. Edite o arquivo .env na raiz do projeto');
+  console.error('4. Cole a chave em: SUPABASE_SERVICE_ROLE_KEY="sua_chave_aqui"\n');
   process.exit(1);
 }
 
