@@ -412,22 +412,46 @@ function createApp(tenantManager, supabaseHelper) {
     });
   });
 
-  // Status de um tenant específico
-  app.get('/status/:tenantId', (req, res) => {
+  // Status de um tenant específico (DETALHADO)
+  app.get('/status/:tenantId', async (req, res) => {
     const { tenantId } = req.params;
-    const status = tenantManager.getTenantStatus(tenantId);
+    const clientData = tenantManager.clients.get(tenantId);
     
-    if (!status) {
+    if (!clientData) {
       return res.status(404).json({ 
         success: false, 
-        error: 'Tenant não encontrado' 
+        error: 'Tenant não encontrado',
+        available_tenants: Array.from(tenantManager.clients.keys())
       });
     }
 
-    res.json({ 
-      success: true, 
-      ...status 
-    });
+    const status = {
+      success: true,
+      tenant_id: tenantId,
+      tenant_name: clientData.tenant.name,
+      status: clientData.status,
+      qr_available: !!clientData.qr,
+      timestamp: new Date().toISOString()
+    };
+
+    // Se estiver online, adicionar info do WhatsApp
+    if (clientData.status === 'online' && clientData.client) {
+      try {
+        const info = await clientData.client.info;
+        status.whatsapp_info = {
+          wid: info.wid._serialized,
+          platform: info.platform,
+          phone: info.wid.user
+        };
+      } catch (error) {
+        console.error('⚠️ Erro ao buscar info do WhatsApp:', error.message);
+        status.whatsapp_info_error = error.message;
+      }
+    }
+
+    console.log(`📊 Status consultado para ${clientData.tenant.name}:`, status);
+    
+    res.json(status);
   });
 
   // Listar todos os grupos
@@ -536,7 +560,13 @@ function createApp(tenantManager, supabaseHelper) {
     const { tenantId } = req;
     const { phone, message } = req.body;
 
+    console.log('\n📨 ===== NOVA REQUISIÇÃO DE ENVIO =====');
+    console.log(`🔑 Tenant ID: ${tenantId}`);
+    console.log(`📞 Telefone original: ${phone}`);
+    console.log(`💬 Mensagem (${message.length} chars):`, message.substring(0, 100) + '...');
+
     if (!tenantId) {
+      console.error('❌ tenant_id não fornecido');
       return res.status(400).json({ 
         success: false, 
         error: 'tenant_id obrigatório' 
@@ -544,45 +574,66 @@ function createApp(tenantManager, supabaseHelper) {
     }
 
     if (!phone || !message) {
+      console.error('❌ phone ou message faltando');
       return res.status(400).json({ 
         success: false, 
         error: 'phone e message são obrigatórios' 
       });
     }
 
+    const clientData = tenantManager.clients.get(tenantId);
+    console.log(`🔍 Status do cliente:`, clientData ? clientData.status : 'NÃO ENCONTRADO');
+    
     const client = tenantManager.getOnlineClient(tenantId);
     if (!client) {
+      console.error(`❌ WhatsApp não está ONLINE para tenant ${tenantId}`);
+      console.error(`   Status atual: ${clientData?.status || 'não inicializado'}`);
       return res.status(503).json({ 
         success: false, 
-        error: 'WhatsApp não conectado' 
+        error: `WhatsApp não conectado. Status: ${clientData?.status || 'não inicializado'}` 
       });
     }
 
     try {
       const normalizedPhone = normalizePhone(phone);
-      console.log(`📤 Enviando mensagem para ${normalizedPhone}`);
+      console.log(`📤 Telefone normalizado: ${normalizedPhone}`);
+      console.log(`⏳ Enviando mensagem via WhatsApp Web...`);
       
+      const sendStart = Date.now();
       await client.sendMessage(normalizedPhone, message);
+      const sendDuration = Date.now() - sendStart;
+      
+      console.log(`✅ Mensagem enviada com sucesso em ${sendDuration}ms`);
       
       // Logar no Supabase
+      console.log(`💾 Registrando no Supabase...`);
       await supabaseHelper.logMessage(
         tenantId,
         phone,
         message,
         'individual'
       );
+      console.log(`✅ Registro no Supabase concluído`);
 
-      console.log(`✅ Mensagem enviada para ${normalizedPhone}`);
+      console.log(`🎉 ===== ENVIO CONCLUÍDO COM SUCESSO =====\n`);
 
       res.json({ 
         success: true, 
-        message: 'Mensagem enviada com sucesso' 
+        message: 'Mensagem enviada com sucesso',
+        phone: normalizedPhone,
+        duration_ms: sendDuration
       });
     } catch (error) {
-      console.error('❌ Erro ao enviar mensagem:', error);
+      console.error('\n❌ ===== ERRO NO ENVIO =====');
+      console.error('Tipo:', error.name);
+      console.error('Mensagem:', error.message);
+      console.error('Stack:', error.stack);
+      console.error('===== FIM DO ERRO =====\n');
+      
       res.status(500).json({ 
         success: false, 
-        error: error.message 
+        error: error.message,
+        error_type: error.name
       });
     }
   });

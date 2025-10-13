@@ -31,7 +31,8 @@ Deno.serve(async (req) => {
     const body: SendItemAddedRequest = await req.json();
     const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price } = body;
 
-    console.log('📱 Recebido pedido ITEM_ADDED:', { tenant_id, customer_phone, product_name, product_code, quantity, unit_price });
+    console.log('\n🚀 ===== EDGE FUNCTION: ITEM_ADDED =====');
+    console.log('📥 Payload recebido:', JSON.stringify({ tenant_id, customer_phone, product_name, product_code, quantity, unit_price }, null, 2));
 
     // Buscar template ITEM_ADDED do tenant
     const { data: template, error: templateError } = await supabase
@@ -60,7 +61,8 @@ Deno.serve(async (req) => {
     const phoneClean = customer_phone.replace(/\D/g, '');
     const phoneFinal = phoneClean.startsWith('55') ? phoneClean : `55${phoneClean}`;
 
-    console.log(`📤 Enviando para ${phoneFinal}:`, mensagem);
+    console.log(`📤 Telefone final: ${phoneFinal}`);
+    console.log(`💬 Mensagem formatada (${mensagem.length} chars):`, mensagem);
 
     // Enviar via API do servidor Node.js WhatsApp (endpoint /send)
     const whatsappPayload = {
@@ -68,6 +70,10 @@ Deno.serve(async (req) => {
       message: mensagem
     };
 
+    console.log(`🌐 Chamando WhatsApp API: ${whatsappApiUrl}/send`);
+    console.log(`📦 Payload:`, JSON.stringify(whatsappPayload, null, 2));
+
+    const fetchStart = Date.now();
     const whatsappResponse = await fetch(`${whatsappApiUrl}/send`, {
       method: 'POST',
       headers: {
@@ -76,18 +82,25 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify(whatsappPayload),
     });
+    const fetchDuration = Date.now() - fetchStart;
+
+    console.log(`⏱️ Tempo de resposta da API: ${fetchDuration}ms`);
+    console.log(`📊 Status HTTP: ${whatsappResponse.status}`);
 
     if (!whatsappResponse.ok) {
       const errorText = await whatsappResponse.text();
-      console.error('❌ Erro ao enviar WhatsApp:', errorText);
-      throw new Error(`WhatsApp API error: ${errorText}`);
+      console.error('❌ Erro na API do WhatsApp:');
+      console.error('   Status:', whatsappResponse.status);
+      console.error('   Resposta:', errorText);
+      throw new Error(`WhatsApp API error (${whatsappResponse.status}): ${errorText}`);
     }
 
     const whatsappResult = await whatsappResponse.json();
-    console.log('✅ WhatsApp enviado:', whatsappResult);
+    console.log('✅ Resposta da API:', JSON.stringify(whatsappResult, null, 2));
 
     // Registrar mensagem no banco
-    await supabase.from('whatsapp_messages').insert({
+    console.log(`💾 Salvando no banco de dados...`);
+    const { error: insertError } = await supabase.from('whatsapp_messages').insert({
       tenant_id,
       phone: phoneFinal,
       message: mensagem,
@@ -96,19 +109,37 @@ Deno.serve(async (req) => {
       processed: true
     });
 
+    if (insertError) {
+      console.error('⚠️ Erro ao salvar no banco (não crítico):', insertError);
+    } else {
+      console.log('✅ Mensagem salva no banco');
+    }
+
+    console.log('🎉 ===== ITEM_ADDED CONCLUÍDO =====\n');
+
     return new Response(
       JSON.stringify({ 
         success: true, 
         message: 'Mensagem enviada com sucesso',
+        phone: phoneFinal,
+        api_duration_ms: fetchDuration,
         whatsappResult 
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('❌ Erro:', error);
+    console.error('\n💥 ===== ERRO NA EDGE FUNCTION =====');
+    console.error('Tipo:', error.name);
+    console.error('Mensagem:', error.message);
+    console.error('Stack:', error.stack);
+    console.error('===== FIM DO ERRO =====\n');
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        error_type: error.name
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
