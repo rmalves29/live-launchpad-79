@@ -59,8 +59,9 @@ class TenantManager {
     console.log(`📱 Criando cliente WhatsApp para tenant: ${tenant.name} (${tenantId})`);
 
     // Configuração do Puppeteer com detecção de Chrome
+    const showBrowser = process.env.SHOW_BROWSER === 'true';
     const puppeteerConfig = {
-      headless: true,
+      headless: !showBrowser, // false = mostra navegador
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -71,6 +72,10 @@ class TenantManager {
         '--disable-gpu'
       ]
     };
+    
+    if (showBrowser) {
+      console.log('🌐 Modo navegador visível ativado - você verá o Chrome');
+    }
 
     // Tentar usar Chrome do sistema no Windows se Chromium não estiver disponível
     if (process.platform === 'win32') {
@@ -493,6 +498,117 @@ function createApp(tenantManager, supabaseHelper) {
         success: true, 
         groups,
         count: groups.length
+      });
+    } catch (error) {
+      console.error('❌ Erro ao listar grupos:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+  });
+
+  // Visualizar QR Code via browser
+  app.get('/qr/:tenantId', (req, res) => {
+    const { tenantId } = req.params;
+    const clientData = tenantManager.clients.get(tenantId);
+    
+    if (!clientData) {
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>QR Code - Tenant não encontrado</title>
+          <style>
+            body { font-family: Arial; text-align: center; padding: 50px; }
+            h1 { color: #e74c3c; }
+          </style>
+        </head>
+        <body>
+          <h1>❌ Tenant não encontrado</h1>
+          <p>Tenant ID: ${tenantId}</p>
+        </body>
+        </html>
+      `);
+    }
+
+    if (!clientData.qr) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta http-equiv="refresh" content="3">
+          <title>QR Code - ${clientData.tenant.name}</title>
+          <style>
+            body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
+            .container { background: white; padding: 30px; border-radius: 10px; max-width: 500px; margin: 0 auto; }
+            h1 { color: #25D366; }
+            .status { font-size: 24px; margin: 20px 0; }
+            .info { color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>📱 ${clientData.tenant.name}</h1>
+            <div class="status">
+              ${clientData.status === 'online' ? '✅ Conectado!' : 
+                clientData.status === 'authenticated' ? '🔄 Autenticando...' :
+                clientData.status === 'initializing' ? '⏳ Inicializando...' :
+                '⏳ Aguardando QR Code...'}
+            </div>
+            <p class="info">Status: ${clientData.status}</p>
+            ${clientData.status !== 'online' ? '<p class="info">Atualizando a cada 3 segundos...</p>' : ''}
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    // Gerar QR Code como imagem
+    const QRCode = require('qrcode');
+    QRCode.toDataURL(clientData.qr, (err, url) => {
+      if (err) {
+        return res.status(500).send('Erro ao gerar QR Code');
+      }
+
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>QR Code - ${clientData.tenant.name}</title>
+          <style>
+            body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
+            .container { background: white; padding: 30px; border-radius: 10px; max-width: 500px; margin: 0 auto; }
+            h1 { color: #25D366; }
+            img { max-width: 100%; height: auto; border: 2px solid #25D366; border-radius: 10px; }
+            .instructions { margin-top: 20px; color: #666; text-align: left; }
+            .instructions ol { padding-left: 20px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>📱 ${clientData.tenant.name}</h1>
+            <p>Escaneie o QR Code com o WhatsApp</p>
+            <img src="${url}" alt="QR Code">
+            <div class="instructions">
+              <h3>📋 Como conectar:</h3>
+              <ol>
+                <li>Abra o WhatsApp no celular</li>
+                <li>Toque em <strong>Mais opções (⋮)</strong> ou <strong>Configurações</strong></li>
+                <li>Toque em <strong>Aparelhos conectados</strong></li>
+                <li>Toque em <strong>Conectar um aparelho</strong></li>
+                <li>Aponte a câmera para este QR Code</li>
+              </ol>
+            </div>
+          </div>
+        </body>
+        </html>
+      `);
+    });
+  });
       });
     } catch (error) {
       console.error('❌ Erro ao listar grupos:', error);
