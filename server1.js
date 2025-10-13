@@ -61,7 +61,7 @@ class TenantManager {
     // Configuração do Puppeteer com detecção de Chrome
     const showBrowser = process.env.SHOW_BROWSER === 'true';
     const puppeteerConfig = {
-      headless: !showBrowser, // false = mostra navegador
+      headless: !showBrowser,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -69,9 +69,12 @@ class TenantManager {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-blink-features=AutomationControlled'
       ],
-      timeout: 60000 // 60 segundos de timeout
+      timeout: 0, // Sem timeout
+      protocolTimeout: 0
     };
     
     if (showBrowser) {
@@ -101,11 +104,8 @@ class TenantManager {
         dataPath: AUTH_DIR
       }),
       puppeteer: puppeteerConfig,
-      webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
-      },
-      qrMaxRetries: 5 // Tentar gerar QR até 5 vezes se falhar
+      qrMaxRetries: 5,
+      authTimeoutMs: 0 // Desabilitar timeout de autenticação
     });
 
     // Status inicial
@@ -227,28 +227,29 @@ class TenantManager {
     console.log(`ID: ${tenantId}`);
     console.log(`${'='.repeat(70)}`);
     console.log(`⏳ Carregando WhatsApp Web...`);
-    console.log(`⏳ Isso pode levar até 60 segundos...`);
+    console.log(`⏳ Isso pode levar alguns minutos...`);
     console.log(`${'='.repeat(70)}\n`);
     
-    client.initialize()
-      .then(() => {
-        console.log(`✅ ${tenant.name} - Initialize() concluído com sucesso`);
-      })
-      .catch(err => {
-        console.error(`\n${'='.repeat(70)}`);
-        console.error(`❌ ERRO CRÍTICO AO INICIALIZAR ${tenant.name}`);
-        console.error(`${'='.repeat(70)}`);
-        console.error(`Tipo: ${err.name}`);
-        console.error(`Mensagem: ${err.message}`);
-        console.error(`Stack: ${err.stack}`);
-        console.error(`${'='.repeat(70)}\n`);
-        
-        const clientData = this.clients.get(tenantId);
-        if (clientData) {
-          clientData.status = 'error';
-          clientData.error = err.message;
-        }
-      });
+    try {
+      await client.initialize();
+      console.log(`✅ ${tenant.name} - Initialize() concluído com sucesso`);
+    } catch (err) {
+      console.error(`\n${'='.repeat(70)}`);
+      console.error(`❌ ERRO CRÍTICO AO INICIALIZAR ${tenant.name}`);
+      console.error(`${'='.repeat(70)}`);
+      console.error(`Tipo: ${err.name}`);
+      console.error(`Mensagem: ${err.message}`);
+      console.error(`Stack: ${err.stack}`);
+      console.error(`${'='.repeat(70)}\n`);
+      
+      const clientData = this.clients.get(tenantId);
+      if (clientData) {
+        clientData.status = 'error';
+        clientData.error = err.message;
+      }
+      
+      throw err; // Re-lançar o erro para ser tratado no main()
+    }
 
     return client;
   }
@@ -960,8 +961,13 @@ async function main() {
   // Inicializar clientes WhatsApp para cada tenant
   for (const tenant of tenants) {
     console.log(`🔄 Inicializando ${tenant.name}...`);
-    await tenantManager.createClient(tenant);
-    await delay(2000); // Delay entre inicializações
+    try {
+      await tenantManager.createClient(tenant);
+      await delay(2000); // Delay entre inicializações
+    } catch (error) {
+      console.error(`❌ Erro ao inicializar ${tenant.name}:`, error.message);
+      console.error(`⚠️ Tentando continuar mesmo assim...`);
+    }
   }
 
   // Criar app Express
