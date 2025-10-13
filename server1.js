@@ -245,8 +245,8 @@ class TenantManager {
       console.log(`${'='.repeat(70)}\n`);
     });
 
-    // Desconectado - prevenir logout automático
-    client.on('disconnected', (reason) => {
+    // Desconectado - destruir cliente em caso de LOGOUT para evitar EBUSY
+    client.on('disconnected', async (reason) => {
       console.log(`⚠️ ${tenant.name} desconectado:`, reason);
       const clientData = this.clients.get(tenantId);
       if (clientData) {
@@ -254,15 +254,25 @@ class TenantManager {
         clientData.qr = null;
       }
       
-      // Se for LOGOUT, remover lockfiles manualmente antes que o LocalAuth tente
+      // Se for LOGOUT, destruir cliente imediatamente para fechar Chrome antes do LocalAuth tentar limpar
       if (reason === 'LOGOUT') {
-        console.log(`🧹 ${tenant.name} - Limpando lockfiles após LOGOUT...`);
-        setTimeout(() => {
-          cleanupLockfiles(path.join(AUTH_DIR, `session-${tenantId}`));
-        }, 1000);
+        console.log(`🛑 ${tenant.name} - Destruindo cliente para evitar EBUSY...`);
+        try {
+          await client.destroy();
+          console.log(`✅ ${tenant.name} - Cliente destruído com sucesso`);
+        } catch (e) {
+          console.log(`⚠️ Erro ao destruir cliente: ${e.message}`);
+        }
+        
+        // Aguardar 2 segundos para o Chrome fechar completamente
+        await delay(2000);
+        
+        // Limpar lockfiles manualmente
+        console.log(`🧹 ${tenant.name} - Limpando lockfiles...`);
+        cleanupLockfiles(path.join(AUTH_DIR, `session-${tenantId}`));
+      } else {
+        console.log(`🔄 ${tenant.name} tentará reconectar automaticamente...`);
       }
-      
-      console.log(`🔄 ${tenant.name} tentará reconectar automaticamente...`);
     });
 
     // Erro de autenticação
@@ -973,12 +983,28 @@ function createApp(tenantManager, supabaseHelper) {
 // ==================== ENCERRAMENTO GRACIOSO ====================
 const tenantManager = new TenantManager();
 
+// Capturar erros não tratados para evitar crash por EBUSY
+process.on('uncaughtException', (error) => {
+  if (error.message && error.message.includes('EBUSY')) {
+    console.log('⚠️ Erro EBUSY capturado - ignorando (arquivo ainda em uso pelo Chrome)');
+    console.log(`   Detalhes: ${error.message}`);
+  } else {
+    console.error('❌ Erro não tratado:', error);
+    // Não fazer exit, deixar o servidor continuar rodando
+  }
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Promise rejeitada não tratada:', reason);
+});
+
 process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
   for (const [tenantId, data] of tenantManager.clients.entries()) {
     try {
       console.log(`🔄 Destruindo cliente ${data.tenant.name}...`);
       await data.client.destroy();
+      await delay(500); // Aguardar Chrome fechar
     } catch (error) {
       console.log(`⚠️ Erro ao destruir ${data.tenant.name}:`, error.message);
     }
@@ -992,6 +1018,7 @@ process.on('SIGTERM', async () => {
   for (const [tenantId, data] of tenantManager.clients.entries()) {
     try {
       await data.client.destroy();
+      await delay(500); // Aguardar Chrome fechar
     } catch (error) {
       console.log(`⚠️ Erro ao destruir ${data.tenant.name}:`, error.message);
     }
