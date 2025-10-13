@@ -1,11 +1,13 @@
-const { Client, LocalAuth, NoAuth } = require('whatsapp-web.js');
+const makeWASocket = require('@whiskeysockets/baileys').default;
+const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
 const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
-const https = require('https');
+const P = require('pino');
 
 // ==================== CONFIGURAÇÃO ====================
 const PORT = process.env.PORT || 3333;
@@ -13,102 +15,20 @@ const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
 
 // Diretório de autenticação
-const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
-
-// Função para baixar HTML do WhatsApp Web
-async function downloadWhatsAppHTML() {
-  const cacheDir = path.join(__dirname, '.wwebjs_cache');
-  const cacheFile = path.join(cacheDir, 'whatsapp-web.html');
-  
-  // Se já existe e tem menos de 24h, não baixa novamente
-  if (fs.existsSync(cacheFile)) {
-    const stats = fs.statSync(cacheFile);
-    const age = Date.now() - stats.mtimeMs;
-    if (age < 24 * 60 * 60 * 1000) {
-      console.log('✅ Cache do WhatsApp Web já existe e é recente');
-      return;
-    }
-  }
-  
-  console.log('📥 Baixando versão estável do WhatsApp Web...');
-  
-  if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true });
-  }
-  
-  const url = 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html';
-  
-  return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Falha ao baixar: ${response.statusCode}`));
-        return;
-      }
-      
-      const fileStream = fs.createWriteStream(cacheFile);
-      response.pipe(fileStream);
-      
-      fileStream.on('finish', () => {
-        fileStream.close();
-        console.log('✅ WhatsApp Web HTML baixado com sucesso');
-        resolve();
-      });
-      
-      fileStream.on('error', (err) => {
-        fs.unlink(cacheFile, () => {});
-        reject(err);
-      });
-    }).on('error', reject);
-  });
-}
-
-// Função para limpar lockfiles antigos
-function cleanupLockfiles(dirPath) {
-  try {
-    if (fs.existsSync(dirPath)) {
-      const files = fs.readdirSync(dirPath, { recursive: true });
-      files.forEach(file => {
-        const fullPath = path.join(dirPath, file);
-        if (file.includes('lockfile') || file.includes('.lock')) {
-          try {
-            // Tentar várias vezes com delay se estiver travado
-            let attempts = 0;
-            while (attempts < 3) {
-              try {
-                fs.unlinkSync(fullPath);
-                console.log(`🧹 Lockfile removido: ${fullPath}`);
-                break;
-              } catch (err) {
-                if (err.code === 'EBUSY' && attempts < 2) {
-                  attempts++;
-                  // Esperar 100ms antes de tentar novamente
-                  const start = Date.now();
-                  while (Date.now() - start < 100) {}
-                  continue;
-                }
-                throw err;
-              }
-            }
-          } catch (err) {
-            console.log(`⚠️ Não foi possível remover ${file}: ${err.code}`);
-          }
-        }
-      });
-    }
-  } catch (error) {
-    console.log('⚠️ Aviso ao limpar lockfiles:', error.message);
-  }
-}
+const AUTH_DIR = path.join(__dirname, '.baileys_auth');
 
 // Criar diretório se não existir
 if (!fs.existsSync(AUTH_DIR)) {
   fs.mkdirSync(AUTH_DIR, { recursive: true });
 }
 
+// Logger do Pino (silencioso)
+const logger = P({ level: 'silent' });
+
 // ==================== TENANT MANAGER ====================
 class TenantManager {
   constructor() {
-    this.clients = new Map(); // Map<tenantId, { client, status, qr }>
+    this.clients = new Map(); // Map<tenantId, { sock, status, qr, tenant, authState }>
   }
 
   async createClient(tenant) {
@@ -117,185 +37,149 @@ class TenantManager {
     // Evitar inicialização duplicada
     if (this.clients.has(tenantId)) {
       console.log(`⚠️ Cliente já existe para ${tenant.name}, pulando...`);
-      return this.clients.get(tenantId).client;
+      return this.clients.get(tenantId).sock;
     }
     
-    console.log(`📱 Criando cliente WhatsApp para tenant: ${tenant.name} (${tenantId})`);
+    console.log(`📱 Criando cliente Baileys para tenant: ${tenant.name} (${tenantId})`);
 
-    // Limpar lockfiles antes de iniciar
-    cleanupLockfiles(AUTH_DIR);
+    // Diretório de autenticação do tenant
+    const authPath = path.join(AUTH_DIR, `session-${tenantId}`);
+    if (!fs.existsSync(authPath)) {
+      fs.mkdirSync(authPath, { recursive: true });
+    }
 
-    // Configuração do Puppeteer para evitar detecção de automação
-    const puppeteerConfig = {
-      headless: false,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-extensions',
-        '--window-size=1920,1080',
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-background-networking',
-        '--disable-default-apps',
-        '--disable-sync',
-        '--metrics-recording-only',
-        '--mute-audio'
-      ]
-    };
+    // Estado de autenticação
+    const { state, saveCreds } = await useMultiFileAuthState(authPath);
     
-    console.log('🌐 Usando configuração padrão do WhatsApp Web');
-    console.log(`💾 Sessões em: ${AUTH_DIR}`);
-
-    // Cliente com LocalAuth
-    const client = new Client({
-      authStrategy: new LocalAuth({
-        clientId: tenantId,
-        dataPath: AUTH_DIR
-      }),
-      puppeteer: puppeteerConfig,
-      qrMaxRetries: 0,       // ilimitado
-      authTimeoutMs: 0,      // sem timeout
-      restartOnAuthFail: false  // não reiniciar automaticamente
-    });
+    // Buscar versão mais recente do Baileys
+    const { version } = await fetchLatestBaileysVersion();
 
     // Status inicial
     this.clients.set(tenantId, {
-      client,
+      sock: null,
       status: 'initializing',
       qr: null,
-      tenant
+      tenant,
+      authState: { state, saveCreds }
     });
 
-    // Log de debug para eventos do Puppeteer
-    client.pupBrowser?.on('targetcreated', () => {
-      console.log(`🔍 ${tenant.name} - Puppeteer: Nova aba criada`);
-    });
-    
-    client.pupBrowser?.on('disconnected', () => {
-      console.log(`⚠️ ${tenant.name} - Puppeteer: Navegador desconectado`);
+    // Criar socket do WhatsApp
+    const sock = makeWASocket({
+      version,
+      logger,
+      printQRInTerminal: false,
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger),
+      },
+      browser: ['OrderZaps', 'Chrome', '120.0.0'],
+      markOnlineOnConnect: true,
+      generateHighQualityLinkPreview: true,
+      getMessage: async () => ({ conversation: '' })
     });
 
-    // QR Code
-    client.on('qr', (qr) => {
-      console.log(`\n${'='.repeat(70)}`);
-      console.log(`📱 QR CODE GERADO PARA ${tenant.name.toUpperCase()}`);
-      console.log(`${'='.repeat(70)}\n`);
-      
-      qrcode.generate(qr, { small: true });
-      
-      const clientData = this.clients.get(tenantId);
-      if (clientData) {
+    // Atualizar referência do socket
+    const clientData = this.clients.get(tenantId);
+    clientData.sock = sock;
+
+    // ==================== EVENTOS ====================
+
+    // Conexão e QR Code
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        console.log(`\n${'='.repeat(70)}`);
+        console.log(`📱 QR CODE GERADO PARA ${tenant.name.toUpperCase()}`);
+        console.log(`${'='.repeat(70)}\n`);
+        
+        qrcode.generate(qr, { small: true });
+        
         clientData.qr = qr;
         clientData.status = 'qr_ready';
+        
+        console.log(`\n${'='.repeat(70)}`);
+        console.log(`🌐 Acesse no navegador: http://localhost:3333/qr/${tenantId}`);
+        console.log(`${'='.repeat(70)}\n`);
       }
-      
-      console.log(`\n${'='.repeat(70)}`);
-      console.log(`🌐 Acesse no navegador: http://localhost:3333/qr/${tenantId}`);
-      console.log(`${'='.repeat(70)}\n`);
-    });
 
-    // Evento de carregamento (mostra progresso)
-    client.on('loading_screen', (percent, message) => {
-      console.log(`⏳ ${tenant.name} - Carregando: ${percent}% - ${message}`);
-    });
-
-    // Autenticado
-    client.on('authenticated', () => {
-      console.log(`\n${'='.repeat(70)}`);
-      console.log(`✅ ${tenant.name.toUpperCase()} - AUTENTICADO COM SUCESSO!`);
-      console.log(`${'='.repeat(70)}`);
-      console.log(`⏳ Aguardando evento 'ready' para ficar online...`);
-      console.log(`${'='.repeat(70)}\n`);
-      
-      const clientData = this.clients.get(tenantId);
-      if (clientData) {
-        clientData.status = 'authenticated';
-        clientData.qr = null;
-      }
-    });
-
-    // Pronto
-    client.on('ready', async () => {
-      console.log(`\n${'='.repeat(70)}`);
-      console.log(`🚀 ${tenant.name.toUpperCase()} - ESTÁ PRONTO E ONLINE!`);
-      console.log(`${'='.repeat(70)}`);
-      
-      const clientData = this.clients.get(tenantId);
-      if (clientData) {
-        clientData.status = 'online';
-      }
-      
-      // Buscar e exibir informações do WhatsApp conectado
-      try {
-        const info = await client.info;
-        console.log(`📱 WhatsApp: ${info.wid.user}`);
-        console.log(`📱 Plataforma: ${info.platform}`);
-        console.log(`📱 Bateria: ${info.battery}%`);
-      } catch (error) {
-        console.log(`⚠️ Não foi possível obter info do WhatsApp:`, error.message);
-      }
-      
-      console.log(`${'='.repeat(70)}`);
-      console.log(`✅ ${tenant.name} pode enviar e receber mensagens agora!`);
-      console.log(`${'='.repeat(70)}\n`);
-    });
-
-    // Desconectado - destruir cliente em caso de LOGOUT para evitar EBUSY
-    client.on('disconnected', async (reason) => {
-      console.log(`⚠️ ${tenant.name} desconectado:`, reason);
-      const clientData = this.clients.get(tenantId);
-      if (clientData) {
+      if (connection === 'close') {
+        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        const reason = lastDisconnect?.error?.output?.statusCode || 'unknown';
+        
+        console.log(`⚠️ ${tenant.name} desconectado:`, reason);
+        console.log(`   DisconnectReason:`, DisconnectReason);
+        
         clientData.status = 'disconnected';
         clientData.qr = null;
-      }
-      
-      // Se for LOGOUT, destruir cliente imediatamente para fechar Chrome antes do LocalAuth tentar limpar
-      if (reason === 'LOGOUT') {
-        console.log(`🛑 ${tenant.name} - Destruindo cliente para evitar EBUSY...`);
+
+        if (reason === DisconnectReason.loggedOut) {
+          console.log(`🔴 ${tenant.name} - LOGOUT detectado, limpando sessão...`);
+          
+          // Limpar pasta de autenticação
+          try {
+            if (fs.existsSync(authPath)) {
+              fs.rmSync(authPath, { recursive: true, force: true });
+              console.log(`🧹 Sessão removida para ${tenant.name}`);
+            }
+          } catch (error) {
+            console.error(`⚠️ Erro ao limpar sessão:`, error.message);
+          }
+          
+          this.clients.delete(tenantId);
+        } else if (shouldReconnect) {
+          console.log(`🔄 ${tenant.name} tentará reconectar automaticamente...`);
+          setTimeout(() => this.createClient(tenant), 5000);
+        }
+      } else if (connection === 'open') {
+        console.log(`\n${'='.repeat(70)}`);
+        console.log(`🚀 ${tenant.name.toUpperCase()} - CONECTADO E ONLINE!`);
+        console.log(`${'='.repeat(70)}`);
+        
+        clientData.status = 'online';
+        clientData.qr = null;
+        
+        // Buscar informações do usuário
         try {
-          await client.destroy();
-          console.log(`✅ ${tenant.name} - Cliente destruído com sucesso`);
-        } catch (e) {
-          console.log(`⚠️ Erro ao destruir cliente: ${e.message}`);
+          const me = sock.user;
+          if (me) {
+            console.log(`📱 WhatsApp: ${me.id.split(':')[0]}`);
+            console.log(`📱 Nome: ${me.name || 'N/A'}`);
+          }
+        } catch (error) {
+          console.log(`⚠️ Erro ao buscar info:`, error.message);
         }
         
-        // Aguardar 2 segundos para o Chrome fechar completamente
-        await delay(2000);
-        
-        // Limpar lockfiles manualmente
-        console.log(`🧹 ${tenant.name} - Limpando lockfiles...`);
-        cleanupLockfiles(path.join(AUTH_DIR, `session-${tenantId}`));
-      } else {
-        console.log(`🔄 ${tenant.name} tentará reconectar automaticamente...`);
+        console.log(`${'='.repeat(70)}`);
+        console.log(`✅ ${tenant.name} pode enviar e receber mensagens!`);
+        console.log(`${'='.repeat(70)}\n`);
+      } else if (connection === 'connecting') {
+        console.log(`🔄 ${tenant.name} - Conectando...`);
+        clientData.status = 'connecting';
       }
     });
 
-    // Erro de autenticação
-    client.on('auth_failure', (msg) => {
-      console.error(`❌ Falha de autenticação para ${tenant.name}:`, msg);
-      const clientData = this.clients.get(tenantId);
-      if (clientData) {
-        clientData.status = 'auth_failed';
-      }
-    });
-
-    // Capturar erros não tratados do cliente
-    client.on('error', (error) => {
-      console.error(`❌ Erro no cliente ${tenant.name}:`, error.message);
-      // Não deixar o processo crashar
-    });
+    // Salvar credenciais quando atualizadas
+    sock.ev.on('creds.update', saveCreds);
 
     // Mensagens recebidas - DETECÇÃO AUTOMÁTICA DE CÓDIGOS
-    client.on('message', async (msg) => {
-      try {
-        await this.handleIncomingMessage(tenantId, msg);
-      } catch (error) {
-        console.error(`❌ Erro ao processar mensagem do tenant ${tenantId}:`, error);
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      if (type !== 'notify') return;
+
+      for (const msg of messages) {
+        try {
+          // Ignorar mensagens do próprio bot
+          if (msg.key.fromMe) continue;
+
+          const messageText = msg.message?.conversation || 
+                             msg.message?.extendedTextMessage?.text || '';
+          
+          if (!messageText) continue;
+
+          await this.handleIncomingMessage(tenantId, msg, messageText);
+        } catch (error) {
+          console.error(`❌ Erro ao processar mensagem:`, error);
+        }
       }
     });
 
@@ -303,41 +187,16 @@ class TenantManager {
     console.log(`\n${'='.repeat(70)}`);
     console.log(`🔌 INICIALIZANDO ${tenant.name.toUpperCase()}`);
     console.log(`ID: ${tenantId}`);
-    console.log(`${'='.repeat(70)}`);
-    console.log(`⏳ Carregando WhatsApp Web...`);
-    console.log(`⏳ Isso pode levar alguns minutos...`);
     console.log(`${'='.repeat(70)}\n`);
-    
-    try {
-      await client.initialize();
-      console.log(`✅ ${tenant.name} - Initialize() concluído com sucesso`);
-    } catch (err) {
-      console.error(`\n${'='.repeat(70)}`);
-      console.error(`❌ ERRO CRÍTICO AO INICIALIZAR ${tenant.name}`);
-      console.error(`${'='.repeat(70)}`);
-      console.error(`Tipo: ${err.name}`);
-      console.error(`Mensagem: ${err.message}`);
-      console.error(`Stack: ${err.stack}`);
-      console.error(`${'='.repeat(70)}\n`);
-      
-      const clientData = this.clients.get(tenantId);
-      if (clientData) {
-        clientData.status = 'error';
-        clientData.error = err.message;
-      }
-      
-      throw err; // Re-lançar o erro para ser tratado no main()
-    }
 
-    return client;
+    return sock;
   }
 
-  async handleIncomingMessage(tenantId, msg) {
+  async handleIncomingMessage(tenantId, msg, messageText) {
     const clientData = this.clients.get(tenantId);
     if (!clientData) return;
 
     const tenant = clientData.tenant;
-    const messageText = msg.body || '';
     
     console.log(`📨 Mensagem recebida (${tenant.name}):`, messageText);
 
@@ -353,13 +212,11 @@ class TenantManager {
     console.log(`🔍 Códigos detectados:`, codes);
 
     // Obter telefone do remetente
-    const contact = await msg.getContact();
-    const customerPhone = contact.number;
+    const customerPhone = msg.key.remoteJid.split('@')[0];
     
     // Verificar se é mensagem de grupo
-    const chat = await msg.getChat();
-    const isGroup = chat.isGroup;
-    const groupName = isGroup ? chat.name : null;
+    const isGroup = msg.key.remoteJid.endsWith('@g.us');
+    const groupName = isGroup ? msg.key.remoteJid : null;
 
     console.log(`👤 Cliente: ${customerPhone}${isGroup ? ` | Grupo: ${groupName}` : ''}`);
 
@@ -402,7 +259,7 @@ class TenantManager {
     if (!clientData || clientData.status !== 'online') {
       return null;
     }
-    return clientData.client;
+    return clientData.sock;
   }
 
   getAllStatus() {
@@ -456,7 +313,6 @@ class SupabaseHelper {
       throw new Error(`Supabase error: ${response.status} - ${error}`);
     }
 
-    // Se não houver conteúdo (204 No Content ou 201 Created sem body), retornar null
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       return null;
@@ -469,20 +325,6 @@ class SupabaseHelper {
   async loadActiveTenants() {
     const data = await this.request('/rest/v1/tenants?is_active=eq.true&select=id,name,slug');
     return data;
-  }
-
-  async getWhatsAppIntegration(tenantId) {
-    const data = await this.request(
-      `/rest/v1/integration_whatsapp?tenant_id=eq.${tenantId}&is_active=eq.true&select=*&limit=1`
-    );
-    return data[0] || null;
-  }
-
-  async getTemplate(tenantId, templateType) {
-    const data = await this.request(
-      `/rest/v1/whatsapp_templates?tenant_id=eq.${tenantId}&type=eq.${templateType}&select=*&limit=1`
-    );
-    return data[0] || null;
   }
 
   async logMessage(tenantId, phone, message, type, metadata = {}) {
@@ -520,20 +362,18 @@ function normalizePhone(phone) {
   
   // Regra: DDD >= 31 remove o 9º dígito, DDD < 31 adiciona o 9º dígito
   if (ddd >= 31) {
-    // DDD >= 31: remover o 9º dígito se existir
     if (clean.length === 13 && clean[4] === '9') {
       clean = clean.slice(0, 4) + clean.slice(5);
       console.log(`📱 DDD ${ddd} >= 31: removido 9º dígito → ${clean}`);
     }
   } else {
-    // DDD < 31: adicionar o 9º dígito se não existir
     if (clean.length === 12 && clean[4] !== '9') {
       clean = clean.slice(0, 4) + '9' + clean.slice(4);
       console.log(`📱 DDD ${ddd} < 31: adicionado 9º dígito → ${clean}`);
     }
   }
   
-  return clean + '@c.us';
+  return clean + '@s.whatsapp.net';
 }
 
 function delay(ms) {
@@ -594,16 +434,17 @@ function createApp(tenantManager, supabaseHelper) {
     };
 
     // Se estiver online, adicionar info do WhatsApp
-    if (clientData.status === 'online' && clientData.client) {
+    if (clientData.status === 'online' && clientData.sock) {
       try {
-        const info = await clientData.client.info;
-        status.whatsapp_info = {
-          wid: info.wid._serialized,
-          platform: info.platform,
-          phone: info.wid.user
-        };
+        const me = clientData.sock.user;
+        if (me) {
+          status.whatsapp_info = {
+            id: me.id,
+            name: me.name,
+            phone: me.id.split(':')[0]
+          };
+        }
       } catch (error) {
-        console.error('⚠️ Erro ao buscar info do WhatsApp:', error.message);
         status.whatsapp_info_error = error.message;
       }
     }
@@ -624,8 +465,8 @@ function createApp(tenantManager, supabaseHelper) {
       });
     }
 
-    const client = tenantManager.getOnlineClient(tenantId);
-    if (!client) {
+    const sock = tenantManager.getOnlineClient(tenantId);
+    if (!sock) {
       return res.status(503).json({ 
         success: false, 
         error: 'WhatsApp não conectado para este tenant' 
@@ -633,14 +474,13 @@ function createApp(tenantManager, supabaseHelper) {
     }
 
     try {
-      const chats = await client.getChats();
-      const groups = chats
-        .filter(chat => chat.isGroup)
-        .map(group => ({
-          id: group.id._serialized,
-          name: group.name,
-          participantCount: group.participants?.length || 0
-        }));
+      // Buscar todos os chats
+      const chats = await sock.groupFetchAllParticipating();
+      const groups = Object.values(chats).map(group => ({
+        id: group.id,
+        name: group.subject,
+        participantCount: group.participants?.length || 0
+      }));
 
       console.log(`📋 ${groups.length} grupos encontrados para tenant ${tenantId}`);
 
@@ -704,7 +544,7 @@ function createApp(tenantManager, supabaseHelper) {
             <h1>📱 ${clientData.tenant.name}</h1>
             <div class="status">
               ${clientData.status === 'online' ? '✅ Conectado!' : 
-                clientData.status === 'authenticated' ? '🔄 Autenticando...' :
+                clientData.status === 'connecting' ? '🔄 Conectando...' :
                 clientData.status === 'initializing' ? '⏳ Inicializando...' :
                 '⏳ Aguardando QR Code...'}
             </div>
@@ -717,7 +557,6 @@ function createApp(tenantManager, supabaseHelper) {
     }
 
     // Gerar QR Code como imagem
-    const QRCode = require('qrcode');
     QRCode.toDataURL(clientData.qr, (err, url) => {
       if (err) {
         return res.status(500).send('Erro ao gerar QR Code');
@@ -779,8 +618,8 @@ function createApp(tenantManager, supabaseHelper) {
       });
     }
 
-    const client = tenantManager.getOnlineClient(tenantId);
-    if (!client) {
+    const sock = tenantManager.getOnlineClient(tenantId);
+    if (!sock) {
       return res.status(503).json({ 
         success: false, 
         error: 'WhatsApp não conectado' 
@@ -790,7 +629,7 @@ function createApp(tenantManager, supabaseHelper) {
     try {
       console.log(`📤 Enviando mensagem para grupo ${groupId}`);
       
-      await client.sendMessage(groupId, message);
+      await sock.sendMessage(groupId, { text: message });
       
       // Logar no Supabase
       await supabaseHelper.logMessage(
@@ -845,8 +684,8 @@ function createApp(tenantManager, supabaseHelper) {
     const clientData = tenantManager.clients.get(tenantId);
     console.log(`🔍 Status do cliente:`, clientData ? clientData.status : 'NÃO ENCONTRADO');
     
-    const client = tenantManager.getOnlineClient(tenantId);
-    if (!client) {
+    const sock = tenantManager.getOnlineClient(tenantId);
+    if (!sock) {
       console.error(`\n${'='.repeat(70)}`);
       console.error(`❌ ERRO: WhatsApp não está ONLINE para tenant ${tenantId}`);
       console.error(`${'='.repeat(70)}`);
@@ -866,9 +705,9 @@ function createApp(tenantManager, supabaseHelper) {
                       `⏳ O status atual é: ${clientData.status}\n` +
                       `✅ Precisa ser: online`;
         console.error(instructions);
-      } else if (clientData?.status === 'authenticated') {
-        errorMessage = 'WhatsApp autenticado mas não está pronto ainda';
-        instructions = '\n\n⏳ Aguarde alguns segundos, o WhatsApp está carregando...';
+      } else if (clientData?.status === 'connecting') {
+        errorMessage = 'WhatsApp conectando, aguarde...';
+        instructions = '\n\n⏳ Aguarde alguns segundos...';
         console.error(instructions);
       } else if (clientData?.status === 'initializing') {
         errorMessage = 'WhatsApp ainda está inicializando';
@@ -889,10 +728,10 @@ function createApp(tenantManager, supabaseHelper) {
     try {
       const normalizedPhone = normalizePhone(phone);
       console.log(`📤 Telefone normalizado: ${normalizedPhone}`);
-      console.log(`⏳ Enviando mensagem via WhatsApp Web...`);
+      console.log(`⏳ Enviando mensagem via Baileys...`);
       
       const sendStart = Date.now();
-      await client.sendMessage(normalizedPhone, message);
+      await sock.sendMessage(normalizedPhone, { text: message });
       const sendDuration = Date.now() - sendStart;
       
       console.log(`✅ Mensagem enviada com sucesso em ${sendDuration}ms`);
@@ -983,15 +822,8 @@ function createApp(tenantManager, supabaseHelper) {
 // ==================== ENCERRAMENTO GRACIOSO ====================
 const tenantManager = new TenantManager();
 
-// Capturar erros não tratados para evitar crash por EBUSY
 process.on('uncaughtException', (error) => {
-  if (error.message && error.message.includes('EBUSY')) {
-    console.log('⚠️ Erro EBUSY capturado - ignorando (arquivo ainda em uso pelo Chrome)');
-    console.log(`   Detalhes: ${error.message}`);
-  } else {
-    console.error('❌ Erro não tratado:', error);
-    // Não fazer exit, deixar o servidor continuar rodando
-  }
+  console.error('❌ Erro não tratado:', error);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
@@ -1002,11 +834,12 @@ process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
   for (const [tenantId, data] of tenantManager.clients.entries()) {
     try {
-      console.log(`🔄 Destruindo cliente ${data.tenant.name}...`);
-      await data.client.destroy();
-      await delay(500); // Aguardar Chrome fechar
+      console.log(`🔄 Encerrando ${data.tenant.name}...`);
+      if (data.sock) {
+        await data.sock.logout();
+      }
     } catch (error) {
-      console.log(`⚠️ Erro ao destruir ${data.tenant.name}:`, error.message);
+      console.log(`⚠️ Erro ao encerrar ${data.tenant.name}:`, error.message);
     }
   }
   console.log('✅ Servidor encerrado');
@@ -1017,10 +850,11 @@ process.on('SIGTERM', async () => {
   console.log('\n🛑 Encerrando servidor (SIGTERM)...');
   for (const [tenantId, data] of tenantManager.clients.entries()) {
     try {
-      await data.client.destroy();
-      await delay(500); // Aguardar Chrome fechar
+      if (data.sock) {
+        await data.sock.logout();
+      }
     } catch (error) {
-      console.log(`⚠️ Erro ao destruir ${data.tenant.name}:`, error.message);
+      console.log(`⚠️ Erro ao encerrar ${data.tenant.name}:`, error.message);
     }
   }
   process.exit(0);
@@ -1028,7 +862,7 @@ process.on('SIGTERM', async () => {
 
 // ==================== INICIALIZAÇÃO ====================
 async function main() {
-  console.log('🚀 Iniciando servidor WhatsApp Multi-Tenant...\n');
+  console.log('🚀 Iniciando servidor WhatsApp Multi-Tenant com Baileys...\n');
 
   // Verificar variáveis de ambiente
   if (!SUPABASE_SERVICE_KEY) {
@@ -1046,38 +880,38 @@ async function main() {
   const tenants = allTenants.filter(t => t.id === MANIA_DE_MULHER_ID);
   
   if (tenants.length === 0) {
-    console.error('❌ Tenant MANIA DE MULHER não encontrado!');
-    console.log('Tenants disponíveis:', allTenants.map(t => `${t.name} (${t.id})`).join(', '));
+    console.error('❌ Tenant MANIA DE MULHER não encontrado no banco!');
     process.exit(1);
   }
-  
-  console.log(`✅ Tenant encontrado: ${tenants[0].name}\n`);
 
-  // Inicializar clientes WhatsApp para cada tenant
+  console.log(`✅ ${tenants.length} tenant(s) carregado(s)`);
+
+  // Criar clientes para todos os tenants
   for (const tenant of tenants) {
-    console.log(`🔄 Inicializando ${tenant.name}...`);
     try {
       await tenantManager.createClient(tenant);
+      console.log(`✅ Cliente criado para ${tenant.name}`);
       await delay(2000); // Delay entre inicializações
     } catch (error) {
-      console.error(`❌ Erro ao inicializar ${tenant.name}:`, error.message);
-      console.error(`⚠️ Tentando continuar mesmo assim...`);
+      console.error(`❌ Erro ao criar cliente para ${tenant.name}:`, error);
     }
   }
 
-  // Criar app Express
+  // Criar e iniciar servidor Express
   const app = createApp(tenantManager, supabaseHelper);
-
-  // Iniciar servidor
+  
   app.listen(PORT, () => {
-    console.log(`\n✅ Servidor rodando na porta ${PORT}`);
-    console.log(`📍 URL: http://localhost:${PORT}`);
-    console.log(`\n🔐 Escaneie os QR Codes acima para conectar cada tenant\n`);
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`🚀 SERVIDOR RODANDO NA PORTA ${PORT}`);
+    console.log(`${'='.repeat(70)}`);
+    console.log(`🌐 Health Check: http://localhost:${PORT}/health`);
+    console.log(`📊 Status: http://localhost:${PORT}/status`);
+    console.log(`${'='.repeat(70)}\n`);
   });
 }
 
-// Executar
+// Iniciar
 main().catch(error => {
-  console.error('❌ Erro fatal:', error);
+  console.error('❌ Erro fatal ao iniciar servidor:', error);
   process.exit(1);
 });
