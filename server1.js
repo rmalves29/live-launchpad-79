@@ -106,45 +106,32 @@ class TenantManager {
     
     console.log(`📱 Criando cliente WhatsApp para tenant: ${tenant.name} (${tenantId})`);
 
-    // Configuração do Puppeteer - usar Chromium do Puppeteer em vez de Chrome do sistema
-    const showBrowser = process.env.SHOW_BROWSER === 'true';
-    const userDataDir = path.join(__dirname, '.wwebjs_cache', `session-${tenantId}`);
-    
-    // Criar diretório de dados do usuário
-    if (!fs.existsSync(userDataDir)) {
-      fs.mkdirSync(userDataDir, { recursive: true });
-    }
-    
+    // Limpar lockfiles antes de iniciar
+    cleanupLockfiles(AUTH_DIR);
+
+    // Configuração do Puppeteer simplificada e estável
     const puppeteerConfig = {
       headless: false,
-      userDataDir: userDataDir,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer',
-        '--disable-extensions'
+        '--disable-dev-shm-usage'
       ]
     };
     
-    console.log('🌐 Usando Chromium do Puppeteer (mais estável)');
-    console.log(`📁 Dados do usuário em: ${userDataDir}`);
+    console.log('🌐 Usando configuração padrão do WhatsApp Web');
+    console.log(`💾 Sessões em: ${AUTH_DIR}`);
 
-    const cacheFile = path.join(__dirname, '.wwebjs_cache', 'whatsapp-web.html');
-    
+    // Cliente sem webVersionCache - deixar o whatsapp-web.js gerenciar
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: tenantId,
         dataPath: AUTH_DIR
       }),
       puppeteer: puppeteerConfig,
-      webVersionCache: fs.existsSync(cacheFile) ? {
-        type: 'local',
-        path: cacheFile
-      } : undefined,
       qrMaxRetries: 5,
-      authTimeoutMs: 0
+      authTimeoutMs: 0,
+      webVersion: '2.2412.54' // Versão estável conhecida
     });
 
     // Status inicial
@@ -978,14 +965,6 @@ async function main() {
   if (!SUPABASE_SERVICE_KEY) {
     console.error('❌ SUPABASE_SERVICE_ROLE_KEY não configurada!');
     process.exit(1);
-  }
-
-  // Baixar HTML do WhatsApp Web antes de iniciar
-  try {
-    await downloadWhatsAppHTML();
-  } catch (error) {
-    console.error('⚠️ Erro ao baixar WhatsApp Web HTML:', error.message);
-    console.log('⚠️ Continuando mesmo assim...');
   }
 
   const supabaseHelper = new SupabaseHelper(SUPABASE_URL, SUPABASE_SERVICE_KEY);
