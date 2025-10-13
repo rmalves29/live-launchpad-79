@@ -94,7 +94,11 @@ class TenantManager {
         clientId: tenantId,
         dataPath: AUTH_DIR
       }),
-      puppeteer: puppeteerConfig
+      puppeteer: puppeteerConfig,
+      webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+      }
     });
 
     // Status inicial
