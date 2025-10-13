@@ -9,10 +9,20 @@ const path = require('path');
 const fetch = require('node-fetch');
 const P = require('pino');
 
+// Carregar variáveis de ambiente
+require('dotenv').config();
+
 // ==================== CONFIGURAÇÃO ====================
 const PORT = process.env.PORT || 3333;
-const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_SERVICE_KEY) {
+  console.error('❌ ERRO: SUPABASE_SERVICE_ROLE_KEY não encontrada!');
+  console.error('Crie um arquivo .env na raiz com:');
+  console.error('SUPABASE_SERVICE_ROLE_KEY=sua_chave_aqui');
+  process.exit(1);
+}
 
 // Diretório de autenticação
 const AUTH_DIR = path.join(__dirname, '.baileys_auth');
