@@ -109,29 +109,16 @@ class TenantManager {
     // Limpar lockfiles antes de iniciar
     cleanupLockfiles(AUTH_DIR);
 
-    // Configuração do Puppeteer otimizada para baixo consumo de memória
+    // Configuração do Puppeteer estável (sem flags problemáticas)
     const puppeteerConfig = {
       headless: false,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
         '--disable-gpu',
         '--disable-software-rasterizer',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-default-apps',
-        '--disable-sync',
-        '--disable-translate',
-        '--metrics-recording-only',
-        '--mute-audio',
-        '--no-default-browser-check',
-        '--safebrowsing-disable-auto-update',
-        '--single-process',
-        '--js-flags="--max-old-space-size=4096"'
+        '--disable-extensions'
       ]
     };
     
