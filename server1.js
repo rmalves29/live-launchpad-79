@@ -116,7 +116,10 @@ class TenantManager {
 
     // QR Code
     client.on('qr', (qr) => {
-      console.log(`\n🔲 QR Code para ${tenant.name}:`);
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`📱 QR CODE GERADO PARA ${tenant.name.toUpperCase()}`);
+      console.log(`${'='.repeat(70)}\n`);
+      
       qrcode.generate(qr, { small: true });
       
       const clientData = this.clients.get(tenantId);
@@ -124,11 +127,20 @@ class TenantManager {
         clientData.qr = qr;
         clientData.status = 'qr_ready';
       }
+      
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`🌐 Acesse no navegador: http://localhost:3333/qr/${tenantId}`);
+      console.log(`${'='.repeat(70)}\n`);
+    });
+
+    // Evento de carregamento (mostra progresso)
+    client.on('loading_screen', (percent, message) => {
+      console.log(`⏳ ${tenant.name} - Carregando: ${percent}% - ${message}`);
     });
 
     // Autenticado
     client.on('authenticated', () => {
-      console.log(`✅ ${tenant.name} autenticado!`);
+      console.log(`\n✅ ${tenant.name} AUTENTICADO COM SUCESSO!\n`);
       const clientData = this.clients.get(tenantId);
       if (clientData) {
         clientData.status = 'authenticated';
@@ -177,7 +189,22 @@ class TenantManager {
     });
 
     // Inicializar cliente
-    client.initialize();
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`🔌 INICIALIZANDO ${tenant.name.toUpperCase()}`);
+    console.log(`ID: ${tenantId}`);
+    console.log(`${'='.repeat(70)}\n`);
+    
+    client.initialize().catch(err => {
+      console.error(`\n❌ ERRO AO INICIALIZAR ${tenant.name}:`);
+      console.error(`Mensagem: ${err.message}`);
+      console.error(`Stack: ${err.stack}\n`);
+      
+      const clientData = this.clients.get(tenantId);
+      if (clientData) {
+        clientData.status = 'error';
+        clientData.error = err.message;
+      }
+    });
 
     return client;
   }
