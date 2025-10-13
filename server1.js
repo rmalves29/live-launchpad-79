@@ -1,10 +1,11 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, NoAuth } = require('whatsapp-web.js');
 const express = require('express');
 const cors = require('cors');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
+const https = require('https');
 
 // ==================== CONFIGURAÇÃO ====================
 const PORT = process.env.PORT || 3333;
@@ -13,6 +14,53 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciO
 
 // Diretório de autenticação
 const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
+
+// Função para baixar HTML do WhatsApp Web
+async function downloadWhatsAppHTML() {
+  const cacheDir = path.join(__dirname, '.wwebjs_cache');
+  const cacheFile = path.join(cacheDir, 'whatsapp-web.html');
+  
+  // Se já existe e tem menos de 24h, não baixa novamente
+  if (fs.existsSync(cacheFile)) {
+    const stats = fs.statSync(cacheFile);
+    const age = Date.now() - stats.mtimeMs;
+    if (age < 24 * 60 * 60 * 1000) {
+      console.log('✅ Cache do WhatsApp Web já existe e é recente');
+      return;
+    }
+  }
+  
+  console.log('📥 Baixando versão estável do WhatsApp Web...');
+  
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+  }
+  
+  const url = 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html';
+  
+  return new Promise((resolve, reject) => {
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Falha ao baixar: ${response.statusCode}`));
+        return;
+      }
+      
+      const fileStream = fs.createWriteStream(cacheFile);
+      response.pipe(fileStream);
+      
+      fileStream.on('finish', () => {
+        fileStream.close();
+        console.log('✅ WhatsApp Web HTML baixado com sucesso');
+        resolve();
+      });
+      
+      fileStream.on('error', (err) => {
+        fs.unlink(cacheFile, () => {});
+        reject(err);
+      });
+    }).on('error', reject);
+  });
+}
 
 // Função para limpar lockfiles antigos
 function cleanupLockfiles(dirPath) {
@@ -98,12 +146,18 @@ class TenantManager {
       }
     }
 
+    const cacheFile = path.join(__dirname, '.wwebjs_cache', 'whatsapp-web.html');
+    
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: tenantId,
         dataPath: AUTH_DIR
       }),
       puppeteer: puppeteerConfig,
+      webVersionCache: {
+        type: 'local',
+        path: cacheFile
+      },
       qrMaxRetries: 5,
       authTimeoutMs: 0,
       bypassCSP: true
@@ -940,6 +994,14 @@ async function main() {
   if (!SUPABASE_SERVICE_KEY) {
     console.error('❌ SUPABASE_SERVICE_ROLE_KEY não configurada!');
     process.exit(1);
+  }
+
+  // Baixar HTML do WhatsApp Web antes de iniciar
+  try {
+    await downloadWhatsAppHTML();
+  } catch (error) {
+    console.error('⚠️ Erro ao baixar WhatsApp Web HTML:', error.message);
+    console.log('⚠️ Continuando mesmo assim...');
   }
 
   const supabaseHelper = new SupabaseHelper(SUPABASE_URL, SUPABASE_SERVICE_KEY);
