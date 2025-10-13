@@ -609,15 +609,6 @@ function createApp(tenantManager, supabaseHelper) {
       `);
     });
   });
-      });
-    } catch (error) {
-      console.error('❌ Erro ao listar grupos:', error);
-      res.status(500).json({ 
-        success: false, 
-        error: error.message 
-      });
-    }
-  });
 
   // Enviar mensagem para grupo (SendFlow)
   app.post('/send-group', async (req, res) => {
