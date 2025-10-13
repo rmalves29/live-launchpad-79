@@ -12,7 +12,7 @@ const P = require('pino');
 // ==================== CONFIGURAÇÃO ====================
 const PORT = process.env.PORT || 3333;
 const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTIxOTMwMywiZXhwIjoyMDcwNzk1MzAzfQ.LJLhwm4I_k_iR4NSpF1aLGx3H0AFnz8V6T_HEtqcnFA';
 
 // Diretório de autenticação
 const AUTH_DIR = path.join(__dirname, '.baileys_auth');
@@ -114,7 +114,6 @@ class TenantManager {
 
         // Tratar cada tipo de desconexão
         if (statusCode === DisconnectReason.loggedOut) {
-          // 401 - Usuário fez logout, limpar sessão
           console.log(`🔴 LOGOUT (401) - limpando sessão...`);
           
           try {
@@ -132,28 +131,23 @@ class TenantManager {
           setTimeout(() => this.createClient(tenant), 3000);
           
         } else if (statusCode === DisconnectReason.restartRequired) {
-          // 515 - WhatsApp pediu restart, reconectar imediatamente
           console.log(`🔄 RESTART NECESSÁRIO (515) - reconectando em 2s...`);
           this.clients.delete(tenantId);
           setTimeout(() => this.createClient(tenant), 2000);
           
         } else if (statusCode === DisconnectReason.timedOut) {
-          // 408 - Timeout, reconectar
           console.log(`⏱️ TIMEOUT (408) - reconectando em 5s...`);
           setTimeout(() => this.createClient(tenant), 5000);
           
         } else if (statusCode === DisconnectReason.connectionClosed) {
-          // 428 - Conexão fechada, reconectar
           console.log(`🔌 CONEXÃO FECHADA (428) - reconectando em 3s...`);
           setTimeout(() => this.createClient(tenant), 3000);
           
         } else if (statusCode === DisconnectReason.connectionReplaced) {
-          // 440 - Outra conexão substituiu essa, não reconectar
           console.log(`🔄 CONEXÃO SUBSTITUÍDA (440) - não reconectando`);
           this.clients.delete(tenantId);
           
         } else if (statusCode === DisconnectReason.badSession) {
-          // 500 - Sessão inválida, limpar e gerar novo QR
           console.log(`❌ SESSÃO INVÁLIDA (500) - limpando...`);
           
           try {
@@ -169,7 +163,6 @@ class TenantManager {
           setTimeout(() => this.createClient(tenant), 3000);
           
         } else if (statusCode === DisconnectReason.multideviceMismatch) {
-          // 411 - Mismatch de multi-device, limpar sessão
           console.log(`📱 MULTI-DEVICE MISMATCH (411) - limpando sessão...`);
           
           try {
@@ -185,7 +178,6 @@ class TenantManager {
           setTimeout(() => this.createClient(tenant), 3000);
           
         } else {
-          // Outros erros - tentar reconectar
           console.log(`🔄 Erro ${reason} - tentando reconectar em 5s...`);
           setTimeout(() => this.createClient(tenant), 5000);
         }
@@ -403,34 +395,170 @@ class SupabaseHelper {
       console.error('Erro ao logar mensagem:', error);
     }
   }
+
+  async getTemplate(tenantId, templateType) {
+    const data = await this.request(
+      `/rest/v1/whatsapp_templates?tenant_id=eq.${tenantId}&type=eq.${templateType}&select=*&limit=1`
+    );
+    return data[0] || null;
+  }
+
+  // NOVO: Buscar itens pendentes de envio
+  async getPendingCartItems(tenantId) {
+    try {
+      const data = await this.request(
+        `/rest/v1/cart_items?tenant_id=eq.${tenantId}&select=*,product:products(*),cart:carts(customer_phone)&limit=10`
+      );
+      return data || [];
+    } catch (error) {
+      console.error('Erro ao buscar itens pendentes:', error);
+      return [];
+    }
+  }
+
+  // NOVO: Marcar item como processado
+  async markCartItemProcessed(itemId) {
+    try {
+      await this.request(`/rest/v1/cart_items?id=eq.${itemId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ printed: true })
+      });
+    } catch (error) {
+      console.error('Erro ao marcar item como processado:', error);
+    }
+  }
 }
 
-// ==================== UTILIDADES ====================
+// ==================== MONITOR DE CARRINHO ====================
+class CartMonitor {
+  constructor(tenantManager, supabaseHelper) {
+    this.tenantManager = tenantManager;
+    this.supabaseHelper = supabaseHelper;
+    this.processedItems = new Set(); // Evitar duplicação
+    this.isRunning = false;
+  }
+
+  async start() {
+    if (this.isRunning) {
+      console.log('⚠️ Monitor já está rodando');
+      return;
+    }
+
+    this.isRunning = true;
+    console.log('\n🔍 MONITOR DE CARRINHO INICIADO');
+    console.log('   Verificando novos itens a cada 3 segundos...\n');
+
+    this.monitorLoop();
+  }
+
+  async monitorLoop() {
+    if (!this.isRunning) return;
+
+    try {
+      // Para cada tenant online
+      for (const [tenantId, clientData] of this.tenantManager.clients.entries()) {
+        if (clientData.status !== 'online') continue;
+
+        // Buscar itens não processados
+        const items = await this.supabaseHelper.getPendingCartItems(tenantId);
+        
+        for (const item of items) {
+          // Evitar processar o mesmo item duas vezes
+          if (this.processedItems.has(item.id)) continue;
+          
+          // Verificar se já foi impresso (printed)
+          if (item.printed) {
+            this.processedItems.add(item.id);
+            continue;
+          }
+
+          await this.processCartItem(tenantId, item);
+          this.processedItems.add(item.id);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro no monitor:', error.message);
+    }
+
+    // Próxima verificação em 3 segundos
+    setTimeout(() => this.monitorLoop(), 3000);
+  }
+
+  async processCartItem(tenantId, item) {
+    try {
+      console.log(`\n📦 Novo item detectado no carrinho!`);
+      console.log(`   Produto: ${item.product?.name} (${item.product?.code})`);
+      console.log(`   Cliente: ${item.cart?.customer_phone}`);
+      console.log(`   Quantidade: ${item.qty}`);
+
+      const sock = this.tenantManager.getOnlineClient(tenantId);
+      if (!sock) {
+        console.log(`⚠️ WhatsApp offline, pulando...`);
+        return;
+      }
+
+      // Buscar template
+      const template = await this.supabaseHelper.getTemplate(tenantId, 'ITEM_ADDED');
+      if (!template) {
+        console.log(`⚠️ Template ITEM_ADDED não encontrado`);
+        return;
+      }
+
+      // Formatar mensagem
+      const valorTotal = (item.qty * item.unit_price).toFixed(2);
+      let mensagem = template.content
+        .replace(/\{\{produto\}\}/g, `${item.product.name} (${item.product.code})`)
+        .replace(/\{\{quantidade\}\}/g, item.qty.toString())
+        .replace(/\{\{valor\}\}/g, valorTotal);
+
+      // Normalizar telefone
+      const phoneClean = item.cart.customer_phone.replace(/\D/g, '');
+      const phoneFinal = phoneClean.startsWith('55') ? phoneClean : `55${phoneClean}`;
+      const phoneFormatted = `${phoneFinal}@s.whatsapp.net`;
+
+      // Enviar mensagem
+      console.log(`📤 Enviando WhatsApp para ${phoneFinal}...`);
+      await sock.sendMessage(phoneFormatted, { text: mensagem });
+      console.log(`✅ Mensagem enviada!`);
+
+      // Logar no banco
+      await this.supabaseHelper.logMessage(
+        tenantId,
+        phoneFinal,
+        mensagem,
+        'item_added'
+      );
+
+      // Marcar como processado
+      await this.supabaseHelper.markCartItemProcessed(item.id);
+      console.log(`✅ Item marcado como processado\n`);
+
+    } catch (error) {
+      console.error(`❌ Erro ao processar item:`, error.message);
+    }
+  }
+
+  stop() {
+    this.isRunning = false;
+    console.log('🛑 Monitor de carrinho parado');
+  }
+}
+
 function normalizePhone(phone) {
-  // Remover caracteres especiais
   let clean = phone.replace(/\D/g, '');
-  
-  // Adicionar DDI 55 se não tiver
   if (!clean.startsWith('55')) {
     clean = '55' + clean;
   }
-  
-  // Extrair DDD (posições 2-3 após o DDI 55)
   const ddd = parseInt(clean.substring(2, 4));
-  
-  // Regra: DDD >= 31 remove o 9º dígito, DDD < 31 adiciona o 9º dígito
   if (ddd >= 31) {
     if (clean.length === 13 && clean[4] === '9') {
       clean = clean.slice(0, 4) + clean.slice(5);
-      console.log(`📱 DDD ${ddd} >= 31: removido 9º dígito → ${clean}`);
     }
   } else {
     if (clean.length === 12 && clean[4] !== '9') {
       clean = clean.slice(0, 4) + '9' + clean.slice(4);
-      console.log(`📱 DDD ${ddd} < 31: adicionado 9º dígito → ${clean}`);
     }
   }
-  
   return clean + '@s.whatsapp.net';
 }
 
@@ -438,28 +566,21 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ==================== EXPRESS APP ====================
 function createApp(tenantManager, supabaseHelper) {
   const app = express();
-
   app.use(cors());
   app.use(express.json());
 
-  // Middleware para extrair tenant_id
   app.use((req, res, next) => {
     const tenantId = req.headers['x-tenant-id'] || req.query.tenant_id;
     req.tenantId = tenantId;
     next();
   });
 
-  // ==================== ENDPOINTS ====================
-
-  // Health check
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Status de todos os tenants
   app.get('/status', (req, res) => {
     const status = tenantManager.getAllStatus();
     res.json({ 
@@ -469,7 +590,6 @@ function createApp(tenantManager, supabaseHelper) {
     });
   });
 
-  // Status de um tenant específico (DETALHADO)
   app.get('/status/:tenantId', async (req, res) => {
     const { tenantId } = req.params;
     const clientData = tenantManager.clients.get(tenantId);
@@ -491,7 +611,6 @@ function createApp(tenantManager, supabaseHelper) {
       timestamp: new Date().toISOString()
     };
 
-    // Se estiver online, adicionar info do WhatsApp
     if (clientData.status === 'online' && clientData.sock) {
       try {
         const me = clientData.sock.user;
@@ -506,13 +625,10 @@ function createApp(tenantManager, supabaseHelper) {
         status.whatsapp_info_error = error.message;
       }
     }
-
-    console.log(`📊 Status consultado para ${clientData.tenant.name}:`, status);
     
     res.json(status);
   });
 
-  // Listar todos os grupos
   app.get('/list-all-groups', async (req, res) => {
     const { tenantId } = req;
 
@@ -532,15 +648,12 @@ function createApp(tenantManager, supabaseHelper) {
     }
 
     try {
-      // Buscar todos os chats
       const chats = await sock.groupFetchAllParticipating();
       const groups = Object.values(chats).map(group => ({
         id: group.id,
         name: group.subject,
         participantCount: group.participants?.length || 0
       }));
-
-      console.log(`📋 ${groups.length} grupos encontrados para tenant ${tenantId}`);
 
       res.json({ 
         success: true, 
@@ -556,7 +669,6 @@ function createApp(tenantManager, supabaseHelper) {
     }
   });
 
-  // Visualizar QR Code via browser
   app.get('/qr/:tenantId', (req, res) => {
     const { tenantId } = req.params;
     const clientData = tenantManager.clients.get(tenantId);
@@ -614,7 +726,6 @@ function createApp(tenantManager, supabaseHelper) {
       `);
     }
 
-    // Gerar QR Code como imagem
     QRCode.toDataURL(clientData.qr, (err, url) => {
       if (err) {
         return res.status(500).send('Erro ao gerar QR Code');
@@ -657,22 +768,14 @@ function createApp(tenantManager, supabaseHelper) {
     });
   });
 
-  // Enviar mensagem para grupo (SendFlow)
   app.post('/send-group', async (req, res) => {
     const { tenantId } = req;
     const { groupId, message } = req.body;
 
-    if (!tenantId) {
+    if (!tenantId || !groupId || !message) {
       return res.status(400).json({ 
         success: false, 
-        error: 'tenant_id obrigatório' 
-      });
-    }
-
-    if (!groupId || !message) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'groupId e message são obrigatórios' 
+        error: 'tenant_id, groupId e message são obrigatórios' 
       });
     }
 
@@ -685,11 +788,8 @@ function createApp(tenantManager, supabaseHelper) {
     }
 
     try {
-      console.log(`📤 Enviando mensagem para grupo ${groupId}`);
-      
       await sock.sendMessage(groupId, { text: message });
       
-      // Logar no Supabase
       await supabaseHelper.logMessage(
         tenantId,
         groupId,
@@ -697,8 +797,6 @@ function createApp(tenantManager, supabaseHelper) {
         'sendflow',
         { whatsapp_group_name: groupId }
       );
-
-      console.log(`✅ Mensagem enviada para grupo ${groupId}`);
 
       res.json({ 
         success: true, 
@@ -713,98 +811,35 @@ function createApp(tenantManager, supabaseHelper) {
     }
   });
 
-  // Enviar mensagem individual
   app.post('/send', async (req, res) => {
     const { tenantId } = req;
     const { phone, message } = req.body;
 
-    console.log('\n📨 ===== NOVA REQUISIÇÃO DE ENVIO =====');
-    console.log(`🔑 Tenant ID: ${tenantId}`);
-    console.log(`📞 Telefone original: ${phone}`);
-    console.log(`💬 Mensagem (${message.length} chars):`, message.substring(0, 100) + '...');
-
-    if (!tenantId) {
-      console.error('❌ tenant_id não fornecido');
+    if (!tenantId || !phone || !message) {
       return res.status(400).json({ 
         success: false, 
-        error: 'tenant_id obrigatório' 
+        error: 'tenant_id, phone e message são obrigatórios' 
       });
     }
 
-    if (!phone || !message) {
-      console.error('❌ phone ou message faltando');
-      return res.status(400).json({ 
-        success: false, 
-        error: 'phone e message são obrigatórios' 
-      });
-    }
-
-    const clientData = tenantManager.clients.get(tenantId);
-    console.log(`🔍 Status do cliente:`, clientData ? clientData.status : 'NÃO ENCONTRADO');
-    
     const sock = tenantManager.getOnlineClient(tenantId);
     if (!sock) {
-      console.error(`\n${'='.repeat(70)}`);
-      console.error(`❌ ERRO: WhatsApp não está ONLINE para tenant ${tenantId}`);
-      console.error(`${'='.repeat(70)}`);
-      console.error(`   Status atual: ${clientData?.status || 'não inicializado'}`);
-      console.error(`${'='.repeat(70)}`);
-      
-      let errorMessage = 'WhatsApp não conectado';
-      let instructions = '';
-      
-      if (clientData?.status === 'qr_ready') {
-        errorMessage = 'QR Code aguardando leitura';
-        instructions = `\n\n📱 INSTRUÇÕES:\n` +
-                      `1. Abra o WhatsApp no seu celular\n` +
-                      `2. Vá em Aparelhos Conectados\n` +
-                      `3. Escaneie o QR Code em: http://localhost:3333/qr/${tenantId}\n` +
-                      `4. Aguarde o WhatsApp conectar completamente\n\n` +
-                      `⏳ O status atual é: ${clientData.status}\n` +
-                      `✅ Precisa ser: online`;
-        console.error(instructions);
-      } else if (clientData?.status === 'connecting') {
-        errorMessage = 'WhatsApp conectando, aguarde...';
-        instructions = '\n\n⏳ Aguarde alguns segundos...';
-        console.error(instructions);
-      } else if (clientData?.status === 'initializing') {
-        errorMessage = 'WhatsApp ainda está inicializando';
-        instructions = '\n\n⏳ Aguarde o QR Code aparecer...';
-        console.error(instructions);
-      }
-      
-      console.error(`${'='.repeat(70)}\n`);
-      
+      const clientData = tenantManager.clients.get(tenantId);
       return res.status(503).json({ 
         success: false, 
-        error: errorMessage,
-        status: clientData?.status || 'não inicializado',
-        instructions: instructions.trim()
+        error: 'WhatsApp não conectado',
+        status: clientData?.status || 'não inicializado'
       });
     }
 
     try {
       const normalizedPhone = normalizePhone(phone);
-      console.log(`📤 Telefone normalizado: ${normalizedPhone}`);
-      console.log(`⏳ Enviando mensagem via Baileys...`);
       
       const sendStart = Date.now();
       await sock.sendMessage(normalizedPhone, { text: message });
       const sendDuration = Date.now() - sendStart;
       
-      console.log(`✅ Mensagem enviada com sucesso em ${sendDuration}ms`);
-      
-      // Logar no Supabase
-      console.log(`💾 Registrando no Supabase...`);
-      await supabaseHelper.logMessage(
-        tenantId,
-        phone,
-        message,
-        'individual'
-      );
-      console.log(`✅ Registro no Supabase concluído`);
-
-      console.log(`🎉 ===== ENVIO CONCLUÍDO COM SUCESSO =====\n`);
+      await supabaseHelper.logMessage(tenantId, phone, message, 'individual');
 
       res.json({ 
         success: true, 
@@ -813,63 +848,10 @@ function createApp(tenantManager, supabaseHelper) {
         duration_ms: sendDuration
       });
     } catch (error) {
-      console.error('\n❌ ===== ERRO NO ENVIO =====');
-      console.error('Tipo:', error.name);
-      console.error('Mensagem:', error.message);
-      console.error('Stack:', error.stack);
-      console.error('===== FIM DO ERRO =====\n');
-      
+      console.error('❌ Erro ao enviar:', error);
       res.status(500).json({ 
         success: false, 
-        error: error.message,
-        error_type: error.name
-      });
-    }
-  });
-
-  // Processar mensagem recebida manualmente (opcional)
-  app.post('/process-incoming-message', async (req, res) => {
-    const { tenantId } = req;
-    const { customer_phone, message, group_name } = req.body;
-
-    if (!tenantId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'tenant_id obrigatório' 
-      });
-    }
-
-    try {
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-process-message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
-        },
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          customer_phone,
-          message,
-          group_name
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
-      }
-
-      const result = await response.json();
-
-      res.json({ 
-        success: true, 
-        result 
-      });
-    } catch (error) {
-      console.error('❌ Erro ao processar mensagem:', error);
-      res.status(500).json({ 
-        success: false, 
-        error: error.message 
+        error: error.message
       });
     }
   });
@@ -879,25 +861,30 @@ function createApp(tenantManager, supabaseHelper) {
 
 // ==================== ENCERRAMENTO GRACIOSO ====================
 const tenantManager = new TenantManager();
+let cartMonitor = null;
 
 process.on('uncaughtException', (error) => {
   console.error('❌ Erro não tratado:', error);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Promise rejeitada não tratada:', reason);
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ Promise rejeitada:', reason);
 });
 
 process.on('SIGINT', async () => {
   console.log('\n🛑 Encerrando servidor...');
+  
+  if (cartMonitor) {
+    cartMonitor.stop();
+  }
+  
   for (const [tenantId, data] of tenantManager.clients.entries()) {
     try {
-      console.log(`🔄 Encerrando ${data.tenant.name}...`);
       if (data.sock) {
         await data.sock.logout();
       }
     } catch (error) {
-      console.log(`⚠️ Erro ao encerrar ${data.tenant.name}:`, error.message);
+      console.log(`⚠️ Erro ao encerrar:`, error.message);
     }
   }
   console.log('✅ Servidor encerrado');
@@ -906,13 +893,18 @@ process.on('SIGINT', async () => {
 
 process.on('SIGTERM', async () => {
   console.log('\n🛑 Encerrando servidor (SIGTERM)...');
+  
+  if (cartMonitor) {
+    cartMonitor.stop();
+  }
+  
   for (const [tenantId, data] of tenantManager.clients.entries()) {
     try {
       if (data.sock) {
         await data.sock.logout();
       }
     } catch (error) {
-      console.log(`⚠️ Erro ao encerrar ${data.tenant.name}:`, error.message);
+      console.log(`⚠️ Erro:`, error.message);
     }
   }
   process.exit(0);
@@ -921,8 +913,8 @@ process.on('SIGTERM', async () => {
 // ==================== INICIALIZAÇÃO ====================
 async function main() {
   console.log('🚀 Iniciando servidor WhatsApp Multi-Tenant com Baileys...\n');
+  console.log('💡 MODO LOCALHOST: Monitor de carrinho ativo\n');
 
-  // Verificar variáveis de ambiente
   if (!SUPABASE_SERVICE_KEY) {
     console.error('❌ SUPABASE_SERVICE_ROLE_KEY não configurada!');
     process.exit(1);
@@ -930,28 +922,22 @@ async function main() {
 
   const supabaseHelper = new SupabaseHelper(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  // Carregar apenas o tenant MANIA DE MULHER
-  console.log('📋 Carregando tenant MANIA DE MULHER...');
   const MANIA_DE_MULHER_ID = '08f2b1b9-3988-489e-8186-c60f0c0b0622';
   
   const allTenants = await supabaseHelper.loadActiveTenants();
   const tenants = allTenants.filter(t => t.id === MANIA_DE_MULHER_ID);
   
   if (tenants.length === 0) {
-    console.error('❌ Tenant MANIA DE MULHER não encontrado no banco!');
+    console.error('❌ Tenant MANIA DE MULHER não encontrado!');
     process.exit(1);
   }
 
-  console.log(`✅ ${tenants.length} tenant(s) carregado(s)`);
-
-  // Criar clientes para todos os tenants
   for (const tenant of tenants) {
     try {
       await tenantManager.createClient(tenant);
-      console.log(`✅ Cliente criado para ${tenant.name}`);
-      await delay(2000); // Delay entre inicializações
+      await delay(2000);
     } catch (error) {
-      console.error(`❌ Erro ao criar cliente para ${tenant.name}:`, error);
+      console.error(`❌ Erro ao criar cliente:`, error);
     }
   }
 
@@ -962,14 +948,19 @@ async function main() {
     console.log(`\n${'='.repeat(70)}`);
     console.log(`🚀 SERVIDOR RODANDO NA PORTA ${PORT}`);
     console.log(`${'='.repeat(70)}`);
-    console.log(`🌐 Health Check: http://localhost:${PORT}/health`);
+    console.log(`🌐 Health: http://localhost:${PORT}/health`);
     console.log(`📊 Status: http://localhost:${PORT}/status`);
     console.log(`${'='.repeat(70)}\n`);
   });
+
+  // NOVO: Iniciar monitor de carrinho após 5 segundos
+  setTimeout(() => {
+    cartMonitor = new CartMonitor(tenantManager, supabaseHelper);
+    cartMonitor.start();
+  }, 5000);
 }
 
-// Iniciar
 main().catch(error => {
-  console.error('❌ Erro fatal ao iniciar servidor:', error);
+  console.error('❌ Erro fatal:', error);
   process.exit(1);
 });
