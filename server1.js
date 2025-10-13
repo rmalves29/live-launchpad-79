@@ -9,18 +9,14 @@ const path = require('path');
 const fetch = require('node-fetch');
 const P = require('pino');
 
-// Carregar variáveis de ambiente
-require('dotenv').config();
-
 // ==================== CONFIGURAÇÃO ====================
 const PORT = process.env.PORT || 3333;
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_SERVICE_KEY) {
   console.error('❌ ERRO: SUPABASE_SERVICE_ROLE_KEY não encontrada!');
-  console.error('Crie um arquivo .env na raiz com:');
-  console.error('SUPABASE_SERVICE_ROLE_KEY=sua_chave_aqui');
+  console.error('Execute usando: .\\start-baileys.bat');
   process.exit(1);
 }
 

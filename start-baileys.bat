@@ -24,7 +24,12 @@ if not exist "node_modules\@whiskeysockets\baileys" (
 )
 echo.
 
-echo [3/3] Iniciando servidor...
+echo [3/3] Configurando variaveis de ambiente...
+set SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNzU4Mzk0MiwiZXhwIjoyMDUzMTU5OTQyfQ.mO3yK2dj6rxfPkGRCz37ySjuQvGGMVYJBUwxAJJVU54
+echo OK - Variaveis configuradas
+echo.
+
+echo [4/4] Iniciando servidor...
 echo.
 echo ========================================
 echo   QR Code aparecera em instantes
