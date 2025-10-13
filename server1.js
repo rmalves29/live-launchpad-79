@@ -140,7 +140,12 @@ class TenantManager {
 
     // Autenticado
     client.on('authenticated', () => {
-      console.log(`\n✅ ${tenant.name} AUTENTICADO COM SUCESSO!\n`);
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`✅ ${tenant.name.toUpperCase()} - AUTENTICADO COM SUCESSO!`);
+      console.log(`${'='.repeat(70)}`);
+      console.log(`⏳ Aguardando evento 'ready' para ficar online...`);
+      console.log(`${'='.repeat(70)}\n`);
+      
       const clientData = this.clients.get(tenantId);
       if (clientData) {
         clientData.status = 'authenticated';
@@ -149,12 +154,29 @@ class TenantManager {
     });
 
     // Pronto
-    client.on('ready', () => {
-      console.log(`🚀 ${tenant.name} está pronto!`);
+    client.on('ready', async () => {
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`🚀 ${tenant.name.toUpperCase()} - ESTÁ PRONTO E ONLINE!`);
+      console.log(`${'='.repeat(70)}`);
+      
       const clientData = this.clients.get(tenantId);
       if (clientData) {
         clientData.status = 'online';
       }
+      
+      // Buscar e exibir informações do WhatsApp conectado
+      try {
+        const info = await client.info;
+        console.log(`📱 WhatsApp: ${info.wid.user}`);
+        console.log(`📱 Plataforma: ${info.platform}`);
+        console.log(`📱 Bateria: ${info.battery}%`);
+      } catch (error) {
+        console.log(`⚠️ Não foi possível obter info do WhatsApp:`, error.message);
+      }
+      
+      console.log(`${'='.repeat(70)}`);
+      console.log(`✅ ${tenant.name} pode enviar e receber mensagens agora!`);
+      console.log(`${'='.repeat(70)}\n`);
     });
 
     // Desconectado - NÃO destruir, deixar tentar reconectar
@@ -724,11 +746,42 @@ function createApp(tenantManager, supabaseHelper) {
     
     const client = tenantManager.getOnlineClient(tenantId);
     if (!client) {
-      console.error(`❌ WhatsApp não está ONLINE para tenant ${tenantId}`);
+      console.error(`\n${'='.repeat(70)}`);
+      console.error(`❌ ERRO: WhatsApp não está ONLINE para tenant ${tenantId}`);
+      console.error(`${'='.repeat(70)}`);
       console.error(`   Status atual: ${clientData?.status || 'não inicializado'}`);
+      console.error(`${'='.repeat(70)}`);
+      
+      let errorMessage = 'WhatsApp não conectado';
+      let instructions = '';
+      
+      if (clientData?.status === 'qr_ready') {
+        errorMessage = 'QR Code aguardando leitura';
+        instructions = `\n\n📱 INSTRUÇÕES:\n` +
+                      `1. Abra o WhatsApp no seu celular\n` +
+                      `2. Vá em Aparelhos Conectados\n` +
+                      `3. Escaneie o QR Code em: http://localhost:3333/qr/${tenantId}\n` +
+                      `4. Aguarde o WhatsApp conectar completamente\n\n` +
+                      `⏳ O status atual é: ${clientData.status}\n` +
+                      `✅ Precisa ser: online`;
+        console.error(instructions);
+      } else if (clientData?.status === 'authenticated') {
+        errorMessage = 'WhatsApp autenticado mas não está pronto ainda';
+        instructions = '\n\n⏳ Aguarde alguns segundos, o WhatsApp está carregando...';
+        console.error(instructions);
+      } else if (clientData?.status === 'initializing') {
+        errorMessage = 'WhatsApp ainda está inicializando';
+        instructions = '\n\n⏳ Aguarde o QR Code aparecer...';
+        console.error(instructions);
+      }
+      
+      console.error(`${'='.repeat(70)}\n`);
+      
       return res.status(503).json({ 
         success: false, 
-        error: `WhatsApp não conectado. Status: ${clientData?.status || 'não inicializado'}` 
+        error: errorMessage,
+        status: clientData?.status || 'não inicializado',
+        instructions: instructions.trim()
       });
     }
 
