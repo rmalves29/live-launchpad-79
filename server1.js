@@ -421,7 +421,7 @@ class SupabaseHelper {
   async getPendingCartItems(tenantId) {
     try {
       const data = await this.request(
-        `/rest/v1/cart_items?tenant_id=eq.${tenantId}&select=*,product:products(*),cart:carts(customer_phone)&limit=10`
+        `/rest/v1/cart_items?tenant_id=eq.${tenantId}&printed=eq.false&select=*,product:products(*),cart:carts(customer_phone)&order=created_at.asc&limit=50`
       );
       return data || [];
     } catch (error) {
@@ -460,7 +460,8 @@ class CartMonitor {
 
     this.isRunning = true;
     console.log('\n🔍 MONITOR DE CARRINHO INICIADO');
-    console.log('   Verificando novos itens a cada 3 segundos...\n');
+    console.log('   Verificando novos itens a cada 5 segundos...');
+    console.log('   Enviará WhatsApp automaticamente quando item for adicionado\n');
 
     this.monitorLoop();
   }
@@ -471,31 +472,37 @@ class CartMonitor {
     try {
       // Para cada tenant online
       for (const [tenantId, clientData] of this.tenantManager.clients.entries()) {
-        if (clientData.status !== 'online') continue;
+        if (clientData.status !== 'online') {
+          continue;
+        }
 
-        // Buscar itens não processados
+        // Buscar itens não processados (printed=false)
         const items = await this.supabaseHelper.getPendingCartItems(tenantId);
         
+        if (items.length > 0) {
+          console.log(`🔍 Encontrados ${items.length} itens pendentes para ${clientData.tenant.name}`);
+        }
+        
         for (const item of items) {
-          // Evitar processar o mesmo item duas vezes
-          if (this.processedItems.has(item.id)) continue;
-          
-          // Verificar se já foi impresso (printed)
-          if (item.printed) {
-            this.processedItems.add(item.id);
+          // Evitar processar o mesmo item duas vezes na memória
+          if (this.processedItems.has(item.id)) {
             continue;
           }
-
+          
+          // Processar item
           await this.processCartItem(tenantId, item);
           this.processedItems.add(item.id);
+          
+          // Pequeno delay entre mensagens para evitar sobrecarga
+          await new Promise(r => setTimeout(r, 500));
         }
       }
     } catch (error) {
       console.error('❌ Erro no monitor:', error.message);
     }
 
-    // Próxima verificação em 3 segundos
-    setTimeout(() => this.monitorLoop(), 3000);
+    // Próxima verificação em 5 segundos
+    setTimeout(() => this.monitorLoop(), 5000);
   }
 
   async processCartItem(tenantId, item) {
