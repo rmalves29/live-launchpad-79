@@ -1,16 +1,25 @@
 // Carregar variáveis de ambiente do arquivo .env
-require('dotenv').config();
+import dotenv from 'dotenv';
+import makeWASocket, {
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+} from '@whiskeysockets/baileys';
+import express from 'express';
+import cors from 'cors';
+import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
+import fs from 'fs';
+import path from 'path';
+import fetch from 'node-fetch';
+import P from 'pino';
+import { fileURLToPath } from 'url';
 
-const makeWASocket = require('@whiskeysockets/baileys').default;
-const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
-const express = require('express');
-const cors = require('cors');
-const qrcode = require('qrcode-terminal');
-const QRCode = require('qrcode');
-const fs = require('fs');
-const path = require('path');
-const fetch = require('node-fetch');
-const P = require('pino');
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ==================== CONFIGURAÇÃO ====================
 const PORT = process.env.PORT || 3333;
