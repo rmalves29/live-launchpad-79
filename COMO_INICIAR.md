@@ -1,5 +1,7 @@
 # 🚀 Como Iniciar o Sistema
 
+## ⚠️ ATENÇÃO: SIGA OS PASSOS NA ORDEM!
+
 ## 📋 Pré-requisitos
 
 - Node.js 16+ instalado
@@ -7,13 +9,19 @@
 
 ## ⚙️ Configuração Inicial (Primeira vez)
 
-### 1. Instalar Dependências
+### 1️⃣ Instalar Dependências (OBRIGATÓRIO!)
+
+**ANTES DE FAZER QUALQUER COISA**, rode este comando na raiz do projeto:
 
 ```bash
 npm install
 ```
 
-### 2. Configurar Variáveis de Ambiente
+Aguarde até que todos os pacotes sejam baixados e instalados. Isso pode levar alguns minutos.
+
+✅ Quando terminar, você verá uma mensagem indicando que a instalação foi concluída.
+
+### 2️⃣ Configurar Variáveis de Ambiente
 
 Edite o arquivo `.env` na raiz do projeto:
 
@@ -36,7 +44,7 @@ https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/settings/api
 
 ## 🎯 Iniciar o Sistema
 
-### 1. Iniciar Servidor WhatsApp (Backend)
+### 1️⃣ Iniciar Servidor WhatsApp (Backend)
 
 ```bash
 node server1.js
@@ -50,7 +58,7 @@ npx nodemon server1.js
 
 O servidor iniciará em: `http://localhost:3333`
 
-### 2. Iniciar Frontend (React)
+### 2️⃣ Iniciar Frontend (React)
 
 Em outro terminal:
 
@@ -94,6 +102,16 @@ curl http://localhost:3333/groups/{tenant_id}
 O sistema monitora automaticamente novos itens adicionados ao carrinho a cada 3 segundos e envia mensagens WhatsApp automaticamente.
 
 ## 🛠️ Troubleshooting
+
+### Erro: MODULE_NOT_FOUND (módulo não encontrado)
+**Causa:** As dependências não foram instaladas.
+
+**Solução:**
+```bash
+npm install
+```
+
+Aguarde a conclusão da instalação e tente novamente.
 
 ### Erro: SUPABASE_SERVICE_ROLE_KEY não configurada
 - Verifique se o arquivo `.env` existe na raiz
