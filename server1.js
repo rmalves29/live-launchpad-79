@@ -25,6 +25,12 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT || 3333;
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+const NORMALIZED_PUBLIC_BASE_URL = PUBLIC_BASE_URL.replace(/\/$/, '');
+const TENANT_FILTER = process.env.TENANT_IDS || process.env.TENANT_ID || '';
+const AUTH_DIR = process.env.AUTH_DIR
+  ? path.resolve(process.env.AUTH_DIR)
+  : path.join(__dirname, '.baileys_auth');
 
 // Validar configuração
 if (!SUPABASE_SERVICE_KEY || SUPABASE_SERVICE_KEY === 'SUA_SERVICE_ROLE_KEY_AQUI') {
@@ -37,8 +43,7 @@ if (!SUPABASE_SERVICE_KEY || SUPABASE_SERVICE_KEY === 'SUA_SERVICE_ROLE_KEY_AQUI
   process.exit(1);
 }
 
-// Diretório de autenticação
-const AUTH_DIR = path.join(__dirname, '.baileys_auth');
+// Auth directory (configurable via AUTH_DIR)
 
 // Criar diretório se não existir
 if (!fs.existsSync(AUTH_DIR)) {
@@ -122,7 +127,7 @@ class TenantManager {
         clientData.status = 'qr_ready';
         
         console.log(`\n${'='.repeat(70)}`);
-        console.log(`🌐 Acesse no navegador: http://localhost:3333/qr/${tenantId}`);
+        console.log(`🌐 Acesse no navegador: ${NORMALIZED_PUBLIC_BASE_URL}/qr/${tenantId}`);
         console.log(`${'='.repeat(70)}\n`);
       }
 
@@ -952,14 +957,21 @@ async function main() {
 
   const supabaseHelper = new SupabaseHelper(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-  const MANIA_DE_MULHER_ID = '08f2b1b9-3988-489e-8186-c60f0c0b0622';
-  
   const allTenants = await supabaseHelper.loadActiveTenants();
-  const tenants = allTenants.filter(t => t.id === MANIA_DE_MULHER_ID);
-  
-  if (tenants.length === 0) {
-    console.error('❌ Tenant MANIA DE MULHER não encontrado!');
-    process.exit(1);
+  let tenants = allTenants;
+
+  if (TENANT_FILTER) {
+    const requestedTenantIds = TENANT_FILTER.split(',').map((id) => id.trim()).filter(Boolean);
+    tenants = allTenants.filter((tenant) => requestedTenantIds.includes(tenant.id));
+
+    if (tenants.length === 0) {
+      console.error('[TENANT] Nenhum tenant encontrado para os IDs configurados:', requestedTenantIds.join(', '));
+      process.exit(1);
+    }
+
+    console.log(`[TENANT] Tenants filtrados: ${requestedTenantIds.join(', ')}`);
+  } else {
+    console.log('[TENANT] Nenhum TENANT_ID definido. Carregando todos os tenants ativos.');
   }
 
   for (const tenant of tenants) {
@@ -978,8 +990,8 @@ async function main() {
     console.log(`\n${'='.repeat(70)}`);
     console.log(`🚀 SERVIDOR RODANDO NA PORTA ${PORT}`);
     console.log(`${'='.repeat(70)}`);
-    console.log(`🌐 Health: http://localhost:${PORT}/health`);
-    console.log(`📊 Status: http://localhost:${PORT}/status`);
+    console.log(`🌐 Health: ${NORMALIZED_PUBLIC_BASE_URL}/health`);
+    console.log(`📊 Status: ${NORMALIZED_PUBLIC_BASE_URL}/status`);
     console.log(`${'='.repeat(70)}\n`);
   });
 

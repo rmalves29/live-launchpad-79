@@ -21,6 +21,9 @@ interface WhatsAppMessage {
   created_at: string;
 }
 
+const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3333';
+const API_BASE_URL = rawApiBaseUrl.replace(/\/$/, '');
+
 export const TenantMessages = () => {
   const { toast } = useToast();
   const { profile } = useAuth();
@@ -91,7 +94,7 @@ export const TenantMessages = () => {
 
       // Try to send via WhatsApp API (mock implementation)
       try {
-        const response = await fetch('http://localhost:3333/send-message', {
+        const response = await fetch(`${API_BASE_URL}/send-message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
