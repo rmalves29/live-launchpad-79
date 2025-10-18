@@ -7,6 +7,7 @@ import { ReactNode } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Navbar from "./components/Navbar";
 import Index from "./pages/Index";
+import Home from "./pages/Home";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
@@ -64,14 +65,15 @@ const AppContent = () => {
     <>
       {showNavbar && <Navbar />}
       <Routes>
-        {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
-        <Route path="/" element={
+        {/* Rota principal - Home pública */}
+        <Route path="/" element={<Home />} />
+        
+        {/* Dashboard após login */}
+        <Route path="/dashboard" element={
           tenant ? (
-            // Se há tenant, sempre mostrar auth primeiro, Index será protegido
             <RequireTenantAuth><Index /></RequireTenantAuth>
           ) : (
-            // Site principal
-            <Index />
+            <RequireAuth><Index /></RequireAuth>
           )
         } />
         
