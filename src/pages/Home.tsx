@@ -30,11 +30,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
       {/* Header */}
-      <header className="container mx-auto px-4 py-6 flex justify-between items-center">
+      <header className="container mx-auto px-4 py-6">
         <div className="text-2xl font-bold">OrderZaps</div>
-        <Button onClick={() => navigate('/auth')} variant="default">
-          Área do Cliente
-        </Button>
       </header>
 
       {/* Hero Section */}
@@ -53,15 +50,7 @@ export default function Home() {
             Reconhecimento automático de pedidos, integração completa com Instagram Lives e envio de mensagens em massa. Tudo em uma única plataforma.
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
-            <Button 
-              size="lg" 
-              onClick={() => navigate('/auth')}
-              className="text-lg px-8 py-6"
-            >
-              Área do Cliente
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
+          <div className="flex justify-center mt-8">
             <Button 
               size="lg" 
               variant="outline"
