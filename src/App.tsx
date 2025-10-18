@@ -45,7 +45,7 @@ const queryClient = new QueryClient();
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback';
+  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/';
 
   // Se estamos em um subdomínio de tenant, usar autenticação específica
   const TenantAuthComponent = tenant ? TenantAuth : Auth;

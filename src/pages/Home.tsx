@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
-import { MessageSquare, Zap, Instagram, CheckCircle, ArrowRight } from "lucide-react";
+import { MessageSquare, Zap, Instagram, CheckCircle, ArrowRight, MessageCircle } from "lucide-react";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -16,7 +16,7 @@ export default function Home() {
     {
       icon: Instagram,
       title: "Integração Instagram + WhatsApp",
-      description: "Plataforma completa para gerenciar vendas em grupos e lives do Instagram com sincronização automática.",
+      description: "Plataforma completa para gerenciar vendas em grupos e lives do Instagram",
       benefits: ["Lives integradas", "Grupos sincronizados", "Checkout automático"]
     },
     {
@@ -29,6 +29,14 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
+      {/* Header */}
+      <header className="container mx-auto px-4 py-6 flex justify-between items-center">
+        <div className="text-2xl font-bold">OrderZaps</div>
+        <Button onClick={() => navigate('/auth')} variant="default">
+          Área do Cliente
+        </Button>
+      </header>
+
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-20 text-center">
         <div className="max-w-4xl mx-auto space-y-8">
@@ -169,10 +177,10 @@ export default function Home() {
             </p>
             <Button 
               size="lg"
-              onClick={() => navigate('/auth')}
+              onClick={() => window.open('https://api.whatsapp.com/send/?phone=5531992904210&text=Quero%20saber%20mais', '_blank')}
               className="text-lg px-10 py-6"
             >
-              Acessar Sistema Agora
+              Contrate Agora
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </CardContent>
@@ -185,6 +193,17 @@ export default function Home() {
           <p>© 2025 Order Zap - Sistema de Automação para Vendas</p>
         </div>
       </footer>
+
+      {/* WhatsApp Floating Button */}
+      <a
+        href="https://api.whatsapp.com/send/?phone=5531992904210&text=Quero%20saber%20mais"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 bg-green-500 hover:bg-green-600 text-white rounded-full p-4 shadow-lg transition-all hover:scale-110 z-50"
+        aria-label="Fale conosco no WhatsApp"
+      >
+        <MessageCircle size={32} />
+      </a>
     </div>
   );
 }
