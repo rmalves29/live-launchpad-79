@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { MessageSquare, Zap, Instagram, CheckCircle, ArrowRight, MessageCircle } from "lucide-react";
+import demoGif from "@/assets/demo-pedidos.gif";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -67,17 +68,11 @@ export default function Home() {
       <section className="container mx-auto px-4 py-12">
         <div className="max-w-5xl mx-auto">
           <Card className="overflow-hidden border-2 shadow-2xl">
-            <div className="aspect-video bg-gradient-to-br from-primary/5 to-muted/50 flex items-center justify-center">
-              <div className="text-center space-y-4 p-8">
-                <MessageSquare className="h-20 w-20 text-primary mx-auto animate-pulse" />
-                <p className="text-muted-foreground">
-                  [GIF demonstrando reconhecimento automático de pedidos]
-                </p>
-                <p className="text-sm text-muted-foreground max-w-md">
-                  Aqui você pode adicionar um GIF mostrando como o sistema identifica automaticamente os comentários e cria os pedidos
-                </p>
-              </div>
-            </div>
+            <img 
+              src={demoGif} 
+              alt="Demonstração do sistema de reconhecimento automático de pedidos"
+              className="w-full h-auto object-cover"
+            />
           </Card>
         </div>
       </section>
