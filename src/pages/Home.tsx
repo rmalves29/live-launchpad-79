@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { MessageSquare, Zap, Instagram, CheckCircle, ArrowRight, MessageCircle } from "lucide-react";
-import demoGif from "@/assets/demo-pedidos.gif";
+import demoVideo from "@/assets/demo-pedidos.mp4";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -68,11 +68,16 @@ export default function Home() {
       <section className="container mx-auto px-4 py-12">
         <div className="max-w-5xl mx-auto">
           <Card className="overflow-hidden border-2 shadow-2xl">
-            <img 
-              src={demoGif} 
-              alt="Demonstração do sistema de reconhecimento automático de pedidos"
+            <video 
+              src={demoVideo} 
+              autoPlay
+              loop
+              muted
+              playsInline
               className="w-full h-auto object-cover"
-            />
+            >
+              Demonstração do sistema de reconhecimento automático de pedidos
+            </video>
           </Card>
         </div>
       </section>
