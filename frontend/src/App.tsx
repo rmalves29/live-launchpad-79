@@ -33,6 +33,7 @@ import Etiquetas from "./pages/etiquetas/Index";
 // WhatsApp
 import WhatsappTemplates from "./pages/whatsapp/Templates";
 import Cobranca from "./pages/whatsapp/Cobranca";
+import ConexaoWhatsApp from "./pages/whatsapp/Conexao";
 import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
@@ -132,6 +133,11 @@ const AppContent = () => {
         {/* Rota para cobrança em massa */}
         <Route path="/whatsapp/cobranca" element={
           <RequireTenantAuth><Cobranca /></RequireTenantAuth>
+        } />
+        
+        {/* Rota para conexão WhatsApp */}
+        <Route path="/whatsapp/conexao" element={
+          <RequireTenantAuth><ConexaoWhatsApp /></RequireTenantAuth>
         } />
         
         <Route path="*" element={<NotFound />} />
