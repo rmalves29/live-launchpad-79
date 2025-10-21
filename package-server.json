@@ -2,10 +2,10 @@
   "name": "whatsapp-multitenant-server",
   "version": "1.0.0",
   "description": "Servidor WhatsApp Multi-Tenant com detecção automática de códigos",
-  "main": "server1.js",
+  "main": "backend/server1.js",
   "scripts": {
-    "start": "node server1.js",
-    "dev": "nodemon server1.js",
+    "start": "node backend/server1.js",
+    "dev": "nodemon backend/server1.js",
     "install-chrome": "node -e \"console.log('Baixando Chromium...'); require('puppeteer');\""
   },
   "dependencies": {

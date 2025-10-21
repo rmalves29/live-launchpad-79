@@ -2,10 +2,10 @@
   "name": "whatsapp-server",
   "version": "1.0.0",
   "description": "Servidor WhatsApp Multi-Tenant",
-  "main": "server1.js",
+  "main": "backend/server1.js",
   "scripts": {
-    "start": "node server1.js",
-    "dev": "node server1.js"
+    "start": "node backend/server1.js",
+    "dev": "node backend/server1.js"
   },
   "dependencies": {
     "whatsapp-web.js": "^1.23.0",
