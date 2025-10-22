@@ -405,6 +405,54 @@ class TenantManager {
       qr: data.qr
     };
   }
+
+  async resetClient(tenantId) {
+    console.log(`\n🔄 FORÇANDO RESET DO CLIENTE: ${tenantId}`);
+    
+    const clientData = this.clients.get(tenantId);
+    if (!clientData) {
+      console.log('⚠️ Cliente não existe');
+      return false;
+    }
+
+    const tenant = clientData.tenant;
+    const authPath = path.join(AUTH_DIR, `session-${tenantId}`);
+
+    try {
+      // Fechar conexão se existir
+      if (clientData.sock) {
+        try {
+          await clientData.sock.logout();
+          console.log('✅ Logout executado');
+        } catch (error) {
+          console.log('⚠️ Erro no logout:', error.message);
+        }
+      }
+
+      // Remover da lista
+      this.clients.delete(tenantId);
+      console.log('✅ Cliente removido da lista');
+
+      // Limpar sessão do disco
+      if (fs.existsSync(authPath)) {
+        fs.rmSync(authPath, { recursive: true, force: true });
+        console.log('✅ Sessão removida do disco');
+      }
+
+      // Aguardar 2 segundos
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Criar novo cliente
+      console.log('🔄 Criando novo cliente...');
+      await this.createClient(tenant);
+      console.log('✅ Reset concluído!\n');
+
+      return true;
+    } catch (error) {
+      console.error('❌ Erro ao resetar cliente:', error);
+      return false;
+    }
+  }
 }
 
 // ==================== SUPABASE HELPER ====================
@@ -742,6 +790,30 @@ function createApp(tenantManager, supabaseHelper) {
       res.status(500).json({ 
         success: false, 
         error: error.message 
+      });
+    }
+  });
+
+  // NOVO: Endpoint para forçar reset e gerar novo QR
+  app.post('/reset/:tenantId', async (req, res) => {
+    const { tenantId } = req.params;
+    
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`🔄 REQUISIÇÃO DE RESET RECEBIDA`);
+    console.log(`Tenant ID: ${tenantId}`);
+    console.log(`${'='.repeat(70)}\n`);
+    
+    const success = await tenantManager.resetClient(tenantId);
+    
+    if (success) {
+      res.json({ 
+        success: true, 
+        message: 'Cliente resetado com sucesso. Aguarde alguns segundos para o QR Code ser gerado.' 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao resetar cliente' 
       });
     }
   });

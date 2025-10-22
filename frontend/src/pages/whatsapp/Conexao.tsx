@@ -328,22 +328,52 @@ export default function ConexaoWhatsApp() {
     try {
       setLoading(true);
       
+      console.log('\n🔄 [RECONECTAR] Forçando reset do WhatsApp');
+      console.log('📋 [RECONECTAR] Servidor:', serverUrl);
+      console.log('📋 [RECONECTAR] Tenant ID:', tenant.id);
+      
       toast({
-        title: "Reconectando",
-        description: "Gerando novo QR Code...",
+        title: "Limpando sessão",
+        description: "Removendo sessão antiga e gerando novo QR Code...",
       });
 
-      // Limpar o status atual para forçar nova verificação
+      // Limpar o status atual
       setWhatsappStatus(null);
 
-      // Aguardar um pouco antes de verificar o status novamente
+      // Chamar endpoint de reset no servidor Node.js
+      const resetUrl = `${serverUrl}/reset/${tenant.id}`;
+      console.log('📤 [RECONECTAR] Chamando:', resetUrl);
+      
+      const response = await fetch(resetUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [RECONECTAR] Erro no reset:', errorText);
+        throw new Error('Erro ao resetar conexão WhatsApp');
+      }
+
+      const result = await response.json();
+      console.log('✅ [RECONECTAR] Reset bem sucedido:', result);
+
+      toast({
+        title: "Sessão limpa",
+        description: "Aguarde alguns segundos para o novo QR Code ser gerado...",
+      });
+
+      // Aguardar 3 segundos antes de verificar o status
       setTimeout(() => {
+        console.log('🔍 [RECONECTAR] Verificando status após reset');
         checkStatus();
         setLoading(false);
-      }, 2000);
+      }, 3000);
 
     } catch (error: any) {
-      console.error('Erro ao reconectar:', error);
+      console.error('❌ [RECONECTAR] Erro:', error);
       toast({
         title: "Erro",
         description: error.message || "Erro ao tentar reconectar",
