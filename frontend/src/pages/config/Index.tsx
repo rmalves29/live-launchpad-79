@@ -10,6 +10,7 @@ import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { CompanySettings } from '@/components/CompanySettings';
 import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
+import { WhatsAppSettings } from '@/components/WhatsAppSettings';
 import TenantsManager from '@/components/TenantsManager';
 import { AvailabilitySettings } from '@/components/AvailabilitySettings';
 import { TenantSimulator } from '@/components/TenantSimulator';
@@ -279,6 +280,9 @@ const Config = () => {
               </TabsList>
 
               <TabsContent value="config" className="space-y-6 mt-6">
+                {/* WhatsApp Settings */}
+                <WhatsAppSettings />
+                
                 {/* Status do Melhor Envio */}
                 <MelhorEnvioStatus />
                 
