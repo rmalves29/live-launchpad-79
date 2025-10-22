@@ -57,9 +57,48 @@ Deno.serve(async (req) => {
       .replace(/\{\{quantidade\}\}/g, quantity.toString())
       .replace(/\{\{valor\}\}/g, valorTotal);
 
-    // Normalizar telefone (remover caracteres especiais, garantir formato correto)
-    const phoneClean = customer_phone.replace(/\D/g, '');
-    const phoneFinal = phoneClean.startsWith('55') ? phoneClean : `55${phoneClean}`;
+    // Normalizar telefone brasileiro com regra do nono dígito
+    function normalizePhoneBrazil(phone: string): string {
+      // Remover tudo que não é número
+      let clean = phone.replace(/\D/g, '');
+      
+      // Remover código do país se tiver
+      if (clean.startsWith('55')) {
+        clean = clean.substring(2);
+      }
+      
+      // Validar tamanho mínimo
+      if (clean.length < 10) {
+        console.warn(`⚠️ Telefone muito curto: ${phone} -> ${clean}`);
+        return `55${clean}`;
+      }
+      
+      // Extrair DDD (2 dígitos) e número
+      const ddd = parseInt(clean.substring(0, 2));
+      let number = clean.substring(2);
+      
+      console.log(`📞 Normalizando: DDD=${ddd}, Número=${number} (${number.length} dígitos)`);
+      
+      if (ddd >= 31) {
+        // DDD >= 31 (SP, MG, Sul, etc): REMOVER o 9º dígito se tiver
+        if (number.length === 9 && number.startsWith('9')) {
+          number = number.substring(1);
+          console.log(`✂️ DDD ${ddd} >= 31: Removendo 9º dígito -> ${number}`);
+        }
+      } else {
+        // DDD <= 30 (Norte, Nordeste): ADICIONAR o 9º dígito se não tiver
+        if (number.length === 8) {
+          number = '9' + number;
+          console.log(`➕ DDD ${ddd} <= 30: Adicionando 9º dígito -> ${number}`);
+        }
+      }
+      
+      const final = `55${ddd}${number}`;
+      console.log(`✅ Telefone final: ${final}`);
+      return final;
+    }
+
+    const phoneFinal = normalizePhoneBrazil(customer_phone);
 
     console.log(`📤 Telefone final: ${phoneFinal}`);
     console.log(`💬 Mensagem formatada (${mensagem.length} chars):`, mensagem);
