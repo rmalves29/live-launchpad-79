@@ -44,10 +44,18 @@ export default function ConexaoWhatsApp() {
   }, [serverUrl, tenant?.id]);
 
   const loadWhatsAppIntegration = async () => {
-    if (!tenant?.id) return;
+    if (!tenant?.id) {
+      console.log('⚠️ [CONEXÃO] Tenant ID não disponível');
+      return;
+    }
 
     try {
+      console.log('\n🔄 [CONEXÃO] Carregando integração WhatsApp...');
+      console.log('📋 [CONEXÃO] Tenant ID:', tenant.id);
+      console.log('📋 [CONEXÃO] Tenant Slug:', tenant.slug);
+      
       setLoading(true);
+      
       const { data, error } = await supabaseTenant
         .from('integration_whatsapp')
         .select('api_url, is_active')
@@ -55,11 +63,18 @@ export default function ConexaoWhatsApp() {
         .eq('is_active', true)
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ [CONEXÃO] Erro ao buscar integração:', error);
+        throw error;
+      }
+
+      console.log('📊 [CONEXÃO] Dados da integração:', data);
 
       // Se não existe integração, criar uma automaticamente
       if (!data) {
-        console.log('Criando integração WhatsApp automaticamente...');
+        console.log('⚠️ [CONEXÃO] Nenhuma integração encontrada');
+        console.log('🔧 [CONEXÃO] Criando integração WhatsApp automaticamente...');
+        
         const { data: newIntegration, error: insertError } = await supabaseTenant
           .from('integration_whatsapp')
           .insert({
@@ -73,7 +88,7 @@ export default function ConexaoWhatsApp() {
           .single();
 
         if (insertError) {
-          console.error('Erro ao criar integração:', insertError);
+          console.error('❌ [CONEXÃO] Erro ao criar integração:', insertError);
           toast({
             title: "Erro ao criar integração",
             description: "Por favor, entre em contato com o suporte.",
@@ -82,6 +97,7 @@ export default function ConexaoWhatsApp() {
           return;
         }
 
+        console.log('✅ [CONEXÃO] Integração criada com sucesso:', newIntegration);
         toast({
           title: "Integração criada",
           description: "Configure a URL do servidor WhatsApp nas configurações.",
@@ -92,6 +108,10 @@ export default function ConexaoWhatsApp() {
       }
 
       if (!data?.api_url) {
+        console.log('⚠️ [CONEXÃO] URL do servidor não configurada');
+        console.log('💡 [CONEXÃO] Execute o SQL no Supabase para configurar:');
+        console.log(`UPDATE integration_whatsapp SET api_url = 'https://sua-url.railway.app' WHERE tenant_id = '${tenant.id}';`);
+        
         toast({
           title: "URL não configurada",
           description: "Configure a URL do servidor WhatsApp nas configurações para conectar.",
@@ -99,9 +119,16 @@ export default function ConexaoWhatsApp() {
         return;
       }
 
+      console.log('✅ [CONEXÃO] URL do servidor configurada:', data.api_url);
       setServerUrl(data.api_url);
     } catch (error: any) {
-      console.error('Erro ao carregar integração:', error);
+      console.error('❌ [CONEXÃO] Erro ao carregar integração:', error);
+      console.error('📋 [CONEXÃO] Detalhes do erro:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      
       toast({
         title: "Erro",
         description: error.message || "Erro ao carregar configuração do WhatsApp",
@@ -109,6 +136,7 @@ export default function ConexaoWhatsApp() {
       });
     } finally {
       setLoading(false);
+      console.log('✅ [CONEXÃO] Carregamento finalizado\n');
     }
   };
 
@@ -128,10 +156,21 @@ export default function ConexaoWhatsApp() {
   };
 
   const checkStatus = async () => {
-    if (!serverUrl || !tenant?.id) return;
+    if (!serverUrl || !tenant?.id) {
+      console.log('⚠️ [STATUS] Verificação ignorada - serverUrl ou tenant.id não disponível');
+      return;
+    }
 
     try {
-      console.log('🔍 Verificando status WhatsApp via proxy:', serverUrl, tenant.id);
+      console.log('\n' + '='.repeat(70));
+      console.log('🔍 [STATUS] VERIFICANDO STATUS DO WHATSAPP');
+      console.log('='.repeat(70));
+      console.log('📋 [STATUS] Servidor:', serverUrl);
+      console.log('📋 [STATUS] Tenant ID:', tenant.id);
+      console.log('📋 [STATUS] Tenant Name:', tenant.name);
+      
+      // Primeiro tentar obter QR Code
+      console.log('\n📤 [STATUS] Chamando edge function: whatsapp-proxy (action: qr)');
       
       const { data: functionData, error: functionError } = await supabaseTenant.functions.invoke(
         'whatsapp-proxy',
@@ -144,61 +183,88 @@ export default function ConexaoWhatsApp() {
       );
 
       if (functionError) {
-        console.error('❌ Erro ao chamar proxy:', functionError);
+        console.error('❌ [STATUS] Erro ao chamar proxy:', functionError);
+        console.error('📋 [STATUS] Detalhes do erro:', {
+          name: functionError.name,
+          message: functionError.message
+        });
         throw new Error(functionError.message);
       }
 
-      console.log('📱 Resposta do proxy QR:', functionData);
+      console.log('📥 [STATUS] Resposta do proxy (QR):', JSON.stringify(functionData, null, 2));
 
       // Se teve erro, mostrar
       if (functionData?.error) {
-        console.error('❌ Erro do proxy:', functionData.error);
-        console.log('📄 HTML Preview:', functionData.htmlPreview);
+        console.error('❌ [STATUS] Erro retornado pelo proxy:', functionData.error);
+        if (functionData.htmlPreview) {
+          console.log('📄 [STATUS] HTML Preview:', functionData.htmlPreview);
+        }
+        console.log('💡 [STATUS] Verifique se o servidor Node.js está rodando');
+        console.log('💡 [STATUS] URL esperada:', `${serverUrl}/qr/${tenant.id}`);
+        
         setWhatsappStatus({
           connected: false,
           status: 'error',
           error: `${functionData.error}. Por favor, verifique se o servidor está rodando corretamente.`
         });
+        console.log('='.repeat(70) + '\n');
         return;
       }
 
       // Se já está conectado
       if (functionData?.connected === true || functionData?.status === 'connected') {
-        console.log('✅ WhatsApp já está conectado!');
+        console.log('✅ [STATUS] WhatsApp JÁ ESTÁ CONECTADO!');
+        console.log('📊 [STATUS] Dados:', {
+          connected: functionData.connected,
+          status: functionData.status,
+          message: functionData.message
+        });
+        
         setWhatsappStatus({
           connected: true,
           status: 'connected',
           message: functionData.message || 'WhatsApp está conectado'
         });
+        console.log('='.repeat(70) + '\n');
         return;
       }
 
       // Se está inicializando (aguardando QR code ser gerado)
       if (functionData?.status === 'initializing') {
-        console.log('⏳ WhatsApp está inicializando...');
+        console.log('⏳ [STATUS] WhatsApp está INICIALIZANDO...');
+        console.log('📊 [STATUS] Mensagem:', functionData.message);
+        console.log('💡 [STATUS] Aguarde alguns segundos para o QR Code ser gerado');
+        
         setWhatsappStatus({
           connected: false,
           status: 'initializing',
           message: functionData.message || 'Inicializando WhatsApp, aguarde...'
         });
+        console.log('='.repeat(70) + '\n');
         return;
       }
 
       // Se encontrou o QR code
       if (functionData?.qrCode) {
-        console.log('✅ QR Code encontrado via proxy!');
-        console.log('📸 QR Code length:', functionData.qrCode.length);
+        console.log('✅ [STATUS] QR CODE ENCONTRADO!');
+        console.log('📸 [STATUS] Tipo:', functionData.qrCode.substring(0, 30) + '...');
+        console.log('📏 [STATUS] Tamanho:', functionData.qrCode.length, 'caracteres');
+        console.log('💡 [STATUS] QR Code pronto para ser escaneado');
+        
         setWhatsappStatus({
           connected: false,
           status: 'qr_code',
           qrCode: functionData.qrCode,
           message: functionData.message || 'Escaneie o QR Code'
         });
+        console.log('='.repeat(70) + '\n');
         return;
       }
 
       // Se não tem QR, verificar status
-      console.log('📊 Verificando status via proxy...');
+      console.log('\n📊 [STATUS] Nenhum QR Code disponível, verificando status...');
+      console.log('📤 [STATUS] Chamando edge function: whatsapp-proxy (action: status)');
+      
       const { data: statusData, error: statusError } = await supabaseTenant.functions.invoke(
         'whatsapp-proxy',
         {
@@ -210,21 +276,44 @@ export default function ConexaoWhatsApp() {
       );
 
       if (statusError) {
-        console.error('❌ Erro ao verificar status:', statusError);
+        console.error('❌ [STATUS] Erro ao verificar status:', statusError);
+        console.error('📋 [STATUS] Detalhes do erro:', {
+          name: statusError.name,
+          message: statusError.message
+        });
         throw new Error(statusError.message);
       }
 
-      console.log('📊 Status recebido:', statusData);
+      console.log('📥 [STATUS] Resposta do status:', JSON.stringify(statusData, null, 2));
+      
+      const isConnected = statusData?.connected || statusData?.status === 'online';
+      const currentStatus = statusData?.status || 'disconnected';
+      
+      console.log('📊 [STATUS] Status final:');
+      console.log('   - Conectado:', isConnected);
+      console.log('   - Status:', currentStatus);
+      console.log('   - Mensagem:', statusData?.message);
+      if (statusData?.error) {
+        console.log('   - Erro:', statusData.error);
+      }
 
       setWhatsappStatus({
-        connected: statusData?.connected || statusData?.status === 'online',
-        status: statusData?.status || 'disconnected',
+        connected: isConnected,
+        status: currentStatus,
         message: statusData?.message,
         error: statusData?.error
       });
 
+      console.log('='.repeat(70) + '\n');
+
     } catch (error: any) {
-      console.error('❌ Erro ao verificar status:', error);
+      console.error('\n❌ [STATUS] ERRO AO VERIFICAR STATUS');
+      console.error('='.repeat(70));
+      console.error('📋 [STATUS] Tipo:', error.name);
+      console.error('📋 [STATUS] Mensagem:', error.message);
+      console.error('📋 [STATUS] Stack:', error.stack);
+      console.error('='.repeat(70) + '\n');
+      
       setWhatsappStatus({
         connected: false,
         status: 'error',
