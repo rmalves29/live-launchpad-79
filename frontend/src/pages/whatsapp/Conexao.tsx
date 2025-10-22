@@ -51,6 +51,7 @@ export default function ConexaoWhatsApp() {
       const { data, error } = await supabaseTenant
         .from('integration_whatsapp')
         .select('api_url, is_active')
+        .eq('tenant_id', tenant.id)
         .eq('is_active', true)
         .maybeSingle();
 
