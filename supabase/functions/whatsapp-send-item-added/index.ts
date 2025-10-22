@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const whatsappApiUrl = Deno.env.get('WHATSAPP_MULTITENANT_URL') || 'http://localhost:3333';
+    const whatsappApiUrl = Deno.env.get('WHATSAPP_MULTITENANT_URL') || 'https://backend-production-2599.up.railway.app';
     
     console.log('🔧 WhatsApp API URL configurada:', whatsappApiUrl);
     
