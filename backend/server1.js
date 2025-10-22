@@ -148,19 +148,10 @@ class TenantManager {
       const clientData = this.clients.get(tenantId);
       clientData.sock = sock;
 
-    } catch (error) {
-      console.error(`❌ ERRO AO INICIALIZAR CLIENTE:`);
-      console.error(`   Tipo: ${error.name}`);
-      console.error(`   Mensagem: ${error.message}`);
-      console.error(`   Stack:`, error.stack);
-      console.log(`${'='.repeat(70)}\n`);
-      throw error;
-    }
+      // ==================== EVENTOS ====================
 
-    // ==================== EVENTOS ====================
-
-    // Conexão e QR Code
-    sock.ev.on('connection.update', async (update) => {
+      // Conexão e QR Code
+      sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -308,13 +299,22 @@ class TenantManager {
       }
     });
 
-    // Inicializar cliente
-    console.log(`\n${'='.repeat(70)}`);
-    console.log(`🔌 INICIALIZANDO ${tenant.name.toUpperCase()}`);
-    console.log(`ID: ${tenantId}`);
-    console.log(`${'='.repeat(70)}\n`);
+      // Inicializar cliente
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`🔌 INICIALIZANDO ${tenant.name.toUpperCase()}`);
+      console.log(`ID: ${tenantId}`);
+      console.log(`${'='.repeat(70)}\n`);
 
-    return sock;
+      return sock;
+
+    } catch (error) {
+      console.error(`❌ ERRO AO INICIALIZAR CLIENTE:`);
+      console.error(`   Tipo: ${error.name}`);
+      console.error(`   Mensagem: ${error.message}`);
+      console.error(`   Stack:`, error.stack);
+      console.log(`${'='.repeat(70)}\n`);
+      throw error;
+    }
   }
 
   async handleIncomingMessage(tenantId, msg, messageText) {
