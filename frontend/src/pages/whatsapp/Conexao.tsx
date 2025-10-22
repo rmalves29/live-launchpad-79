@@ -130,17 +130,28 @@ export default function ConexaoWhatsApp() {
     if (!serverUrl || !tenant?.id) return;
 
     try {
-      const response = await fetch(`${serverUrl}/status/${tenant.id}`);
+      console.log('Verificando status WhatsApp:', serverUrl, tenant.id);
+      
+      const response = await fetch(`${serverUrl}/status/${tenant.id}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json, text/html'
+        }
+      });
+      
+      console.log('Response status:', response.status);
       
       if (!response.ok) {
-        throw new Error(`Servidor respondeu com status ${response.status}`);
+        throw new Error(`Servidor respondeu com status ${response.status}. Verifique se o servidor está rodando no Railway.`);
       }
 
       const contentType = response.headers.get("content-type");
+      console.log('Content-Type:', contentType);
       
       // Se retornar JSON com status
       if (contentType?.includes("application/json")) {
         const data = await response.json();
+        console.log('Status JSON:', data);
         setWhatsappStatus({
           connected: data.connected || false,
           status: data.status || 'disconnected',
@@ -151,6 +162,7 @@ export default function ConexaoWhatsApp() {
       // Se retornar HTML com QR code
       else if (contentType?.includes("text/html")) {
         const html = await response.text();
+        console.log('Recebido HTML com QR code');
         
         // Extrair a imagem do QR code do HTML
         const imgMatch = html.match(/<img[^>]+src="([^"]+)"[^>]*>/);
@@ -163,6 +175,8 @@ export default function ConexaoWhatsApp() {
             qrCode: imgMatch[1],
             message: statusMatch ? statusMatch[1] : 'Escaneie o QR Code'
           });
+        } else {
+          throw new Error('QR Code não encontrado na resposta do servidor');
         }
       }
     } catch (error: any) {
@@ -170,7 +184,7 @@ export default function ConexaoWhatsApp() {
       setWhatsappStatus({
         connected: false,
         status: 'error',
-        error: error.message || 'Erro ao conectar com servidor WhatsApp'
+        error: error.message || 'Erro ao conectar com servidor WhatsApp. Verifique se o servidor está rodando no Railway.'
       });
     }
   };
@@ -181,25 +195,19 @@ export default function ConexaoWhatsApp() {
     try {
       setLoading(true);
       
-      // Tentar reiniciar a conexão no servidor
-      const response = await fetch(`${serverUrl}/restart/${tenant.id}`, {
-        method: 'POST'
-      });
-
-      if (!response.ok) {
-        throw new Error('Erro ao reiniciar conexão');
-      }
-
       toast({
         title: "Reconectando",
-        description: "Aguarde enquanto geramos um novo QR Code...",
+        description: "Gerando novo QR Code...",
       });
+
+      // Limpar o status atual para forçar nova verificação
+      setWhatsappStatus(null);
 
       // Aguardar um pouco antes de verificar o status novamente
       setTimeout(() => {
         checkStatus();
         setLoading(false);
-      }, 3000);
+      }, 2000);
 
     } catch (error: any) {
       console.error('Erro ao reconectar:', error);
