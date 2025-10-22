@@ -83,10 +83,10 @@ Deno.serve(async (req) => {
     // If HTML, extract QR code or status
     const html = await whatsappResponse.text();
     console.log('📄 HTML length:', html.length);
-    console.log('📄 HTML sample:', html.substring(0, 500));
+    console.log('📄 HTML first 1000 chars:', html.substring(0, 1000));
 
     // Check if WhatsApp is already connected
-    if (html.includes('✅ Conectado') || (html.includes('Status: online') && html.includes('Conectado'))) {
+    if (html.includes('✅ Conectado') || html.includes('Status: online')) {
       console.log('✅ WhatsApp is already connected');
       return new Response(
         JSON.stringify({
@@ -99,18 +99,40 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Try to extract QR code
+    // Try to extract QR code - buscar por data:image
+    if (html.includes('data:image')) {
+      const imgMatch = html.match(/src=["']([^"']*data:image[^"']*)["']/i);
+      console.log('🔍 QR Code data:image match:', imgMatch ? 'Found' : 'Not found');
+
+      if (imgMatch && imgMatch[1]) {
+        const qrCode = imgMatch[1];
+        console.log('✅ QR Code found! Length:', qrCode.length);
+        console.log('📸 QR Code preview:', qrCode.substring(0, 100));
+        
+        return new Response(
+          JSON.stringify({
+            success: true,
+            connected: false,
+            qrCode,
+            message: 'QR Code gerado com sucesso'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Se não encontrou data:image, tentar qualquer src de img
     const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
-    console.log('🔍 Image match:', imgMatch ? 'Found' : 'Not found');
+    console.log('🔍 Generic image match:', imgMatch ? 'Found' : 'Not found');
 
     if (imgMatch && imgMatch[1]) {
       const qrCode = imgMatch[1];
-      console.log('✅ QR Code found, length:', qrCode.length);
-      console.log('📸 QR Code preview:', qrCode.substring(0, 100));
+      console.log('✅ QR Code found (generic)! Length:', qrCode.length);
       
       return new Response(
         JSON.stringify({
           success: true,
+          connected: false,
           qrCode,
           message: 'QR Code gerado com sucesso'
         }),
@@ -118,29 +140,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check for status without QR code
-    const statusMatch = html.match(/<h1[^>]*>(.*?)<\/h1>/i);
-    console.log('🔍 Status match:', statusMatch ? statusMatch[1] : 'Not found');
-
-    if (statusMatch) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          status: statusMatch[1],
-          message: 'Aguardando QR Code...'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // No QR code or recognizable status found
+    // No QR code found - return HTML for debugging
     console.error('❌ No QR Code found in HTML');
-    console.error('🔍 HTML structure:', html.substring(0, 1000));
+    console.error('🔍 Full HTML:', html);
     
     return new Response(
       JSON.stringify({
         error: 'Could not extract QR Code from response',
-        htmlPreview: html.substring(0, 200)
+        htmlPreview: html.substring(0, 500),
+        connected: false
       }),
       { 
         status: 500, 

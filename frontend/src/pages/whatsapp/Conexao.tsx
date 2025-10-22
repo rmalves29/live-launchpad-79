@@ -150,6 +150,18 @@ export default function ConexaoWhatsApp() {
 
       console.log('📱 Resposta do proxy QR:', functionData);
 
+      // Se teve erro, mostrar
+      if (functionData?.error) {
+        console.error('❌ Erro do proxy:', functionData.error);
+        console.log('📄 HTML Preview:', functionData.htmlPreview);
+        setWhatsappStatus({
+          connected: false,
+          status: 'error',
+          error: `${functionData.error}. Por favor, verifique se o servidor está rodando corretamente.`
+        });
+        return;
+      }
+
       // Se já está conectado
       if (functionData?.connected === true || functionData?.status === 'connected') {
         console.log('✅ WhatsApp já está conectado!');
@@ -164,6 +176,7 @@ export default function ConexaoWhatsApp() {
       // Se encontrou o QR code
       if (functionData?.qrCode) {
         console.log('✅ QR Code encontrado via proxy!');
+        console.log('📸 QR Code length:', functionData.qrCode.length);
         setWhatsappStatus({
           connected: false,
           status: 'qr_code',
