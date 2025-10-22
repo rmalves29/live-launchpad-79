@@ -173,6 +173,17 @@ export default function ConexaoWhatsApp() {
         return;
       }
 
+      // Se está inicializando (aguardando QR code ser gerado)
+      if (functionData?.status === 'initializing') {
+        console.log('⏳ WhatsApp está inicializando...');
+        setWhatsappStatus({
+          connected: false,
+          status: 'initializing',
+          message: functionData.message || 'Inicializando WhatsApp, aguarde...'
+        });
+        return;
+      }
+
       // Se encontrou o QR code
       if (functionData?.qrCode) {
         console.log('✅ QR Code encontrado via proxy!');
@@ -402,6 +413,16 @@ WHERE tenant_id = '${tenant?.id}';`}
                 <p className="font-semibold">WhatsApp Conectado</p>
                 <p className="text-sm text-muted-foreground">
                   Seu WhatsApp está conectado e pronto para enviar mensagens
+                </p>
+              </div>
+            </div>
+          ) : whatsappStatus?.status === 'initializing' ? (
+            <div className="flex items-center gap-3 text-blue-600">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <div>
+                <p className="font-semibold">Inicializando WhatsApp</p>
+                <p className="text-sm text-muted-foreground">
+                  {whatsappStatus.message || 'Aguarde enquanto o servidor inicializa...'}
                 </p>
               </div>
             </div>

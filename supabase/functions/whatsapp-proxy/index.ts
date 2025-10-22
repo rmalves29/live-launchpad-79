@@ -102,6 +102,25 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check if WhatsApp is initializing or waiting for QR code
+    if (html.includes('⏳ Aguardando QR Code') || 
+        html.includes('⏳ Inicializando') ||
+        html.includes('🔄 Conectando') ||
+        html.includes('Status: initializing') ||
+        html.includes('Status: connecting') ||
+        html.includes('Status: disconnected')) {
+      console.log('⏳ WhatsApp is initializing, QR not ready yet');
+      return new Response(
+        JSON.stringify({
+          success: true,
+          connected: false,
+          status: 'initializing',
+          message: 'Aguardando inicialização do WhatsApp...'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Try to extract QR code - buscar por data:image
     if (html.includes('data:image')) {
       const imgMatch = html.match(/src=["']([^"']*data:image[^"']*)["']/i);
