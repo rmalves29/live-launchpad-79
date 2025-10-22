@@ -130,57 +130,89 @@ export default function ConexaoWhatsApp() {
     if (!serverUrl || !tenant?.id) return;
 
     try {
-      console.log('Verificando status WhatsApp:', serverUrl, tenant.id);
+      console.log('🔍 Verificando status WhatsApp:', serverUrl, tenant.id);
       
-      const response = await fetch(`${serverUrl}/status/${tenant.id}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json, text/html'
+      // Primeiro tentar pegar o QR code diretamente
+      try {
+        const qrResponse = await fetch(`${serverUrl}/qr/${tenant.id}`);
+        console.log('📱 QR Response status:', qrResponse.status);
+        
+        if (qrResponse.ok) {
+          const qrContentType = qrResponse.headers.get("content-type");
+          console.log('📱 QR Content-Type:', qrContentType);
+          
+          if (qrContentType?.includes("text/html")) {
+            const html = await qrResponse.text();
+            console.log('📱 HTML recebido (primeiros 500 chars):', html.substring(0, 500));
+            
+            // Tentar extrair o QR code
+            const imgMatch = html.match(/<img[^>]+src="([^"]+)"[^>]*>/);
+            const statusMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
+            
+            if (imgMatch && imgMatch[1]) {
+              console.log('✅ QR Code encontrado!');
+              setWhatsappStatus({
+                connected: false,
+                status: 'qr_code',
+                qrCode: imgMatch[1],
+                message: statusMatch ? statusMatch[1] : 'Escaneie o QR Code'
+              });
+              return;
+            } else {
+              console.log('⚠️ QR Code não encontrado no HTML');
+            }
+          } else if (qrContentType?.includes("application/json")) {
+            const qrData = await qrResponse.json();
+            console.log('📱 QR JSON:', qrData);
+            
+            if (qrData.qr || qrData.qrCode) {
+              setWhatsappStatus({
+                connected: false,
+                status: 'qr_code',
+                qrCode: qrData.qr || qrData.qrCode,
+                message: 'Escaneie o QR Code'
+              });
+              return;
+            }
+          }
         }
-      });
+      } catch (qrError) {
+        console.log('⚠️ Erro ao buscar QR diretamente:', qrError);
+      }
       
-      console.log('Response status:', response.status);
+      // Se não conseguiu o QR, verificar status
+      const statusResponse = await fetch(`${serverUrl}/status/${tenant.id}`);
+      console.log('📊 Status Response:', statusResponse.status);
       
-      if (!response.ok) {
-        throw new Error(`Servidor respondeu com status ${response.status}. Verifique se o servidor está rodando no Railway.`);
+      if (!statusResponse.ok) {
+        throw new Error(`Servidor respondeu com status ${statusResponse.status}. Verifique se o servidor está rodando no Railway.`);
       }
 
-      const contentType = response.headers.get("content-type");
-      console.log('Content-Type:', contentType);
+      const contentType = statusResponse.headers.get("content-type");
+      console.log('📊 Content-Type:', contentType);
       
-      // Se retornar JSON com status
       if (contentType?.includes("application/json")) {
-        const data = await response.json();
-        console.log('Status JSON:', data);
+        const data = await statusResponse.json();
+        console.log('📊 Status JSON:', data);
+        
         setWhatsappStatus({
-          connected: data.connected || false,
+          connected: data.connected || data.status === 'online',
           status: data.status || 'disconnected',
           message: data.message,
           error: data.error
         });
-      } 
-      // Se retornar HTML com QR code
-      else if (contentType?.includes("text/html")) {
-        const html = await response.text();
-        console.log('Recebido HTML com QR code');
+      } else {
+        const text = await statusResponse.text();
+        console.log('📊 Status text (primeiros 200 chars):', text.substring(0, 200));
         
-        // Extrair a imagem do QR code do HTML
-        const imgMatch = html.match(/<img[^>]+src="([^"]+)"[^>]*>/);
-        const statusMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
-        
-        if (imgMatch && imgMatch[1]) {
-          setWhatsappStatus({
-            connected: false,
-            status: 'qr_code',
-            qrCode: imgMatch[1],
-            message: statusMatch ? statusMatch[1] : 'Escaneie o QR Code'
-          });
-        } else {
-          throw new Error('QR Code não encontrado na resposta do servidor');
-        }
+        setWhatsappStatus({
+          connected: false,
+          status: 'disconnected',
+          message: 'WhatsApp desconectado. Clique em Reconectar para gerar QR Code.'
+        });
       }
     } catch (error: any) {
-      console.error('Erro ao verificar status:', error);
+      console.error('❌ Erro ao verificar status:', error);
       setWhatsappStatus({
         connected: false,
         status: 'error',
