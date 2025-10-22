@@ -63,12 +63,14 @@ Deno.serve(async (req) => {
     for (const code of codes) {
       console.log(`\n🔍 ===== PROCESSANDO CÓDIGO: ${code} =====`);
 
-      // 1. Buscar produto no banco
+      // 1. Buscar produto no banco (case-insensitive)
+      console.log(`🔎 Buscando produto com código: ${code}`);
+      
       const { data: product, error: productError } = await supabase
         .from('products')
         .select('*')
         .eq('tenant_id', tenant_id)
-        .eq('code', code)
+        .ilike('code', code) // Busca case-insensitive
         .eq('is_active', true)
         .maybeSingle();
 
