@@ -12,12 +12,13 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const action = url.searchParams.get('action');
-    const tenantId = url.searchParams.get('tenantId');
-    const serverUrl = url.searchParams.get('serverUrl');
+    // Ler os parâmetros do body da requisição
+    const { action, tenantId, serverUrl } = await req.json();
+
+    console.log('📥 Received params:', { action, tenantId, serverUrl });
 
     if (!tenantId || !serverUrl) {
+      console.error('❌ Missing required params');
       return new Response(
         JSON.stringify({ error: 'Missing tenantId or serverUrl' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
