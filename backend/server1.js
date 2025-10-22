@@ -278,22 +278,32 @@ class TenantManager {
 
   async handleIncomingMessage(tenantId, msg, messageText) {
     const clientData = this.clients.get(tenantId);
-    if (!clientData) return;
+    if (!clientData) {
+      console.log('⚠️ Cliente não encontrado para tenantId:', tenantId);
+      return;
+    }
 
     const tenant = clientData.tenant;
     
-    console.log(`📨 Mensagem recebida (${tenant.name}):`, messageText);
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`📨 NOVA MENSAGEM RECEBIDA (${tenant.name})`);
+    console.log(`${'='.repeat(70)}`);
+    console.log(`💬 Texto: "${messageText}"`);
 
     // Detectar códigos de produtos (C seguido de números)
     const productCodeRegex = /C(\d+)/gi;
     const matches = [...messageText.matchAll(productCodeRegex)];
     
+    console.log(`🔍 Regex aplicado - Matches encontrados: ${matches.length}`);
+    
     if (matches.length === 0) {
+      console.log(`❌ Nenhum código de produto detectado (formato esperado: C seguido de números)`);
+      console.log(`${'='.repeat(70)}\n`);
       return; // Não é uma mensagem com código de produto
     }
 
     const codes = matches.map(match => match[0].toUpperCase());
-    console.log(`🔍 Códigos detectados:`, codes);
+    console.log(`✅ Códigos detectados:`, codes);
 
     // Obter telefone do remetente
     const customerPhone = msg.key.remoteJid.split('@')[0];
@@ -302,12 +312,24 @@ class TenantManager {
     const isGroup = msg.key.remoteJid.endsWith('@g.us');
     const groupName = isGroup ? msg.key.remoteJid : null;
 
-    console.log(`👤 Cliente: ${customerPhone}${isGroup ? ` | Grupo: ${groupName}` : ''}`);
+    console.log(`👤 Cliente: ${customerPhone}`);
+    console.log(`📱 Tipo: ${isGroup ? 'Grupo' : 'Individual'}`);
+    if (isGroup) console.log(`📊 Grupo: ${groupName}`);
 
     // Processar cada código detectado via Edge Function
     for (const code of codes) {
       try {
-        console.log(`🔄 Processando código ${code}...`);
+        console.log(`\n🔄 Processando código ${code}...`);
+        console.log(`📤 Chamando edge function: ${SUPABASE_URL}/functions/v1/whatsapp-process-message`);
+        
+        const requestBody = {
+          tenant_id: tenantId,
+          customer_phone: customerPhone,
+          message: code,
+          group_name: groupName
+        };
+        
+        console.log(`📦 Body da requisição:`, JSON.stringify(requestBody, null, 2));
         
         const response = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-process-message`, {
           method: 'POST',
@@ -315,27 +337,32 @@ class TenantManager {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`
           },
-          body: JSON.stringify({
-            tenant_id: tenantId,
-            customer_phone: customerPhone,
-            message: code,
-            group_name: groupName
-          })
+          body: JSON.stringify(requestBody)
         });
+
+        console.log(`📥 Status da resposta: ${response.status} ${response.statusText}`);
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`❌ Erro na edge function para ${code}:`, errorText);
+          console.error(`❌ Erro na edge function para ${code}:`);
+          console.error(`   Status: ${response.status}`);
+          console.error(`   Resposta: ${errorText}`);
           continue;
         }
 
         const result = await response.json();
-        console.log(`✅ Código ${code} processado:`, result);
+        console.log(`✅ Código ${code} processado com sucesso!`);
+        console.log(`📊 Resultado:`, JSON.stringify(result, null, 2));
 
       } catch (error) {
-        console.error(`❌ Erro ao processar código ${code}:`, error);
+        console.error(`❌ Erro ao processar código ${code}:`);
+        console.error(`   Tipo: ${error.name}`);
+        console.error(`   Mensagem: ${error.message}`);
+        console.error(`   Stack:`, error.stack);
       }
     }
+    
+    console.log(`${'='.repeat(70)}\n`);
   }
 
   getOnlineClient(tenantId) {
