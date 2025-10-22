@@ -34,7 +34,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`;
 const NORMALIZED_PUBLIC_BASE_URL = PUBLIC_BASE_URL.replace(/\/$/, '');
 const TENANT_FILTER = process.env.TENANT_IDS || process.env.TENANT_ID || '';
-const AUTH_DIR = process.env.AUTH_DIR
+let AUTH_DIR = process.env.AUTH_DIR
   ? path.resolve(process.env.AUTH_DIR)
   : path.join(__dirname, '.baileys_auth');
 
@@ -52,8 +52,20 @@ if (!SUPABASE_SERVICE_KEY || SUPABASE_SERVICE_KEY === 'SUA_SERVICE_ROLE_KEY_AQUI
 // Auth directory (configurable via AUTH_DIR)
 
 // Criar diretório se não existir
+console.log(`📁 Verificando diretório de autenticação: ${AUTH_DIR}`);
 if (!fs.existsSync(AUTH_DIR)) {
-  fs.mkdirSync(AUTH_DIR, { recursive: true });
+  try {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+    console.log(`✅ Diretório de autenticação criado: ${AUTH_DIR}`);
+  } catch (error) {
+    console.error(`❌ Erro ao criar diretório ${AUTH_DIR}:`, error.message);
+    console.error(`   Tentando usar diretório temporário...`);
+    AUTH_DIR = path.join('/tmp', '.baileys_auth');
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+    console.log(`✅ Usando diretório temporário: ${AUTH_DIR}`);
+  }
+} else {
+  console.log(`✅ Diretório de autenticação já existe: ${AUTH_DIR}`);
 }
 
 // Logger do Pino (silencioso)
@@ -74,21 +86,45 @@ class TenantManager {
       return this.clients.get(tenantId).sock;
     }
     
-    console.log(`📱 Criando cliente Baileys para tenant: ${tenant.name} (${tenantId})`);
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`📱 INICIANDO CLIENTE BAILEYS`);
+    console.log(`Tenant: ${tenant.name}`);
+    console.log(`ID: ${tenantId}`);
+    console.log(`${'='.repeat(70)}`);
 
-    // Diretório de autenticação do tenant
-    const authPath = path.join(AUTH_DIR, `session-${tenantId}`);
-    if (!fs.existsSync(authPath)) {
-      fs.mkdirSync(authPath, { recursive: true });
+    try {
+      // Diretório de autenticação do tenant
+      const authPath = path.join(AUTH_DIR, `session-${tenantId}`);
+      console.log(`📁 Auth path: ${authPath}`);
+      
+      if (!fs.existsSync(authPath)) {
+        console.log(`📁 Criando diretório de sessão...`);
+        fs.mkdirSync(authPath, { recursive: true });
+        console.log(`✅ Diretório criado`);
+      } else {
+        console.log(`✅ Diretório já existe`);
+      }
+
+      // Estado de autenticação
+      console.log(`🔑 Carregando estado de autenticação...`);
+      const { state, saveCreds } = await useMultiFileAuthState(authPath);
+      console.log(`✅ Estado de autenticação carregado`);
+      
+      // Buscar versão mais recente do Baileys
+      console.log(`🔍 Buscando versão do Baileys...`);
+      const { version } = await fetchLatestBaileysVersion();
+      console.log(`✅ Versão do Baileys: ${version.join('.')}`);
+    } catch (error) {
+      console.error(`❌ ERRO AO INICIALIZAR CLIENTE:`);
+      console.error(`   Tipo: ${error.name}`);
+      console.error(`   Mensagem: ${error.message}`);
+      console.error(`   Stack:`, error.stack);
+      console.log(`${'='.repeat(70)}\n`);
+      throw error;
     }
 
-    // Estado de autenticação
-    const { state, saveCreds } = await useMultiFileAuthState(authPath);
-    
-    // Buscar versão mais recente do Baileys
-    const { version } = await fetchLatestBaileysVersion();
-
     // Status inicial
+    console.log(`📊 Registrando cliente com status 'initializing'...`);
     this.clients.set(tenantId, {
       sock: null,
       status: 'initializing',
@@ -96,8 +132,10 @@ class TenantManager {
       tenant,
       authState: { state, saveCreds }
     });
+    console.log(`✅ Cliente registrado`);
 
     // Criar socket do WhatsApp
+    console.log(`🔌 Criando socket do WhatsApp...`);
     const sock = makeWASocket({
       version,
       logger,
@@ -111,6 +149,8 @@ class TenantManager {
       generateHighQualityLinkPreview: true,
       getMessage: async () => ({ conversation: '' })
     });
+    console.log(`✅ Socket criado com sucesso`);
+    console.log(`${'='.repeat(70)}\n`);
 
     // Atualizar referência do socket
     const clientData = this.clients.get(tenantId);
