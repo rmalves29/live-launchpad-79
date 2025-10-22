@@ -130,93 +130,71 @@ export default function ConexaoWhatsApp() {
     if (!serverUrl || !tenant?.id) return;
 
     try {
-      console.log('🔍 Verificando status WhatsApp:', serverUrl, tenant.id);
+      console.log('🔍 Verificando status WhatsApp via proxy:', serverUrl, tenant.id);
       
-      // Primeiro tentar pegar o QR code diretamente
-      try {
-        const qrResponse = await fetch(`${serverUrl}/qr/${tenant.id}`);
-        console.log('📱 QR Response status:', qrResponse.status);
-        
-        if (qrResponse.ok) {
-          const qrContentType = qrResponse.headers.get("content-type");
-          console.log('📱 QR Content-Type:', qrContentType);
-          
-          if (qrContentType?.includes("text/html")) {
-            const html = await qrResponse.text();
-            console.log('📱 HTML recebido (primeiros 500 chars):', html.substring(0, 500));
-            
-            // Tentar extrair o QR code
-            const imgMatch = html.match(/<img[^>]+src="([^"]+)"[^>]*>/);
-            const statusMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
-            
-            if (imgMatch && imgMatch[1]) {
-              console.log('✅ QR Code encontrado!');
-              setWhatsappStatus({
-                connected: false,
-                status: 'qr_code',
-                qrCode: imgMatch[1],
-                message: statusMatch ? statusMatch[1] : 'Escaneie o QR Code'
-              });
-              return;
-            } else {
-              console.log('⚠️ QR Code não encontrado no HTML');
-            }
-          } else if (qrContentType?.includes("application/json")) {
-            const qrData = await qrResponse.json();
-            console.log('📱 QR JSON:', qrData);
-            
-            if (qrData.qr || qrData.qrCode) {
-              setWhatsappStatus({
-                connected: false,
-                status: 'qr_code',
-                qrCode: qrData.qr || qrData.qrCode,
-                message: 'Escaneie o QR Code'
-              });
-              return;
-            }
+      const { data: functionData, error: functionError } = await supabaseTenant.functions.invoke(
+        'whatsapp-proxy',
+        {
+          body: {
+            action: 'qr',
+            tenantId: tenant.id,
+            serverUrl: serverUrl
           }
         }
-      } catch (qrError) {
-        console.log('⚠️ Erro ao buscar QR diretamente:', qrError);
-      }
-      
-      // Se não conseguiu o QR, verificar status
-      const statusResponse = await fetch(`${serverUrl}/status/${tenant.id}`);
-      console.log('📊 Status Response:', statusResponse.status);
-      
-      if (!statusResponse.ok) {
-        throw new Error(`Servidor respondeu com status ${statusResponse.status}. Verifique se o servidor está rodando no Railway.`);
+      );
+
+      if (functionError) {
+        console.error('❌ Erro ao chamar proxy:', functionError);
+        throw new Error(functionError.message);
       }
 
-      const contentType = statusResponse.headers.get("content-type");
-      console.log('📊 Content-Type:', contentType);
-      
-      if (contentType?.includes("application/json")) {
-        const data = await statusResponse.json();
-        console.log('📊 Status JSON:', data);
-        
-        setWhatsappStatus({
-          connected: data.connected || data.status === 'online',
-          status: data.status || 'disconnected',
-          message: data.message,
-          error: data.error
-        });
-      } else {
-        const text = await statusResponse.text();
-        console.log('📊 Status text (primeiros 200 chars):', text.substring(0, 200));
-        
+      console.log('📱 Resposta do proxy QR:', functionData);
+
+      // Se encontrou o QR code
+      if (functionData?.qrCode) {
+        console.log('✅ QR Code encontrado via proxy!');
         setWhatsappStatus({
           connected: false,
-          status: 'disconnected',
-          message: 'WhatsApp desconectado. Clique em Reconectar para gerar QR Code.'
+          status: 'qr_code',
+          qrCode: functionData.qrCode,
+          message: functionData.message || 'Escaneie o QR Code'
         });
+        return;
       }
+
+      // Se não tem QR, verificar status
+      console.log('📊 Verificando status via proxy...');
+      const { data: statusData, error: statusError } = await supabaseTenant.functions.invoke(
+        'whatsapp-proxy',
+        {
+          body: {
+            action: 'status',
+            tenantId: tenant.id,
+            serverUrl: serverUrl
+          }
+        }
+      );
+
+      if (statusError) {
+        console.error('❌ Erro ao verificar status:', statusError);
+        throw new Error(statusError.message);
+      }
+
+      console.log('📊 Status recebido:', statusData);
+
+      setWhatsappStatus({
+        connected: statusData?.connected || statusData?.status === 'online',
+        status: statusData?.status || 'disconnected',
+        message: statusData?.message,
+        error: statusData?.error
+      });
+
     } catch (error: any) {
       console.error('❌ Erro ao verificar status:', error);
       setWhatsappStatus({
         connected: false,
         status: 'error',
-        error: error.message || 'Erro ao conectar com servidor WhatsApp. Verifique se o servidor está rodando no Railway.'
+        error: error.message || 'Erro ao conectar com servidor WhatsApp via proxy.'
       });
     }
   };

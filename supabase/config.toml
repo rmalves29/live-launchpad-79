@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.whatsapp-process-message]
 verify_jwt = false
+
+[functions.whatsapp-proxy]
+verify_jwt = true
