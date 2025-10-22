@@ -53,9 +53,11 @@ Deno.serve(async (req) => {
     // Substituir variáveis no template
     const valorTotal = (quantity * unit_price).toFixed(2);
     let mensagem = template.content
-      .replace(/\{\{produto\}\}/g, `${product_name} (${product_code})`)
+      .replace(/\{\{produto\}\}/g, product_name)
+      .replace(/\{\{codigo\}\}/g, product_code)
       .replace(/\{\{quantidade\}\}/g, quantity.toString())
-      .replace(/\{\{valor\}\}/g, valorTotal);
+      .replace(/\{\{preco\}\}/g, `R$ ${unit_price.toFixed(2)}`)
+      .replace(/\{\{total\}\}/g, `R$ ${valorTotal}`);
 
     // Normalizar telefone brasileiro com regra do nono dígito
     function normalizePhoneBrazil(phone: string): string {
