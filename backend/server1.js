@@ -305,16 +305,25 @@ class TenantManager {
     const codes = matches.map(match => match[0].toUpperCase());
     console.log(`✅ Códigos detectados:`, codes);
 
-    // Obter telefone do remetente
-    const customerPhone = msg.key.remoteJid.split('@')[0];
-    
     // Verificar se é mensagem de grupo
     const isGroup = msg.key.remoteJid.endsWith('@g.us');
     const groupName = isGroup ? msg.key.remoteJid : null;
 
-    console.log(`👤 Cliente: ${customerPhone}`);
-    console.log(`📱 Tipo: ${isGroup ? 'Grupo' : 'Individual'}`);
-    if (isGroup) console.log(`📊 Grupo: ${groupName}`);
+    // Obter telefone do remetente
+    // IMPORTANTE: Em grupos, o telefone está em msg.key.participant, não em remoteJid
+    let customerPhone;
+    if (isGroup && msg.key.participant) {
+      customerPhone = msg.key.participant.split('@')[0];
+      console.log(`📊 Mensagem de GRUPO: ${groupName}`);
+      console.log(`👤 Participante: ${customerPhone}`);
+    } else {
+      customerPhone = msg.key.remoteJid.split('@')[0];
+      console.log(`📱 Mensagem INDIVIDUAL`);
+      console.log(`👤 Cliente: ${customerPhone}`);
+    }
+    
+    console.log(`🔍 RemoteJid completo: ${msg.key.remoteJid}`);
+    if (msg.key.participant) console.log(`🔍 Participant completo: ${msg.key.participant}`);
 
     // Processar cada código detectado via Edge Function
     for (const code of codes) {
