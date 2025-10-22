@@ -29,6 +29,8 @@ export default function ConexaoWhatsApp() {
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [polling, setPolling] = useState(false);
+  const [waitingTime, setWaitingTime] = useState(0);
+  const [hasTimedOut, setHasTimedOut] = useState(false);
 
   useEffect(() => {
     loadWhatsAppIntegration();
@@ -36,12 +38,50 @@ export default function ConexaoWhatsApp() {
 
   useEffect(() => {
     if (serverUrl && tenant?.id) {
+      setWaitingTime(0);
+      setHasTimedOut(false);
       startPolling();
       return () => {
         setPolling(false);
       };
     }
   }, [serverUrl, tenant?.id]);
+
+  // Timer para contar tempo de espera e timeout
+  useEffect(() => {
+    if (!whatsappStatus?.connected && 
+        !whatsappStatus?.qrCode && 
+        whatsappStatus?.status !== 'error' && 
+        serverUrl) {
+      
+      const timer = setInterval(() => {
+        setWaitingTime(prev => {
+          const newTime = prev + 1;
+          
+          // Timeout após 60 segundos
+          if (newTime >= 60 && !hasTimedOut) {
+            setHasTimedOut(true);
+            setWhatsappStatus({
+              connected: false,
+              status: 'error',
+              error: 'Timeout: O QR Code não foi gerado em 60 segundos. Clique em "Tentar Novamente" para reconectar.'
+            });
+            toast({
+              title: "Timeout de Conexão",
+              description: "O servidor demorou muito para responder. Tente reconectar.",
+              variant: "destructive"
+            });
+          }
+          
+          return newTime;
+        });
+      }, 1000);
+
+      return () => clearInterval(timer);
+    } else {
+      setWaitingTime(0);
+    }
+  }, [whatsappStatus, serverUrl, hasTimedOut]);
 
   const loadWhatsAppIntegration = async () => {
     if (!tenant?.id) {
@@ -327,6 +367,8 @@ export default function ConexaoWhatsApp() {
 
     try {
       setLoading(true);
+      setWaitingTime(0);
+      setHasTimedOut(false);
       
       console.log('\n🔄 [RECONECTAR] Forçando reset do WhatsApp');
       console.log('📋 [RECONECTAR] Servidor:', serverUrl);
@@ -645,12 +687,76 @@ WHERE tenant_id = '${tenant?.id}';`}
       {!whatsappStatus?.qrCode && !whatsappStatus?.connected && whatsappStatus?.status !== 'error' && (
         <Card>
           <CardContent className="py-12">
-            <div className="text-center">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto mb-4 text-primary" />
-              <p className="text-lg font-semibold">Aguardando QR Code...</p>
-              <p className="text-sm text-muted-foreground mt-2">
-                O servidor está gerando seu QR Code exclusivo
-              </p>
+            <div className="text-center space-y-4">
+              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+              <div>
+                <p className="text-lg font-semibold">Aguardando QR Code...</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  O servidor está gerando seu QR Code exclusivo
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Aguardando há {waitingTime} segundo{waitingTime !== 1 ? 's' : ''}
+                  {waitingTime > 30 && ' (isso pode demorar até 60s)'}
+                </p>
+              </div>
+              
+              {waitingTime > 15 && (
+                <div className="pt-4">
+                  <Button 
+                    onClick={handleReconnect} 
+                    variant="outline"
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Tentar Novamente
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Demorando muito? Tente forçar uma nova conexão
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Erro com botão de retry destacado */}
+      {whatsappStatus?.status === 'error' && (
+        <Card className="border-destructive">
+          <CardContent className="py-12">
+            <div className="text-center space-y-4">
+              <AlertCircle className="h-12 w-12 mx-auto text-destructive" />
+              <div>
+                <p className="text-lg font-semibold text-destructive">Erro de Conexão</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {whatsappStatus.error || 'Não foi possível conectar ao servidor WhatsApp'}
+                </p>
+              </div>
+              
+              <div className="pt-4 space-y-3">
+                <Button 
+                  onClick={handleReconnect} 
+                  variant="default"
+                  size="lg"
+                  className="min-w-[200px]"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  ) : (
+                    <RefreshCw className="h-5 w-5 mr-2" />
+                  )}
+                  Tentar Novamente
+                </Button>
+                
+                <p className="text-xs text-muted-foreground">
+                  Isso irá limpar a sessão antiga e gerar um novo QR Code
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
