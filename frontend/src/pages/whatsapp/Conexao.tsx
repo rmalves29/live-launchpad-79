@@ -150,6 +150,17 @@ export default function ConexaoWhatsApp() {
 
       console.log('📱 Resposta do proxy QR:', functionData);
 
+      // Se já está conectado
+      if (functionData?.connected === true || functionData?.status === 'connected') {
+        console.log('✅ WhatsApp já está conectado!');
+        setWhatsappStatus({
+          connected: true,
+          status: 'connected',
+          message: functionData.message || 'WhatsApp está conectado'
+        });
+        return;
+      }
+
       // Se encontrou o QR code
       if (functionData?.qrCode) {
         console.log('✅ QR Code encontrado via proxy!');
