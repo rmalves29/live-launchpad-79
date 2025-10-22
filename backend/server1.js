@@ -962,7 +962,20 @@ function createApp(tenantManager, supabaseHelper) {
     const { tenantId } = req;
     const { groupId, message } = req.body;
 
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`📤 SENDFLOW - ENVIO PARA GRUPO`);
+    console.log(`${'='.repeat(70)}`);
+    console.log(`🏢 Tenant ID: ${tenantId}`);
+    console.log(`👥 Group ID: ${groupId}`);
+    console.log(`💬 Mensagem (${message.length} chars): ${message.substring(0, 100)}...`);
+
     if (!tenantId || !groupId || !message) {
+      console.log(`❌ Parâmetros faltando!`);
+      console.log(`   tenantId: ${tenantId ? '✅' : '❌'}`);
+      console.log(`   groupId: ${groupId ? '✅' : '❌'}`);
+      console.log(`   message: ${message ? '✅' : '❌'}`);
+      console.log(`${'='.repeat(70)}\n`);
+      
       return res.status(400).json({ 
         success: false, 
         error: 'tenant_id, groupId e message são obrigatórios' 
@@ -971,14 +984,24 @@ function createApp(tenantManager, supabaseHelper) {
 
     const sock = tenantManager.getOnlineClient(tenantId);
     if (!sock) {
+      console.log(`❌ WhatsApp NÃO CONECTADO para tenant ${tenantId}`);
+      console.log(`${'='.repeat(70)}\n`);
+      
       return res.status(503).json({ 
         success: false, 
         error: 'WhatsApp não conectado' 
       });
     }
 
+    console.log(`✅ WhatsApp conectado, enviando mensagem...`);
+
     try {
+      const startTime = Date.now();
+      
       await sock.sendMessage(groupId, { text: message });
+      
+      const duration = Date.now() - startTime;
+      console.log(`✅ Mensagem enviada com sucesso! (${duration}ms)`);
       
       await supabaseHelper.logMessage(
         tenantId,
@@ -988,12 +1011,21 @@ function createApp(tenantManager, supabaseHelper) {
         { whatsapp_group_name: groupId }
       );
 
+      console.log(`✅ Mensagem registrada no banco`);
+      console.log(`${'='.repeat(70)}\n`);
+
       res.json({ 
         success: true, 
-        message: 'Mensagem enviada com sucesso' 
+        message: 'Mensagem enviada com sucesso',
+        duration_ms: duration
       });
     } catch (error) {
-      console.error('❌ Erro ao enviar mensagem:', error);
+      console.error(`❌ ERRO AO ENVIAR MENSAGEM:`);
+      console.error(`   Tipo: ${error.name}`);
+      console.error(`   Mensagem: ${error.message}`);
+      console.error(`   Stack:`, error.stack);
+      console.log(`${'='.repeat(70)}\n`);
+      
       res.status(500).json({ 
         success: false, 
         error: error.message 
