@@ -92,11 +92,11 @@ class TenantManager {
     console.log(`ID: ${tenantId}`);
     console.log(`${'='.repeat(70)}`);
 
+    // Diretório de autenticação do tenant
+    const authPath = path.join(AUTH_DIR, `session-${tenantId}`);
+    console.log(`📁 Auth path: ${authPath}`);
+    
     try {
-      // Diretório de autenticação do tenant
-      const authPath = path.join(AUTH_DIR, `session-${tenantId}`);
-      console.log(`📁 Auth path: ${authPath}`);
-      
       if (!fs.existsSync(authPath)) {
         console.log(`📁 Criando diretório de sessão...`);
         fs.mkdirSync(authPath, { recursive: true });
@@ -114,6 +114,40 @@ class TenantManager {
       console.log(`🔍 Buscando versão do Baileys...`);
       const { version } = await fetchLatestBaileysVersion();
       console.log(`✅ Versão do Baileys: ${version.join('.')}`);
+
+      // Status inicial
+      console.log(`📊 Registrando cliente com status 'initializing'...`);
+      this.clients.set(tenantId, {
+        sock: null,
+        status: 'initializing',
+        qr: null,
+        tenant,
+        authState: { state, saveCreds }
+      });
+      console.log(`✅ Cliente registrado`);
+
+      // Criar socket do WhatsApp
+      console.log(`🔌 Criando socket do WhatsApp...`);
+      const sock = makeWASocket({
+        version,
+        logger,
+        printQRInTerminal: false,
+        auth: {
+          creds: state.creds,
+          keys: makeCacheableSignalKeyStore(state.keys, logger),
+        },
+        browser: ['OrderZaps', 'Chrome', '120.0.0'],
+        markOnlineOnConnect: true,
+        generateHighQualityLinkPreview: true,
+        getMessage: async () => ({ conversation: '' })
+      });
+      console.log(`✅ Socket criado com sucesso`);
+      console.log(`${'='.repeat(70)}\n`);
+
+      // Atualizar referência do socket
+      const clientData = this.clients.get(tenantId);
+      clientData.sock = sock;
+
     } catch (error) {
       console.error(`❌ ERRO AO INICIALIZAR CLIENTE:`);
       console.error(`   Tipo: ${error.name}`);
@@ -122,39 +156,6 @@ class TenantManager {
       console.log(`${'='.repeat(70)}\n`);
       throw error;
     }
-
-    // Status inicial
-    console.log(`📊 Registrando cliente com status 'initializing'...`);
-    this.clients.set(tenantId, {
-      sock: null,
-      status: 'initializing',
-      qr: null,
-      tenant,
-      authState: { state, saveCreds }
-    });
-    console.log(`✅ Cliente registrado`);
-
-    // Criar socket do WhatsApp
-    console.log(`🔌 Criando socket do WhatsApp...`);
-    const sock = makeWASocket({
-      version,
-      logger,
-      printQRInTerminal: false,
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, logger),
-      },
-      browser: ['OrderZaps', 'Chrome', '120.0.0'],
-      markOnlineOnConnect: true,
-      generateHighQualityLinkPreview: true,
-      getMessage: async () => ({ conversation: '' })
-    });
-    console.log(`✅ Socket criado com sucesso`);
-    console.log(`${'='.repeat(70)}\n`);
-
-    // Atualizar referência do socket
-    const clientData = this.clients.get(tenantId);
-    clientData.sock = sock;
 
     // ==================== EVENTOS ====================
 
