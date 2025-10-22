@@ -56,11 +56,44 @@ export default function ConexaoWhatsApp() {
 
       if (error) throw error;
 
+      // Se não existe integração, criar uma automaticamente
+      if (!data) {
+        console.log('Criando integração WhatsApp automaticamente...');
+        const { data: newIntegration, error: insertError } = await supabaseTenant
+          .from('integration_whatsapp')
+          .insert({
+            tenant_id: tenant.id,
+            instance_name: `whatsapp_${tenant.slug}`,
+            webhook_secret: crypto.randomUUID(),
+            api_url: '',
+            is_active: true
+          })
+          .select('api_url, is_active')
+          .single();
+
+        if (insertError) {
+          console.error('Erro ao criar integração:', insertError);
+          toast({
+            title: "Erro ao criar integração",
+            description: "Por favor, entre em contato com o suporte.",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        toast({
+          title: "Integração criada",
+          description: "Configure a URL do servidor WhatsApp nas configurações.",
+        });
+        
+        // Não define serverUrl ainda pois está vazio
+        return;
+      }
+
       if (!data?.api_url) {
         toast({
-          title: "Integração não configurada",
-          description: "Entre em contato com o administrador para configurar o WhatsApp.",
-          variant: "destructive"
+          title: "URL não configurada",
+          description: "Configure a URL do servidor WhatsApp nas configurações para conectar.",
         });
         return;
       }
@@ -194,13 +227,96 @@ export default function ConexaoWhatsApp() {
 
   if (!serverUrl) {
     return (
-      <div className="container mx-auto p-6">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Integração WhatsApp não configurada. Entre em contato com o administrador.
-          </AlertDescription>
-        </Alert>
+      <div className="container mx-auto p-6 max-w-4xl">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Smartphone className="h-8 w-8" />
+            Conexão WhatsApp
+          </h1>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-orange-600">
+              <AlertCircle className="h-5 w-5" />
+              Configuração Necessária
+            </CardTitle>
+            <CardDescription>
+              A URL do servidor WhatsApp precisa ser configurada
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Para conectar o WhatsApp, você precisa:
+              </AlertDescription>
+            </Alert>
+
+            <ol className="space-y-3 text-sm">
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                  1
+                </span>
+                <span>
+                  <strong>Fazer deploy do servidor WhatsApp no Railway</strong>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Use os arquivos do diretório <code className="text-xs bg-muted px-1 py-0.5 rounded">backend/</code> para fazer o deploy
+                  </span>
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                  2
+                </span>
+                <span>
+                  <strong>Obter a URL pública do Railway</strong>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Exemplo: <code className="text-xs bg-muted px-1 py-0.5 rounded">https://seu-app.railway.app</code>
+                  </span>
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                  3
+                </span>
+                <span>
+                  <strong>Configurar a URL no banco de dados</strong>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Execute no Supabase SQL Editor:
+                  </span>
+                  <pre className="mt-2 p-3 bg-muted rounded-md text-xs overflow-x-auto">
+{`UPDATE integration_whatsapp 
+SET api_url = 'https://seu-app.railway.app'
+WHERE tenant_id = '${tenant?.id}';`}
+                  </pre>
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                  4
+                </span>
+                <span>
+                  <strong>Recarregue esta página</strong>
+                  <br />
+                  <span className="text-muted-foreground">
+                    Após configurar a URL, recarregue a página para conectar o WhatsApp
+                  </span>
+                </span>
+              </li>
+            </ol>
+
+            <div className="pt-4">
+              <Button onClick={loadWhatsAppIntegration} variant="outline" className="w-full">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Verificar Configuração
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
