@@ -68,16 +68,27 @@ serve(async (req) => {
     // Se for HTML (página do QR), tentar extrair o QR code
     if (contentType.includes('text/html')) {
       const html = await response.text();
-      console.log('📄 HTML response (first 500 chars):', html.substring(0, 500));
+      console.log('📄 HTML length:', html.length);
+      console.log('📄 HTML sample:', html.substring(0, 1000));
       
-      // Tentar extrair o QR code da imagem
-      const imgMatch = html.match(/<img[^>]+src="([^"]+)"[^>]*>/);
-      const statusMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/);
+      // Tentar extrair o QR code da imagem (suporta vários formatos)
+      const imgMatch = html.match(/<img[^>]+src="([^"]+)"[^>]*>/) || 
+                       html.match(/src="([^"]*data:image[^"]+)"/);
+      
+      const statusMatch = html.match(/<h1[^>]*>([^<]+)<\/h1>/) ||
+                         html.match(/<div[^>]*class="status"[^>]*>([^<]+)<\/div>/);
+      
+      console.log('🔍 Image match:', imgMatch ? 'Found' : 'Not found');
+      console.log('🔍 Status match:', statusMatch ? statusMatch[1] : 'Not found');
       
       if (imgMatch && imgMatch[1]) {
+        const qrCode = imgMatch[1];
+        console.log('✅ QR Code extracted, length:', qrCode.length);
+        console.log('🎯 QR Code preview:', qrCode.substring(0, 100));
+        
         return new Response(
           JSON.stringify({
-            qrCode: imgMatch[1],
+            qrCode: qrCode,
             message: statusMatch ? statusMatch[1] : 'Escaneie o QR Code',
             source: 'html'
           }),
@@ -86,10 +97,14 @@ serve(async (req) => {
           }
         );
       } else {
+        console.error('❌ No QR Code found in HTML');
+        console.error('🔍 HTML structure:', html.substring(0, 2000));
+        
         return new Response(
           JSON.stringify({
             error: 'QR Code not found in HTML',
-            html: html.substring(0, 1000)
+            message: 'O servidor retornou HTML mas não foi possível extrair o QR Code',
+            htmlPreview: html.substring(0, 1500)
           }),
           { 
             status: 404,
