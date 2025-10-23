@@ -28,11 +28,16 @@ export function normalizeForStorage(phone: string): string {
 }
 
 /**
- * Adiciona DDI 55 para envio via WhatsApp.
- * NÃO modifica o número, apenas adiciona o DDI brasileiro.
+ * Adiciona DDI 55 para envio via WhatsApp e ajusta 9º dígito baseado no DDD.
  * 
- * Entrada: 31992904210 ou 67999583003 ou 5531992904210
- * Saída: 5531992904210 ou 5567999583003 (apenas adiciona DDI 55)
+ * Regra do 9º dígito:
+ * - DDD ≤ 11 (Norte/Nordeste): Se tiver 10 dígitos → ADICIONA o 9º dígito
+ * - DDD ≥ 31 (Sudeste/Sul/Centro-Oeste): Se tiver 11 dígitos → REMOVE o 9º dígito
+ * 
+ * Exemplos:
+ * - 1192904210 (DDD 11, 10 dígitos) → 5511992904210 (adiciona 9)
+ * - 67999583003 (DDD 67, 11 dígitos) → 556799583003 (remove primeiro 9)
+ * - 3192904210 (DDD 31, 10 dígitos) → 5531992904210 (mantém)
  */
 export function normalizeForSending(phone: string): string {
   if (!phone) return phone;
@@ -45,7 +50,37 @@ export function normalizeForSending(phone: string): string {
     clean = clean.substring(2);
   }
   
-  // Adiciona DDI 55 e retorna (sem modificar o número)
+  // Validação básica de tamanho
+  if (clean.length < 10 || clean.length > 11) {
+    console.warn('⚠️ Telefone com tamanho inválido:', phone);
+    return '55' + clean;
+  }
+  
+  // Extrai o DDD
+  const ddd = parseInt(clean.substring(0, 2));
+  
+  // Validar DDD
+  if (ddd < 11 || ddd > 99) {
+    console.warn('⚠️ DDD inválido:', ddd);
+    return '55' + clean;
+  }
+  
+  // Aplica regra do 9º dígito
+  if (ddd <= 11) {
+    // Norte/Nordeste: Se tem 10 dígitos, ADICIONA o 9º dígito
+    if (clean.length === 10) {
+      clean = clean.substring(0, 2) + '9' + clean.substring(2);
+      console.log('✅ 9º dígito ADICIONADO (DDD ≤ 11):', phone, '→', clean);
+    }
+  } else if (ddd >= 31) {
+    // Sudeste/Sul/Centro-Oeste: Se tem 11 dígitos e começa com 9, REMOVE o 9º dígito
+    if (clean.length === 11 && clean[2] === '9') {
+      clean = clean.substring(0, 2) + clean.substring(3);
+      console.log('✅ 9º dígito REMOVIDO (DDD ≥ 31):', phone, '→', clean);
+    }
+  }
+  
+  // Adiciona DDI 55
   return '55' + clean;
 }
 
