@@ -435,10 +435,17 @@ class TenantManager {
       return null;
     }
     
-    // Verificar se o socket realmente tem sessão ativa
+    // Verificar se o socket realmente tem sessão ativa e conexão WebSocket aberta
     const sock = clientData.sock;
     if (!sock || !sock.user || !sock.authState || !sock.authState.creds) {
       console.log(`⚠️ Cliente ${tenantId} marcado como online mas sem sessão válida`);
+      clientData.status = 'disconnected';
+      return null;
+    }
+    
+    // Verificar se WebSocket está realmente conectado
+    if (sock.ws && sock.ws.readyState !== 1) { // 1 = OPEN
+      console.log(`⚠️ Cliente ${tenantId} com sessão mas WebSocket não está aberto (readyState: ${sock.ws.readyState})`);
       clientData.status = 'disconnected';
       return null;
     }
@@ -791,25 +798,43 @@ function createApp(tenantManager, supabaseHelper) {
       });
     }
 
+    // VALIDAÇÃO REAL DA SESSÃO - não confiar apenas na variável status
+    let realStatus = clientData.status;
+    const sock = clientData.sock;
+    
+    // Se diz que está online, validar se realmente tem sessão válida
+    if (realStatus === 'online' && sock) {
+      const hasValidSession = !!(
+        sock.user && 
+        sock.authState && 
+        sock.authState.creds &&
+        sock.ws &&
+        sock.ws.readyState === 1 // WebSocket OPEN
+      );
+      
+      if (!hasValidSession) {
+        console.log(`⚠️ [${tenantId}] Status estava 'online' mas sessão inválida. Atualizando para 'disconnected'`);
+        realStatus = 'disconnected';
+        clientData.status = 'disconnected';
+      }
+    }
+
     const status = {
       success: true,
       tenant_id: tenantId,
       tenant_name: clientData.tenant.name,
-      status: clientData.status,
+      status: realStatus,
       qr_available: !!clientData.qr,
       timestamp: new Date().toISOString()
     };
 
-    if (clientData.status === 'online' && clientData.sock) {
+    if (realStatus === 'online' && sock && sock.user) {
       try {
-        const me = clientData.sock.user;
-        if (me) {
-          status.whatsapp_info = {
-            id: me.id,
-            name: me.name,
-            phone: me.id.split(':')[0]
-          };
-        }
+        status.whatsapp_info = {
+          id: sock.user.id,
+          name: sock.user.name,
+          phone: sock.user.id.split(':')[0]
+        };
       } catch (error) {
         status.whatsapp_info_error = error.message;
       }
@@ -1026,8 +1051,32 @@ function createApp(tenantManager, supabaseHelper) {
         details: 'Conecte o WhatsApp antes de enviar mensagens'
       });
     }
+    
+    // VALIDAÇÃO CRÍTICA: verificar se sessão realmente existe ANTES de tentar enviar
+    if (!sock.user || !sock.authState || !sock.authState.creds) {
+      const clientData = tenantManager.clients.get(tenantId);
+      const currentStatus = clientData?.status || 'unknown';
+      
+      console.log(`❌ SESSÃO WHATSAPP INVÁLIDA para tenant ${tenantId}`);
+      console.log(`   sock.user: ${sock.user ? '✅' : '❌'}`);
+      console.log(`   sock.authState: ${sock.authState ? '✅' : '❌'}`);
+      console.log(`   sock.authState.creds: ${sock.authState?.creds ? '✅' : '❌'}`);
+      console.log(`${'='.repeat(70)}\n`);
+      
+      // Atualizar status
+      if (clientData) {
+        clientData.status = 'disconnected';
+      }
+      
+      return res.status(503).json({ 
+        success: false, 
+        error: 'WhatsApp desconectado',
+        status: 'disconnected',
+        details: 'Sessão perdida. Vá até "Conexão WhatsApp" e escaneie o QR Code novamente.'
+      });
+    }
 
-    console.log(`✅ WhatsApp conectado, enviando mensagem...`);
+    console.log(`✅ WhatsApp conectado com sessão válida, enviando mensagem...`);
 
     try {
       const startTime = Date.now();
@@ -1035,15 +1084,6 @@ function createApp(tenantManager, supabaseHelper) {
       // Validar formato do groupId
       if (!groupId.includes('@g.us')) {
         throw new Error(`Formato de ID de grupo inválido: ${groupId}. Esperado: xxxxx@g.us`);
-      }
-      
-      // Verificar se realmente tem sessão antes de enviar
-      if (!sock.user || !sock.authState || !sock.authState.creds) {
-        const clientData = tenantManager.clients.get(tenantId);
-        if (clientData) {
-          clientData.status = 'disconnected';
-        }
-        throw new Error('No sessions - WhatsApp desconectado. Escaneie o QR Code novamente.');
       }
       
       await sock.sendMessage(groupId, { text: message });
