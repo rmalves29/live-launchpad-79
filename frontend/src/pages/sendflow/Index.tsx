@@ -48,6 +48,9 @@ export default function SendFlow() {
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
   const [currentProduct, setCurrentProduct] = useState('');
   const [currentGroup, setCurrentGroup] = useState('');
+  const [estimatedTime, setEstimatedTime] = useState(0);
+  const [isPausing, setIsPausing] = useState(false);
+  const [pauseCountdown, setPauseCountdown] = useState(0);
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -313,18 +316,21 @@ export default function SendFlow() {
 
       let messageCount = 0;
 
-      // Enviar cada produto para cada grupo
+      // LÓGICA CORRIGIDA: Envia TODOS os grupos de um produto, depois pausa
       for (let i = 0; i < selectedProductArray.length; i++) {
         const product = selectedProductArray[i];
         setCurrentProduct(product.name);
         const personalizedMessage = personalizeMessage(product);
 
+        // Enviar para TODOS os grupos deste produto SEM pausar
         for (let j = 0; j < selectedGroupArray.length; j++) {
           const groupId = selectedGroupArray[j];
           const group = groups.find(g => g.id === groupId);
           setCurrentGroup(group?.name || groupId);
 
           try {
+            console.log(`📤 Enviando ${product.code} para grupo ${group?.name}`);
+            
             // Enviar mensagem via API do servidor WhatsApp
             const response = await fetch(`${integration.api_url}/send-group`, {
               method: 'POST',
@@ -339,7 +345,15 @@ export default function SendFlow() {
             });
 
             if (!response.ok) {
-              console.error(`Erro ao enviar para grupo ${group?.name}:`, await response.text());
+              const errorText = await response.text();
+              console.error(`❌ Erro ao enviar para grupo ${group?.name}:`, errorText);
+              toast({
+                title: 'Erro no envio',
+                description: `Falha ao enviar para ${group?.name}`,
+                variant: 'destructive'
+              });
+            } else {
+              console.log(`✅ Enviado com sucesso para ${group?.name}`);
             }
 
             // Registrar no banco
@@ -356,13 +370,28 @@ export default function SendFlow() {
             setSendProgress({ current: messageCount, total: totalMessages });
 
           } catch (error) {
-            console.error(`Erro ao enviar mensagem para grupo ${group?.name}:`, error);
+            console.error(`❌ Erro ao enviar mensagem para grupo ${group?.name}:`, error);
+            toast({
+              title: 'Erro',
+              description: `Falha ao enviar para ${group?.name}`,
+              variant: 'destructive'
+            });
           }
+        }
 
-          // Aguardar intervalo entre mensagens (exceto na última)
-          if (messageCount < totalMessages) {
-            await new Promise(resolve => setTimeout(resolve, intervalSeconds * 1000));
+        // PAUSA APENAS APÓS ENVIAR PARA TODOS OS GRUPOS (exceto no último produto)
+        if (i < selectedProductArray.length - 1) {
+          setIsPausing(true);
+          console.log(`⏸️ Pausando ${intervalSeconds} segundos antes do próximo produto...`);
+          
+          // Countdown visual da pausa
+          for (let countdown = intervalSeconds; countdown > 0; countdown--) {
+            setPauseCountdown(countdown);
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
+          
+          setIsPausing(false);
+          setPauseCountdown(0);
         }
       }
 
@@ -376,6 +405,8 @@ export default function SendFlow() {
       setSelectedGroups(new Set());
       setCurrentProduct('');
       setCurrentGroup('');
+      setIsPausing(false);
+      setPauseCountdown(0);
 
     } catch (error) {
       console.error('Erro ao enviar mensagens:', error);
@@ -387,8 +418,42 @@ export default function SendFlow() {
     } finally {
       setSending(false);
       setSendProgress({ current: 0, total: 0 });
+      setIsPausing(false);
+      setPauseCountdown(0);
     }
   };
+
+  // Calcular tempo estimado de envio
+  const calculateEstimatedTime = () => {
+    const numProducts = selectedProducts.size;
+    const numGroups = selectedGroups.size;
+    
+    if (numProducts === 0 || numGroups === 0) {
+      return 0;
+    }
+
+    // Pausas = número de produtos - 1 (não pausa após o último)
+    const numPauses = Math.max(0, numProducts - 1);
+    const totalSeconds = numPauses * intervalSeconds;
+    
+    return totalSeconds;
+  };
+
+  // Formatar tempo em minutos e segundos
+  const formatTime = (seconds: number) => {
+    if (seconds === 0) return '0s';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins > 0) {
+      return secs > 0 ? `${mins}min ${secs}s` : `${mins}min`;
+    }
+    return `${secs}s`;
+  };
+
+  // Atualizar tempo estimado quando seleções mudarem
+  useEffect(() => {
+    setEstimatedTime(calculateEstimatedTime());
+  }, [selectedProducts.size, selectedGroups.size, intervalSeconds]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -596,10 +661,10 @@ export default function SendFlow() {
           {/* Progress e Botão de Envio */}
           <div className="space-y-4">
             {sending && (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">
-                    Enviando: {currentProduct}
+                    Produto: <strong>{currentProduct}</strong>
                   </span>
                   <span className="font-medium">
                     {sendProgress.current} / {sendProgress.total}
@@ -607,9 +672,19 @@ export default function SendFlow() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">
-                    Grupo: {currentGroup}
+                    Grupo: <strong>{currentGroup}</strong>
                   </span>
                 </div>
+                
+                {isPausing && (
+                  <div className="flex items-center justify-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                    <Pause className="w-4 h-4 text-yellow-500" />
+                    <span className="text-sm font-medium text-yellow-500">
+                      Pausando... {pauseCountdown}s
+                    </span>
+                  </div>
+                )}
+                
                 <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
                   <div
                     className="bg-primary h-full transition-all duration-300"
@@ -621,17 +696,40 @@ export default function SendFlow() {
               </div>
             )}
 
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                {selectedProducts.size} produto(s) × {selectedGroups.size} grupo(s) = {' '}
-                <strong>{selectedProducts.size * selectedGroups.size} mensagens</strong>
+            <div className="space-y-4">
+              <div className="flex flex-col gap-2 p-4 bg-accent/50 rounded-lg border border-border">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    📦 {selectedProducts.size} produto(s) × 👥 {selectedGroups.size} grupo(s)
+                  </span>
+                  <span className="font-medium">
+                    = <strong>{selectedProducts.size * selectedGroups.size} mensagens</strong>
+                  </span>
+                </div>
+                
+                {estimatedTime > 0 && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Clock className="w-4 h-4" />
+                      Tempo estimado:
+                    </span>
+                    <span className="font-medium text-primary">
+                      {formatTime(estimatedTime)}
+                    </span>
+                  </div>
+                )}
+                
+                <div className="text-xs text-muted-foreground mt-2 p-2 bg-background/50 rounded border border-border/50">
+                  💡 <strong>Como funciona:</strong> O sistema envia cada produto para TODOS os grupos selecionados, 
+                  aguarda {intervalSeconds}s, e então envia o próximo produto.
+                </div>
               </div>
 
               <Button
                 onClick={handleSendMessages}
                 disabled={sending || selectedProducts.size === 0 || selectedGroups.size === 0}
                 size="lg"
-                className="gap-2"
+                className="w-full gap-2"
               >
                 {sending ? (
                   <>
