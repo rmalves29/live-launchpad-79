@@ -796,24 +796,26 @@ function createApp(tenantManager, supabaseHelper) {
       });
     }
 
-    // VALIDAÇÃO REAL DA SESSÃO - não confiar apenas na variável status
+    // VALIDAÇÃO REAL DA SESSÃO - validar apenas credenciais, não WebSocket state
     let realStatus = clientData.status;
     const sock = clientData.sock;
     
     // Se diz que está online, validar se realmente tem sessão válida
+    // IMPORTANTE: Não validar sock.ws.readyState pois ele é transitório durante envio de mensagens
     if (realStatus === 'online' && sock) {
       const hasValidSession = !!(
         sock.user && 
         sock.authState && 
-        sock.authState.creds &&
-        sock.ws &&
-        sock.ws.readyState === 1 // WebSocket OPEN
+        sock.authState.creds
       );
       
       if (!hasValidSession) {
-        console.log(`⚠️ [${tenantId}] Status estava 'online' mas sessão inválida. Atualizando para 'disconnected'`);
+        console.log(`⚠️ [${tenantId}] Status estava 'online' mas sessão inválida (credenciais). Atualizando para 'disconnected'`);
         realStatus = 'disconnected';
         clientData.status = 'disconnected';
+      } else if (sock.ws) {
+        // Apenas logar o estado do WebSocket para debug, mas NÃO usar para marcar como disconnected
+        console.log(`✅ [${tenantId}] Sessão válida - WebSocket state: ${sock.ws.readyState}`);
       }
     }
 
