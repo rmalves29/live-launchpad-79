@@ -202,8 +202,8 @@ const Checkout = () => {
     setLoadingOpenOrders(true);
     
     try {
-      // Buscar todos os pedidos não pagos do tenant
-      const { data: allOrders, error } = await supabaseTenant
+      // Buscar TODOS os pedidos não pagos (independente do tenant)
+      const { data: allOrders, error } = await supabase
         .from('orders')
         .select('*')
         .eq('is_paid', false)
@@ -217,8 +217,6 @@ const Checkout = () => {
         return orderPhone === normalizedPhone;
       });
 
-      if (error) throw error;
-
       // Load cart items for each order
       const ordersWithItems = await Promise.all(
         (orders || []).map(async (order) => {
@@ -227,14 +225,13 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          console.log(`🔍 Buscando items para pedido ${order.id}, cart_id: ${order.cart_id}, tenant_id: ${tenantId}`);
+          console.log(`🔍 Buscando items para pedido ${order.id}, cart_id: ${order.cart_id}`);
 
-          // Buscar cart_items do tenant
-          const { data: cartItems, error: itemsError } = await supabaseTenant.raw
+          // Buscar cart_items (sem filtro de tenant)
+          const { data: cartItems, error: itemsError } = await supabase
             .from('cart_items')
             .select('id, qty, unit_price, product_id, tenant_id')
-            .eq('cart_id', order.cart_id)
-            .eq('tenant_id', tenantId);
+            .eq('cart_id', order.cart_id);
 
           console.log(`📦 Cart items brutos encontrados:`, cartItems?.length || 0, cartItems);
 
@@ -248,13 +245,12 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          // Buscar produtos correspondentes
+          // Buscar produtos correspondentes (sem filtro de tenant)
           const productIds = cartItems.map(item => item.product_id);
-          const { data: products, error: productsError } = await supabaseTenant.raw
+          const { data: products, error: productsError } = await supabase
             .from('products')
             .select('id, name, code, image_url, tenant_id')
-            .in('id', productIds)
-            .eq('tenant_id', tenantId);
+            .in('id', productIds);
 
           console.log(`📦 Produtos encontrados:`, products?.length || 0, products);
 
@@ -1076,7 +1072,8 @@ const Checkout = () => {
     setLoadingHistory(true);
     
     try {
-      const { data: orders, error } = await supabaseTenant
+      // Buscar histórico em TODOS os tenants
+      const { data: orders, error } = await supabase
         .from('orders')
         .select('*')
         .eq('customer_phone', normalizedPhone)
@@ -1092,7 +1089,8 @@ const Checkout = () => {
             return { ...order, items: [] };
           }
 
-          const { data: cartItems, error: itemsError } = await supabaseTenant
+          // Buscar cart_items sem filtro de tenant
+          const { data: cartItems, error: itemsError } = await supabase
             .from('cart_items')
             .select(`
               id,
