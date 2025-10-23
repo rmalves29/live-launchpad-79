@@ -11,7 +11,8 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Loader2,
-  QrCode as QrCodeIcon
+  QrCode as QrCodeIcon,
+  LogOut
 } from "lucide-react";
 
 interface WhatsAppStatus {
@@ -425,6 +426,66 @@ export default function ConexaoWhatsApp() {
     }
   };
 
+  const handleDisconnect = async () => {
+    if (!serverUrl || !tenant?.id) return;
+
+    try {
+      setLoading(true);
+      
+      console.log('\n🔌 [DESCONECTAR] Forçando desconexão do WhatsApp');
+      console.log('📋 [DESCONECTAR] Servidor:', serverUrl);
+      console.log('📋 [DESCONECTAR] Tenant ID:', tenant.id);
+      
+      toast({
+        title: "Desconectando WhatsApp",
+        description: "Encerrando sessão do WhatsApp...",
+      });
+
+      // Chamar endpoint de reset no servidor Node.js para forçar desconexão
+      const resetUrl = `${serverUrl}/reset/${tenant.id}`;
+      console.log('📤 [DESCONECTAR] Chamando:', resetUrl);
+      
+      const response = await fetch(resetUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [DESCONECTAR] Erro ao desconectar:', errorText);
+        throw new Error('Erro ao desconectar WhatsApp');
+      }
+
+      const result = await response.json();
+      console.log('✅ [DESCONECTAR] Desconexão bem sucedida:', result);
+
+      // Limpar o status
+      setWhatsappStatus({
+        connected: false,
+        status: 'disconnected',
+        message: 'WhatsApp desconectado com sucesso'
+      });
+
+      toast({
+        title: "WhatsApp Desconectado",
+        description: "A sessão foi encerrada com sucesso.",
+      });
+
+      setLoading(false);
+
+    } catch (error: any) {
+      console.error('❌ [DESCONECTAR] Erro:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao desconectar WhatsApp",
+        variant: "destructive"
+      });
+      setLoading(false);
+    }
+  };
+
   if (loading && !serverUrl) {
     return (
       <div className="container mx-auto p-6">
@@ -551,19 +612,36 @@ WHERE tenant_id = '${tenant?.id}';`}
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Status da Conexão</span>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleReconnect}
-              disabled={loading}
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
+            <div className="flex gap-2">
+              {whatsappStatus?.connected && (
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={handleDisconnect}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <LogOut className="h-4 w-4 mr-2" />
+                  )}
+                  Desconectar
+                </Button>
               )}
-              Reconectar
-            </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleReconnect}
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Reconectar
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
