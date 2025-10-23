@@ -26,9 +26,12 @@ Deno.serve(async (req) => {
     const { tenant_id, customer_phone, message, group_name } = body;
 
     console.log('\n🔄 ===== PROCESSANDO MENSAGEM WHATSAPP =====');
-    console.log('📱 Telefone:', customer_phone);
-    console.log('💬 Mensagem:', message);
     console.log('🏢 Tenant:', tenant_id);
+    console.log('📱 Telefone RECEBIDO:', customer_phone);
+    console.log('💬 Mensagem:', message);
+    if (group_name) {
+      console.log('👥 Grupo WhatsApp:', group_name);
+    }
 
     // Detectar códigos de produtos (C seguido de números)
     const productCodeRegex = /C(\d+)/gi;
@@ -91,6 +94,11 @@ Deno.serve(async (req) => {
     }
 
     const phoneNormalized = normalizePhoneBrazil(customer_phone);
+    
+    console.log('\n📞 ===== NORMALIZAÇÃO DE TELEFONE =====');
+    console.log('📥 Telefone original:', customer_phone);
+    console.log('📤 Telefone normalizado:', phoneNormalized);
+    console.log('===== FIM NORMALIZAÇÃO =====\n');
 
     // Data de hoje
     const today = new Date().toISOString().split('T')[0];
@@ -131,7 +139,12 @@ Deno.serve(async (req) => {
 
       // 3. Buscar pedido existente NÃO pago do mesmo dia
       // IMPORTANTE: Filtrar apenas BAZAR e MANUAL, excluir LIVE
-      console.log('🔎 Buscando pedido existente (BAZAR ou MANUAL, não pago)...');
+      console.log('\n🔎 ===== BUSCANDO PEDIDO EXISTENTE =====');
+      console.log('📋 Tenant ID:', tenant_id);
+      console.log('📋 Telefone normalizado:', phoneNormalized);
+      console.log('📋 Data:', today);
+      console.log('📋 Tipos aceitos: BAZAR, MANUAL');
+      console.log('📋 Status: não pago');
       
       const { data: existingOrders, error: orderSearchError } = await supabase
         .from('orders')
@@ -149,6 +162,15 @@ Deno.serve(async (req) => {
         results.push({ code, success: false, error: 'Erro ao buscar pedido' });
         continue;
       }
+      
+      console.log('📊 Resultado da busca:', existingOrders?.length || 0, 'pedido(s) encontrado(s)');
+      if (existingOrders && existingOrders.length > 0) {
+        console.log('✅ Pedido existente #', existingOrders[0].id);
+        console.log('   - Tipo:', existingOrders[0].event_type);
+        console.log('   - Telefone no DB:', existingOrders[0].customer_phone);
+        console.log('   - Total atual: R$', existingOrders[0].total_amount);
+      }
+      console.log('===== FIM BUSCA PEDIDO =====\n');
 
       const qty = 1; // Quantidade padrão
       const subtotal = product.price * qty;

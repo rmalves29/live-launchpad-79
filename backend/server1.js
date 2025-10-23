@@ -353,18 +353,32 @@ class TenantManager {
     // Obter telefone do remetente
     // IMPORTANTE: Em grupos, o telefone está em msg.key.participant, não em remoteJid
     let customerPhone;
+    
+    console.log(`\n🔍 ===== DEBUG DE IDENTIFICAÇÃO DO CLIENTE =====`);
+    console.log(`📋 RemoteJid completo: ${msg.key.remoteJid}`);
+    console.log(`📋 Participant: ${msg.key.participant || 'N/A'}`);
+    console.log(`📋 É grupo? ${isGroup ? 'SIM' : 'NÃO'}`);
+    
     if (isGroup && msg.key.participant) {
+      // MENSAGEM DE GRUPO: usar participant (quem enviou a mensagem)
       customerPhone = msg.key.participant.split('@')[0];
-      console.log(`📊 Mensagem de GRUPO: ${groupName}`);
-      console.log(`👤 Participante: ${customerPhone}`);
-    } else {
+      console.log(`\n✅ GRUPO DETECTADO`);
+      console.log(`📊 Nome do grupo: ${groupName}`);
+      console.log(`👤 Telefone do participante (quem comentou): ${customerPhone}`);
+    } else if (isGroup && !msg.key.participant) {
+      // MENSAGEM DE GRUPO SEM PARTICIPANT (caso raro)
+      console.log(`\n⚠️ AVISO: Mensagem de grupo SEM participant - usando remoteJid`);
       customerPhone = msg.key.remoteJid.split('@')[0];
-      console.log(`📱 Mensagem INDIVIDUAL`);
-      console.log(`👤 Cliente: ${customerPhone}`);
+      console.log(`👤 Telefone (fallback): ${customerPhone}`);
+    } else {
+      // MENSAGEM INDIVIDUAL: usar remoteJid
+      customerPhone = msg.key.remoteJid.split('@')[0];
+      console.log(`\n✅ MENSAGEM INDIVIDUAL`);
+      console.log(`👤 Telefone do cliente: ${customerPhone}`);
     }
     
-    console.log(`🔍 RemoteJid completo: ${msg.key.remoteJid}`);
-    if (msg.key.participant) console.log(`🔍 Participant completo: ${msg.key.participant}`);
+    console.log(`\n🔑 TELEFONE FINAL IDENTIFICADO: ${customerPhone}`);
+    console.log(`===== FIM DEBUG DE IDENTIFICAÇÃO =====\n`);
 
     // Processar cada código detectado via Edge Function
     for (const code of codes) {
