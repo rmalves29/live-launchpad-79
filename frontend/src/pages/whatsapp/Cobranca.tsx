@@ -50,6 +50,11 @@ export default function Cobranca() {
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
   const [whatsappApiUrl, setWhatsappApiUrl] = useState<string | null>(null);
   const [sendStatuses, setSendStatuses] = useState<Record<string, SendStatus>>({});
+  
+  // Configurações de timer para envio
+  const [delayBetweenMessages, setDelayBetweenMessages] = useState(3); // segundos entre cada mensagem
+  const [messagesBeforePause, setMessagesBeforePause] = useState(10); // qtd de mensagens antes da pausa
+  const [pauseDuration, setPauseDuration] = useState(30); // segundos de pausa a cada X mensagens
 
   // Carregar template padrão MSG_MASSA e URL do WhatsApp
   useEffect(() => {
@@ -282,9 +287,16 @@ export default function Cobranca() {
           }));
         }
 
-        // Delay de 2 segundos entre mensagens (exceto na última)
+        // Sistema de delay customizado
         if (i < customers.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Delay entre cada mensagem
+          await new Promise(resolve => setTimeout(resolve, delayBetweenMessages * 1000));
+          
+          // Pausa maior a cada X mensagens
+          if ((i + 1) % messagesBeforePause === 0) {
+            console.log(`⏸️ Pausa de ${pauseDuration}s após ${i + 1} mensagens`);
+            await new Promise(resolve => setTimeout(resolve, pauseDuration * 1000));
+          }
         }
       }
 
@@ -452,6 +464,70 @@ export default function Cobranca() {
               ) : null}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Card de Configurações de Envio */}
+      <Card>
+        <CardHeader>
+          <CardTitle>⏱️ Configurações de Timer (Anti-Bloqueio)</CardTitle>
+          <CardDescription>
+            Configure os intervalos de envio para evitar bloqueio do chip
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="delayBetweenMessages">
+                Delay entre mensagens (segundos)
+              </Label>
+              <Input
+                id="delayBetweenMessages"
+                type="number"
+                min="1"
+                max="60"
+                value={delayBetweenMessages}
+                onChange={(e) => setDelayBetweenMessages(Number(e.target.value))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Pausa após cada mensagem enviada
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="messagesBeforePause">
+                Mensagens antes da pausa maior
+              </Label>
+              <Input
+                id="messagesBeforePause"
+                type="number"
+                min="1"
+                max="100"
+                value={messagesBeforePause}
+                onChange={(e) => setMessagesBeforePause(Number(e.target.value))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Quantidade de mensagens em lote
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="pauseDuration">
+                Duração da pausa maior (segundos)
+              </Label>
+              <Input
+                id="pauseDuration"
+                type="number"
+                min="5"
+                max="300"
+                value={pauseDuration}
+                onChange={(e) => setPauseDuration(Number(e.target.value))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Pausa a cada lote de mensagens
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
