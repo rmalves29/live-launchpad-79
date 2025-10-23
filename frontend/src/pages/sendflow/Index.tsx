@@ -322,7 +322,7 @@ export default function SendFlow() {
         setCurrentProduct(product.name);
         const personalizedMessage = personalizeMessage(product);
 
-        // Enviar para TODOS os grupos deste produto SEM pausar
+        // Enviar para TODOS os grupos deste produto COM delay de 2s entre cada mensagem
         for (let j = 0; j < selectedGroupArray.length; j++) {
           const groupId = selectedGroupArray[j];
           const group = groups.find(g => g.id === groupId);
@@ -368,6 +368,13 @@ export default function SendFlow() {
 
             messageCount++;
             setSendProgress({ current: messageCount, total: totalMessages });
+
+            // Delay de 2 segundos entre cada mensagem (exceto a última de todas)
+            const isLastMessage = (i === selectedProductArray.length - 1) && (j === selectedGroupArray.length - 1);
+            if (!isLastMessage) {
+              console.log('⏳ Aguardando 2 segundos...');
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
 
           } catch (error) {
             console.error(`❌ Erro ao enviar mensagem para grupo ${group?.name}:`, error);
@@ -432,9 +439,18 @@ export default function SendFlow() {
       return 0;
     }
 
-    // Pausas = número de produtos - 1 (não pausa após o último)
+    // Total de mensagens
+    const totalMessages = numProducts * numGroups;
+    
+    // Delays de 2s entre mensagens (exceto a última)
+    const messageDelays = Math.max(0, totalMessages - 1) * 2;
+    
+    // Pausas entre produtos = número de produtos - 1
     const numPauses = Math.max(0, numProducts - 1);
-    const totalSeconds = numPauses * intervalSeconds;
+    const productPauses = numPauses * intervalSeconds;
+    
+    // Tempo total = delays entre mensagens + pausas entre produtos
+    const totalSeconds = messageDelays + productPauses;
     
     return totalSeconds;
   };
