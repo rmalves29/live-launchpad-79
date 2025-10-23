@@ -387,15 +387,28 @@ class TenantManager {
         customerPhone = msg.participant.split('@')[0];
         console.log(`✓ Usando msg.participant: ${customerPhone}`);
       } else {
-        console.log(`⚠️ AVISO: Nenhum participant encontrado, usando remoteJid como fallback`);
-        customerPhone = msg.key.remoteJid.split('@')[0];
-        console.log(`✓ Usando msg.key.remoteJid (fallback): ${customerPhone}`);
+        // CRÍTICO: NUNCA usar ID do grupo como telefone
+        console.error(`❌ ERRO CRÍTICO: Não foi possível identificar o telefone do participante no grupo!`);
+        console.error(`   ID do grupo: ${groupName}`);
+        console.error(`   msg.key.participant: ${msg.key.participant || 'UNDEFINED'}`);
+        console.error(`   msg.participant: ${msg.participant || 'UNDEFINED'}`);
+        console.error(`   ⛔ PROCESSAMENTO ABORTADO - Não podemos usar ID do grupo como telefone`);
+        console.log(`${'='.repeat(70)}\n`);
+        return; // Abortar processamento
       }
     } else {
       // MENSAGEM INDIVIDUAL
       customerPhone = msg.key.remoteJid.split('@')[0];
       console.log(`\n✅ MENSAGEM INDIVIDUAL`);
       console.log(`✓ Usando msg.key.remoteJid: ${customerPhone}`);
+    }
+    
+    // VALIDAÇÃO ADICIONAL: Verificar se não é um ID de grupo
+    if (customerPhone.includes('-')) {
+      console.error(`❌ ERRO: ID de grupo detectado como telefone: ${customerPhone}`);
+      console.error(`   ⛔ PROCESSAMENTO ABORTADO - Telefone inválido`);
+      console.log(`${'='.repeat(70)}\n`);
+      return; // Abortar se detectar formato de grupo (contém hífen)
     }
     
     console.log(`\n🔑 TELEFONE FINAL CAPTURADO: ${customerPhone}`);
