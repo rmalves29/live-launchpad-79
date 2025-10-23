@@ -429,6 +429,25 @@ class TenantManager {
     console.log(`${'='.repeat(70)}\n`);
   }
 
+  // Método para LISTAGEM de grupos - valida apenas credenciais, não WebSocket
+  getAuthenticatedClient(tenantId) {
+    const clientData = this.clients.get(tenantId);
+    if (!clientData || clientData.status !== 'online') {
+      return null;
+    }
+    
+    // Verificar se o socket tem credenciais válidas
+    const sock = clientData.sock;
+    if (!sock || !sock.user || !sock.authState || !sock.authState.creds) {
+      console.log(`⚠️ Cliente ${tenantId} sem credenciais válidas`);
+      return null;
+    }
+    
+    console.log(`✅ Cliente ${tenantId} autenticado - OK para listar grupos`);
+    return sock;
+  }
+
+  // Método para ENVIO de mensagens - validação restrita com WebSocket
   getOnlineClient(tenantId) {
     const clientData = this.clients.get(tenantId);
     if (!clientData || clientData.status !== 'online') {
@@ -856,15 +875,25 @@ function createApp(tenantManager, supabaseHelper) {
   app.get('/list-all-groups', async (req, res) => {
     const { tenantId } = req;
 
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`📋 LISTANDO GRUPOS DO WHATSAPP`);
+    console.log(`${'='.repeat(70)}`);
+    console.log(`🏢 Tenant ID: ${tenantId}`);
+
     if (!tenantId) {
+      console.log(`❌ Tenant ID não fornecido`);
+      console.log(`${'='.repeat(70)}\n`);
       return res.status(400).json({ 
         success: false, 
         error: 'tenant_id obrigatório' 
       });
     }
 
-    const sock = tenantManager.getOnlineClient(tenantId);
+    // Usar getAuthenticatedClient para listagem (menos restritivo que getOnlineClient)
+    const sock = tenantManager.getAuthenticatedClient(tenantId);
     if (!sock) {
+      console.log(`❌ WhatsApp não autenticado para este tenant`);
+      console.log(`${'='.repeat(70)}\n`);
       return res.status(503).json({ 
         success: false, 
         error: 'WhatsApp não conectado para este tenant' 
@@ -872,6 +901,7 @@ function createApp(tenantManager, supabaseHelper) {
     }
 
     try {
+      console.log(`📞 Buscando grupos do WhatsApp...`);
       const chats = await sock.groupFetchAllParticipating();
       const groups = Object.values(chats).map(group => ({
         id: group.id,
@@ -879,13 +909,21 @@ function createApp(tenantManager, supabaseHelper) {
         participantCount: group.participants?.length || 0
       }));
 
+      console.log(`✅ ${groups.length} grupo(s) encontrado(s)`);
+      groups.forEach(g => console.log(`   - ${g.name} (${g.participantCount} membros)`));
+      console.log(`${'='.repeat(70)}\n`);
+
       res.json({ 
         success: true, 
         groups,
         count: groups.length
       });
     } catch (error) {
-      console.error('❌ Erro ao listar grupos:', error);
+      console.error(`❌ Erro ao listar grupos:`, error);
+      console.error(`   Tipo: ${error.name}`);
+      console.error(`   Mensagem: ${error.message}`);
+      console.log(`${'='.repeat(70)}\n`);
+      
       res.status(500).json({ 
         success: false, 
         error: error.message 
