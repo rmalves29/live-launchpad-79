@@ -434,7 +434,16 @@ class TenantManager {
     if (!clientData || clientData.status !== 'online') {
       return null;
     }
-    return clientData.sock;
+    
+    // Verificar se o socket realmente tem sessão ativa
+    const sock = clientData.sock;
+    if (!sock || !sock.user || !sock.authState || !sock.authState.creds) {
+      console.log(`⚠️ Cliente ${tenantId} marcado como online mas sem sessão válida`);
+      clientData.status = 'disconnected';
+      return null;
+    }
+    
+    return sock;
   }
 
   getAllStatus() {
@@ -1028,6 +1037,15 @@ function createApp(tenantManager, supabaseHelper) {
         throw new Error(`Formato de ID de grupo inválido: ${groupId}. Esperado: xxxxx@g.us`);
       }
       
+      // Verificar se realmente tem sessão antes de enviar
+      if (!sock.user || !sock.authState || !sock.authState.creds) {
+        const clientData = tenantManager.clients.get(tenantId);
+        if (clientData) {
+          clientData.status = 'disconnected';
+        }
+        throw new Error('No sessions - WhatsApp desconectado. Escaneie o QR Code novamente.');
+      }
+      
       await sock.sendMessage(groupId, { text: message });
       
       const duration = Date.now() - startTime;
@@ -1057,8 +1075,21 @@ function createApp(tenantManager, supabaseHelper) {
       // Identificar tipo de erro específico do Baileys
       let errorType = 'unknown';
       let errorMessage = error.message;
+      let statusCode = 500;
       
-      if (error.message.includes('timed out') || error.message.includes('timeout')) {
+      // Erro de sessão perdida - CRÍTICO
+      if (error.message.includes('No sessions') || error.message.includes('session') || error.message.includes('Connection Closed')) {
+        errorType = 'no-session';
+        errorMessage = 'WhatsApp desconectado. Escaneie o QR Code novamente na página de Conexão.';
+        statusCode = 503;
+        
+        // Atualizar status do cliente
+        const clientData = tenantManager.clients.get(tenantId);
+        if (clientData) {
+          clientData.status = 'disconnected';
+          console.log(`🔄 Status atualizado para 'disconnected'`);
+        }
+      } else if (error.message.includes('timed out') || error.message.includes('timeout')) {
         errorType = 'timeout';
         errorMessage = 'Timeout ao enviar mensagem. O WhatsApp pode estar lento.';
       } else if (error.message.includes('not-authorized') || error.message.includes('401')) {
@@ -1076,7 +1107,7 @@ function createApp(tenantManager, supabaseHelper) {
       console.error(`   Stack:`, error.stack);
       console.log(`${'='.repeat(70)}\n`);
       
-      res.status(500).json({ 
+      res.status(statusCode).json({ 
         success: false, 
         error: errorMessage,
         error_type: errorType,

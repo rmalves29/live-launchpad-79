@@ -399,11 +399,19 @@ export default function SendFlow() {
                 
                 // Se for erro 503 (WhatsApp desconectado), não tentar novamente
                 if (response.status === 503) {
+                  const errorDetails = errorData?.details || lastError;
+                  console.error(`\n${'🚨'.repeat(30)}`);
+                  console.error(`🚨 WHATSAPP DESCONECTADO!`);
+                  console.error(`   Erro: ${errorDetails}`);
+                  console.error(`${'🚨'.repeat(30)}\n`);
+                  
                   toast({
-                    title: 'WhatsApp desconectado',
-                    description: 'A conexão com o WhatsApp foi perdida. Reconecte e tente novamente.',
-                    variant: 'destructive'
+                    title: '🚨 WhatsApp Desconectado',
+                    description: 'Vá até a página "Conexão WhatsApp" e escaneie o QR Code novamente.',
+                    variant: 'destructive',
+                    duration: 10000
                   });
+                  setSending(false);
                   throw new Error('WhatsApp desconectado - abortando envio');
                 }
                 
