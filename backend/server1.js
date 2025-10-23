@@ -1049,32 +1049,8 @@ function createApp(tenantManager, supabaseHelper) {
         details: 'Conecte o WhatsApp antes de enviar mensagens'
       });
     }
-    
-    // VALIDAÇÃO CRÍTICA: verificar se sessão realmente existe ANTES de tentar enviar
-    if (!sock.user || !sock.authState || !sock.authState.creds) {
-      const clientData = tenantManager.clients.get(tenantId);
-      const currentStatus = clientData?.status || 'unknown';
-      
-      console.log(`❌ SESSÃO WHATSAPP INVÁLIDA para tenant ${tenantId}`);
-      console.log(`   sock.user: ${sock.user ? '✅' : '❌'}`);
-      console.log(`   sock.authState: ${sock.authState ? '✅' : '❌'}`);
-      console.log(`   sock.authState.creds: ${sock.authState?.creds ? '✅' : '❌'}`);
-      console.log(`${'='.repeat(70)}\n`);
-      
-      // Atualizar status
-      if (clientData) {
-        clientData.status = 'disconnected';
-      }
-      
-      return res.status(503).json({ 
-        success: false, 
-        error: 'WhatsApp desconectado',
-        status: 'disconnected',
-        details: 'Sessão perdida. Vá até "Conexão WhatsApp" e escaneie o QR Code novamente.'
-      });
-    }
 
-    console.log(`✅ WhatsApp conectado com sessão válida, enviando mensagem...`);
+    console.log(`✅ WhatsApp conectado, enviando mensagem para grupo...`);
 
     try {
       const startTime = Date.now();
