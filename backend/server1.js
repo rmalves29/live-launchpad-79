@@ -435,7 +435,7 @@ class TenantManager {
       return null;
     }
     
-    // Verificar se o socket realmente tem sessão ativa e conexão WebSocket aberta
+    // Verificar se o socket realmente tem sessão ativa
     const sock = clientData.sock;
     if (!sock || !sock.user || !sock.authState || !sock.authState.creds) {
       console.log(`⚠️ Cliente ${tenantId} marcado como online mas sem sessão válida`);
@@ -443,11 +443,9 @@ class TenantManager {
       return null;
     }
     
-    // Verificar se WebSocket está realmente conectado
-    if (sock.ws && sock.ws.readyState !== 1) { // 1 = OPEN
-      console.log(`⚠️ Cliente ${tenantId} com sessão mas WebSocket não está aberto (readyState: ${sock.ws.readyState})`);
-      clientData.status = 'disconnected';
-      return null;
+    // AVISO: Não bloquear por causa do WebSocket readyState, apenas logar
+    if (sock.ws && sock.ws.readyState !== 1) {
+      console.log(`⚠️ Cliente ${tenantId} - WebSocket readyState: ${sock.ws.readyState} (mas sessão existe)`);
     }
     
     return sock;
