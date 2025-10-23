@@ -255,11 +255,13 @@ class TenantManager {
         clientData.status = 'online';
         clientData.qr = null;
         
-        // Buscar informações do usuário
+        // Buscar informações do usuário e salvar número do bot
         try {
           const me = sock.user;
           if (me) {
-            console.log(`📱 WhatsApp: ${me.id.split(':')[0]}`);
+            const botPhone = me.id.split(':')[0];
+            clientData.botPhone = botPhone; // Salvar número do bot
+            console.log(`📱 WhatsApp Bot: ${botPhone}`);
             console.log(`📱 Nome: ${me.name || 'N/A'}`);
           }
         } catch (error) {
@@ -400,6 +402,14 @@ class TenantManager {
     console.log(`📏 Tamanho: ${customerPhone.length} dígitos`);
     console.log(`===== FIM DEBUG DE IDENTIFICAÇÃO =====\n`);
 
+    // Verificar se o telefone é do próprio bot (não processar vendas do número conectado)
+    const botPhone = clientData.botPhone;
+    if (botPhone && customerPhone.includes(botPhone)) {
+      console.log(`⚠️ Mensagem do próprio bot (${botPhone}) - IGNORANDO processamento de venda`);
+      console.log(`${'='.repeat(70)}\n`);
+      return;
+    }
+
     // Processar cada código detectado via Edge Function
     for (const code of codes) {
       try {
@@ -408,9 +418,10 @@ class TenantManager {
         
         const requestBody = {
           tenant_id: tenantId,
-          customer_phone: customerPhone,
+          customer_phone: customerPhone, // Enviar SEM normalização
           message: code,
-          group_name: groupName
+          group_name: groupName,
+          bot_phone: botPhone // Enviar número do bot para validação adicional
         };
         
         console.log(`📦 Body da requisição:`, JSON.stringify(requestBody, null, 2));

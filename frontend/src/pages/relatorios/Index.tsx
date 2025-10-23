@@ -385,6 +385,22 @@ const Relatorios = () => {
 
   const loadWhatsAppGroupStats = async () => {
     try {
+      // Buscar mapeamento de códigos de grupo para nomes
+      const { data: groupMappings } = await supabaseTenant
+        .from('customer_whatsapp_groups')
+        .select('whatsapp_group_name, whatsapp_group_name');
+      
+      // Criar mapa de código para nome real do grupo
+      const groupNameMap = new Map<string, string>();
+      if (groupMappings) {
+        for (const mapping of groupMappings) {
+          // Se tiver nome diferente do código, criar mapeamento
+          if (mapping.whatsapp_group_name) {
+            groupNameMap.set(mapping.whatsapp_group_name, mapping.whatsapp_group_name);
+          }
+        }
+      }
+      
       // Aplicar filtros de data
       let dateFilter = '';
       let endDateFilter = '';
@@ -457,10 +473,17 @@ const Relatorios = () => {
 
       // Processar cada pedido e agrupar por grupo WhatsApp
       orders?.forEach(order => {
-        // Determinar nome do grupo - priorizar do pedido, depois do carrinho
-        let groupName = order.whatsapp_group_name || 
+        // Determinar código do grupo - priorizar do pedido, depois do carrinho
+        let groupCode = order.whatsapp_group_name || 
                         order.carts?.whatsapp_group_name || 
                         'Sem Grupo Definido';
+        
+        // Extrair nome do grupo a partir do código (se for código @g.us)
+        let groupName = groupCode;
+        if (groupCode && groupCode.includes('@g.us')) {
+          // Tentar encontrar um nome amigável (buscar no mapeamento ou usar código)
+          groupName = groupNameMap.get(groupCode) || groupCode.split('@')[0];
+        }
         
         console.log(`📞 Pedido ${order.id} - Telefone ${order.customer_phone} - Grupo: ${groupName}`);
         
