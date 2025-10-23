@@ -57,9 +57,12 @@ Deno.serve(async (req) => {
       // Remover tudo que não é número
       let clean = phone.replace(/\D/g, '');
       
-      // Remover código do país se tiver
+      console.log(`🔍 Telefone original (limpo): ${clean} (${clean.length} dígitos)`);
+      
+      // Remover código do país (55) se tiver
       if (clean.startsWith('55')) {
         clean = clean.substring(2);
+        console.log(`✂️ Removido DDI 55: ${clean}`);
       }
       
       // Validar tamanho mínimo
@@ -68,11 +71,28 @@ Deno.serve(async (req) => {
         return clean;
       }
       
+      // Se o número tem mais de 11 dígitos, está mal formatado
+      // Vamos tentar corrigir pegando apenas os 11 últimos dígitos
+      if (clean.length > 11) {
+        console.warn(`⚠️ Telefone com ${clean.length} dígitos (esperado: 11 ou menos)`);
+        console.log(`🔧 Tentando corrigir pegando os 11 últimos dígitos...`);
+        clean = clean.substring(clean.length - 11);
+        console.log(`✅ Telefone corrigido: ${clean}`);
+      }
+      
       // Extrair DDD (2 dígitos) e número
       const ddd = parseInt(clean.substring(0, 2));
       let number = clean.substring(2);
       
       console.log(`📞 Normalizando: DDD=${ddd}, Número=${number} (${number.length} dígitos)`);
+      
+      // Garantir que o número tenha 8 ou 9 dígitos
+      if (number.length > 9) {
+        console.warn(`⚠️ Número com ${number.length} dígitos (esperado: 8 ou 9)`);
+        // Pegar apenas os 9 últimos dígitos
+        number = number.substring(number.length - 9);
+        console.log(`🔧 Número corrigido: ${number}`);
+      }
       
       if (ddd >= 31) {
         // DDD >= 31 (SP, MG, Sul, etc): REMOVER o 9º dígito se tiver
@@ -89,7 +109,7 @@ Deno.serve(async (req) => {
       }
       
       const final = `${ddd}${number}`;
-      console.log(`✅ Telefone normalizado: ${final}`);
+      console.log(`✅ Telefone normalizado: ${final} (${final.length} dígitos)`);
       return final;
     }
 
