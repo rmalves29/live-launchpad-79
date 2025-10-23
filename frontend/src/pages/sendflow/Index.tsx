@@ -308,6 +308,33 @@ export default function SendFlow() {
         throw new Error('Integração WhatsApp não configurada');
       }
 
+      // VALIDAR SE WHATSAPP ESTÁ CONECTADO ANTES DE INICIAR
+      console.log('🔍 Validando conexão WhatsApp...');
+      const statusResponse = await fetch(`${integration.api_url}/status/${tenant?.id}`, {
+        method: 'GET',
+        headers: {
+          'x-tenant-id': tenant?.id || ''
+        }
+      });
+
+      if (!statusResponse.ok) {
+        throw new Error('Não foi possível verificar o status do WhatsApp');
+      }
+
+      const statusData = await statusResponse.json();
+      
+      if (!statusData.success || statusData.status !== 'online') {
+        toast({
+          title: 'WhatsApp não conectado',
+          description: `Status atual: ${statusData.status || 'desconhecido'}. Conecte o WhatsApp antes de enviar.`,
+          variant: 'destructive'
+        });
+        setSending(false);
+        return;
+      }
+
+      console.log('✅ WhatsApp conectado, iniciando envio...');
+
       const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
       const selectedGroupArray = Array.from(selectedGroups);
       const totalMessages = selectedProductArray.length * selectedGroupArray.length;
@@ -328,61 +355,100 @@ export default function SendFlow() {
           const group = groups.find(g => g.id === groupId);
           setCurrentGroup(group?.name || groupId);
 
-          try {
-            console.log(`📤 Enviando ${product.code} para grupo ${group?.name}`);
-            
-            // Enviar mensagem via API do servidor WhatsApp
-            const response = await fetch(`${integration.api_url}/send-group`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-tenant-id': tenant?.id || ''
-              },
-              body: JSON.stringify({
-                groupId: groupId,
-                message: personalizedMessage
-              })
-            });
-
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error(`❌ Erro ao enviar para grupo ${group?.name}:`, errorText);
-              toast({
-                title: 'Erro no envio',
-                description: `Falha ao enviar para ${group?.name}`,
-                variant: 'destructive'
+          // RETRY LOGIC: Tentar até 3 vezes com backoff exponencial
+          let success = false;
+          let lastError = '';
+          
+          for (let attempt = 1; attempt <= 3 && !success; attempt++) {
+            try {
+              console.log(`📤 Enviando ${product.code} para grupo ${group?.name} (tentativa ${attempt}/3)`);
+              
+              // Enviar mensagem via API do servidor WhatsApp
+              const response = await fetch(`${integration.api_url}/send-group`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-tenant-id': tenant?.id || ''
+                },
+                body: JSON.stringify({
+                  groupId: groupId,
+                  message: personalizedMessage
+                })
               });
-            } else {
-              console.log(`✅ Enviado com sucesso para ${group?.name}`);
+
+              if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                lastError = errorData?.error || response.statusText;
+                console.error(`❌ Erro ao enviar para grupo ${group?.name} (${response.status}):`, lastError);
+                
+                // Se for erro 503 (WhatsApp desconectado), não tentar novamente
+                if (response.status === 503) {
+                  toast({
+                    title: 'WhatsApp desconectado',
+                    description: 'A conexão com o WhatsApp foi perdida. Reconecte e tente novamente.',
+                    variant: 'destructive'
+                  });
+                  throw new Error('WhatsApp desconectado - abortando envio');
+                }
+                
+                // Se não for a última tentativa, aguardar antes de tentar novamente
+                if (attempt < 3) {
+                  const backoffTime = attempt * 1000; // 1s, 2s
+                  console.log(`⏳ Aguardando ${backoffTime}ms antes de tentar novamente...`);
+                  await new Promise(resolve => setTimeout(resolve, backoffTime));
+                  continue;
+                }
+              } else {
+                success = true;
+                console.log(`✅ Enviado com sucesso para ${group?.name}`);
+              }
+
+            } catch (error: any) {
+              lastError = error.message;
+              console.error(`❌ Exceção ao enviar para grupo ${group?.name}:`, error);
+              
+              // Se for erro de conexão perdida, abortar tudo
+              if (lastError.includes('desconectado') || lastError.includes('abortando')) {
+                throw error;
+              }
+              
+              // Se não for a última tentativa, aguardar antes de tentar novamente
+              if (attempt < 3) {
+                const backoffTime = attempt * 1000;
+                await new Promise(resolve => setTimeout(resolve, backoffTime));
+                continue;
+              }
             }
+          }
 
-            // Registrar no banco
-            await supabaseTenant.from('whatsapp_messages').insert({
-              phone: groupId,
-              message: personalizedMessage,
-              type: 'sendflow',
-              whatsapp_group_name: group?.name,
-              sent_at: new Date().toISOString(),
-              processed: true
-            });
-
-            messageCount++;
-            setSendProgress({ current: messageCount, total: totalMessages });
-
-            // Delay de 2 segundos entre cada mensagem (exceto a última de todas)
-            const isLastMessage = (i === selectedProductArray.length - 1) && (j === selectedGroupArray.length - 1);
-            if (!isLastMessage) {
-              console.log('⏳ Aguardando 2 segundos...');
-              await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-
-          } catch (error) {
-            console.error(`❌ Erro ao enviar mensagem para grupo ${group?.name}:`, error);
+          // Se após 3 tentativas não conseguiu enviar, registrar erro
+          if (!success) {
+            console.error(`❌ Falha definitiva ao enviar para ${group?.name} após 3 tentativas`);
             toast({
-              title: 'Erro',
-              description: `Falha ao enviar para ${group?.name}`,
+              title: 'Erro no envio',
+              description: `Falha ao enviar para ${group?.name}: ${lastError}`,
               variant: 'destructive'
             });
+          }
+
+          // Registrar no banco (mesmo se falhou, para ter histórico)
+          await supabaseTenant.from('whatsapp_messages').insert({
+            phone: groupId,
+            message: personalizedMessage,
+            type: 'sendflow',
+            whatsapp_group_name: group?.name,
+            sent_at: success ? new Date().toISOString() : null,
+            processed: success
+          });
+
+          messageCount++;
+          setSendProgress({ current: messageCount, total: totalMessages });
+
+          // Delay de 2 segundos entre cada mensagem (exceto a última de todas)
+          const isLastMessage = (i === selectedProductArray.length - 1) && (j === selectedGroupArray.length - 1);
+          if (!isLastMessage) {
+            console.log('⏳ Aguardando 2 segundos...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
           }
         }
 

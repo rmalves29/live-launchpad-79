@@ -981,7 +981,7 @@ function createApp(tenantManager, supabaseHelper) {
     console.log(`${'='.repeat(70)}`);
     console.log(`🏢 Tenant ID: ${tenantId}`);
     console.log(`👥 Group ID: ${groupId}`);
-    console.log(`💬 Mensagem (${message.length} chars): ${message.substring(0, 100)}...`);
+    console.log(`💬 Mensagem (${message?.length || 0} chars): ${message?.substring(0, 100) || 'N/A'}...`);
 
     if (!tenantId || !groupId || !message) {
       console.log(`❌ Parâmetros faltando!`);
@@ -992,18 +992,29 @@ function createApp(tenantManager, supabaseHelper) {
       
       return res.status(400).json({ 
         success: false, 
-        error: 'tenant_id, groupId e message são obrigatórios' 
+        error: 'tenant_id, groupId e message são obrigatórios',
+        details: {
+          tenant_id: !!tenantId,
+          groupId: !!groupId,
+          message: !!message
+        }
       });
     }
 
     const sock = tenantManager.getOnlineClient(tenantId);
     if (!sock) {
+      const clientData = tenantManager.clients.get(tenantId);
+      const currentStatus = clientData?.status || 'não inicializado';
+      
       console.log(`❌ WhatsApp NÃO CONECTADO para tenant ${tenantId}`);
+      console.log(`   Status atual: ${currentStatus}`);
       console.log(`${'='.repeat(70)}\n`);
       
       return res.status(503).json({ 
         success: false, 
-        error: 'WhatsApp não conectado' 
+        error: 'WhatsApp não conectado',
+        status: currentStatus,
+        details: 'Conecte o WhatsApp antes de enviar mensagens'
       });
     }
 
@@ -1011,6 +1022,11 @@ function createApp(tenantManager, supabaseHelper) {
 
     try {
       const startTime = Date.now();
+      
+      // Validar formato do groupId
+      if (!groupId.includes('@g.us')) {
+        throw new Error(`Formato de ID de grupo inválido: ${groupId}. Esperado: xxxxx@g.us`);
+      }
       
       await sock.sendMessage(groupId, { text: message });
       
@@ -1037,12 +1053,34 @@ function createApp(tenantManager, supabaseHelper) {
       console.error(`❌ ERRO AO ENVIAR MENSAGEM:`);
       console.error(`   Tipo: ${error.name}`);
       console.error(`   Mensagem: ${error.message}`);
+      
+      // Identificar tipo de erro específico do Baileys
+      let errorType = 'unknown';
+      let errorMessage = error.message;
+      
+      if (error.message.includes('timed out') || error.message.includes('timeout')) {
+        errorType = 'timeout';
+        errorMessage = 'Timeout ao enviar mensagem. O WhatsApp pode estar lento.';
+      } else if (error.message.includes('not-authorized') || error.message.includes('401')) {
+        errorType = 'not-authorized';
+        errorMessage = 'Sem autorização para enviar neste grupo. Verifique se o bot está no grupo.';
+      } else if (error.message.includes('rate-limit') || error.message.includes('429')) {
+        errorType = 'rate-limit';
+        errorMessage = 'Limite de mensagens atingido. Aguarde alguns minutos.';
+      } else if (error.message.includes('invalid') || error.message.includes('not found')) {
+        errorType = 'invalid-group';
+        errorMessage = 'Grupo não encontrado ou ID inválido.';
+      }
+      
+      console.error(`   Tipo identificado: ${errorType}`);
       console.error(`   Stack:`, error.stack);
       console.log(`${'='.repeat(70)}\n`);
       
       res.status(500).json({ 
         success: false, 
-        error: error.message 
+        error: errorMessage,
+        error_type: errorType,
+        details: error.message
       });
     }
   });
