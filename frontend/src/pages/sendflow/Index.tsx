@@ -359,9 +359,17 @@ export default function SendFlow() {
           let success = false;
           let lastError = '';
           
+          console.log(`\n${'='.repeat(60)}`);
+          console.log(`📤 INICIANDO ENVIO:`);
+          console.log(`   Produto: ${product.code} - ${product.name}`);
+          console.log(`   Grupo: ${group?.name}`);
+          console.log(`   GroupID: ${groupId}`);
+          console.log(`   API URL: ${integration.api_url}/send-group`);
+          console.log(`${'='.repeat(60)}\n`);
+          
           for (let attempt = 1; attempt <= 3 && !success; attempt++) {
             try {
-              console.log(`📤 Enviando ${product.code} para grupo ${group?.name} (tentativa ${attempt}/3)`);
+              console.log(`📤 Tentativa ${attempt}/3 - Enviando para ${group?.name}...`);
               
               // Enviar mensagem via API do servidor WhatsApp
               const response = await fetch(`${integration.api_url}/send-group`, {
@@ -376,10 +384,18 @@ export default function SendFlow() {
                 })
               });
 
+              console.log(`📨 Response Status: ${response.status} ${response.statusText}`);
+
               if (!response.ok) {
                 const errorData = await response.json().catch(() => null);
                 lastError = errorData?.error || response.statusText;
-                console.error(`❌ Erro ao enviar para grupo ${group?.name} (${response.status}):`, lastError);
+                
+                console.error(`\n${'!'.repeat(60)}`);
+                console.error(`❌ ERRO NO ENVIO:`);
+                console.error(`   Status: ${response.status}`);
+                console.error(`   Erro: ${lastError}`);
+                console.error(`   Error Data:`, errorData);
+                console.error(`${'!'.repeat(60)}\n`);
                 
                 // Se for erro 503 (WhatsApp desconectado), não tentar novamente
                 if (response.status === 503) {
@@ -399,13 +415,22 @@ export default function SendFlow() {
                   continue;
                 }
               } else {
+                const responseData = await response.json();
                 success = true;
-                console.log(`✅ Enviado com sucesso para ${group?.name}`);
+                console.log(`\n${'✅'.repeat(30)}`);
+                console.log(`✅ SUCESSO! Mensagem enviada para ${group?.name}`);
+                console.log(`   Response:`, responseData);
+                console.log(`${'✅'.repeat(30)}\n`);
               }
 
             } catch (error: any) {
               lastError = error.message;
-              console.error(`❌ Exceção ao enviar para grupo ${group?.name}:`, error);
+              console.error(`\n${'!'.repeat(60)}`);
+              console.error(`❌ EXCEÇÃO AO ENVIAR:`);
+              console.error(`   Grupo: ${group?.name}`);
+              console.error(`   Erro: ${error.message}`);
+              console.error(`   Stack:`, error.stack);
+              console.error(`${'!'.repeat(60)}\n`);
               
               // Se for erro de conexão perdida, abortar tudo
               if (lastError.includes('desconectado') || lastError.includes('abortando')) {
@@ -423,11 +448,23 @@ export default function SendFlow() {
 
           // Se após 3 tentativas não conseguiu enviar, registrar erro
           if (!success) {
-            console.error(`❌ Falha definitiva ao enviar para ${group?.name} após 3 tentativas`);
+            console.error(`\n${'❌'.repeat(30)}`);
+            console.error(`❌ FALHA DEFINITIVA após 3 tentativas`);
+            console.error(`   Grupo: ${group?.name}`);
+            console.error(`   Último erro: ${lastError}`);
+            console.error(`${'❌'.repeat(30)}\n`);
+            
             toast({
-              title: 'Erro no envio',
-              description: `Falha ao enviar para ${group?.name}: ${lastError}`,
-              variant: 'destructive'
+              title: `❌ Erro: ${group?.name}`,
+              description: `${lastError.substring(0, 100)}`,
+              variant: 'destructive',
+              duration: 5000
+            });
+          } else {
+            toast({
+              title: `✅ Enviado: ${group?.name}`,
+              description: `${product.name} enviado com sucesso`,
+              duration: 2000
             });
           }
 
