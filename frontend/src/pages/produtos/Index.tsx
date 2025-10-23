@@ -36,6 +36,7 @@ const Produtos = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
+  const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'LIVE' | 'BAZAR'>('ALL');
 
   const [formData, setFormData] = useState({
     code: '',
@@ -319,10 +320,12 @@ const Produtos = () => {
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.code.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = saleTypeFilter === 'ALL' || product.sale_type === saleTypeFilter;
+    return matchesSearch && matchesType;
+  });
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -530,6 +533,16 @@ const Produtos = () => {
                 )}
               </div>
               <div className="flex items-center space-x-2">
+                <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'LIVE' | 'BAZAR') => setSaleTypeFilter(value)}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos os Tipos</SelectItem>
+                    <SelectItem value="BAZAR">Bazar</SelectItem>
+                    <SelectItem value="LIVE">Live</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Search className="h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Buscar produtos..."
@@ -567,6 +580,7 @@ const Produtos = () => {
                         <TableHead>Variações</TableHead>
                         <TableHead>Preço</TableHead>
                         <TableHead>Estoque</TableHead>
+                        <TableHead>Tipo de Evento</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
@@ -607,6 +621,11 @@ const Produtos = () => {
                           </TableCell>
                           <TableCell>{formatCurrency(product.price)}</TableCell>
                           <TableCell>{product.stock}</TableCell>
+                          <TableCell>
+                            <Badge variant={product.sale_type === 'LIVE' ? 'destructive' : 'outline'}>
+                              {product.sale_type === 'LIVE' ? 'LIVE' : 'BAZAR'}
+                            </Badge>
+                          </TableCell>
                           <TableCell>
                             <Badge variant={product.is_active ? 'default' : 'secondary'}>
                               {product.is_active ? 'Ativo' : 'Inativo'}
