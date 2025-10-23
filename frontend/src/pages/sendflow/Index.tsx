@@ -298,36 +298,54 @@ export default function SendFlow() {
 
     try {
       // Buscar integração WhatsApp
-      const { data: integration } = await supabaseTenant
+      console.log('🔍 Buscando integração WhatsApp...');
+      const { data: integration, error: integrationError } = await supabaseTenant
         .from('integration_whatsapp')
         .select('api_url')
         .eq('is_active', true)
         .maybeSingle();
 
-      if (!integration?.api_url) {
-        throw new Error('Integração WhatsApp não configurada');
+      console.log('📡 Integração encontrada:', { integration, error: integrationError });
+
+      if (integrationError) {
+        throw new Error(`Erro ao buscar integração: ${integrationError.message}`);
       }
+
+      if (!integration?.api_url) {
+        throw new Error('Integração WhatsApp não configurada. Configure em Configurações > WhatsApp.');
+      }
+      
+      console.log(`✅ API URL configurada: ${integration.api_url}`);
 
       // VALIDAR SE WHATSAPP ESTÁ CONECTADO ANTES DE INICIAR
       console.log('🔍 Validando conexão WhatsApp...');
-      const statusResponse = await fetch(`${integration.api_url}/status/${tenant?.id}`, {
+      const statusUrl = `${integration.api_url}/status/${tenant?.id}`;
+      console.log(`   Chamando: ${statusUrl}`);
+      
+      const statusResponse = await fetch(statusUrl, {
         method: 'GET',
         headers: {
           'x-tenant-id': tenant?.id || ''
         }
       });
 
+      console.log(`   Status Response: ${statusResponse.status} ${statusResponse.statusText}`);
+
       if (!statusResponse.ok) {
-        throw new Error('Não foi possível verificar o status do WhatsApp');
+        const errorText = await statusResponse.text().catch(() => 'Sem detalhes');
+        throw new Error(`Erro ao verificar status do WhatsApp (${statusResponse.status}): ${errorText}`);
       }
 
       const statusData = await statusResponse.json();
+      console.log('   Status Data:', statusData);
       
       if (!statusData.success || statusData.status !== 'online') {
+        const errorMsg = `Status atual: ${statusData.status || 'desconhecido'}. Conecte o WhatsApp antes de enviar.`;
         toast({
           title: 'WhatsApp não conectado',
-          description: `Status atual: ${statusData.status || 'desconhecido'}. Conecte o WhatsApp antes de enviar.`,
-          variant: 'destructive'
+          description: errorMsg,
+          variant: 'destructive',
+          duration: 8000
         });
         setSending(false);
         return;
@@ -364,24 +382,34 @@ export default function SendFlow() {
           console.log(`   Produto: ${product.code} - ${product.name}`);
           console.log(`   Grupo: ${group?.name}`);
           console.log(`   GroupID: ${groupId}`);
-          console.log(`   API URL: ${integration.api_url}/send-group`);
+          console.log(`   Mensagem preview: ${personalizedMessage.substring(0, 50)}...`);
           console.log(`${'='.repeat(60)}\n`);
           
           for (let attempt = 1; attempt <= 3 && !success; attempt++) {
             try {
               console.log(`📤 Tentativa ${attempt}/3 - Enviando para ${group?.name}...`);
               
+              const sendUrl = `${integration.api_url}/send-group`;
+              const requestBody = {
+                groupId: groupId,
+                message: personalizedMessage
+              };
+              
+              console.log(`   POST ${sendUrl}`);
+              console.log(`   Headers:`, {
+                'Content-Type': 'application/json',
+                'x-tenant-id': tenant?.id || ''
+              });
+              console.log(`   Body:`, requestBody);
+              
               // Enviar mensagem via API do servidor WhatsApp
-              const response = await fetch(`${integration.api_url}/send-group`, {
+              const response = await fetch(sendUrl, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'x-tenant-id': tenant?.id || ''
                 },
-                body: JSON.stringify({
-                  groupId: groupId,
-                  message: personalizedMessage
-                })
+                body: JSON.stringify(requestBody)
               });
 
               console.log(`📨 Response Status: ${response.status} ${response.statusText}`);
@@ -527,11 +555,24 @@ export default function SendFlow() {
       setPauseCountdown(0);
 
     } catch (error) {
-      console.error('Erro ao enviar mensagens:', error);
+      console.error('❌ ERRO CRÍTICO NO SENDFLOW:', error);
+      
+      // Extrair mensagem de erro mais descritiva
+      let errorMessage = 'Erro ao enviar mensagens';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        console.error('   Error message:', error.message);
+        console.error('   Error stack:', error.stack);
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
       toast({
-        title: 'Erro',
-        description: 'Erro ao enviar mensagens',
-        variant: 'destructive'
+        title: '❌ Erro no SendFlow',
+        description: errorMessage,
+        variant: 'destructive',
+        duration: 8000
       });
     } finally {
       setSending(false);
