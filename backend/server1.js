@@ -372,10 +372,6 @@ class TenantManager {
       console.log(`   participant: ${msg.message.extendedTextMessage.contextInfo.participant || 'N/A'}`);
     }
     
-    // Tentar extrair de diferentes fontes
-    const isGroup = msg.key.remoteJid.endsWith('@g.us');
-    const groupName = isGroup ? msg.key.remoteJid : null;
-    
     console.log(`\n📊 É grupo? ${isGroup ? 'SIM' : 'NÃO'}`);
     
     if (isGroup) {
