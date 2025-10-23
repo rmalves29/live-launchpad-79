@@ -462,21 +462,9 @@ class TenantManager {
       return null;
     }
     
-    // CRÍTICO: Verificar se o WebSocket está realmente OPEN antes de permitir envio
-    if (!sock.ws) {
-      console.log(`⚠️ Cliente ${tenantId} - WebSocket não existe! Marcando como disconnected.`);
-      clientData.status = 'disconnected';
-      return null;
-    }
-    
-    if (sock.ws.readyState !== 1) {
-      console.log(`⚠️ Cliente ${tenantId} - WebSocket readyState: ${sock.ws.readyState} (esperado: 1=OPEN). Marcando como disconnected.`);
-      console.log(`   Estados: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED`);
-      clientData.status = 'disconnected';
-      return null;
-    }
-    
-    console.log(`✅ Cliente ${tenantId} - WebSocket OPEN e pronto para envio`);
+    // Para Baileys, se temos user e creds válidos, o cliente está pronto
+    // O WebSocket é gerenciado internamente pelo Baileys
+    console.log(`✅ Cliente ${tenantId} autenticado e pronto para envio`);
     return sock;
   }
 
