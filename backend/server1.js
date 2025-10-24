@@ -10,6 +10,8 @@ import path from 'path';
 import fetch from 'node-fetch';
 import P from 'pino';
 import { fileURLToPath } from 'url';
+import { WhatsAppQueue } from './services/whatsapp-queue.js';
+import { SessionValidator } from './services/session-validator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,6 +77,7 @@ const logger = P({ level: 'silent' });
 class TenantManager {
   constructor() {
     this.clients = new Map(); // Map<tenantId, { sock, status, qr, tenant, authState }>
+    this.messageQueue = new WhatsAppQueue(); // Sistema de fila para envio
   }
 
   async createClient(tenant) {
@@ -507,49 +510,41 @@ class TenantManager {
     return sock;
   }
 
-  // Método para ENVIO de mensagens - validação COMPLETA incluindo sessões Signal
+  // Método para ENVIO de mensagens - validação usando SessionValidator
   getOnlineClient(tenantId) {
     const clientData = this.clients.get(tenantId);
     if (!clientData || clientData.status !== 'online') {
+      console.log(`❌ Cliente ${tenantId} não está online (status: ${clientData?.status || 'not found'})`);
       return null;
     }
     
-    // Verificar se o socket realmente tem sessão ativa
     const sock = clientData.sock;
-    if (!sock || !sock.user || !sock.authState || !sock.authState.creds) {
-      console.log(`⚠️ Cliente ${tenantId} marcado como online mas sem sessão válida (credenciais)`);
-      clientData.status = 'disconnected';
-      return null;
-    }
     
-    // CRÍTICO: Validar sessões de criptografia Signal (necessárias para envio)
-    // Sem essas sessões, o erro "No sessions" ocorrerá ao tentar enviar
-    const hasSignalSessions = sock.authState && 
-                              sock.authState.keys && 
-                              typeof sock.authState.keys.get === 'function';
-    
-    if (!hasSignalSessions) {
-      console.log(`\n${'='.repeat(70)}`);
-      console.log(`❌ SESSÕES SIGNAL AUSENTES - ${clientData.tenant.name}`);
-      console.log(`${'='.repeat(70)}`);
-      console.log(`⚠️ Cliente marcado como online mas SEM sessões de criptografia`);
-      console.log(`🔍 Validações:`);
-      console.log(`   authState: ${sock.authState ? '✅' : '❌'}`);
-      console.log(`   authState.keys: ${sock.authState?.keys ? '✅' : '❌'}`);
-      console.log(`   keys.get (função): ${typeof sock.authState?.keys?.get === 'function' ? '✅' : '❌'}`);
-      console.log(`🚫 BLOQUEANDO ENVIO para prevenir erro "No sessions"`);
-      console.log(`${'='.repeat(70)}\n`);
-      
-      // Marcar como disconnected e NÃO reconectar automaticamente
-      // (evita loop infinito - deixa o usuário escanear QR manualmente)
+    // Usar validação rápida do SessionValidator
+    const isValid = SessionValidator.quickValidate(sock);
+    if (!isValid) {
+      console.log(`❌ Cliente ${tenantId} falhou na validação de sessão`);
+      // Marcar como disconnected
       clientData.status = 'disconnected';
       clientData.qr = null;
-      
       return null;
     }
     
-    console.log(`✅ [${tenantId}] Sessão válida - WebSocket state: ${sock.ws?.readyState}`);
     return sock;
+  }
+
+  // Método para validação detalhada de sessão (usado na API)
+  async validateSession(tenantId) {
+    const clientData = this.clients.get(tenantId);
+    if (!clientData || clientData.status !== 'online') {
+      return { valid: false, reason: 'Cliente não está online' };
+    }
+
+    return await SessionValidator.validateSession(
+      clientData.sock,
+      tenantId,
+      clientData.tenant.name
+    );
   }
 
   getAllStatus() {
@@ -1271,6 +1266,93 @@ function createApp(tenantManager, supabaseHelper) {
         details: error.message
       });
     }
+  });
+
+  // Nova rota: SendFlow com fila de mensagens (batch)
+  app.post('/sendflow-batch', async (req, res) => {
+    const { tenantId } = req;
+    const { messages } = req.body; // Array de { groupId, message, productName }
+
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`📦 SENDFLOW BATCH - Recebendo lote de mensagens`);
+    console.log(`${'='.repeat(70)}`);
+    console.log(`🏢 Tenant ID: ${tenantId}`);
+    console.log(`📨 Total de mensagens: ${messages?.length || 0}`);
+
+    if (!tenantId || !messages || !Array.isArray(messages) || messages.length === 0) {
+      console.log(`❌ Parâmetros inválidos`);
+      console.log(`${'='.repeat(70)}\n`);
+      return res.status(400).json({ 
+        success: false, 
+        error: 'tenant_id e messages (array) são obrigatórios' 
+      });
+    }
+
+    // Validar sessão primeiro
+    const validation = await tenantManager.validateSession(tenantId);
+    if (!validation.valid) {
+      console.log(`❌ Sessão inválida: ${validation.reason}`);
+      console.log(`${'='.repeat(70)}\n`);
+      return res.status(503).json({ 
+        success: false, 
+        error: 'WhatsApp não conectado ou sessão inválida',
+        details: validation.reason
+      });
+    }
+
+    console.log(`✅ Sessão válida - Adicionando ${messages.length} mensagens à fila`);
+
+    // Adicionar todas as mensagens na fila
+    messages.forEach(msg => {
+      tenantManager.messageQueue.enqueue(tenantId, {
+        groupId: msg.groupId,
+        message: msg.message,
+        productName: msg.productName || 'N/A'
+      });
+    });
+
+    console.log(`✅ ${messages.length} mensagens adicionadas à fila`);
+    console.log(`${'='.repeat(70)}\n`);
+
+    // Responder imediatamente
+    res.json({ 
+      success: true, 
+      message: `${messages.length} mensagens adicionadas à fila`,
+      queueSize: tenantManager.messageQueue.getQueueSize(tenantId)
+    });
+
+    // Iniciar processamento da fila (assíncrono)
+    setImmediate(async () => {
+      const sendFunction = async (msg) => {
+        const sock = tenantManager.getOnlineClient(tenantId);
+        if (!sock) {
+          throw new Error('WhatsApp desconectado');
+        }
+
+        console.log(`📤 [Queue] Enviando para ${msg.groupId}`);
+        await sock.sendMessage(msg.groupId, { text: msg.message });
+
+        // Registrar no banco
+        await supabaseHelper.logMessage(
+          tenantId,
+          msg.groupId,
+          msg.message,
+          'sendflow',
+          { whatsapp_group_name: msg.groupId, product_name: msg.productName }
+        );
+      };
+
+      const validationFunction = async (tid) => {
+        const validation = await tenantManager.validateSession(tid);
+        return validation.valid;
+      };
+
+      await tenantManager.messageQueue.processQueue(
+        tenantId,
+        sendFunction,
+        validationFunction
+      );
+    });
   });
 
   app.post('/send', async (req, res) => {
