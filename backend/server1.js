@@ -522,27 +522,6 @@ class TenantManager {
       return null;
     }
     
-    // CRÍTICO: Validar se existem sessões de criptografia (Signal Sessions)
-    // Estas são necessárias para enviar mensagens - sem elas o erro "No sessions" ocorre
-    const hasSignalSessions = sock.authState && sock.authState.keys && 
-                              typeof sock.authState.keys.get === 'function';
-    
-    if (!hasSignalSessions) {
-      console.log(`❌ Cliente ${tenantId} sem sessões de criptografia válidas - Marcando como disconnected`);
-      clientData.status = 'disconnected';
-      clientData.qr = null;
-      
-      // Forçar reconexão após 3 segundos
-      console.log(`🔄 Agendando reconexão automática em 3s...`);
-      setTimeout(() => {
-        console.log(`🔄 Reconectando ${clientData.tenant.name} após perda de sessão...`);
-        this.clients.delete(tenantId);
-        this.createClient(clientData.tenant);
-      }, 3000);
-      
-      return null;
-    }
-    
     console.log(`✅ Cliente ${tenantId} autenticado e pronto para envio`);
     return sock;
   }
@@ -1202,17 +1181,44 @@ function createApp(tenantManager, supabaseHelper) {
       let errorMessage = error.message;
       let statusCode = 500;
       
-      // Erro de sessão perdida - CRÍTICO
+      // Erro de sessão perdida - CRÍTICO - Forçar reconexão IMEDIATA
       if (error.message.includes('No sessions') || error.message.includes('session') || error.message.includes('Connection Closed')) {
         errorType = 'no-session';
-        errorMessage = 'WhatsApp desconectado. Escaneie o QR Code novamente na página de Conexão.';
+        errorMessage = 'WhatsApp desconectado. Reconectando automaticamente...';
         statusCode = 503;
         
-        // Atualizar status do cliente
+        // Atualizar status do cliente e forçar limpeza + reconexão
         const clientData = tenantManager.clients.get(tenantId);
         if (clientData) {
-          clientData.status = 'disconnected';
           console.log(`🔄 Status atualizado para 'disconnected'`);
+          console.log(`🧹 Limpando sessão corrompida e forçando reconexão...`);
+          
+          clientData.status = 'disconnected';
+          clientData.qr = null;
+          
+          // Limpar sessão do disco
+          const authPath = path.join(AUTH_DIR, `session-${tenantId}`);
+          try {
+            if (fs.existsSync(authPath)) {
+              fs.rmSync(authPath, { recursive: true, force: true });
+              console.log(`✅ Sessão corrompida removida: ${authPath}`);
+            }
+          } catch (cleanError) {
+            console.error(`⚠️ Erro ao limpar sessão:`, cleanError.message);
+          }
+          
+          // Remover cliente e reconectar IMEDIATAMENTE
+          tenantManager.clients.delete(tenantId);
+          console.log(`🔄 Reconectando AGORA...`);
+          
+          // Reconexão imediata (sem delay)
+          setTimeout(() => {
+            tenantManager.createClient(clientData.tenant).then(() => {
+              console.log(`✅ Reconexão iniciada para ${clientData.tenant.name}`);
+            }).catch(err => {
+              console.error(`❌ Erro na reconexão:`, err);
+            });
+          }, 500); // Delay mínimo de 500ms para evitar race condition
         }
       } else if (error.message.includes('timed out') || error.message.includes('timeout')) {
         errorType = 'timeout';
