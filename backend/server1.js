@@ -10,8 +10,8 @@ import path from 'path';
 import fetch from 'node-fetch';
 import P from 'pino';
 import { fileURLToPath } from 'url';
-import { WhatsAppQueue } from '../services/whatsapp-queue.js';
-import { SessionValidator } from '../services/session-validator.js';
+import { WhatsAppQueue } from './services/whatsapp-queue.js';
+import { SessionValidator } from './services/session-validator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
