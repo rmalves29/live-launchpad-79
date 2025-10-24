@@ -507,7 +507,7 @@ class TenantManager {
     return sock;
   }
 
-  // Método para ENVIO de mensagens - validação restrita com WebSocket
+  // Método para ENVIO de mensagens - validação COMPLETA incluindo sessões Signal
   getOnlineClient(tenantId) {
     const clientData = this.clients.get(tenantId);
     if (!clientData || clientData.status !== 'online') {
@@ -522,7 +522,33 @@ class TenantManager {
       return null;
     }
     
-    console.log(`✅ Cliente ${tenantId} autenticado e pronto para envio`);
+    // CRÍTICO: Validar sessões de criptografia Signal (necessárias para envio)
+    // Sem essas sessões, o erro "No sessions" ocorrerá ao tentar enviar
+    const hasSignalSessions = sock.authState && 
+                              sock.authState.keys && 
+                              typeof sock.authState.keys.get === 'function';
+    
+    if (!hasSignalSessions) {
+      console.log(`\n${'='.repeat(70)}`);
+      console.log(`❌ SESSÕES SIGNAL AUSENTES - ${clientData.tenant.name}`);
+      console.log(`${'='.repeat(70)}`);
+      console.log(`⚠️ Cliente marcado como online mas SEM sessões de criptografia`);
+      console.log(`🔍 Validações:`);
+      console.log(`   authState: ${sock.authState ? '✅' : '❌'}`);
+      console.log(`   authState.keys: ${sock.authState?.keys ? '✅' : '❌'}`);
+      console.log(`   keys.get (função): ${typeof sock.authState?.keys?.get === 'function' ? '✅' : '❌'}`);
+      console.log(`🚫 BLOQUEANDO ENVIO para prevenir erro "No sessions"`);
+      console.log(`${'='.repeat(70)}\n`);
+      
+      // Marcar como disconnected e NÃO reconectar automaticamente
+      // (evita loop infinito - deixa o usuário escanear QR manualmente)
+      clientData.status = 'disconnected';
+      clientData.qr = null;
+      
+      return null;
+    }
+    
+    console.log(`✅ [${tenantId}] Sessão válida - WebSocket state: ${sock.ws?.readyState}`);
     return sock;
   }
 
