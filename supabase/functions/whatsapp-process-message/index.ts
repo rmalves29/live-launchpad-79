@@ -10,6 +10,7 @@ interface ProcessMessageRequest {
   customer_phone: string;
   message: string;
   group_name?: string;
+  group_display_name?: string;
   bot_phone?: string;
 }
 
@@ -24,14 +25,17 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: ProcessMessageRequest = await req.json();
-    const { tenant_id, customer_phone, message, group_name, bot_phone } = body;
+    const { tenant_id, customer_phone, message, group_name, group_display_name, bot_phone } = body;
 
     console.log('\n🔄 ===== PROCESSANDO MENSAGEM WHATSAPP =====');
     console.log('🏢 Tenant:', tenant_id);
     console.log('📱 Telefone RECEBIDO (original):', customer_phone);
     console.log('💬 Mensagem:', message);
     if (group_name) {
-      console.log('👥 Grupo WhatsApp:', group_name);
+      console.log('👥 Grupo WhatsApp ID:', group_name);
+      if (group_display_name) {
+        console.log('📝 Nome do Grupo:', group_display_name);
+      }
     }
     if (bot_phone) {
       console.log('🤖 Bot Phone:', bot_phone);
@@ -125,6 +129,33 @@ Deno.serve(async (req) => {
     console.log('💾 Para armazenar (sem normalizar):', phoneForStorage);
     console.log('📤 Para enviar WhatsApp (normalizado):', phoneForWhatsApp);
     console.log('===== FIM =====\n');
+
+    // Salvar/atualizar registro do grupo se for mensagem de grupo
+    if (group_name && group_display_name) {
+      try {
+        const { error: groupError } = await supabase
+          .from('customer_whatsapp_groups')
+          .upsert({
+            tenant_id,
+            whatsapp_group_name: group_name,
+            customer_phone: phoneForStorage,
+            customer_name: null,
+            group_display_name: group_display_name,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'tenant_id,whatsapp_group_name,customer_phone',
+            ignoreDuplicates: false
+          });
+        
+        if (groupError) {
+          console.error('⚠️ Erro ao salvar grupo:', groupError);
+        } else {
+          console.log('✅ Grupo salvo/atualizado:', group_display_name);
+        }
+      } catch (error) {
+        console.error('⚠️ Erro ao processar grupo:', error);
+      }
+    }
 
     // Data de hoje
     const today = new Date().toISOString().split('T')[0];

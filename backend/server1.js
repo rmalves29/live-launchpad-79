@@ -350,7 +350,19 @@ class TenantManager {
 
     // Verificar se é mensagem de grupo
     const isGroup = msg.key.remoteJid.endsWith('@g.us');
-    const groupName = isGroup ? msg.key.remoteJid : null;
+    let groupId = isGroup ? msg.key.remoteJid : null;
+    let groupDisplayName = null;
+    
+    // Se for grupo, buscar nome amigável do grupo
+    if (isGroup && clientData.sock) {
+      try {
+        const groupMetadata = await clientData.sock.groupMetadata(msg.key.remoteJid);
+        groupDisplayName = groupMetadata.subject || null;
+        console.log(`📝 Nome do grupo capturado: ${groupDisplayName}`);
+      } catch (error) {
+        console.log(`⚠️ Não foi possível capturar nome do grupo: ${error.message}`);
+      }
+    }
 
     // Obter telefone do remetente
     let customerPhone;
@@ -377,7 +389,10 @@ class TenantManager {
     console.log(`\n📊 É grupo? ${isGroup ? 'SIM' : 'NÃO'}`);
     
     if (isGroup) {
-      console.log(`\n✅ GRUPO DETECTADO: ${groupName}`);
+      console.log(`\n✅ GRUPO DETECTADO: ${groupId}`);
+      if (groupDisplayName) {
+        console.log(`   Nome: ${groupDisplayName}`);
+      }
       
       // Tentar diferentes campos para obter o telefone do participante
       if (msg.key.participant) {
@@ -389,7 +404,7 @@ class TenantManager {
       } else {
         // CRÍTICO: NUNCA usar ID do grupo como telefone
         console.error(`❌ ERRO CRÍTICO: Não foi possível identificar o telefone do participante no grupo!`);
-        console.error(`   ID do grupo: ${groupName}`);
+        console.error(`   ID do grupo: ${groupId}`);
         console.error(`   msg.key.participant: ${msg.key.participant || 'UNDEFINED'}`);
         console.error(`   msg.participant: ${msg.participant || 'UNDEFINED'}`);
         console.error(`   ⛔ PROCESSAMENTO ABORTADO - Não podemos usar ID do grupo como telefone`);
@@ -433,7 +448,8 @@ class TenantManager {
           tenant_id: tenantId,
           customer_phone: customerPhone, // Enviar SEM normalização
           message: code,
-          group_name: groupName,
+          group_name: groupId,
+          group_display_name: groupDisplayName,
           bot_phone: botPhone // Enviar número do bot para validação adicional
         };
         

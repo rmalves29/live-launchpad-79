@@ -388,19 +388,18 @@ const Relatorios = () => {
       // Buscar mapeamento de códigos de grupo para nomes amigáveis
       const { data: groupMappings } = await supabaseTenant
         .from('customer_whatsapp_groups')
-        .select('whatsapp_group_name, customer_name')
+        .select('whatsapp_group_name, group_display_name')
         .order('created_at', { ascending: true });
       
-      // Criar mapa de código do grupo para primeiro nome de cliente encontrado
+      // Criar mapa de código do grupo para nome amigável
       const groupNameMap = new Map<string, string>();
       if (groupMappings) {
         for (const mapping of groupMappings) {
           const groupCode = mapping.whatsapp_group_name;
           if (groupCode && !groupNameMap.has(groupCode)) {
-            // Usar o nome do primeiro cliente encontrado como identificador do grupo
-            const displayName = mapping.customer_name 
-              ? `Grupo: ${mapping.customer_name}` 
-              : `Grupo ${groupCode.split('@')[0].slice(-4)}`; // Últimos 4 dígitos
+            // Usar o nome amigável do grupo se disponível
+            const displayName = mapping.group_display_name || 
+                               `Grupo ${groupCode.split('@')[0].slice(-8)}`;
             groupNameMap.set(groupCode, displayName);
           }
         }
