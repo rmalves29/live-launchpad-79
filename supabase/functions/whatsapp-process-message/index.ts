@@ -109,20 +109,29 @@ Deno.serve(async (req) => {
       return '55' + clean;
     }
 
-    // Limpar apenas caracteres não numéricos para armazenamento
-    function cleanPhoneForStorage(phone: string): string {
+    // Função para normalizar telefone para armazenamento (sempre com 11 dígitos)
+    const normalizeForStorage = (phone: string): string => {
       let clean = phone.replace(/\D/g, '');
       
-      // Remover DDI 55 se presente (armazena sem DDI)
+      // Remove DDI 55 se presente
       if (clean.startsWith('55')) {
         clean = clean.substring(2);
       }
       
+      // Se tem 10 dígitos, adiciona o 9º dígito
+      if (clean.length === 10) {
+        const ddd = clean.substring(0, 2);
+        const number = clean.substring(2);
+        clean = ddd + '9' + number;
+        console.log('✅ 9º dígito ADICIONADO para armazenamento (WhatsApp):', phone, '→', clean);
+      }
+      
       return clean;
-    }
+    };
 
-    const phoneForStorage = cleanPhoneForStorage(customer_phone);
-    const phoneForWhatsApp = normalizePhoneForWhatsApp(customer_phone);
+    const messageText = message.trim();
+    const senderPhone = normalizePhoneForWhatsApp(customer_phone);
+    const phoneForStorage = normalizeForStorage(customer_phone);
     
     console.log('\n📞 ===== TELEFONES =====');
     console.log('📥 Original:', customer_phone);

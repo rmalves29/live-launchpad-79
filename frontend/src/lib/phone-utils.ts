@@ -6,11 +6,11 @@
  */
 
 /**
- * Normaliza número para armazenamento no banco (sem DDI).
- * Remove apenas formatação e DDI 55, mantém o número EXATAMENTE como digitado.
+ * Normaliza número para armazenamento no banco (sem DDI, SEMPRE com 11 dígitos).
+ * Garante que o número SEMPRE tenha o 9º dígito para armazenamento consistente.
  * 
- * Entrada: 5531992904210 ou (31) 99290-4210 ou 67999583003
- * Saída: 31992904210 ou 67999583003 (sem DDI, sem formatação)
+ * Entrada: 5531992904210 ou (31) 9290-4210 ou 3192904210
+ * Saída: 31992904210 (sempre 11 dígitos com 9º dígito)
  */
 export function normalizeForStorage(phone: string): string {
   if (!phone) return phone;
@@ -23,21 +23,29 @@ export function normalizeForStorage(phone: string): string {
     clean = clean.substring(2);
   }
   
-  // Retorna exatamente como está, sem adicionar ou remover dígitos
+  // Se tem 10 dígitos, adiciona o 9º dígito
+  if (clean.length === 10) {
+    const ddd = clean.substring(0, 2);
+    const number = clean.substring(2);
+    clean = ddd + '9' + number;
+    console.log('✅ 9º dígito ADICIONADO para armazenamento:', phone, '→', clean);
+  }
+  
   return clean;
 }
 
 /**
  * Adiciona DDI 55 para envio via WhatsApp e ajusta 9º dígito baseado no DDD.
+ * USADO APENAS NO MOMENTO DO ENVIO (server1.js).
  * 
- * Regra do 9º dígito:
+ * Regra do 9º dígito para envio:
  * - DDD ≤ 11 (Norte/Nordeste): Se tiver 10 dígitos → ADICIONA o 9º dígito
  * - DDD ≥ 31 (Sudeste/Sul/Centro-Oeste): Se tiver 11 dígitos → REMOVE o 9º dígito
  * 
  * Exemplos:
  * - 1192904210 (DDD 11, 10 dígitos) → 5511992904210 (adiciona 9)
+ * - 31992904210 (DDD 31, 11 dígitos) → 55319290421 (remove o 9º dígito)
  * - 67999583003 (DDD 67, 11 dígitos) → 556799583003 (remove primeiro 9)
- * - 3192904210 (DDD 31, 10 dígitos) → 5531992904210 (mantém)
  */
 export function normalizeForSending(phone: string): string {
   if (!phone) return phone;
@@ -65,18 +73,18 @@ export function normalizeForSending(phone: string): string {
     return '55' + clean;
   }
   
-  // Aplica regra do 9º dígito
+  // Aplica regra do 9º dígito APENAS PARA ENVIO
   if (ddd <= 11) {
     // Norte/Nordeste: Se tem 10 dígitos, ADICIONA o 9º dígito
     if (clean.length === 10) {
       clean = clean.substring(0, 2) + '9' + clean.substring(2);
-      console.log('✅ 9º dígito ADICIONADO (DDD ≤ 11):', phone, '→', clean);
+      console.log('📤 9º dígito ADICIONADO para envio (DDD ≤ 11):', phone, '→', clean);
     }
   } else if (ddd >= 31) {
     // Sudeste/Sul/Centro-Oeste: Se tem 11 dígitos e começa com 9, REMOVE o 9º dígito
     if (clean.length === 11 && clean[2] === '9') {
       clean = clean.substring(0, 2) + clean.substring(3);
-      console.log('✅ 9º dígito REMOVIDO (DDD ≥ 31):', phone, '→', clean);
+      console.log('📤 9º dígito REMOVIDO para envio (DDD ≥ 31):', phone, '→', clean);
     }
   }
   

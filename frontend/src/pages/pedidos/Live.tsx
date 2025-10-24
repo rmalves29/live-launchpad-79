@@ -199,8 +199,8 @@ const Live = () => {
         return;
       }
 
-      // Normalizar para envio e depois para armazenamento garante que o 9º dígito seja corrigido
-      const normalizedPhone = normalizeForStorage(normalizeForSending(phone));
+      // Normalizar para armazenamento (sempre com 11 dígitos)
+      const normalizedPhone = normalizeForStorage(phone);
       const subtotal = product.price * qty;
       const today = getBrasiliaDateISO();
       

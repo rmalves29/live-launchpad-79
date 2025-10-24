@@ -779,22 +779,52 @@ class CartMonitor {
   }
 }
 
+/**
+ * Normaliza telefone para envio via WhatsApp aplicando regra do DDD.
+ * Esta função é chamada APENAS no momento do envio.
+ * 
+ * Regra do 9º dígito:
+ * - DDD ≤ 11: Se tiver 10 dígitos → ADICIONA o 9º dígito
+ * - DDD ≥ 31: Se tiver 11 dígitos → REMOVE o 9º dígito
+ */
 function normalizePhone(phone) {
   let clean = phone.replace(/\D/g, '');
-  if (!clean.startsWith('55')) {
-    clean = '55' + clean;
+  
+  // Remove DDI 55 se presente
+  if (clean.startsWith('55')) {
+    clean = clean.substring(2);
   }
-  const ddd = parseInt(clean.substring(2, 4));
-  if (ddd >= 31) {
-    if (clean.length === 13 && clean[4] === '9') {
-      clean = clean.slice(0, 4) + clean.slice(5);
+  
+  // Validação básica
+  if (clean.length < 10 || clean.length > 11) {
+    console.warn('⚠️ Telefone com tamanho inválido para envio:', phone);
+    return '55' + clean + '@s.whatsapp.net';
+  }
+  
+  const ddd = parseInt(clean.substring(0, 2));
+  
+  // Validar DDD
+  if (ddd < 11 || ddd > 99) {
+    console.warn('⚠️ DDD inválido:', ddd);
+    return '55' + clean + '@s.whatsapp.net';
+  }
+  
+  // Aplica regra do 9º dígito para envio
+  if (ddd <= 11) {
+    // Norte/Nordeste: Se tem 10 dígitos, ADICIONA o 9º dígito
+    if (clean.length === 10) {
+      clean = clean.substring(0, 2) + '9' + clean.substring(2);
+      console.log('📤 9º dígito ADICIONADO para envio (DDD ≤ 11):', phone, '→', clean);
     }
-  } else {
-    if (clean.length === 12 && clean[4] !== '9') {
-      clean = clean.slice(0, 4) + '9' + clean.slice(4);
+  } else if (ddd >= 31) {
+    // Sudeste/Sul/Centro-Oeste: Se tem 11 dígitos e começa com 9, REMOVE o 9º dígito
+    if (clean.length === 11 && clean[2] === '9') {
+      clean = clean.substring(0, 2) + clean.substring(3);
+      console.log('📤 9º dígito REMOVIDO para envio (DDD ≥ 31):', phone, '→', clean);
     }
   }
-  return clean + '@s.whatsapp.net';
+  
+  return '55' + clean + '@s.whatsapp.net';
 }
 
 function delay(ms) {
