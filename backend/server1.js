@@ -522,8 +522,27 @@ class TenantManager {
       return null;
     }
     
-    // Para Baileys, se temos user e creds válidos, o cliente está pronto
-    // O WebSocket é gerenciado internamente pelo Baileys
+    // CRÍTICO: Validar se existem sessões de criptografia (Signal Sessions)
+    // Estas são necessárias para enviar mensagens - sem elas o erro "No sessions" ocorre
+    const hasSignalSessions = sock.authState && sock.authState.keys && 
+                              typeof sock.authState.keys.get === 'function';
+    
+    if (!hasSignalSessions) {
+      console.log(`❌ Cliente ${tenantId} sem sessões de criptografia válidas - Marcando como disconnected`);
+      clientData.status = 'disconnected';
+      clientData.qr = null;
+      
+      // Forçar reconexão após 3 segundos
+      console.log(`🔄 Agendando reconexão automática em 3s...`);
+      setTimeout(() => {
+        console.log(`🔄 Reconectando ${clientData.tenant.name} após perda de sessão...`);
+        this.clients.delete(tenantId);
+        this.createClient(clientData.tenant);
+      }, 3000);
+      
+      return null;
+    }
+    
     console.log(`✅ Cliente ${tenantId} autenticado e pronto para envio`);
     return sock;
   }
