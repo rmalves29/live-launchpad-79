@@ -178,16 +178,6 @@ const PedidosManual = () => {
       return;
     }
 
-    const normalizedPhone = normalizePhone(phone);
-    // Validar telefone brasileiro (10 ou 11 dígitos sem DDI)
-    if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
-      toast({
-        title: 'Erro',
-        description: 'Telefone inválido. Use formato com DDD (ex: 31999999999)',
-        variant: 'destructive'
-      });
-      return;
-    }
 
     setProcessingIds(prev => new Set(prev).add(product.id));
 
