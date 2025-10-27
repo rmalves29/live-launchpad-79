@@ -90,20 +90,26 @@ export class SessionValidator {
 
   /**
    * Valida de forma rápida (sem logs extensos)
+   * IMPORTANTE: NÃO valida sock.ws.readyState pois é transitório durante envio
    */
   static quickValidate(sock) {
-    if (!sock || !sock.ws || sock.ws.readyState !== 1) {
+    // Validar apenas se o socket existe
+    if (!sock) {
       return false;
     }
 
+    // Validar authState e credenciais
     if (!sock.authState || !sock.authState.creds || !sock.authState.creds.me) {
       return false;
     }
 
+    // Validar se tem as chaves Signal (necessárias para criptografia E2E)
     if (!sock.authState.keys || typeof sock.authState.keys.get !== 'function') {
       return false;
     }
 
+    // NÃO validar sock.ws.readyState - ele é transitório durante envio de mensagens
+    // e pode causar falsos negativos
     return true;
   }
 }
