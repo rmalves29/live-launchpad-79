@@ -1,173 +1,173 @@
 /**
  * Sistema de fila para envio de mensagens WhatsApp
- * Evite sobrecarga e lógica de repetição de gerenciamento 
+ * Evita sobrecarga e gerencia lógica de repetição
  */
 
-exportar classe WhatsAppQueue { 
-  construtor() {
- isso.filas = novo Map();  tenantId -> array de mensagens 
- isso.processamento = novo Map();  tenantId -> booleano 
- isso.stats = new Map();  tenantId -> { enviado, falhou, pendente } 
+export class WhatsAppQueue {
+  constructor() {
+    this.queues = new Map(); // tenantId -> array de mensagens
+    this.processing = new Map(); // tenantId -> booleano
+    this.stats = new Map(); // tenantId -> { enviado, falhou, pendente }
   }
 
   /**
    * Adiciona uma mensagem na fila
    */
- enqueue(tenantId, mensagem) { 
- se (!isso.filas.has(tenantId)) { 
- isso.filas.set(tenantId, []); 
- isso.estatísticas.set(tenantId, { enviado: 0, falhou: 0, pendente: 0 }); 
+  enqueue(tenantId, message) {
+    if (!this.queues.has(tenantId)) {
+      this.queues.set(tenantId, []);
+      this.stats.set(tenantId, { enviado: 0, falhou: 0, pendente: 0 });
     }
 
- const queue = this.filas.get(tenantId); 
- const normalizedMessage = { 
- ... Mensagem 
- atrasoDepoisMs: 
- typede mensagem.delayAfterMs === 'número' 
- ? Matemática.max(0, mensagem.atrasoDepoisMs) 
- : indefinido 
+    const queue = this.queues.get(tenantId);
+    const normalizedMessage = {
+      ...message,
+      delayAfterMs:
+        typeof message.delayAfterMs === 'number'
+          ? Math.max(0, message.delayAfterMs)
+          : undefined
     };
 
- fila.empurrar({ 
- id: '${Date.now()}-${Math.random()}', 
+    queue.push({
+      id: `${Date.now()}-${Math.random()}`,
       tenantId,
- ... normalizedMessage, 
- tentativas: 0, 
- maxAttempts: 3, 
- createdAt: Data.agora() 
+      ...normalizedMessage,
+      attempts: 0,
+      maxAttempts: 3,
+      createdAt: Date.now()
     });
 
- const stats = this.estatísticas.get(tenantId); 
- estatísticas.pendente++; 
+    const stats = this.stats.get(tenantId);
+    stats.pendente++;
 
     console.log(`📥 [Queue] Mensagem adicionada à fila do tenant ${tenantId}`);
- console.log(' Tamanho da fila: ${queue.length}'); 
- console.log(' Estatísticas:', estatísticas); 
+    console.log(`   Tamanho da fila: ${queue.length}`);
+    console.log(`   Estatísticas:`, stats);
   }
 
   /**
    * Processa a fila de um tenant
    */
- async processQueue(tenantId, sendFunction, validationFunction) { 
+  async processQueue(tenantId, sendFunction, validationFunction) {
     // Evitar processamento concorrente
- se (isso.processamento.get(tenantId)) { 
+    if (this.processing.get(tenantId)) {
       console.log(`⏳ [Queue] Já está processando fila do tenant ${tenantId}`);
-      retornar;
+      return;
     }
 
- const queue = this.filas.get(tenantId); 
- if (!queue || queue.comprimento === 0) { 
-      retornar;
+    const queue = this.queues.get(tenantId);
+    if (!queue || queue.length === 0) {
+      return;
     }
 
- isso.processamento.set(tenantId, true); 
- console.log('\n${'='.repeat(70)}'); 
+    this.processing.set(tenantId, true);
+    console.log(`\n${'='.repeat(70)}`);
     console.log(`🚀 [Queue] Iniciando processamento da fila`);
- console.log(' Locatário: ${tenantId}'); 
+    console.log(`   Tenant: ${tenantId}`);
     console.log(`   Mensagens pendentes: ${queue.length}`);
- console.log('${'='.repeat(70)}\n'); 
+    console.log(`${'='.repeat(70)}\n`);
 
- const stats = this.estatísticas.get(tenantId); 
+    const stats = this.stats.get(tenantId);
 
- while (fila.comprimento > 0) { 
- const mensagem = fila[0]; 
+    while (queue.length > 0) {
+      const message = queue[0];
 
       // Validar se ainda pode enviar (sessão válida)
- const canSend = await validationFunction(tenantId); 
- if (!canSend) { 
+      const canSend = await validationFunction(tenantId);
+      if (!canSend) {
         console.log(`❌ [Queue] Sessão inválida - pausando processamento`);
- isso.processamento.set(tenantId, false); 
-        retornar;
+        this.processing.set(tenantId, false);
+        return;
       }
 
-      tentar {
+      try {
         console.log(`\n📤 [Queue] Processando mensagem ${message.id}`);
- console.log(' Tentativa: ${message.attempts + 1}/${message.maxAttempts}'); 
- console.log(' Grupo: ${message.groupId}'); 
- console.log(' Visualização: ${message.message.substring(0, 50)}...'); 
+        console.log(`   Tentativa: ${message.attempts + 1}/${message.maxAttempts}`);
+        console.log(`   Grupo: ${message.groupId}`);
+        console.log(`   Preview: ${message.message.substring(0, 50)}...`);
 
         // Tentar enviar
- await sendFunction(mensagem); 
+        await sendFunction(message);
 
         // Sucesso - remover da fila
- fila.deslocamento(); 
- estatísticas.enviado++; 
- estatísticas.pendente --; 
+        queue.shift();
+        stats.enviado++;
+        stats.pendente--;
 
         console.log(`✅ [Queue] Mensagem enviada com sucesso`);
         console.log(`   Stats atualizadas:`, stats);
 
         // Aguardar intervalo entre mensagens (evitar rate limit)
- const atraso = 
- typede mensagem.delayAfterMs === 'número' ? mensagem.atrasoAfterMs : 2000;  recuo de 2s 
- if (atraso > 0) { 
+        const delay =
+          typeof message.delayAfterMs === 'number' ? message.delayAfterMs : 2000; // padrão de 2s
+        if (delay > 0) {
           console.log(`⏳ [Queue] Aguardando ${delay}ms antes da próxima mensagem...`);
- await new Promise(resolve => setTimeout(resolve, delay)); 
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
- } catch (erro) { 
- Mensagem.tentativas++; 
- Mensagem.lastError = erro.mensagem; 
+      } catch (error) {
+        message.attempts++;
+        message.lastError = error.message;
 
         console.error(`\n❌ [Queue] Erro ao processar mensagem ${message.id}`);
- console.error(' Tentativa: ${message.attempts}/${message.maxAttempts}'); 
- console.error(' Erro: ${error.message}'); 
+        console.error(`   Tentativa: ${message.attempts}/${message.maxAttempts}`);
+        console.error(`   Erro: ${error.message}`);
 
         // Se for erro de sessão, parar imediatamente
-        se (
- erro.mensagem.includes('Sem sessões') || 
- erro.mensagem.includes('Conexão Fechada') || 
- erro.mensagem.includes('desconectado') 
+        if (
+          error.message.includes('Sem sessões') ||
+          error.message.includes('Conexão Fechada') ||
+          error.message.includes('desconectado')
         ) {
           console.error(`🚫 [Queue] Erro de sessão detectado - parando processamento`);
- isso.processamento.set(tenantId, false); 
-          retornar;
+          this.processing.set(tenantId, false);
+          return;
         }
 
         // Se atingiu max tentativas, remover da fila
- if (mensagem.tentativas >= mensagem.maxAttempts) { 
+        if (message.attempts >= message.maxAttempts) {
           console.error(`💀 [Queue] Mensagem ${message.id} excedeu máximo de tentativas - removendo`);
- fila.deslocamento(); 
- estatísticas.falhou++; 
- estatísticas.pendente --; 
-        } mais {
+          queue.shift();
+          stats.falhou++;
+          stats.pendente--;
+        } else {
           // Aguardar backoff antes de tentar novamente
- const recuo = mensagem.tentativas * 2000;  2s, 4s 
+          const backoff = message.attempts * 2000; // 2s, 4s
           console.log(`⏳ [Queue] Aguardando ${backoff}ms antes de tentar novamente...`);
- aguardar new Promise(resolve => setTimeout(resolve, backoff)); 
+          await new Promise(resolve => setTimeout(resolve, backoff));
         }
       }
     }
 
- console.log('\n${'='.repeat(70)}'); 
+    console.log(`\n${'='.repeat(70)}`);
     console.log(`✅ [Queue] Processamento concluído`);
- console.log(' Stats finais:', stats); 
- console.log('${'='.repeat(70)}\n'); 
+    console.log(`   Stats finais:`, stats);
+    console.log(`${'='.repeat(70)}\n`);
 
- isso.processamento.set(tenantId, false); 
+    this.processing.set(tenantId, false);
   }
 
   /**
    * Retorna estatísticas da fila
    */
- getStats(tenantId) { 
- devolva isso.estatísticas.get(tenantId) || { enviado: 0, falhou: 0, pendente: 0 }; 
+  getStats(tenantId) {
+    return this.stats.get(tenantId) || { enviado: 0, falhou: 0, pendente: 0 };
   }
 
   /**
    * Limpa a fila de um tenant
    */
- clearQueue(tenantId) { 
- isso.filas.excluir(tenantId); 
- isso.processamento.excluir(tenantId); 
- isso.estatísticas.excluir(tenantId); 
- console.log(' 🗑️ [Queue] Fila limpa para tenant ${tenantId}'); 
+  clearQueue(tenantId) {
+    this.queues.delete(tenantId);
+    this.processing.delete(tenantId);
+    this.stats.delete(tenantId);
+    console.log(`🗑️ [Queue] Fila limpa para tenant ${tenantId}`);
   }
 
   /**
    * Retorna tamanho da fila
    */
- getQueueSize(tenantId) { 
- const queue = this.filas.get(tenantId); 
- fila de retorno? fila.comprimento : 0; 
+  getQueueSize(tenantId) {
+    const queue = this.queues.get(tenantId);
+    return queue ? queue.length : 0;
   }
 }
