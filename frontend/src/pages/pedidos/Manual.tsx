@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
+import { supabase } from '@/integrations/supabase/client';
 import { getBrasiliaDateISO, formatBrasiliaDate } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -46,9 +47,9 @@ const PedidosManual = () => {
   const [loading, setLoading] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [defaultPhone, setDefaultPhone] = useState('');
+  const [defaultInstagram, setDefaultInstagram] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState('10');
-  const [phones, setPhones] = useState<{[key: number]: string}>({});
+  const [instagrams, setInstagrams] = useState<{[key: number]: string}>({});
   const [quantities, setQuantities] = useState<{[key: number]: number}>({});
   const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -120,16 +121,34 @@ const PedidosManual = () => {
     loadOrders();
   }, [searchQuery, itemsPerPage]);
 
-  const normalizePhone = (phone: string): string => {
-    return normalizeForStorage(phone);
+  const normalizeInstagram = (instagram: string): string => {
+    // Remove @ if present
+    return instagram.replace('@', '').trim();
+  };
+
+  const getPhoneFromInstagram = async (instagram: string): Promise<string | null> => {
+    const normalized = normalizeInstagram(instagram);
+    
+    const { data, error } = await supabaseTenant
+      .from('customers')
+      .select('phone')
+      .eq('instagram', normalized)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching customer by instagram:', error);
+      return null;
+    }
+
+    return data?.phone || null;
   };
 
   const formatPhone = (phone: string): string => {
     return formatPhoneForDisplay(phone);
   };
 
-  const handlePhoneChange = (productId: number, value: string) => {
-    setPhones(prev => ({ ...prev, [productId]: value }));
+  const handleInstagramChange = (productId: number, value: string) => {
+    setInstagrams(prev => ({ ...prev, [productId]: value }));
   };
 
   const handleQuantityChange = (productId: number, value: string) => {
@@ -138,13 +157,13 @@ const PedidosManual = () => {
   };
 
   const handleLancarVenda = async (product: Product) => {
-    const phone = phones[product.id] || defaultPhone;
+    const instagram = instagrams[product.id] || defaultInstagram;
     const qty = quantities[product.id] || 1;
 
-    if (!phone) {
+    if (!instagram) {
       toast({
         title: 'Erro',
-        description: 'Informe o telefone do cliente',
+        description: 'Informe o @ do Instagram do cliente',
         variant: 'destructive'
       });
       return;
@@ -173,6 +192,25 @@ const PedidosManual = () => {
     setProcessingIds(prev => new Set(prev).add(product.id));
 
     try {
+      // Buscar telefone do cliente pelo Instagram
+      const phone = await getPhoneFromInstagram(instagram);
+      
+      if (!phone) {
+        toast({
+          title: 'Erro',
+          description: `Cliente com Instagram @${normalizeInstagram(instagram)} não encontrado no cadastro`,
+          variant: 'destructive'
+        });
+        setProcessingIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(product.id);
+          return newSet;
+        });
+        return;
+      }
+
+      // Normalizar para armazenamento (sempre com 11 dígitos)
+      const normalizedPhone = normalizeForStorage(phone);
       const subtotal = product.price * qty;
       const today = getBrasiliaDateISO();
       
@@ -350,17 +388,42 @@ const PedidosManual = () => {
           : p
       ));
       
+      // Enviar mensagem WhatsApp usando template Item Adicionado
+      if (tenant?.id) {
+        try {
+          const { error: whatsappError } = await supabase.functions.invoke('whatsapp-send-item-added', {
+            body: {
+              tenant_id: tenant.id,
+              customer_phone: normalizedPhone,
+              product_name: product.name,
+              product_code: product.code,
+              quantity: qty,
+              unit_price: product.price
+            }
+          });
+
+          if (whatsappError) {
+            console.error('Error sending WhatsApp message:', whatsappError);
+            toast({
+              title: 'Aviso',
+              description: 'Produto adicionado, mas houve erro ao enviar mensagem WhatsApp',
+              variant: 'default'
+            });
+          }
+        } catch (whatsappError) {
+          console.error('Error sending WhatsApp message:', whatsappError);
+        }
+      }
+      
       toast({
         title: 'Sucesso',
         description: !isNew 
-          ? `Produto adicionado ao pedido existente: ${product.code} x${qty}` 
-          : `Novo pedido criado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
+          ? `Produto adicionado ao pedido existente: ${product.code} x${qty} para @${normalizeInstagram(instagram)}` 
+          : `Novo pedido criado: ${product.code} x${qty} para @${normalizeInstagram(instagram)}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
 
-      // WhatsApp será enviado automaticamente pela trigger do banco de dados
-
       // Clear inputs for this product
-      setPhones(prev => ({ ...prev, [product.id]: '' }));
+      setInstagrams(prev => ({ ...prev, [product.id]: '' }));
       setQuantities(prev => ({ ...prev, [product.id]: 1 }));
       
       // Reload orders to show the new one
@@ -446,15 +509,13 @@ const PedidosManual = () => {
     }
   };
 
-  // Mensagem enviada automaticamente via trigger - função removida
-
-  const fillDefaultPhone = () => {
-    if (!defaultPhone) return;
-    const newPhones: {[key: number]: string} = {};
+  const fillDefaultInstagram = () => {
+    if (!defaultInstagram) return;
+    const newInstagrams: {[key: number]: string} = {};
     products.forEach(product => {
-      newPhones[product.id] = defaultPhone;
+      newInstagrams[product.id] = defaultInstagram;
     });
-    setPhones(newPhones);
+    setInstagrams(newInstagrams);
   };
 
   return (
@@ -497,11 +558,11 @@ const PedidosManual = () => {
             
             <div className="flex space-x-2">
               <Input
-                placeholder="Telefone padrão"
-                value={defaultPhone}
-                onChange={(e) => setDefaultPhone(e.target.value)}
+                placeholder="Instagram padrão (ex: @cliente)"
+                value={defaultInstagram}
+                onChange={(e) => setDefaultInstagram(e.target.value)}
               />
-              <Button onClick={fillDefaultPhone} variant="outline" size="sm">
+              <Button onClick={fillDefaultInstagram} variant="outline" size="sm">
                 Aplicar
               </Button>
             </div>
@@ -564,10 +625,10 @@ const PedidosManual = () => {
                     <TableRow key={product.id}>
                       <TableCell>
                         <Input
-                          placeholder="Telefone"
-                          value={phones[product.id] || ''}
-                          onChange={(e) => handlePhoneChange(product.id, e.target.value)}
-                          className="w-32"
+                          placeholder="Instagram (ex: @cliente)"
+                          value={instagrams[product.id] || ''}
+                          onChange={(e) => handleInstagramChange(product.id, e.target.value)}
+                          className="w-40"
                         />
                       </TableCell>
                       <TableCell>

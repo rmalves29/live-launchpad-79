@@ -9,7 +9,7 @@
  * Normaliza número para armazenamento no banco (sem DDI, SEMPRE com 11 dígitos).
  * Garante que o número SEMPRE tenha o 9º dígito para armazenamento consistente.
  * 
- * Entrada: 5531992904210 ou (31) 9290-4210 ou 3192904210
+ * Entrada: 5531992904210 ou (31) 9290-4210 ou 3192904210 ou 319290421
  * Saída: 31992904210 (sempre 11 dígitos com 9º dígito)
  */
 export function normalizeForStorage(phone: string): string {
@@ -23,7 +23,7 @@ export function normalizeForStorage(phone: string): string {
     clean = clean.substring(2);
   }
   
-  // Se tem 10 dígitos, adiciona o 9º dígito
+  // SEMPRE adiciona o 9º dígito se tiver 10 dígitos (DDD + 8 dígitos)
   if (clean.length === 10) {
     const ddd = clean.substring(0, 2);
     const number = clean.substring(2);
