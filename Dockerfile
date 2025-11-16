@@ -56,14 +56,14 @@ RUN which chromium && chromium --version
 # Set working directory
 WORKDIR /app
 
-# Copy package.json
-COPY package.json ./
+# Copy package.json from backend folder
+COPY backend/package.json ./
 
 # Install dependencies
 RUN npm install --legacy-peer-deps --production
 
 # Copy all backend files
-COPY . .
+COPY backend/ .
 
 # Create directory for Baileys authentication
 RUN mkdir -p .baileys_auth && chmod 777 .baileys_auth
