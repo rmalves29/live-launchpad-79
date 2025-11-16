@@ -86,10 +86,13 @@ Deno.serve(async (req) => {
     // If HTML, extract QR code or status
     const html = await whatsappResponse.text();
     console.log('📄 HTML length:', html.length);
-    console.log('📄 HTML first 1000 chars:', html.substring(0, 1000));
+    console.log('📄 HTML first 500 chars:', html.substring(0, 500));
 
     // Check if WhatsApp is already connected
-    if (html.includes('✅ Conectado') || html.includes('Status: online')) {
+    if (html.includes('✅ Conectado') || 
+        html.includes('Status: online') || 
+        html.includes('CONECTADO E ONLINE') ||
+        html.includes('✅') && html.includes('Conectado')) {
       console.log('✅ WhatsApp is already connected');
       return new Response(
         JSON.stringify({
@@ -108,7 +111,8 @@ Deno.serve(async (req) => {
         html.includes('🔄 Conectando') ||
         html.includes('Status: initializing') ||
         html.includes('Status: connecting') ||
-        html.includes('Status: disconnected')) {
+        html.includes('Status: disconnected') ||
+        html.includes('Atualizando a cada 3 segundos')) {
       console.log('⏳ WhatsApp is initializing, QR not ready yet');
       return new Response(
         JSON.stringify({
@@ -121,25 +125,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Try to extract QR code - buscar por data:image
+    // Try to extract QR code - buscar por data:image primeiro
     if (html.includes('data:image')) {
-      const imgMatch = html.match(/src=["']([^"']*data:image[^"']*)["']/i);
-      console.log('🔍 QR Code data:image match:', imgMatch ? 'Found' : 'Not found');
+      // Tentar diferentes padrões de extração
+      const patterns = [
+        /src=["']([^"']*data:image[^"']*)["']/i,
+        /<img[^>]+src=["']([^"']*data:image[^"']*)["'][^>]*>/i,
+        /data:image\/png;base64,[A-Za-z0-9+/=]+/i
+      ];
 
-      if (imgMatch && imgMatch[1]) {
-        const qrCode = imgMatch[1];
-        console.log('✅ QR Code found! Length:', qrCode.length);
-        console.log('📸 QR Code preview:', qrCode.substring(0, 100));
-        
-        return new Response(
-          JSON.stringify({
-            success: true,
-            connected: false,
-            qrCode,
-            message: 'QR Code gerado com sucesso'
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      for (const pattern of patterns) {
+        const match = html.match(pattern);
+        if (match) {
+          const qrCode = match[1] || match[0];
+          console.log('✅ QR Code found with pattern! Length:', qrCode.length);
+          console.log('📸 QR Code preview:', qrCode.substring(0, 100));
+          
+          return new Response(
+            JSON.stringify({
+              success: true,
+              connected: false,
+              status: 'qr_ready',
+              qrCode,
+              message: 'QR Code gerado com sucesso. Escaneie com seu WhatsApp.'
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
 
@@ -155,8 +167,9 @@ Deno.serve(async (req) => {
         JSON.stringify({
           success: true,
           connected: false,
+          status: 'qr_ready',
           qrCode,
-          message: 'QR Code gerado com sucesso'
+          message: 'QR Code gerado com sucesso. Escaneie com seu WhatsApp.'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -164,13 +177,16 @@ Deno.serve(async (req) => {
 
     // No QR code found - return HTML for debugging
     console.error('❌ No QR Code found in HTML');
-    console.error('🔍 Full HTML:', html);
+    console.error('🔍 Full HTML preview:', html.substring(0, 1000));
     
     return new Response(
       JSON.stringify({
+        success: false,
         error: 'Could not extract QR Code from response',
+        status: 'error',
         htmlPreview: html.substring(0, 500),
-        connected: false
+        connected: false,
+        message: 'Não foi possível extrair o QR Code. Verifique se o servidor WhatsApp está funcionando corretamente.'
       }),
       { 
         status: 500, 
