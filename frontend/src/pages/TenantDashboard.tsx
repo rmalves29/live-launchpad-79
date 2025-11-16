@@ -21,6 +21,9 @@ import TenantProducts from '@/components/tenant/TenantProducts';
 import TenantCustomers from '@/components/tenant/TenantCustomers';
 import TenantOrders from '@/components/tenant/TenantOrders';
 import { TenantMessages } from '@/components/tenant/TenantMessages';
+import { TenantMercadoPagoSettings } from '@/components/tenant/TenantMercadoPagoSettings';
+import { TenantMelhorEnvioSettings } from '@/components/tenant/TenantMelhorEnvioSettings';
+import { CompanySettings } from '@/components/CompanySettings';
 
 interface DashboardStats {
   todayOrders: number;
@@ -127,12 +130,13 @@ export default function TenantDashboard() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="products">Produtos</TabsTrigger>
           <TabsTrigger value="customers">Clientes</TabsTrigger>
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
           <TabsTrigger value="messages">Mensagens</TabsTrigger>
+          <TabsTrigger value="settings">Configurações</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6">
@@ -270,6 +274,15 @@ export default function TenantDashboard() {
 
         <TabsContent value="messages">
           <TenantMessages />
+        </TabsContent>
+
+        <TabsContent value="settings" className="space-y-6">
+          <CompanySettings />
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TenantMercadoPagoSettings />
+            <TenantMelhorEnvioSettings />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
