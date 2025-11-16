@@ -18,15 +18,22 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
-import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
 import fetch from 'node-fetch';
+import makeWASocket, { 
+  useMultiFileAuthState, 
+  DisconnectReason,
+  Browsers,
+  makeCacheableSignalKeyStore
+} from '@whiskeysockets/baileys';
+import pino from 'pino';
+import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
 
 // ===================== Configurações =====================
 const CONFIG = {
   PORT: Number(process.env.PORT || 8080),
-  // Preferir volume montado no Railway em /data
-  AUTH_DIR: process.env.AUTH_DIR || '/data/.wwebjs_auth',
+  // Preferir volume montado no Railway em /data  
+  AUTH_DIR: process.env.AUTH_DIR || '/data/.baileys_auth',
 
   // Supabase
   SUPABASE_URL: process.env.SUPABASE_URL, // ex: https://xxxxx.supabase.co
@@ -37,6 +44,9 @@ const CONFIG = {
     .split(',')
     .map((s) => s.trim()),
 };
+
+// Logger silencioso
+const logger = pino({ level: 'silent' });
 
 // Valida envs críticas
 if (!CONFIG.SUPABASE_URL) console.warn('⚠️  SUPABASE_URL não configurado');
@@ -125,10 +135,11 @@ class SupabaseHelper {
 // ===================== Tenant Manager =====================
 class TenantManager {
   constructor() {
-    this.clients = new Map(); // tenantId -> Client
-    this.status = new Map(); // tenantId -> status
+    this.sockets = new Map(); // tenantId -> WASocket
+    this.status = new Map(); // tenantId -> status  
     this.authDirs = new Map(); // tenantId -> auth path
     this.qrCache = new Map(); // tenantId -> { raw, dataURL? }
+    this.authStates = new Map(); // tenantId -> authState
   }
 
   createAuthDir(tenantId) {
@@ -142,100 +153,99 @@ class TenantManager {
 
   async createClient(tenant) {
     const tenantId = tenant.id;
-    if (this.clients.get(tenantId)) return this.clients.get(tenantId);
+    if (this.sockets.get(tenantId)) return this.sockets.get(tenantId);
 
     const authDir = this.createAuthDir(tenantId);
-    console.log(`\n${'='.repeat(70)}\n🔧 Inicializando sessão: ${tenant.name} (${tenant.slug})\n🆔 ${tenantId}\n📂 ${authDir}\n${'='.repeat(70)}`);
+    console.log(`\n${'='.repeat(70)}\n🔧 Inicializando sessão Baileys: ${tenant.name} (${tenant.slug})\n🆔 ${tenantId}\n📂 ${authDir}\n${'='.repeat(70)}`);
 
-    // Determinar o caminho do executável do Chrome/Chromium
-    const chromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH || 
-                         process.env.CHROME_BIN || 
-                         process.env.CHROMIUM_PATH ||
-                         '/usr/bin/chromium';
-    
-    console.log(`🌐 Puppeteer executablePath: ${chromiumPath}`);
+    const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    this.authStates.set(tenantId, { state, saveCreds });
 
-    const client = new Client({
-      authStrategy: new LocalAuth({ clientId: `tenant_${tenantId}`, dataPath: authDir }),
-      puppeteer: {
-        headless: true,
-        executablePath: chromiumPath, // Especifica explicitamente o caminho
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox', 
-          '--disable-dev-shm-usage', 
-          '--disable-gpu',
-          '--disable-software-rasterizer',
-          '--disable-extensions'
-        ],
-        timeout: 60000,
+    const sock = makeWASocket({
+      auth: {
+        creds: state.creds,
+        keys: makeCacheableSignalKeyStore(state.keys, logger),
       },
-      qrMaxRetries: 10,
+      logger,
+      printQRInTerminal: false,
+      browser: Browsers.ubuntu('Chrome'),
+      getMessage: async () => ({ conversation: 'OrderZaps' }),
     });
 
-    client.on('qr', async (qr) => {
-      this.status.set(tenantId, 'qr_code');
-      // Tenta gerar DataURL (se lib qrcode estiver instalada). Caso contrário, guarda raw.
-      try {
-        const qrcode = require('qrcode');
-        const dataURL = await qrcode.toDataURL(qr);
-        this.qrCache.set(tenantId, { raw: qr, dataURL });
-      } catch (_) {
-        this.qrCache.set(tenantId, { raw: qr });
+    // QR Code
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        this.status.set(tenantId, 'qr_code');
+        try {
+          const dataURL = await QRCode.toDataURL(qr);
+          this.qrCache.set(tenantId, { raw: qr, dataURL });
+          console.log(`📱 QR gerado para ${tenant.slug}`);
+        } catch (err) {
+          this.qrCache.set(tenantId, { raw: qr });
+          console.error('❌ Erro ao gerar QR DataURL:', err.message);
+        }
       }
-      console.log(`📱 QR atualizado para ${tenant.slug}`);
+
+      if (connection === 'close') {
+        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        console.log(`🔌 ${tenant.slug}: conexão fechada. Reconectar?`, shouldReconnect);
+        
+        if (shouldReconnect) {
+          this.status.set(tenantId, 'reconnecting');
+          setTimeout(() => {
+            this.sockets.delete(tenantId);
+            this.createClient(tenant).catch(console.error);
+          }, 3000);
+        } else {
+          this.status.set(tenantId, 'logged_out');
+          this.sockets.delete(tenantId);
+          this.qrCache.delete(tenantId);
+        }
+      } else if (connection === 'open') {
+        this.status.set(tenantId, 'online');
+        this.qrCache.delete(tenantId);
+        console.log(`✅ ${tenant.slug}: CONECTADO (Baileys)`);
+      }
     });
 
-    client.on('authenticated', () => {
-      this.status.set(tenantId, 'authenticated');
-      console.log(`🔐 ${tenant.slug}: autenticado`);
+    // Salvar credenciais
+    sock.ev.on('creds.update', saveCreds);
+
+    // Mensagens recebidas
+    sock.ev.on('messages.upsert', async (m) => {
+      const msg = m.messages[0];
+      if (!msg.message || msg.key.fromMe) return;
+
+      const from = msg.key.remoteJid;
+      const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+      console.log(`📩 ${tenant.slug} recebeu de ${from}: ${text}`);
+
+      // Log no Supabase
+      try {
+        await SupabaseHelper.logMessage(tenantId, from, text, 'incoming', { messageId: msg.key.id });
+      } catch (err) {
+        console.error('❌ Erro ao logar mensagem:', err.message);
+      }
     });
 
-    client.on('ready', () => {
-      this.status.set(tenantId, 'online');
-      this.qrCache.delete(tenantId);
-      console.log(`✅ ${tenant.slug}: CONECTADO`);
-    });
-
-    client.on('auth_failure', (m) => {
-      this.status.set(tenantId, 'auth_failure');
-      console.error(`❌ ${tenant.slug}: falha autenticação`, m);
-    });
-
-    client.on('disconnected', (reason) => {
-      this.status.set(tenantId, 'offline');
-      console.warn(`🔌 ${tenant.slug}: desconectado (${reason}) – tentando reiniciar em 10s`);
-      setTimeout(() => client.initialize().catch(() => {}), 10000);
-    });
-
-    this.clients.set(tenantId, client);
+    this.sockets.set(tenantId, sock);
     this.status.set(tenantId, 'initializing');
 
-    try {
-      await client.initialize();
-    } catch (e) {
-      this.status.set(tenantId, 'error');
-      console.error(`💥 Erro ao iniciar ${tenant.slug}:`, e.message);
-    }
-
-    return client;
+    return sock;
   }
 
   async getOnlineClient(tenantId) {
-    const client = this.clients.get(tenantId);
+    const sock = this.sockets.get(tenantId);
     const stat = this.status.get(tenantId);
-    if (!client || stat !== 'online') return null;
-    try {
-      const s = await client.getState();
-      return s === 'CONNECTED' ? client : null;
-    } catch (_) {
-      return null;
-    }
+    if (!sock || stat !== 'online') return null;
+    return sock;
   }
 
   getAllStatus() {
     const out = {};
-    for (const [tenantId] of this.clients) {
+    for (const [tenantId] of this.sockets) {
       out[tenantId] = { status: this.status.get(tenantId) || 'unknown' };
     }
     return out;
@@ -243,6 +253,32 @@ class TenantManager {
 
   getTenantStatus(tenantId) {
     return { status: this.status.get(tenantId) || 'not_found' };
+  }
+
+  async resetTenant(tenantId) {
+    const sock = this.sockets.get(tenantId);
+    if (sock) {
+      try {
+        await sock.logout();
+      } catch (e) {
+        console.error('❌ Erro ao fazer logout:', e.message);
+      }
+    }
+
+    this.sockets.delete(tenantId);
+    this.status.delete(tenantId);
+    this.qrCache.delete(tenantId);
+    this.authStates.delete(tenantId);
+
+    const authDir = this.authDirs.get(tenantId);
+    if (authDir && fs.existsSync(authDir)) {
+      try {
+        fs.rmSync(authDir, { recursive: true, force: true });
+        console.log(`🗑️  Sessão limpa: ${authDir}`);
+      } catch (e) {
+        console.error('❌ Erro ao limpar sessão:', e.message);
+      }
+    }
   }
 }
 
@@ -407,28 +443,7 @@ async function createApp(tenantManager) {
       const tenantId = req.params.tenantId;
       console.log('🔄 [POST /reset] Requisição recebida para:', tenantId);
       
-      const client = tenantManager.clients.get(tenantId);
-      if (client) {
-        console.log('🔄 [POST /reset] Destruindo cliente existente...');
-        try {
-          await client.logout();
-          await client.destroy();
-        } catch (e) {
-          console.warn('⚠️ [POST /reset] Erro ao destruir cliente:', e.message);
-        }
-      }
-      
-      // Remover do manager
-      tenantManager.clients.delete(tenantId);
-      tenantManager.status.delete(tenantId);
-      tenantManager.qrCache.delete(tenantId);
-      
-      // Limpar auth folder
-      const authPath = path.join(CONFIG.AUTH_DIR, `session-${tenantId}`);
-      if (fs.existsSync(authPath)) {
-        console.log('🔄 [POST /reset] Removendo pasta de sessão:', authPath);
-        fs.rmSync(authPath, { recursive: true, force: true });
-      }
+      await tenantManager.resetTenant(tenantId);
       
       console.log('✅ [POST /reset] Reset concluído');
       res.json({ ok: true, message: 'Sessão resetada com sucesso' });
@@ -446,15 +461,15 @@ async function createApp(tenantManager) {
       const to = number || phone;
       if (!to || !message) return res.status(400).json({ ok: false, error: 'Número e mensagem são obrigatórios' });
 
-      // Tenta cliente online
-      let client = await tenantManager.getOnlineClient(req.tenantId);
-      if (!client) {
+      // Tenta socket online
+      let sock = await tenantManager.getOnlineClient(req.tenantId);
+      if (!sock) {
         // lazy start
         const t = await SupabaseHelper.resolveTenantById(req.tenantId);
         if (!t) return res.status(404).json({ ok: false, error: 'Tenant não encontrado ou inativo' });
         await tenantManager.createClient(t);
-        client = await tenantManager.getOnlineClient(req.tenantId);
-        if (!client) {
+        sock = await tenantManager.getOnlineClient(req.tenantId);
+        if (!sock) {
           // pode estar em QR / initializing
           const s = tenantManager.getTenantStatus(req.tenantId).status;
           return res.status(503).json({ ok: false, error: 'WhatsApp não conectado', status: s });
@@ -462,11 +477,12 @@ async function createApp(tenantManager) {
       }
 
       const normalized = normalizePhoneBR(to);
-      const chatId = `${normalized}@c.us`;
-      await client.sendMessage(chatId, message);
+      const jid = `${normalized}@s.whatsapp.net`;
+      await sock.sendMessage(jid, { text: message });
       SupabaseHelper.logMessage(req.tenantId, normalized, message, 'outgoing').catch(() => {});
       res.json({ ok: true, tenantId: req.tenantId, to: normalized });
     } catch (e) {
+      console.error('❌ [POST /send] Erro:', e.message);
       res.status(500).json({ ok: false, error: e.message });
     }
   });
@@ -479,7 +495,7 @@ async function createApp(tenantManager) {
 
 // ===================== Bootstrap =====================
 async function main() {
-  console.log(`\n${'='.repeat(70)}\n🚀 WhatsApp Multi‑Tenant – v4.1 (lazy sessions)\nAuth: ${CONFIG.AUTH_DIR}\nPort: ${CONFIG.PORT}\n${'='.repeat(70)}\n`);
+  console.log(`\n${'='.repeat(70)}\n🚀 WhatsApp Multi‑Tenant – v4.1 (Baileys)\nAuth: ${CONFIG.AUTH_DIR}\nPort: ${CONFIG.PORT}\n${'='.repeat(70)}\n`);
   const manager = new TenantManager();
   const app = await createApp(manager);
   app.listen(CONFIG.PORT, () => console.log(`▶️  HTTP ${CONFIG.PORT}`));
@@ -495,7 +511,7 @@ main().catch((e) => {
 .env exemplo (Railway Variables)
 ========================================
 PORT=8080
-AUTH_DIR=/data/.wwebjs_auth
+AUTH_DIR=/data/.baileys_auth
 SUPABASE_URL=https://SEU-PROJETO.supabase.co
 SUPABASE_SERVICE_KEY=***SERVICE_ROLE***
 ALLOWED_ORIGINS=*
@@ -509,4 +525,6 @@ Fluxo nova empresa (subdomínio):
 1) Inserir na tabela tenants: { id(uuid), name, slug: "empresaX", is_active: true }
 2) Acessar https://empresaX.orderzaps.com/connect (ou /qr para capturar o QR)
 3) Enviar mensagem: POST https://empresaX.orderzaps.com/send { message, number }
+
+NOTA: Agora usando @whiskeysockets/baileys (mais leve que whatsapp-web.js)
 */
