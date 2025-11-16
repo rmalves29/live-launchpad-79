@@ -140,6 +140,7 @@ class TenantManager {
     this.authDirs = new Map(); // tenantId -> auth path
     this.qrCache = new Map(); // tenantId -> { raw, dataURL? }
     this.authStates = new Map(); // tenantId -> authState
+    this.reconnectAttempts = new Map(); // tenantId -> count
   }
 
   createAuthDir(tenantId) {
@@ -153,87 +154,131 @@ class TenantManager {
 
   async createClient(tenant) {
     const tenantId = tenant.id;
-    if (this.sockets.get(tenantId)) return this.sockets.get(tenantId);
+    if (this.sockets.get(tenantId)) {
+      console.log(`⚠️ Cliente já existe para ${tenant.slug}, retornando existente`);
+      return this.sockets.get(tenantId);
+    }
 
     const authDir = this.createAuthDir(tenantId);
     console.log(`\n${'='.repeat(70)}\n🔧 Inicializando sessão Baileys: ${tenant.name} (${tenant.slug})\n🆔 ${tenantId}\n📂 ${authDir}\n${'='.repeat(70)}`);
 
-    const { state, saveCreds } = await useMultiFileAuthState(authDir);
-    this.authStates.set(tenantId, { state, saveCreds });
+    try {
+      const { state, saveCreds } = await useMultiFileAuthState(authDir);
+      this.authStates.set(tenantId, { state, saveCreds });
+      
+      console.log(`✅ Estado de autenticação carregado`);
+      console.log(`🔑 Credenciais existentes: ${state.creds?.me ? 'SIM' : 'NÃO'}`);
 
-    const sock = makeWASocket({
-      auth: {
-        creds: state.creds,
-        keys: makeCacheableSignalKeyStore(state.keys, logger),
-      },
-      logger,
-      printQRInTerminal: false,
-      browser: Browsers.ubuntu('Chrome'),
-      getMessage: async () => ({ conversation: 'OrderZaps' }),
-    });
+      const sock = makeWASocket({
+        auth: {
+          creds: state.creds,
+          keys: makeCacheableSignalKeyStore(state.keys, logger),
+        },
+        logger,
+        printQRInTerminal: false,
+        browser: Browsers.ubuntu('Chrome'),
+        getMessage: async () => ({ conversation: 'OrderZaps' }),
+        connectTimeoutMs: 60_000,
+        defaultQueryTimeoutMs: undefined,
+        keepAliveIntervalMs: 30_000,
+        syncFullHistory: false,
+      });
 
-    // QR Code
-    sock.ev.on('connection.update', async (update) => {
-      const { connection, lastDisconnect, qr } = update;
+      console.log(`✅ Socket criado com sucesso`);
 
-      if (qr) {
-        this.status.set(tenantId, 'qr_code');
-        try {
-          const dataURL = await QRCode.toDataURL(qr);
-          this.qrCache.set(tenantId, { raw: qr, dataURL });
-          console.log(`📱 QR gerado para ${tenant.slug}`);
-        } catch (err) {
-          this.qrCache.set(tenantId, { raw: qr });
-          console.error('❌ Erro ao gerar QR DataURL:', err.message);
+
+      // QR Code
+      sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        
+        console.log(`📡 ${tenant.slug} - connection.update:`, { connection, hasQr: !!qr, hasError: !!lastDisconnect?.error });
+
+        if (qr) {
+          this.status.set(tenantId, 'qr_code');
+          try {
+            const dataURL = await QRCode.toDataURL(qr);
+            this.qrCache.set(tenantId, { raw: qr, dataURL });
+            console.log(`📱 QR gerado para ${tenant.slug}`);
+          } catch (err) {
+            this.qrCache.set(tenantId, { raw: qr });
+            console.error('❌ Erro ao gerar QR DataURL:', err.message);
+          }
         }
-      }
 
       if (connection === 'close') {
-        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-        console.log(`🔌 ${tenant.slug}: conexão fechada. Reconectar?`, shouldReconnect);
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const errorMessage = lastDisconnect?.error?.message || 'Desconhecido';
         
-        if (shouldReconnect) {
+        console.error(`\n❌ ${tenant.slug}: CONEXÃO FECHADA`);
+        console.error(`📊 Status Code: ${statusCode}`);
+        console.error(`💬 Erro: ${errorMessage}`);
+        console.error(`🔍 DisconnectReason.loggedOut: ${DisconnectReason.loggedOut}`);
+        console.error(`🔍 Error completo:`, JSON.stringify(lastDisconnect?.error, null, 2));
+        
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const attempts = this.reconnectAttempts.get(tenantId) || 0;
+        
+        console.log(`🔄 Reconectar? ${shouldReconnect} (tentativa ${attempts + 1}/5)`);
+        
+        if (shouldReconnect && attempts < 5) {
           this.status.set(tenantId, 'reconnecting');
+          this.reconnectAttempts.set(tenantId, attempts + 1);
+          
           setTimeout(() => {
+            console.log(`🔄 Tentando reconexão ${attempts + 1} para ${tenant.slug}...`);
             this.sockets.delete(tenantId);
             this.createClient(tenant).catch(console.error);
-          }, 3000);
+          }, 5000 * (attempts + 1)); // Backoff exponencial
         } else {
+          if (attempts >= 5) {
+            console.error(`⛔ ${tenant.slug}: Máximo de tentativas atingido (5)`);
+          }
           this.status.set(tenantId, 'logged_out');
           this.sockets.delete(tenantId);
           this.qrCache.delete(tenantId);
+          this.reconnectAttempts.delete(tenantId);
         }
       } else if (connection === 'open') {
         this.status.set(tenantId, 'online');
         this.qrCache.delete(tenantId);
+        this.reconnectAttempts.set(tenantId, 0); // Reset tentativas
         console.log(`✅ ${tenant.slug}: CONECTADO (Baileys)`);
+      } else if (connection === 'connecting') {
+        console.log(`🔄 ${tenant.slug}: Conectando...`);
+        this.status.set(tenantId, 'connecting');
       }
     });
 
-    // Salvar credenciais
-    sock.ev.on('creds.update', saveCreds);
+      // Salvar credenciais
+      sock.ev.on('creds.update', saveCreds);
 
-    // Mensagens recebidas
-    sock.ev.on('messages.upsert', async (m) => {
-      const msg = m.messages[0];
-      if (!msg.message || msg.key.fromMe) return;
+      // Mensagens recebidas
+      sock.ev.on('messages.upsert', async (m) => {
+        const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe) return;
 
-      const from = msg.key.remoteJid;
-      const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-      console.log(`📩 ${tenant.slug} recebeu de ${from}: ${text}`);
+        const from = msg.key.remoteJid;
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+        console.log(`📩 ${tenant.slug} recebeu de ${from}: ${text}`);
 
-      // Log no Supabase
-      try {
-        await SupabaseHelper.logMessage(tenantId, from, text, 'incoming', { messageId: msg.key.id });
-      } catch (err) {
-        console.error('❌ Erro ao logar mensagem:', err.message);
-      }
-    });
+        // Log no Supabase
+        try {
+          await SupabaseHelper.logMessage(tenantId, from, text, 'incoming', { messageId: msg.key.id });
+        } catch (err) {
+          console.error('❌ Erro ao logar mensagem:', err.message);
+        }
+      });
 
-    this.sockets.set(tenantId, sock);
-    this.status.set(tenantId, 'initializing');
+      this.sockets.set(tenantId, sock);
+      this.status.set(tenantId, 'initializing');
+      console.log(`✅ Eventos registrados, aguardando conexão...`);
 
-    return sock;
+      return sock;
+    } catch (error) {
+      console.error(`❌ ERRO FATAL ao criar cliente para ${tenant.slug}:`, error);
+      this.status.set(tenantId, 'error');
+      throw error;
+    }
   }
 
   async getOnlineClient(tenantId) {
@@ -269,6 +314,7 @@ class TenantManager {
     this.status.delete(tenantId);
     this.qrCache.delete(tenantId);
     this.authStates.delete(tenantId);
+    this.reconnectAttempts.delete(tenantId);
 
     const authDir = this.authDirs.get(tenantId);
     if (authDir && fs.existsSync(authDir)) {
