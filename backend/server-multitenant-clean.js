@@ -285,8 +285,20 @@ async function createApp(tenantManager) {
 
   app.use(express.json({ limit: '10mb' }));
 
+  // ====== Log de todas as requisições ======
+  app.use((req, res, next) => {
+    console.log(`\n${'='.repeat(70)}`);
+    console.log(`📥 [${new Date().toISOString()}] ${req.method} ${req.path}`);
+    console.log(`📥 Headers:`, JSON.stringify(req.headers, null, 2));
+    console.log(`📥 Query:`, JSON.stringify(req.query, null, 2));
+    console.log(`📥 Body:`, JSON.stringify(req.body, null, 2));
+    console.log(`${'='.repeat(70)}\n`);
+    next();
+  });
+
   // ====== Middleware: resolve tenant por header/body ======
   app.use((req, _res, next) => {
+    console.log('🔍 [MIDDLEWARE] Tentando resolver tenant...');
     let tenantId =
       req.headers['x-tenant-id'] ||
       req.headers['X-Tenant-Id'] ||
@@ -296,7 +308,14 @@ async function createApp(tenantManager) {
     if (tenantId) {
       tenantId = String(tenantId).split(',')[0].trim();
       const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (uuid.test(tenantId)) req.tenantId = tenantId;
+      if (uuid.test(tenantId)) {
+        req.tenantId = tenantId;
+        console.log('✅ [MIDDLEWARE] Tenant resolvido por header/body:', tenantId);
+      } else {
+        console.log('⚠️ [MIDDLEWARE] Tenant ID inválido (não é UUID):', tenantId);
+      }
+    } else {
+      console.log('⚠️ [MIDDLEWARE] Nenhum tenant ID fornecido');
     }
     next();
   });
@@ -330,26 +349,91 @@ async function createApp(tenantManager) {
 
   // ====== Status por id ======
   app.get('/status/:tenantId', (req, res) => {
-    res.json({ ok: true, tenantId: req.params.tenantId, ...tenantManager.getTenantStatus(req.params.tenantId) });
+    const tenantId = req.params.tenantId;
+    console.log('📡 [GET /status/:tenantId] Requisição para:', tenantId);
+    const status = tenantManager.getTenantStatus(tenantId);
+    console.log('📊 [GET /status/:tenantId] Status:', status);
+    res.json({ ok: true, tenantId, ...status });
   });
 
   // ====== QR do tenant resolvido ======
   app.get('/qr', (req, res) => {
-    if (!req.tenantId) return res.status(400).json({ ok: false, error: 'Tenant não resolvido' });
+    console.log('📡 [GET /qr] Requisição recebida');
+    console.log('📡 [GET /qr] Tenant ID:', req.tenantId);
+    console.log('📡 [GET /qr] Headers:', JSON.stringify(req.headers, null, 2));
+    
+    if (!req.tenantId) {
+      console.log('❌ [GET /qr] Tenant não resolvido');
+      return res.status(400).json({ ok: false, error: 'Tenant não resolvido' });
+    }
+    
     const entry = tenantManager.qrCache.get(req.tenantId);
-    if (!entry) return res.status(204).end();
+    if (!entry) {
+      console.log('⚠️ [GET /qr] QR Code não disponível ainda');
+      return res.status(204).end();
+    }
+    
+    console.log('✅ [GET /qr] QR Code encontrado, tamanho:', entry.raw?.length || 0);
     res.json({ ok: true, tenantId: req.tenantId, qr: entry.raw, qrDataURL: entry.dataURL || null });
   });
 
   // ====== Conectar (força iniciar sessão) ======
   app.post('/connect', async (req, res) => {
     try {
+      console.log('📡 [POST /connect] Requisição recebida');
+      console.log('📡 [POST /connect] Tenant ID:', req.tenantId);
+      console.log('📡 [POST /connect] Headers:', JSON.stringify(req.headers, null, 2));
+      
       if (!req.tenantId) return res.status(400).json({ ok: false, error: 'Tenant não resolvido' });
       let t = await SupabaseHelper.resolveTenantById(req.tenantId);
       if (!t) return res.status(404).json({ ok: false, error: 'Tenant não encontrado ou inativo' });
+      
+      console.log('✅ [POST /connect] Tenant encontrado:', t.name, t.slug);
       await tenantManager.createClient(t);
-      res.json({ ok: true, tenantId: req.tenantId, status: tenantManager.getTenantStatus(req.tenantId).status });
+      
+      const status = tenantManager.getTenantStatus(req.tenantId).status;
+      console.log('✅ [POST /connect] Status:', status);
+      
+      res.json({ ok: true, tenantId: req.tenantId, status });
     } catch (e) {
+      console.error('❌ [POST /connect] Erro:', e.message);
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // ====== Reset (desconectar e limpar sessão) ======
+  app.post('/reset/:tenantId', async (req, res) => {
+    try {
+      const tenantId = req.params.tenantId;
+      console.log('🔄 [POST /reset] Requisição recebida para:', tenantId);
+      
+      const client = tenantManager.clients.get(tenantId);
+      if (client) {
+        console.log('🔄 [POST /reset] Destruindo cliente existente...');
+        try {
+          await client.logout();
+          await client.destroy();
+        } catch (e) {
+          console.warn('⚠️ [POST /reset] Erro ao destruir cliente:', e.message);
+        }
+      }
+      
+      // Remover do manager
+      tenantManager.clients.delete(tenantId);
+      tenantManager.status.delete(tenantId);
+      tenantManager.qrCache.delete(tenantId);
+      
+      // Limpar auth folder
+      const authPath = path.join(CONFIG.AUTH_DIR, `session-${tenantId}`);
+      if (fs.existsSync(authPath)) {
+        console.log('🔄 [POST /reset] Removendo pasta de sessão:', authPath);
+        fs.rmSync(authPath, { recursive: true, force: true });
+      }
+      
+      console.log('✅ [POST /reset] Reset concluído');
+      res.json({ ok: true, message: 'Sessão resetada com sucesso' });
+    } catch (e) {
+      console.error('❌ [POST /reset] Erro:', e.message);
       res.status(500).json({ ok: false, error: e.message });
     }
   });
