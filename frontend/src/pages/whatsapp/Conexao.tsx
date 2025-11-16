@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { supabaseTenant } from "@/lib/supabase-tenant";
+import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/contexts/TenantContext";
 import { 
   Smartphone, 
@@ -76,7 +76,7 @@ export default function ConexaoWhatsApp() {
       console.log('🔄 [INIT] Tenant ID:', tenant.id);
       console.log('🔄 [INIT] Server URL:', serverUrl);
       
-      const { data, error } = await supabaseTenant.functions.invoke(
+      const { data, error } = await supabase.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
@@ -167,7 +167,7 @@ export default function ConexaoWhatsApp() {
       
       setLoading(true);
       
-      const { data, error } = await supabaseTenant
+      const { data, error } = await supabase
         .from('integration_whatsapp')
         .select('api_url, is_active')
         .eq('tenant_id', tenant.id)
@@ -186,7 +186,7 @@ export default function ConexaoWhatsApp() {
         console.log('⚠️ [CONEXÃO] Nenhuma integração encontrada');
         console.log('🔧 [CONEXÃO] Criando integração WhatsApp automaticamente...');
         
-        const { data: newIntegration, error: insertError } = await supabaseTenant
+        const { data: newIntegration, error: insertError } = await supabase
           .from('integration_whatsapp')
           .insert({
             tenant_id: tenant.id,
@@ -283,7 +283,7 @@ export default function ConexaoWhatsApp() {
       // Primeiro tentar obter QR Code
       console.log('\n📤 [STATUS] Chamando edge function: whatsapp-proxy (action: qr)');
       
-      const { data: functionData, error: functionError } = await supabaseTenant.functions.invoke(
+      const { data: functionData, error: functionError } = await supabase.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
@@ -376,7 +376,7 @@ export default function ConexaoWhatsApp() {
       console.log('\n📊 [STATUS] Nenhum QR Code disponível, verificando status...');
       console.log('📤 [STATUS] Chamando edge function: whatsapp-proxy (action: status)');
       
-      const { data: statusData, error: statusError } = await supabaseTenant.functions.invoke(
+      const { data: statusData, error: statusError } = await supabase.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
@@ -453,7 +453,7 @@ export default function ConexaoWhatsApp() {
       setWhatsappStatus(null);
 
       // Chamar edge function para reset
-      const { data, error } = await supabaseTenant.functions.invoke(
+      const { data, error } = await supabase.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
