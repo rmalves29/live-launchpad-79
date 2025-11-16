@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -32,49 +32,39 @@ export default function ConexaoWhatsApp() {
   const [polling, setPolling] = useState(false);
   const [waitingTime, setWaitingTime] = useState(0);
   const [hasTimedOut, setHasTimedOut] = useState(false);
-
-  // Log inicial
-  console.log('🎯 [COMPONENTE] ConexaoWhatsApp montado');
-  console.log('🎯 [COMPONENTE] Tenant:', tenant?.id, tenant?.name);
+  
+  // Ref para evitar inicializações duplicadas
+  const initializingRef = useRef(false);
 
   useEffect(() => {
-    console.log('🔄 [MOUNT] Componente montado, carregando integração...');
-    loadWhatsAppIntegration();
+    if (tenant?.id) {
+      loadWhatsAppIntegration();
+    }
   }, [tenant?.id]);
 
   useEffect(() => {
-    if (serverUrl && tenant?.id) {
-      console.log('🚀 [EFFECT] Server URL e Tenant ID disponíveis');
-      console.log('🚀 [EFFECT] Server URL:', serverUrl);
-      console.log('🚀 [EFFECT] Tenant ID:', tenant.id);
-      
+    let cleanup: (() => void) | undefined;
+    
+    if (serverUrl && tenant?.id && !initializingRef.current) {
       setWaitingTime(0);
       setHasTimedOut(false);
-      
-      console.log('🚀 [EFFECT] Chamando initializeConnection...');
       initializeConnection();
-      
-      console.log('🚀 [EFFECT] Iniciando polling...');
-      startPolling();
-      
-      return () => {
-        console.log('🛑 [EFFECT] Parando polling');
-        setPolling(false);
-      };
-    } else {
-      console.log('⚠️ [EFFECT] Aguardando serverUrl ou tenant.id');
-      console.log('   - serverUrl:', serverUrl);
-      console.log('   - tenant?.id:', tenant?.id);
+      cleanup = startPolling();
     }
+    
+    return () => {
+      if (cleanup) cleanup();
+      setPolling(false);
+    };
   }, [serverUrl, tenant?.id]);
 
   const initializeConnection = async () => {
-    if (!tenant?.id) return;
+    if (!tenant?.id || initializingRef.current) return;
+    
+    initializingRef.current = true;
     
     try {
-      console.log('🔄 [INIT] Inicializando conexão WhatsApp...');
-      console.log('🔄 [INIT] Tenant ID:', tenant.id);
-      console.log('🔄 [INIT] Server URL:', serverUrl);
+      console.log('🔄 Inicializando conexão WhatsApp para tenant:', tenant.id);
       
       const { data, error } = await supabase.functions.invoke(
         'whatsapp-proxy',
@@ -86,10 +76,8 @@ export default function ConexaoWhatsApp() {
         }
       );
 
-      console.log('📡 [INIT] Response:', { data, error });
-
       if (error) {
-        console.error('❌ [INIT] Erro ao inicializar:', error);
+        console.error('❌ Erro ao inicializar:', error);
         toast({
           title: "Erro ao Conectar",
           description: error.message || "Não foi possível iniciar a conexão com WhatsApp",
@@ -100,21 +88,16 @@ export default function ConexaoWhatsApp() {
           status: 'error',
           error: error.message || 'Erro ao inicializar conexão'
         });
-      } else {
-        console.log('✅ [INIT] Conexão inicializada:', data);
       }
     } catch (error: any) {
-      console.error('❌ [INIT] Exception:', error);
-      toast({
-        title: "Erro Inesperado",
-        description: error.message || "Erro ao tentar conectar ao WhatsApp",
-        variant: "destructive"
-      });
+      console.error('❌ Exception ao inicializar:', error);
       setWhatsappStatus({
         connected: false,
         status: 'error',
         error: error.message || 'Erro inesperado'
       });
+    } finally {
+      initializingRef.current = false;
     }
   };
 
