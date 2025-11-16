@@ -43,17 +43,15 @@ export default function ConexaoWhatsApp() {
   }, [tenant?.id]);
 
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    
     if (serverUrl && tenant?.id && !initializingRef.current) {
+      initializingRef.current = true;
       setWaitingTime(0);
       setHasTimedOut(false);
       initializeConnection();
-      cleanup = startPolling();
+      startPolling();
     }
     
     return () => {
-      if (cleanup) cleanup();
       setPolling(false);
     };
   }, [serverUrl, tenant?.id]);
@@ -234,19 +232,17 @@ export default function ConexaoWhatsApp() {
     }
   };
 
-  const startPolling = async () => {
+  const startPolling = () => {
     setPolling(true);
-    await checkStatus();
+    checkStatus(); // Primeira verificação sem await
 
-    const interval = setInterval(async () => {
+    const interval = setInterval(() => {
       if (!polling) {
         clearInterval(interval);
         return;
       }
-      await checkStatus();
-    }, 5000); // Verificar a cada 5 segundos
-
-    return () => clearInterval(interval);
+      checkStatus(); // Chamadas subsequentes
+    }, 5000);
   };
 
   const checkStatus = async () => {
