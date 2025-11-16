@@ -44,6 +44,10 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# Create symlink for google-chrome to point to chromium
+# This fixes the issue where Puppeteer/Baileys looks for google-chrome
+RUN ln -s /usr/bin/chromium /usr/bin/google-chrome
+
 # Set working directory
 WORKDIR /app
 
@@ -62,9 +66,10 @@ RUN mkdir -p .baileys_auth && chmod 777 .baileys_auth
 # Expose port
 EXPOSE 3333
 
-# Set environment variable for Puppeteer to use system Chromium
+# Set environment variables for Puppeteer/Baileys
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    CHROME_PATH=/usr/bin/chromium
 
 # Start the server
 CMD ["npm", "start"]
