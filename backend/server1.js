@@ -160,15 +160,23 @@ class TenantManager {
       if (qr) {
         console.log(`\n${'='.repeat(70)}`);
         console.log(`📱 QR CODE GERADO PARA ${tenant.name.toUpperCase()}`);
+        console.log(`${'='.repeat(70)}`);
+        console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
+        console.log(`🔑 Tenant ID: ${tenantId}`);
         console.log(`${'='.repeat(70)}\n`);
         
+        // Mostrar QR no terminal
         qrcode.generate(qr, { small: true });
         
+        // Salvar QR no estado do cliente
         clientData.qr = qr;
         clientData.status = 'qr_ready';
+        clientData.qrGeneratedAt = new Date().toISOString();
         
         console.log(`\n${'='.repeat(70)}`);
         console.log(`🌐 Acesse no navegador: ${NORMALIZED_PUBLIC_BASE_URL}/qr/${tenantId}`);
+        console.log(`⏱️  QR Code expira em ~40 segundos`);
+        console.log(`🔄 Um novo QR será gerado automaticamente se expirar`);
         console.log(`${'='.repeat(70)}\n`);
       }
 
@@ -253,10 +261,14 @@ class TenantManager {
       } else if (connection === 'open') {
         console.log(`\n${'='.repeat(70)}`);
         console.log(`🚀 ${tenant.name.toUpperCase()} - CONECTADO E ONLINE!`);
+        console.log(`⏰ Timestamp: ${new Date().toISOString()}`);
+        console.log(`🔑 Tenant ID: ${tenantId}`);
         console.log(`${'='.repeat(70)}`);
         
         clientData.status = 'online';
         clientData.qr = null;
+        clientData.qrGeneratedAt = null;
+        clientData.connectedAt = new Date().toISOString();
         
         // Buscar informações do usuário e salvar número do bot
         try {
@@ -561,14 +573,40 @@ class TenantManager {
 
   getTenantStatus(tenantId) {
     const data = this.clients.get(tenantId);
-    if (!data) return null;
+    if (!data) {
+      return {
+        tenant_id: tenantId,
+        status: 'not_found',
+        message: 'Tenant não está registrado no servidor'
+      };
+    }
     
-    return {
+    const status = {
       tenant_id: tenantId,
       tenant_name: data.tenant.name,
       status: data.status,
-      qr: data.qr
+      has_qr: !!data.qr,
     };
+
+    // Se tem QR, adicionar informações sobre ele
+    if (data.qr) {
+      status.qr = data.qr;
+      if (data.qrGeneratedAt) {
+        status.qr_generated_at = data.qrGeneratedAt;
+        const ageSeconds = Math.floor((Date.now() - new Date(data.qrGeneratedAt).getTime()) / 1000);
+        status.qr_age_seconds = ageSeconds;
+        status.qr_expired = ageSeconds > 40; // QR codes expiram em ~40s
+      }
+    }
+
+    // Se está conectado, adicionar informações da conexão
+    if (data.status === 'online' && data.connectedAt) {
+      status.connected_at = data.connectedAt;
+      status.bot_phone = data.botPhone || null;
+    }
+
+    return status;
+  }
   }
 
   async resetClient(tenantId) {
