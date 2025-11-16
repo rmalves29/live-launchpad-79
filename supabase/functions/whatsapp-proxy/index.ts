@@ -56,10 +56,34 @@ Deno.serve(async (req) => {
 
     const apiUrl = integrations[0].api_url;
     
+    console.log('🔗 [PROXY] API URL:', apiUrl);
+    
     // Handle different actions
-    if (action === 'connect' || action === 'reset') {
-      // Iniciar/resetar sessão
-      console.log('🔄 Connecting/Resetting WhatsApp session');
+    if (action === 'reset') {
+      // Reset sessão
+      console.log('🔄 Resetting WhatsApp session');
+      const resetResponse = await fetch(`${apiUrl}/reset/${actualTenantId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const resetData = await resetResponse.json();
+      console.log('✅ Reset response:', resetData);
+
+      return new Response(
+        JSON.stringify(resetData),
+        { 
+          status: resetResponse.ok ? 200 : 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    if (action === 'connect') {
+      // Iniciar sessão
+      console.log('🔄 Connecting WhatsApp session');
       const connectResponse = await fetch(`${apiUrl}/connect`, {
         method: 'POST',
         headers: {
