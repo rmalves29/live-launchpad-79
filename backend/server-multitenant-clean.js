@@ -150,11 +150,27 @@ class TenantManager {
     const authDir = this.createAuthDir(tenantId);
     console.log(`\n${'='.repeat(70)}\n🔧 Inicializando sessão: ${tenant.name} (${tenant.slug})\n🆔 ${tenantId}\n📂 ${authDir}\n${'='.repeat(70)}`);
 
+    // Determinar o caminho do executável do Chrome/Chromium
+    const chromiumPath = process.env.PUPPETEER_EXECUTABLE_PATH || 
+                         process.env.CHROME_BIN || 
+                         process.env.CHROMIUM_PATH ||
+                         '/usr/bin/chromium';
+    
+    console.log(`🌐 Puppeteer executablePath: ${chromiumPath}`);
+
     const client = new Client({
       authStrategy: new LocalAuth({ clientId: `tenant_${tenantId}`, dataPath: authDir }),
       puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+        executablePath: chromiumPath, // Especifica explicitamente o caminho
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox', 
+          '--disable-dev-shm-usage', 
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions'
+        ],
         timeout: 60000,
       },
       qrMaxRetries: 10,
