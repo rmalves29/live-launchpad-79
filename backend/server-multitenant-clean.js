@@ -186,6 +186,10 @@ class TenantManager {
 
       console.log(`✅ Socket criado com sucesso`);
 
+      // Proteção contra erros não tratados do socket
+      sock.ev.on('error', (error) => {
+        console.error(`❌ Socket error para ${tenant.slug}:`, error);
+      });
 
       // QR Code
       sock.ev.on('connection.update', async (update) => {
@@ -208,32 +212,43 @@ class TenantManager {
       if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const errorMessage = lastDisconnect?.error?.message || 'Desconhecido';
+        const errorData = lastDisconnect?.error?.data;
         
         console.error(`\n❌ ${tenant.slug}: CONEXÃO FECHADA`);
         console.error(`📊 Status Code: ${statusCode}`);
         console.error(`💬 Erro: ${errorMessage}`);
+        console.error(`📋 Error Data:`, errorData);
         console.error(`🔍 DisconnectReason.loggedOut: ${DisconnectReason.loggedOut}`);
-        console.error(`🔍 Error completo:`, JSON.stringify(lastDisconnect?.error, null, 2));
+        console.error(`🔍 DisconnectReason.restartRequired: ${DisconnectReason.restartRequired}`);
+        console.error(`🔍 DisconnectReason.connectionLost: ${DisconnectReason.connectionLost}`);
         
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        // Não reconectar se for logout ou se o statusCode for 440 (Session Timed Out)
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 440;
         const attempts = this.reconnectAttempts.get(tenantId) || 0;
         
-        console.log(`🔄 Reconectar? ${shouldReconnect} (tentativa ${attempts + 1}/5)`);
+        console.log(`🔄 Reconectar? ${shouldReconnect} (tentativa ${attempts + 1}/3)`);
         
-        if (shouldReconnect && attempts < 5) {
+        // Reduzir para 3 tentativas e aumentar delays
+        if (shouldReconnect && attempts < 3) {
           this.status.set(tenantId, 'reconnecting');
           this.reconnectAttempts.set(tenantId, attempts + 1);
+          
+          const delay = 10000 * (attempts + 1); // 10s, 20s, 30s
+          console.log(`⏰ Aguardando ${delay/1000}s antes de reconectar...`);
           
           setTimeout(() => {
             console.log(`🔄 Tentando reconexão ${attempts + 1} para ${tenant.slug}...`);
             this.sockets.delete(tenantId);
-            this.createClient(tenant).catch(console.error);
-          }, 5000 * (attempts + 1)); // Backoff exponencial
+            this.createClient(tenant).catch((err) => {
+              console.error(`❌ Erro na reconexão ${attempts + 1}:`, err.message);
+            });
+          }, delay);
         } else {
-          if (attempts >= 5) {
-            console.error(`⛔ ${tenant.slug}: Máximo de tentativas atingido (5)`);
+          if (attempts >= 3) {
+            console.error(`⛔ ${tenant.slug}: Máximo de tentativas atingido (3)`);
+            console.error(`💡 Aguardando nova solicitação de /connect para retentar`);
           }
-          this.status.set(tenantId, 'logged_out');
+          this.status.set(tenantId, 'disconnected');
           this.sockets.delete(tenantId);
           this.qrCache.delete(tenantId);
           this.reconnectAttempts.delete(tenantId);
@@ -542,13 +557,49 @@ async function createApp(tenantManager) {
 // ===================== Bootstrap =====================
 async function main() {
   console.log(`\n${'='.repeat(70)}\n🚀 WhatsApp Multi‑Tenant – v4.1 (Baileys)\nAuth: ${CONFIG.AUTH_DIR}\nPort: ${CONFIG.PORT}\n${'='.repeat(70)}\n`);
+  
   const manager = new TenantManager();
   const app = await createApp(manager);
-  app.listen(CONFIG.PORT, () => console.log(`▶️  HTTP ${CONFIG.PORT}`));
+  
+  const server = app.listen(CONFIG.PORT, () => {
+    console.log(`▶️  HTTP ${CONFIG.PORT}`);
+    console.log(`✅ Servidor rodando e pronto para conexões`);
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('⚠️  SIGTERM recebido, encerrando graciosamente...');
+    server.close(() => {
+      console.log('✅ Servidor fechado');
+      process.exit(0);
+    });
+  });
+
+  process.on('SIGINT', () => {
+    console.log('⚠️  SIGINT recebido, encerrando graciosamente...');
+    server.close(() => {
+      console.log('✅ Servidor fechado');
+      process.exit(0);
+    });
+  });
+
+  // Prevenir crashes por erros não tratados
+  process.on('uncaughtException', (error) => {
+    console.error('❌ UNCAUGHT EXCEPTION:', error);
+    console.error('Stack:', error.stack);
+    // NÃO sair do processo - apenas logar
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ UNHANDLED REJECTION:', reason);
+    console.error('Promise:', promise);
+    // NÃO sair do processo - apenas logar
+  });
 }
 
 main().catch((e) => {
-  console.error('❌ Erro fatal:', e);
+  console.error('❌ Erro fatal na inicialização:', e);
+  console.error('Stack:', e.stack);
   process.exit(1);
 });
 
