@@ -33,19 +33,38 @@ export default function ConexaoWhatsApp() {
   const [waitingTime, setWaitingTime] = useState(0);
   const [hasTimedOut, setHasTimedOut] = useState(false);
 
+  // Log inicial
+  console.log('🎯 [COMPONENTE] ConexaoWhatsApp montado');
+  console.log('🎯 [COMPONENTE] Tenant:', tenant?.id, tenant?.name);
+
   useEffect(() => {
+    console.log('🔄 [MOUNT] Componente montado, carregando integração...');
     loadWhatsAppIntegration();
   }, [tenant?.id]);
 
   useEffect(() => {
     if (serverUrl && tenant?.id) {
+      console.log('🚀 [EFFECT] Server URL e Tenant ID disponíveis');
+      console.log('🚀 [EFFECT] Server URL:', serverUrl);
+      console.log('🚀 [EFFECT] Tenant ID:', tenant.id);
+      
       setWaitingTime(0);
       setHasTimedOut(false);
+      
+      console.log('🚀 [EFFECT] Chamando initializeConnection...');
       initializeConnection();
+      
+      console.log('🚀 [EFFECT] Iniciando polling...');
       startPolling();
+      
       return () => {
+        console.log('🛑 [EFFECT] Parando polling');
         setPolling(false);
       };
+    } else {
+      console.log('⚠️ [EFFECT] Aguardando serverUrl ou tenant.id');
+      console.log('   - serverUrl:', serverUrl);
+      console.log('   - tenant?.id:', tenant?.id);
     }
   }, [serverUrl, tenant?.id]);
 
@@ -54,6 +73,8 @@ export default function ConexaoWhatsApp() {
     
     try {
       console.log('🔄 [INIT] Inicializando conexão WhatsApp...');
+      console.log('🔄 [INIT] Tenant ID:', tenant.id);
+      console.log('🔄 [INIT] Server URL:', serverUrl);
       
       const { data, error } = await supabaseTenant.functions.invoke(
         'whatsapp-proxy',
@@ -65,13 +86,35 @@ export default function ConexaoWhatsApp() {
         }
       );
 
+      console.log('📡 [INIT] Response:', { data, error });
+
       if (error) {
         console.error('❌ [INIT] Erro ao inicializar:', error);
+        toast({
+          title: "Erro ao Conectar",
+          description: error.message || "Não foi possível iniciar a conexão com WhatsApp",
+          variant: "destructive"
+        });
+        setWhatsappStatus({
+          connected: false,
+          status: 'error',
+          error: error.message || 'Erro ao inicializar conexão'
+        });
       } else {
         console.log('✅ [INIT] Conexão inicializada:', data);
       }
     } catch (error: any) {
-      console.error('❌ [INIT] Erro:', error);
+      console.error('❌ [INIT] Exception:', error);
+      toast({
+        title: "Erro Inesperado",
+        description: error.message || "Erro ao tentar conectar ao WhatsApp",
+        variant: "destructive"
+      });
+      setWhatsappStatus({
+        connected: false,
+        status: 'error',
+        error: error.message || 'Erro inesperado'
+      });
     }
   };
 
