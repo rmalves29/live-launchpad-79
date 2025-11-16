@@ -458,6 +458,51 @@ export type Database = {
         }
         Relationships: []
       }
+      mkt_mm: {
+        Row: {
+          created_at: string | null
+          field1: string | null
+          field2: string | null
+          field3: string | null
+          id: number
+          is_cancelled: boolean | null
+          last_message_status: string | null
+          last_response_at: string | null
+          last_sent_at: string | null
+          name: string | null
+          phone: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          field1?: string | null
+          field2?: string | null
+          field3?: string | null
+          id?: number
+          is_cancelled?: boolean | null
+          last_message_status?: string | null
+          last_response_at?: string | null
+          last_sent_at?: string | null
+          name?: string | null
+          phone: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          field1?: string | null
+          field2?: string | null
+          field3?: string | null
+          id?: number
+          is_cancelled?: boolean | null
+          last_message_status?: string | null
+          last_response_at?: string | null
+          last_sent_at?: string | null
+          name?: string | null
+          phone?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           cart_id: number | null
@@ -472,6 +517,7 @@ export type Database = {
           customer_street: string | null
           event_date: string
           event_type: string
+          group_name: string | null
           id: number
           is_paid: boolean
           item_added_message_sent: boolean | null
@@ -479,6 +525,7 @@ export type Database = {
           payment_confirmation_sent: boolean | null
           payment_link: string | null
           printed: boolean | null
+          skip_paid_message: boolean | null
           tenant_id: string
           total_amount: number
           unique_order_id: string | null
@@ -497,6 +544,7 @@ export type Database = {
           customer_street?: string | null
           event_date: string
           event_type: string
+          group_name?: string | null
           id?: number
           is_paid?: boolean
           item_added_message_sent?: boolean | null
@@ -504,6 +552,7 @@ export type Database = {
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
+          skip_paid_message?: boolean | null
           tenant_id: string
           total_amount: number
           unique_order_id?: string | null
@@ -522,6 +571,7 @@ export type Database = {
           customer_street?: string | null
           event_date?: string
           event_type?: string
+          group_name?: string | null
           id?: number
           is_paid?: boolean
           item_added_message_sent?: boolean | null
@@ -529,6 +579,7 @@ export type Database = {
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
+          skip_paid_message?: boolean | null
           tenant_id?: string
           total_amount?: number
           unique_order_id?: string | null
@@ -590,6 +641,95 @@ export type Database = {
           tenant_id?: string | null
           updated_at?: string | null
           webhook_secret?: string | null
+        }
+        Relationships: []
+      }
+      phone_fix_changes: {
+        Row: {
+          changed_at: string
+          column_name: string
+          id: string
+          job_id: string | null
+          new_value: string | null
+          old_value: string | null
+          row_pk: Json
+          table_name: string
+        }
+        Insert: {
+          changed_at?: string
+          column_name: string
+          id?: string
+          job_id?: string | null
+          new_value?: string | null
+          old_value?: string | null
+          row_pk: Json
+          table_name: string
+        }
+        Update: {
+          changed_at?: string
+          column_name?: string
+          id?: string
+          job_id?: string | null
+          new_value?: string | null
+          old_value?: string | null
+          row_pk?: Json
+          table_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_fix_changes_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "phone_fix_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      phone_fix_jobs: {
+        Row: {
+          batch_size: number
+          created_at: string
+          created_by: string | null
+          dry_run: boolean
+          finished_at: string | null
+          id: string
+          last_error: string | null
+          last_processed_id: string | null
+          started_at: string | null
+          status: string
+          tenant_id: string | null
+          total_changed: number
+          total_scanned: number
+        }
+        Insert: {
+          batch_size?: number
+          created_at?: string
+          created_by?: string | null
+          dry_run?: boolean
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_processed_id?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          total_changed?: number
+          total_scanned?: number
+        }
+        Update: {
+          batch_size?: number
+          created_at?: string
+          created_by?: string | null
+          dry_run?: boolean
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          last_processed_id?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          total_changed?: number
+          total_scanned?: number
         }
         Relationships: []
       }
@@ -680,6 +820,116 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduled_jobs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          finished_at: string | null
+          id: string
+          last_error: string | null
+          name: string | null
+          options: Json | null
+          processed_messages: number
+          started_at: string | null
+          status: string
+          tenant_id: string | null
+          total_messages: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          name?: string | null
+          options?: Json | null
+          processed_messages?: number
+          started_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          total_messages?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          finished_at?: string | null
+          id?: string
+          last_error?: string | null
+          name?: string | null
+          options?: Json | null
+          processed_messages?: number
+          started_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          total_messages?: number
+        }
+        Relationships: []
+      }
+      scheduled_messages: {
+        Row: {
+          attempts: number
+          created_at: string
+          group_id: string | null
+          id: string
+          job_id: string | null
+          last_error: string | null
+          next_attempt_at: string | null
+          payload: Json | null
+          product_id: string | null
+          scheduled_at: string
+          sent_at: string | null
+          status: string
+          template_name: string | null
+          tenant_id: string | null
+          to_phone: string | null
+          whatsapp_jid: string | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          group_id?: string | null
+          id?: string
+          job_id?: string | null
+          last_error?: string | null
+          next_attempt_at?: string | null
+          payload?: Json | null
+          product_id?: string | null
+          scheduled_at: string
+          sent_at?: string | null
+          status?: string
+          template_name?: string | null
+          tenant_id?: string | null
+          to_phone?: string | null
+          whatsapp_jid?: string | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          group_id?: string | null
+          id?: string
+          job_id?: string | null
+          last_error?: string | null
+          next_attempt_at?: string | null
+          payload?: Json | null
+          product_id?: string | null
+          scheduled_at?: string
+          sent_at?: string | null
+          status?: string
+          template_name?: string | null
+          tenant_id?: string | null
+          to_phone?: string | null
+          whatsapp_jid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_messages_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "scheduled_jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -1005,6 +1255,7 @@ export type Database = {
         Row: {
           amount: number | null
           created_at: string | null
+          group_name: string | null
           id: number
           message: string
           order_id: number | null
@@ -1021,6 +1272,7 @@ export type Database = {
         Insert: {
           amount?: number | null
           created_at?: string | null
+          group_name?: string | null
           id?: number
           message: string
           order_id?: number | null
@@ -1037,6 +1289,7 @@ export type Database = {
         Update: {
           amount?: number | null
           created_at?: string | null
+          group_name?: string | null
           id?: number
           message?: string
           order_id?: number | null
@@ -1275,6 +1528,8 @@ export type Database = {
           slug: string
         }[]
       }
+      normalize_bazar_phone: { Args: { phone: string }; Returns: string }
+      normalize_phone_regional: { Args: { phone: string }; Returns: string }
       text_to_bytea: { Args: { data: string }; Returns: string }
       urlencode:
         | { Args: { data: Json }; Returns: string }
