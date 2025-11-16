@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "server1.js",
+  "main": "server-multitenant-clean.js",
   "scripts": {
-    "start": "node server1.js",
+    "start": "node server-multitenant-clean.js",
     "dev": "node --watch server1.js"
   },
   "dependencies": {
