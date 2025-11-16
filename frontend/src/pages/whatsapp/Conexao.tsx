@@ -41,12 +41,39 @@ export default function ConexaoWhatsApp() {
     if (serverUrl && tenant?.id) {
       setWaitingTime(0);
       setHasTimedOut(false);
+      initializeConnection();
       startPolling();
       return () => {
         setPolling(false);
       };
     }
   }, [serverUrl, tenant?.id]);
+
+  const initializeConnection = async () => {
+    if (!tenant?.id) return;
+    
+    try {
+      console.log('🔄 [INIT] Inicializando conexão WhatsApp...');
+      
+      const { data, error } = await supabaseTenant.functions.invoke(
+        'whatsapp-proxy',
+        {
+          body: {
+            action: 'connect',
+            tenant_id: tenant.id
+          }
+        }
+      );
+
+      if (error) {
+        console.error('❌ [INIT] Erro ao inicializar:', error);
+      } else {
+        console.log('✅ [INIT] Conexão inicializada:', data);
+      }
+    } catch (error: any) {
+      console.error('❌ [INIT] Erro:', error);
+    }
+  };
 
   // Timer para contar tempo de espera e timeout
   useEffect(() => {
@@ -372,39 +399,36 @@ export default function ConexaoWhatsApp() {
       setHasTimedOut(false);
       
       console.log('\n🔄 [RECONECTAR] Forçando reset do WhatsApp');
-      console.log('📋 [RECONECTAR] Servidor:', serverUrl);
       console.log('📋 [RECONECTAR] Tenant ID:', tenant.id);
       
       toast({
-        title: "Limpando sessão",
-        description: "Removendo sessão antiga e gerando novo QR Code...",
+        title: "Reconectando",
+        description: "Iniciando nova conexão WhatsApp...",
       });
 
       // Limpar o status atual
       setWhatsappStatus(null);
 
-      // Chamar endpoint de reset no servidor Node.js
-      const resetUrl = `${serverUrl}/reset/${tenant.id}`;
-      console.log('📤 [RECONECTAR] Chamando:', resetUrl);
-      
-      const response = await fetch(resetUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // Chamar edge function para reset
+      const { data, error } = await supabaseTenant.functions.invoke(
+        'whatsapp-proxy',
+        {
+          body: {
+            action: 'reset',
+            tenant_id: tenant.id
+          }
         }
-      });
+      );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ [RECONECTAR] Erro no reset:', errorText);
-        throw new Error('Erro ao resetar conexão WhatsApp');
+      if (error) {
+        console.error('❌ [RECONECTAR] Erro no reset:', error);
+        throw new Error(error.message);
       }
 
-      const result = await response.json();
-      console.log('✅ [RECONECTAR] Reset bem sucedido:', result);
+      console.log('✅ [RECONECTAR] Reset concluído:', data);
 
       toast({
-        title: "Sessão limpa",
+        title: "Reconectando",
         description: "Aguarde alguns segundos para o novo QR Code ser gerado...",
       });
 
