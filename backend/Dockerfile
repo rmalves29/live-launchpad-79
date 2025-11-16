@@ -46,13 +46,13 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package.json first
+COPY package.json ./
 
-# Install dependencies
-RUN npm install --production
+# Install dependencies (use npm ci if package-lock exists, otherwise npm install)
+RUN npm install --omit=dev || npm install --production
 
-# Copy backend files
+# Copy all backend files
 COPY . .
 
 # Create directory for Baileys authentication
