@@ -14,16 +14,12 @@
  */
 
 // ===================== Dependências =====================
-const express = require('express');
-const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-
-// Polyfill fetch (Node < 18)
-if (typeof fetch !== 'function') {
-  global.fetch = require('node-fetch');
-}
+import express from 'express';
+import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { Client, LocalAuth } from 'whatsapp-web.js';
+import fetch from 'node-fetch';
 
 // ===================== Configurações =====================
 const CONFIG = {
