@@ -1,8 +1,9 @@
 # Use Node.js 22 LTS
 FROM node:22-slim
 
-# Install dependencies for Baileys/Puppeteer
+# Install dependencies for Baileys/Puppeteer and git
 RUN apt-get update && apt-get install -y \
+    git \
     chromium \
     ca-certificates \
     fonts-liberation \
@@ -46,11 +47,11 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy package.json first
+# Copy package.json
 COPY package.json ./
 
-# Install dependencies (use npm ci if package-lock exists, otherwise npm install)
-RUN npm install --omit=dev || npm install --production
+# Install dependencies
+RUN npm install --legacy-peer-deps --production
 
 # Copy all backend files
 COPY . .
