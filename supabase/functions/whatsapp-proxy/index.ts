@@ -133,12 +133,12 @@ Deno.serve(async (req) => {
               tenantId: actualTenantId,
               status: connectData.status || 'initializing',
             }),
-            { headers: corsHeaders }
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         } else {
           return new Response(
             JSON.stringify(connectData),
-            { status: 500, headers: corsHeaders }
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
       } catch (fetchError) {
@@ -149,30 +149,7 @@ Deno.serve(async (req) => {
             error: 'Erro ao conectar com servidor WhatsApp',
             details: fetchError.message
           }),
-          { status: 503, headers: corsHeaders }
-        );
-      }
-    }
-    
-    if (action === 'status') {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            message: 'Conexão iniciada com sucesso',
-            status: connectData.status
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: connectData.error || 'Erro ao iniciar conexão'
-          }),
-          { 
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          }
+          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
     }
