@@ -292,10 +292,17 @@ export default function ConexaoWhatsApp() {
         console.log('💡 [STATUS] Verifique se o servidor Node.js está rodando');
         console.log('💡 [STATUS] URL esperada:', `${serverUrl}/qr/${tenant.id}`);
         
+        // Detectar erro 405 especificamente
+        const is405Error = functionData.error?.includes('405') || 
+                          functionData.error?.includes('Connection Failure') ||
+                          functionData.status === 'error';
+        
         setWhatsappStatus({
           connected: false,
           status: 'error',
-          error: `${functionData.error}. Por favor, verifique se o servidor está rodando corretamente.`
+          error: is405Error 
+            ? 'Erro 405 - Connection Failure. WhatsApp bloqueou temporariamente novas conexões.'
+            : `${functionData.error}. Por favor, verifique se o servidor está rodando corretamente.`
         });
         console.log('='.repeat(70) + '\n');
         return;
@@ -748,14 +755,34 @@ WHERE tenant_id = '${tenant?.id}';`}
               </div>
             </div>
           ) : whatsappStatus?.status === 'error' ? (
-            <div className="flex items-center gap-3 text-destructive">
-              <AlertCircle className="h-6 w-6" />
-              <div>
-                <p className="font-semibold">Erro de Conexão</p>
-                <p className="text-sm text-muted-foreground">
-                  {whatsappStatus.error || 'Erro ao conectar com servidor'}
-                </p>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 text-destructive">
+                <AlertCircle className="h-6 w-6" />
+                <div>
+                  <p className="font-semibold">Erro de Conexão</p>
+                  <p className="text-sm text-muted-foreground">
+                    {whatsappStatus.error || 'Erro ao conectar com servidor'}
+                  </p>
+                </div>
               </div>
+              
+              {(whatsappStatus.error?.includes('405') || whatsappStatus.error?.includes('Connection Failure')) && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    <strong>Erro 405 - Bloqueio Temporário</strong>
+                    <p className="mt-2">
+                      O WhatsApp bloqueou temporariamente novas conexões. Isso acontece após múltiplas tentativas seguidas.
+                    </p>
+                    <p className="mt-2 font-semibold">
+                      ⏰ Aguarde 5-10 minutos antes de tentar conectar novamente.
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      A sessão foi automaticamente limpa. Quando reconectar, um novo QR Code será gerado.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-3 text-orange-600">
