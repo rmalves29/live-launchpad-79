@@ -496,15 +496,29 @@ async function createApp(tenantManager) {
       return res.status(400).json({ ok: false, error: 'Tenant não resolvido' });
     }
     
-    // Verificar se o tenant está em estado de erro
+    // Verificar se o tenant está em estado de erro E se o cooldown ainda está ativo
     const status = tenantManager.status.get(req.tenantId);
-    if (status === 'error') {
-      console.log('❌ [GET /qr] Tenant em estado de erro - requer reset/reconexão');
-      return res.status(500).json({ 
-        ok: false, 
-        status: 'error',
-        error: 'Sessão em estado de erro. Use /reset para limpar e /connect para reconectar.' 
-      });
+    const lastError405Time = tenantManager.lastError405.get(req.tenantId);
+    
+    if (status === 'error' && lastError405Time) {
+      const timeSinceError = Date.now() - lastError405Time;
+      const cooldownRemaining = tenantManager.COOLDOWN_405_MS - timeSinceError;
+      
+      if (cooldownRemaining > 0) {
+        const minutesRemaining = Math.ceil(cooldownRemaining / (60 * 1000));
+        console.log(`⏰ [GET /qr] Cooldown ativo. ${minutesRemaining} minutos restantes.`);
+        return res.status(429).json({ 
+          ok: false, 
+          status: 'cooldown',
+          cooldownRemaining: minutesRemaining,
+          error: `Aguarde ${minutesRemaining} minutos após erro 405` 
+        });
+      } else {
+        // Cooldown expirado, limpar erro e permitir tentativa
+        console.log('✅ [GET /qr] Cooldown expirado, limpando estado de erro');
+        tenantManager.lastError405.delete(req.tenantId);
+        tenantManager.status.delete(req.tenantId);
+      }
     }
     
     const entry = tenantManager.qrCache.get(req.tenantId);
@@ -546,9 +560,10 @@ async function createApp(tenantManager) {
             lastError405: new Date(lastError405Time).toISOString()
           });
         } else {
-          // Cooldown expirado, limpar timestamp
+          // Cooldown expirado, limpar timestamp e status de erro
           tenantManager.lastError405.delete(req.tenantId);
-          console.log(`✅ [POST /connect] Cooldown expirado. Permitindo nova tentativa.`);
+          tenantManager.status.delete(req.tenantId);
+          console.log(`✅ [POST /connect] Cooldown expirado. Limpando estado de erro e permitindo nova tentativa.`);
         }
       }
       
