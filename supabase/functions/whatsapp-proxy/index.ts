@@ -15,7 +15,12 @@ Deno.serve(async (req) => {
   try {
     const { tenant_id, action, tenantId } = await req.json();
     const actualTenantId = tenant_id || tenantId;
-    console.log('🔍 Proxy request:', { tenant_id: actualTenantId, action });
+    console.log('🔍 [PROXY] Received request:', { 
+      tenant_id: actualTenantId, 
+      action, 
+      method: req.method,
+      url: req.url 
+    });
 
     if (!actualTenantId) {
       return new Response(
@@ -83,7 +88,11 @@ Deno.serve(async (req) => {
     
     if (action === 'connect') {
       // Iniciar sessão
-      console.log('🔄 Connecting WhatsApp session');
+      console.log('🔄 [PROXY-CONNECT] Iniciando conexão WhatsApp');
+      console.log('📍 [PROXY-CONNECT] API URL:', apiUrl);
+      console.log('📍 [PROXY-CONNECT] Tenant ID:', actualTenantId);
+      console.log('📍 [PROXY-CONNECT] Full URL:', `${apiUrl}/connect`);
+      
       const connectResponse = await fetch(`${apiUrl}/connect`, {
         method: 'POST',
         headers: {
@@ -92,8 +101,11 @@ Deno.serve(async (req) => {
         },
       });
 
+      console.log('📡 [PROXY-CONNECT] Response status:', connectResponse.status);
+      console.log('📡 [PROXY-CONNECT] Response ok:', connectResponse.ok);
+      
       const connectData = await connectResponse.json();
-      console.log('✅ Connect response:', connectData);
+      console.log('✅ [PROXY-CONNECT] Connect response data:', connectData);
 
       if (connectData.ok) {
         return new Response(
