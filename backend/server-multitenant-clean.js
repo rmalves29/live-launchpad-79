@@ -141,6 +141,8 @@ class TenantManager {
     this.qrCache = new Map(); // tenantId -> { raw, dataURL? }
     this.authStates = new Map(); // tenantId -> authState
     this.reconnectAttempts = new Map(); // tenantId -> count
+    this.lastError405 = new Map(); // tenantId -> timestamp do último erro 405
+    this.COOLDOWN_405_MS = 15 * 60 * 1000; // 15 minutos de cooldown
   }
 
   createAuthDir(tenantId) {
@@ -228,6 +230,13 @@ class TenantManager {
         
         if (needsSessionReset) {
           console.error(`⚠️  Erro ${statusCode} detectado - limpando sessão corrompida`);
+          
+          // Registrar timestamp do erro 405 especificamente
+          if (statusCode === 405 || errorReason === '405') {
+            this.lastError405.set(tenantId, Date.now());
+            console.error(`⏰ Erro 405 registrado. Cooldown de 15 minutos ativado.`);
+          }
+          
           this.status.set(tenantId, 'error');
           this.sockets.delete(tenantId);
           this.qrCache.delete(tenantId);
@@ -516,6 +525,33 @@ async function createApp(tenantManager) {
       console.log('📡 [POST /connect] Headers:', JSON.stringify(req.headers, null, 2));
       
       if (!req.tenantId) return res.status(400).json({ ok: false, error: 'Tenant não resolvido' });
+      
+      // Verificar cooldown após erro 405
+      const lastError405Time = tenantManager.lastError405.get(req.tenantId);
+      if (lastError405Time) {
+        const timeSinceError = Date.now() - lastError405Time;
+        const cooldownRemaining = tenantManager.COOLDOWN_405_MS - timeSinceError;
+        
+        if (cooldownRemaining > 0) {
+          const minutesRemaining = Math.ceil(cooldownRemaining / (60 * 1000));
+          console.error(`⏰ [POST /connect] Cooldown ativo. ${minutesRemaining} minutos restantes.`);
+          console.error(`⏰ [POST /connect] Último erro 405: ${new Date(lastError405Time).toLocaleTimeString('pt-BR')}`);
+          console.error(`⏰ [POST /connect] Liberação em: ${new Date(lastError405Time + tenantManager.COOLDOWN_405_MS).toLocaleTimeString('pt-BR')}`);
+          
+          return res.status(429).json({ 
+            ok: false, 
+            error: 'Cooldown ativo após erro 405',
+            cooldownRemaining: minutesRemaining,
+            message: `WhatsApp bloqueou novas conexões. Aguarde ${minutesRemaining} minutos.`,
+            lastError405: new Date(lastError405Time).toISOString()
+          });
+        } else {
+          // Cooldown expirado, limpar timestamp
+          tenantManager.lastError405.delete(req.tenantId);
+          console.log(`✅ [POST /connect] Cooldown expirado. Permitindo nova tentativa.`);
+        }
+      }
+      
       let t = await SupabaseHelper.resolveTenantById(req.tenantId);
       if (!t) return res.status(404).json({ ok: false, error: 'Tenant não encontrado ou inativo' });
       
