@@ -419,20 +419,21 @@ export default function ConexaoWhatsApp() {
       setLoading(true);
       setWaitingTime(0);
       setHasTimedOut(false);
+      initializingRef.current = false;
       
-      console.log('\n🔄 [RECONECTAR] Forçando reset do WhatsApp');
-      console.log('📋 [RECONECTAR] Tenant ID:', tenant.id);
+      console.log('🔄 [RECONECTAR] Forçando reset e reconexão');
       
       toast({
         title: "Reconectando",
-        description: "Iniciando nova conexão WhatsApp...",
+        description: "Reiniciando conexão WhatsApp...",
       });
 
-      // Limpar o status atual
+      // Limpar status
       setWhatsappStatus(null);
 
-      // Chamar edge function para reset
-      const { data, error } = await supabase.functions.invoke(
+      // 1. Reset da sessão
+      console.log('📡 [RECONECTAR] Passo 1: Reset');
+      const { error: resetError } = await supabase.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
@@ -442,31 +443,56 @@ export default function ConexaoWhatsApp() {
         }
       );
 
-      if (error) {
-        console.error('❌ [RECONECTAR] Erro no reset:', error);
-        throw new Error(error.message);
+      if (resetError) {
+        throw new Error(`Erro no reset: ${resetError.message}`);
       }
 
-      console.log('✅ [RECONECTAR] Reset concluído:', data);
+      console.log('✅ [RECONECTAR] Reset concluído');
+
+      // 2. Aguardar 2 segundos
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // 3. Iniciar nova conexão
+      console.log('📡 [RECONECTAR] Passo 2: Connect');
+      const { error: connectError } = await supabase.functions.invoke(
+        'whatsapp-proxy',
+        {
+          body: {
+            action: 'connect',
+            tenant_id: tenant.id
+          }
+        }
+      );
+
+      if (connectError) {
+        throw new Error(`Erro ao conectar: ${connectError.message}`);
+      }
+
+      console.log('✅ [RECONECTAR] Connect iniciado');
 
       toast({
-        title: "Reconectando",
-        description: "Aguarde alguns segundos para o novo QR Code ser gerado...",
+        title: "Aguardando QR Code",
+        description: "Gerando novo QR Code...",
       });
 
-      // Aguardar 3 segundos antes de verificar o status
+      // 4. Aguardar mais 2 segundos e iniciar polling
       setTimeout(() => {
-        console.log('🔍 [RECONECTAR] Verificando status após reset');
+        console.log('🔍 [RECONECTAR] Iniciando polling');
         checkStatus();
         setLoading(false);
-      }, 3000);
+      }, 2000);
 
     } catch (error: any) {
       console.error('❌ [RECONECTAR] Erro:', error);
       toast({
-        title: "Erro",
+        title: "Erro ao Reconectar",
         description: error.message || "Erro ao tentar reconectar",
         variant: "destructive"
+      });
+      setWhatsappStatus({
+        connected: false,
+        status: 'error',
+        error: error.message
       });
       setLoading(false);
     }
