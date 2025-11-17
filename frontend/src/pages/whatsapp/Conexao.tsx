@@ -76,16 +76,37 @@ export default function ConexaoWhatsApp() {
 
       if (error) {
         console.error('❌ Erro ao inicializar:', error);
-        toast({
-          title: "Erro ao Conectar",
-          description: error.message || "Não foi possível iniciar a conexão com WhatsApp",
-          variant: "destructive"
-        });
-        setWhatsappStatus({
-          connected: false,
-          status: 'error',
-          error: error.message || 'Erro ao inicializar conexão'
-        });
+        
+        // Verificar se é erro de cooldown (429)
+        const errorMessage = error.message || '';
+        const isCooldownError = errorMessage.includes('429') || 
+                                errorMessage.includes('Cooldown') ||
+                                errorMessage.includes('Aguarde');
+        
+        if (isCooldownError && data?.cooldownRemaining) {
+          toast({
+            title: "⏰ Cooldown Ativo",
+            description: `WhatsApp bloqueou novas conexões. Aguarde ${data.cooldownRemaining} minutos antes de tentar novamente.`,
+            variant: "destructive",
+            duration: 10000
+          });
+          setWhatsappStatus({
+            connected: false,
+            status: 'error',
+            error: `Cooldown ativo: aguarde ${data.cooldownRemaining} minutos após erro 405`
+          });
+        } else {
+          toast({
+            title: "Erro ao Conectar",
+            description: error.message || "Não foi possível iniciar a conexão com WhatsApp",
+            variant: "destructive"
+          });
+          setWhatsappStatus({
+            connected: false,
+            status: 'error',
+            error: error.message || 'Erro ao inicializar conexão'
+          });
+        }
       }
     } catch (error: any) {
       console.error('❌ Exception ao inicializar:', error);
