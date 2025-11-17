@@ -7,6 +7,27 @@ interface WhatsAppIntegration {
   api_url: string;
 }
 
+// Helper para fazer fetch com timeout
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = 30000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Request timeout após ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -15,11 +36,10 @@ Deno.serve(async (req) => {
   try {
     const { tenant_id, action, tenantId } = await req.json();
     const actualTenantId = tenant_id || tenantId;
-    console.log('🔍 [PROXY] Received request:', { 
+    
+    console.log('🔍 [PROXY] Request:', { 
       tenant_id: actualTenantId, 
-      action, 
-      method: req.method,
-      url: req.url 
+      action 
     });
 
     if (!actualTenantId) {
@@ -32,18 +52,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get WhatsApp API URL from database
+    // Buscar configuração do WhatsApp
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `${supabaseUrl}/rest/v1/integration_whatsapp?tenant_id=eq.${actualTenantId}&select=api_url`,
       {
         headers: {
           'apikey': supabaseKey,
           'Authorization': `Bearer ${supabaseKey}`,
         },
-      }
+      },
+      10000 // 10 segundos timeout
     );
 
     const integrations = await response.json() as WhatsAppIntegration[];
@@ -60,185 +81,38 @@ Deno.serve(async (req) => {
     }
 
     const apiUrl = integrations[0].api_url;
-    
     console.log('🔗 [PROXY] API URL:', apiUrl);
     
-    // Handle different actions
+    // ========== RESET ==========
     if (action === 'reset') {
-      // Reset sessão
-      console.log('🔄 Resetting WhatsApp session');
-      const resetResponse = await fetch(`${apiUrl}/reset/${actualTenantId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const resetData = await resetResponse.json();
-      console.log('✅ Reset response:', resetData);
-
-      return new Response(
-        JSON.stringify(resetData),
-        { 
-          status: resetResponse.ok ? 200 : 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
-    }
-    
-    if (action === 'connect') {
-      // Iniciar sessão
-      console.log('🔄 [PROXY-CONNECT] Iniciando conexão WhatsApp');
-      console.log('📍 [PROXY-CONNECT] API URL:', apiUrl);
-      console.log('📍 [PROXY-CONNECT] Tenant ID:', actualTenantId);
-      console.log('📍 [PROXY-CONNECT] Full URL:', `${apiUrl}/connect`);
+      console.log('🔄 [PROXY-RESET] Resetando sessão');
       
       try {
-        const connectResponse = await fetch(`${apiUrl}/connect`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-tenant-id': actualTenantId,
+        const resetResponse = await fetchWithTimeout(
+          `${apiUrl}/reset/${actualTenantId}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
           },
-        });
-        
-        console.log('📡 [PROXY-CONNECT] Response status:', connectResponse.status);
-        console.log('📡 [PROXY-CONNECT] Response ok:', connectResponse.ok);
-        console.log('📡 [PROXY-CONNECT] Response headers:', JSON.stringify(Object.fromEntries(connectResponse.headers.entries())));
-        
-        const responseText = await connectResponse.text();
-        console.log('📡 [PROXY-CONNECT] Response body (raw):', responseText);
-        
-        let connectData;
-        try {
-          connectData = JSON.parse(responseText);
-        } catch (e) {
-          console.error('❌ [PROXY-CONNECT] Erro ao parsear JSON:', e);
-          return new Response(
-            JSON.stringify({ 
-              ok: false, 
-              error: 'Resposta inválida do servidor WhatsApp',
-              raw: responseText.substring(0, 500)
-            }),
-            { status: 502, headers: corsHeaders }
-          );
-        }
-        
-        console.log('✅ [PROXY-CONNECT] Connect response data:', connectData);
+          30000 // 30 segundos para reset
+        );
 
-        if (connectData.ok) {
-          return new Response(
-            JSON.stringify({
-              ok: true,
-              tenantId: actualTenantId,
-              status: connectData.status || 'initializing',
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        } else {
-          return new Response(
-            JSON.stringify(connectData),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-      } catch (fetchError) {
-        console.error('❌ [PROXY-CONNECT] Erro na requisição:', fetchError);
+        const resetData = await resetResponse.json();
+        console.log('✅ [PROXY-RESET] Success:', resetData);
+
+        return new Response(
+          JSON.stringify(resetData),
+          { 
+            status: resetResponse.ok ? 200 : 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      } catch (error: any) {
+        console.error('❌ [PROXY-RESET] Error:', error.message);
         return new Response(
           JSON.stringify({ 
             ok: false, 
-            error: 'Erro ao conectar com servidor WhatsApp',
-            details: fetchError.message
-          }),
-          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-    
-    // Construir URL correta baseado no endpoint do backend
-    // Status: /status/:tenantId
-    // QR: /qr com header x-tenant-id
-    let fullUrl: string;
-    let headers: Record<string, string>;
-    
-    if (action === 'status') {
-      fullUrl = `${apiUrl}/status/${actualTenantId}`;
-      headers = {
-        'Accept': 'application/json',
-      };
-    } else {
-      // Para QR, usar /qr com header x-tenant-id
-      fullUrl = `${apiUrl}/qr`;
-      headers = {
-        'Accept': 'application/json',
-        'x-tenant-id': actualTenantId,
-      };
-    }
-    
-    console.log('📡 Forwarding to WhatsApp server:', fullUrl);
-    console.log('📡 Headers:', JSON.stringify(headers));
-
-    // Make request to WhatsApp server
-    const whatsappResponse = await fetch(fullUrl, {
-      method: 'GET',
-      headers,
-    });
-
-    console.log('📡 Response status:', whatsappResponse.status);
-    console.log('📄 Content-Type:', whatsappResponse.headers.get('content-type'));
-
-    // Se não há conteúdo (204), significa que o QR ainda não está pronto
-    if (whatsappResponse.status === 204) {
-      console.log('⏳ QR Code not ready yet (204)');
-      return new Response(
-        JSON.stringify({
-          success: true,
-          connected: false,
-          status: 'initializing',
-          message: 'Aguardando inicialização do WhatsApp...'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const contentType = whatsappResponse.headers.get('content-type') || '';
-    
-    if (contentType.includes('application/json')) {
-      const jsonData = await whatsappResponse.json();
-      console.log('✅ JSON response:', jsonData);
-      
-      // Processar resposta do backend
-      if (jsonData.ok && jsonData.qr) {
-        // QR Code disponível
-        return new Response(
-          JSON.stringify({
-            success: true,
-            connected: false,
-            status: 'qr_ready',
-            qrCode: jsonData.qrDataURL || jsonData.qr,
-            message: 'QR Code gerado com sucesso. Escaneie com seu WhatsApp.'
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else if (jsonData.ok && jsonData.status === 'online') {
-        // Já conectado
-        return new Response(
-          JSON.stringify({
-            success: true,
-            connected: true,
-            status: 'connected',
-            message: 'WhatsApp está conectado'
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      } else if (jsonData.error) {
-        // Erro
-        return new Response(
-          JSON.stringify({
-            success: false,
-            connected: false,
-            status: 'error',
-            error: jsonData.error,
-            message: jsonData.error
+            error: error.message || 'Erro ao resetar sessão' 
           }),
           { 
             status: 500,
@@ -246,40 +120,173 @@ Deno.serve(async (req) => {
           }
         );
       }
-      
-      // Retornar resposta original se não for nenhum dos casos acima
-      return new Response(JSON.stringify(jsonData), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
     }
-
-    // If not JSON, return error
-    const text = await whatsappResponse.text();
-    console.error('❌ Unexpected response format');
-    console.error('📄 Response preview:', text.substring(0, 500));
     
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: 'Unexpected response format from WhatsApp server',
-        status: 'error',
-        message: 'Não foi possível obter resposta do servidor WhatsApp. Verifique se o servidor está funcionando corretamente.'
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    );
+    // ========== CONNECT ==========
+    if (action === 'connect') {
+      console.log('🔄 [PROXY-CONNECT] Iniciando conexão');
+      
+      try {
+        const connectResponse = await fetchWithTimeout(
+          `${apiUrl}/connect`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-tenant-id': actualTenantId,
+            },
+          },
+          45000 // 45 segundos para connect
+        );
+        
+        console.log('📡 [PROXY-CONNECT] Response status:', connectResponse.status);
+        
+        const responseText = await connectResponse.text();
+        let connectData;
+        
+        try {
+          connectData = JSON.parse(responseText);
+        } catch (e) {
+          console.error('❌ [PROXY-CONNECT] JSON parse error');
+          return new Response(
+            JSON.stringify({ 
+              ok: false, 
+              error: 'Resposta inválida do servidor WhatsApp',
+              rawResponse: responseText.substring(0, 200)
+            }),
+            { 
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
+          );
+        }
+        
+        console.log('✅ [PROXY-CONNECT] Data:', connectData);
 
-  } catch (error) {
-    console.error('❌ Proxy error:', error);
+        return new Response(
+          JSON.stringify(connectData),
+          { 
+            status: connectResponse.status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      } catch (error: any) {
+        console.error('❌ [PROXY-CONNECT] Error:', error.message);
+        return new Response(
+          JSON.stringify({ 
+            ok: false, 
+            error: error.message || 'Erro ao conectar WhatsApp',
+            type: 'connection_error'
+          }),
+          { 
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+    }
+    
+    // ========== QR / STATUS ==========
+    // Para QR e status, fazer GET simples
+    console.log('📡 [PROXY-QR/STATUS] Forwarding GET request');
+    
+    try {
+      let targetUrl: string;
+      
+      if (action === 'qr') {
+        targetUrl = `${apiUrl}/qr`;
+      } else if (action === 'status') {
+        targetUrl = `${apiUrl}/status/${actualTenantId}`;
+      } else {
+        return new Response(
+          JSON.stringify({ error: 'Invalid action' }),
+          { 
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      const dataResponse = await fetchWithTimeout(
+        targetUrl,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'x-tenant-id': actualTenantId,
+          },
+        },
+        20000 // 20 segundos timeout
+      );
+      
+      console.log('📡 Response status:', dataResponse.status);
+      
+      // Se for 204 (No Content) para QR, retornar vazio
+      if (dataResponse.status === 204) {
+        console.log('⏳ QR ainda não disponível');
+        return new Response(null, {
+          status: 204,
+          headers: corsHeaders
+        });
+      }
+      
+      // Para outros status, tentar parsear JSON
+      const contentType = dataResponse.headers.get('content-type');
+      console.log('📄 Content-Type:', contentType);
+      
+      if (contentType?.includes('application/json')) {
+        const jsonData = await dataResponse.json();
+        console.log('✅ JSON data received');
+        
+        return new Response(
+          JSON.stringify(jsonData),
+          { 
+            status: dataResponse.status,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      } else {
+        // Resposta não-JSON
+        const textData = await dataResponse.text();
+        console.log('⚠️  Non-JSON response:', textData.substring(0, 100));
+        
+        return new Response(
+          JSON.stringify({ 
+            ok: false, 
+            error: 'Resposta não-JSON do servidor',
+            response: textData.substring(0, 200)
+          }),
+          { 
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+    } catch (error: any) {
+      console.error('❌ [PROXY-QR/STATUS] Error:', error.message);
+      return new Response(
+        JSON.stringify({ 
+          ok: false, 
+          error: error.message || 'Erro ao buscar dados',
+          type: 'fetch_error'
+        }),
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+  } catch (error: any) {
+    console.error('❌ [PROXY] Unexpected error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
-        details: 'Failed to proxy request to WhatsApp server'
+        ok: false, 
+        error: error.message || 'Erro interno do proxy',
+        type: 'unexpected_error'
       }),
       { 
-        status: 500, 
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
