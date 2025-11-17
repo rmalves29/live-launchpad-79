@@ -213,6 +213,7 @@ class TenantManager {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const errorMessage = lastDisconnect?.error?.message || 'Desconhecido';
         const errorData = lastDisconnect?.error?.data;
+        const errorReason = errorData?.reason;
         
         console.error(`\n❌ ${tenant.slug}: CONEXÃO FECHADA`);
         console.error(`📊 Status Code: ${statusCode}`);
@@ -222,13 +223,35 @@ class TenantManager {
         console.error(`🔍 DisconnectReason.restartRequired: ${DisconnectReason.restartRequired}`);
         console.error(`🔍 DisconnectReason.connectionLost: ${DisconnectReason.connectionLost}`);
         
-        // Não reconectar se for logout ou se o statusCode for 440 (Session Timed Out)
+        // Erros que requerem limpeza de sessão (405, 401, 515)
+        const needsSessionReset = [405, 401, 515].includes(statusCode) || errorReason === '405';
+        
+        if (needsSessionReset) {
+          console.error(`⚠️  Erro ${statusCode} detectado - limpando sessão corrompida`);
+          this.status.set(tenantId, 'error');
+          this.sockets.delete(tenantId);
+          this.qrCache.delete(tenantId);
+          this.reconnectAttempts.delete(tenantId);
+          
+          // Limpar diretório de autenticação
+          try {
+            const authDir = this.authDirs.get(tenantId);
+            if (authDir && fs.existsSync(authDir)) {
+              fs.rmSync(authDir, { recursive: true, force: true });
+              console.log(`🗑️  Sessão ${tenant.slug} removida - necessário novo QR Code`);
+            }
+          } catch (err) {
+            console.error(`❌ Erro ao limpar sessão:`, err);
+          }
+          return;
+        }
+        
+        // Não reconectar se for logout ou timeout
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut && statusCode !== 440;
         const attempts = this.reconnectAttempts.get(tenantId) || 0;
         
         console.log(`🔄 Reconectar? ${shouldReconnect} (tentativa ${attempts + 1}/3)`);
         
-        // Reduzir para 3 tentativas e aumentar delays
         if (shouldReconnect && attempts < 3) {
           this.status.set(tenantId, 'reconnecting');
           this.reconnectAttempts.set(tenantId, attempts + 1);
