@@ -454,7 +454,9 @@ export default function ConexaoWhatsApp() {
 
       // 3. Iniciar nova conexão
       console.log('📡 [RECONECTAR] Passo 2: Connect');
-      const { error: connectError } = await supabase.functions.invoke(
+      console.log('📋 [RECONECTAR] Chamando whatsapp-proxy com action=connect');
+      
+      const { data: connectData, error: connectError } = await supabase.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
@@ -464,11 +466,19 @@ export default function ConexaoWhatsApp() {
         }
       );
 
+      console.log('📡 [RECONECTAR] Connect response:', { connectData, connectError });
+
       if (connectError) {
+        console.error('❌ [RECONECTAR] Erro no connect:', connectError);
         throw new Error(`Erro ao conectar: ${connectError.message}`);
       }
 
-      console.log('✅ [RECONECTAR] Connect iniciado');
+      if (!connectData?.success) {
+        console.error('❌ [RECONECTAR] Connect falhou:', connectData);
+        throw new Error(connectData?.error || 'Falha ao iniciar conexão');
+      }
+
+      console.log('✅ [RECONECTAR] Connect iniciado com sucesso');
 
       toast({
         title: "Aguardando QR Code",
