@@ -514,10 +514,17 @@ async function createApp(tenantManager) {
           error: `Aguarde ${minutesRemaining} minutos após erro 405` 
         });
       } else {
-        // Cooldown expirado, limpar erro e permitir tentativa
+        // Cooldown expirado, limpar erro e indicar necessidade de reconexão
         console.log('✅ [GET /qr] Cooldown expirado, limpando estado de erro');
         tenantManager.lastError405.delete(req.tenantId);
         tenantManager.status.delete(req.tenantId);
+        
+        // Retornar status especial indicando que precisa chamar /connect novamente
+        return res.status(200).json({ 
+          ok: false, 
+          status: 'reconnect_required',
+          message: 'Cooldown expirado. Nova conexão necessária.' 
+        });
       }
     }
     

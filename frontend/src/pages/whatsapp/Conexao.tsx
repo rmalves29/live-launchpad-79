@@ -329,6 +329,14 @@ export default function ConexaoWhatsApp() {
         return;
       }
 
+      // Se cooldown expirou e precisa reconectar
+      if (functionData?.status === 'reconnect_required') {
+        console.log('🔄 [STATUS] Cooldown expirado, reiniciando conexão automaticamente...');
+        initializingRef.current = false; // Permitir nova inicialização
+        await initializeConnection();
+        return;
+      }
+
       // Se já está conectado
       if (functionData?.connected === true || functionData?.status === 'connected') {
         console.log('✅ [STATUS] WhatsApp JÁ ESTÁ CONECTADO!');
