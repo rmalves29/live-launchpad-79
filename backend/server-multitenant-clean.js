@@ -225,17 +225,58 @@ class TenantManager {
         console.error(`🔍 DisconnectReason.restartRequired: ${DisconnectReason.restartRequired}`);
         console.error(`🔍 DisconnectReason.connectionLost: ${DisconnectReason.connectionLost}`);
         
-        // Erros que requerem limpeza de sessão (405, 401, 515)
-        const needsSessionReset = [405, 401, 515].includes(statusCode) || errorReason === '405';
+        // Tratar erro 405 (Connection Failure) - pode ser temporário
+        if (statusCode === 405 || errorReason === '405') {
+          const error405Count = (this.reconnectAttempts.get(tenantId) || 0) + 1;
+          this.reconnectAttempts.set(tenantId, error405Count);
+          
+          console.error(`⚠️  Erro 405 (tentativa ${error405Count}/3)`);
+          
+          // Só limpar sessão após 3 tentativas consecutivas de erro 405
+          if (error405Count >= 3) {
+            console.error(`⚠️  3 erros 405 consecutivos - limpando sessão`);
+            this.lastError405.set(tenantId, Date.now());
+            console.error(`⏰ Cooldown de 15 minutos ativado.`);
+            
+            this.status.set(tenantId, 'error');
+            this.sockets.delete(tenantId);
+            this.qrCache.delete(tenantId);
+            this.reconnectAttempts.delete(tenantId);
+            
+            // Limpar diretório de autenticação
+            try {
+              const authDir = this.authDirs.get(tenantId);
+              if (authDir && fs.existsSync(authDir)) {
+                fs.rmSync(authDir, { recursive: true, force: true });
+                console.log(`🗑️  Sessão ${tenant.slug} removida - necessário novo QR Code`);
+              }
+            } catch (err) {
+              console.error(`❌ Erro ao limpar sessão:`, err);
+            }
+            return;
+          } else {
+            // Aguardar antes de tentar novamente (backoff progressivo)
+            const delay = 30000 * error405Count; // 30s, 60s, 90s
+            console.log(`⏰ Aguardando ${delay/1000}s antes de tentar novamente...`);
+            
+            this.status.set(tenantId, 'reconnecting');
+            
+            setTimeout(() => {
+              console.log(`🔄 Nova tentativa após erro 405 (${error405Count}/3)...`);
+              this.sockets.delete(tenantId);
+              this.createClient(tenant).catch((err) => {
+                console.error(`❌ Erro na reconexão:`, err.message);
+              });
+            }, delay);
+            return;
+          }
+        }
+        
+        // Erros que requerem limpeza de sessão imediata (401, 515)
+        const needsSessionReset = [401, 515].includes(statusCode);
         
         if (needsSessionReset) {
           console.error(`⚠️  Erro ${statusCode} detectado - limpando sessão corrompida`);
-          
-          // Registrar timestamp do erro 405 especificamente
-          if (statusCode === 405 || errorReason === '405') {
-            this.lastError405.set(tenantId, Date.now());
-            console.error(`⏰ Erro 405 registrado. Cooldown de 15 minutos ativado.`);
-          }
           
           this.status.set(tenantId, 'error');
           this.sockets.delete(tenantId);
@@ -288,7 +329,8 @@ class TenantManager {
       } else if (connection === 'open') {
         this.status.set(tenantId, 'online');
         this.qrCache.delete(tenantId);
-        this.reconnectAttempts.set(tenantId, 0); // Reset tentativas
+        this.reconnectAttempts.delete(tenantId); // Reset tentativas e erros 405
+        this.lastError405.delete(tenantId); // Limpar cooldown de erro 405
         console.log(`✅ ${tenant.slug}: CONECTADO (Baileys)`);
       } else if (connection === 'connecting') {
         console.log(`🔄 ${tenant.slug}: Conectando...`);
@@ -362,6 +404,7 @@ class TenantManager {
     this.qrCache.delete(tenantId);
     this.authStates.delete(tenantId);
     this.reconnectAttempts.delete(tenantId);
+    this.lastError405.delete(tenantId);
 
     const authDir = this.authDirs.get(tenantId);
     if (authDir && fs.existsSync(authDir)) {
@@ -567,9 +610,10 @@ async function createApp(tenantManager) {
             lastError405: new Date(lastError405Time).toISOString()
           });
         } else {
-          // Cooldown expirado, limpar timestamp e status de erro
+          // Cooldown expirado, limpar timestamp, status de erro e contador de tentativas
           tenantManager.lastError405.delete(req.tenantId);
           tenantManager.status.delete(req.tenantId);
+          tenantManager.reconnectAttempts.delete(req.tenantId);
           console.log(`✅ [POST /connect] Cooldown expirado. Limpando estado de erro e permitindo nova tentativa.`);
         }
       }
