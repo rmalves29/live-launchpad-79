@@ -505,7 +505,24 @@ async function createApp(tenantManager) {
 
   // ====== Health ======
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, status: 'online', time: new Date().toISOString(), version: '4.1' });
+    const stats = {
+      ok: true,
+      status: 'online',
+      time: new Date().toISOString(),
+      version: '4.1',
+      uptime: process.uptime(),
+      memory: {
+        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+        rss: Math.round(process.memoryUsage().rss / 1024 / 1024)
+      },
+      tenants: {
+        total: tenantManager.sockets.size,
+        online: Array.from(tenantManager.status.values()).filter(s => s === 'online').length,
+        connecting: Array.from(tenantManager.status.values()).filter(s => s === 'connecting' || s === 'qr_code').length
+      }
+    };
+    res.json(stats);
   });
 
   // ====== Status geral ======
@@ -696,28 +713,59 @@ async function main() {
   
   const manager = new TenantManager();
   const app = await createApp(manager);
-  
+
   const server = app.listen(CONFIG.PORT, () => {
     console.log(`▶️  HTTP ${CONFIG.PORT}`);
     console.log(`✅ Servidor rodando e pronto para conexões`);
   });
+  
+  // Keep-alive: monitorar saúde do servidor a cada 5 minutos
+  const healthCheckInterval = setInterval(() => {
+    const memUsage = process.memoryUsage();
+    const memMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    const rssMB = Math.round(memUsage.rss / 1024 / 1024);
+    
+    console.log(`💓 Heartbeat - Uptime: ${Math.round(process.uptime())}s | Mem: ${memMB}MB heap / ${rssMB}MB RSS | Tenants: ${manager.sockets.size}`);
+    
+    // Avisar se memória está alta (> 400MB heap)
+    if (memMB > 400) {
+      console.warn(`⚠️  Alto uso de memória: ${memMB}MB heap`);
+    }
+  }, 5 * 60 * 1000); // 5 minutos
 
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('⚠️  SIGTERM recebido, encerrando graciosamente...');
+  // Graceful shutdown com timeout
+  const gracefulShutdown = async (signal) => {
+    console.log(`⚠️  ${signal} recebido, encerrando graciosamente...`);
+    
+    // Limpar heartbeat
+    clearInterval(healthCheckInterval);
+    
+    // Fechar todas as conexões WhatsApp primeiro
+    console.log('🔌 Fechando conexões WhatsApp...');
+    for (const [tenantId, sock] of manager.sockets.entries()) {
+      try {
+        await sock.end();
+        console.log(`✅ Conexão fechada para tenant: ${tenantId}`);
+      } catch (err) {
+        console.error(`⚠️  Erro ao fechar conexão do tenant ${tenantId}:`, err.message);
+      }
+    }
+    
+    // Fechar servidor HTTP
     server.close(() => {
-      console.log('✅ Servidor fechado');
+      console.log('✅ Servidor HTTP fechado');
       process.exit(0);
     });
-  });
+    
+    // Forçar saída após 25 segundos (Railway timeout é 30s)
+    setTimeout(() => {
+      console.error('⏰ Timeout no shutdown, forçando saída');
+      process.exit(1);
+    }, 25000);
+  };
 
-  process.on('SIGINT', () => {
-    console.log('⚠️  SIGINT recebido, encerrando graciosamente...');
-    server.close(() => {
-      console.log('✅ Servidor fechado');
-      process.exit(0);
-    });
-  });
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   // Prevenir crashes por erros não tratados
   process.on('uncaughtException', (error) => {

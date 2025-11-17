@@ -5,7 +5,8 @@
   "type": "module",
   "main": "server-multitenant-clean.js",
   "scripts": {
-    "start": "node server-multitenant-clean.js",
+    "start": "node start.js",
+    "start:direct": "node server-multitenant-clean.js",
     "dev": "node --watch server1.js"
   },
   "dependencies": {
