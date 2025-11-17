@@ -93,21 +93,68 @@ Deno.serve(async (req) => {
       console.log('📍 [PROXY-CONNECT] Tenant ID:', actualTenantId);
       console.log('📍 [PROXY-CONNECT] Full URL:', `${apiUrl}/connect`);
       
-      const connectResponse = await fetch(`${apiUrl}/connect`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': actualTenantId,
-        },
-      });
+      try {
+        const connectResponse = await fetch(`${apiUrl}/connect`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-tenant-id': actualTenantId,
+          },
+        });
+        
+        console.log('📡 [PROXY-CONNECT] Response status:', connectResponse.status);
+        console.log('📡 [PROXY-CONNECT] Response ok:', connectResponse.ok);
+        console.log('📡 [PROXY-CONNECT] Response headers:', JSON.stringify(Object.fromEntries(connectResponse.headers.entries())));
+        
+        const responseText = await connectResponse.text();
+        console.log('📡 [PROXY-CONNECT] Response body (raw):', responseText);
+        
+        let connectData;
+        try {
+          connectData = JSON.parse(responseText);
+        } catch (e) {
+          console.error('❌ [PROXY-CONNECT] Erro ao parsear JSON:', e);
+          return new Response(
+            JSON.stringify({ 
+              ok: false, 
+              error: 'Resposta inválida do servidor WhatsApp',
+              raw: responseText.substring(0, 500)
+            }),
+            { status: 502, headers: corsHeaders }
+          );
+        }
+        
+        console.log('✅ [PROXY-CONNECT] Connect response data:', connectData);
 
-      console.log('📡 [PROXY-CONNECT] Response status:', connectResponse.status);
-      console.log('📡 [PROXY-CONNECT] Response ok:', connectResponse.ok);
-      
-      const connectData = await connectResponse.json();
-      console.log('✅ [PROXY-CONNECT] Connect response data:', connectData);
-
-      if (connectData.ok) {
+        if (connectData.ok) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              tenantId: actualTenantId,
+              status: connectData.status || 'initializing',
+            }),
+            { headers: corsHeaders }
+          );
+        } else {
+          return new Response(
+            JSON.stringify(connectData),
+            { status: 500, headers: corsHeaders }
+          );
+        }
+      } catch (fetchError) {
+        console.error('❌ [PROXY-CONNECT] Erro na requisição:', fetchError);
+        return new Response(
+          JSON.stringify({ 
+            ok: false, 
+            error: 'Erro ao conectar com servidor WhatsApp',
+            details: fetchError.message
+          }),
+          { status: 503, headers: corsHeaders }
+        );
+      }
+    }
+    
+    if (action === 'status') {
         return new Response(
           JSON.stringify({
             success: true,
