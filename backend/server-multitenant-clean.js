@@ -487,6 +487,17 @@ async function createApp(tenantManager) {
       return res.status(400).json({ ok: false, error: 'Tenant não resolvido' });
     }
     
+    // Verificar se o tenant está em estado de erro
+    const status = tenantManager.status.get(req.tenantId);
+    if (status === 'error') {
+      console.log('❌ [GET /qr] Tenant em estado de erro - requer reset/reconexão');
+      return res.status(500).json({ 
+        ok: false, 
+        status: 'error',
+        error: 'Sessão em estado de erro. Use /reset para limpar e /connect para reconectar.' 
+      });
+    }
+    
     const entry = tenantManager.qrCache.get(req.tenantId);
     if (!entry) {
       console.log('⚠️ [GET /qr] QR Code não disponível ainda');
