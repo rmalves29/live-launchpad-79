@@ -1216,6 +1216,42 @@ export type Database = {
           },
         ]
       }
+      whatsapp_active_sessions: {
+        Row: {
+          connected_at: string
+          created_at: string | null
+          id: string
+          instance_name: string
+          last_heartbeat: string
+          metadata: Json | null
+          phone_number: string
+          server_id: string
+          status: string
+        }
+        Insert: {
+          connected_at?: string
+          created_at?: string | null
+          id?: string
+          instance_name: string
+          last_heartbeat?: string
+          metadata?: Json | null
+          phone_number: string
+          server_id: string
+          status?: string
+        }
+        Update: {
+          connected_at?: string
+          created_at?: string | null
+          id?: string
+          instance_name?: string
+          last_heartbeat?: string
+          metadata?: Json | null
+          phone_number?: string
+          server_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       whatsapp_connection_logs: {
         Row: {
           created_at: string | null
@@ -1320,6 +1356,39 @@ export type Database = {
           },
         ]
       }
+      whatsapp_session_conflicts: {
+        Row: {
+          conflict_type: string
+          details: Json | null
+          detected_at: string | null
+          existing_session_id: string | null
+          id: string
+          instance_name: string
+          new_session_server_id: string | null
+          phone_number: string
+        }
+        Insert: {
+          conflict_type: string
+          details?: Json | null
+          detected_at?: string | null
+          existing_session_id?: string | null
+          id?: string
+          instance_name: string
+          new_session_server_id?: string | null
+          phone_number: string
+        }
+        Update: {
+          conflict_type?: string
+          details?: Json | null
+          detected_at?: string | null
+          existing_session_id?: string | null
+          id?: string
+          instance_name?: string
+          new_session_server_id?: string | null
+          phone_number?: string
+        }
+        Relationships: []
+      }
       whatsapp_templates: {
         Row: {
           content: string
@@ -1364,6 +1433,7 @@ export type Database = {
     }
     Functions: {
       bytea_to_text: { Args: { data: string }; Returns: string }
+      cleanup_stale_sessions: { Args: never; Returns: undefined }
       get_current_tenant_id: { Args: never; Returns: string }
       get_tenant_by_id: {
         Args: { tenant_id_param: string }
