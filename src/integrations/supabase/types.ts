@@ -22,8 +22,9 @@ export type Database = {
           default_length_cm: number | null
           default_weight_kg: number | null
           default_width_cm: number | null
-          handling_days: number | null
           id: number
+          melhor_envio_env: string | null
+          melhor_envio_from_cep: string | null
           public_base_url: string | null
           updated_at: string
         }
@@ -34,8 +35,9 @@ export type Database = {
           default_length_cm?: number | null
           default_weight_kg?: number | null
           default_width_cm?: number | null
-          handling_days?: number | null
           id?: number
+          melhor_envio_env?: string | null
+          melhor_envio_from_cep?: string | null
           public_base_url?: string | null
           updated_at?: string
         }
@@ -46,90 +48,40 @@ export type Database = {
           default_length_cm?: number | null
           default_weight_kg?: number | null
           default_width_cm?: number | null
-          handling_days?: number | null
           id?: number
+          melhor_envio_env?: string | null
+          melhor_envio_from_cep?: string | null
           public_base_url?: string | null
           updated_at?: string
         }
         Relationships: []
       }
-      audit_logs: {
-        Row: {
-          action: string
-          actor_user_id: string | null
-          created_at: string | null
-          entity: string
-          entity_id: string | null
-          id: string
-          meta: Json | null
-          tenant_id: string | null
-        }
-        Insert: {
-          action: string
-          actor_user_id?: string | null
-          created_at?: string | null
-          entity: string
-          entity_id?: string | null
-          id?: string
-          meta?: Json | null
-          tenant_id?: string | null
-        }
-        Update: {
-          action?: string
-          actor_user_id?: string | null
-          created_at?: string | null
-          entity?: string
-          entity_id?: string | null
-          id?: string
-          meta?: Json | null
-          tenant_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "audit_logs_actor_user_id_fkey"
-            columns: ["actor_user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "audit_logs_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       cart_items: {
         Row: {
-          cart_id: number
+          cart_id: number | null
           created_at: string | null
           id: number
           printed: boolean
-          product_id: number
+          product_id: number | null
           qty: number
-          tenant_id: string
           unit_price: number
         }
         Insert: {
-          cart_id: number
+          cart_id?: number | null
           created_at?: string | null
           id?: number
           printed?: boolean
-          product_id: number
+          product_id?: number | null
           qty?: number
-          tenant_id: string
           unit_price: number
         }
         Update: {
-          cart_id?: number
+          cart_id?: number | null
           created_at?: string | null
           id?: number
           printed?: boolean
-          product_id?: number
+          product_id?: number | null
           qty?: number
-          tenant_id?: string
           unit_price?: number
         }
         Relationships: [
@@ -147,13 +99,6 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "cart_items_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
         ]
       }
       carts: {
@@ -164,9 +109,7 @@ export type Database = {
           event_date: string
           event_type: string
           id: number
-          status: Database["public"]["Enums"]["cart_status"]
-          tenant_id: string
-          whatsapp_group_name: string | null
+          status: string
         }
         Insert: {
           created_at?: string | null
@@ -175,9 +118,7 @@ export type Database = {
           event_date: string
           event_type: string
           id?: number
-          status?: Database["public"]["Enums"]["cart_status"]
-          tenant_id: string
-          whatsapp_group_name?: string | null
+          status?: string
         }
         Update: {
           created_at?: string | null
@@ -186,19 +127,9 @@ export type Database = {
           event_date?: string
           event_type?: string
           id?: number
-          status?: Database["public"]["Enums"]["cart_status"]
-          tenant_id?: string
-          whatsapp_group_name?: string | null
+          status?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "carts_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       coupons: {
         Row: {
@@ -209,7 +140,6 @@ export type Database = {
           expires_at: string | null
           id: number
           is_active: boolean
-          progressive_tiers: Json | null
           updated_at: string
           usage_limit: number | null
           used_count: number
@@ -222,7 +152,6 @@ export type Database = {
           expires_at?: string | null
           id?: number
           is_active?: boolean
-          progressive_tiers?: Json | null
           updated_at?: string
           usage_limit?: number | null
           used_count?: number
@@ -235,53 +164,71 @@ export type Database = {
           expires_at?: string | null
           id?: number
           is_active?: boolean
-          progressive_tiers?: Json | null
           updated_at?: string
           usage_limit?: number | null
           used_count?: number
         }
         Relationships: []
       }
-      customer_whatsapp_groups: {
+      customer_tag_assignments: {
         Row: {
-          created_at: string | null
-          customer_name: string | null
-          customer_phone: string
-          group_display_name: string | null
+          assigned_at: string | null
+          customer_id: number
           id: number
-          tenant_id: string
-          updated_at: string | null
-          whatsapp_group_name: string
+          tag_id: number
         }
         Insert: {
-          created_at?: string | null
-          customer_name?: string | null
-          customer_phone: string
-          group_display_name?: string | null
+          assigned_at?: string | null
+          customer_id: number
           id?: number
-          tenant_id: string
-          updated_at?: string | null
-          whatsapp_group_name: string
+          tag_id: number
         }
         Update: {
-          created_at?: string | null
-          customer_name?: string | null
-          customer_phone?: string
-          group_display_name?: string | null
+          assigned_at?: string | null
+          customer_id?: number
           id?: number
-          tenant_id?: string
-          updated_at?: string | null
-          whatsapp_group_name?: string
+          tag_id?: number
         }
         Relationships: [
           {
-            foreignKeyName: "customer_whatsapp_groups_tenant_id_fkey"
-            columns: ["tenant_id"]
+            foreignKeyName: "customer_tag_assignments_customer_id_fkey"
+            columns: ["customer_id"]
             isOneToOne: false
-            referencedRelation: "tenants"
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_tag_assignments_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "customer_tags"
             referencedColumns: ["id"]
           },
         ]
+      }
+      customer_tags: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          id: number
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          id?: number
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          id?: number
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       customers: {
         Row: {
@@ -290,16 +237,14 @@ export type Database = {
           complement: string | null
           cpf: string | null
           created_at: string | null
-          email: string | null
           id: number
-          instagram: string | null
           name: string
           number: string | null
           phone: string
           state: string | null
           street: string | null
-          tenant_id: string
           updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           cep?: string | null
@@ -307,16 +252,14 @@ export type Database = {
           complement?: string | null
           cpf?: string | null
           created_at?: string | null
-          email?: string | null
           id?: number
-          instagram?: string | null
           name: string
           number?: string | null
           phone: string
           state?: string | null
           street?: string | null
-          tenant_id: string
           updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           cep?: string | null
@@ -324,26 +267,178 @@ export type Database = {
           complement?: string | null
           cpf?: string | null
           created_at?: string | null
-          email?: string | null
           id?: number
-          instagram?: string | null
           name?: string
           number?: string | null
           phone?: string
           state?: string | null
           street?: string | null
-          tenant_id?: string
           updated_at?: string | null
+          user_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "customers_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
+      }
+      frete_config: {
+        Row: {
+          access_token: string | null
+          api_base_url: string
+          cep_origem: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          id: number
+          localidade_retirada_url: string | null
+          redirect_uri: string | null
+          refresh_token: string | null
+          remetente_bairro: string | null
+          remetente_cidade: string | null
+          remetente_documento: string | null
+          remetente_email: string | null
+          remetente_endereco_comp: string | null
+          remetente_endereco_numero: string | null
+          remetente_endereco_rua: string | null
+          remetente_nome: string | null
+          remetente_telefone: string | null
+          remetente_uf: string | null
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          api_base_url?: string
+          cep_origem?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          id?: number
+          localidade_retirada_url?: string | null
+          redirect_uri?: string | null
+          refresh_token?: string | null
+          remetente_bairro?: string | null
+          remetente_cidade?: string | null
+          remetente_documento?: string | null
+          remetente_email?: string | null
+          remetente_endereco_comp?: string | null
+          remetente_endereco_numero?: string | null
+          remetente_endereco_rua?: string | null
+          remetente_nome?: string | null
+          remetente_telefone?: string | null
+          remetente_uf?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          api_base_url?: string
+          cep_origem?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          id?: number
+          localidade_retirada_url?: string | null
+          redirect_uri?: string | null
+          refresh_token?: string | null
+          remetente_bairro?: string | null
+          remetente_cidade?: string | null
+          remetente_documento?: string | null
+          remetente_email?: string | null
+          remetente_endereco_comp?: string | null
+          remetente_endereco_numero?: string | null
+          remetente_endereco_rua?: string | null
+          remetente_nome?: string | null
+          remetente_telefone?: string | null
+          remetente_uf?: string | null
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      frete_cotacoes: {
+        Row: {
+          altura: number
+          cep_destino: string
+          comprimento: number
+          created_at: string
+          id: number
+          largura: number
+          pedido_id: number | null
+          peso: number
+          prazo: number | null
+          raw_response: Json | null
+          servico_escolhido: string | null
+          transportadora: string | null
+          valor_declarado: number | null
+          valor_frete: number | null
+        }
+        Insert: {
+          altura: number
+          cep_destino: string
+          comprimento: number
+          created_at?: string
+          id?: number
+          largura: number
+          pedido_id?: number | null
+          peso: number
+          prazo?: number | null
+          raw_response?: Json | null
+          servico_escolhido?: string | null
+          transportadora?: string | null
+          valor_declarado?: number | null
+          valor_frete?: number | null
+        }
+        Update: {
+          altura?: number
+          cep_destino?: string
+          comprimento?: number
+          created_at?: string
+          id?: number
+          largura?: number
+          pedido_id?: number | null
+          peso?: number
+          prazo?: number | null
+          raw_response?: Json | null
+          servico_escolhido?: string | null
+          transportadora?: string | null
+          valor_declarado?: number | null
+          valor_frete?: number | null
+        }
+        Relationships: []
+      }
+      frete_envios: {
+        Row: {
+          created_at: string
+          id: number
+          label_url: string | null
+          pedido_id: number | null
+          raw_response: Json | null
+          shipment_id: string | null
+          status: string | null
+          tracking_code: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          label_url?: string | null
+          pedido_id?: number | null
+          raw_response?: Json | null
+          shipment_id?: string | null
+          status?: string | null
+          tracking_code?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          label_url?: string | null
+          pedido_id?: number | null
+          raw_response?: Json | null
+          shipment_id?: string | null
+          status?: string | null
+          tracking_code?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       gifts: {
         Row: {
@@ -375,149 +470,13 @@ export type Database = {
         }
         Relationships: []
       }
-      integration_mp: {
-        Row: {
-          access_token: string | null
-          client_id: string | null
-          client_secret: string | null
-          created_at: string
-          environment: string
-          id: string
-          is_active: boolean
-          public_key: string | null
-          tenant_id: string
-          updated_at: string
-          webhook_secret: string | null
-        }
-        Insert: {
-          access_token?: string | null
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string
-          environment?: string
-          id?: string
-          is_active?: boolean
-          public_key?: string | null
-          tenant_id: string
-          updated_at?: string
-          webhook_secret?: string | null
-        }
-        Update: {
-          access_token?: string | null
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string
-          environment?: string
-          id?: string
-          is_active?: boolean
-          public_key?: string | null
-          tenant_id?: string
-          updated_at?: string
-          webhook_secret?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "integration_mp_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: true
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      integration_whatsapp: {
-        Row: {
-          api_url: string | null
-          created_at: string | null
-          id: string
-          instance_name: string
-          is_active: boolean
-          tenant_id: string
-          updated_at: string | null
-          webhook_secret: string
-        }
-        Insert: {
-          api_url?: string | null
-          created_at?: string | null
-          id?: string
-          instance_name: string
-          is_active?: boolean
-          tenant_id: string
-          updated_at?: string | null
-          webhook_secret: string
-        }
-        Update: {
-          api_url?: string | null
-          created_at?: string | null
-          id?: string
-          instance_name?: string
-          is_active?: boolean
-          tenant_id?: string
-          updated_at?: string | null
-          webhook_secret?: string
-        }
-        Relationships: []
-      }
-      mkt_mm: {
-        Row: {
-          created_at: string | null
-          field1: string | null
-          field2: string | null
-          field3: string | null
-          id: number
-          is_cancelled: boolean | null
-          last_message_status: string | null
-          last_response_at: string | null
-          last_sent_at: string | null
-          name: string | null
-          phone: string
-          updated_at: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          field1?: string | null
-          field2?: string | null
-          field3?: string | null
-          id?: number
-          is_cancelled?: boolean | null
-          last_message_status?: string | null
-          last_response_at?: string | null
-          last_sent_at?: string | null
-          name?: string | null
-          phone: string
-          updated_at?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          field1?: string | null
-          field2?: string | null
-          field3?: string | null
-          id?: number
-          is_cancelled?: boolean | null
-          last_message_status?: string | null
-          last_response_at?: string | null
-          last_sent_at?: string | null
-          name?: string | null
-          phone?: string
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
       orders: {
         Row: {
           cart_id: number | null
           created_at: string | null
-          customer_cep: string | null
-          customer_city: string | null
-          customer_complement: string | null
-          customer_name: string | null
-          customer_number: string | null
           customer_phone: string
-          customer_state: string | null
-          customer_street: string | null
           event_date: string
           event_type: string
-          group_name: string | null
           id: number
           is_paid: boolean
           item_added_message_sent: boolean | null
@@ -525,26 +484,14 @@ export type Database = {
           payment_confirmation_sent: boolean | null
           payment_link: string | null
           printed: boolean | null
-          skip_paid_message: boolean | null
-          tenant_id: string
           total_amount: number
-          unique_order_id: string | null
-          whatsapp_group_name: string | null
         }
         Insert: {
           cart_id?: number | null
           created_at?: string | null
-          customer_cep?: string | null
-          customer_city?: string | null
-          customer_complement?: string | null
-          customer_name?: string | null
-          customer_number?: string | null
           customer_phone: string
-          customer_state?: string | null
-          customer_street?: string | null
           event_date: string
           event_type: string
-          group_name?: string | null
           id?: number
           is_paid?: boolean
           item_added_message_sent?: boolean | null
@@ -552,26 +499,14 @@ export type Database = {
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
-          skip_paid_message?: boolean | null
-          tenant_id: string
           total_amount: number
-          unique_order_id?: string | null
-          whatsapp_group_name?: string | null
         }
         Update: {
           cart_id?: number | null
           created_at?: string | null
-          customer_cep?: string | null
-          customer_city?: string | null
-          customer_complement?: string | null
-          customer_name?: string | null
-          customer_number?: string | null
           customer_phone?: string
-          customer_state?: string | null
-          customer_street?: string | null
           event_date?: string
           event_type?: string
-          group_name?: string | null
           id?: number
           is_paid?: boolean
           item_added_message_sent?: boolean | null
@@ -579,11 +514,7 @@ export type Database = {
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
-          skip_paid_message?: boolean | null
-          tenant_id?: string
           total_amount?: number
-          unique_order_id?: string | null
-          whatsapp_group_name?: string | null
         }
         Relationships: [
           {
@@ -593,201 +524,37 @@ export type Database = {
             referencedRelation: "carts"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "orders_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
         ]
-      }
-      payment_integrations: {
-        Row: {
-          access_token: string
-          client_id: string | null
-          client_secret: string | null
-          created_at: string | null
-          id: string
-          is_active: boolean
-          provider: string
-          public_key: string | null
-          tenant_id: string | null
-          updated_at: string | null
-          webhook_secret: string | null
-        }
-        Insert: {
-          access_token: string
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string | null
-          id?: string
-          is_active?: boolean
-          provider?: string
-          public_key?: string | null
-          tenant_id?: string | null
-          updated_at?: string | null
-          webhook_secret?: string | null
-        }
-        Update: {
-          access_token?: string
-          client_id?: string | null
-          client_secret?: string | null
-          created_at?: string | null
-          id?: string
-          is_active?: boolean
-          provider?: string
-          public_key?: string | null
-          tenant_id?: string | null
-          updated_at?: string | null
-          webhook_secret?: string | null
-        }
-        Relationships: []
-      }
-      phone_fix_changes: {
-        Row: {
-          changed_at: string
-          column_name: string
-          id: string
-          job_id: string | null
-          new_value: string | null
-          old_value: string | null
-          row_pk: Json
-          table_name: string
-        }
-        Insert: {
-          changed_at?: string
-          column_name: string
-          id?: string
-          job_id?: string | null
-          new_value?: string | null
-          old_value?: string | null
-          row_pk: Json
-          table_name: string
-        }
-        Update: {
-          changed_at?: string
-          column_name?: string
-          id?: string
-          job_id?: string | null
-          new_value?: string | null
-          old_value?: string | null
-          row_pk?: Json
-          table_name?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "phone_fix_changes_job_id_fkey"
-            columns: ["job_id"]
-            isOneToOne: false
-            referencedRelation: "phone_fix_jobs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      phone_fix_jobs: {
-        Row: {
-          batch_size: number
-          created_at: string
-          created_by: string | null
-          dry_run: boolean
-          finished_at: string | null
-          id: string
-          last_error: string | null
-          last_processed_id: string | null
-          started_at: string | null
-          status: string
-          tenant_id: string | null
-          total_changed: number
-          total_scanned: number
-        }
-        Insert: {
-          batch_size?: number
-          created_at?: string
-          created_by?: string | null
-          dry_run?: boolean
-          finished_at?: string | null
-          id?: string
-          last_error?: string | null
-          last_processed_id?: string | null
-          started_at?: string | null
-          status?: string
-          tenant_id?: string | null
-          total_changed?: number
-          total_scanned?: number
-        }
-        Update: {
-          batch_size?: number
-          created_at?: string
-          created_by?: string | null
-          dry_run?: boolean
-          finished_at?: string | null
-          id?: string
-          last_error?: string | null
-          last_processed_id?: string | null
-          started_at?: string | null
-          status?: string
-          tenant_id?: string | null
-          total_changed?: number
-          total_scanned?: number
-        }
-        Relationships: []
       }
       products: {
         Row: {
           code: string
-          color: string | null
-          created_at: string | null
           id: number
           image_url: string | null
           is_active: boolean
           name: string
           price: number
-          sale_type: string
-          size: string | null
           stock: number
-          tenant_id: string
-          updated_at: string | null
         }
         Insert: {
           code: string
-          color?: string | null
-          created_at?: string | null
           id?: number
           image_url?: string | null
           is_active?: boolean
           name: string
           price: number
-          sale_type?: string
-          size?: string | null
           stock?: number
-          tenant_id: string
-          updated_at?: string | null
         }
         Update: {
           code?: string
-          color?: string | null
-          created_at?: string | null
           id?: number
           image_url?: string | null
           is_active?: boolean
           name?: string
           price?: number
-          sale_type?: string
-          size?: string | null
           stock?: number
-          tenant_id?: string
-          updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "products_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -795,7 +562,6 @@ export type Database = {
           email: string | null
           id: string
           role: Database["public"]["Enums"]["user_role"]
-          tenant_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -803,7 +569,6 @@ export type Database = {
           email?: string | null
           id: string
           role?: Database["public"]["Enums"]["user_role"]
-          tenant_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -811,487 +576,14 @@ export type Database = {
           email?: string | null
           id?: string
           role?: Database["public"]["Enums"]["user_role"]
-          tenant_id?: string | null
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      scheduled_jobs: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          finished_at: string | null
-          id: string
-          last_error: string | null
-          name: string | null
-          options: Json | null
-          processed_messages: number
-          started_at: string | null
-          status: string
-          tenant_id: string | null
-          total_messages: number
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          finished_at?: string | null
-          id?: string
-          last_error?: string | null
-          name?: string | null
-          options?: Json | null
-          processed_messages?: number
-          started_at?: string | null
-          status?: string
-          tenant_id?: string | null
-          total_messages?: number
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          finished_at?: string | null
-          id?: string
-          last_error?: string | null
-          name?: string | null
-          options?: Json | null
-          processed_messages?: number
-          started_at?: string | null
-          status?: string
-          tenant_id?: string | null
-          total_messages?: number
-        }
         Relationships: []
-      }
-      scheduled_messages: {
-        Row: {
-          attempts: number
-          created_at: string
-          group_id: string | null
-          id: string
-          job_id: string | null
-          last_error: string | null
-          next_attempt_at: string | null
-          payload: Json | null
-          product_id: string | null
-          scheduled_at: string
-          sent_at: string | null
-          status: string
-          template_name: string | null
-          tenant_id: string | null
-          to_phone: string | null
-          whatsapp_jid: string | null
-        }
-        Insert: {
-          attempts?: number
-          created_at?: string
-          group_id?: string | null
-          id?: string
-          job_id?: string | null
-          last_error?: string | null
-          next_attempt_at?: string | null
-          payload?: Json | null
-          product_id?: string | null
-          scheduled_at: string
-          sent_at?: string | null
-          status?: string
-          template_name?: string | null
-          tenant_id?: string | null
-          to_phone?: string | null
-          whatsapp_jid?: string | null
-        }
-        Update: {
-          attempts?: number
-          created_at?: string
-          group_id?: string | null
-          id?: string
-          job_id?: string | null
-          last_error?: string | null
-          next_attempt_at?: string | null
-          payload?: Json | null
-          product_id?: string | null
-          scheduled_at?: string
-          sent_at?: string | null
-          status?: string
-          template_name?: string | null
-          tenant_id?: string | null
-          to_phone?: string | null
-          whatsapp_jid?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "scheduled_messages_job_id_fkey"
-            columns: ["job_id"]
-            isOneToOne: false
-            referencedRelation: "scheduled_jobs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      sending_jobs: {
-        Row: {
-          completed_at: string | null
-          created_at: string
-          current_index: number
-          error_message: string | null
-          id: string
-          job_data: Json
-          job_type: string
-          paused_at: string | null
-          processed_items: number
-          started_at: string
-          status: string
-          tenant_id: string
-          total_items: number
-          updated_at: string
-        }
-        Insert: {
-          completed_at?: string | null
-          created_at?: string
-          current_index?: number
-          error_message?: string | null
-          id?: string
-          job_data?: Json
-          job_type: string
-          paused_at?: string | null
-          processed_items?: number
-          started_at?: string
-          status?: string
-          tenant_id: string
-          total_items?: number
-          updated_at?: string
-        }
-        Update: {
-          completed_at?: string | null
-          created_at?: string
-          current_index?: number
-          error_message?: string | null
-          id?: string
-          job_data?: Json
-          job_type?: string
-          paused_at?: string | null
-          processed_items?: number
-          started_at?: string
-          status?: string
-          tenant_id?: string
-          total_items?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "sending_jobs_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      shipping_integrations: {
-        Row: {
-          access_token: string
-          account_id: number | null
-          client_id: string | null
-          client_secret: string | null
-          company_id: number | null
-          created_at: string | null
-          expires_at: string | null
-          from_cep: string | null
-          id: string
-          is_active: boolean
-          provider: string
-          refresh_token: string | null
-          sandbox: boolean
-          scope: string | null
-          tenant_id: string | null
-          token_type: string | null
-          updated_at: string | null
-          webhook_id: number | null
-          webhook_secret: string | null
-        }
-        Insert: {
-          access_token: string
-          account_id?: number | null
-          client_id?: string | null
-          client_secret?: string | null
-          company_id?: number | null
-          created_at?: string | null
-          expires_at?: string | null
-          from_cep?: string | null
-          id?: string
-          is_active?: boolean
-          provider?: string
-          refresh_token?: string | null
-          sandbox?: boolean
-          scope?: string | null
-          tenant_id?: string | null
-          token_type?: string | null
-          updated_at?: string | null
-          webhook_id?: number | null
-          webhook_secret?: string | null
-        }
-        Update: {
-          access_token?: string
-          account_id?: number | null
-          client_id?: string | null
-          client_secret?: string | null
-          company_id?: number | null
-          created_at?: string | null
-          expires_at?: string | null
-          from_cep?: string | null
-          id?: string
-          is_active?: boolean
-          provider?: string
-          refresh_token?: string | null
-          sandbox?: boolean
-          scope?: string | null
-          tenant_id?: string | null
-          token_type?: string | null
-          updated_at?: string | null
-          webhook_id?: number | null
-          webhook_secret?: string | null
-        }
-        Relationships: []
-      }
-      tenant_credentials: {
-        Row: {
-          created_at: string
-          email: string
-          id: string
-          is_active: boolean
-          password_hash: string
-          tenant_id: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          email: string
-          id?: string
-          is_active?: boolean
-          password_hash: string
-          tenant_id: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          email?: string
-          id?: string
-          is_active?: boolean
-          password_hash?: string
-          tenant_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "tenant_credentials_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: true
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      tenants: {
-        Row: {
-          admin_email: string | null
-          admin_user_id: string | null
-          company_address: string | null
-          company_cep: string | null
-          company_city: string | null
-          company_complement: string | null
-          company_district: string | null
-          company_document: string | null
-          company_email: string | null
-          company_name: string | null
-          company_number: string | null
-          company_phone: string | null
-          company_state: string | null
-          created_at: string
-          enable_live: boolean
-          enable_sendflow: boolean
-          id: string
-          is_active: boolean
-          max_whatsapp_groups: number | null
-          name: string
-          slug: string
-          tenant_key: string | null
-          updated_at: string
-        }
-        Insert: {
-          admin_email?: string | null
-          admin_user_id?: string | null
-          company_address?: string | null
-          company_cep?: string | null
-          company_city?: string | null
-          company_complement?: string | null
-          company_district?: string | null
-          company_document?: string | null
-          company_email?: string | null
-          company_name?: string | null
-          company_number?: string | null
-          company_phone?: string | null
-          company_state?: string | null
-          created_at?: string
-          enable_live?: boolean
-          enable_sendflow?: boolean
-          id?: string
-          is_active?: boolean
-          max_whatsapp_groups?: number | null
-          name: string
-          slug: string
-          tenant_key?: string | null
-          updated_at?: string
-        }
-        Update: {
-          admin_email?: string | null
-          admin_user_id?: string | null
-          company_address?: string | null
-          company_cep?: string | null
-          company_city?: string | null
-          company_complement?: string | null
-          company_district?: string | null
-          company_document?: string | null
-          company_email?: string | null
-          company_name?: string | null
-          company_number?: string | null
-          company_phone?: string | null
-          company_state?: string | null
-          created_at?: string
-          enable_live?: boolean
-          enable_sendflow?: boolean
-          id?: string
-          is_active?: boolean
-          max_whatsapp_groups?: number | null
-          name?: string
-          slug?: string
-          tenant_key?: string | null
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      webhook_logs: {
-        Row: {
-          created_at: string | null
-          error_message: string | null
-          id: string
-          payload: Json | null
-          response: string | null
-          status_code: number
-          tenant_id: string | null
-          webhook_type: string
-        }
-        Insert: {
-          created_at?: string | null
-          error_message?: string | null
-          id?: string
-          payload?: Json | null
-          response?: string | null
-          status_code: number
-          tenant_id?: string | null
-          webhook_type: string
-        }
-        Update: {
-          created_at?: string | null
-          error_message?: string | null
-          id?: string
-          payload?: Json | null
-          response?: string | null
-          status_code?: number
-          tenant_id?: string | null
-          webhook_type?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "webhook_logs_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      whatsapp_active_sessions: {
-        Row: {
-          connected_at: string
-          created_at: string | null
-          id: string
-          instance_name: string
-          last_heartbeat: string
-          metadata: Json | null
-          phone_number: string
-          server_id: string
-          status: string
-        }
-        Insert: {
-          connected_at?: string
-          created_at?: string | null
-          id?: string
-          instance_name: string
-          last_heartbeat?: string
-          metadata?: Json | null
-          phone_number: string
-          server_id: string
-          status?: string
-        }
-        Update: {
-          connected_at?: string
-          created_at?: string | null
-          id?: string
-          instance_name?: string
-          last_heartbeat?: string
-          metadata?: Json | null
-          phone_number?: string
-          server_id?: string
-          status?: string
-        }
-        Relationships: []
-      }
-      whatsapp_connection_logs: {
-        Row: {
-          created_at: string | null
-          event_type: string
-          id: string
-          message: string | null
-          metadata: Json | null
-          tenant_id: string
-        }
-        Insert: {
-          created_at?: string | null
-          event_type: string
-          id?: string
-          message?: string | null
-          metadata?: Json | null
-          tenant_id: string
-        }
-        Update: {
-          created_at?: string | null
-          event_type?: string
-          id?: string
-          message?: string | null
-          metadata?: Json | null
-          tenant_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_connection_logs_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       whatsapp_messages: {
         Row: {
           amount: number | null
-          created_at: string | null
-          group_name: string | null
+          created_at: string
           id: number
           message: string
           order_id: number | null
@@ -1300,15 +592,12 @@ export type Database = {
           product_name: string | null
           received_at: string | null
           sent_at: string | null
-          tenant_id: string
-          type: Database["public"]["Enums"]["whatsapp_message_type"]
-          updated_at: string | null
-          whatsapp_group_name: string | null
+          type: string
+          updated_at: string
         }
         Insert: {
           amount?: number | null
-          created_at?: string | null
-          group_name?: string | null
+          created_at?: string
           id?: number
           message: string
           order_id?: number | null
@@ -1317,15 +606,12 @@ export type Database = {
           product_name?: string | null
           received_at?: string | null
           sent_at?: string | null
-          tenant_id: string
-          type: Database["public"]["Enums"]["whatsapp_message_type"]
-          updated_at?: string | null
-          whatsapp_group_name?: string | null
+          type: string
+          updated_at?: string
         }
         Update: {
           amount?: number | null
-          created_at?: string | null
-          group_name?: string | null
+          created_at?: string
           id?: number
           message?: string
           order_id?: number | null
@@ -1334,205 +620,75 @@ export type Database = {
           product_name?: string | null
           received_at?: string | null
           sent_at?: string | null
-          tenant_id?: string
-          type?: Database["public"]["Enums"]["whatsapp_message_type"]
-          updated_at?: string | null
-          whatsapp_group_name?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_messages_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "orders"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "whatsapp_messages_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      whatsapp_session_conflicts: {
-        Row: {
-          conflict_type: string
-          details: Json | null
-          detected_at: string | null
-          existing_session_id: string | null
-          id: string
-          instance_name: string
-          new_session_server_id: string | null
-          phone_number: string
-        }
-        Insert: {
-          conflict_type: string
-          details?: Json | null
-          detected_at?: string | null
-          existing_session_id?: string | null
-          id?: string
-          instance_name: string
-          new_session_server_id?: string | null
-          phone_number: string
-        }
-        Update: {
-          conflict_type?: string
-          details?: Json | null
-          detected_at?: string | null
-          existing_session_id?: string | null
-          id?: string
-          instance_name?: string
-          new_session_server_id?: string | null
-          phone_number?: string
+          type?: string
+          updated_at?: string
         }
         Relationships: []
       }
       whatsapp_templates: {
         Row: {
           content: string
-          created_at: string | null
+          created_at: string
           id: number
-          tenant_id: string
           title: string | null
-          type: Database["public"]["Enums"]["whatsapp_template_type"]
-          updated_at: string | null
+          type: string
+          updated_at: string
         }
         Insert: {
           content: string
-          created_at?: string | null
+          created_at?: string
           id?: number
-          tenant_id: string
           title?: string | null
-          type: Database["public"]["Enums"]["whatsapp_template_type"]
-          updated_at?: string | null
+          type: string
+          updated_at?: string
         }
         Update: {
           content?: string
-          created_at?: string | null
+          created_at?: string
           id?: number
-          tenant_id?: string
           title?: string | null
-          type?: Database["public"]["Enums"]["whatsapp_template_type"]
-          updated_at?: string | null
+          type?: string
+          updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_templates_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      bytea_to_text: { Args: { data: string }; Returns: string }
-      cleanup_stale_sessions: { Args: never; Returns: undefined }
-      get_current_tenant_id: { Args: never; Returns: string }
-      get_tenant_by_id: {
-        Args: { tenant_id_param: string }
-        Returns: {
-          enable_live: boolean
-          enable_sendflow: boolean
-          id: string
-          is_active: boolean
-          max_whatsapp_groups: number
-          name: string
-          slug: string
-        }[]
+      bytea_to_text: {
+        Args: { data: string }
+        Returns: string
       }
-      get_tenant_by_slug: {
-        Args: { slug_param: string }
-        Returns: {
-          enable_live: boolean
-          enable_sendflow: boolean
-          id: string
-          is_active: boolean
-          max_whatsapp_groups: number
-          name: string
-          slug: string
-        }[]
+      get_user_role: {
+        Args: { user_id: string }
+        Returns: Database["public"]["Enums"]["user_role"]
       }
       http: {
         Args: { request: Database["public"]["CompositeTypes"]["http_request"] }
         Returns: Database["public"]["CompositeTypes"]["http_response"]
-        SetofOptions: {
-          from: "http_request"
-          to: "http_response"
-          isOneToOne: true
-          isSetofReturn: false
-        }
       }
-      http_delete:
-        | {
-            Args: { uri: string }
-            Returns: Database["public"]["CompositeTypes"]["http_response"]
-            SetofOptions: {
-              from: "*"
-              to: "http_response"
-              isOneToOne: true
-              isSetofReturn: false
-            }
-          }
-        | {
-            Args: { content: string; content_type: string; uri: string }
-            Returns: Database["public"]["CompositeTypes"]["http_response"]
-            SetofOptions: {
-              from: "*"
-              to: "http_response"
-              isOneToOne: true
-              isSetofReturn: false
-            }
-          }
-      http_get:
-        | {
-            Args: { uri: string }
-            Returns: Database["public"]["CompositeTypes"]["http_response"]
-            SetofOptions: {
-              from: "*"
-              to: "http_response"
-              isOneToOne: true
-              isSetofReturn: false
-            }
-          }
-        | {
-            Args: { data: Json; uri: string }
-            Returns: Database["public"]["CompositeTypes"]["http_response"]
-            SetofOptions: {
-              from: "*"
-              to: "http_response"
-              isOneToOne: true
-              isSetofReturn: false
-            }
-          }
+      http_delete: {
+        Args:
+          | { content: string; content_type: string; uri: string }
+          | { uri: string }
+        Returns: Database["public"]["CompositeTypes"]["http_response"]
+      }
+      http_get: {
+        Args: { data: Json; uri: string } | { uri: string }
+        Returns: Database["public"]["CompositeTypes"]["http_response"]
+      }
       http_head: {
         Args: { uri: string }
         Returns: Database["public"]["CompositeTypes"]["http_response"]
-        SetofOptions: {
-          from: "*"
-          to: "http_response"
-          isOneToOne: true
-          isSetofReturn: false
-        }
       }
       http_header: {
         Args: { field: string; value: string }
         Returns: Database["public"]["CompositeTypes"]["http_header"]
-        SetofOptions: {
-          from: "*"
-          to: "http_header"
-          isOneToOne: true
-          isSetofReturn: false
-        }
       }
       http_list_curlopt: {
-        Args: never
+        Args: Record<PropertyKey, never>
         Returns: {
           curlopt: string
           value: string
@@ -1541,102 +697,36 @@ export type Database = {
       http_patch: {
         Args: { content: string; content_type: string; uri: string }
         Returns: Database["public"]["CompositeTypes"]["http_response"]
-        SetofOptions: {
-          from: "*"
-          to: "http_response"
-          isOneToOne: true
-          isSetofReturn: false
-        }
       }
-      http_post:
-        | {
-            Args: { content: string; content_type: string; uri: string }
-            Returns: Database["public"]["CompositeTypes"]["http_response"]
-            SetofOptions: {
-              from: "*"
-              to: "http_response"
-              isOneToOne: true
-              isSetofReturn: false
-            }
-          }
-        | {
-            Args: { data: Json; uri: string }
-            Returns: Database["public"]["CompositeTypes"]["http_response"]
-            SetofOptions: {
-              from: "*"
-              to: "http_response"
-              isOneToOne: true
-              isSetofReturn: false
-            }
-          }
+      http_post: {
+        Args:
+          | { content: string; content_type: string; uri: string }
+          | { data: Json; uri: string }
+        Returns: Database["public"]["CompositeTypes"]["http_response"]
+      }
       http_put: {
         Args: { content: string; content_type: string; uri: string }
         Returns: Database["public"]["CompositeTypes"]["http_response"]
-        SetofOptions: {
-          from: "*"
-          to: "http_response"
-          isOneToOne: true
-          isSetofReturn: false
-        }
       }
-      http_reset_curlopt: { Args: never; Returns: boolean }
+      http_reset_curlopt: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       http_set_curlopt: {
         Args: { curlopt: string; value: string }
         Returns: boolean
       }
-      is_super_admin: { Args: never; Returns: boolean }
-      is_tenant_admin: { Args: never; Returns: boolean }
-      list_active_tenants_basic: {
-        Args: never
-        Returns: {
-          enable_live: boolean
-          enable_sendflow: boolean
-          id: string
-          is_active: boolean
-          max_whatsapp_groups: number
-          name: string
-          slug: string
-        }[]
+      text_to_bytea: {
+        Args: { data: string }
+        Returns: string
       }
-      normalize_bazar_phone: { Args: { phone: string }; Returns: string }
-      normalize_phone_regional: { Args: { phone: string }; Returns: string }
-      text_to_bytea: { Args: { data: string }; Returns: string }
-      urlencode:
-        | { Args: { data: Json }; Returns: string }
-        | {
-            Args: { string: string }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.urlencode(string => bytea), public.urlencode(string => varchar). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
-        | {
-            Args: { string: string }
-            Returns: {
-              error: true
-            } & "Could not choose the best candidate function between: public.urlencode(string => bytea), public.urlencode(string => varchar). Try renaming the parameters or the function itself in the database so function overloading can be resolved"
-          }
+      urlencode: {
+        Args: { data: Json } | { string: string } | { string: string }
+        Returns: string
+      }
     }
     Enums: {
-      cart_status: "OPEN" | "CLOSED"
-      user_role: "super_admin" | "tenant_admin" | "staff"
-      whatsapp_message_type:
-        | "incoming"
-        | "outgoing"
-        | "broadcast"
-        | "system_log"
-        | "bulk"
-        | "mass"
-        | "item_added"
-        | "individual"
-      whatsapp_template_type:
-        | "BROADCAST"
-        | "ITEM_ADDED"
-        | "PRODUCT_CANCELED"
-        | "PAID_ORDER"
-        | "FINALIZAR"
-        | "sendflow"
-        | "MSG_MASSA"
-        | "SENDFLOW"
+      user_role: "admin" | "customer"
     }
     CompositeTypes: {
       http_header: {
@@ -1644,7 +734,7 @@ export type Database = {
         value: string | null
       }
       http_request: {
-        method: unknown
+        method: unknown | null
         uri: string | null
         headers: Database["public"]["CompositeTypes"]["http_header"][] | null
         content_type: string | null
@@ -1780,28 +870,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      cart_status: ["OPEN", "CLOSED"],
-      user_role: ["super_admin", "tenant_admin", "staff"],
-      whatsapp_message_type: [
-        "incoming",
-        "outgoing",
-        "broadcast",
-        "system_log",
-        "bulk",
-        "mass",
-        "item_added",
-        "individual",
-      ],
-      whatsapp_template_type: [
-        "BROADCAST",
-        "ITEM_ADDED",
-        "PRODUCT_CANCELED",
-        "PAID_ORDER",
-        "FINALIZAR",
-        "sendflow",
-        "MSG_MASSA",
-        "SENDFLOW",
-      ],
+      user_role: ["admin", "customer"],
     },
   },
 } as const

@@ -13,33 +13,10 @@ serve(async (req) => {
   }
 
   try {
-    const { order_id, cartItems, customerData, addressData, shippingCost, shippingData, total, coupon_discount, tenant_id } = await req.json();
+    const { cartItems, customerData, addressData, shippingCost, total, coupon_discount } = await req.json();
 
-    console.log('Creating payment with data:', { order_id, cartItems, customerData, addressData, shippingCost, shippingData, total, coupon_discount, tenant_id });
+    console.log('Creating payment with data:', { cartItems, customerData, addressData, shippingCost, total, coupon_discount });
 
-    // Initialize Supabase client first
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Get tenant information
-    const { data: tenantData, error: tenantError } = await supabase
-      .from('tenants')
-      .select('tenant_key')
-      .eq('id', tenant_id)
-      .single();
-
-    if (tenantError || !tenantData?.tenant_key) {
-      console.error('Error fetching tenant:', tenantError);
-      return new Response(
-        JSON.stringify({ error: 'Tenant não encontrado' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const tenantKey = tenantData.tenant_key;
-
-    // Use global MP access token (tenant-specific tokens can be added later if needed)
     const mpAccessToken = Deno.env.get('MP_ACCESS_TOKEN');
     if (!mpAccessToken) {
       console.error('MP_ACCESS_TOKEN not found');
@@ -49,40 +26,10 @@ serve(async (req) => {
       );
     }
 
-    // Save or update customer with address data
-    try {
-      const customerUpdateData: any = {
-        name: customerData.name,
-        phone: customerData.phone,
-        tenant_id: tenant_id,
-        updated_at: new Date().toISOString()
-      };
-      
-      // Add address data if provided
-      if (addressData) {
-        customerUpdateData.cep = addressData.cep;
-        customerUpdateData.street = addressData.street;
-        customerUpdateData.number = addressData.number;
-        customerUpdateData.complement = addressData.complement || '';
-        customerUpdateData.city = addressData.city;
-        customerUpdateData.state = addressData.state;
-      }
-      
-      const { error: customerError } = await supabase
-        .from('customers')
-        .upsert(customerUpdateData, {
-          onConflict: 'tenant_id,phone',
-          ignoreDuplicates: false
-        });
-        
-      if (customerError) {
-        console.error('Error updating customer:', customerError);
-      } else {
-        console.log('Customer address updated successfully');
-      }
-    } catch (error) {
-      console.error('Error saving customer data:', error);
-    }
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Create items for MercadoPago with coupon discount applied to products only
     const subtotalProducts = (cartItems || []).reduce((sum: number, item: any) => sum + Number(item.unit_price) * Number(item.qty), 0);
@@ -124,48 +71,25 @@ serve(async (req) => {
       items.reduce((sum: number, it: any) => sum + Number(it.unit_price) * Number(it.quantity), 0).toFixed(2)
     );
 
-    // Se foi passado um order_id específico, usar esse pedido
-    let existingOrder = null;
-    let existingOrders = null;
+    // Verificar se já existe pedido do cliente no mesmo dia
     const today = new Date().toISOString().split('T')[0];
     
-    if (order_id) {
-      const { data: specificOrder, error: specificOrderError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('id', order_id)
-        .eq('tenant_id', tenant_id)
-        .single();
-      
-      if (specificOrderError) {
-        console.error('Error finding specific order:', specificOrderError);
-      } else {
-        existingOrder = specificOrder;
-        console.log('Using specific order:', existingOrder.id);
-      }
-    }
-    
-    // Se não foi passado order_id ou não foi encontrado, verificar pedidos existentes do cliente no mesmo dia
-    if (!existingOrder) {
-      const { data: ordersData, error: orderSearchError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('customer_phone', customerData.phone)
-        .eq('event_date', today)
-        .eq('is_paid', false)
-        .order('created_at', { ascending: false });
+    const { data: existingOrders, error: orderSearchError } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('customer_phone', customerData.phone)
+      .eq('event_date', today)
+      .eq('is_paid', false)
+      .order('created_at', { ascending: false });
 
-      if (orderSearchError) {
-        console.error('Error searching for existing order:', orderSearchError);
-      }
-
-      existingOrders = ordersData;
-      existingOrder = existingOrders && existingOrders.length > 0 ? existingOrders[0] : null;
+    if (orderSearchError) {
+      console.error('Error searching for existing order:', orderSearchError);
     }
 
-    
-    // Se não for um pedido específico e houver múltiplos pedidos não pagos do mesmo dia, consolidar em um só
-    if (!order_id && existingOrders && existingOrders.length > 1) {
+    const existingOrder = existingOrders && existingOrders.length > 0 ? existingOrders[0] : null;
+
+    // Se houver múltiplos pedidos não pagos do mesmo dia, consolidar em um só
+    if (existingOrders && existingOrders.length > 1) {
       const mainOrder = existingOrders[0];
       const ordersToMerge = existingOrders.slice(1);
       
@@ -236,7 +160,6 @@ serve(async (req) => {
           const { data: orderData, error: orderError } = await supabase
             .from('orders')
             .insert({
-              tenant_id: tenant_id,
               customer_phone: customerData.phone,
               event_type: 'BAZAR',
               event_date: today,
@@ -269,15 +192,7 @@ serve(async (req) => {
       const { data: newOrder, error: newOrderError } = await supabase
         .from('orders')
         .insert({
-          tenant_id: tenant_id,
           customer_phone: customerData.phone,
-          customer_name: customerData.name,
-          customer_cep: addressData?.cep,
-          customer_street: addressData?.street,
-          customer_number: addressData?.number,
-          customer_complement: addressData?.complement,
-          customer_city: addressData?.city,
-          customer_state: addressData?.state,
           event_type: 'BAZAR',
           event_date: today,
           total_amount: parseFloat(total),
@@ -312,11 +227,11 @@ serve(async (req) => {
         }
       },
       back_urls: {
-        success: `https://live-launchpad-79.lovable.app/mp/return?status=success`,
-        failure: `https://live-launchpad-79.lovable.app/mp/return?status=failure`,
-        pending: `https://live-launchpad-79.lovable.app/mp/return?status=pending`
+        success: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=success`,
+        failure: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=failure`,
+        pending: `${Deno.env.get('PUBLIC_BASE_URL') || 'https://live-launchpad-79.lovable.app'}/mp/return?status=pending`
       },
-      notification_url: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/mercadopago-webhook/${tenantKey}`,
+      notification_url: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/mercadopago-webhook`,
       external_reference: String(orderId),
       auto_return: 'approved',
       binary_mode: true,
@@ -347,89 +262,24 @@ serve(async (req) => {
     const mpData = await mpResponse.json();
     console.log('MP Response:', mpData);
 
-    // Save or update order in database with shipping information
+    // Save or update order in database
     try {
       const targetId = (existingOrder?.id ?? orderId)!;
-      
-      // Preparar dados para atualizar o pedido
-      const updateData: any = {
-        total_amount: parseFloat(total),
-        payment_link: mpData.init_point,
-        is_paid: false,
-        customer_name: customerData.name,
-        customer_cep: addressData?.cep,
-        customer_street: addressData?.street,
-        customer_number: addressData?.number,
-        customer_complement: addressData?.complement,
-        customer_city: addressData?.city,
-        customer_state: addressData?.state
-      };
-      
-      // Se há informações de frete, salvar no campo observation evitando duplicação
-      if (shippingData) {
-        const shippingInfo = `Frete: ${shippingData.company_name || 'Transportadora'} - ${shippingData.service_name} - R$ ${shippingData.price.toFixed(2)} - ${shippingData.delivery_time}`;
-        
-        // Verificar se já existe informação de frete na observação para evitar duplicação
-        const currentObservation = existingOrder?.observation || '';
-        if (!currentObservation.includes('Frete:')) {
-          updateData.observation = currentObservation ? 
-            `${currentObservation}\n${shippingInfo}` : 
-            shippingInfo;
-        } else {
-          // Se já existe informação de frete, substituir pela nova
-          const observationWithoutShipping = currentObservation.split('\n').filter((line: string) => !line.startsWith('Frete:')).join('\n');
-          updateData.observation = observationWithoutShipping ? 
-            `${observationWithoutShipping}\n${shippingInfo}` : 
-            shippingInfo;
-        }
-      } else if (Number(shippingCost) === 0) {
-        const retiradaInfo = 'Frete: Retirada no local';
-        const currentObservation = existingOrder?.observation || '';
-        
-        if (!currentObservation.includes('Frete:')) {
-          updateData.observation = currentObservation ? 
-            `${currentObservation}\n${retiradaInfo}` : 
-            retiradaInfo;
-        } else {
-          // Se já existe informação de frete, substituir pela nova
-          const observationWithoutShipping = currentObservation.split('\n').filter((line: string) => !line.startsWith('Frete:')).join('\n');
-          updateData.observation = observationWithoutShipping ? 
-            `${observationWithoutShipping}\n${retiradaInfo}` : 
-            retiradaInfo;
-        }
-      }
-      
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
-        .update(updateData)
+        .update({
+          total_amount: parseFloat(total),
+          payment_link: mpData.init_point,
+          is_paid: false
+        })
         .eq('id', targetId)
         .select()
         .single();
 
-      
-      // Salvar informações detalhadas do frete na tabela frete_cotacoes se disponível
-      if (shippingData && shippingData.price > 0) {
-        try {
-          await supabase
-            .from('frete_cotacoes')
-            .insert({
-              pedido_id: targetId,
-              cep_destino: addressData?.cep,
-              peso: 0.3, // Peso padrão
-              largura: 16, // Dimensões padrão
-              altura: 2,
-              comprimento: 20,
-              valor_declarado: parseFloat(total),
-              valor_frete: shippingData.price,
-              servico_escolhido: shippingData.service_name,
-              transportadora: shippingData.company_name,
-              prazo: shippingData.delivery_time,
-              raw_response: shippingData
-            });
-          console.log('Shipping info saved to frete_cotacoes');
-        } catch (freightError) {
-          console.error('Error saving freight info:', freightError);
-        }
+      if (orderError) {
+        console.error('Error saving order:', orderError);
+      } else {
+        console.log('Order saved/updated successfully:', orderData);
       }
     } catch (error) {
       console.error('Error saving order:', error);
@@ -446,9 +296,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in create-payment function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
