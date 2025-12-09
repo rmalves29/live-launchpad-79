@@ -63,30 +63,27 @@ serve(async (req) => {
     let method = "GET";
     let body: any = null;
 
-    // Map actions to backend routes (v2.0.0 API - uses /api/whatsapp prefix)
+    // Map actions to backend routes (v5.0-stable API)
     switch (action) {
       case "qr":
-        endpoint = `/api/whatsapp/qrcode/${tenant_id}`;
+        endpoint = `/qr/${tenant_id}`;
         method = "GET";
         break;
       case "status":
-        endpoint = `/api/whatsapp/status/${tenant_id}`;
+        endpoint = `/status/${tenant_id}`;
         method = "GET";
         break;
       case "connect":
-        endpoint = `/api/whatsapp/start`;
+        endpoint = `/start/${tenant_id}`;
         method = "POST";
-        body = { tenantId: tenant_id };
         break;
       case "disconnect":
-        endpoint = `/api/whatsapp/disconnect`;
+        endpoint = `/disconnect/${tenant_id}`;
         method = "POST";
-        body = { tenantId: tenant_id };
         break;
       case "reset":
-        endpoint = `/api/whatsapp/reset`;
+        endpoint = `/reset/${tenant_id}`;
         method = "POST";
-        body = { tenantId: tenant_id };
         break;
       default:
         return new Response(
