@@ -1,0 +1,166 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { action, tenant_id } = await req.json();
+
+    console.log(`[whatsapp-proxy] Action: ${action}, Tenant: ${tenant_id}`);
+
+    if (!tenant_id) {
+      return new Response(
+        JSON.stringify({ error: "tenant_id é obrigatório" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Get Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get WhatsApp integration config for this tenant
+    const { data: integration, error: integrationError } = await supabase
+      .from("integration_whatsapp")
+      .select("api_url, is_active")
+      .eq("tenant_id", tenant_id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (integrationError) {
+      console.error("[whatsapp-proxy] Error fetching integration:", integrationError);
+      return new Response(
+        JSON.stringify({ error: "Erro ao buscar configuração de integração" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!integration || !integration.api_url) {
+      console.log("[whatsapp-proxy] No integration URL configured for tenant:", tenant_id);
+      return new Response(
+        JSON.stringify({ 
+          error: "URL do servidor WhatsApp não configurada",
+          message: "Configure a URL do servidor nas configurações de integração"
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const serverUrl = integration.api_url.replace(/\/$/, ""); // Remove trailing slash
+    console.log(`[whatsapp-proxy] Server URL: ${serverUrl}`);
+
+    let endpoint = "";
+    let method = "GET";
+
+    // Map actions to backend routes (/api/whatsapp/...)
+    switch (action) {
+      case "qr":
+        endpoint = `/api/whatsapp/qrcode/${tenant_id}`;
+        break;
+      case "status":
+        endpoint = `/api/whatsapp/status/${tenant_id}`;
+        break;
+      case "connect":
+        endpoint = `/api/whatsapp/start`;
+        method = "POST";
+        break;
+      case "disconnect":
+        endpoint = `/api/whatsapp/disconnect`;
+        method = "POST";
+        break;
+      case "reset":
+        endpoint = `/api/whatsapp/reset`;
+        method = "POST";
+        break;
+      default:
+        return new Response(
+          JSON.stringify({ error: `Ação desconhecida: ${action}` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+    }
+
+    const targetUrl = `${serverUrl}${endpoint}`;
+    console.log(`[whatsapp-proxy] Calling: ${method} ${targetUrl}`);
+
+    const fetchOptions: RequestInit = {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    };
+
+    // Add body for POST requests
+    if (method === "POST") {
+      fetchOptions.body = JSON.stringify({ tenantId: tenant_id });
+    }
+
+    const response = await fetch(targetUrl, fetchOptions);
+    const contentType = response.headers.get("content-type") || "";
+
+    console.log(`[whatsapp-proxy] Response status: ${response.status}`);
+    console.log(`[whatsapp-proxy] Content-Type: ${contentType}`);
+
+    // Check if response is HTML (error page)
+    if (contentType.includes("text/html")) {
+      const htmlText = await response.text();
+      console.error("[whatsapp-proxy] Received HTML response (likely error page)");
+      console.log("[whatsapp-proxy] HTML preview:", htmlText.substring(0, 200));
+      
+      return new Response(
+        JSON.stringify({ 
+          error: "Servidor retornou página HTML em vez de JSON. Verifique se a URL do servidor está correta.",
+          htmlPreview: htmlText.substring(0, 500)
+        }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Try to parse JSON
+    let data;
+    try {
+      data = await response.json();
+      console.log("[whatsapp-proxy] Response data:", JSON.stringify(data));
+    } catch (e) {
+      const text = await response.text();
+      console.error("[whatsapp-proxy] Failed to parse JSON:", text);
+      return new Response(
+        JSON.stringify({ 
+          error: "Resposta inválida do servidor WhatsApp",
+          rawResponse: text.substring(0, 500)
+        }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify(data),
+      { 
+        status: response.status, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      }
+    );
+
+  } catch (error) {
+    console.error("[whatsapp-proxy] Error:", error);
+    
+    const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+    
+    return new Response(
+      JSON.stringify({ 
+        error: `Erro ao conectar com servidor WhatsApp: ${errorMessage}`,
+        message: "Verifique se o servidor está online e acessível"
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

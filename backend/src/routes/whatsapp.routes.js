@@ -6,6 +6,7 @@ const router = express.Router();
 // Rotas de conexão
 router.post('/start', whatsappController.startConnection);
 router.post('/disconnect', whatsappController.disconnect);
+router.post('/reset', whatsappController.resetSession);
 router.get('/qrcode/:tenantId', whatsappController.getQRCode);
 router.get('/status/:tenantId', whatsappController.getStatus);
 router.get('/sessions', whatsappController.getSessions);
