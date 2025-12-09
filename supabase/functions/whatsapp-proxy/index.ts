@@ -104,7 +104,21 @@ serve(async (req) => {
       fetchOptions.body = JSON.stringify({ tenantId: tenant_id });
     }
 
-    const response = await fetch(targetUrl, fetchOptions);
+    let response;
+    try {
+      response = await fetch(targetUrl, fetchOptions);
+    } catch (fetchError) {
+      console.error("[whatsapp-proxy] Fetch error:", fetchError);
+      return new Response(
+        JSON.stringify({ 
+          error: "Não foi possível conectar ao servidor WhatsApp",
+          message: `Erro de conexão: ${fetchError.message}`,
+          serverUrl: serverUrl
+        }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const contentType = response.headers.get("content-type") || "";
 
     console.log(`[whatsapp-proxy] Response status: ${response.status}`);
@@ -128,17 +142,30 @@ serve(async (req) => {
     // Try to parse JSON
     let data;
     try {
-      data = await response.json();
-      console.log("[whatsapp-proxy] Response data:", JSON.stringify(data));
-    } catch (e) {
       const text = await response.text();
-      console.error("[whatsapp-proxy] Failed to parse JSON:", text);
+      console.log("[whatsapp-proxy] Response text:", text.substring(0, 500));
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error("[whatsapp-proxy] Failed to parse JSON");
       return new Response(
         JSON.stringify({ 
           error: "Resposta inválida do servidor WhatsApp",
-          rawResponse: text.substring(0, 500)
+          status: response.status
         }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // If 404, the route doesn't exist on the backend
+    if (response.status === 404) {
+      console.error("[whatsapp-proxy] Route not found on backend");
+      return new Response(
+        JSON.stringify({ 
+          error: "Rota não encontrada no servidor WhatsApp",
+          message: "O backend precisa ser atualizado. Verifique se a versão mais recente está deployada no Railway.",
+          targetUrl: targetUrl
+        }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
