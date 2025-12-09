@@ -212,17 +212,52 @@ export default function ConexaoWhatsApp() {
       // Primeiro tentar obter QR Code
       console.log('\n📤 [STATUS] Chamando edge function: whatsapp-proxy (action: qr)');
       
-      const { data: functionData, error: functionError } = await supabaseTenant.functions.invoke(
-        'whatsapp-proxy',
-        {
-          body: {
-            action: 'qr',
-            tenant_id: tenant.id
+      let functionData: any = null;
+      let functionError: any = null;
+      
+      try {
+        const response = await supabaseTenant.functions.invoke(
+          'whatsapp-proxy',
+          {
+            body: {
+              action: 'qr',
+              tenant_id: tenant.id
+            }
           }
+        );
+        functionData = response.data;
+        functionError = response.error;
+      } catch (invokeError: any) {
+        // Se o SDK lançar exceção para status non-2xx, tentar extrair os dados
+        console.log('⚠️ [STATUS] SDK lançou exceção, tentando extrair dados do erro...');
+        
+        // Tentar fazer fetch direto para obter a resposta com erro
+        try {
+          const directResponse = await fetch(
+            `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-proxy`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4`,
+                'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4'
+              },
+              body: JSON.stringify({
+                action: 'qr',
+                tenant_id: tenant.id
+              })
+            }
+          );
+          
+          functionData = await directResponse.json();
+          console.log('📥 [STATUS] Resposta direta:', functionData);
+        } catch (fetchError) {
+          console.error('❌ [STATUS] Erro no fetch direto:', fetchError);
+          functionError = invokeError;
         }
-      );
+      }
 
-      if (functionError) {
+      if (functionError && !functionData) {
         console.error('❌ [STATUS] Erro ao chamar proxy:', functionError);
         console.error('📋 [STATUS] Detalhes do erro:', {
           name: functionError.name,
