@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface Tenant {
   id: string;
