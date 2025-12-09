@@ -163,9 +163,9 @@ const AppContent = () => {
         {/* Rota de debug */}
         <Route path="/debug" element={<Debug />} />
         
-        {/* Rota pública da loja por slug (path-based) */}
-        <Route path="/:slug" element={<TenantStorefront />} />
-        <Route path="/:slug/*" element={<TenantStorefront />} />
+        {/* Rotas públicas da loja por slug (path-based) - prefixo /t/ para evitar conflitos */}
+        <Route path="/t/:slug" element={<TenantStorefront />} />
+        <Route path="/t/:slug/*" element={<TenantStorefront />} />
         
         <Route path="*" element={<NotFound />} />
       </Routes>
