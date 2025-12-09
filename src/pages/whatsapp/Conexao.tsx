@@ -228,10 +228,9 @@ export default function ConexaoWhatsApp() {
         functionData = response.data;
         functionError = response.error;
       } catch (invokeError: any) {
-        // Se o SDK lançar exceção para status non-2xx, tentar extrair os dados
-        console.log('⚠️ [STATUS] SDK lançou exceção, tentando extrair dados do erro...');
+        // Se o SDK lançar exceção para status non-2xx, tentar extrair os dados via fetch direto
+        console.log('⚠️ [STATUS] SDK lançou exceção, tentando fetch direto...');
         
-        // Tentar fazer fetch direto para obter a resposta com erro
         try {
           const directResponse = await fetch(
             `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-proxy`,
@@ -250,10 +249,16 @@ export default function ConexaoWhatsApp() {
           );
           
           functionData = await directResponse.json();
-          console.log('📥 [STATUS] Resposta direta:', functionData);
+          functionError = null; // Limpar erro pois temos dados
+          console.log('📥 [STATUS] Resposta direta obtida:', JSON.stringify(functionData, null, 2));
         } catch (fetchError) {
           console.error('❌ [STATUS] Erro no fetch direto:', fetchError);
-          functionError = invokeError;
+          // Tratar como backend desatualizado já que a edge function retornou 404
+          functionData = {
+            error: 'Rota não encontrada no servidor WhatsApp',
+            message: 'O backend precisa ser atualizado. Verifique se a versão mais recente está deployada no Railway.'
+          };
+          functionError = null;
         }
       }
 
