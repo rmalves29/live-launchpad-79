@@ -47,17 +47,11 @@ interface Tenant {
   slug: string;
   email: string | null;
   is_active: boolean;
-  is_blocked: boolean;
-  blocked_reason: string | null;
+  is_blocked: boolean | null;
   trial_ends_at: string | null;
   subscription_ends_at: string | null;
-  plan: string;
-  contact_name: string | null;
-  contact_phone: string | null;
+  plan_type: string | null;
   created_at: string;
-  access_status: string;
-  days_remaining: number | null;
-  total_users: number;
 }
 
 export default function TenantsAdmin() {
@@ -89,7 +83,7 @@ export default function TenantsAdmin() {
       setError(null);
 
       const { data, error: fetchError } = await supabase
-        .from('tenants_access_status')
+        .from('tenants')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -109,16 +103,19 @@ export default function TenantsAdmin() {
       setEditingTenant(tenant);
       setFormName(tenant.name);
       setFormEmail(tenant.email || '');
-      setFormContactName(tenant.contact_name || '');
-      setFormContactPhone(tenant.contact_phone || '');
-      setFormPlan(tenant.plan);
+      setFormContactName('');
+      setFormContactPhone('');
+      setFormPlan(tenant.plan_type || 'trial');
       setFormIsActive(tenant.is_active);
-      setFormIsBlocked(tenant.is_blocked);
-      setFormBlockedReason(tenant.blocked_reason || '');
+      setFormIsBlocked(tenant.is_blocked || false);
+      setFormBlockedReason('');
       
       // Calcular dias restantes
-      if (tenant.days_remaining) {
-        setFormTrialDays(tenant.days_remaining.toString());
+      if (tenant.trial_ends_at) {
+        const trialEnd = new Date(tenant.trial_ends_at);
+        const now = new Date();
+        const daysRemaining = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        setFormTrialDays(Math.max(0, daysRemaining).toString());
       }
     } else {
       setEditingTenant(null);
@@ -144,18 +141,24 @@ export default function TenantsAdmin() {
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + parseInt(formTrialDays || '30'));
 
-      const tenantData = {
+      const tenantData: any = {
         name: formName,
         email: formEmail || null,
-        contact_name: formContactName || null,
-        contact_phone: formContactPhone || null,
-        plan: formPlan,
+        plan_type: formPlan,
         is_active: formIsActive,
         is_blocked: formIsBlocked,
-        blocked_reason: formIsBlocked ? formBlockedReason : null,
         trial_ends_at: trialEndsAt.toISOString(),
-        notes: formNotes || null,
       };
+
+      // Gerar slug apenas para novos tenants
+      if (!editingTenant) {
+        tenantData.slug = formName
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]/g, "")
+          .substring(0, 20);
+      }
 
       if (editingTenant) {
         // Atualizar
@@ -189,8 +192,7 @@ export default function TenantsAdmin() {
       const { error: updateError } = await supabase
         .from('tenants')
         .update({ 
-          is_blocked: !tenant.is_blocked,
-          blocked_reason: !tenant.is_blocked ? 'Bloqueado pelo administrador' : null
+          is_blocked: !tenant.is_blocked
         })
         .eq('id', tenant.id);
 
@@ -201,6 +203,36 @@ export default function TenantsAdmin() {
       console.error('Erro ao bloquear/desbloquear tenant:', err);
       setError(err.message);
     }
+  };
+
+  const getAccessStatus = (tenant: Tenant): string => {
+    if (tenant.is_blocked) return 'blocked';
+    if (!tenant.is_active) return 'inactive';
+    
+    const now = new Date();
+    if (tenant.subscription_ends_at) {
+      const subEnd = new Date(tenant.subscription_ends_at);
+      if (subEnd > now) return 'subscription_active';
+      return 'subscription_expired';
+    }
+    if (tenant.trial_ends_at) {
+      const trialEnd = new Date(tenant.trial_ends_at);
+      if (trialEnd > now) return 'trial_active';
+      return 'trial_expired';
+    }
+    return 'active';
+  };
+
+  const getDaysRemaining = (tenant: Tenant): number | null => {
+    const now = new Date();
+    const endDate = tenant.subscription_ends_at 
+      ? new Date(tenant.subscription_ends_at) 
+      : tenant.trial_ends_at 
+        ? new Date(tenant.trial_ends_at) 
+        : null;
+    
+    if (!endDate) return null;
+    return Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   };
 
   const getStatusBadge = (status: string) => {
@@ -423,52 +455,48 @@ export default function TenantsAdmin() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tenants.map((tenant) => (
-                  <TableRow key={tenant.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{tenant.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {tenant.slug}
+                {tenants.map((tenant) => {
+                  const accessStatus = getAccessStatus(tenant);
+                  const daysRemaining = getDaysRemaining(tenant);
+                  
+                  return (
+                    <TableRow key={tenant.id}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{tenant.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {tenant.slug}
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {tenant.contact_name && (
-                          <div>{tenant.contact_name}</div>
-                        )}
-                        {tenant.email && (
-                          <div className="text-xs text-muted-foreground">
-                            {tenant.email}
-                          </div>
-                        )}
-                        {tenant.contact_phone && (
-                          <div className="text-xs text-muted-foreground">
-                            {tenant.contact_phone}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(tenant.access_status)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{tenant.plan}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      {tenant.days_remaining !== null ? (
+                      </TableCell>
+                      <TableCell>
                         <div className="text-sm">
-                          <strong>{tenant.days_remaining}</strong> dias
+                          {tenant.email && (
+                            <div className="text-xs text-muted-foreground">
+                              {tenant.email}
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                        {tenant.total_users}
-                      </div>
-                    </TableCell>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(accessStatus)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{tenant.plan_type || 'trial'}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {daysRemaining !== null ? (
+                          <div className="text-sm">
+                            <strong>{daysRemaining}</strong> dias
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                          -
+                        </div>
+                      </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button
@@ -492,7 +520,8 @@ export default function TenantsAdmin() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
