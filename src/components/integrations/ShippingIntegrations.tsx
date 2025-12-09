@@ -8,132 +8,124 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  TenantShippingIntegration, 
-  ShippingIntegrationFormData,
-  SenderConfig,
-  getProviderLabel,
-  formatCurrency
-} from '@/types/integrations';
 import { Loader2, CheckCircle2, AlertCircle, Package, Truck } from 'lucide-react';
 
 interface ShippingIntegrationsProps {
   tenantId: string;
 }
 
+interface IntegrationData {
+  id: string;
+  tenant_id: string | null;
+  provider: string;
+  access_token: string;
+  refresh_token: string | null;
+  client_id: string | null;
+  client_secret: string | null;
+  from_cep: string | null;
+  sandbox: boolean;
+  is_active: boolean;
+  expires_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState<ShippingIntegrationFormData>({
-    provider: 'melhor_envio',
-    api_token: '',
-    is_sandbox: true,
-    sender_config: {
-      name: '',
-      phone: '',
-      email: '',
-      document: '',
-      address: {
-        postal_code: '',
-        street: '',
-        number: '',
-        complement: '',
-        district: '',
-        city: '',
-        state: '',
-      },
-    },
+  const [formData, setFormData] = useState({
+    access_token: '',
+    from_cep: '',
+    sandbox: true,
+    client_id: '',
+    client_secret: '',
   });
   const [isEditing, setIsEditing] = useState(false);
 
-  // Buscar integração existente
+  // Buscar integração existente na tabela shipping_integrations
   const { data: integration, isLoading } = useQuery({
     queryKey: ['shipping-integration', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('tenant_shipping_integrations')
+        .from('shipping_integrations')
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('provider', 'melhor_envio')
         .maybeSingle();
 
-      if (error) throw error;
-      return data as TenantShippingIntegration | null;
+      if (error) {
+        console.error('Erro ao buscar integração Melhor Envio:', error);
+        throw error;
+      }
+      return data as IntegrationData | null;
     },
+    enabled: !!tenantId,
   });
 
   // Preencher formulário ao carregar integração
   useEffect(() => {
     if (integration) {
       setFormData({
-        provider: integration.provider,
-        api_token: integration.api_token || '',
-        is_sandbox: integration.is_sandbox,
-        sender_config: integration.sender_config,
-        config: integration.config,
+        access_token: integration.access_token || '',
+        from_cep: integration.from_cep || '',
+        sandbox: integration.sandbox,
+        client_id: integration.client_id || '',
+        client_secret: integration.client_secret || '',
       });
     }
   }, [integration]);
 
-  // Validar token
-  const validateMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch('/api/integrations/shipping/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          provider: formData.provider,
-          api_token: formData.api_token,
-          is_sandbox: formData.is_sandbox,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Falha ao validar token');
+  // Buscar CEP
+  const searchCEP = async (cep: string) => {
+    try {
+      const cleanCep = cep.replace(/\D/g, '');
+      if (cleanCep.length !== 8) {
+        toast({ title: 'CEP inválido', variant: 'destructive' });
+        return;
       }
 
-      return response.json();
-    },
-    onSuccess: (data) => {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      const data = await response.json();
+
+      if (data.erro) {
+        toast({ title: 'CEP não encontrado', variant: 'destructive' });
+        return;
+      }
+
       toast({
-        title: 'Token válido!',
-        description: `Saldo disponível: ${formatCurrency(data.balance_cents || 0)}`,
+        title: 'CEP válido!',
+        description: `${data.logradouro}, ${data.localidade} - ${data.uf}`,
       });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Erro na validação',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
+    } catch (error) {
+      toast({ title: 'Erro ao buscar CEP', variant: 'destructive' });
+    }
+  };
 
   // Salvar integração
   const saveMutation = useMutation({
     mutationFn: async () => {
       const dataToSave = {
         tenant_id: tenantId,
-        provider: formData.provider,
-        api_token: formData.api_token,
-        is_sandbox: formData.is_sandbox,
-        sender_config: formData.sender_config,
-        config: formData.config || {},
+        provider: 'melhor_envio',
+        access_token: formData.access_token,
+        from_cep: formData.from_cep || null,
+        sandbox: formData.sandbox,
+        client_id: formData.client_id || null,
+        client_secret: formData.client_secret || null,
         is_active: true,
-        last_verified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
 
       if (integration) {
         const { error } = await supabase
-          .from('tenant_shipping_integrations')
+          .from('shipping_integrations')
           .update(dataToSave)
           .eq('id', integration.id);
 
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from('tenant_shipping_integrations')
+          .from('shipping_integrations')
           .insert([dataToSave]);
 
         if (error) throw error;
@@ -144,10 +136,11 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
       setIsEditing(false);
       toast({
         title: 'Integração salva!',
-        description: 'As configurações foram salvas com sucesso.',
+        description: 'As configurações do Melhor Envio foram salvas com sucesso.',
       });
     },
     onError: (error: Error) => {
+      console.error('Erro ao salvar:', error);
       toast({
         title: 'Erro ao salvar',
         description: error.message,
@@ -156,46 +149,33 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
     },
   });
 
-  // Buscar CEP
-  const searchCEP = async (cep: string) => {
-    try {
-      const response = await fetch(`https://viacep.com.br/ws/${cep.replace(/\D/g, '')}/json/`);
-      const data = await response.json();
+  // Desativar integração
+  const deactivateMutation = useMutation({
+    mutationFn: async () => {
+      if (!integration) return;
 
-      if (data.erro) {
-        toast({
-          title: 'CEP não encontrado',
-          variant: 'destructive',
-        });
-        return;
-      }
+      const { error } = await supabase
+        .from('shipping_integrations')
+        .update({ is_active: false })
+        .eq('id', integration.id);
 
-      setFormData({
-        ...formData,
-        sender_config: {
-          ...formData.sender_config,
-          address: {
-            ...formData.sender_config.address,
-            postal_code: cep,
-            street: data.logradouro,
-            district: data.bairro,
-            city: data.localidade,
-            state: data.uf,
-          },
-        },
-      });
-
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['shipping-integration', tenantId] });
       toast({
-        title: 'CEP encontrado!',
-        description: 'Endereço preenchido automaticamente.',
+        title: 'Integração desativada',
+        description: 'A integração foi desativada com sucesso.',
       });
-    } catch (error) {
+    },
+    onError: (error: Error) => {
       toast({
-        title: 'Erro ao buscar CEP',
+        title: 'Erro ao desativar',
+        description: error.message,
         variant: 'destructive',
       });
-    }
-  };
+    },
+  });
 
   if (isLoading) {
     return (
@@ -217,7 +197,7 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
               Integração de Envio - Melhor Envio
             </CardTitle>
             <CardDescription>
-              Configure as credenciais do Melhor Envio para gerenciar envios
+              Configure as credenciais do Melhor Envio para calcular fretes e gerar etiquetas
             </CardDescription>
           </div>
           {integration && !isEditing && (
@@ -228,7 +208,7 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
                   Ativo
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-sm text-gray-500">
+                <span className="flex items-center gap-1 text-sm text-muted-foreground">
                   <AlertCircle className="h-4 w-4" />
                   Inativo
                 </span>
@@ -244,33 +224,36 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
               <Package className="h-4 w-4" />
               <AlertDescription>
                 Integração configurada e {integration.is_active ? 'ativa' : 'inativa'}.
-                {integration.is_sandbox && ' (Modo Sandbox - Testes)'}
-                <br />
-                Saldo: {formatCurrency(integration.balance_cents)}
+                {integration.sandbox && ' (Modo Sandbox - Testes)'}
               </AlertDescription>
             </Alert>
 
             <div className="grid gap-2 text-sm">
               <div>
-                <span className="font-medium">Provider:</span>{' '}
-                {getProviderLabel(integration.provider)}
-              </div>
-              <div>
                 <span className="font-medium">Ambiente:</span>{' '}
-                {integration.is_sandbox ? 'Sandbox (Testes)' : 'Produção'}
+                {integration.sandbox ? 'Sandbox (Testes)' : 'Produção'}
               </div>
               <div>
-                <span className="font-medium">Remetente:</span>{' '}
-                {integration.sender_config.name}
+                <span className="font-medium">CEP de Origem:</span>{' '}
+                {integration.from_cep || 'Não configurado'}
               </div>
               <div>
-                <span className="font-medium">Endereço:</span>{' '}
-                {integration.sender_config.address.street}, {integration.sender_config.address.number} - {integration.sender_config.address.city}/{integration.sender_config.address.state}
+                <span className="font-medium">Token:</span>{' '}
+                {integration.access_token ? '••••••••' : 'Não configurado'}
               </div>
             </div>
 
             <div className="flex gap-2">
               <Button onClick={() => setIsEditing(true)}>Editar Configurações</Button>
+              {integration.is_active && (
+                <Button
+                  variant="outline"
+                  onClick={() => deactivateMutation.mutate()}
+                  disabled={deactivateMutation.isPending}
+                >
+                  Desativar
+                </Button>
+              )}
             </div>
           </div>
         ) : (
@@ -279,298 +262,99 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
               e.preventDefault();
               saveMutation.mutate();
             }}
-            className="space-y-6"
+            className="space-y-4"
           >
-            {/* API Token */}
             <div className="space-y-2">
-              <Label htmlFor="api_token">API Token *</Label>
+              <Label htmlFor="access_token">API Token *</Label>
               <Input
-                id="api_token"
+                id="access_token"
                 type="password"
-                value={formData.api_token}
+                value={formData.access_token}
                 onChange={(e) =>
-                  setFormData({ ...formData, api_token: e.target.value })
+                  setFormData({ ...formData, access_token: e.target.value })
                 }
                 placeholder="Token de acesso do Melhor Envio"
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                Obtenha em: <a href="https://melhorenvio.com.br/painel/gerenciar/tokens" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Painel Melhor Envio</a>
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="from_cep">CEP de Origem *</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="from_cep"
+                  value={formData.from_cep}
+                  onChange={(e) =>
+                    setFormData({ ...formData, from_cep: e.target.value })
+                  }
+                  placeholder="00000-000"
+                  required
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => searchCEP(formData.from_cep)}
+                >
+                  Validar
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                CEP de onde os produtos serão despachados
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="client_id">Client ID</Label>
+                <Input
+                  id="client_id"
+                  type="text"
+                  value={formData.client_id || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_id: e.target.value })
+                  }
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client_secret">Client Secret</Label>
+                <Input
+                  id="client_secret"
+                  type="password"
+                  value={formData.client_secret || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_secret: e.target.value })
+                  }
+                  placeholder="Opcional"
+                />
+              </div>
             </div>
 
             <div className="flex items-center space-x-2">
               <Switch
-                id="is_sandbox"
-                checked={formData.is_sandbox}
+                id="sandbox"
+                checked={formData.sandbox}
                 onCheckedChange={(checked) =>
-                  setFormData({ ...formData, is_sandbox: checked })
+                  setFormData({ ...formData, sandbox: checked })
                 }
               />
-              <Label htmlFor="is_sandbox">Modo Sandbox (Testes)</Label>
+              <Label htmlFor="sandbox">Modo Sandbox (Testes)</Label>
             </div>
 
-            {/* Dados do Remetente */}
-            <div className="space-y-4 border-t pt-4">
-              <h3 className="text-lg font-semibold">Dados do Remetente</h3>
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                No modo Sandbox, os envios são simulados. Use para testes antes de ativar em produção.
+              </AlertDescription>
+            </Alert>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="sender_name">Nome / Razão Social *</Label>
-                  <Input
-                    id="sender_name"
-                    value={formData.sender_config.name}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          name: e.target.value,
-                        },
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="sender_document">CPF / CNPJ *</Label>
-                  <Input
-                    id="sender_document"
-                    value={formData.sender_config.document}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          document: e.target.value,
-                        },
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="sender_email">Email *</Label>
-                  <Input
-                    id="sender_email"
-                    type="email"
-                    value={formData.sender_config.email}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          email: e.target.value,
-                        },
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="sender_phone">Telefone *</Label>
-                  <Input
-                    id="sender_phone"
-                    value={formData.sender_config.phone}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          phone: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="11999999999"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Endereço do Remetente */}
-            <div className="space-y-4 border-t pt-4">
-              <h3 className="text-lg font-semibold">Endereço do Remetente</h3>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="postal_code">CEP *</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="postal_code"
-                      value={formData.sender_config.address.postal_code}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          sender_config: {
-                            ...formData.sender_config,
-                            address: {
-                              ...formData.sender_config.address,
-                              postal_code: e.target.value,
-                            },
-                          },
-                        })
-                      }
-                      placeholder="00000-000"
-                      required
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        searchCEP(formData.sender_config.address.postal_code)
-                      }
-                    >
-                      Buscar
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="col-span-2 space-y-2">
-                  <Label htmlFor="street">Rua *</Label>
-                  <Input
-                    id="street"
-                    value={formData.sender_config.address.street}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          address: {
-                            ...formData.sender_config.address,
-                            street: e.target.value,
-                          },
-                        },
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="number">Número *</Label>
-                  <Input
-                    id="number"
-                    value={formData.sender_config.address.number}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          address: {
-                            ...formData.sender_config.address,
-                            number: e.target.value,
-                          },
-                        },
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="complement">Complemento</Label>
-                  <Input
-                    id="complement"
-                    value={formData.sender_config.address.complement || ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          address: {
-                            ...formData.sender_config.address,
-                            complement: e.target.value,
-                          },
-                        },
-                      })
-                    }
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="district">Bairro *</Label>
-                  <Input
-                    id="district"
-                    value={formData.sender_config.address.district}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          address: {
-                            ...formData.sender_config.address,
-                            district: e.target.value,
-                          },
-                        },
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="city">Cidade *</Label>
-                  <Input
-                    id="city"
-                    value={formData.sender_config.address.city}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          address: {
-                            ...formData.sender_config.address,
-                            city: e.target.value,
-                          },
-                        },
-                      })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="state">Estado *</Label>
-                  <Input
-                    id="state"
-                    value={formData.sender_config.address.state}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        sender_config: {
-                          ...formData.sender_config,
-                          address: {
-                            ...formData.sender_config.address,
-                            state: e.target.value.toUpperCase(),
-                          },
-                        },
-                      })
-                    }
-                    placeholder="SP"
-                    maxLength={2}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => validateMutation.mutate()}
-                disabled={validateMutation.isPending || !formData.api_token}
-              >
-                {validateMutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Validar Token
-              </Button>
-
+            <div className="flex gap-2">
               <Button
                 type="submit"
-                disabled={saveMutation.isPending || !formData.api_token}
+                disabled={saveMutation.isPending || !formData.access_token || !formData.from_cep}
               >
                 {saveMutation.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
