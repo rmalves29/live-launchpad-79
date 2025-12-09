@@ -257,29 +257,25 @@ export default function ConexaoWhatsApp() {
         }
       }
 
-      if (functionError && !functionData) {
-        console.error('❌ [STATUS] Erro ao chamar proxy:', functionError);
-        console.error('📋 [STATUS] Detalhes do erro:', {
-          name: functionError.name,
-          message: functionError.message
-        });
+      // Se não temos dados e temos erro, lançar erro
+      if (!functionData && functionError) {
+        console.error('❌ [STATUS] Erro ao chamar proxy sem dados:', functionError);
         throw new Error(functionError.message);
       }
 
       console.log('📥 [STATUS] Resposta do proxy (QR):', JSON.stringify(functionData, null, 2));
 
-      // Se teve erro, mostrar
+      // Se teve erro retornado nos dados, mostrar
       if (functionData?.error) {
         console.error('❌ [STATUS] Erro retornado pelo proxy:', functionData.error);
-        if (functionData.htmlPreview) {
-          console.log('📄 [STATUS] HTML Preview:', functionData.htmlPreview);
-        }
-        console.log('💡 [STATUS] Verifique se o servidor Node.js está rodando');
-        console.log('💡 [STATUS] URL esperada:', `${serverUrl}/qr/${tenant.id}`);
+        console.log('💡 [STATUS] Mensagem:', functionData.message);
         
         // Verificar se é erro de rota não encontrada (backend desatualizado)
         const isRouteNotFound = functionData.error?.includes('não encontrada') || 
+                                functionData.error?.includes('Rota não encontrada') ||
                                 functionData.message?.includes('backend precisa ser atualizado');
+        
+        console.log('🔍 [STATUS] É backend desatualizado?', isRouteNotFound);
         
         setWhatsappStatus({
           connected: false,
