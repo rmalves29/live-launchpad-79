@@ -50,7 +50,19 @@ export const TenantLoader = ({ children }: TenantLoaderProps) => {
     );
   }
 
-  // Error state - subdomínio inválido
+  // Site principal (sem tenant) - verificar ANTES de isValidSubdomain
+  if (isMainSite) {
+    console.log('🏢 Renderizando site principal');
+    return <>{children}</>;
+  }
+
+  // Site do tenant
+  if (tenant) {
+    console.log(`🏢 Renderizando site do tenant: ${tenant.name}`);
+    return <>{children}</>;
+  }
+
+  // Error state - subdomínio inválido (apenas se NÃO é o site principal)
   if (!isValidSubdomain) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
@@ -76,18 +88,6 @@ export const TenantLoader = ({ children }: TenantLoaderProps) => {
         </Card>
       </div>
     );
-  }
-
-  // Site principal (sem tenant)
-  if (isMainSite) {
-    console.log('🏢 Renderizando site principal');
-    return <>{children}</>;
-  }
-
-  // Site do tenant
-  if (tenant) {
-    console.log(`🏢 Renderizando site do tenant: ${tenant.name}`);
-    return <>{children}</>;
   }
 
   // Fallback - não deveria acontecer
