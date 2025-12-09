@@ -39,11 +39,11 @@ import {
   Users,
   Eye,
   EyeOff,
-  Key
+  Key,
+  Search
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import bcrypt from 'bcryptjs';
 
 interface Tenant {
   id: string;
@@ -74,6 +74,7 @@ export default function TenantsAdmin() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [showPasswords, setShowPasswords] = useState<{[key: string]: boolean}>({});
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Form states
   const [formName, setFormName] = useState('');
@@ -225,14 +226,13 @@ export default function TenantsAdmin() {
           const existingCredential = getTenantCredential(editingTenant.id);
           
           if (formAdminPassword) {
-            const passwordHash = await bcrypt.hash(formAdminPassword, 10);
-            
+            // Salvar senha em texto puro
             if (existingCredential) {
               const { error: credentialError } = await supabase
                 .from('tenant_credentials')
                 .update({
                   email: formAdminEmail,
-                  password_hash: passwordHash,
+                  password_hash: formAdminPassword, // Senha em texto puro
                 })
                 .eq('tenant_id', editingTenant.id);
 
@@ -243,7 +243,7 @@ export default function TenantsAdmin() {
                 .insert({
                   tenant_id: editingTenant.id,
                   email: formAdminEmail,
-                  password_hash: passwordHash,
+                  password_hash: formAdminPassword, // Senha em texto puro
                   is_active: true
                 });
 
@@ -269,14 +269,13 @@ export default function TenantsAdmin() {
         if (insertError) throw insertError;
         tenantId = newTenant.id;
 
-        // Criar credencial
-        const passwordHash = await bcrypt.hash(formAdminPassword, 10);
+        // Criar credencial - senha em texto puro
         const { error: credentialError } = await supabase
           .from('tenant_credentials')
           .insert({
             tenant_id: tenantId,
             email: formAdminEmail,
-            password_hash: passwordHash,
+            password_hash: formAdminPassword, // Senha em texto puro
             is_active: true
           });
 
@@ -587,6 +586,19 @@ export default function TenantsAdmin() {
             </Alert>
           )}
 
+          {/* Campo de busca */}
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar empresa por nome, slug ou email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </div>
+
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -600,7 +612,19 @@ export default function TenantsAdmin() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tenants.map((tenant) => {
+                {tenants
+                  .filter((tenant) => {
+                    if (!searchTerm) return true;
+                    const search = searchTerm.toLowerCase();
+                    const credential = getTenantCredential(tenant.id);
+                    return (
+                      tenant.name.toLowerCase().includes(search) ||
+                      tenant.slug.toLowerCase().includes(search) ||
+                      (tenant.email && tenant.email.toLowerCase().includes(search)) ||
+                      (credential && credential.email.toLowerCase().includes(search))
+                    );
+                  })
+                  .map((tenant) => {
                   const accessStatus = getAccessStatus(tenant);
                   const daysRemaining = getDaysRemaining(tenant);
                   const credential = getTenantCredential(tenant.id);
@@ -630,7 +654,7 @@ export default function TenantsAdmin() {
                             </div>
                             <div className="flex items-center gap-1">
                               <span className="text-xs font-mono bg-muted px-1 py-0.5 rounded">
-                                {showPassword ? credential.password_hash.substring(0, 20) + '...' : '••••••••'}
+                                {showPassword ? credential.password_hash : '••••••••'}
                               </span>
                               <Button
                                 variant="ghost"
