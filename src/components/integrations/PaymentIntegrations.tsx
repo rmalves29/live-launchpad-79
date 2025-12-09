@@ -8,119 +8,97 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  TenantPaymentIntegration, 
-  PaymentIntegrationFormData,
-  getProviderLabel 
-} from '@/types/integrations';
 import { Loader2, CheckCircle2, AlertCircle, CreditCard, DollarSign } from 'lucide-react';
 
 interface PaymentIntegrationsProps {
   tenantId: string;
 }
 
+interface IntegrationData {
+  id: string;
+  tenant_id: string;
+  access_token: string | null;
+  public_key: string | null;
+  client_id: string | null;
+  client_secret: string | null;
+  webhook_secret: string | null;
+  environment: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState<PaymentIntegrationFormData>({
-    provider: 'mercado_pago',
+  const [formData, setFormData] = useState({
     access_token: '',
     public_key: '',
-    is_sandbox: true,
+    client_id: '',
+    client_secret: '',
     webhook_secret: '',
+    environment: 'production' as 'sandbox' | 'production',
   });
   const [isEditing, setIsEditing] = useState(false);
 
-  // Buscar integração existente
-  const { data: integration, isLoading } = useQuery({
+  // Buscar integração existente na tabela integration_mp
+  const { data: integration, isLoading, error } = useQuery({
     queryKey: ['payment-integration', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('tenant_payment_integrations')
+        .from('integration_mp')
         .select('*')
         .eq('tenant_id', tenantId)
-        .eq('provider', 'mercado_pago')
         .maybeSingle();
 
-      if (error) throw error;
-      return data as TenantPaymentIntegration | null;
+      if (error) {
+        console.error('Erro ao buscar integração MP:', error);
+        throw error;
+      }
+      return data as IntegrationData | null;
     },
+    enabled: !!tenantId,
   });
 
   // Preencher formulário ao carregar integração
   useEffect(() => {
     if (integration) {
       setFormData({
-        provider: integration.provider,
         access_token: integration.access_token || '',
         public_key: integration.public_key || '',
-        is_sandbox: integration.is_sandbox,
+        client_id: integration.client_id || '',
+        client_secret: integration.client_secret || '',
         webhook_secret: integration.webhook_secret || '',
+        environment: integration.environment as 'sandbox' | 'production',
       });
     }
   }, [integration]);
-
-  // Validar credenciais
-  const validateMutation = useMutation({
-    mutationFn: async () => {
-      // Aqui você chamaria uma API backend que valida as credenciais
-      const response = await fetch('/api/integrations/payment/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          provider: formData.provider,
-          access_token: formData.access_token,
-          public_key: formData.public_key,
-          is_sandbox: formData.is_sandbox,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Falha ao validar credenciais');
-      }
-
-      return response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: 'Credenciais válidas!',
-        description: data.message || 'As credenciais foram validadas com sucesso.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Erro na validação',
-        description: error.message,
-        variant: 'destructive',
-      });
-    },
-  });
 
   // Salvar integração
   const saveMutation = useMutation({
     mutationFn: async () => {
       const dataToSave = {
         tenant_id: tenantId,
-        provider: formData.provider,
-        access_token: formData.access_token,
-        public_key: formData.public_key,
-        is_sandbox: formData.is_sandbox,
-        webhook_secret: formData.webhook_secret,
+        access_token: formData.access_token || null,
+        public_key: formData.public_key || null,
+        client_id: formData.client_id || null,
+        client_secret: formData.client_secret || null,
+        webhook_secret: formData.webhook_secret || null,
+        environment: formData.environment,
         is_active: true,
-        last_verified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
 
       if (integration) {
         const { error } = await supabase
-          .from('tenant_payment_integrations')
+          .from('integration_mp')
           .update(dataToSave)
           .eq('id', integration.id);
 
         if (error) throw error;
       } else {
         const { error } = await supabase
-          .from('tenant_payment_integrations')
+          .from('integration_mp')
           .insert([dataToSave]);
 
         if (error) throw error;
@@ -131,10 +109,11 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
       setIsEditing(false);
       toast({
         title: 'Integração salva!',
-        description: 'As configurações foram salvas com sucesso.',
+        description: 'As configurações do Mercado Pago foram salvas com sucesso.',
       });
     },
     onError: (error: Error) => {
+      console.error('Erro ao salvar:', error);
       toast({
         title: 'Erro ao salvar',
         description: error.message,
@@ -149,7 +128,7 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
       if (!integration) return;
 
       const { error } = await supabase
-        .from('tenant_payment_integrations')
+        .from('integration_mp')
         .update({ is_active: false })
         .eq('id', integration.id);
 
@@ -202,7 +181,7 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
                   Ativo
                 </span>
               ) : (
-                <span className="flex items-center gap-1 text-sm text-gray-500">
+                <span className="flex items-center gap-1 text-sm text-muted-foreground">
                   <AlertCircle className="h-4 w-4" />
                   Inativo
                 </span>
@@ -218,24 +197,22 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
               <DollarSign className="h-4 w-4" />
               <AlertDescription>
                 Integração configurada e {integration.is_active ? 'ativa' : 'inativa'}.
-                {integration.is_sandbox && ' (Modo Sandbox - Testes)'}
+                {integration.environment === 'sandbox' && ' (Modo Sandbox - Testes)'}
               </AlertDescription>
             </Alert>
 
             <div className="grid gap-2 text-sm">
               <div>
-                <span className="font-medium">Provider:</span>{' '}
-                {getProviderLabel(integration.provider)}
-              </div>
-              <div>
                 <span className="font-medium">Ambiente:</span>{' '}
-                {integration.is_sandbox ? 'Sandbox (Testes)' : 'Produção'}
+                {integration.environment === 'sandbox' ? 'Sandbox (Testes)' : 'Produção'}
               </div>
               <div>
-                <span className="font-medium">Última verificação:</span>{' '}
-                {integration.last_verified_at
-                  ? new Date(integration.last_verified_at).toLocaleString('pt-BR')
-                  : 'Nunca'}
+                <span className="font-medium">Access Token:</span>{' '}
+                {integration.access_token ? '••••••••' : 'Não configurado'}
+              </div>
+              <div>
+                <span className="font-medium">Public Key:</span>{' '}
+                {integration.public_key ? '••••••••' : 'Não configurado'}
               </div>
             </div>
 
@@ -272,7 +249,7 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
                 placeholder="APP_USR-..."
                 required
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Token de acesso obtido no painel do Mercado Pago
               </p>
             </div>
@@ -288,9 +265,31 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
                 }
                 placeholder="APP_USR-..."
               />
-              <p className="text-xs text-gray-500">
-                Chave pública para uso no frontend (opcional)
-              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="client_id">Client ID</Label>
+                <Input
+                  id="client_id"
+                  type="text"
+                  value={formData.client_id || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_id: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client_secret">Client Secret</Label>
+                <Input
+                  id="client_secret"
+                  type="password"
+                  value={formData.client_secret || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, client_secret: e.target.value })
+                  }
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -308,38 +307,23 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
 
             <div className="flex items-center space-x-2">
               <Switch
-                id="is_sandbox"
-                checked={formData.is_sandbox}
+                id="environment"
+                checked={formData.environment === 'sandbox'}
                 onCheckedChange={(checked) =>
-                  setFormData({ ...formData, is_sandbox: checked })
+                  setFormData({ ...formData, environment: checked ? 'sandbox' : 'production' })
                 }
               />
-              <Label htmlFor="is_sandbox">Modo Sandbox (Testes)</Label>
+              <Label htmlFor="environment">Modo Sandbox (Testes)</Label>
             </div>
 
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 No modo Sandbox, os pagamentos são simulados e não há cobrança real.
-                Use para testes antes de ativar em produção.
               </AlertDescription>
             </Alert>
 
             <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => validateMutation.mutate()}
-                disabled={
-                  validateMutation.isPending || !formData.access_token
-                }
-              >
-                {validateMutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Validar Credenciais
-              </Button>
-
               <Button
                 type="submit"
                 disabled={saveMutation.isPending || !formData.access_token}
