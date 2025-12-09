@@ -150,7 +150,7 @@ export default function TenantStorefront() {
                 <div>
                   <p className="text-sm font-medium">URL da Loja</p>
                   <p className="text-sm text-gray-600 break-all">
-                    /{tenant.slug}
+                    /t/{tenant.slug}
                   </p>
                 </div>
               </div>
@@ -174,7 +174,7 @@ export default function TenantStorefront() {
                   <strong>🎉 Novidade!</strong> Agora você pode acessar sua loja sem subdomínio!
                   <br />
                   <br />
-                  Compartilhe este link: <strong className="font-mono">/{tenant.slug}</strong>
+                  Compartilhe este link: <strong className="font-mono">/t/{tenant.slug}</strong>
                 </AlertDescription>
               </Alert>
 
@@ -187,7 +187,7 @@ export default function TenantStorefront() {
                     <Link to="/auth">Fazer Login</Link>
                   </Button>
                   <Button asChild variant="outline">
-                    <Link to={`/${tenant.slug}/produtos`}>Ver Produtos</Link>
+                    <Link to={`/t/${tenant.slug}/produtos`}>Ver Produtos</Link>
                   </Button>
                 </div>
               </div>
