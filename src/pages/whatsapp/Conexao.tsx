@@ -242,10 +242,15 @@ export default function ConexaoWhatsApp() {
         console.log('💡 [STATUS] Verifique se o servidor Node.js está rodando');
         console.log('💡 [STATUS] URL esperada:', `${serverUrl}/qr/${tenant.id}`);
         
+        // Verificar se é erro de rota não encontrada (backend desatualizado)
+        const isRouteNotFound = functionData.error?.includes('não encontrada') || 
+                                functionData.message?.includes('backend precisa ser atualizado');
+        
         setWhatsappStatus({
           connected: false,
-          status: 'error',
-          error: `${functionData.error}. Por favor, verifique se o servidor está rodando corretamente.`
+          status: isRouteNotFound ? 'backend_outdated' : 'error',
+          error: functionData.error,
+          message: functionData.message
         });
         console.log('='.repeat(70) + '\n');
         return;
@@ -587,6 +592,16 @@ WHERE tenant_id = '${tenant?.id}';`}
                 </p>
               </div>
             </div>
+          ) : whatsappStatus?.status === 'backend_outdated' ? (
+            <div className="flex items-center gap-3 text-orange-600">
+              <AlertCircle className="h-6 w-6" />
+              <div>
+                <p className="font-semibold">Backend Desatualizado</p>
+                <p className="text-sm text-muted-foreground">
+                  O servidor no Railway precisa ser atualizado. Veja as instruções abaixo.
+                </p>
+              </div>
+            </div>
           ) : whatsappStatus?.status === 'error' ? (
             <div className="flex items-center gap-3 text-destructive">
               <AlertCircle className="h-6 w-6" />
@@ -683,8 +698,99 @@ WHERE tenant_id = '${tenant?.id}';`}
         </Card>
       )}
 
+      {/* Backend Desatualizado */}
+      {whatsappStatus?.status === 'backend_outdated' && (
+        <Card className="border-orange-500">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-orange-600">
+              <AlertCircle className="h-5 w-5" />
+              Backend Precisa de Atualização
+            </CardTitle>
+            <CardDescription>
+              O servidor no Railway não possui as rotas mais recentes
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Alert className="border-orange-200 bg-orange-50">
+              <AlertCircle className="h-4 w-4 text-orange-600" />
+              <AlertDescription className="text-orange-800">
+                <strong>URL:</strong> {serverUrl}
+                <br />
+                <strong>Rota:</strong> /api/whatsapp/qrcode/{tenant?.id}
+                <br />
+                <strong>Erro:</strong> {whatsappStatus.error}
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-3">
+              <h3 className="font-semibold">Para resolver, faça deploy do backend atualizado:</h3>
+              
+              <ol className="space-y-3 text-sm">
+                <li className="flex items-start gap-2">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                    1
+                  </span>
+                  <div>
+                    <strong>Acesse seu repositório Git</strong>
+                    <br />
+                    <span className="text-muted-foreground">
+                      Certifique-se de que o código em <code className="text-xs bg-muted px-1 py-0.5 rounded">backend/</code> está atualizado
+                    </span>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                    2
+                  </span>
+                  <div>
+                    <strong>Faça push para o GitHub</strong>
+                    <br />
+                    <code className="text-xs bg-muted px-1 py-0.5 rounded">git add . && git commit -m "Update backend" && git push</code>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                    3
+                  </span>
+                  <div>
+                    <strong>No Railway, faça redeploy</strong>
+                    <br />
+                    <span className="text-muted-foreground">
+                      Acesse <a href="https://railway.app" target="_blank" rel="noopener noreferrer" className="underline">railway.app</a> → Seu projeto → Redeploy
+                    </span>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                    4
+                  </span>
+                  <div>
+                    <strong>Após o deploy, clique no botão abaixo</strong>
+                  </div>
+                </li>
+              </ol>
+
+              <div className="pt-4">
+                <Button 
+                  onClick={() => {
+                    setWhatsappStatus(null);
+                    checkStatus();
+                  }} 
+                  variant="default"
+                  className="w-full"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Verificar Novamente
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Aguardando QR Code */}
-      {!whatsappStatus?.qrCode && !whatsappStatus?.connected && whatsappStatus?.status !== 'error' && (
+      {!whatsappStatus?.qrCode && !whatsappStatus?.connected && 
+       whatsappStatus?.status !== 'error' && whatsappStatus?.status !== 'backend_outdated' && (
         <Card>
           <CardContent className="py-12">
             <div className="text-center space-y-4">
