@@ -31,7 +31,7 @@ import SendFlow from "./pages/sendflow/Index";
 import Etiquetas from "./pages/etiquetas/Index";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
-import TenantsManager from "./components/TenantsManager";
+import TenantsAdmin from "./pages/admin/TenantsAdmin";
 import Debug from "./pages/Debug";
 
 // WhatsApp
@@ -115,7 +115,7 @@ const AppContent = () => {
         <Route path="/admin/tenants" element={
           <RequireAuth>
             <SuperAdminOnly>
-              <TenantsManager />
+              <TenantsAdmin />
             </SuperAdminOnly>
           </RequireAuth>
         } />

@@ -36,10 +36,14 @@ import {
   CheckCircle, 
   XCircle,
   Calendar,
-  Users
+  Users,
+  Eye,
+  EyeOff,
+  Key
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import bcrypt from 'bcryptjs';
 
 interface Tenant {
   id: string;
@@ -54,16 +58,28 @@ interface Tenant {
   created_at: string;
 }
 
+interface TenantCredential {
+  id: string;
+  tenant_id: string;
+  email: string;
+  password_hash: string;
+  is_active: boolean;
+}
+
 export default function TenantsAdmin() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [credentials, setCredentials] = useState<TenantCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
+  const [showPasswords, setShowPasswords] = useState<{[key: string]: boolean}>({});
 
   // Form states
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
+  const [formAdminEmail, setFormAdminEmail] = useState('');
+  const [formAdminPassword, setFormAdminPassword] = useState('');
   const [formContactName, setFormContactName] = useState('');
   const [formContactPhone, setFormContactPhone] = useState('');
   const [formTrialDays, setFormTrialDays] = useState('30');
@@ -90,6 +106,15 @@ export default function TenantsAdmin() {
       if (fetchError) throw fetchError;
 
       setTenants(data || []);
+
+      // Carregar credenciais
+      const { data: credentialsData, error: credentialsError } = await supabase
+        .from('tenant_credentials')
+        .select('*');
+
+      if (credentialsError) throw credentialsError;
+      setCredentials(credentialsData || []);
+
     } catch (err: any) {
       console.error('Erro ao carregar tenants:', err);
       setError(err.message);
@@ -98,11 +123,25 @@ export default function TenantsAdmin() {
     }
   };
 
+  const getTenantCredential = (tenantId: string) => {
+    return credentials.find(c => c.tenant_id === tenantId);
+  };
+
+  const togglePassword = (tenantId: string) => {
+    setShowPasswords(prev => ({
+      ...prev,
+      [tenantId]: !prev[tenantId]
+    }));
+  };
+
   const handleOpenDialog = (tenant?: Tenant) => {
     if (tenant) {
       setEditingTenant(tenant);
       setFormName(tenant.name);
       setFormEmail(tenant.email || '');
+      const credential = getTenantCredential(tenant.id);
+      setFormAdminEmail(credential?.email || '');
+      setFormAdminPassword('');
       setFormContactName('');
       setFormContactPhone('');
       setFormPlan(tenant.plan_type || 'trial');
@@ -121,6 +160,8 @@ export default function TenantsAdmin() {
       setEditingTenant(null);
       setFormName('');
       setFormEmail('');
+      setFormAdminEmail('');
+      setFormAdminPassword('');
       setFormContactName('');
       setFormContactPhone('');
       setFormTrialDays('30');
@@ -137,6 +178,13 @@ export default function TenantsAdmin() {
     try {
       setLoading(true);
       setError(null);
+
+      // Validar campos obrigatórios para nova empresa
+      if (!editingTenant && (!formAdminEmail || !formAdminPassword)) {
+        setError('Email e senha do administrador são obrigatórios para nova empresa');
+        setLoading(false);
+        return;
+      }
 
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + parseInt(formTrialDays || '30'));
@@ -160,21 +208,79 @@ export default function TenantsAdmin() {
           .substring(0, 20);
       }
 
+      let tenantId: string;
+
       if (editingTenant) {
-        // Atualizar
+        // Atualizar tenant
         const { error: updateError } = await supabase
           .from('tenants')
           .update(tenantData)
           .eq('id', editingTenant.id);
 
         if (updateError) throw updateError;
+        tenantId = editingTenant.id;
+
+        // Atualizar ou criar credencial se email/senha foram fornecidos
+        if (formAdminEmail) {
+          const existingCredential = getTenantCredential(editingTenant.id);
+          
+          if (formAdminPassword) {
+            const passwordHash = await bcrypt.hash(formAdminPassword, 10);
+            
+            if (existingCredential) {
+              const { error: credentialError } = await supabase
+                .from('tenant_credentials')
+                .update({
+                  email: formAdminEmail,
+                  password_hash: passwordHash,
+                })
+                .eq('tenant_id', editingTenant.id);
+
+              if (credentialError) throw credentialError;
+            } else {
+              const { error: credentialError } = await supabase
+                .from('tenant_credentials')
+                .insert({
+                  tenant_id: editingTenant.id,
+                  email: formAdminEmail,
+                  password_hash: passwordHash,
+                  is_active: true
+                });
+
+              if (credentialError) throw credentialError;
+            }
+          } else if (existingCredential && formAdminEmail !== existingCredential.email) {
+            const { error: credentialError } = await supabase
+              .from('tenant_credentials')
+              .update({ email: formAdminEmail })
+              .eq('tenant_id', editingTenant.id);
+
+            if (credentialError) throw credentialError;
+          }
+        }
       } else {
-        // Criar novo
-        const { error: insertError } = await supabase
+        // Criar novo tenant
+        const { data: newTenant, error: insertError } = await supabase
           .from('tenants')
-          .insert(tenantData);
+          .insert(tenantData)
+          .select()
+          .single();
 
         if (insertError) throw insertError;
+        tenantId = newTenant.id;
+
+        // Criar credencial
+        const passwordHash = await bcrypt.hash(formAdminPassword, 10);
+        const { error: credentialError } = await supabase
+          .from('tenant_credentials')
+          .insert({
+            tenant_id: tenantId,
+            email: formAdminEmail,
+            password_hash: passwordHash,
+            is_active: true
+          });
+
+        if (credentialError) throw credentialError;
       }
 
       setDialogOpen(false);
@@ -305,7 +411,7 @@ export default function TenantsAdmin() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email">E-mail</Label>
+                    <Label htmlFor="email">E-mail da Empresa</Label>
                     <Input
                       id="email"
                       type="email"
@@ -313,6 +419,46 @@ export default function TenantsAdmin() {
                       onChange={(e) => setFormEmail(e.target.value)}
                       placeholder="contato@empresa.com"
                     />
+                  </div>
+
+                  {/* Credenciais de Acesso */}
+                  <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <Key className="h-4 w-4 text-primary" />
+                      <Label className="font-semibold">Credenciais de Acesso</Label>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="admin_email">Email do Administrador *</Label>
+                      <Input
+                        id="admin_email"
+                        type="email"
+                        value={formAdminEmail}
+                        onChange={(e) => setFormAdminEmail(e.target.value)}
+                        placeholder="admin@empresa.com"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Este será o usuário para login no sistema
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="admin_password">
+                        Senha do Administrador {!editingTenant && '*'}
+                      </Label>
+                      <Input
+                        id="admin_password"
+                        type="password"
+                        value={formAdminPassword}
+                        onChange={(e) => setFormAdminPassword(e.target.value)}
+                        placeholder={editingTenant ? "Deixe em branco para manter a atual" : "Senha de acesso"}
+                      />
+                      {editingTenant && (
+                        <p className="text-xs text-muted-foreground">
+                          Deixe em branco para manter a senha atual
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -446,11 +592,10 @@ export default function TenantsAdmin() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Empresa</TableHead>
-                  <TableHead>Contato</TableHead>
+                  <TableHead>Credenciais</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Plano</TableHead>
                   <TableHead>Prazo</TableHead>
-                  <TableHead>Usuários</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -458,6 +603,8 @@ export default function TenantsAdmin() {
                 {tenants.map((tenant) => {
                   const accessStatus = getAccessStatus(tenant);
                   const daysRemaining = getDaysRemaining(tenant);
+                  const credential = getTenantCredential(tenant.id);
+                  const showPassword = showPasswords[tenant.id];
                   
                   return (
                     <TableRow key={tenant.id}>
@@ -467,16 +614,41 @@ export default function TenantsAdmin() {
                           <div className="text-xs text-muted-foreground">
                             {tenant.slug}
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">
                           {tenant.email && (
-                            <div className="text-xs text-muted-foreground">
+                            <div className="text-xs text-muted-foreground mt-1">
                               {tenant.email}
                             </div>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {credential ? (
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium flex items-center gap-1">
+                              <Key className="h-3 w-3 text-muted-foreground" />
+                              {credential.email}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs font-mono bg-muted px-1 py-0.5 rounded">
+                                {showPassword ? credential.password_hash.substring(0, 20) + '...' : '••••••••'}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0"
+                                onClick={() => togglePassword(tenant.id)}
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="h-3 w-3" />
+                                ) : (
+                                  <Eye className="h-3 w-3" />
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">Sem credencial</span>
+                        )}
                       </TableCell>
                       <TableCell>{getStatusBadge(accessStatus)}</TableCell>
                       <TableCell>
@@ -490,12 +662,6 @@ export default function TenantsAdmin() {
                         ) : (
                           <span className="text-muted-foreground">-</span>
                         )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Users className="h-4 w-4 text-muted-foreground" />
-                          -
-                        </div>
                       </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
