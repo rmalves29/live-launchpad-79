@@ -1,0 +1,12 @@
+-- Etapa 1: Adicionar campos da empresa na tabela tenants
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_name TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_document TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_email TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_phone TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_address TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_number TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_complement TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_district TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_city TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_state TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_cep TEXT;

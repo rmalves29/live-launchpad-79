@@ -1,0 +1,10 @@
+{
+  "name": "orderzaps-whatsapp-server",
+  "version": "1.0.0",
+  "description": "Servidor WhatsApp para OrderZaps",
+  "main": "server-whatsapp-individual.js",
+  "scripts": {
+    "start": "node server-whatsapp-individual.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.0",

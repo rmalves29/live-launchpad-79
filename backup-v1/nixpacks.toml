@@ -1,0 +1,24 @@
+# ============================================================
+# NIXPACKS.TOML - DESABILITADO
+# ============================================================
+# ❌ NIXPACKS ESTÁ COMPLETAMENTE DESABILITADO
+# ✅ USE O DOCKERFILE (railway.toml força isso)
+# ============================================================
+
+# Desabilitar COMPLETAMENTE o Nixpacks
+[phases.setup]
+nixPkgs = []
+nixLibs = []
+nixOverlays = []
+aptPkgs = []
+cmds = []
+
+[phases.install]
+cmds = []
+paths = []
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "echo ''; echo '╔═══════════════════════════════════════════════════╗'; echo '║  ❌ ERRO: Nixpacks está DESABILITADO!            ║'; echo '║  ✅ Configure Railway para usar DOCKERFILE       ║'; echo '╚═══════════════════════════════════════════════════╝'; echo ''; exit 1"

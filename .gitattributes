@@ -1,0 +1,15 @@
+# ============================================================
+# GIT ATTRIBUTES - RAILWAY BUILD OPTIMIZATION
+# ============================================================
+
+# Marcar pasta supabase como não-produção (não deve ser usada no build)
+supabase/** linguist-vendored
+supabase/** linguist-documentation
+
+# Marcar arquivos Deno como não-detectáveis
+*.deno.ts linguist-vendored
+deno.json linguist-vendored
+deno.lock linguist-vendored
+
+# Marcar documentação
+*.md linguist-documentation
