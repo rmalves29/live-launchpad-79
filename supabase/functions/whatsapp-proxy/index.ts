@@ -61,25 +61,29 @@ serve(async (req) => {
 
     let endpoint = "";
     let method = "GET";
+    let body: any = null;
 
-    // Map actions to backend routes (/api/whatsapp/...)
+    // Map actions to backend routes (v5.0 API - routes without /api/whatsapp prefix)
     switch (action) {
       case "qr":
-        endpoint = `/api/whatsapp/qrcode/${tenant_id}`;
+        // Try to get status first, if not connected, start session
+        endpoint = `/start/${tenant_id}`;
+        method = "POST";
         break;
       case "status":
-        endpoint = `/api/whatsapp/status/${tenant_id}`;
+        endpoint = `/status/${tenant_id}`;
+        method = "GET";
         break;
       case "connect":
-        endpoint = `/api/whatsapp/start`;
+        endpoint = `/start/${tenant_id}`;
         method = "POST";
         break;
       case "disconnect":
-        endpoint = `/api/whatsapp/disconnect`;
+        endpoint = `/disconnect/${tenant_id}`;
         method = "POST";
         break;
       case "reset":
-        endpoint = `/api/whatsapp/reset`;
+        endpoint = `/reset/${tenant_id}`;
         method = "POST";
         break;
       default:
@@ -100,8 +104,8 @@ serve(async (req) => {
     };
 
     // Add body for POST requests
-    if (method === "POST") {
-      fetchOptions.body = JSON.stringify({ tenantId: tenant_id });
+    if (method === "POST" && body) {
+      fetchOptions.body = JSON.stringify(body);
     }
 
     let response;
@@ -162,8 +166,9 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: "Rota não encontrada no servidor WhatsApp",
-          message: "O backend precisa ser atualizado. Verifique se a versão mais recente está deployada no Railway.",
-          targetUrl: targetUrl
+          message: "Verifique se o backend está atualizado e as rotas estão corretas.",
+          targetUrl: targetUrl,
+          backendResponse: data
         }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
