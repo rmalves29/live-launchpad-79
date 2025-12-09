@@ -69,10 +69,8 @@ const Config = () => {
   const [mercadoPagoIntegration, setMercadoPagoIntegration] = useState<MercadoPagoIntegration | null>(null);
   const [melhorEnvioIntegration, setMelhorEnvioIntegration] = useState<MelhorEnvioIntegration | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
-  // Se houver um query param 'tab', já inicia na view de config
-  const [activeView, setActiveView] = useState<'dashboard' | 'config'>(
-    searchParams.get('tab') ? 'config' : 'dashboard'
-  );
+  // Sempre iniciar na view de config (configurações gerais)
+  const [activeView, setActiveView] = useState<'dashboard' | 'config'>('config');
   const [appSettings, setAppSettings] = useState<any>(null);
 
   const loadSettings = async () => {
