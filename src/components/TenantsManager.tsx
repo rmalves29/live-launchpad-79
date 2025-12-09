@@ -12,7 +12,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "./ui/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Edit, Users, Mail, Trash2, UserCheck, Eye, EyeOff } from "lucide-react";
-import bcrypt from 'bcryptjs';
 
 interface Tenant {
   id: string;
@@ -178,16 +177,13 @@ export default function TenantsManager() {
 
       if (tenantError) throw tenantError;
 
-      // Hash da senha
-      const passwordHash = await bcrypt.hash(formData.adminPassword, 10);
-
-      // Criar credencial
+      // Criar credencial - senha em texto puro
       const { error: credentialError } = await supabase
         .from("tenant_credentials")
         .insert({
           tenant_id: newTenant.id,
           email: formData.adminEmail,
-          password_hash: passwordHash,
+          password_hash: formData.adminPassword,
           is_active: true
         });
 
@@ -242,27 +238,25 @@ export default function TenantsManager() {
       const existingCredential = credentials.find(c => c.tenant_id === editingTenant.id);
       
       if (formData.adminPassword) {
-        const passwordHash = await bcrypt.hash(formData.adminPassword, 10);
-        
         if (existingCredential) {
-          // Atualizar credencial existente
+          // Atualizar credencial existente - senha em texto puro
           const { error: credentialError } = await supabase
             .from("tenant_credentials")
             .update({
               email: formData.adminEmail,
-              password_hash: passwordHash,
+              password_hash: formData.adminPassword,
             })
             .eq("tenant_id", editingTenant.id);
 
           if (credentialError) throw credentialError;
         } else {
-          // Criar nova credencial
+          // Criar nova credencial - senha em texto puro
           const { error: credentialError } = await supabase
             .from("tenant_credentials")
             .insert({
               tenant_id: editingTenant.id,
               email: formData.adminEmail,
-              password_hash: passwordHash,
+              password_hash: formData.adminPassword,
               is_active: true
             });
 
