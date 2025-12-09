@@ -18,6 +18,7 @@ class WhatsAppController {
         });
       }
 
+      logger.info(`[WhatsApp] Iniciando conexão para tenant: ${tenantId}`);
       const result = await whatsappService.startSession(tenantId);
       
       res.json(result);
@@ -32,17 +33,42 @@ class WhatsAppController {
 
   /**
    * GET /api/whatsapp/qrcode/:tenantId
-   * Obter QR Code da sessão
+   * Obter QR Code da sessão (auto-inicia se não existir)
    */
   async getQRCode(req, res) {
     try {
       const { tenantId } = req.params;
 
-      const result = whatsappService.getQRCode(tenantId);
+      logger.info(`[WhatsApp] Buscando QR Code para tenant: ${tenantId}`);
+
+      // Verificar se sessão existe
+      let result = whatsappService.getQRCode(tenantId);
       
+      // Se não existe, iniciar automaticamente
       if (result.status === 'not_found') {
-        return res.status(404).json({
-          error: 'Sessão não encontrada'
+        logger.info(`[WhatsApp] Sessão não encontrada, iniciando automaticamente...`);
+        await whatsappService.startSession(tenantId);
+        
+        // Aguardar um pouco e tentar novamente
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        result = whatsappService.getQRCode(tenantId);
+        
+        // Se ainda não tem QR, retornar status de inicialização
+        if (!result.qrCode) {
+          return res.json({
+            status: 'initializing',
+            message: 'WhatsApp está sendo inicializado, aguarde alguns segundos...'
+          });
+        }
+      }
+
+      // Verificar se está conectado
+      const status = await whatsappService.getStatus(tenantId);
+      if (status.connected) {
+        return res.json({
+          status: 'connected',
+          connected: true,
+          message: 'WhatsApp já está conectado'
         });
       }
 
@@ -64,6 +90,7 @@ class WhatsAppController {
     try {
       const { tenantId } = req.params;
 
+      logger.info(`[WhatsApp] Verificando status para tenant: ${tenantId}`);
       const status = await whatsappService.getStatus(tenantId);
       
       res.json(status);
@@ -90,6 +117,7 @@ class WhatsAppController {
         });
       }
 
+      logger.info(`[WhatsApp] Desconectando tenant: ${tenantId}`);
       const result = await whatsappService.disconnect(tenantId);
       
       res.json(result);
@@ -97,6 +125,42 @@ class WhatsAppController {
       logger.error('Erro ao desconectar:', error);
       res.status(500).json({
         error: 'Erro ao desconectar',
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * POST /api/whatsapp/reset
+   * Resetar sessão (desconectar e limpar dados)
+   */
+  async resetSession(req, res) {
+    try {
+      const { tenantId } = req.body;
+
+      if (!tenantId) {
+        return res.status(400).json({
+          error: 'tenantId é obrigatório'
+        });
+      }
+
+      logger.info(`[WhatsApp] Resetando sessão para tenant: ${tenantId}`);
+      
+      // Primeiro desconectar
+      await whatsappService.disconnect(tenantId);
+      
+      // Depois iniciar nova sessão
+      const result = await whatsappService.startSession(tenantId);
+      
+      res.json({
+        status: 'reset_complete',
+        message: 'Sessão resetada. Novo QR Code será gerado.',
+        ...result
+      });
+    } catch (error) {
+      logger.error('Erro ao resetar sessão:', error);
+      res.status(500).json({
+        error: 'Erro ao resetar sessão',
         message: error.message
       });
     }
