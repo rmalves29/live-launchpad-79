@@ -3,12 +3,11 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Menu, MessageSquare, ChevronDown } from 'lucide-react';
+import { Menu, MessageSquare, ChevronDown, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { TenantSwitcher } from '@/components/TenantSwitcher';
-import orderZapsLogo from '@/assets/order-zaps-logo.png';
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
@@ -47,12 +46,11 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-[120px]">
           <div className="flex items-center">
-            <NavLink to="/" className="flex items-center">
-            <img 
-              src={orderZapsLogo} 
-              alt="Order Zaps" 
-              className="h-[200px] w-[200px] object-contain"
-            />
+            <NavLink to="/" className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-primary/10 px-4 py-2 rounded-lg">
+                <Zap className="h-8 w-8 text-primary" />
+                <span className="text-xl font-bold text-primary">OrderZap</span>
+              </div>
             </NavLink>
           </div>
 
