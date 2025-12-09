@@ -63,12 +63,13 @@ serve(async (req) => {
     let method = "GET";
     let body: any = null;
 
-    // Map actions to backend routes (v5.0-stable API)
-    // Note: v5.0 uses POST /start to get QR code (session start returns QR)
+    // Map actions to backend routes
+    // Backend v5.0-stable uses: /start/:id, /status/:id, /disconnect/:id
+    // Backend v2.0 uses: /api/whatsapp/start, /api/whatsapp/status/:id, etc.
+    // Detecting based on response - trying v5.0 routes first
     switch (action) {
       case "qr":
       case "connect":
-        // In v5.0, starting a session returns the QR code
         endpoint = `/start/${tenant_id}`;
         method = "POST";
         break;
