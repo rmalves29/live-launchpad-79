@@ -64,18 +64,17 @@ serve(async (req) => {
     let body: any = null;
 
     // Map actions to backend routes (v5.0-stable API)
+    // Note: v5.0 uses POST /start to get QR code (session start returns QR)
     switch (action) {
       case "qr":
-        endpoint = `/qr/${tenant_id}`;
-        method = "GET";
+      case "connect":
+        // In v5.0, starting a session returns the QR code
+        endpoint = `/start/${tenant_id}`;
+        method = "POST";
         break;
       case "status":
         endpoint = `/status/${tenant_id}`;
         method = "GET";
-        break;
-      case "connect":
-        endpoint = `/start/${tenant_id}`;
-        method = "POST";
         break;
       case "disconnect":
         endpoint = `/disconnect/${tenant_id}`;
