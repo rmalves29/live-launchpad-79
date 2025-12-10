@@ -11,22 +11,21 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Loader2,
-  QrCode as QrCodeIcon,
-  Clock,
-  Shield
+  QrCode as QrCodeIcon
 } from "lucide-react";
 
 interface WhatsAppStatus {
   connected: boolean;
   status: string;
   qrCode?: string;
+  hasQR?: boolean;
   message?: string;
   error?: string;
-  cooldownMinutes?: number;
+  user?: any;
 }
 
-const POLLING_INTERVAL_MS = 5000;
-const MAX_RETRIES = 3;
+const POLLING_INTERVAL_MS = 3000; // Baileys é mais rápido
+const MAX_RETRIES = 5;
 
 export default function ConexaoWhatsApp() {
   const { tenant } = useTenantContext();
@@ -145,11 +144,12 @@ export default function ConexaoWhatsApp() {
     if (!serverUrl || !tenant?.id || !mountedRef.current) return;
 
     try {
+      // Use action 'status' para checar, 'start' para conectar
       const { data, error } = await supabaseTenant.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
-            action: 'qr',
+            action: 'status',
             tenant_id: tenant.id
           }
         }
@@ -157,9 +157,8 @@ export default function ConexaoWhatsApp() {
 
       if (!mountedRef.current) return;
 
-      // Handle edge function error
       if (error) {
-        // Try direct fetch as fallback
+        // Fallback direto se edge function falhar
         try {
           const directResponse = await fetch(
             `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-proxy`,
@@ -171,7 +170,7 @@ export default function ConexaoWhatsApp() {
                 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4'
               },
               body: JSON.stringify({
-                action: 'qr',
+                action: 'status',
                 tenant_id: tenant.id
               })
             }
@@ -210,17 +209,6 @@ export default function ConexaoWhatsApp() {
   const handleStatusResponse = (data: any) => {
     if (!data) return;
 
-    // Handle cooldown
-    if (data.status === 'cooldown') {
-      setWhatsappStatus({
-        connected: false,
-        status: 'cooldown',
-        cooldownMinutes: data.cooldownMinutes || 15,
-        message: data.message
-      });
-      return;
-    }
-
     // Handle errors
     if (data.error) {
       const isBackendOutdated = data.status === 'backend_outdated' || 
@@ -235,23 +223,35 @@ export default function ConexaoWhatsApp() {
       return;
     }
 
-    // Handle connected
-    if (data.connected === true || data.status === 'connected') {
+    // Handle connected - Baileys retorna user quando conectado
+    if (data.connected === true || data.status === 'connected' || data.user) {
       setWhatsappStatus({
         connected: true,
         status: 'connected',
-        message: data.message || 'WhatsApp conectado'
+        message: data.message || 'WhatsApp conectado',
+        user: data.user
       });
       return;
     }
 
-    // Handle QR code ready
-    if (data.qrCode || data.status === 'qr_ready') {
+    // Handle QR code ready - Baileys usa 'qr' ou 'hasQR'
+    if (data.qr || data.hasQR || data.status === 'waiting_qr' || data.status === 'qr_ready') {
       setWhatsappStatus({
         connected: false,
         status: 'qr_ready',
-        qrCode: data.qrCode,
+        qrCode: data.qr || data.qrCode,
+        hasQR: data.hasQR,
         message: data.message || 'Escaneie o QR Code'
+      });
+      return;
+    }
+
+    // Handle connecting state
+    if (data.status === 'connecting') {
+      setWhatsappStatus({
+        connected: false,
+        status: 'connecting',
+        message: data.message || 'Conectando...'
       });
       return;
     }
@@ -274,23 +274,23 @@ export default function ConexaoWhatsApp() {
     });
   };
 
-  const handleReconnect = async () => {
+  const handleConnect = async () => {
     if (!serverUrl || !tenant?.id || isReconnecting) return;
 
     try {
       setIsReconnecting(true);
-      setWhatsappStatus(null);
       
       toast({
-        title: "Resetando sessão",
-        description: "Limpando sessão antiga...",
+        title: "Iniciando sessão",
+        description: "Aguarde o QR Code...",
       });
 
+      // Usar action 'start' para iniciar sessão no Baileys
       const { data, error } = await supabaseTenant.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
-            action: 'reset',
+            action: 'start',
             tenant_id: tenant.id
           }
         }
@@ -298,22 +298,20 @@ export default function ConexaoWhatsApp() {
 
       if (error) throw error;
 
-      toast({
-        title: "Sessão resetada",
-        description: "Aguarde o novo QR Code...",
-      });
+      // Processar resposta imediata
+      if (data) {
+        handleStatusResponse(data);
+      }
 
-      // Wait before checking status
-      setTimeout(() => {
-        if (mountedRef.current) {
-          checkStatus();
-        }
-      }, 3000);
+      toast({
+        title: "Sessão iniciada",
+        description: data?.qr ? "Escaneie o QR Code" : "Aguardando QR Code...",
+      });
 
     } catch (error: any) {
       toast({
         title: "Erro",
-        description: error.message || "Erro ao resetar sessão",
+        description: error.message || "Erro ao iniciar sessão",
         variant: "destructive"
       });
     } finally {
@@ -321,15 +319,17 @@ export default function ConexaoWhatsApp() {
     }
   };
 
-  const handleClearCooldown = async () => {
+  const handleDisconnect = async () => {
     if (!tenant?.id) return;
 
     try {
+      setIsReconnecting(true);
+      
       const { error } = await supabaseTenant.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
-            action: 'clear_cooldown',
+            action: 'stop',
             tenant_id: tenant.id
           }
         }
@@ -337,18 +337,25 @@ export default function ConexaoWhatsApp() {
 
       if (error) throw error;
 
-      toast({
-        title: "Cooldown removido",
-        description: "Você pode tentar conectar novamente.",
+      setWhatsappStatus({
+        connected: false,
+        status: 'disconnected',
+        message: 'Sessão encerrada'
       });
 
-      checkStatus();
+      toast({
+        title: "Desconectado",
+        description: "Sessão WhatsApp encerrada.",
+      });
+
     } catch (error: any) {
       toast({
         title: "Erro",
         description: error.message,
         variant: "destructive"
       });
+    } finally {
+      setIsReconnecting(false);
     }
   };
 
@@ -422,10 +429,10 @@ export default function ConexaoWhatsApp() {
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
                 <span className="text-green-600">Conectado</span>
               </>
-            ) : whatsappStatus?.status === 'cooldown' ? (
+            ) : whatsappStatus?.status === 'connecting' ? (
               <>
-                <Clock className="h-5 w-5 text-orange-500" />
-                <span className="text-orange-600">Em Cooldown</span>
+                <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+                <span className="text-blue-600">Conectando...</span>
               </>
             ) : whatsappStatus?.status === 'qr_ready' ? (
               <>
@@ -442,31 +449,6 @@ export default function ConexaoWhatsApp() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Cooldown State */}
-          {whatsappStatus?.status === 'cooldown' && (
-            <div className="text-center space-y-4">
-              <div className="p-6 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200 dark:border-orange-800">
-                <Shield className="h-12 w-12 mx-auto mb-4 text-orange-500" />
-                <h3 className="text-lg font-medium text-orange-700 dark:text-orange-300">
-                  Proteção Anti-Ban Ativada
-                </h3>
-                <p className="text-orange-600 dark:text-orange-400 mt-2">
-                  Aguarde {whatsappStatus.cooldownMinutes} minutos antes de tentar novamente.
-                </p>
-                <p className="text-sm text-orange-500 mt-2">
-                  Este cooldown protege sua conta contra bloqueios do WhatsApp.
-                </p>
-              </div>
-              <Button 
-                variant="outline" 
-                onClick={handleClearCooldown}
-                className="mt-4"
-              >
-                Remover Cooldown (Admin)
-              </Button>
-            </div>
-          )}
-
           {/* Connected State */}
           {whatsappStatus?.connected && (
             <div className="text-center space-y-4">
@@ -478,10 +460,15 @@ export default function ConexaoWhatsApp() {
                 <p className="text-green-600 dark:text-green-400 mt-2">
                   Você pode enviar mensagens automáticas.
                 </p>
+                {whatsappStatus.user && (
+                  <p className="text-sm text-green-500 mt-1">
+                    Número: {whatsappStatus.user.id?.split('@')[0] || 'N/A'}
+                  </p>
+                )}
               </div>
               <Button 
-                variant="outline" 
-                onClick={handleReconnect}
+                variant="destructive" 
+                onClick={handleDisconnect}
                 disabled={isReconnecting}
               >
                 {isReconnecting ? (
@@ -489,7 +476,7 @@ export default function ConexaoWhatsApp() {
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-2" />
                 )}
-                Reconectar
+                Desconectar
               </Button>
             </div>
           )}
@@ -509,12 +496,12 @@ export default function ConexaoWhatsApp() {
                   Abra o WhatsApp no celular → Menu → Aparelhos conectados → Conectar
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  O QR Code expira em alguns segundos. Se não funcionar, clique em reconectar.
+                  O QR Code atualiza automaticamente.
                 </p>
               </div>
               <Button 
                 variant="outline" 
-                onClick={handleReconnect}
+                onClick={handleConnect}
                 disabled={isReconnecting}
               >
                 {isReconnecting ? (
@@ -527,6 +514,21 @@ export default function ConexaoWhatsApp() {
             </div>
           )}
 
+          {/* Connecting State */}
+          {whatsappStatus?.status === 'connecting' && (
+            <div className="text-center space-y-4">
+              <div className="p-6 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                <Loader2 className="h-12 w-12 mx-auto mb-4 text-blue-500 animate-spin" />
+                <h3 className="text-lg font-medium text-blue-700 dark:text-blue-300">
+                  Conectando...
+                </h3>
+                <p className="text-blue-600 dark:text-blue-400 mt-2">
+                  Aguarde enquanto estabelecemos a conexão.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Error State */}
           {whatsappStatus?.status === 'error' && (
             <div className="text-center space-y-4">
@@ -536,7 +538,7 @@ export default function ConexaoWhatsApp() {
                   {whatsappStatus.error}
                 </AlertDescription>
               </Alert>
-              <Button onClick={handleReconnect} disabled={isReconnecting}>
+              <Button onClick={handleConnect} disabled={isReconnecting}>
                 {isReconnecting ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
@@ -554,7 +556,7 @@ export default function ConexaoWhatsApp() {
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
                   <strong>Backend desatualizado:</strong> O servidor WhatsApp precisa ser 
-                  atualizado para a versão 5.1. Faça um redeploy no Railway.
+                  atualizado. Faça um redeploy no Railway com o novo código Baileys.
                 </AlertDescription>
               </Alert>
             </div>
@@ -563,7 +565,7 @@ export default function ConexaoWhatsApp() {
           {/* Disconnected State */}
           {!whatsappStatus?.connected && 
            !whatsappStatus?.qrCode && 
-           whatsappStatus?.status !== 'cooldown' &&
+           whatsappStatus?.status !== 'connecting' &&
            whatsappStatus?.status !== 'error' &&
            whatsappStatus?.status !== 'backend_outdated' && (
             <div className="text-center space-y-4">
@@ -576,7 +578,7 @@ export default function ConexaoWhatsApp() {
                   Clique no botão abaixo para conectar.
                 </p>
               </div>
-              <Button onClick={handleReconnect} disabled={isReconnecting}>
+              <Button onClick={handleConnect} disabled={isReconnecting}>
                 {isReconnecting ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
