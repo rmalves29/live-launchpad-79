@@ -3,12 +3,11 @@ import whatsappController from '../controllers/whatsapp.controller.js';
 
 const router = express.Router();
 
-// Rotas de conexão
-router.post('/start', whatsappController.startConnection);
-router.post('/disconnect', whatsappController.disconnect);
-router.post('/reset', whatsappController.resetSession);
-router.get('/qrcode/:tenantId', whatsappController.getQRCode);
-router.get('/status/:tenantId', whatsappController.getStatus);
+// Rotas v5.0 - compatíveis com Railway/Edge Functions
+router.post('/start/:id', whatsappController.startConnection);
+router.post('/disconnect/:id', whatsappController.disconnect);
+router.post('/reset/:id', whatsappController.resetSession);
+router.get('/status/:id', whatsappController.getStatus);
 router.get('/sessions', whatsappController.getSessions);
 
 // Rotas de mensagens

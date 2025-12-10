@@ -5,21 +5,21 @@ const logger = setupLogger();
 
 class WhatsAppController {
   /**
-   * POST /api/whatsapp/start
+   * POST /api/whatsapp/start/:id
    * Iniciar conexão WhatsApp para um tenant
    */
   async startConnection(req, res) {
     try {
-      const { tenantId } = req.body;
+      const { id } = req.params;
 
-      if (!tenantId) {
+      if (!id) {
         return res.status(400).json({
-          error: 'tenantId é obrigatório'
+          error: 'id é obrigatório'
         });
       }
 
-      logger.info(`[WhatsApp] Iniciando conexão para tenant: ${tenantId}`);
-      const result = await whatsappService.startSession(tenantId);
+      logger.info(`[WhatsApp] Iniciando conexão para tenant: ${id}`);
+      const result = await whatsappService.startSession(id);
       
       res.json(result);
     } catch (error) {
@@ -32,26 +32,26 @@ class WhatsAppController {
   }
 
   /**
-   * GET /api/whatsapp/qrcode/:tenantId
-   * Obter QR Code da sessão (auto-inicia se não existir)
+   * POST /api/whatsapp/start/:id retorna QR code automaticamente
+   * Mantido para compatibilidade com código antigo
    */
   async getQRCode(req, res) {
     try {
-      const { tenantId } = req.params;
+      const { id } = req.params;
 
-      logger.info(`[WhatsApp] Buscando QR Code para tenant: ${tenantId}`);
+      logger.info(`[WhatsApp] Buscando QR Code para tenant: ${id}`);
 
       // Verificar se sessão existe
-      let result = whatsappService.getQRCode(tenantId);
+      let result = whatsappService.getQRCode(id);
       
       // Se não existe, iniciar automaticamente
       if (result.status === 'not_found') {
         logger.info(`[WhatsApp] Sessão não encontrada, iniciando automaticamente...`);
-        await whatsappService.startSession(tenantId);
+        await whatsappService.startSession(id);
         
         // Aguardar um pouco e tentar novamente
         await new Promise(resolve => setTimeout(resolve, 2000));
-        result = whatsappService.getQRCode(tenantId);
+        result = whatsappService.getQRCode(id);
         
         // Se ainda não tem QR, retornar status de inicialização
         if (!result.qrCode) {
@@ -63,7 +63,7 @@ class WhatsAppController {
       }
 
       // Verificar se está conectado
-      const status = await whatsappService.getStatus(tenantId);
+      const status = await whatsappService.getStatus(id);
       if (status.connected) {
         return res.json({
           status: 'connected',
@@ -83,15 +83,15 @@ class WhatsAppController {
   }
 
   /**
-   * GET /api/whatsapp/status/:tenantId
+   * GET /api/whatsapp/status/:id
    * Verificar status da conexão
    */
   async getStatus(req, res) {
     try {
-      const { tenantId } = req.params;
+      const { id } = req.params;
 
-      logger.info(`[WhatsApp] Verificando status para tenant: ${tenantId}`);
-      const status = await whatsappService.getStatus(tenantId);
+      logger.info(`[WhatsApp] Verificando status para tenant: ${id}`);
+      const status = await whatsappService.getStatus(id);
       
       res.json(status);
     } catch (error) {
@@ -104,21 +104,21 @@ class WhatsAppController {
   }
 
   /**
-   * POST /api/whatsapp/disconnect
+   * POST /api/whatsapp/disconnect/:id
    * Desconectar sessão
    */
   async disconnect(req, res) {
     try {
-      const { tenantId } = req.body;
+      const { id } = req.params;
 
-      if (!tenantId) {
+      if (!id) {
         return res.status(400).json({
-          error: 'tenantId é obrigatório'
+          error: 'id é obrigatório'
         });
       }
 
-      logger.info(`[WhatsApp] Desconectando tenant: ${tenantId}`);
-      const result = await whatsappService.disconnect(tenantId);
+      logger.info(`[WhatsApp] Desconectando tenant: ${id}`);
+      const result = await whatsappService.disconnect(id);
       
       res.json(result);
     } catch (error) {
@@ -131,26 +131,26 @@ class WhatsAppController {
   }
 
   /**
-   * POST /api/whatsapp/reset
+   * POST /api/whatsapp/reset/:id
    * Resetar sessão (desconectar e limpar dados)
    */
   async resetSession(req, res) {
     try {
-      const { tenantId } = req.body;
+      const { id } = req.params;
 
-      if (!tenantId) {
+      if (!id) {
         return res.status(400).json({
-          error: 'tenantId é obrigatório'
+          error: 'id é obrigatório'
         });
       }
 
-      logger.info(`[WhatsApp] Resetando sessão para tenant: ${tenantId}`);
+      logger.info(`[WhatsApp] Resetando sessão para tenant: ${id}`);
       
       // Primeiro desconectar
-      await whatsappService.disconnect(tenantId);
+      await whatsappService.disconnect(id);
       
       // Depois iniciar nova sessão
-      const result = await whatsappService.startSession(tenantId);
+      const result = await whatsappService.startSession(id);
       
       res.json({
         status: 'reset_complete',
