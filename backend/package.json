@@ -5,8 +5,8 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node server-stable.js",
-    "dev": "node --watch server-stable.js"
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.20",
