@@ -1,13 +1,13 @@
 {
   "name": "orderzaps-backend",
-  "version": "5.1.0",
-  "description": "WhatsApp Multi-Tenant API v5.1 STABLE - Resilient QR generation with cooldown protection",
-  "main": "server-stable.js",
+  "version": "5.0.0",
+  "description": "WhatsApp Multi-Tenant API v5.0 - Simplified routes with URL params",
+  "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "dev": "node --watch server-stable.js",
-    "start": "node server-stable.js",
-    "start:v2": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "start:stable": "node server-stable.js",
     "test": "echo \"No tests yet\" && exit 0"
   },
   "keywords": ["whatsapp", "baileys", "api", "express"],
