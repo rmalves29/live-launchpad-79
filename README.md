@@ -159,6 +159,49 @@ Abra: DEPLOY_RAILWAY_COMPLETO.md
 
 ---
 
+## ⚡ DEPLOY EDGE FUNCTION (SUPABASE)
+
+### 🚀 Deploy Rápido da Edge Function v5.0
+
+A Edge Function WhatsApp Proxy atua como intermediário entre o frontend e o backend WhatsApp.
+
+**Script automatizado:**
+```bash
+./deploy-edge-function.sh
+```
+
+**Manual:**
+```bash
+# 1. Instalar Supabase CLI
+npm install -g supabase
+
+# 2. Login
+npx supabase login
+
+# 3. Link com projeto
+npx supabase link --project-ref hxtbsieodbtzgcvvkeqx
+
+# 4. Deploy
+npx supabase functions deploy whatsapp-proxy
+```
+
+**📖 Documentação completa:** `DEPLOY_EDGE_FUNCTION.md`
+
+### Rotas da Edge Function v5.0
+
+A versão 5.0 usa rotas simplificadas:
+- `POST /start/:id` - Inicia sessão e retorna QR code
+- `GET /status/:id` - Verifica status da conexão  
+- `POST /disconnect/:id` - Desconecta sessão
+- `POST /reset/:id` - Reseta sessão
+
+**Arquivos atualizados:**
+- ✅ `backend/src/routes/whatsapp.routes.js` - Rotas v5.0
+- ✅ `backend/src/controllers/whatsapp.controller.js` - Controllers atualizados
+- ✅ `supabase/functions/whatsapp-proxy/index.ts` - Proxy v5.0
+
+---
+
 ## 📋 VARIÁVEIS DE AMBIENTE
 
 ### Backend (`.env`)
