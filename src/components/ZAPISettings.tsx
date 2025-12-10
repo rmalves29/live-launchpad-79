@@ -170,6 +170,8 @@ export function ZAPISettings() {
       setLoadingQR(false);
     }
   };
+
+  if (loading) {
     return (
       <Card>
         <CardHeader>
