@@ -64,26 +64,31 @@ serve(async (req) => {
     let body: any = null;
 
     // Map actions to backend routes
-    // Backend v5.0-stable uses: /start/:id, /status/:id, /disconnect/:id
-    // Backend v2.0 uses: /api/whatsapp/start, /api/whatsapp/status/:id, etc.
-    // Detecting based on response - trying v5.0 routes first
+    // Backend v2.0 uses: /api/whatsapp/start, /api/whatsapp/status/:tenantId, etc.
     switch (action) {
       case "qr":
       case "connect":
-        endpoint = `/start/${tenant_id}`;
+        endpoint = `/api/whatsapp/qrcode/${tenant_id}`;
+        method = "GET";
+        break;
+      case "start":
+        endpoint = `/api/whatsapp/start`;
         method = "POST";
+        body = { tenantId: tenant_id };
         break;
       case "status":
-        endpoint = `/status/${tenant_id}`;
+        endpoint = `/api/whatsapp/status/${tenant_id}`;
         method = "GET";
         break;
       case "disconnect":
-        endpoint = `/disconnect/${tenant_id}`;
+        endpoint = `/api/whatsapp/disconnect`;
         method = "POST";
+        body = { tenantId: tenant_id };
         break;
       case "reset":
-        endpoint = `/reset/${tenant_id}`;
+        endpoint = `/api/whatsapp/reset`;
         method = "POST";
+        body = { tenantId: tenant_id };
         break;
       default:
         return new Response(
