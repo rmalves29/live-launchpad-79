@@ -67,10 +67,11 @@ serve(async (req) => {
     let endpoint = "";
     let method = "GET";
 
-    // Map actions to backend routes v5.1
+    // Map actions to Baileys backend routes v1.0
     switch (action) {
       case "qr":
       case "connect":
+      case "start":
         endpoint = `/start/${tenant_id}`;
         method = "POST";
         break;
@@ -83,15 +84,13 @@ serve(async (req) => {
         method = "GET";
         break;
       case "disconnect":
-        endpoint = `/disconnect/${tenant_id}`;
+      case "stop":
+        endpoint = `/stop/${tenant_id}`;
         method = "POST";
         break;
       case "reset":
-        endpoint = `/reset/${tenant_id}`;
-        method = "POST";
-        break;
-      case "clear_cooldown":
-        endpoint = `/clear-cooldown/${tenant_id}`;
+        // Reset = stop + start
+        endpoint = `/stop/${tenant_id}`;
         method = "POST";
         break;
       default:
