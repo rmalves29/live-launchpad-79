@@ -63,29 +63,36 @@ serve(async (req) => {
     let method = "GET";
     let body: any = null;
 
-    // Map actions to backend routes
-    // Railway backend uses simple routes: /qrcode/:id, /status/:id, /reset/:id, /disconnect/:id
+    // Map actions to backend routes from backend/src/routes/whatsapp.routes.js:
+    // POST /api/whatsapp/start (body: tenantId)
+    // GET /api/whatsapp/qrcode/:tenantId
+    // GET /api/whatsapp/status/:tenantId
+    // POST /api/whatsapp/disconnect (body: tenantId)
+    // POST /api/whatsapp/reset (body: tenantId)
     switch (action) {
       case "qr":
       case "connect":
-        endpoint = `/qrcode/${tenant_id}`;
+        endpoint = `/api/whatsapp/qrcode/${tenant_id}`;
         method = "GET";
         break;
       case "start":
-        endpoint = `/start/${tenant_id}`;
+        endpoint = `/api/whatsapp/start`;
         method = "POST";
+        body = { tenantId: tenant_id };
         break;
       case "status":
-        endpoint = `/status/${tenant_id}`;
+        endpoint = `/api/whatsapp/status/${tenant_id}`;
         method = "GET";
         break;
       case "disconnect":
-        endpoint = `/disconnect/${tenant_id}`;
+        endpoint = `/api/whatsapp/disconnect`;
         method = "POST";
+        body = { tenantId: tenant_id };
         break;
       case "reset":
-        endpoint = `/reset/${tenant_id}`;
+        endpoint = `/api/whatsapp/reset`;
         method = "POST";
+        body = { tenantId: tenant_id };
         break;
       default:
         return new Response(
