@@ -4,8 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { MessageSquare, Save, CheckCircle2, AlertCircle, ExternalLink, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { MessageSquare, Save, CheckCircle2, AlertCircle, ExternalLink, Eye, EyeOff, Loader2, QrCode, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
@@ -28,6 +27,8 @@ export function ZAPISettings() {
   const [instanceId, setInstanceId] = useState('');
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [loadingQR, setLoadingQR] = useState(false);
 
   useEffect(() => {
     loadIntegration();
@@ -125,7 +126,50 @@ export function ZAPISettings() {
     }
   };
 
-  if (loading) {
+  const handleGetQRCode = async () => {
+    if (!tenant?.id || !instanceId || !token) {
+      toast({
+        title: 'Erro',
+        description: 'Salve as credenciais Z-API primeiro',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setLoadingQR(true);
+    setQrCode(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('zapi-proxy', {
+        body: { action: 'get_qr', tenant_id: tenant.id }
+      });
+
+      if (error) throw error;
+
+      if (data?.qrCode) {
+        setQrCode(data.qrCode);
+      } else if (data?.status === 'connected') {
+        toast({
+          title: 'Já conectado',
+          description: 'WhatsApp já está conectado nesta instância',
+        });
+      } else {
+        toast({
+          title: 'Aviso',
+          description: data?.message || 'Não foi possível obter o QR Code',
+          variant: 'destructive'
+        });
+      }
+    } catch (error: any) {
+      console.error('Error getting QR Code:', error);
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao obter QR Code',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingQR(false);
+    }
+  };
     return (
       <Card>
         <CardHeader>
@@ -212,6 +256,50 @@ export function ZAPISettings() {
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Número Conectado</span>
                 <span className="text-sm text-muted-foreground">{integration.connected_phone}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* QR Code Section */}
+        {integration?.provider === 'zapi' && instanceId && token && (
+          <div className="pt-4 border-t space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">QR Code WhatsApp</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleGetQRCode}
+                disabled={loadingQR}
+              >
+                {loadingQR ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <QrCode className="h-4 w-4 mr-2" />
+                )}
+                {loadingQR ? 'Gerando...' : 'Gerar QR Code'}
+              </Button>
+            </div>
+            
+            {qrCode && (
+              <div className="flex flex-col items-center gap-3 p-4 bg-white rounded-lg border">
+                <img 
+                  src={qrCode} 
+                  alt="QR Code WhatsApp" 
+                  className="w-64 h-64 object-contain"
+                />
+                <p className="text-sm text-muted-foreground text-center">
+                  Escaneie com seu WhatsApp para conectar
+                </p>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleGetQRCode}
+                  disabled={loadingQR}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Atualizar QR Code
+                </Button>
               </div>
             )}
           </div>
