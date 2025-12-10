@@ -428,33 +428,48 @@ export type Database = {
       integration_whatsapp: {
         Row: {
           api_url: string | null
+          connected_phone: string | null
           created_at: string | null
           id: string
           instance_name: string
           is_active: boolean
+          last_status_check: string | null
+          provider: string | null
           tenant_id: string
           updated_at: string | null
           webhook_secret: string
+          zapi_instance_id: string | null
+          zapi_token: string | null
         }
         Insert: {
           api_url?: string | null
+          connected_phone?: string | null
           created_at?: string | null
           id?: string
           instance_name: string
           is_active?: boolean
+          last_status_check?: string | null
+          provider?: string | null
           tenant_id: string
           updated_at?: string | null
           webhook_secret: string
+          zapi_instance_id?: string | null
+          zapi_token?: string | null
         }
         Update: {
           api_url?: string | null
+          connected_phone?: string | null
           created_at?: string | null
           id?: string
           instance_name?: string
           is_active?: boolean
+          last_status_check?: string | null
+          provider?: string | null
           tenant_id?: string
           updated_at?: string | null
           webhook_secret?: string
+          zapi_instance_id?: string | null
+          zapi_token?: string | null
         }
         Relationships: []
       }

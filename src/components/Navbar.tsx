@@ -86,8 +86,11 @@ const Navbar = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 bg-background z-50">
+                <DropdownMenuItem onClick={() => navigate('/whatsapp/zapi')}>
+                  Z-API (Recomendado)
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/whatsapp/conexao')}>
-                  Conexão
+                  Baileys (Self-hosted)
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/whatsapp/templates')}>
                   Templates
@@ -146,6 +149,19 @@ const Navbar = () => {
                       WhatsApp
                     </div>
                     <NavLink
+                      to="/whatsapp/zapi"
+                      onClick={() => setOpen(false)}
+                      className={({ isActive }) =>
+                        `px-6 py-2 rounded-md text-sm font-medium transition-colors block ${
+                          isActive
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                        }`
+                      }
+                    >
+                      Z-API
+                    </NavLink>
+                    <NavLink
                       to="/whatsapp/conexao"
                       onClick={() => setOpen(false)}
                       className={({ isActive }) =>
@@ -156,7 +172,7 @@ const Navbar = () => {
                         }`
                       }
                     >
-                      Conexão
+                      Baileys
                     </NavLink>
                     <NavLink
                       to="/whatsapp/templates"
