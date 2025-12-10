@@ -32,44 +32,14 @@ export default function MassMessageControl({
   const [loadingCount, setLoadingCount] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [sendingProgress, setSendingProgress] = useState({ sent: 0, total: 0 });
-  const [serverUrl, setServerUrl] = useState<string | null>(null);
+  const [sendingProgress, setSendingProgress] = useState({ sent: 0, failed: 0, total: 0 });
   const { tenant } = useTenant();
-
-  useEffect(() => {
-    if (tenant?.id) {
-      loadServerUrl();
-    }
-  }, [tenant?.id]);
-
-  const loadServerUrl = async () => {
-    if (!tenant?.id) return;
-    
-    try {
-      const { data, error } = await supabase
-        .from('integration_whatsapp')
-        .select('api_url')
-        .eq('tenant_id', tenant.id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (error) throw error;
-      
-      if (data?.api_url) {
-        setServerUrl(data.api_url);
-      }
-    } catch (error) {
-      console.error('Erro ao buscar URL do servidor:', error);
-    }
-  };
 
   const fetchContactCount = async () => {
     if (!tenant?.id) return;
 
     setLoadingCount(true);
     try {
-      // Buscar contagem diretamente do banco
       let query = supabase
         .from('orders')
         .select('customer_phone', { count: 'exact', head: true })
@@ -127,13 +97,75 @@ export default function MassMessageControl({
     }
   };
 
-  const handleBroadcast = async (resumeJob = null) => {
-    toast.error('Funcionalidade de WhatsApp foi removida do sistema.');
+  const handleBroadcast = async () => {
+    if (!tenant?.id || !message.trim()) {
+      toast.error('Preencha a mensagem antes de enviar');
+      return;
+    }
+
+    setLoading(true);
+    setSendingProgress({ sent: 0, failed: 0, total: contactCount || 0 });
+
+    try {
+      // Check if Z-API is configured
+      const { data: integration } = await supabase
+        .from('integration_whatsapp')
+        .select('zapi_instance_id, zapi_token, provider, is_active')
+        .eq('tenant_id', tenant.id)
+        .eq('provider', 'zapi')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (!integration || !integration.zapi_instance_id || !integration.zapi_token) {
+        toast.error('Configure o Z-API antes de enviar mensagens em massa');
+        setLoading(false);
+        return;
+      }
+
+      toast.info('Iniciando envio de mensagens via Z-API...');
+
+      // Call the Z-API broadcast edge function
+      const { data, error } = await supabase.functions.invoke('zapi-broadcast', {
+        body: {
+          tenant_id: tenant.id,
+          message: message,
+          orderStatus: orderStatus,
+          orderDate: orderDate || undefined,
+          delayMs: 2000 // 2 seconds between messages
+        }
+      });
+
+      if (error) {
+        console.error('Erro no broadcast:', error);
+        toast.error(`Erro ao enviar mensagens: ${error.message}`);
+        return;
+      }
+
+      setSendingProgress({
+        sent: data.sent || 0,
+        failed: data.failed || 0,
+        total: data.total || 0
+      });
+
+      if (data.sent > 0) {
+        toast.success(`Envio concluído! ${data.sent} mensagens enviadas com sucesso`);
+      }
+      
+      if (data.failed > 0) {
+        toast.warning(`${data.failed} mensagens falharam`);
+      }
+
+    } catch (error: any) {
+      console.error('Erro ao enviar broadcast:', error);
+      toast.error(`Erro: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <>
-      <SendingControl jobType="mass_message" onResume={(job) => handleBroadcast(job)} />
+      <SendingControl jobType="mass_message" onResume={() => handleBroadcast()} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -208,7 +240,7 @@ export default function MassMessageControl({
           {savingTemplate ? 'Salvando...' : 'Salvar Template'}
         </Button>
 
-        <Button onClick={() => handleBroadcast()} disabled={loading || !message.trim()} className="flex-1">
+        <Button onClick={handleBroadcast} disabled={loading || !message.trim()} className="flex-1">
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -217,19 +249,27 @@ export default function MassMessageControl({
           ) : (
             <>
               <Send className="h-4 w-4 mr-2" />
-              Enviar Mensagem
+              Enviar via Z-API
             </>
           )}
         </Button>
       </div>
 
-      {loading && sendingProgress.total > 0 && (
+      {(loading || sendingProgress.total > 0) && (
         <Card className="bg-blue-50 dark:bg-blue-950/20">
           <CardContent className="pt-6">
             <div className="text-center">
-              <p className="text-sm mb-2">Enviando mensagens...</p>
+              <p className="text-sm mb-2">
+                {loading ? 'Enviando mensagens via Z-API...' : 'Envio concluído'}
+              </p>
               <p className="text-xl font-bold">
-                {sendingProgress.sent} de {sendingProgress.total}
+                ✅ {sendingProgress.sent} enviadas
+                {sendingProgress.failed > 0 && (
+                  <span className="text-red-500 ml-2">❌ {sendingProgress.failed} falharam</span>
+                )}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Total: {sendingProgress.total} contatos
               </p>
             </div>
           </CardContent>

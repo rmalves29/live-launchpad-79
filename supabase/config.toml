@@ -5,3 +5,15 @@ verify_jwt = false
 
 [functions.zapi-proxy]
 verify_jwt = false
+
+[functions.zapi-send-message]
+verify_jwt = false
+
+[functions.zapi-send-item-added]
+verify_jwt = false
+
+[functions.zapi-send-paid-order]
+verify_jwt = false
+
+[functions.zapi-broadcast]
+verify_jwt = false
