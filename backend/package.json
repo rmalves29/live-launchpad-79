@@ -1,30 +1,19 @@
 {
-  "name": "orderzaps-backend",
-  "version": "5.0.0",
-  "description": "WhatsApp Multi-Tenant API v5.0 - Simplified routes with URL params",
-  "main": "src/server.js",
+  "name": "whatsapp-baileys-backend",
+  "version": "1.0.0",
+  "description": "WhatsApp Backend with Baileys for Railway",
+  "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "start:stable": "node server-stable.js",
-    "test": "echo \"No tests yet\" && exit 0"
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
   },
-  "keywords": ["whatsapp", "baileys", "api", "express"],
-  "author": "OrderZap Team",
-  "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.20",
-    "@supabase/supabase-js": "^2.45.4",
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
     "qrcode": "^1.5.3",
-    "pino": "^8.16.2",
-    "pino-pretty": "^10.2.3"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
+    "pino": "^8.16.2"
   },
   "engines": {
     "node": ">=18.0.0"
