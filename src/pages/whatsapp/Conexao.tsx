@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -11,7 +11,9 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Loader2,
-  QrCode as QrCodeIcon
+  QrCode as QrCodeIcon,
+  Clock,
+  Shield
 } from "lucide-react";
 
 interface WhatsAppStatus {
@@ -20,80 +22,72 @@ interface WhatsAppStatus {
   qrCode?: string;
   message?: string;
   error?: string;
+  cooldownMinutes?: number;
 }
+
+const POLLING_INTERVAL_MS = 5000;
+const MAX_RETRIES = 3;
 
 export default function ConexaoWhatsApp() {
   const { tenant } = useTenantContext();
   const { toast } = useToast();
+  
   const [loading, setLoading] = useState(true);
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
-  const [polling, setPolling] = useState(false);
-  const [waitingTime, setWaitingTime] = useState(0);
-  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
 
+  // Cleanup on unmount
   useEffect(() => {
-    loadWhatsAppIntegration();
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
+
+  // Load integration on tenant change
+  useEffect(() => {
+    if (tenant?.id) {
+      loadWhatsAppIntegration();
+    }
   }, [tenant?.id]);
 
+  // Start polling when serverUrl is available
   useEffect(() => {
     if (serverUrl && tenant?.id) {
-      setWaitingTime(0);
-      setHasTimedOut(false);
       startPolling();
-      return () => {
-        setPolling(false);
-      };
+      return () => stopPolling();
     }
   }, [serverUrl, tenant?.id]);
 
-  // Timer para contar tempo de espera e timeout
-  useEffect(() => {
-    if (!whatsappStatus?.connected && 
-        !whatsappStatus?.qrCode && 
-        whatsappStatus?.status !== 'error' && 
-        serverUrl) {
-      
-      const timer = setInterval(() => {
-        setWaitingTime(prev => {
-          const newTime = prev + 1;
-          
-          // Timeout após 60 segundos
-          if (newTime >= 60 && !hasTimedOut) {
-            setHasTimedOut(true);
-            setWhatsappStatus({
-              connected: false,
-              status: 'error',
-              error: 'Timeout: O QR Code não foi gerado em 60 segundos. Clique em "Tentar Novamente" para reconectar.'
-            });
-            toast({
-              title: "Timeout de Conexão",
-              description: "O servidor demorou muito para responder. Tente reconectar.",
-              variant: "destructive"
-            });
-          }
-          
-          return newTime;
-        });
-      }, 1000);
-
-      return () => clearInterval(timer);
-    } else {
-      setWaitingTime(0);
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
-  }, [whatsappStatus, serverUrl, hasTimedOut]);
+  }, []);
+
+  const startPolling = useCallback(() => {
+    stopPolling();
+    checkStatus();
+    pollingRef.current = setInterval(() => {
+      if (mountedRef.current) {
+        checkStatus();
+      }
+    }, POLLING_INTERVAL_MS);
+  }, []);
 
   const loadWhatsAppIntegration = async () => {
-    if (!tenant?.id) {
-      console.log('⚠️ [CONEXÃO] Tenant ID não disponível');
-      return;
-    }
+    if (!tenant?.id) return;
 
     try {
-      console.log('\n🔄 [CONEXÃO] Carregando integração WhatsApp...');
-      console.log('📋 [CONEXÃO] Tenant ID:', tenant.id);
-      console.log('📋 [CONEXÃO] Tenant Slug:', tenant.slug);
-      
       setLoading(true);
       
       const { data, error } = await supabaseTenant
@@ -103,19 +97,11 @@ export default function ConexaoWhatsApp() {
         .eq('is_active', true)
         .maybeSingle();
 
-      if (error) {
-        console.error('❌ [CONEXÃO] Erro ao buscar integração:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('📊 [CONEXÃO] Dados da integração:', data);
-
-      // Se não existe integração, criar uma automaticamente
       if (!data) {
-        console.log('⚠️ [CONEXÃO] Nenhuma integração encontrada');
-        console.log('🔧 [CONEXÃO] Criando integração WhatsApp automaticamente...');
-        
-        const { data: newIntegration, error: insertError } = await supabaseTenant
+        // Create integration automatically
+        const { error: insertError } = await supabaseTenant
           .from('integration_whatsapp')
           .insert({
             tenant_id: tenant.id,
@@ -123,114 +109,57 @@ export default function ConexaoWhatsApp() {
             webhook_secret: crypto.randomUUID(),
             api_url: '',
             is_active: true
-          })
-          .select('api_url, is_active')
-          .single();
+          });
 
         if (insertError) {
-          console.error('❌ [CONEXÃO] Erro ao criar integração:', insertError);
           toast({
             title: "Erro ao criar integração",
-            description: "Por favor, entre em contato com o suporte.",
+            description: "Por favor, configure a URL do servidor.",
             variant: "destructive"
           });
-          return;
         }
-
-        console.log('✅ [CONEXÃO] Integração criada com sucesso:', newIntegration);
-        toast({
-          title: "Integração criada",
-          description: "Configure a URL do servidor WhatsApp nas configurações.",
-        });
-        
-        // Não define serverUrl ainda pois está vazio
         return;
       }
 
       if (!data?.api_url) {
-        console.log('⚠️ [CONEXÃO] URL do servidor não configurada');
-        console.log('💡 [CONEXÃO] Execute o SQL no Supabase para configurar:');
-        console.log(`UPDATE integration_whatsapp SET api_url = 'https://sua-url.railway.app' WHERE tenant_id = '${tenant.id}';`);
-        
         toast({
           title: "URL não configurada",
-          description: "Configure a URL do servidor WhatsApp nas configurações para conectar.",
+          description: "Configure a URL do servidor WhatsApp nas configurações.",
         });
         return;
       }
 
-      console.log('✅ [CONEXÃO] URL do servidor configurada:', data.api_url);
       setServerUrl(data.api_url);
     } catch (error: any) {
-      console.error('❌ [CONEXÃO] Erro ao carregar integração:', error);
-      console.error('📋 [CONEXÃO] Detalhes do erro:', {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      });
-      
       toast({
         title: "Erro",
-        description: error.message || "Erro ao carregar configuração do WhatsApp",
+        description: error.message || "Erro ao carregar configuração",
         variant: "destructive"
       });
     } finally {
       setLoading(false);
-      console.log('✅ [CONEXÃO] Carregamento finalizado\n');
     }
-  };
-
-  const startPolling = async () => {
-    setPolling(true);
-    await checkStatus();
-
-    const interval = setInterval(async () => {
-      if (!polling) {
-        clearInterval(interval);
-        return;
-      }
-      await checkStatus();
-    }, 5000); // Verificar a cada 5 segundos
-
-    return () => clearInterval(interval);
   };
 
   const checkStatus = async () => {
-    if (!serverUrl || !tenant?.id) {
-      console.log('⚠️ [STATUS] Verificação ignorada - serverUrl ou tenant.id não disponível');
-      return;
-    }
+    if (!serverUrl || !tenant?.id || !mountedRef.current) return;
 
     try {
-      console.log('\n' + '='.repeat(70));
-      console.log('🔍 [STATUS] VERIFICANDO STATUS DO WHATSAPP');
-      console.log('='.repeat(70));
-      console.log('📋 [STATUS] Servidor:', serverUrl);
-      console.log('📋 [STATUS] Tenant ID:', tenant.id);
-      console.log('📋 [STATUS] Tenant Name:', tenant.name);
-      
-      // Primeiro tentar obter QR Code
-      console.log('\n📤 [STATUS] Chamando edge function: whatsapp-proxy (action: qr)');
-      
-      let functionData: any = null;
-      let functionError: any = null;
-      
-      try {
-        const response = await supabaseTenant.functions.invoke(
-          'whatsapp-proxy',
-          {
-            body: {
-              action: 'qr',
-              tenant_id: tenant.id
-            }
+      const { data, error } = await supabaseTenant.functions.invoke(
+        'whatsapp-proxy',
+        {
+          body: {
+            action: 'qr',
+            tenant_id: tenant.id
           }
-        );
-        functionData = response.data;
-        functionError = response.error;
-      } catch (invokeError: any) {
-        // Se o SDK lançar exceção para status non-2xx, tentar extrair os dados via fetch direto
-        console.log('⚠️ [STATUS] SDK lançou exceção, tentando fetch direto...');
-        
+        }
+      );
+
+      if (!mountedRef.current) return;
+
+      // Handle edge function error
+      if (error) {
+        // Try direct fetch as fallback
         try {
           const directResponse = await fetch(
             `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-proxy`,
@@ -248,230 +177,188 @@ export default function ConexaoWhatsApp() {
             }
           );
           
-          functionData = await directResponse.json();
-          functionError = null; // Limpar erro pois temos dados
-          console.log('📥 [STATUS] Resposta direta obtida:', JSON.stringify(functionData, null, 2));
-        } catch (fetchError) {
-          console.error('❌ [STATUS] Erro no fetch direto:', fetchError);
-          // Tratar como backend desatualizado já que a edge function retornou 404
-          functionData = {
-            error: 'Rota não encontrada no servidor WhatsApp',
-            message: 'O backend precisa ser atualizado. Verifique se a versão mais recente está deployada no Railway.'
-          };
-          functionError = null;
+          const responseData = await directResponse.json();
+          handleStatusResponse(responseData);
+          return;
+        } catch {
+          setRetryCount(prev => prev + 1);
+          if (retryCount >= MAX_RETRIES) {
+            setWhatsappStatus({
+              connected: false,
+              status: 'error',
+              error: 'Falha ao conectar após múltiplas tentativas'
+            });
+          }
+          return;
         }
       }
 
-      // Se não temos dados e temos erro, lançar erro
-      if (!functionData && functionError) {
-        console.error('❌ [STATUS] Erro ao chamar proxy sem dados:', functionError);
-        throw new Error(functionError.message);
-      }
+      handleStatusResponse(data);
+      setRetryCount(0);
 
-      console.log('📥 [STATUS] Resposta do proxy (QR):', JSON.stringify(functionData, null, 2));
-
-      // Se teve erro retornado nos dados, mostrar
-      if (functionData?.error) {
-        console.error('❌ [STATUS] Erro retornado pelo proxy:', functionData.error);
-        console.log('💡 [STATUS] Mensagem:', functionData.message);
-        
-        // Verificar se é erro de rota não encontrada (backend desatualizado)
-        const isRouteNotFound = functionData.error?.includes('não encontrada') || 
-                                functionData.error?.includes('Rota não encontrada') ||
-                                functionData.message?.includes('backend precisa ser atualizado');
-        
-        console.log('🔍 [STATUS] É backend desatualizado?', isRouteNotFound);
-        
-        setWhatsappStatus({
-          connected: false,
-          status: isRouteNotFound ? 'backend_outdated' : 'error',
-          error: functionData.error,
-          message: functionData.message
-        });
-        console.log('='.repeat(70) + '\n');
-        return;
-      }
-
-      // Se já está conectado
-      if (functionData?.connected === true || functionData?.status === 'connected') {
-        console.log('✅ [STATUS] WhatsApp JÁ ESTÁ CONECTADO!');
-        console.log('📊 [STATUS] Dados:', {
-          connected: functionData.connected,
-          status: functionData.status,
-          message: functionData.message
-        });
-        
-        setWhatsappStatus({
-          connected: true,
-          status: 'connected',
-          message: functionData.message || 'WhatsApp está conectado'
-        });
-        console.log('='.repeat(70) + '\n');
-        return;
-      }
-
-      // Se está inicializando (aguardando QR code ser gerado)
-      if (functionData?.status === 'initializing') {
-        console.log('⏳ [STATUS] WhatsApp está INICIALIZANDO...');
-        console.log('📊 [STATUS] Mensagem:', functionData.message);
-        console.log('💡 [STATUS] Aguarde alguns segundos para o QR Code ser gerado');
-        
-        setWhatsappStatus({
-          connected: false,
-          status: 'initializing',
-          message: functionData.message || 'Inicializando WhatsApp, aguarde...'
-        });
-        console.log('='.repeat(70) + '\n');
-        return;
-      }
-
-      // Se encontrou o QR code
-      if (functionData?.qrCode) {
-        console.log('✅ [STATUS] QR CODE ENCONTRADO!');
-        console.log('📸 [STATUS] Tipo:', functionData.qrCode.substring(0, 30) + '...');
-        console.log('📏 [STATUS] Tamanho:', functionData.qrCode.length, 'caracteres');
-        console.log('💡 [STATUS] QR Code pronto para ser escaneado');
-        
-        setWhatsappStatus({
-          connected: false,
-          status: 'qr_code',
-          qrCode: functionData.qrCode,
-          message: functionData.message || 'Escaneie o QR Code'
-        });
-        console.log('='.repeat(70) + '\n');
-        return;
-      }
-
-      // Se não tem QR, verificar status
-      console.log('\n📊 [STATUS] Nenhum QR Code disponível, verificando status...');
-      console.log('📤 [STATUS] Chamando edge function: whatsapp-proxy (action: status)');
+    } catch (error: any) {
+      if (!mountedRef.current) return;
       
-      const { data: statusData, error: statusError } = await supabaseTenant.functions.invoke(
+      setWhatsappStatus({
+        connected: false,
+        status: 'error',
+        error: error.message || 'Erro ao verificar status'
+      });
+    }
+  };
+
+  const handleStatusResponse = (data: any) => {
+    if (!data) return;
+
+    // Handle cooldown
+    if (data.status === 'cooldown') {
+      setWhatsappStatus({
+        connected: false,
+        status: 'cooldown',
+        cooldownMinutes: data.cooldownMinutes || 15,
+        message: data.message
+      });
+      return;
+    }
+
+    // Handle errors
+    if (data.error) {
+      const isBackendOutdated = data.status === 'backend_outdated' || 
+        data.error?.includes('não encontrada');
+      
+      setWhatsappStatus({
+        connected: false,
+        status: isBackendOutdated ? 'backend_outdated' : 'error',
+        error: data.error,
+        message: data.message
+      });
+      return;
+    }
+
+    // Handle connected
+    if (data.connected === true || data.status === 'connected') {
+      setWhatsappStatus({
+        connected: true,
+        status: 'connected',
+        message: data.message || 'WhatsApp conectado'
+      });
+      return;
+    }
+
+    // Handle QR code ready
+    if (data.qrCode || data.status === 'qr_ready') {
+      setWhatsappStatus({
+        connected: false,
+        status: 'qr_ready',
+        qrCode: data.qrCode,
+        message: data.message || 'Escaneie o QR Code'
+      });
+      return;
+    }
+
+    // Handle timeout
+    if (data.status === 'timeout') {
+      setWhatsappStatus({
+        connected: false,
+        status: 'timeout',
+        message: data.message || 'Timeout ao gerar QR code'
+      });
+      return;
+    }
+
+    // Default: disconnected
+    setWhatsappStatus({
+      connected: false,
+      status: data.status || 'disconnected',
+      message: data.message
+    });
+  };
+
+  const handleReconnect = async () => {
+    if (!serverUrl || !tenant?.id || isReconnecting) return;
+
+    try {
+      setIsReconnecting(true);
+      setWhatsappStatus(null);
+      
+      toast({
+        title: "Resetando sessão",
+        description: "Limpando sessão antiga...",
+      });
+
+      const { data, error } = await supabaseTenant.functions.invoke(
         'whatsapp-proxy',
         {
           body: {
-            action: 'status',
+            action: 'reset',
             tenant_id: tenant.id
           }
         }
       );
 
-      if (statusError) {
-        console.error('❌ [STATUS] Erro ao verificar status:', statusError);
-        console.error('📋 [STATUS] Detalhes do erro:', {
-          name: statusError.name,
-          message: statusError.message
-        });
-        throw new Error(statusError.message);
-      }
-
-      console.log('📥 [STATUS] Resposta do status:', JSON.stringify(statusData, null, 2));
-      
-      const isConnected = statusData?.connected || statusData?.status === 'online';
-      const currentStatus = statusData?.status || 'disconnected';
-      
-      console.log('📊 [STATUS] Status final:');
-      console.log('   - Conectado:', isConnected);
-      console.log('   - Status:', currentStatus);
-      console.log('   - Mensagem:', statusData?.message);
-      if (statusData?.error) {
-        console.log('   - Erro:', statusData.error);
-      }
-
-      setWhatsappStatus({
-        connected: isConnected,
-        status: currentStatus,
-        message: statusData?.message,
-        error: statusData?.error
-      });
-
-      console.log('='.repeat(70) + '\n');
-
-    } catch (error: any) {
-      console.error('\n❌ [STATUS] ERRO AO VERIFICAR STATUS');
-      console.error('='.repeat(70));
-      console.error('📋 [STATUS] Tipo:', error.name);
-      console.error('📋 [STATUS] Mensagem:', error.message);
-      console.error('📋 [STATUS] Stack:', error.stack);
-      console.error('='.repeat(70) + '\n');
-      
-      setWhatsappStatus({
-        connected: false,
-        status: 'error',
-        error: error.message || 'Erro ao conectar com servidor WhatsApp via proxy.'
-      });
-    }
-  };
-
-  const handleReconnect = async () => {
-    if (!serverUrl || !tenant?.id) return;
-
-    try {
-      setLoading(true);
-      setWaitingTime(0);
-      setHasTimedOut(false);
-      
-      console.log('\n🔄 [RECONECTAR] Forçando reset do WhatsApp');
-      console.log('📋 [RECONECTAR] Servidor:', serverUrl);
-      console.log('📋 [RECONECTAR] Tenant ID:', tenant.id);
-      
-      toast({
-        title: "Limpando sessão",
-        description: "Removendo sessão antiga e gerando novo QR Code...",
-      });
-
-      // Limpar o status atual
-      setWhatsappStatus(null);
-
-      // Chamar endpoint de reset no servidor Node.js
-      const resetUrl = `${serverUrl}/reset/${tenant.id}`;
-      console.log('📤 [RECONECTAR] Chamando:', resetUrl);
-      
-      const response = await fetch(resetUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ [RECONECTAR] Erro no reset:', errorText);
-        throw new Error('Erro ao resetar conexão WhatsApp');
-      }
-
-      const result = await response.json();
-      console.log('✅ [RECONECTAR] Reset bem sucedido:', result);
+      if (error) throw error;
 
       toast({
-        title: "Sessão limpa",
-        description: "Aguarde alguns segundos para o novo QR Code ser gerado...",
+        title: "Sessão resetada",
+        description: "Aguarde o novo QR Code...",
       });
 
-      // Aguardar 3 segundos antes de verificar o status
+      // Wait before checking status
       setTimeout(() => {
-        console.log('🔍 [RECONECTAR] Verificando status após reset');
-        checkStatus();
-        setLoading(false);
+        if (mountedRef.current) {
+          checkStatus();
+        }
       }, 3000);
 
     } catch (error: any) {
-      console.error('❌ [RECONECTAR] Erro:', error);
       toast({
         title: "Erro",
-        description: error.message || "Erro ao tentar reconectar",
+        description: error.message || "Erro ao resetar sessão",
         variant: "destructive"
       });
-      setLoading(false);
+    } finally {
+      setIsReconnecting(false);
     }
   };
 
+  const handleClearCooldown = async () => {
+    if (!tenant?.id) return;
+
+    try {
+      const { error } = await supabaseTenant.functions.invoke(
+        'whatsapp-proxy',
+        {
+          body: {
+            action: 'clear_cooldown',
+            tenant_id: tenant.id
+          }
+        }
+      );
+
+      if (error) throw error;
+
+      toast({
+        title: "Cooldown removido",
+        description: "Você pode tentar conectar novamente.",
+      });
+
+      checkStatus();
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Render loading state
   if (loading && !serverUrl) {
     return (
       <div className="container mx-auto p-6">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-muted-foreground" />
             <p className="text-muted-foreground">Carregando...</p>
           </div>
         </div>
@@ -479,6 +366,7 @@ export default function ConexaoWhatsApp() {
     );
   }
 
+  // Render no server URL
   if (!serverUrl) {
     return (
       <div className="container mx-auto p-6 max-w-4xl">
@@ -499,82 +387,21 @@ export default function ConexaoWhatsApp() {
               A URL do servidor WhatsApp precisa ser configurada
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                Para conectar o WhatsApp, você precisa:
+                Configure a URL do servidor WhatsApp nas configurações de integração.
+                A URL deve apontar para o backend no Railway.
               </AlertDescription>
             </Alert>
-
-            <ol className="space-y-3 text-sm">
-              <li className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                  1
-                </span>
-                <span>
-                  <strong>Fazer deploy do servidor WhatsApp no Railway</strong>
-                  <br />
-                  <span className="text-muted-foreground">
-                    Use os arquivos do diretório <code className="text-xs bg-muted px-1 py-0.5 rounded">backend/</code> para fazer o deploy
-                  </span>
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                  2
-                </span>
-                <span>
-                  <strong>Obter a URL pública do Railway</strong>
-                  <br />
-                  <span className="text-muted-foreground">
-                    Exemplo: <code className="text-xs bg-muted px-1 py-0.5 rounded">https://seu-app.railway.app</code>
-                  </span>
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                  3
-                </span>
-                <span>
-                  <strong>Configurar a URL no banco de dados</strong>
-                  <br />
-                  <span className="text-muted-foreground">
-                    Execute no Supabase SQL Editor:
-                  </span>
-                  <pre className="mt-2 p-3 bg-muted rounded-md text-xs overflow-x-auto">
-{`UPDATE integration_whatsapp 
-SET api_url = 'https://seu-app.railway.app'
-WHERE tenant_id = '${tenant?.id}';`}
-                  </pre>
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                  4
-                </span>
-                <span>
-                  <strong>Recarregue esta página</strong>
-                  <br />
-                  <span className="text-muted-foreground">
-                    Após configurar a URL, recarregue a página para conectar o WhatsApp
-                  </span>
-                </span>
-              </li>
-            </ol>
-
-            <div className="pt-4">
-              <Button onClick={loadWhatsAppIntegration} variant="outline" className="w-full">
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Verificar Configuração
-              </Button>
-            </div>
           </CardContent>
         </Card>
       </div>
     );
   }
 
+  // Render main content
   return (
     <div className="container mx-auto p-6 max-w-4xl">
       <div className="mb-6">
@@ -587,333 +414,180 @@ WHERE tenant_id = '${tenant?.id}';`}
         </p>
       </div>
 
-      {/* Status da Conexão */}
-      <Card className="mb-6">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Status da Conexão</span>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleReconnect}
-              disabled={loading}
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
-              Reconectar
-            </Button>
+          <CardTitle className="flex items-center gap-2">
+            {whatsappStatus?.connected ? (
+              <>
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                <span className="text-green-600">Conectado</span>
+              </>
+            ) : whatsappStatus?.status === 'cooldown' ? (
+              <>
+                <Clock className="h-5 w-5 text-orange-500" />
+                <span className="text-orange-600">Em Cooldown</span>
+              </>
+            ) : whatsappStatus?.status === 'qr_ready' ? (
+              <>
+                <QrCodeIcon className="h-5 w-5 text-blue-500" />
+                <span className="text-blue-600">Aguardando Escaneamento</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-5 w-5 text-muted-foreground" />
+                <span className="text-muted-foreground">Desconectado</span>
+              </>
+            )}
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          {whatsappStatus?.connected ? (
-            <div className="flex items-center gap-3 text-green-600">
-              <CheckCircle2 className="h-6 w-6" />
-              <div>
-                <p className="font-semibold">WhatsApp Conectado</p>
-                <p className="text-sm text-muted-foreground">
-                  Seu WhatsApp está conectado e pronto para enviar mensagens
+
+        <CardContent className="space-y-6">
+          {/* Cooldown State */}
+          {whatsappStatus?.status === 'cooldown' && (
+            <div className="text-center space-y-4">
+              <div className="p-6 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200 dark:border-orange-800">
+                <Shield className="h-12 w-12 mx-auto mb-4 text-orange-500" />
+                <h3 className="text-lg font-medium text-orange-700 dark:text-orange-300">
+                  Proteção Anti-Ban Ativada
+                </h3>
+                <p className="text-orange-600 dark:text-orange-400 mt-2">
+                  Aguarde {whatsappStatus.cooldownMinutes} minutos antes de tentar novamente.
+                </p>
+                <p className="text-sm text-orange-500 mt-2">
+                  Este cooldown protege sua conta contra bloqueios do WhatsApp.
                 </p>
               </div>
+              <Button 
+                variant="outline" 
+                onClick={handleClearCooldown}
+                className="mt-4"
+              >
+                Remover Cooldown (Admin)
+              </Button>
             </div>
-          ) : whatsappStatus?.status === 'initializing' ? (
-            <div className="flex items-center gap-3 text-blue-600">
-              <Loader2 className="h-6 w-6 animate-spin" />
-              <div>
-                <p className="font-semibold">Inicializando WhatsApp</p>
-                <p className="text-sm text-muted-foreground">
-                  {whatsappStatus.message || 'Aguarde enquanto o servidor inicializa...'}
+          )}
+
+          {/* Connected State */}
+          {whatsappStatus?.connected && (
+            <div className="text-center space-y-4">
+              <div className="p-6 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+                <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-green-500" />
+                <h3 className="text-lg font-medium text-green-700 dark:text-green-300">
+                  WhatsApp Conectado!
+                </h3>
+                <p className="text-green-600 dark:text-green-400 mt-2">
+                  Você pode enviar mensagens automáticas.
                 </p>
               </div>
+              <Button 
+                variant="outline" 
+                onClick={handleReconnect}
+                disabled={isReconnecting}
+              >
+                {isReconnecting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Reconectar
+              </Button>
             </div>
-          ) : whatsappStatus?.status === 'backend_outdated' ? (
-            <div className="flex items-center gap-3 text-orange-600">
-              <AlertCircle className="h-6 w-6" />
-              <div>
-                <p className="font-semibold">Backend Desatualizado</p>
+          )}
+
+          {/* QR Code State */}
+          {whatsappStatus?.status === 'qr_ready' && whatsappStatus.qrCode && (
+            <div className="text-center space-y-4">
+              <div className="inline-block p-4 bg-white rounded-lg shadow-lg">
+                <img 
+                  src={whatsappStatus.qrCode} 
+                  alt="QR Code WhatsApp" 
+                  className="w-64 h-64 mx-auto"
+                />
+              </div>
+              <div className="space-y-2">
+                <p className="text-muted-foreground">
+                  Abra o WhatsApp no celular → Menu → Aparelhos conectados → Conectar
+                </p>
                 <p className="text-sm text-muted-foreground">
-                  O servidor no Railway precisa ser atualizado. Veja as instruções abaixo.
+                  O QR Code expira em alguns segundos. Se não funcionar, clique em reconectar.
                 </p>
               </div>
+              <Button 
+                variant="outline" 
+                onClick={handleReconnect}
+                disabled={isReconnecting}
+              >
+                {isReconnecting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Gerar Novo QR Code
+              </Button>
             </div>
-          ) : whatsappStatus?.status === 'error' ? (
-            <div className="flex items-center gap-3 text-destructive">
-              <AlertCircle className="h-6 w-6" />
-              <div>
-                <p className="font-semibold">Erro de Conexão</p>
-                <p className="text-sm text-muted-foreground">
-                  {whatsappStatus.error || 'Erro ao conectar com servidor'}
-                </p>
-              </div>
+          )}
+
+          {/* Error State */}
+          {whatsappStatus?.status === 'error' && (
+            <div className="text-center space-y-4">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {whatsappStatus.error}
+                </AlertDescription>
+              </Alert>
+              <Button onClick={handleReconnect} disabled={isReconnecting}>
+                {isReconnecting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Tentar Novamente
+              </Button>
             </div>
-          ) : (
-            <div className="flex items-center gap-3 text-orange-600">
-              <AlertCircle className="h-6 w-6" />
-              <div>
-                <p className="font-semibold">WhatsApp Desconectado</p>
-                <p className="text-sm text-muted-foreground">
-                  Escaneie o QR Code abaixo para conectar
+          )}
+
+          {/* Backend Outdated State */}
+          {whatsappStatus?.status === 'backend_outdated' && (
+            <div className="text-center space-y-4">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Backend desatualizado:</strong> O servidor WhatsApp precisa ser 
+                  atualizado para a versão 5.1. Faça um redeploy no Railway.
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+
+          {/* Disconnected State */}
+          {!whatsappStatus?.connected && 
+           !whatsappStatus?.qrCode && 
+           whatsappStatus?.status !== 'cooldown' &&
+           whatsappStatus?.status !== 'error' &&
+           whatsappStatus?.status !== 'backend_outdated' && (
+            <div className="text-center space-y-4">
+              <div className="p-6 bg-muted rounded-lg">
+                <Smartphone className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-medium">
+                  WhatsApp Desconectado
+                </h3>
+                <p className="text-muted-foreground mt-2">
+                  Clique no botão abaixo para conectar.
                 </p>
               </div>
+              <Button onClick={handleReconnect} disabled={isReconnecting}>
+                {isReconnecting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <QrCodeIcon className="h-4 w-4 mr-2" />
+                )}
+                Conectar WhatsApp
+              </Button>
             </div>
           )}
         </CardContent>
       </Card>
-
-      {/* QR Code */}
-      {whatsappStatus?.qrCode && !whatsappStatus.connected && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <QrCodeIcon className="h-5 w-5" />
-              Escaneie o QR Code
-            </CardTitle>
-            <CardDescription>
-              Use o WhatsApp no seu celular para escanear este código
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col items-center gap-6">
-              {/* QR Code Image */}
-              <div className="bg-white p-4 rounded-lg shadow-lg">
-                <img 
-                  src={whatsappStatus.qrCode} 
-                  alt="QR Code WhatsApp" 
-                  className="w-64 h-64"
-                />
-              </div>
-
-              {/* Instruções */}
-              <div className="w-full max-w-md">
-                <h3 className="font-semibold mb-3">Como conectar:</h3>
-                <ol className="space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                      1
-                    </span>
-                    <span>Abra o WhatsApp no seu celular</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                      2
-                    </span>
-                    <span>Toque em <strong>Mais opções</strong> ou <strong>Configurações</strong></span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                      3
-                    </span>
-                    <span>Selecione <strong>Aparelhos conectados</strong></span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                      4
-                    </span>
-                    <span>Toque em <strong>Conectar um aparelho</strong></span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                      5
-                    </span>
-                    <span>Aponte a câmera para este QR Code</span>
-                  </li>
-                </ol>
-              </div>
-
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Importante:</strong> Este QR Code é exclusivo para sua empresa ({tenant?.name}). 
-                  Não compartilhe com outras pessoas.
-                </AlertDescription>
-              </Alert>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Backend Desatualizado */}
-      {whatsappStatus?.status === 'backend_outdated' && (
-        <Card className="border-orange-500">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-orange-600">
-              <AlertCircle className="h-5 w-5" />
-              Backend Precisa de Atualização
-            </CardTitle>
-            <CardDescription>
-              O servidor no Railway não possui as rotas mais recentes
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Alert className="border-orange-200 bg-orange-50">
-              <AlertCircle className="h-4 w-4 text-orange-600" />
-              <AlertDescription className="text-orange-800">
-                <strong>URL:</strong> {serverUrl}
-                <br />
-                <strong>Rota:</strong> /api/whatsapp/qrcode/{tenant?.id}
-                <br />
-                <strong>Erro:</strong> {whatsappStatus.error}
-              </AlertDescription>
-            </Alert>
-
-            <div className="space-y-3">
-              <h3 className="font-semibold">Para resolver, faça deploy do backend atualizado:</h3>
-              
-              <ol className="space-y-3 text-sm">
-                <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                    1
-                  </span>
-                  <div>
-                    <strong>Acesse seu repositório Git</strong>
-                    <br />
-                    <span className="text-muted-foreground">
-                      Certifique-se de que o código em <code className="text-xs bg-muted px-1 py-0.5 rounded">backend/</code> está atualizado
-                    </span>
-                  </div>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                    2
-                  </span>
-                  <div>
-                    <strong>Faça push para o GitHub</strong>
-                    <br />
-                    <code className="text-xs bg-muted px-1 py-0.5 rounded">git add . && git commit -m "Update backend" && git push</code>
-                  </div>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                    3
-                  </span>
-                  <div>
-                    <strong>No Railway, faça redeploy</strong>
-                    <br />
-                    <span className="text-muted-foreground">
-                      Acesse <a href="https://railway.app" target="_blank" rel="noopener noreferrer" className="underline">railway.app</a> → Seu projeto → Redeploy
-                    </span>
-                  </div>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
-                    4
-                  </span>
-                  <div>
-                    <strong>Após o deploy, clique no botão abaixo</strong>
-                  </div>
-                </li>
-              </ol>
-
-              <div className="pt-4">
-                <Button 
-                  onClick={() => {
-                    setWhatsappStatus(null);
-                    checkStatus();
-                  }} 
-                  variant="default"
-                  className="w-full"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Verificar Novamente
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Aguardando QR Code */}
-      {!whatsappStatus?.qrCode && !whatsappStatus?.connected && 
-       whatsappStatus?.status !== 'error' && whatsappStatus?.status !== 'backend_outdated' && (
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center space-y-4">
-              <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-              <div>
-                <p className="text-lg font-semibold">Aguardando QR Code...</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  O servidor está gerando seu QR Code exclusivo
-                </p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Aguardando há {waitingTime} segundo{waitingTime !== 1 ? 's' : ''}
-                  {waitingTime > 30 && ' (isso pode demorar até 60s)'}
-                </p>
-              </div>
-              
-              {waitingTime > 15 && (
-                <div className="pt-4">
-                  <Button 
-                    onClick={handleReconnect} 
-                    variant="outline"
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                    )}
-                    Tentar Novamente
-                  </Button>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Demorando muito? Tente forçar uma nova conexão
-                  </p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Erro com botão de retry destacado */}
-      {whatsappStatus?.status === 'error' && (
-        <Card className="border-destructive">
-          <CardContent className="py-12">
-            <div className="text-center space-y-4">
-              <AlertCircle className="h-12 w-12 mx-auto text-destructive" />
-              <div>
-                <p className="text-lg font-semibold text-destructive">Erro de Conexão</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  {whatsappStatus.error || 'Não foi possível conectar ao servidor WhatsApp'}
-                </p>
-              </div>
-              
-              <div className="pt-4 space-y-3">
-                <Button 
-                  onClick={handleReconnect} 
-                  variant="default"
-                  size="lg"
-                  className="min-w-[200px]"
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  ) : (
-                    <RefreshCw className="h-5 w-5 mr-2" />
-                  )}
-                  Tentar Novamente
-                </Button>
-                
-                <p className="text-xs text-muted-foreground">
-                  Isso irá limpar a sessão antiga e gerar um novo QR Code
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Informações Adicionais */}
-      {whatsappStatus?.connected && (
-        <Alert className="mt-6">
-          <CheckCircle2 className="h-4 w-4" />
-          <AlertDescription>
-            Seu WhatsApp está conectado com sucesso! Agora você pode enviar mensagens automáticas 
-            de confirmação de pedidos e outras notificações para seus clientes.
-          </AlertDescription>
-        </Alert>
-      )}
     </div>
   );
 }

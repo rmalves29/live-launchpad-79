@@ -6,16 +6,21 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Configuração de timeouts
+const FETCH_TIMEOUT_MS = 25000; // 25 segundos
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const timestamp = new Date().toISOString();
+
   try {
     const { action, tenant_id } = await req.json();
 
-    console.log(`[whatsapp-proxy] Action: ${action}, Tenant: ${tenant_id}`);
+    console.log(`[${timestamp}] [whatsapp-proxy] Action: ${action}, Tenant: ${tenant_id}`);
 
     if (!tenant_id) {
       return new Response(
@@ -61,13 +66,8 @@ serve(async (req) => {
 
     let endpoint = "";
     let method = "GET";
-    let body: any = null;
 
-    // Map actions to backend routes v5.0 from backend/src/routes/whatsapp.routes.js:
-    // POST /start/:id
-    // GET /status/:id
-    // POST /disconnect/:id
-    // POST /reset/:id
+    // Map actions to backend routes v5.1
     switch (action) {
       case "qr":
       case "connect":
@@ -78,12 +78,20 @@ serve(async (req) => {
         endpoint = `/status/${tenant_id}`;
         method = "GET";
         break;
+      case "get_qr":
+        endpoint = `/qr/${tenant_id}`;
+        method = "GET";
+        break;
       case "disconnect":
         endpoint = `/disconnect/${tenant_id}`;
         method = "POST";
         break;
       case "reset":
         endpoint = `/reset/${tenant_id}`;
+        method = "POST";
+        break;
+      case "clear_cooldown":
+        endpoint = `/clear-cooldown/${tenant_id}`;
         method = "POST";
         break;
       default:
@@ -103,41 +111,56 @@ serve(async (req) => {
       },
     };
 
-    // Add body for POST requests
-    if (method === "POST" && body) {
-      fetchOptions.body = JSON.stringify(body);
-    }
+    // Criar AbortController para timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    fetchOptions.signal = controller.signal;
 
     let response;
     try {
       response = await fetch(targetUrl, fetchOptions);
-    } catch (fetchError) {
-      console.error("[whatsapp-proxy] Fetch error:", fetchError);
+      clearTimeout(timeoutId);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      // Verificar se foi timeout
+      if (fetchError.name === 'AbortError') {
+        console.error("[whatsapp-proxy] Request timeout após", FETCH_TIMEOUT_MS, "ms");
+        return new Response(
+          JSON.stringify({ 
+            error: "Timeout: Servidor demorou muito para responder",
+            message: "Tente novamente em alguns segundos. O servidor pode estar ocupado.",
+            status: "timeout"
+          }),
+          { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      console.error("[whatsapp-proxy] Fetch error:", fetchError.message);
       return new Response(
         JSON.stringify({ 
           error: "Não foi possível conectar ao servidor WhatsApp",
           message: `Erro de conexão: ${fetchError.message}`,
-          serverUrl: serverUrl
+          serverUrl: serverUrl,
+          status: "connection_error"
         }),
         { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const contentType = response.headers.get("content-type") || "";
-
     console.log(`[whatsapp-proxy] Response status: ${response.status}`);
-    console.log(`[whatsapp-proxy] Content-Type: ${contentType}`);
 
     // Check if response is HTML (error page)
     if (contentType.includes("text/html")) {
       const htmlText = await response.text();
       console.error("[whatsapp-proxy] Received HTML response (likely error page)");
-      console.log("[whatsapp-proxy] HTML preview:", htmlText.substring(0, 200));
       
       return new Response(
         JSON.stringify({ 
-          error: "Servidor retornou página HTML em vez de JSON. Verifique se a URL do servidor está correta.",
-          htmlPreview: htmlText.substring(0, 500)
+          error: "Servidor retornou página HTML em vez de JSON",
+          message: "Verifique se a URL do servidor está correta e o backend está rodando.",
+          status: "invalid_response"
         }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -147,26 +170,43 @@ serve(async (req) => {
     let data;
     try {
       const text = await response.text();
-      console.log("[whatsapp-proxy] Response text:", text.substring(0, 500));
+      console.log("[whatsapp-proxy] Response body:", text.substring(0, 300));
       data = JSON.parse(text);
     } catch (e) {
       console.error("[whatsapp-proxy] Failed to parse JSON");
       return new Response(
         JSON.stringify({ 
           error: "Resposta inválida do servidor WhatsApp",
-          status: response.status
+          status: "parse_error",
+          httpStatus: response.status
         }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // If 404, the route doesn't exist on the backend
+    // Tratar códigos de status específicos
+    
+    // 429 - Rate limit / Cooldown
+    if (response.status === 429) {
+      console.log("[whatsapp-proxy] Cooldown ativo para tenant:", tenant_id);
+      return new Response(
+        JSON.stringify({
+          ...data,
+          status: "cooldown",
+          message: data.message || "Aguarde antes de tentar novamente"
+        }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 404 - Rota não encontrada (backend desatualizado)
     if (response.status === 404) {
-      console.error("[whatsapp-proxy] Route not found on backend");
+      console.error("[whatsapp-proxy] Route not found - backend may be outdated");
       return new Response(
         JSON.stringify({ 
           error: "Rota não encontrada no servidor WhatsApp",
-          message: "Verifique se o backend está atualizado e as rotas estão corretas.",
+          message: "O backend precisa ser atualizado para v5.1. Faça redeploy no Railway.",
+          status: "backend_outdated",
           targetUrl: targetUrl,
           backendResponse: data
         }),
@@ -174,6 +214,7 @@ serve(async (req) => {
       );
     }
 
+    // Sucesso ou outros status
     return new Response(
       JSON.stringify(data),
       { 
@@ -182,15 +223,14 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
-    console.error("[whatsapp-proxy] Error:", error);
-    
-    const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+  } catch (error: any) {
+    console.error("[whatsapp-proxy] Error:", error.message);
     
     return new Response(
       JSON.stringify({ 
-        error: `Erro ao conectar com servidor WhatsApp: ${errorMessage}`,
-        message: "Verifique se o servidor está online e acessível"
+        error: `Erro interno: ${error.message}`,
+        message: "Verifique os logs para mais detalhes",
+        status: "internal_error"
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
