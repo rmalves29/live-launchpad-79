@@ -155,18 +155,6 @@ export function ZAPISettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Alert className="border-blue-500/30 bg-blue-500/5">
-          <AlertCircle className="h-4 w-4 text-blue-500" />
-          <AlertDescription className="text-sm">
-            <strong>Como obter as credenciais:</strong>
-            <ol className="list-decimal ml-4 mt-2 space-y-1">
-              <li>Acesse <a href="https://z-api.io" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">z-api.io</a></li>
-              <li>Crie uma conta ou faça login</li>
-              <li>Crie uma nova instância</li>
-              <li>Copie o <strong>Instance ID</strong> e <strong>Token</strong></li>
-            </ol>
-          </AlertDescription>
-        </Alert>
 
         <div className="space-y-2">
           <Label htmlFor="instance-id">Instance ID</Label>
