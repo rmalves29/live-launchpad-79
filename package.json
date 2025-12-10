@@ -1,22 +1,13 @@
 {
-  "name": "whatsapp-baileys-backend",
-  "version": "1.0.0",
-  "description": "WhatsApp Backend with Baileys for Railway",
-  "main": "src/index.js",
+  "name": "orderzap-frontend",
+  "private": true,
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start": "node server-stable.js",
-    "dev": "node --watch server-stable.js"
-  },
-  "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.20",
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "pino": "^9.6.0",
-    "qrcode": "^1.5.4"
-  },
-  "engines": {
-    "node": ">=18.0.0"
+    "dev": "vite",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
+    "lint": "eslint .",
+    "preview": "vite preview"
   }
 }
