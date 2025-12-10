@@ -1,7 +1,7 @@
 {
   "name": "orderzaps-backend",
-  "version": "5.0.0",
-  "description": "WhatsApp Multi-Tenant API v5.0 STABLE",
+  "version": "5.1.0",
+  "description": "WhatsApp Multi-Tenant API v5.1 STABLE - Resilient QR generation with cooldown protection",
   "main": "server-stable.js",
   "type": "module",
   "scripts": {
