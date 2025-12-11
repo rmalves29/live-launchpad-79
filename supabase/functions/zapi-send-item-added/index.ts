@@ -44,7 +44,7 @@ function validateInternalRequest(req: Request): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -56,7 +56,8 @@ async function getZAPICredentials(supabase: any, tenantId: string) {
 
   return {
     instanceId: integration.zapi_instance_id,
-    token: integration.zapi_token
+    token: integration.zapi_token,
+    clientToken: integration.zapi_client_token || ''
   };
 }
 
@@ -175,17 +176,21 @@ serve(async (req) => {
     const message = formatMessage(template, body);
     const formattedPhone = formatPhoneNumber(customer_phone);
 
-    const { instanceId, token } = credentials;
+    const { instanceId, token, clientToken } = credentials;
     const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
 
     console.log(`[zapi-send-item-added] Sending to ${formattedPhone}`);
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (clientToken) {
+      headers['Client-Token'] = clientToken;
+    }
+
     const response = await fetch(sendUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Client-Token': token
-      },
+      headers,
       body: JSON.stringify({ phone: formattedPhone, message })
     });
 
