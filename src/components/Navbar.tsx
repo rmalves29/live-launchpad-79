@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Menu, MessageSquare, ChevronDown, Zap } from 'lucide-react';
+import { Menu, MessageSquare, ChevronDown, Zap, LogOut, User } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
@@ -20,11 +20,10 @@ const Navbar = () => {
   
   const isWhatsappActive = location.pathname.startsWith('/whatsapp');
 
-  // Verificar se é super admin
   const isSuperAdmin = user?.email === 'rmalves21@hotmail.com' || profile?.role === 'super_admin';
 
   const navItems = [
-    { path: '/pedidos-manual', label: 'Pedidos Manual' },
+    { path: '/pedidos-manual', label: 'Manual' },
     ...(enableLive ? [{ path: '/live', label: 'Live' }] : []),
     { path: '/checkout', label: 'Checkout' },
     { path: '/produtos', label: 'Produtos' },
@@ -36,37 +35,37 @@ const Navbar = () => {
     { path: '/etiquetas', label: 'Etiquetas' },
     { path: '/integracoes', label: 'Integrações' },
     ...(isSuperAdmin ? [
-      { path: '/admin/tenants', label: 'Gerenciar Empresas' },
-      { path: '/config', label: 'Configurações' }
+      { path: '/admin/tenants', label: 'Empresas' },
+      { path: '/config', label: 'Config' }
     ] : [])
   ];
 
   return (
-    <nav className="bg-card border-b shadow-sm sticky top-0 z-50">
+    <nav className="bg-card/80 backdrop-blur-xl border-b border-border/50 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <div className="flex-shrink-0">
-            <NavLink to="/" className="flex items-center gap-2">
-              <div className="flex items-center gap-2 bg-primary/10 px-3 py-1.5 rounded-lg">
-                <Zap className="h-6 w-6 text-primary" />
-                <span className="text-lg font-bold text-primary">OrderZap</span>
+          <NavLink to="/" className="flex items-center gap-2 group">
+            <div className="flex items-center gap-2 bg-gradient-to-r from-primary/10 to-accent/10 px-3 py-1.5 rounded-xl border border-primary/20 group-hover:border-primary/40 transition-all duration-300">
+              <div className="p-1 bg-primary rounded-lg glow-primary">
+                <Zap className="h-4 w-4 text-primary-foreground" />
               </div>
-            </NavLink>
-          </div>
+              <span className="text-lg font-display font-bold text-gradient-primary">OrderZap</span>
+            </div>
+          </NavLink>
 
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center gap-1 flex-1 justify-center max-w-4xl mx-4">
-            <div className="flex flex-wrap items-center justify-center gap-1">
+            <div className="flex items-center gap-0.5 bg-muted/50 backdrop-blur-sm rounded-xl p-1 border border-border/30">
               {navItems.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `px-2 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                    `px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap ${
                       isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                        ? 'bg-primary text-primary-foreground shadow-glow-sm'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-background/80'
                     }`
                   }
                 >
@@ -80,24 +79,29 @@ const Navbar = () => {
                   <Button 
                     variant={isWhatsappActive ? "default" : "ghost"} 
                     size="sm"
-                    className="flex items-center gap-1 h-7 px-2 text-xs"
+                    className={`flex items-center gap-1 h-7 px-3 text-xs rounded-lg ${
+                      isWhatsappActive ? 'shadow-glow-sm' : ''
+                    }`}
                   >
                     <MessageSquare className="h-3 w-3" />
                     WhatsApp
                     <ChevronDown className="h-3 w-3" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 bg-popover">
-                  <DropdownMenuItem onClick={() => navigate('/whatsapp/zapi')}>
-                    Z-API (Recomendado)
+                <DropdownMenuContent align="end" className="w-52 bg-popover/95 backdrop-blur-xl border-border/50">
+                  <DropdownMenuItem onClick={() => navigate('/whatsapp/zapi')} className="cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-success rounded-full"></div>
+                      Z-API (Recomendado)
+                    </div>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/whatsapp/conexao')}>
+                  <DropdownMenuItem onClick={() => navigate('/whatsapp/conexao')} className="cursor-pointer">
                     Baileys (Self-hosted)
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/whatsapp/templates')}>
+                  <DropdownMenuItem onClick={() => navigate('/whatsapp/templates')} className="cursor-pointer">
                     Templates
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/whatsapp/cobranca')}>
+                  <DropdownMenuItem onClick={() => navigate('/whatsapp/cobranca')} className="cursor-pointer">
                     Cobrança em Massa
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -106,17 +110,32 @@ const Navbar = () => {
           </div>
 
           {/* Right side actions */}
-          <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
+          <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
             <TenantSwitcher />
 
             {user ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground hidden xl:inline max-w-[120px] truncate">{user.email}</span>
-                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => supabase.auth.signOut()}>Sair</Button>
-              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="flex items-center gap-2 h-9 px-3 rounded-xl border border-border/30 hover:border-primary/30 hover:bg-primary/5">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                      <User className="h-3 w-3 text-white" />
+                    </div>
+                    <span className="text-xs text-muted-foreground max-w-[100px] truncate hidden xl:inline">{user.email}</span>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-popover/95 backdrop-blur-xl border-border/50">
+                  <DropdownMenuItem onClick={() => supabase.auth.signOut()} className="cursor-pointer text-destructive">
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Sair
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : (
               <NavLink to="/auth">
-                <Button size="sm" className="h-7 text-xs">Entrar</Button>
+                <Button size="sm" className="h-9 px-4 rounded-xl btn-gradient-primary">
+                  Entrar
+                </Button>
               </NavLink>
             )}
           </div>
@@ -125,31 +144,34 @@ const Navbar = () => {
           <div className="lg:hidden flex items-center">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" className="rounded-xl">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-[280px] sm:w-[320px]">
-                <div className="flex flex-col space-y-3 mt-6">
+              <SheetContent side="right" className="w-[300px] bg-card/95 backdrop-blur-xl border-border/50">
+                <div className="flex flex-col space-y-4 mt-6">
                   <TenantSwitcher />
                   
                   {user && (
-                    <div className="text-xs text-muted-foreground px-3 truncate">
-                      {user.email}
+                    <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 border border-border/30">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                        <User className="h-4 w-4 text-white" />
+                      </div>
+                      <span className="text-sm text-muted-foreground truncate flex-1">{user.email}</span>
                     </div>
                   )}
                   
-                  <div className="border-t pt-3">
+                  <div className="border-t border-border/30 pt-4 space-y-1">
                     {navItems.map((item) => (
                       <NavLink
                         key={item.path}
                         to={item.path}
                         onClick={() => setOpen(false)}
                         className={({ isActive }) =>
-                          `px-3 py-2 rounded-md text-sm font-medium transition-colors block ${
+                          `px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 block ${
                             isActive
-                              ? 'bg-primary text-primary-foreground'
-                              : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                              ? 'bg-primary text-primary-foreground shadow-glow-sm'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                           }`
                         }
                       >
@@ -159,73 +181,48 @@ const Navbar = () => {
                   </div>
                   
                   {/* WhatsApp Section */}
-                  <div className="border-t pt-3">
-                    <div className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-foreground">
-                      <MessageSquare className="h-4 w-4" />
+                  <div className="border-t border-border/30 pt-4">
+                    <div className="flex items-center gap-2 px-4 py-2 text-sm font-display font-semibold text-foreground">
+                      <MessageSquare className="h-4 w-4 text-primary" />
                       WhatsApp
                     </div>
-                    <NavLink
-                      to="/whatsapp/zapi"
-                      onClick={() => setOpen(false)}
-                      className={({ isActive }) =>
-                        `px-6 py-2 rounded-md text-sm font-medium transition-colors block ${
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                        }`
-                      }
-                    >
-                      Z-API
-                    </NavLink>
-                    <NavLink
-                      to="/whatsapp/conexao"
-                      onClick={() => setOpen(false)}
-                      className={({ isActive }) =>
-                        `px-6 py-2 rounded-md text-sm font-medium transition-colors block ${
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                        }`
-                      }
-                    >
-                      Baileys
-                    </NavLink>
-                    <NavLink
-                      to="/whatsapp/templates"
-                      onClick={() => setOpen(false)}
-                      className={({ isActive }) =>
-                        `px-6 py-2 rounded-md text-sm font-medium transition-colors block ${
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                        }`
-                      }
-                    >
-                      Templates
-                    </NavLink>
-                    <NavLink
-                      to="/whatsapp/cobranca"
-                      onClick={() => setOpen(false)}
-                      className={({ isActive }) =>
-                        `px-6 py-2 rounded-md text-sm font-medium transition-colors block ${
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                        }`
-                      }
-                    >
-                      Cobrança em Massa
-                    </NavLink>
+                    {[
+                      { path: '/whatsapp/zapi', label: 'Z-API' },
+                      { path: '/whatsapp/conexao', label: 'Baileys' },
+                      { path: '/whatsapp/templates', label: 'Templates' },
+                      { path: '/whatsapp/cobranca', label: 'Cobrança' },
+                    ].map((item) => (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        onClick={() => setOpen(false)}
+                        className={({ isActive }) =>
+                          `px-8 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 block ${
+                            isActive
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                          }`
+                        }
+                      >
+                        {item.label}
+                      </NavLink>
+                    ))}
                   </div>
                   
-                  <div className="border-t pt-3">
+                  <div className="border-t border-border/30 pt-4">
                     {user ? (
-                      <Button variant="outline" size="sm" className="w-full" onClick={() => { supabase.auth.signOut(); setOpen(false); }}>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10" 
+                        onClick={() => { supabase.auth.signOut(); setOpen(false); }}
+                      >
+                        <LogOut className="h-4 w-4 mr-2" />
                         Sair
                       </Button>
                     ) : (
                       <NavLink to="/auth" onClick={() => setOpen(false)}>
-                        <Button size="sm" className="w-full">Entrar</Button>
+                        <Button size="sm" className="w-full rounded-xl btn-gradient-primary">Entrar</Button>
                       </NavLink>
                     )}
                   </div>
