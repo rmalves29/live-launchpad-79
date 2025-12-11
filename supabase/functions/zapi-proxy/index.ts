@@ -268,6 +268,20 @@ serve(async (req) => {
     }
 
     // Parse JSON response for other actions
+    let data;
+    try {
+      const text = await response.text();
+      console.log("[zapi-proxy] Response body:", text.substring(0, 500));
+      data = JSON.parse(text);
+    } catch {
+      return new Response(
+        JSON.stringify({ 
+          error: "Resposta inválida da Z-API",
+          status: "parse_error"
+        }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Map Z-API status to our format
     if (action === "status") {
