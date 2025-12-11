@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -8,61 +8,62 @@ const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 minutos em milissegundos
 export const useSessionTimeout = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const initialCheckDone = useRef(false);
+
+  const handleSessionExpired = useCallback(async () => {
+    await supabase.auth.signOut();
+    localStorage.removeItem('lastActivity');
+    toast({
+      title: "Sessão expirada",
+      description: "Você foi desconectado por inatividade.",
+      variant: "destructive"
+    });
+    navigate('/', { replace: true });
+  }, [navigate, toast]);
+
+  const resetTimeout = useCallback(() => {
+    localStorage.setItem('lastActivity', Date.now().toString());
+    
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(handleSessionExpired, TIMEOUT_DURATION);
+  }, [handleSessionExpired]);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
-    const resetTimeout = () => {
-      localStorage.setItem('lastActivity', Date.now().toString());
-      
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-
-      timeoutId = setTimeout(async () => {
-        await supabase.auth.signOut();
-        localStorage.removeItem('lastActivity');
-        toast({
-          title: "Sessão expirada",
-          description: "Você foi desconectado por inatividade.",
-          variant: "destructive"
-        });
-        navigate('/', { replace: true });
-      }, TIMEOUT_DURATION);
-    };
-
-    const checkExistingSession = () => {
+    // Verificar sessão existente apenas uma vez ao montar
+    if (!initialCheckDone.current) {
+      initialCheckDone.current = true;
       const lastActivity = localStorage.getItem('lastActivity');
       if (lastActivity) {
         const timeSinceLastActivity = Date.now() - parseInt(lastActivity);
         if (timeSinceLastActivity > TIMEOUT_DURATION) {
-          // Sessão já expirou
+          // Sessão já expirou - mas não navegar automaticamente aqui
+          // Deixar o sistema de auth lidar com isso
           supabase.auth.signOut();
           localStorage.removeItem('lastActivity');
-          navigate('/', { replace: true });
           return;
         }
       }
       resetTimeout();
-    };
-
-    // Verificar sessão existente ao montar
-    checkExistingSession();
+    }
 
     // Eventos que resetam o timeout
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    const events = ['mousedown', 'keypress', 'scroll', 'touchstart', 'click'];
     
     events.forEach(event => {
       document.addEventListener(event, resetTimeout, true);
     });
 
     return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
       events.forEach(event => {
         document.removeEventListener(event, resetTimeout, true);
       });
     };
-  }, [navigate, toast]);
+  }, [resetTimeout]);
 };
