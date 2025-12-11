@@ -138,6 +138,20 @@ serve(async (req) => {
         };
         break;
 
+      case "list-groups":
+        endpoint = "/chats";
+        method = "GET";
+        break;
+
+      case "send-group":
+        endpoint = "/send-text";
+        method = "POST";
+        body = {
+          phone: phone, // groupId
+          message: message
+        };
+        break;
+
       default:
         return new Response(
           JSON.stringify({ error: `Ação desconhecida: ${action}` }),
