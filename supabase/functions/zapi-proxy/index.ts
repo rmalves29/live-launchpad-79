@@ -200,8 +200,9 @@ serve(async (req) => {
     const contentType = response.headers.get("content-type") || "";
     console.log(`[zapi-proxy] Response status: ${response.status}`);
 
-    // Handle QR code image response
+    // Handle QR code response
     if (action === "qr-code" || action === "get_qr") {
+      // If response is binary image
       if (contentType.includes("image")) {
         const imageBuffer = await response.arrayBuffer();
         const base64 = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
@@ -216,23 +217,57 @@ serve(async (req) => {
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      
+      // If response is JSON (Z-API sometimes returns base64 in JSON)
+      try {
+        const text = await response.text();
+        console.log("[zapi-proxy] QR Response body:", text.substring(0, 500));
+        const data = JSON.parse(text);
+        
+        // Z-API returns { value: "data:image/png;base64,..." }
+        if (data.value && data.value.startsWith("data:image")) {
+          return new Response(
+            JSON.stringify({ 
+              qrCode: data.value,
+              status: "qr_ready",
+              hasQR: true
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        // Connected or other status
+        if (data.connected) {
+          return new Response(
+            JSON.stringify({ 
+              status: "connected",
+              message: "WhatsApp já está conectado",
+              connected: true
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            error: "QR Code não disponível",
+            message: data.error || "Tente novamente em alguns segundos",
+            raw: data
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch {
+        return new Response(
+          JSON.stringify({ 
+            error: "Resposta inválida da Z-API",
+            status: "parse_error"
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
-    // Parse JSON response
-    let data;
-    try {
-      const text = await response.text();
-      console.log("[zapi-proxy] Response body:", text.substring(0, 500));
-      data = JSON.parse(text);
-    } catch {
-      return new Response(
-        JSON.stringify({ 
-          error: "Resposta inválida da Z-API",
-          status: "parse_error"
-        }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Parse JSON response for other actions
 
     // Map Z-API status to our format
     if (action === "status") {
