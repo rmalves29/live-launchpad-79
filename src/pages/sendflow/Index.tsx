@@ -273,11 +273,12 @@ export default function SendFlow() {
 
   const personalizeMessage = (product: Product) => {
     return messageTemplate
-      .replace(/\{\{codigo\}\}/g, product.code)
-      .replace(/\{\{nome\}\}/g, product.name)
-      .replace(/\{\{cor\}\}/g, product.color || 'N/A')
-      .replace(/\{\{tamanho\}\}/g, product.size || 'N/A')
-      .replace(/\{\{valor\}\}/g, formatPrice(product.price));
+      // Support both {{var}} and {var} formats
+      .replace(/\{\{?codigo\}?\}/gi, product.code)
+      .replace(/\{\{?nome\}?\}/gi, product.name)
+      .replace(/\{\{?cor\}?\}/gi, product.color || 'N/A')
+      .replace(/\{\{?tamanho\}?\}/gi, product.size || 'N/A')
+      .replace(/\{\{?valor\}?\}/gi, formatPrice(product.price));
   };
 
   const handleSendMessages = async () => {
