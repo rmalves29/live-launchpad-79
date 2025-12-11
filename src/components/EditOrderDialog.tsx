@@ -230,12 +230,29 @@ useEffect(() => {
     if (!item) return;
 
     const productName = item.product?.name || 'produto';
+    const productCode = item.product?.code || '';
+    
     if (!confirm(`Tem certeza que deseja cancelar ${productName}? Uma mensagem será enviada ao cliente.`)) {
       return;
     }
 
+    setLoading(true);
     try {
-      // Remover item do carrinho - a mensagem será enviada automaticamente
+      // Enviar mensagem de cancelamento via Z-API
+      const { error: zapiError } = await supabase.functions.invoke('zapi-send-product-canceled', {
+        body: {
+          tenant_id: profile?.tenant_id,
+          customer_phone: order?.customer_phone,
+          product_name: productName,
+          product_code: productCode
+        }
+      });
+
+      if (zapiError) {
+        console.error('Erro ao enviar mensagem Z-API:', zapiError);
+      }
+
+      // Remover item do carrinho
       const { error } = await supabaseTenant
         .from('cart_items')
         .delete()
@@ -248,7 +265,9 @@ useEffect(() => {
 
       toast({
         title: 'Produto Cancelado',
-        description: 'Produto removido e mensagem de cancelamento enviada'
+        description: zapiError 
+          ? 'Produto removido (erro ao enviar mensagem)' 
+          : 'Produto removido e mensagem de cancelamento enviada'
       });
     } catch (error) {
       console.error('Error removing item:', error);
@@ -257,6 +276,8 @@ useEffect(() => {
         description: 'Erro ao cancelar produto',
         variant: 'destructive'
       });
+    } finally {
+      setLoading(false);
     }
   };
 
