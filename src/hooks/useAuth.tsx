@@ -33,8 +33,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSuperAdmin = profile?.role === 'super_admin';
 
   useEffect(() => {
+    let isMounted = true;
+    
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return;
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -44,24 +47,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Listen for auth changes
+    // Listen for auth changes - only respond to actual sign in/out events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+        if (!isMounted) return;
         
-        if (session?.user) {
-          setTimeout(() => {
-            loadProfile(session.user.id);
-          }, 0);
-        } else {
-          setProfile(null);
-          setIsLoading(false);
+        // Ignorar eventos de TOKEN_REFRESHED para evitar re-renders desnecessários
+        if (event === 'TOKEN_REFRESHED') {
+          return;
+        }
+        
+        // Só atualizar estado em eventos significativos
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+          setSession(session);
+          setUser(session?.user ?? null);
+          
+          if (session?.user) {
+            setTimeout(() => {
+              if (isMounted) loadProfile(session.user.id);
+            }, 0);
+          } else {
+            setProfile(null);
+            setIsLoading(false);
+          }
         }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadProfile = async (userId: string) => {
