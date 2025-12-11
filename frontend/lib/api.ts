@@ -50,26 +50,30 @@ class ApiClient {
     }
   }
 
-  // WhatsApp API
+  // WhatsApp API - Rotas compatíveis com server-stable.js v5.0
   async startWhatsApp(tenantId: string) {
-    return this.request('/api/whatsapp/start', {
+    return this.request(`/start/${tenantId}`, {
       method: 'POST',
-      body: JSON.stringify({ tenantId }),
     });
   }
 
   async getWhatsAppQRCode(tenantId: string) {
-    return this.request(`/api/whatsapp/qrcode/${tenantId}`);
+    return this.request(`/qr/${tenantId}`);
   }
 
   async getWhatsAppStatus(tenantId: string) {
-    return this.request(`/api/whatsapp/status/${tenantId}`);
+    return this.request(`/status/${tenantId}`);
   }
 
   async disconnectWhatsApp(tenantId: string) {
-    return this.request('/api/whatsapp/disconnect', {
+    return this.request(`/disconnect/${tenantId}`, {
       method: 'POST',
-      body: JSON.stringify({ tenantId }),
+    });
+  }
+
+  async resetWhatsApp(tenantId: string) {
+    return this.request(`/reset/${tenantId}`, {
+      method: 'POST',
     });
   }
 

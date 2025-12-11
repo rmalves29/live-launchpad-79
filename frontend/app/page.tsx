@@ -44,16 +44,16 @@ export default function Home() {
         {/* CTAs */}
         <div className="flex gap-4 justify-center">
           <Link
-            href="/auth/login"
+            href="/dashboard"
             className="px-8 py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
           >
-            Fazer Login
+            Acessar Dashboard
           </Link>
           <Link
-            href="/auth/register"
+            href="/dashboard/whatsapp"
             className="px-8 py-4 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-lg"
           >
-            Criar Conta Grátis
+            Conectar WhatsApp
           </Link>
         </div>
 
