@@ -13,7 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
-import { TenantDebugInfo } from '@/components/TenantDebugInfo';
+
 
 interface OrderItem {
   id: number;
@@ -1161,11 +1161,6 @@ const Checkout = () => {
       
       <p className="text-muted-foreground mb-6">Processe pagamentos e finalize pedidos</p>
 
-      {/* Componente de Debug - mostra apenas em localhost/preview */}
-      {window.location.hostname === 'localhost' || 
-       window.location.hostname.includes('lovable') ? (
-        <TenantDebugInfo />
-      ) : null}
 
       {/* Alerta quando não há tenant selecionado no modo preview */}
       {!tenantId && (
