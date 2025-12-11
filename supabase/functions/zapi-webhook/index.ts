@@ -12,6 +12,7 @@ interface ZAPIWebhookPayload {
   chatName?: string;
   senderPhone?: string;
   senderName?: string;
+  participantPhone?: string;
   text?: {
     message?: string;
   };
@@ -51,8 +52,8 @@ serve(async (req) => {
       });
     }
 
-    // Extract phone number (sender in group, or direct chat)
-    const senderPhone = payload.senderPhone || payload.phone || '';
+    // Extract phone number (participantPhone for groups, phone for direct chat)
+    const senderPhone = payload.participantPhone || payload.senderPhone || payload.phone || '';
     const groupName = payload.chatName || '';
     const groupId = payload.chatId || '';
 
