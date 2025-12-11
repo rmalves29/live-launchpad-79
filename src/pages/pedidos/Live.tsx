@@ -378,10 +378,10 @@ const Live = () => {
           : p
       ));
       
-      // Enviar mensagem WhatsApp usando template Item Adicionado
+      // Enviar mensagem WhatsApp usando Z-API (template Item Adicionado)
       if (tenant?.id) {
         try {
-          const { error: whatsappError } = await supabase.functions.invoke('whatsapp-send-item-added', {
+          const { error: whatsappError } = await supabase.functions.invoke('zapi-send-item-added', {
             body: {
               tenant_id: tenant.id,
               customer_phone: normalizedPhone,

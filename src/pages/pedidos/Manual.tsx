@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
+import { supabase } from '@/integrations/supabase/client';
 import { getBrasiliaDateISO, formatBrasiliaDate } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -365,7 +366,27 @@ const PedidosManual = () => {
           : `Novo pedido criado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
 
-      // WhatsApp será enviado automaticamente pela trigger do banco de dados
+      // Enviar mensagem WhatsApp via Z-API (Item Adicionado)
+      if (tenant?.id) {
+        try {
+          const { error: whatsappError } = await supabase.functions.invoke('zapi-send-item-added', {
+            body: {
+              tenant_id: tenant.id,
+              customer_phone: normalizedPhone,
+              product_name: product.name,
+              product_code: product.code,
+              quantity: qty,
+              unit_price: product.price
+            }
+          });
+
+          if (whatsappError) {
+            console.error('Error sending WhatsApp message:', whatsappError);
+          }
+        } catch (whatsappError) {
+          console.error('Error sending WhatsApp message:', whatsappError);
+        }
+      }
 
       // Clear inputs for this product
       setPhones(prev => ({ ...prev, [product.id]: '' }));

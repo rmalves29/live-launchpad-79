@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.zapi-send-paid-order]
 verify_jwt = false
 
+[functions.zapi-send-product-canceled]
+verify_jwt = false
+
 [functions.zapi-broadcast]
 verify_jwt = true
 
