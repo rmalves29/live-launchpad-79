@@ -4,7 +4,7 @@
  * SEM slug, SEM subdomínio, SEM complicação!
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
@@ -24,11 +24,16 @@ interface Tenant {
   email?: string | null;
 }
 
+// Cache global para evitar refetch desnecessário
+let cachedTenant: Tenant | null = null;
+let cachedTenantId: string | null = null;
+
 export function useTenant() {
   const { profile, isLoading: authLoading } = useAuth();
-  const [tenant, setTenant] = useState<Tenant | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [tenant, setTenant] = useState<Tenant | null>(cachedTenant);
+  const [loading, setLoading] = useState(!cachedTenant);
   const [error, setError] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
     async function loadTenant() {
@@ -39,10 +44,26 @@ export function useTenant() {
 
       // Se não tem perfil ou não tem tenant_id, não há tenant
       if (!profile?.tenant_id) {
+        cachedTenant = null;
+        cachedTenantId = null;
         setTenant(null);
         setLoading(false);
         return;
       }
+
+      // Se já buscou esse tenant, usar cache
+      if (cachedTenantId === profile.tenant_id && cachedTenant) {
+        setTenant(cachedTenant);
+        setLoading(false);
+        return;
+      }
+
+      // Evitar fetch duplicado
+      if (fetchedRef.current && cachedTenantId === profile.tenant_id) {
+        return;
+      }
+
+      fetchedRef.current = true;
 
       try {
         setLoading(true);
@@ -62,6 +83,9 @@ export function useTenant() {
           return;
         }
 
+        // Atualiza cache
+        cachedTenant = data;
+        cachedTenantId = profile.tenant_id;
         setTenant(data);
       } catch (err) {
         console.error('Erro ao carregar tenant:', err);
@@ -73,7 +97,7 @@ export function useTenant() {
     }
 
     loadTenant();
-  }, [profile, authLoading]);
+  }, [profile?.tenant_id, authLoading]);
 
   return {
     tenant,
