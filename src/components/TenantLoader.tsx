@@ -1,10 +1,10 @@
-import { ReactNode } from 'react';
-import { useTenantContext } from '@/contexts/TenantContext';
+import { ReactNode, useContext } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, Building2 } from 'lucide-react';
 import { useEffect } from 'react';
+import { TenantProvider, useTenantContext } from '@/contexts/TenantContext';
 
 interface TenantLoaderProps {
   children: ReactNode;
@@ -15,7 +15,28 @@ interface TenantLoaderProps {
  * Deve envolver toda a aplicação após o TenantProvider
  */
 export const TenantLoader = ({ children }: TenantLoaderProps) => {
-  const { tenant, loading, error, isValidSubdomain, tenantId, isMainSite } = useTenantContext();
+  // Usar try-catch para lidar com casos de HMR onde o contexto pode não estar disponível
+  let contextValue;
+  try {
+    contextValue = useTenantContext();
+  } catch (e) {
+    // Se o contexto não está disponível, renderiza loading state
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
+        <Card className="w-full max-w-md">
+          <CardContent className="flex flex-col items-center justify-center py-8">
+            <Building2 className="h-12 w-12 text-primary animate-pulse mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Carregando...</h2>
+            <p className="text-muted-foreground text-center">
+              Inicializando aplicação
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const { tenant, loading, error, isValidSubdomain, tenantId, isMainSite } = contextValue;
 
   // Configurar o cliente Supabase com o tenant atual (apenas se válido)
   useEffect(() => {
