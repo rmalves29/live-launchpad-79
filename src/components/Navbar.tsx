@@ -190,7 +190,7 @@ const Navbar = () => {
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                    `px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap ${
                       isActive
                         ? 'bg-primary text-primary-foreground shadow-glow-sm'
                         : 'text-muted-foreground hover:text-foreground hover:bg-background/80'
@@ -207,7 +207,7 @@ const Navbar = () => {
                   <Button 
                     variant={isWhatsappActive ? "default" : "ghost"} 
                     size="sm"
-                    className={`flex items-center gap-1 h-7 px-3 text-xs rounded-lg ${
+                    className={`flex items-center gap-1.5 h-8 px-4 text-sm rounded-lg ${
                       isWhatsappActive ? 'shadow-glow-sm' : ''
                     }`}
                   >
