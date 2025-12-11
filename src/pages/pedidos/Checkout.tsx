@@ -59,6 +59,7 @@ const Checkout = () => {
     street: '',
     number: '',
     complement: '',
+    neighborhood: '',
     city: '',
     state: ''
   });
@@ -445,6 +446,7 @@ const Checkout = () => {
             setCustomerData(prev => ({
               ...prev,
               street: cepData.logradouro || prev.street,
+              neighborhood: cepData.bairro || prev.neighborhood,
               city: cepData.localidade || prev.city,
               state: cepData.uf || prev.state
             }));
@@ -1514,6 +1516,14 @@ const Checkout = () => {
                           placeholder="Apto, bloco, etc."
                           value={customerData.complement}
                           onChange={(e) => setCustomerData({...customerData, complement: e.target.value})}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1 block">Bairro</label>
+                        <Input
+                          placeholder="Bairro"
+                          value={customerData.neighborhood}
+                          onChange={(e) => setCustomerData({...customerData, neighborhood: e.target.value})}
                         />
                       </div>
                       <div>
