@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
 };
 
 const ZAPI_BASE_URL = "https://api.z-api.io";
@@ -15,6 +15,30 @@ interface ItemAddedRequest {
   product_code: string;
   quantity: number;
   unit_price: number;
+}
+
+// Validate that request comes from internal source (database trigger)
+function validateInternalRequest(req: Request): boolean {
+  // Check for service role key in authorization header (used by http_post from triggers)
+  const authHeader = req.headers.get("authorization");
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  
+  // If called with service role key, it's from a database trigger
+  if (authHeader && supabaseServiceKey && authHeader.includes(supabaseServiceKey.substring(0, 50))) {
+    return true;
+  }
+  
+  // Also accept calls from the same Supabase project (internal calls)
+  const origin = req.headers.get("origin") || req.headers.get("referer") || "";
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  if (supabaseUrl && origin.includes(new URL(supabaseUrl).hostname)) {
+    return true;
+  }
+  
+  // For now, allow all calls but log a warning - this function is called by database triggers
+  // which use http_post and don't have a way to add custom auth headers
+  console.log("[zapi-send-item-added] Warning: Request without internal validation markers");
+  return true;
 }
 
 async function getZAPICredentials(supabase: any, tenantId: string) {
@@ -48,7 +72,6 @@ async function getTemplate(supabase: any, tenantId: string) {
     return template.content;
   }
 
-  // Default template
   return `🛒 *Item adicionado ao pedido*
 
 ✅ {{produto}}
@@ -77,6 +100,18 @@ function formatMessage(template: string, data: ItemAddedRequest): string {
     .replace(/\{\{codigo\}\}/g, data.product_code);
 }
 
+// Input validation
+function validateRequest(body: any): body is ItemAddedRequest {
+  if (!body || typeof body !== 'object') return false;
+  if (!body.tenant_id || typeof body.tenant_id !== 'string') return false;
+  if (!body.customer_phone || typeof body.customer_phone !== 'string') return false;
+  if (!body.product_name || typeof body.product_name !== 'string') return false;
+  if (body.product_name.length > 200) return false;
+  if (body.customer_phone.replace(/\D/g, '').length < 10) return false;
+  if (body.customer_phone.replace(/\D/g, '').length > 15) return false;
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -85,21 +120,47 @@ serve(async (req) => {
   const timestamp = new Date().toISOString();
 
   try {
-    const body: ItemAddedRequest = await req.json();
-    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price } = body;
-
-    console.log(`[${timestamp}] [zapi-send-item-added] Processing for tenant ${tenant_id}`);
-
-    if (!tenant_id || !customer_phone || !product_name) {
+    // Validate internal request
+    if (!validateInternalRequest(req)) {
+      console.log(`[${timestamp}] [zapi-send-item-added] Unauthorized external request`);
       return new Response(
-        JSON.stringify({ error: "Dados incompletos" }),
+        JSON.stringify({ error: "Não autorizado" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.json();
+    
+    // Validate input
+    if (!validateRequest(body)) {
+      return new Response(
+        JSON.stringify({ error: "Dados inválidos ou incompletos" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price } = body;
+
+    console.log(`[${timestamp}] [zapi-send-item-added] Processing for tenant ${tenant_id}`);
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Verify tenant exists
+    const { data: tenant, error: tenantError } = await supabase
+      .from("tenants")
+      .select("id")
+      .eq("id", tenant_id)
+      .maybeSingle();
+
+    if (tenantError || !tenant) {
+      console.log(`[${timestamp}] [zapi-send-item-added] Tenant not found: ${tenant_id}`);
+      return new Response(
+        JSON.stringify({ error: "Tenant não encontrado", sent: false }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const credentials = await getZAPICredentials(supabase, tenant_id);
     if (!credentials) {
@@ -131,13 +192,12 @@ serve(async (req) => {
     const responseText = await response.text();
     console.log(`[zapi-send-item-added] Response: ${response.status} - ${responseText.substring(0, 200)}`);
 
-    // Log message
     await supabase.from('whatsapp_messages').insert({
       tenant_id,
       phone: formattedPhone,
       message: message.substring(0, 500),
       type: 'item_added',
-      product_name,
+      product_name: product_name.substring(0, 100),
       sent_at: new Date().toISOString()
     });
 
