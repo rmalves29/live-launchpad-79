@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation, Link } from "react-router-dom";
+import { Zap } from "lucide-react";
 
 export default function Auth() {
   const { toast } = useToast();
@@ -87,7 +88,18 @@ export default function Auth() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <main className="w-full max-w-md p-4">
-        {/* Logo removida conforme solicitado */}
+        {/* Logo */}
+        <div className="flex justify-center mb-6">
+          <div className="flex items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 px-5 py-3 rounded-2xl border border-primary/20">
+            <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-xl shadow-lg">
+              <Zap className="h-7 w-7 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-3xl font-display font-bold text-gradient-primary">OrderZap</span>
+              <span className="text-xs text-muted-foreground -mt-1">Gestão Inteligente</span>
+            </div>
+          </div>
+        </div>
         <Card>
           <CardHeader>
             <CardTitle className="text-center">
