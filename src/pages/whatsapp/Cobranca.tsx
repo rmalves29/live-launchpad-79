@@ -125,7 +125,7 @@ export default function Cobranca() {
   };
 
   const addTagToContact = async (phone: string, tagId: string): Promise<boolean> => {
-    if (!tenant?.id || !tagId) return true; // Se não tiver tag selecionada, sucesso
+    if (!tenant?.id || !tagId || tagId === 'none') return true; // Se não tiver tag selecionada, sucesso
     
     try {
       const formattedPhone = normalizeForSending(phone);
@@ -285,7 +285,7 @@ export default function Cobranca() {
     }
 
     console.log('🚀 Iniciando envio em massa para', customers.length, 'clientes');
-    if (selectedTagId) {
+    if (selectedTagId && selectedTagId !== 'none') {
       const tagName = tags.find(t => t.id === selectedTagId)?.name;
       console.log(`🏷️ Tag selecionada: ${tagName} (${selectedTagId})`);
     }
@@ -344,7 +344,7 @@ export default function Cobranca() {
             console.log(`✅ Mensagem enviada com sucesso para ${phoneToSend}`);
             
             // Adicionar tag ao contato se selecionada
-            if (selectedTagId) {
+            if (selectedTagId && selectedTagId !== 'none') {
               await addTagToContact(phoneToSend, selectedTagId);
             }
             
@@ -393,7 +393,7 @@ export default function Cobranca() {
 
       toast({
         title: 'Envio concluído',
-        description: `${successCount} enviada(s), ${errorCount} erro(s)${selectedTagId ? '. Tags aplicadas!' : ''}`,
+        description: `${successCount} enviada(s), ${errorCount} erro(s)${selectedTagId && selectedTagId !== 'none' ? '. Tags aplicadas!' : ''}`,
       });
 
       console.log('✅ Processo de envio finalizado');
@@ -508,8 +508,8 @@ export default function Cobranca() {
                   <SelectValue placeholder="Selecione uma tag..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhuma tag</SelectItem>
-                  {tags.map((tag) => (
+                  <SelectItem value="none">Nenhuma tag</SelectItem>
+                  {tags.filter(tag => tag.id && tag.id !== '').map((tag) => (
                     <SelectItem key={tag.id} value={tag.id}>
                       <div className="flex items-center gap-2">
                         <div 
@@ -540,7 +540,7 @@ export default function Cobranca() {
               Nenhuma tag encontrada. Crie tags no WhatsApp Business para utilizá-las aqui.
             </p>
           )}
-          {selectedTagId && (
+          {selectedTagId && selectedTagId !== 'none' && (
             <div className="mt-3 flex items-center gap-2">
               <Badge variant="secondary">
                 <Tag className="w-3 h-3 mr-1" />
