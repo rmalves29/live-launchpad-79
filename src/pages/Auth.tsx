@@ -34,9 +34,8 @@ export default function Auth() {
       const isInvalidCreds = msg.includes('invalid login credentials') || msg.includes('invalid login');
       const isMasterEmail = email.trim().toLowerCase() === 'rmalves21@hotmail.com';
 
-      if (isInvalidCreds && isMasterEmail) {
-        toast({ title: 'Corrigindo acesso...', description: 'Detectamos erro de credenciais. Vamos ajustar seu usuário master automaticamente.' });
-        await handleForceReset();
+      if (isInvalidCreds) {
+        toast({ title: 'Credenciais inválidas', description: 'Verifique seu e-mail e senha. Use "Esqueci minha senha" para redefinir.', variant: 'destructive' });
         return;
       }
 
@@ -65,23 +64,21 @@ export default function Auth() {
     }
   };
 
-  // Ajuda de emergência: redefine a senha no servidor (apenas para o e-mail master permitido)
-  const handleForceReset = async () => {
+  // Use Supabase's built-in password reset flow
+  const handlePasswordReset = async () => {
+    if (!email) {
+      toast({ title: "Erro", description: "Por favor, insira seu e-mail.", variant: "destructive" });
+      return;
+    }
     try {
       setLoading(true);
-      const newPassword = password || "mulher2020*";
-      const { error } = await supabase.functions.invoke("admin-set-password", {
-        body: { email, newPassword },
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/`,
       });
       if (error) throw error;
-      toast({ title: "Senha redefinida", description: "Tentando entrar..." });
-
-      const { error: loginError } = await supabase.auth.signInWithPassword({ email, password: newPassword });
-      if (loginError) throw loginError;
-
-      navigate(from, { replace: true });
+      toast({ title: "E-mail enviado", description: "Verifique sua caixa de entrada para redefinir sua senha." });
     } catch (err: any) {
-      toast({ title: "Falha ao corrigir login", description: err.message || "Tente novamente.", variant: "destructive" });
+      toast({ title: "Erro ao enviar e-mail", description: err.message || "Tente novamente.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -115,11 +112,11 @@ export default function Auth() {
                 <div className="text-center">
                   <button
                     type="button"
-                    onClick={handleForceReset}
+                    onClick={handlePasswordReset}
                     className="text-xs underline text-muted-foreground mt-2"
                     disabled={loading || !email}
                   >
-                    Problemas para entrar? Corrigir automaticamente
+                    Esqueci minha senha
                   </button>
                 </div>
               </>

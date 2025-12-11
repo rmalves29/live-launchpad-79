@@ -7,14 +7,16 @@ const corsHeaders = {
 };
 
 const ZAPI_BASE_URL = "https://api.z-api.io";
+const MAX_RECIPIENTS_PER_REQUEST = 500;
+const MAX_MESSAGE_LENGTH = 2000;
 
 interface BroadcastRequest {
   tenant_id: string;
   message: string;
   orderStatus?: 'paid' | 'unpaid' | 'all';
   orderDate?: string;
-  phones?: string[]; // Optional: direct list of phones
-  delayMs?: number; // Delay between messages in ms
+  phones?: string[];
+  delayMs?: number;
 }
 
 async function getZAPICredentials(supabase: any, tenantId: string) {
@@ -49,6 +51,20 @@ async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function getUserTenantId(supabase: any, userId: string): Promise<string | null> {
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("tenant_id, role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error || !profile) {
+    return null;
+  }
+
+  return profile.tenant_id;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -57,11 +73,44 @@ serve(async (req) => {
   const timestamp = new Date().toISOString();
 
   try {
+    // Verify JWT authorization
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      console.log(`[${timestamp}] [zapi-broadcast] Missing authorization header`);
+      return new Response(
+        JSON.stringify({ error: "Não autorizado - token de autenticação necessário" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    
+    // Create client with user's JWT to verify identity
+    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // Verify the user's identity
+    const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
+    if (userError || !user) {
+      console.log(`[${timestamp}] [zapi-broadcast] Invalid token:`, userError?.message);
+      return new Response(
+        JSON.stringify({ error: "Token inválido ou expirado" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Create service role client for database operations
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     const body: BroadcastRequest = await req.json();
     const { tenant_id, message, orderStatus = 'all', orderDate, phones, delayMs = 2000 } = body;
 
-    console.log(`[${timestamp}] [zapi-broadcast] Starting broadcast for tenant ${tenant_id}`);
+    console.log(`[${timestamp}] [zapi-broadcast] User ${user.id} requesting broadcast for tenant ${tenant_id}`);
 
+    // Validate required fields
     if (!tenant_id || !message) {
       return new Response(
         JSON.stringify({ error: "tenant_id e message são obrigatórios" }),
@@ -69,9 +118,31 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Validate message length
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return new Response(
+        JSON.stringify({ error: `Mensagem muito longa (máximo ${MAX_MESSAGE_LENGTH} caracteres)` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Verify user belongs to the tenant or is super admin
+    const userTenantId = await getUserTenantId(supabase, user.id);
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    
+    const isSuperAdmin = profile?.role === 'super_admin';
+    
+    if (!isSuperAdmin && userTenantId !== tenant_id) {
+      console.log(`[${timestamp}] [zapi-broadcast] Unauthorized: user tenant ${userTenantId} !== ${tenant_id}`);
+      return new Response(
+        JSON.stringify({ error: "Não autorizado para este tenant" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const credentials = await getZAPICredentials(supabase, tenant_id);
     if (!credentials) {
@@ -84,9 +155,12 @@ serve(async (req) => {
     let targetPhones: string[] = [];
 
     if (phones && phones.length > 0) {
-      targetPhones = phones;
+      // Validate phone numbers
+      targetPhones = phones
+        .filter(p => p && typeof p === 'string')
+        .map(p => formatPhoneNumber(p))
+        .filter(p => p.length >= 10 && p.length <= 15);
     } else {
-      // Get phones from orders
       let query = supabase
         .from('orders')
         .select('customer_phone')
@@ -112,7 +186,6 @@ serve(async (req) => {
         );
       }
 
-      // Get unique phones
       const phoneSet = new Set<string>();
       orders?.forEach(order => {
         if (order.customer_phone) {
@@ -122,7 +195,13 @@ serve(async (req) => {
       targetPhones = Array.from(phoneSet);
     }
 
-    console.log(`[zapi-broadcast] Found ${targetPhones.length} unique phones to send`);
+    // Apply recipient limit
+    if (targetPhones.length > MAX_RECIPIENTS_PER_REQUEST) {
+      console.log(`[${timestamp}] [zapi-broadcast] Limiting recipients from ${targetPhones.length} to ${MAX_RECIPIENTS_PER_REQUEST}`);
+      targetPhones = targetPhones.slice(0, MAX_RECIPIENTS_PER_REQUEST);
+    }
+
+    console.log(`[zapi-broadcast] Sending to ${targetPhones.length} phones`);
 
     if (targetPhones.length === 0) {
       return new Response(
@@ -137,6 +216,9 @@ serve(async (req) => {
     let sent = 0;
     let failed = 0;
     const results: Array<{ phone: string; success: boolean; error?: string }> = [];
+
+    // Enforce minimum delay to prevent abuse
+    const safeDelayMs = Math.max(delayMs, 1000);
 
     for (const phone of targetPhones) {
       try {
@@ -153,7 +235,6 @@ serve(async (req) => {
           sent++;
           results.push({ phone, success: true });
           
-          // Log message
           await supabase.from('whatsapp_messages').insert({
             tenant_id,
             phone,
@@ -167,11 +248,10 @@ serve(async (req) => {
           results.push({ phone, success: false, error: errorText.substring(0, 100) });
         }
 
-        console.log(`[zapi-broadcast] Progress: ${sent + failed}/${targetPhones.length} (sent: ${sent}, failed: ${failed})`);
+        console.log(`[zapi-broadcast] Progress: ${sent + failed}/${targetPhones.length}`);
 
-        // Delay between messages to avoid rate limiting
-        if (delayMs > 0 && (sent + failed) < targetPhones.length) {
-          await sleep(delayMs);
+        if (safeDelayMs > 0 && (sent + failed) < targetPhones.length) {
+          await sleep(safeDelayMs);
         }
 
       } catch (error: any) {
@@ -188,7 +268,7 @@ serve(async (req) => {
         sent,
         failed,
         total: targetPhones.length,
-        results: results.slice(0, 50) // Return first 50 results for debugging
+        results: results.slice(0, 50)
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

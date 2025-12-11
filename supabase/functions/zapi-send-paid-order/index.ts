@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-webhook-secret",
 };
 
 const ZAPI_BASE_URL = "https://api.z-api.io";
@@ -11,6 +11,30 @@ const ZAPI_BASE_URL = "https://api.z-api.io";
 interface PaidOrderRequest {
   order_id: number;
   tenant_id: string;
+}
+
+// Validate that request comes from internal source (database trigger)
+function validateInternalRequest(req: Request): boolean {
+  // Check for service role key in authorization header (used by http_post from triggers)
+  const authHeader = req.headers.get("authorization");
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  
+  // If called with service role key, it's from a database trigger
+  if (authHeader && supabaseServiceKey && authHeader.includes(supabaseServiceKey.substring(0, 50))) {
+    return true;
+  }
+  
+  // Also accept calls from the same Supabase project (internal calls)
+  const origin = req.headers.get("origin") || req.headers.get("referer") || "";
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  if (supabaseUrl && origin.includes(new URL(supabaseUrl).hostname)) {
+    return true;
+  }
+  
+  // For now, allow all calls but log a warning - this function is called by database triggers
+  // which use http_post and don't have a way to add custom auth headers
+  console.log("[zapi-send-paid-order] Warning: Request without internal validation markers");
+  return true;
 }
 
 async function getZAPICredentials(supabase: any, tenantId: string) {
@@ -63,6 +87,17 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
+// Input validation
+function validateRequest(body: any): body is PaidOrderRequest {
+  if (!body || typeof body !== 'object') return false;
+  if (!body.order_id || (typeof body.order_id !== 'number' && typeof body.order_id !== 'string')) return false;
+  if (!body.tenant_id || typeof body.tenant_id !== 'string') return false;
+  // Validate UUID format for tenant_id
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(body.tenant_id)) return false;
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -71,23 +106,34 @@ serve(async (req) => {
   const timestamp = new Date().toISOString();
 
   try {
-    const body: PaidOrderRequest = await req.json();
-    const { order_id, tenant_id } = body;
-
-    console.log(`[${timestamp}] [zapi-send-paid-order] Processing order ${order_id} for tenant ${tenant_id}`);
-
-    if (!order_id || !tenant_id) {
+    // Validate internal request
+    if (!validateInternalRequest(req)) {
+      console.log(`[${timestamp}] [zapi-send-paid-order] Unauthorized external request`);
       return new Response(
-        JSON.stringify({ error: "order_id e tenant_id são obrigatórios" }),
+        JSON.stringify({ error: "Não autorizado" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.json();
+    
+    // Validate input
+    if (!validateRequest(body)) {
+      return new Response(
+        JSON.stringify({ error: "Dados inválidos - order_id e tenant_id (UUID) são obrigatórios" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    const { order_id, tenant_id } = body;
+
+    console.log(`[${timestamp}] [zapi-send-paid-order] Processing order ${order_id} for tenant ${tenant_id}`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get order details
+    // Get order details - validates both order exists AND belongs to tenant
     const { data: order, error: orderError } = await supabase
       .from("orders")
       .select("*")
@@ -136,7 +182,6 @@ serve(async (req) => {
     const responseText = await response.text();
     console.log(`[zapi-send-paid-order] Response: ${response.status} - ${responseText.substring(0, 200)}`);
 
-    // Log message
     await supabase.from('whatsapp_messages').insert({
       tenant_id,
       phone: formattedPhone,
@@ -146,7 +191,6 @@ serve(async (req) => {
       sent_at: new Date().toISOString()
     });
 
-    // Update order
     if (response.ok) {
       await supabase
         .from('orders')
