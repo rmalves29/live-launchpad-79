@@ -438,6 +438,7 @@ export type Database = {
           tenant_id: string
           updated_at: string | null
           webhook_secret: string
+          zapi_client_token: string | null
           zapi_instance_id: string | null
           zapi_token: string | null
         }
@@ -453,6 +454,7 @@ export type Database = {
           tenant_id: string
           updated_at?: string | null
           webhook_secret: string
+          zapi_client_token?: string | null
           zapi_instance_id?: string | null
           zapi_token?: string | null
         }
@@ -468,6 +470,7 @@ export type Database = {
           tenant_id?: string
           updated_at?: string | null
           webhook_secret?: string
+          zapi_client_token?: string | null
           zapi_instance_id?: string | null
           zapi_token?: string | null
         }

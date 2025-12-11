@@ -35,7 +35,7 @@ serve(async (req) => {
     // Get Z-API integration config for this tenant
     const { data: integration, error: integrationError } = await supabase
       .from("integration_whatsapp")
-      .select("zapi_instance_id, zapi_token, is_active, provider")
+      .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
       .eq("tenant_id", tenant_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -80,6 +80,7 @@ serve(async (req) => {
 
     const instanceId = integration.zapi_instance_id;
     const token = integration.zapi_token;
+    const clientToken = integration.zapi_client_token;
     const baseUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}`;
 
     let endpoint = "";
@@ -147,11 +148,18 @@ serve(async (req) => {
     const targetUrl = `${baseUrl}${endpoint}`;
     console.log(`[zapi-proxy] Calling: ${method} ${targetUrl}`);
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json"
+    };
+    
+    // Add Client-Token header if configured
+    if (clientToken) {
+      headers["Client-Token"] = clientToken;
+    }
+
     const fetchOptions: RequestInit = {
       method,
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers,
     };
 
     if (body && method === "POST") {
