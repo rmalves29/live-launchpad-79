@@ -150,8 +150,7 @@ serve(async (req) => {
     const fetchOptions: RequestInit = {
       method,
       headers: {
-        "Content-Type": "application/json",
-        "Client-Token": token
+        "Content-Type": "application/json"
       },
     };
 
