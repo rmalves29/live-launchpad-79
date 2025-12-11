@@ -627,6 +627,7 @@ const Checkout = () => {
         street: data.street,
         number: data.number,
         complement: data.complement,
+        neighborhood: data.neighborhood,
         city: data.city,
         state: data.state,
       };
@@ -738,6 +739,7 @@ const Checkout = () => {
           street: customer.street || '',
           number: customer.number || '',
           complement: customer.complement || '',
+          neighborhood: customer.neighborhood || '',
           city: customer.city || '',
           state: customer.state || ''
         };
