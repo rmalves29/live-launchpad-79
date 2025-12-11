@@ -13,6 +13,7 @@ interface ZAPIIntegration {
   id: string;
   zapi_instance_id: string | null;
   zapi_token: string | null;
+  zapi_client_token: string | null;
   provider: string;
   is_active: boolean;
   connected_phone: string | null;
@@ -26,7 +27,9 @@ export function ZAPISettings() {
   const [integration, setIntegration] = useState<ZAPIIntegration | null>(null);
   const [instanceId, setInstanceId] = useState('');
   const [token, setToken] = useState('');
+  const [clientToken, setClientToken] = useState('');
   const [showToken, setShowToken] = useState(false);
+  const [showClientToken, setShowClientToken] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loadingQR, setLoadingQR] = useState(false);
 
@@ -41,7 +44,7 @@ export function ZAPISettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-        .select('id, zapi_instance_id, zapi_token, provider, is_active, connected_phone')
+        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
@@ -50,9 +53,10 @@ export function ZAPISettings() {
       }
 
       if (data) {
-        setIntegration(data);
+        setIntegration(data as ZAPIIntegration);
         setInstanceId(data.zapi_instance_id || '');
         setToken(data.zapi_token || '');
+        setClientToken(data.zapi_client_token || '');
       }
     } catch (error: any) {
       console.error('Error loading Z-API integration:', error);
@@ -86,6 +90,7 @@ export function ZAPISettings() {
           .update({
             zapi_instance_id: instanceId,
             zapi_token: token,
+            zapi_client_token: clientToken || null,
             provider: 'zapi',
             updated_at: new Date().toISOString()
           })
@@ -99,6 +104,7 @@ export function ZAPISettings() {
             tenant_id: tenant.id,
             zapi_instance_id: instanceId,
             zapi_token: token,
+            zapi_client_token: clientToken || null,
             provider: 'zapi',
             instance_name: tenant.name || 'default',
             webhook_secret: crypto.randomUUID(),
@@ -233,6 +239,32 @@ export function ZAPISettings() {
               {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </Button>
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="client-token">Client-Token (Segurança)</Label>
+          <div className="relative">
+            <Input
+              id="client-token"
+              type={showClientToken ? 'text' : 'password'}
+              placeholder="Token de segurança opcional"
+              value={clientToken}
+              onChange={(e) => setClientToken(e.target.value)}
+              className="pr-10"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-0 top-0 h-full px-3"
+              onClick={() => setShowClientToken(!showClientToken)}
+            >
+              {showClientToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Configure o Client-Token no painel Z-API em Segurança e insira aqui o mesmo valor
+          </p>
         </div>
 
         {integration?.provider === 'zapi' && (
