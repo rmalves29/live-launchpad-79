@@ -17,6 +17,7 @@ interface TenantContextType {
   error: string | null;
   isValidSubdomain: boolean;
   tenantId: string | null;
+  tenantSlug: string | null;
   isMainSite: boolean;
 }
 
@@ -30,6 +31,7 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
   const { tenant, loading, error, isValidSubdomain } = useTenant();
 
   const tenantId = tenant?.id || null;
+  const tenantSlug = tenant?.slug || null;
   const isMainSite = !tenant; // true se estiver no site principal (sem subdomínio)
 
   const value: TenantContextType = {
@@ -38,6 +40,7 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
     error,
     isValidSubdomain,
     tenantId,
+    tenantSlug,
     isMainSite,
   };
 
