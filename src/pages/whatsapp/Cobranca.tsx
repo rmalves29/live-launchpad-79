@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Send, Users, Calendar, Filter } from 'lucide-react';
+import { Loader2, Send, Users, Calendar, Filter, Tag, RefreshCw } from 'lucide-react';
 import { normalizeForSending } from '@/lib/phone-utils';
 
 interface FilterCriteria {
@@ -33,6 +33,30 @@ interface SendStatus {
   error?: string;
 }
 
+interface WhatsAppTag {
+  id: string;
+  name: string;
+  color: number;
+}
+
+// Helper function to get tag color from Z-API color index
+const getTagColor = (colorIndex: number): string => {
+  const colors: Record<number, string> = {
+    0: '#808080', // Cinza
+    1: '#25D366', // Verde
+    2: '#128C7E', // Verde escuro
+    3: '#FFA500', // Laranja
+    4: '#E91E63', // Rosa
+    5: '#9C27B0', // Roxo
+    6: '#2196F3', // Azul
+    7: '#00BCD4', // Ciano
+    8: '#4CAF50', // Verde claro
+    9: '#FF5722', // Vermelho
+    10: '#795548', // Marrom
+  };
+  return colors[colorIndex] || '#808080';
+};
+
 export default function Cobranca() {
   const { toast } = useToast();
   const { tenant } = useTenant();
@@ -51,6 +75,11 @@ export default function Cobranca() {
   const [whatsappApiUrl, setWhatsappApiUrl] = useState<string | null>(null);
   const [sendStatuses, setSendStatuses] = useState<Record<string, SendStatus>>({});
   
+  // Tags state
+  const [tags, setTags] = useState<WhatsAppTag[]>([]);
+  const [selectedTagId, setSelectedTagId] = useState<string>('');
+  const [loadingTags, setLoadingTags] = useState(false);
+  
   // Configurações de timer para envio
   const [delayBetweenMessages, setDelayBetweenMessages] = useState(3); // segundos entre cada mensagem
   const [messagesBeforePause, setMessagesBeforePause] = useState(10); // qtd de mensagens antes da pausa
@@ -60,7 +89,63 @@ export default function Cobranca() {
   useEffect(() => {
     loadDefaultTemplate();
     loadWhatsAppUrl();
+    if (tenant?.id) {
+      loadTags();
+    }
   }, [tenant]);
+
+  const loadTags = async () => {
+    if (!tenant?.id) return;
+    
+    setLoadingTags(true);
+    try {
+      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+        body: { action: 'list-tags', tenant_id: tenant.id }
+      });
+
+      if (error) throw error;
+      
+      if (Array.isArray(data)) {
+        setTags(data);
+        console.log('✅ Tags carregadas:', data.length);
+      } else {
+        console.warn('⚠️ Resposta de tags não é array:', data);
+        setTags([]);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar tags:', error);
+      toast({
+        title: 'Aviso',
+        description: 'Não foi possível carregar as tags do WhatsApp',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingTags(false);
+    }
+  };
+
+  const addTagToContact = async (phone: string, tagId: string): Promise<boolean> => {
+    if (!tenant?.id || !tagId) return true; // Se não tiver tag selecionada, sucesso
+    
+    try {
+      const formattedPhone = normalizeForSending(phone);
+      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+        body: { 
+          action: 'add-tag', 
+          tenant_id: tenant.id,
+          phone: formattedPhone,
+          tagId: tagId
+        }
+      });
+
+      if (error) throw error;
+      console.log(`✅ Tag adicionada ao contato ${formattedPhone}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Erro ao adicionar tag ao contato ${phone}:`, error);
+      return false;
+    }
+  };
 
   const loadWhatsAppUrl = async () => {
     try {
@@ -190,21 +275,26 @@ export default function Cobranca() {
       return;
     }
 
-    if (!whatsappApiUrl) {
+    if (!tenant?.id) {
       toast({
         title: 'Erro',
-        description: 'Servidor WhatsApp não configurado. Verifique as configurações.',
+        description: 'Tenant não identificado',
         variant: 'destructive'
       });
-      console.error('❌ whatsappApiUrl não está definido');
       return;
     }
 
     console.log('🚀 Iniciando envio em massa para', customers.length, 'clientes');
-    console.log('📡 URL do servidor:', whatsappApiUrl);
+    if (selectedTagId) {
+      const tagName = tags.find(t => t.id === selectedTagId)?.name;
+      console.log(`🏷️ Tag selecionada: ${tagName} (${selectedTagId})`);
+    }
 
     setSending(true);
     setSendProgress({ current: 0, total: customers.length });
+
+    let successCount = 0;
+    let errorCount = 0;
 
     try {
       for (let i = 0; i < customers.length; i++) {
@@ -227,41 +317,42 @@ export default function Cobranca() {
         const phoneToSend = normalizeForSending(customer.customer_phone);
         console.log(`📱 Enviando para ${phoneToSend} (${i + 1}/${customers.length})`);
 
-        // Enviar mensagem diretamente para o servidor Node.js WhatsApp
+        // Enviar mensagem via Z-API
         try {
-          const response = await fetch(`${whatsappApiUrl}/send`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-tenant-id': tenant?.id || ''
-            },
-            body: JSON.stringify({
+          const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+            body: { 
+              action: 'send-text', 
+              tenant_id: tenant.id,
               phone: phoneToSend,
               message: personalizedMessage
-            })
+            }
           });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`❌ Erro ao enviar para ${phoneToSend}:`, errorText);
+          if (error) {
+            console.error(`❌ Erro ao enviar para ${phoneToSend}:`, error);
             
-            // Atualizar status para erro
             setSendStatuses(prev => ({
               ...prev,
               [customer.customer_phone]: { 
                 phone: customer.customer_phone, 
                 status: 'error',
-                error: `Erro HTTP ${response.status}`
+                error: error.message || 'Erro ao enviar'
               }
             }));
+            errorCount++;
           } else {
             console.log(`✅ Mensagem enviada com sucesso para ${phoneToSend}`);
             
-            // Atualizar status para enviado
+            // Adicionar tag ao contato se selecionada
+            if (selectedTagId) {
+              await addTagToContact(phoneToSend, selectedTagId);
+            }
+            
             setSendStatuses(prev => ({
               ...prev,
               [customer.customer_phone]: { phone: customer.customer_phone, status: 'sent' }
             }));
+            successCount++;
           }
 
           // Registrar no banco de dados
@@ -276,7 +367,6 @@ export default function Cobranca() {
         } catch (error) {
           console.error(`❌ Erro ao enviar mensagem para ${customer.customer_phone}:`, error);
           
-          // Atualizar status para erro
           setSendStatuses(prev => ({
             ...prev,
             [customer.customer_phone]: { 
@@ -285,6 +375,7 @@ export default function Cobranca() {
               error: error instanceof Error ? error.message : 'Erro desconhecido'
             }
           }));
+          errorCount++;
         }
 
         // Sistema de delay customizado
@@ -300,12 +391,9 @@ export default function Cobranca() {
         }
       }
 
-      const successCount = Object.values(sendStatuses).filter(s => s.status === 'sent').length;
-      const errorCount = Object.values(sendStatuses).filter(s => s.status === 'error').length;
-
       toast({
         title: 'Envio concluído',
-        description: `${successCount} enviada(s), ${errorCount} erro(s)`,
+        description: `${successCount} enviada(s), ${errorCount} erro(s)${selectedTagId ? '. Tags aplicadas!' : ''}`,
       });
 
       console.log('✅ Processo de envio finalizado');
@@ -394,6 +482,72 @@ export default function Cobranca() {
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Card de Tags */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Tag className="w-5 h-5" />
+            Tag do WhatsApp
+          </CardTitle>
+          <CardDescription>
+            Selecione uma tag para aplicar a todos os contatos que receberão a mensagem
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="tag">Tag (opcional)</Label>
+              <Select
+                value={selectedTagId}
+                onValueChange={setSelectedTagId}
+              >
+                <SelectTrigger id="tag" className="w-full">
+                  <SelectValue placeholder="Selecione uma tag..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Nenhuma tag</SelectItem>
+                  {tags.map((tag) => (
+                    <SelectItem key={tag.id} value={tag.id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: getTagColor(tag.color) }}
+                        />
+                        {tag.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="pt-6">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={loadTags}
+                disabled={loadingTags}
+                title="Recarregar tags"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingTags ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+          </div>
+          {tags.length === 0 && !loadingTags && (
+            <p className="text-sm text-muted-foreground mt-2">
+              Nenhuma tag encontrada. Crie tags no WhatsApp Business para utilizá-las aqui.
+            </p>
+          )}
+          {selectedTagId && (
+            <div className="mt-3 flex items-center gap-2">
+              <Badge variant="secondary">
+                <Tag className="w-3 h-3 mr-1" />
+                Tag selecionada: {tags.find(t => t.id === selectedTagId)?.name}
+              </Badge>
+            </div>
+          )}
         </CardContent>
       </Card>
 
