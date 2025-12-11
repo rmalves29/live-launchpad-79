@@ -44,7 +44,15 @@ import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
 import { useTenantContext } from "@/contexts/TenantContext";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      staleTime: 5 * 60 * 1000, // 5 minutos
+    },
+  },
+});
 
 const AppContent = () => {
   const location = useLocation();
