@@ -294,6 +294,7 @@ export type Database = {
           id: number
           instagram: string | null
           name: string
+          neighborhood: string | null
           number: string | null
           phone: string
           state: string | null
@@ -311,6 +312,7 @@ export type Database = {
           id?: number
           instagram?: string | null
           name: string
+          neighborhood?: string | null
           number?: string | null
           phone: string
           state?: string | null
@@ -328,6 +330,7 @@ export type Database = {
           id?: number
           instagram?: string | null
           name?: string
+          neighborhood?: string | null
           number?: string | null
           phone?: string
           state?: string | null
