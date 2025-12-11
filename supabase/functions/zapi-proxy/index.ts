@@ -16,7 +16,7 @@ serve(async (req) => {
   const timestamp = new Date().toISOString();
 
   try {
-    const { action, tenant_id, message, phone, mediaUrl, caption } = await req.json();
+    const { action, tenant_id, message, phone, mediaUrl, caption, tagId } = await req.json();
 
     console.log(`[${timestamp}] [zapi-proxy] Action: ${action}, Tenant: ${tenant_id}`);
 
@@ -150,6 +150,22 @@ serve(async (req) => {
           phone: phone, // groupId
           message: message
         };
+        break;
+
+      case "list-tags":
+        endpoint = "/tags";
+        method = "GET";
+        break;
+
+      case "add-tag":
+        if (!phone || !tagId) {
+          return new Response(
+            JSON.stringify({ error: "phone e tagId são obrigatórios para add-tag" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        endpoint = `/chats/${phone}/tags/${tagId}/add`;
+        method = "PUT";
         break;
 
       default:
