@@ -134,7 +134,6 @@ const Navbar = () => {
                         </div>
                         {[
                           { path: '/whatsapp/zapi', label: 'Z-API' },
-                          { path: '/whatsapp/conexao', label: 'Baileys' },
                           { path: '/whatsapp/templates', label: 'Templates' },
                           { path: '/whatsapp/cobranca', label: 'Cobrança' },
                         ].map((item) => (
@@ -223,9 +222,6 @@ const Navbar = () => {
                       <div className="w-2 h-2 bg-success rounded-full"></div>
                       Z-API (Recomendado)
                     </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate('/whatsapp/conexao')} className="cursor-pointer">
-                    Baileys (Self-hosted)
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate('/whatsapp/templates')} className="cursor-pointer">
                     Templates
