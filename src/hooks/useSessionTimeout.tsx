@@ -3,13 +3,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 
-const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 minutos em milissegundos
+const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 minutos
 
 export const useSessionTimeout = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const initialCheckDone = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialized = useRef(false);
 
   const handleSessionExpired = useCallback(async () => {
     await supabase.auth.signOut();
@@ -19,7 +19,7 @@ export const useSessionTimeout = () => {
       description: "Você foi desconectado por inatividade.",
       variant: "destructive"
     });
-    navigate('/', { replace: true });
+    navigate('/auth', { replace: true });
   }, [navigate, toast]);
 
   const resetTimeout = useCallback(() => {
@@ -33,28 +33,34 @@ export const useSessionTimeout = () => {
   }, [handleSessionExpired]);
 
   useEffect(() => {
-    // Verificar sessão existente apenas uma vez ao montar
-    if (!initialCheckDone.current) {
-      initialCheckDone.current = true;
-      const lastActivity = localStorage.getItem('lastActivity');
-      if (lastActivity) {
-        const timeSinceLastActivity = Date.now() - parseInt(lastActivity);
-        if (timeSinceLastActivity > TIMEOUT_DURATION) {
-          // Sessão já expirou - mas não navegar automaticamente aqui
-          // Deixar o sistema de auth lidar com isso
-          supabase.auth.signOut();
-          localStorage.removeItem('lastActivity');
-          return;
-        }
-      }
-      resetTimeout();
-    }
+    // Só inicializa uma vez
+    if (isInitialized.current) return;
+    isInitialized.current = true;
 
-    // Eventos que resetam o timeout
-    const events = ['mousedown', 'keypress', 'scroll', 'touchstart', 'click'];
+    // Verificar se sessão expirou (só na inicialização)
+    const lastActivity = localStorage.getItem('lastActivity');
+    if (lastActivity) {
+      const timeSinceLastActivity = Date.now() - parseInt(lastActivity);
+      if (timeSinceLastActivity > TIMEOUT_DURATION) {
+        // Sessão expirou silenciosamente
+        supabase.auth.signOut();
+        localStorage.removeItem('lastActivity');
+        return;
+      }
+    }
+    
+    // Iniciar timeout
+    resetTimeout();
+
+    // Eventos que resetam o timeout - apenas interações diretas
+    const events = ['mousedown', 'keypress', 'touchstart'];
+    
+    const handleActivity = () => {
+      resetTimeout();
+    };
     
     events.forEach(event => {
-      document.addEventListener(event, resetTimeout, true);
+      document.addEventListener(event, handleActivity, { passive: true });
     });
 
     return () => {
@@ -62,7 +68,7 @@ export const useSessionTimeout = () => {
         clearTimeout(timeoutRef.current);
       }
       events.forEach(event => {
-        document.removeEventListener(event, resetTimeout, true);
+        document.removeEventListener(event, handleActivity);
       });
     };
   }, [resetTimeout]);

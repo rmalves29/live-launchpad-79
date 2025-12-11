@@ -1,32 +1,14 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useAuth } from "@/hooks/useAuth";
 
 interface RequireAuthProps {
   children: ReactNode;
 }
 
 export default function RequireAuth({ children }: RequireAuthProps) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, isLoading } = useAuth();
   const location = useLocation();
-
-  useEffect(() => {
-    // Listen for auth changes FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-    });
-
-    // Then check current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   if (isLoading) return null;
 

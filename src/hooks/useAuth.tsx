@@ -34,12 +34,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+    let initialLoadDone = false;
     
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Get initial session - only once
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!isMounted) return;
+      
+      // Se houve erro de refresh token, não fazer logout - manter estado atual
+      if (error) {
+        console.warn('Session error (ignoring):', error.message);
+        setIsLoading(false);
+        return;
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
+      initialLoadDone = true;
+      
       if (session?.user) {
         loadProfile(session.user.id);
       } else {
@@ -47,29 +58,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Listen for auth changes - only respond to actual sign in/out events
+    // Listen for auth changes - only respond to explicit user actions
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event, newSession) => {
         if (!isMounted) return;
         
-        // Ignorar eventos de TOKEN_REFRESHED para evitar re-renders desnecessários
-        if (event === 'TOKEN_REFRESHED') {
+        // Ignorar eventos que não são ações explícitas do usuário
+        // TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED podem causar re-renders desnecessários
+        if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
           return;
         }
         
-        // Só atualizar estado em eventos significativos
-        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
-          setSession(session);
-          setUser(session?.user ?? null);
-          
-          if (session?.user) {
+        // Só responder a login/logout explícitos
+        if (event === 'SIGNED_IN') {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
+          if (newSession?.user) {
             setTimeout(() => {
-              if (isMounted) loadProfile(session.user.id);
+              if (isMounted) loadProfile(newSession.user.id);
             }, 0);
-          } else {
-            setProfile(null);
-            setIsLoading(false);
           }
+        } else if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setIsLoading(false);
         }
       }
     );
