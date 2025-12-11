@@ -66,29 +66,16 @@ export default function SendFlow() {
 
     setCheckingConnection(true);
     try {
-      const { data: integration, error } = await supabaseTenant
-        .from('integration_whatsapp')
-        .select('api_url')
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (error || !integration?.api_url) {
-        setWhatsappConnected(false);
-        return;
-      }
-
-      const statusResponse = await fetch(`${integration.api_url}/status/${tenant.id}`, {
-        method: 'GET',
-        headers: { 'x-tenant-id': tenant.id }
+      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+        body: { action: 'status', tenant_id: tenant.id }
       });
 
-      if (!statusResponse.ok) {
+      if (error) {
         setWhatsappConnected(false);
         return;
       }
 
-      const statusData = await statusResponse.json();
-      setWhatsappConnected(statusData.success && statusData.status === 'online');
+      setWhatsappConnected(data?.connected === true);
     } catch (error) {
       console.error('Erro ao verificar conexão WhatsApp:', error);
       setWhatsappConnected(false);
@@ -151,60 +138,54 @@ export default function SendFlow() {
 
     setLoadingGroups(true);
     try {
-      const { data: integration, error: integrationError } = await supabaseTenant
-        .from('integration_whatsapp')
-        .select('api_url')
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (integrationError) throw integrationError;
-
-      if (!integration?.api_url) {
-        toast({
-          title: 'Aviso',
-          description: 'Configure a integração WhatsApp nas configurações',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      const response = await fetch(`${integration.api_url}/list-all-groups`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': tenant.id
-        }
+      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+        body: { action: 'list-groups', tenant_id: tenant.id }
       });
 
-      if (!response.ok) {
-        throw new Error('Erro ao buscar grupos do WhatsApp');
+      if (error) throw error;
+
+      // Z-API returns array of chats, filter only groups (isGroup: true)
+      let groupsList: WhatsAppGroup[] = [];
+      
+      if (Array.isArray(data)) {
+        groupsList = data
+          .filter((chat: any) => chat.isGroup === true)
+          .map((chat: any) => ({
+            id: chat.phone || chat.id,
+            name: chat.name || chat.phone || 'Grupo sem nome',
+            participantCount: chat.participants?.length || 0
+          }));
+      } else if (data?.groups && Array.isArray(data.groups)) {
+        groupsList = data.groups.map((g: any) => ({
+          id: g.id || g.phone,
+          name: g.name || 'Grupo sem nome',
+          participantCount: g.participantCount || 0
+        }));
       }
 
-      const data = await response.json();
-
-      if (data.success && data.groups && Array.isArray(data.groups)) {
-        const maxGroups = tenant.max_whatsapp_groups;
-        const limitedGroups = maxGroups && maxGroups > 0 
-          ? data.groups.slice(0, maxGroups) 
-          : data.groups;
-        
-        setGroups(limitedGroups);
+      const maxGroups = tenant.max_whatsapp_groups;
+      const limitedGroups = maxGroups && maxGroups > 0 
+        ? groupsList.slice(0, maxGroups) 
+        : groupsList;
+      
+      setGroups(limitedGroups);
+      
+      if (limitedGroups.length > 0) {
         toast({
           title: 'Grupos carregados',
           description: `${limitedGroups.length} grupo(s) encontrado(s)`,
         });
       } else {
-        setGroups([]);
         toast({
           title: 'Aviso',
-          description: 'Nenhum grupo encontrado',
+          description: 'Nenhum grupo encontrado. Verifique se o WhatsApp está conectado.',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao carregar grupos:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar grupos do WhatsApp',
+        description: error.message || 'Erro ao carregar grupos do WhatsApp',
         variant: 'destructive'
       });
       setGroups([]);
@@ -331,30 +312,12 @@ export default function SendFlow() {
     setSendingStatus('validating');
 
     try {
-      // 1. Buscar integração
-      const { data: integration, error: integrationError } = await supabaseTenant
-        .from('integration_whatsapp')
-        .select('api_url')
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (integrationError || !integration?.api_url) {
-        throw new Error('Integração WhatsApp não configurada');
-      }
-
-      // 2. Validar conexão WhatsApp
-      const statusResponse = await fetch(`${integration.api_url}/status/${tenant?.id}`, {
-        method: 'GET',
-        headers: { 'x-tenant-id': tenant?.id || '' }
+      // 1. Verificar conexão WhatsApp via Z-API
+      const { data: statusData, error: statusError } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+        body: { action: 'status', tenant_id: tenant?.id }
       });
 
-      if (!statusResponse.ok) {
-        throw new Error('Erro ao verificar status do WhatsApp');
-      }
-
-      const statusData = await statusResponse.json();
-      
-      if (!statusData.success || statusData.status !== 'online') {
+      if (statusError || !statusData?.connected) {
         toast({
           title: 'WhatsApp não conectado',
           description: 'Conecte o WhatsApp antes de enviar mensagens',
@@ -366,62 +329,59 @@ export default function SendFlow() {
         return;
       }
 
-      // 3. Preparar mensagens e scheduling
+      // 2. Preparar mensagens
       setSendingStatus('sending');
       const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
       const selectedGroupArray = Array.from(selectedGroups);
+      const total = selectedProductArray.length * selectedGroupArray.length;
+      setTotalMessages(total);
 
-      setTotalMessages(selectedProductArray.length * selectedGroupArray.length);
+      console.log(`📦 Enviando ${total} mensagens via Z-API...`);
 
-      console.log(`📦 Programando envio de ${selectedProductArray.length * selectedGroupArray.length} mensagens para o backend...`);
+      let sentCount = 0;
+      let errorCount = 0;
 
-      const productsPayload = selectedProductArray.map(product => ({
-        id: product.id,
-        code: product.code,
-        name: product.name,
-        message: personalizeMessage(product),
-        productName: product.name
-      }));
+      // 3. Enviar mensagens com delays
+      for (const product of selectedProductArray) {
+        const message = personalizeMessage(product);
+        
+        for (const groupId of selectedGroupArray) {
+          try {
+            const { error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+              body: { 
+                action: 'send-group', 
+                tenant_id: tenant?.id,
+                phone: groupId,
+                message: message
+              }
+            });
 
-      // Build legacy `messages` array (some WhatsApp servers expect this format)
-      const legacyMessages: Array<{ groupId: string; message: string; productName?: string }> = [];
-      for (const prod of productsPayload) {
-        for (const gid of selectedGroupArray) {
-          legacyMessages.push({ groupId: String(gid), message: String(prod.message), productName: prod.productName ? String(prod.productName) : undefined });
+            if (error) {
+              console.error(`Erro ao enviar para grupo ${groupId}:`, error);
+              errorCount++;
+            } else {
+              sentCount++;
+            }
+
+            // Delay entre grupos
+            if (perGroupDelaySeconds > 0) {
+              await new Promise(resolve => setTimeout(resolve, perGroupDelaySeconds * 1000));
+            }
+          } catch (err) {
+            console.error(`Erro ao enviar para grupo ${groupId}:`, err);
+            errorCount++;
+          }
+        }
+
+        // Delay entre produtos
+        if (perProductDelayMinutes > 0 && selectedProductArray.indexOf(product) < selectedProductArray.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, perProductDelayMinutes * 60 * 1000));
         }
       }
 
-      const payload = {
-        // New scheduling API (kept for servers that support it)
-        products: productsPayload,
-        groups: selectedGroupArray,
-        per_group_delay_seconds: perGroupDelaySeconds,
-        per_product_delay_minutes: perProductDelayMinutes,
-        // Legacy compatibility: include tenant_id and messages array for servers that require it
-        tenant_id: tenant?.id,
-        messages: legacyMessages
-      };
-
-      // 4. Enviar scheduling para o backend (o backend enfileira com delays)
-      const sendResponse = await fetch(`${integration.api_url}/sendflow-batch`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': tenant?.id || ''
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!sendResponse.ok) {
-        const errorData = await sendResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Erro ao enviar mensagens');
-      }
-
-      const responseData = await sendResponse.json();
-
       toast({
-        title: '✅ Envio iniciado!',
-        description: `${totalMessages} mensagens adicionadas à fila. O envio está acontecendo no background.`,
+        title: '✅ Envio concluído!',
+        description: `${sentCount} mensagens enviadas${errorCount > 0 ? `, ${errorCount} erros` : ''}.`,
         duration: 10000
       });
 
