@@ -37,7 +37,6 @@ import Debug from "./pages/Debug";
 // WhatsApp
 import WhatsappTemplates from "./pages/whatsapp/Templates";
 import Cobranca from "./pages/whatsapp/Cobranca";
-import ConexaoWhatsApp from "./pages/whatsapp/Conexao";
 import ConexaoZAPI from "./pages/whatsapp/ConexaoZAPI";
 import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
@@ -149,13 +148,8 @@ const AppContent = () => {
           <RequireTenantAuth><Cobranca /></RequireTenantAuth>
         } />
         
-        {/* Rota para conexão WhatsApp Baileys */}
-        <Route path="/whatsapp/conexao" element={
-          <RequireTenantAuth><ConexaoWhatsApp /></RequireTenantAuth>
-        } />
-        
         {/* Rota para conexão WhatsApp Z-API */}
-        <Route path="/whatsapp/zapi" element={
+        <Route path="/whatsapp/conexao" element={
           <RequireTenantAuth><ConexaoZAPI /></RequireTenantAuth>
         } />
         

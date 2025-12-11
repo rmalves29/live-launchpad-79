@@ -1,8 +1,5 @@
 project_id = "hxtbsieodbtzgcvvkeqx"
 
-[functions.whatsapp-proxy]
-verify_jwt = false
-
 [functions.zapi-proxy]
 verify_jwt = false
 
