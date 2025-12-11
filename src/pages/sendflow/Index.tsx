@@ -272,13 +272,34 @@ export default function SendFlow() {
   };
 
   const personalizeMessage = (product: Product) => {
-    return messageTemplate
-      // Support both {{var}} and {var} formats
+    let message = messageTemplate;
+    
+    // Replace basic variables
+    message = message
       .replace(/\{\{?codigo\}?\}/gi, product.code)
       .replace(/\{\{?nome\}?\}/gi, product.name)
-      .replace(/\{\{?cor\}?\}/gi, product.color || 'N/A')
-      .replace(/\{\{?tamanho\}?\}/gi, product.size || 'N/A')
       .replace(/\{\{?valor\}?\}/gi, formatPrice(product.price));
+    
+    // Handle color - remove entire line if empty
+    if (product.color && product.color.trim()) {
+      message = message.replace(/\{\{?cor\}?\}/gi, product.color);
+    } else {
+      // Remove lines containing color placeholder
+      message = message.replace(/.*\{\{?cor\}?\}.*\n?/gi, '');
+    }
+    
+    // Handle size - remove entire line if empty
+    if (product.size && product.size.trim()) {
+      message = message.replace(/\{\{?tamanho\}?\}/gi, product.size);
+    } else {
+      // Remove lines containing size placeholder
+      message = message.replace(/.*\{\{?tamanho\}?\}.*\n?/gi, '');
+    }
+    
+    // Clean up multiple consecutive line breaks
+    message = message.replace(/\n{3,}/g, '\n\n');
+    
+    return message.trim();
   };
 
   const handleSendMessages = async () => {
