@@ -92,12 +92,16 @@ function formatPhoneNumber(phone: string): string {
 }
 
 function formatMessage(template: string, data: ItemAddedRequest): string {
+  const unitPrice = data.unit_price.toFixed(2);
   const total = (data.quantity * data.unit_price).toFixed(2);
   
   return template
     .replace(/\{\{produto\}\}/g, `${data.product_name} (${data.product_code})`)
     .replace(/\{\{quantidade\}\}/g, String(data.quantity))
-    .replace(/\{\{valor\}\}/g, total)
+    .replace(/\{\{valor\}\}/g, unitPrice)
+    .replace(/\{\{preco\}\}/g, unitPrice)
+    .replace(/\{\{total\}\}/g, total)
+    .replace(/\{\{subtotal\}\}/g, total)
     .replace(/\{\{codigo\}\}/g, data.product_code);
 }
 
