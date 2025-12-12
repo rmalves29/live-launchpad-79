@@ -24,7 +24,7 @@ interface Product {
   size?: string;
   image_url?: string;
   is_active: boolean;
-  sale_type: 'LIVE' | 'BAZAR';
+  sale_type: 'LIVE' | 'BAZAR' | 'AMBOS';
 }
 
 const Produtos = () => {
@@ -47,7 +47,8 @@ const Produtos = () => {
     size: '',
     image_url: '',
     is_active: true,
-    sale_type: 'BAZAR' as 'LIVE' | 'BAZAR'
+    sale_type_bazar: true,
+    sale_type_live: false
   });
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -88,6 +89,15 @@ const Produtos = () => {
       return;
     }
 
+    if (!formData.sale_type_bazar && !formData.sale_type_live) {
+      toast({
+        title: 'Erro',
+        description: 'Selecione pelo menos um tipo de venda',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     // Garantir que um tenant esteja definido no cliente multi-tenant
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
     if (!currentTenantId) {
@@ -109,6 +119,16 @@ const Produtos = () => {
         imageUrl = await uploadImage(selectedFile);
       }
 
+      // Determinar sale_type baseado nos checkboxes
+      let saleType: 'BAZAR' | 'LIVE' | 'AMBOS' = 'BAZAR';
+      if (formData.sale_type_bazar && formData.sale_type_live) {
+        saleType = 'AMBOS';
+      } else if (formData.sale_type_live) {
+        saleType = 'LIVE';
+      } else {
+        saleType = 'BAZAR';
+      }
+
       const productData = {
         code: formData.code,
         name: formData.name,
@@ -118,7 +138,7 @@ const Produtos = () => {
         size: formData.size || null,
         image_url: imageUrl,
         is_active: formData.is_active,
-        sale_type: formData.sale_type
+        sale_type: saleType
       };
 
       if (editingProduct) {
@@ -157,7 +177,8 @@ const Produtos = () => {
         size: '',
         image_url: '',
         is_active: true,
-        sale_type: 'BAZAR'
+        sale_type_bazar: true,
+        sale_type_live: false
       });
       setSelectedFile(null);
       loadProducts();
@@ -225,6 +246,7 @@ const Produtos = () => {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
+    const saleType = product.sale_type || 'BAZAR';
     setFormData({
         code: product.code,
         name: product.name,
@@ -234,7 +256,8 @@ const Produtos = () => {
         size: product.size || '',
         image_url: product.image_url || '',
         is_active: product.is_active,
-        sale_type: product.sale_type || 'BAZAR'
+        sale_type_bazar: saleType === 'BAZAR' || saleType === 'AMBOS',
+        sale_type_live: saleType === 'LIVE' || saleType === 'AMBOS'
     });
     setSelectedFile(null);
     setIsDialogOpen(true);
@@ -323,7 +346,9 @@ const Produtos = () => {
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.code.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = saleTypeFilter === 'ALL' || product.sale_type === saleTypeFilter;
+    const matchesType = saleTypeFilter === 'ALL' || 
+      product.sale_type === saleTypeFilter || 
+      (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));
     return matchesSearch && matchesType;
   });
 
@@ -410,19 +435,32 @@ const Produtos = () => {
                 </div>
 
                 <div>
-                  <Label htmlFor="sale_type">Tipo de Venda *</Label>
-                  <Select
-                    value={formData.sale_type}
-                    onValueChange={(value: 'LIVE' | 'BAZAR') => setFormData({ ...formData, sale_type: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="BAZAR">BAZAR (Pedidos Manual)</SelectItem>
-                      <SelectItem value="LIVE">LIVE</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Tipo de Venda *</Label>
+                  <div className="flex flex-col gap-2 mt-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="sale_type_bazar"
+                        checked={formData.sale_type_bazar}
+                        onCheckedChange={(checked) => setFormData({ ...formData, sale_type_bazar: checked as boolean })}
+                      />
+                      <Label htmlFor="sale_type_bazar" className="font-normal cursor-pointer">
+                        BAZAR (Pedidos Manual)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="sale_type_live"
+                        checked={formData.sale_type_live}
+                        onCheckedChange={(checked) => setFormData({ ...formData, sale_type_live: checked as boolean })}
+                      />
+                      <Label htmlFor="sale_type_live" className="font-normal cursor-pointer">
+                        LIVE
+                      </Label>
+                    </div>
+                  </div>
+                  {!formData.sale_type_bazar && !formData.sale_type_live && (
+                    <p className="text-xs text-destructive mt-1">Selecione pelo menos um tipo</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -622,9 +660,16 @@ const Produtos = () => {
                           <TableCell>{formatCurrency(product.price)}</TableCell>
                           <TableCell>{product.stock}</TableCell>
                           <TableCell>
-                            <Badge variant={product.sale_type === 'LIVE' ? 'destructive' : 'outline'}>
-                              {product.sale_type === 'LIVE' ? 'LIVE' : 'BAZAR'}
-                            </Badge>
+                            {product.sale_type === 'AMBOS' ? (
+                              <div className="flex gap-1">
+                                <Badge variant="outline">BAZAR</Badge>
+                                <Badge variant="destructive">LIVE</Badge>
+                              </div>
+                            ) : (
+                              <Badge variant={product.sale_type === 'LIVE' ? 'destructive' : 'outline'}>
+                                {product.sale_type}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge variant={product.is_active ? 'default' : 'secondary'}>
