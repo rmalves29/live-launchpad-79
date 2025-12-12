@@ -95,6 +95,56 @@ const Clientes = () => {
   const [orderSearchTerm, setOrderSearchTerm] = useState('');
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
   const [showOrderDetailsDialog, setShowOrderDetailsDialog] = useState(false);
+  const [searchingCep, setSearchingCep] = useState(false);
+
+  const searchCep = async (cep: string) => {
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length !== 8) {
+      toast({
+        title: 'CEP inválido',
+        description: 'O CEP deve ter 8 dígitos',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setSearchingCep(true);
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      const data = await response.json();
+
+      if (data.erro) {
+        toast({
+          title: 'CEP não encontrado',
+          description: 'Verifique o CEP informado',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setEditingCustomer(prev => prev ? {
+        ...prev,
+        street: data.logradouro || prev.street,
+        neighborhood: data.bairro || prev.neighborhood,
+        city: data.localidade || prev.city,
+        state: data.uf || prev.state
+      } : null);
+
+      toast({
+        title: 'Endereço encontrado',
+        description: 'Campos preenchidos automaticamente'
+      });
+    } catch (error) {
+      console.error('Erro ao buscar CEP:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao buscar CEP. Tente novamente.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSearchingCep(false);
+    }
+  };
 
   const normalizePhone = (phone: string): string => {
     return normalizeForStorage(phone);
@@ -902,11 +952,27 @@ const Clientes = () => {
                                              </div>
                                             <div>
                                               <Label htmlFor="cep">CEP</Label>
-                                              <Input
-                                                id="cep"
-                                                value={editingCustomer.cep || ''}
-                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, cep: e.target.value} : null)}
-                                              />
+                                              <div className="flex gap-2">
+                                                <Input
+                                                  id="cep"
+                                                  value={editingCustomer.cep || ''}
+                                                  onChange={(e) => setEditingCustomer(prev => prev ? {...prev, cep: e.target.value} : null)}
+                                                  placeholder="00000-000"
+                                                />
+                                                <Button
+                                                  type="button"
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => searchCep(editingCustomer.cep || '')}
+                                                  disabled={searchingCep || !editingCustomer.cep}
+                                                >
+                                                  {searchingCep ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                  ) : (
+                                                    <Search className="h-4 w-4" />
+                                                  )}
+                                                </Button>
+                                              </div>
                                             </div>
                                             <div className="col-span-2">
                                               <Label htmlFor="street">Rua/Avenida</Label>
