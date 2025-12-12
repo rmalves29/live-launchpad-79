@@ -1076,54 +1076,93 @@ const Checkout = () => {
       return;
     }
 
+    if (!tenantId) {
+      toast({
+        title: 'Erro',
+        description: 'Tenant não identificado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     const normalizedPhone = normalizeForStorage(phone);
     setLoadingHistory(true);
     
     try {
-      const { data: orders, error } = await supabaseTenant
+      // Buscar pedidos pagos - usando raw para evitar problemas com wrapper
+      const { data: allOrders, error } = await supabaseTenant.raw
         .from('orders')
         .select('*')
-        .eq('customer_phone', normalizedPhone)
+        .eq('tenant_id', tenantId)
         .eq('is_paid', true)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
+      // Filtrar pelo telefone normalizado
+      const orders = (allOrders || []).filter(order => {
+        const orderPhone = normalizeForStorage(order.customer_phone);
+        return orderPhone === normalizedPhone;
+      });
+
       // Load cart items for each order
       const ordersWithItems = await Promise.all(
         (orders || []).map(async (order) => {
           if (!order.cart_id) {
+            console.log(`⚠️ Histórico: Pedido ${order.id} sem cart_id`);
             return { ...order, items: [] };
           }
 
-          const { data: cartItems, error: itemsError } = await supabaseTenant
+          console.log(`🔍 Histórico: Buscando items para pedido ${order.id}, cart_id: ${order.cart_id}`);
+
+          // Buscar cart_items usando raw
+          const { data: cartItems, error: itemsError } = await supabaseTenant.raw
             .from('cart_items')
-            .select(`
-              id,
-              qty,
-              unit_price,
-              product:products!cart_items_product_id_fkey(
-                name,
-                code,
-                image_url
-              )
-            `)
-            .eq('cart_id', order.cart_id);
+            .select('id, qty, unit_price, product_id, tenant_id')
+            .eq('cart_id', order.cart_id)
+            .eq('tenant_id', tenantId);
+
+          console.log(`📦 Histórico: Cart items encontrados:`, cartItems?.length || 0);
 
           if (itemsError) {
             console.error('Error loading cart items:', itemsError);
             return { ...order, items: [] };
           }
 
-          const items = (cartItems || []).map(item => ({
-            id: item.id,
-            product_name: item.product?.name || '',
-            product_code: item.product?.code || '',
-            qty: item.qty,
-            unit_price: Number(item.unit_price),
-            image_url: item.product?.image_url
-          }));
+          if (!cartItems || cartItems.length === 0) {
+            console.warn(`⚠️ Nenhum cart item encontrado para cart_id ${order.cart_id}`);
+            return { ...order, items: [] };
+          }
 
+          // Buscar produtos correspondentes
+          const productIds = cartItems.map(item => item.product_id);
+          const { data: products, error: productsError } = await supabaseTenant.raw
+            .from('products')
+            .select('id, name, code, image_url, tenant_id')
+            .in('id', productIds)
+            .eq('tenant_id', tenantId);
+
+          console.log(`📦 Histórico: Produtos encontrados:`, products?.length || 0);
+
+          if (productsError) {
+            console.error('Error loading products:', productsError);
+            return { ...order, items: [] };
+          }
+
+          // Mapear cart_items com produtos
+          const items = (cartItems || []).map(item => {
+            const product = (products || []).find(p => p.id === item.product_id);
+            return {
+              id: item.id,
+              product_name: product?.name || `Produto ID ${item.product_id}`,
+              product_code: product?.code || '',
+              qty: item.qty,
+              unit_price: Number(item.unit_price),
+              image_url: product?.image_url
+            };
+          });
+
+          console.log(`✅ Histórico: Pedido ${order.id} processado com ${items.length} items`);
           return { ...order, items };
         })
       );
