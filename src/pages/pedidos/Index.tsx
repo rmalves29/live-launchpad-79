@@ -1120,7 +1120,7 @@
                         <TableCell>
                           <Badge variant="outline">#{order.id}</Badge>
                         </TableCell>
-                        <TableCell>{formatPhoneForDisplay(normalizeForStorage(normalizeForSending(order.customer_phone)))}</TableCell>
+                        <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                         <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
