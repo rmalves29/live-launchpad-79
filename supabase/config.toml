@@ -1,5 +1,8 @@
 project_id = "hxtbsieodbtzgcvvkeqx"
 
+[functions.create-tenant-admin]
+verify_jwt = false
+
 [functions.zapi-proxy]
 verify_jwt = true
 
