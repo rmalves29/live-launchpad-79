@@ -235,13 +235,55 @@
         return;
       }
 
-      // Se está MARCANDO como pago, pede confirmação
-      const confirmed = confirm('Deseja marcar este pedido como pago e enviar a confirmação por WhatsApp?');
+      // Se está MARCANDO como pago, pede confirmação com opções
+      const sendMessage = confirm('Deseja marcar este pedido como pago?\n\nClique OK para marcar como pago E enviar confirmação por WhatsApp.\nClique Cancelar para mais opções.');
       
-      if (!confirmed) {
+      // Se clicou Cancelar, oferece opção de marcar sem mensagem
+      if (!sendMessage) {
+        const silentConfirm = confirm('Deseja marcar como pago SEM enviar mensagem WhatsApp?');
+        if (!silentConfirm) {
+          return;
+        }
+        
+        // Marcar como pago silenciosamente (sem enviar mensagem)
+        setProcessingIds(prev => new Set(prev).add(orderId));
+        
+        try {
+          const { error } = await supabaseTenant
+            .from('orders')
+            .update({ is_paid: true, skip_paid_message: true })
+            .eq('id', orderId);
+
+          if (error) throw error;
+          
+          setOrders(prev => prev.map(order => 
+            order.id === orderId 
+              ? { ...order, is_paid: true }
+              : order
+          ));
+
+          toast({
+            title: 'Sucesso',
+            description: 'Pedido marcado como pago (sem envio de mensagem)'
+          });
+        } catch (error) {
+          console.error('❌ Erro ao atualizar status:', error);
+          toast({
+            title: 'Erro',
+            description: 'Erro ao atualizar status do pagamento',
+            variant: 'destructive'
+          });
+        } finally {
+          setProcessingIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(orderId);
+            return newSet;
+          });
+        }
         return;
       }
 
+      // Marcar como pago COM envio de mensagem
       setProcessingIds(prev => new Set(prev).add(orderId));
       
       try {
@@ -278,7 +320,7 @@
 
         toast({
           title: 'Sucesso',
-          description: 'Pedido marcado como pago'
+          description: messageSent ? 'Pedido marcado como pago e mensagem enviada' : 'Pedido marcado como pago'
         });
       } catch (error) {
         console.error('❌ Erro ao atualizar status:', error);
