@@ -327,19 +327,38 @@ export default function TenantsManager() {
   };
 
   const handleDeleteTenant = async (tenant: Tenant) => {
-    if (!confirm(`Tem certeza que deseja excluir a empresa "${tenant.name}"?`)) {
+    if (!confirm(`Tem certeza que deseja excluir a empresa "${tenant.name}"?\n\nEsta ação irá:\n- Deletar todas as credenciais\n- Remover todos os dados da empresa\n\nEsta ação NÃO pode ser desfeita!`)) {
       return;
     }
 
     try {
       setLoading(true);
       
+      // 1. Deletar credenciais primeiro (por causa da FK)
+      await supabase
+        .from("tenant_credentials")
+        .delete()
+        .eq("tenant_id", tenant.id);
+
+      // 2. Deletar profiles associados ao tenant
+      await supabase
+        .from("profiles")
+        .delete()
+        .eq("tenant_id", tenant.id);
+
+      // 3. Deletar o tenant
       const { error } = await supabase
         .from("tenants")
         .delete()
         .eq("id", tenant.id);
 
       if (error) throw error;
+
+      // 4. Se o tenant deletado era o preview atual, limpar localStorage
+      const previewId = localStorage.getItem('previewTenantId');
+      if (previewId === tenant.id) {
+        localStorage.removeItem('previewTenantId');
+      }
 
       toast({
         title: "Sucesso",
@@ -640,9 +659,10 @@ export default function TenantsManager() {
                   </Dialog>
 
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     size="sm"
                     onClick={() => handleDeleteTenant(tenant)}
+                    title="Excluir empresa"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
