@@ -33,6 +33,7 @@ interface Customer {
   updated_at: string;
   total_orders: number;
   total_spent: number;
+  paid_orders_count: number;
   last_order_date?: string;
   tags?: Array<{
     id: number;
@@ -114,7 +115,10 @@ const Clientes = () => {
           }
 
           const totalOrders = orders?.length || 0;
-          const totalSpent = orders?.reduce((sum, order) => sum + Number(order.total_amount), 0) || 0;
+          // Only sum paid orders for total_spent
+          const paidOrders = orders?.filter(order => order.is_paid) || [];
+          const totalSpent = paidOrders.reduce((sum, order) => sum + Number(order.total_amount), 0);
+          const paidOrdersCount = paidOrders.length;
           const lastOrderDate = orders?.length > 0 
             ? orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
             : undefined;
@@ -125,6 +129,7 @@ const Clientes = () => {
             ...customer,
             total_orders: totalOrders,
             total_spent: totalSpent,
+            paid_orders_count: paidOrdersCount,
             last_order_date: lastOrderDate,
             tags
           };
@@ -863,6 +868,11 @@ const Clientes = () => {
     );
   }
 
+  // Calculate statistics from paid orders only
+  const totalPaidRevenue = customers.reduce((sum, c) => sum + c.total_spent, 0);
+  const totalPaidOrdersCount = customers.reduce((sum, c) => sum + c.paid_orders_count, 0);
+  const averageTicket = totalPaidOrdersCount > 0 ? totalPaidRevenue / totalPaidOrdersCount : 0;
+
   const statisticsCards = [
     {
       title: 'Total de Clientes',
@@ -880,14 +890,14 @@ const Clientes = () => {
     },
     {
       title: 'Receita Total',
-      value: `R$ ${customers.reduce((sum, c) => sum + c.total_spent, 0).toFixed(2)}`,
+      value: formatCurrency(totalPaidRevenue),
       description: 'Faturamento dos clientes',
       icon: DollarSign,
       color: 'text-purple-600'
     },
     {
       title: 'Ticket Médio',
-      value: customers.length > 0 ? `R$ ${(customers.reduce((sum, c) => sum + c.total_spent, 0) / customers.filter(c => c.total_orders > 0).length || 0).toFixed(2)}` : 'R$ 0,00',
+      value: formatCurrency(averageTicket),
       description: 'Valor médio por cliente',
       icon: BarChart3,
       color: 'text-orange-600'
