@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { tenant_id, email, password, tenant_name } = await req.json();
+    const { tenant_id, email, password, tenant_name, role } = await req.json();
 
     if (!tenant_id || !email || !password) {
       return new Response(
@@ -21,6 +21,10 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Definir role padrão como tenant_admin se não especificado
+    const userRole = role === 'super_admin' ? 'super_admin' : 'tenant_admin';
+    console.log(`Criando usuário ${email} com role: ${userRole}`);
 
     // Create admin client with service role
     const supabaseAdmin = createClient(
@@ -43,7 +47,7 @@ serve(async (req) => {
     if (existingUser) {
       // User exists - just update their profile
       userId = existingUser.id;
-      console.log(`Usuário ${email} já existe, atualizando profile...`);
+      console.log(`Usuário ${email} já existe, atualizando profile com role ${userRole}...`);
     } else {
       // Create new user
       const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -71,7 +75,7 @@ serve(async (req) => {
         id: userId,
         email,
         tenant_id,
-        role: "tenant_admin",
+        role: userRole,
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" });
 

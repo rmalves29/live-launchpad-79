@@ -66,6 +66,14 @@ interface TenantCredential {
   is_active: boolean;
 }
 
+// Configuração de dias por plano
+const PLAN_DAYS: Record<string, number> = {
+  trial_teste: 7,
+  basic: 33,
+  pro: 185,
+  enterprise: 368,
+};
+
 export default function TenantsAdmin() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [credentials, setCredentials] = useState<TenantCredential[]>([]);
@@ -83,12 +91,13 @@ export default function TenantsAdmin() {
   const [formAdminPassword, setFormAdminPassword] = useState('');
   const [formContactName, setFormContactName] = useState('');
   const [formContactPhone, setFormContactPhone] = useState('');
-  const [formTrialDays, setFormTrialDays] = useState('30');
-  const [formPlan, setFormPlan] = useState('trial');
+  const [formTrialDays, setFormTrialDays] = useState('7');
+  const [formPlan, setFormPlan] = useState('trial_teste');
   const [formIsActive, setFormIsActive] = useState(true);
   const [formIsBlocked, setFormIsBlocked] = useState(false);
   const [formBlockedReason, setFormBlockedReason] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formAccessType, setFormAccessType] = useState<'tenant_admin' | 'super_admin'>('tenant_admin');
 
   useEffect(() => {
     loadTenants();
@@ -135,7 +144,16 @@ export default function TenantsAdmin() {
     }));
   };
 
-  const handleOpenDialog = (tenant?: Tenant) => {
+  // Atualizar dias automaticamente quando o plano muda
+  const handlePlanChange = (newPlan: string) => {
+    setFormPlan(newPlan);
+    // Atualizar dias de acordo com o plano selecionado
+    if (PLAN_DAYS[newPlan]) {
+      setFormTrialDays(PLAN_DAYS[newPlan].toString());
+    }
+  };
+
+  const handleOpenDialog = async (tenant?: Tenant) => {
     if (tenant) {
       setEditingTenant(tenant);
       setFormName(tenant.name);
@@ -145,13 +163,30 @@ export default function TenantsAdmin() {
       setFormAdminPassword('');
       setFormContactName('');
       setFormContactPhone('');
-      setFormPlan(tenant.plan_type || 'trial');
+      setFormPlan(tenant.plan_type || 'trial_teste');
       setFormIsActive(tenant.is_active);
       setFormIsBlocked(tenant.is_blocked || false);
       setFormBlockedReason('');
       
+      // Verificar o tipo de acesso do usuário admin
+      if (credential?.email) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('email', credential.email)
+          .single();
+        setFormAccessType(profileData?.role === 'super_admin' ? 'super_admin' : 'tenant_admin');
+      } else {
+        setFormAccessType('tenant_admin');
+      }
+      
       // Calcular dias restantes
-      if (tenant.trial_ends_at) {
+      if (tenant.subscription_ends_at) {
+        const subEnd = new Date(tenant.subscription_ends_at);
+        const now = new Date();
+        const daysRemaining = Math.ceil((subEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        setFormTrialDays(Math.max(0, daysRemaining).toString());
+      } else if (tenant.trial_ends_at) {
         const trialEnd = new Date(tenant.trial_ends_at);
         const now = new Date();
         const daysRemaining = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -165,12 +200,13 @@ export default function TenantsAdmin() {
       setFormAdminPassword('');
       setFormContactName('');
       setFormContactPhone('');
-      setFormTrialDays('30');
-      setFormPlan('trial');
+      setFormTrialDays('7');
+      setFormPlan('trial_teste');
       setFormIsActive(true);
       setFormIsBlocked(false);
       setFormBlockedReason('');
       setFormNotes('');
+      setFormAccessType('tenant_admin');
     }
     setDialogOpen(true);
   };
@@ -187,8 +223,13 @@ export default function TenantsAdmin() {
         return;
       }
 
-      const trialEndsAt = new Date();
-      trialEndsAt.setDate(trialEndsAt.getDate() + parseInt(formTrialDays || '30'));
+      // Calcular data de término baseado no plano/dias informados
+      const daysToAdd = parseInt(formTrialDays || '7');
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + daysToAdd);
+
+      // Para super_admin, não definir data de expiração
+      const isSuperAdmin = formAccessType === 'super_admin';
 
       const tenantData: any = {
         name: formName,
@@ -196,7 +237,9 @@ export default function TenantsAdmin() {
         plan_type: formPlan,
         is_active: formIsActive,
         is_blocked: formIsBlocked,
-        trial_ends_at: trialEndsAt.toISOString(),
+        // Para super_admin, não definir data de expiração
+        subscription_ends_at: isSuperAdmin ? null : endDate.toISOString(),
+        trial_ends_at: isSuperAdmin ? null : (formPlan === 'trial_teste' ? endDate.toISOString() : null),
       };
 
       // Gerar slug apenas para novos tenants
@@ -221,10 +264,27 @@ export default function TenantsAdmin() {
         if (updateError) throw updateError;
         tenantId = editingTenant.id;
 
+        // Atualizar role do usuário admin se mudou o tipo de acesso
+        const existingCredential = getTenantCredential(editingTenant.id);
+        if (existingCredential?.email) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', existingCredential.email)
+            .single();
+
+          if (profileData) {
+            const { error: profileError } = await supabase
+              .from('profiles')
+              .update({ role: formAccessType })
+              .eq('id', profileData.id);
+
+            if (profileError) throw profileError;
+          }
+        }
+
         // Atualizar ou criar credencial se email/senha foram fornecidos
         if (formAdminEmail) {
-          const existingCredential = getTenantCredential(editingTenant.id);
-          
           if (formAdminPassword) {
             // Salvar senha em texto puro
             if (existingCredential) {
@@ -232,7 +292,7 @@ export default function TenantsAdmin() {
                 .from('tenant_credentials')
                 .update({
                   email: formAdminEmail,
-                  password_hash: formAdminPassword, // Senha em texto puro
+                  password_hash: formAdminPassword,
                 })
                 .eq('tenant_id', editingTenant.id);
 
@@ -243,7 +303,7 @@ export default function TenantsAdmin() {
                 .insert({
                   tenant_id: editingTenant.id,
                   email: formAdminEmail,
-                  password_hash: formAdminPassword, // Senha em texto puro
+                  password_hash: formAdminPassword,
                   is_active: true
                 });
 
@@ -275,11 +335,26 @@ export default function TenantsAdmin() {
           .insert({
             tenant_id: tenantId,
             email: formAdminEmail,
-            password_hash: formAdminPassword, // Senha em texto puro
+            password_hash: formAdminPassword,
             is_active: true
           });
 
         if (credentialError) throw credentialError;
+
+        // Chamar Edge Function para criar o usuário admin com o role correto
+        const { error: adminError } = await supabase.functions.invoke('create-tenant-admin', {
+          body: {
+            tenant_id: tenantId,
+            email: formAdminEmail,
+            password: formAdminPassword,
+            role: formAccessType,
+          }
+        });
+
+        if (adminError) {
+          console.error('Erro ao criar admin:', adminError);
+          // Não falhar a operação, apenas logar
+        }
       }
 
       setDialogOpen(false);
@@ -329,6 +404,7 @@ export default function TenantsAdmin() {
   };
 
   const getDaysRemaining = (tenant: Tenant): number | null => {
+    // Para planos sem expiração (super_admin), retornar null
     const now = new Date();
     const endDate = tenant.subscription_ends_at 
       ? new Date(tenant.subscription_ends_at) 
@@ -337,7 +413,8 @@ export default function TenantsAdmin() {
         : null;
     
     if (!endDate) return null;
-    return Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const days = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    return days;
   };
 
   const getStatusBadge = (status: string) => {
@@ -460,6 +537,33 @@ export default function TenantsAdmin() {
                     </div>
                   </div>
 
+                  {/* Tipo de Acesso */}
+                  <div className="border rounded-lg p-4 space-y-4 bg-primary/5">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-primary" />
+                      <Label className="font-semibold">Tipo de Acesso</Label>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="access_type">Nível de Permissão</Label>
+                      <select
+                        id="access_type"
+                        value={formAccessType}
+                        onChange={(e) => setFormAccessType(e.target.value as 'tenant_admin' | 'super_admin')}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="tenant_admin">Empresa (tenant_admin) - Acesso limitado</option>
+                        <option value="super_admin">Super Admin - Acesso total</option>
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        {formAccessType === 'super_admin' 
+                          ? '⚠️ Super Admin tem acesso total ao sistema e não possui limite de tempo'
+                          : 'Empresa terá acesso apenas aos dados do próprio tenant com contagem de dias'
+                        }
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="contact_name">Nome do Responsável</Label>
@@ -502,13 +606,13 @@ export default function TenantsAdmin() {
                       <select
                         id="plan"
                         value={formPlan}
-                        onChange={(e) => setFormPlan(e.target.value)}
+                        onChange={(e) => handlePlanChange(e.target.value)}
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                       >
-                        <option value="trial">Trial (Teste)</option>
-                        <option value="basic">Basic</option>
-                        <option value="pro">Pro</option>
-                        <option value="enterprise">Enterprise</option>
+                        <option value="trial_teste">Trial Teste (7 dias)</option>
+                        <option value="basic">Basic (33 dias)</option>
+                        <option value="pro">Pro (185 dias)</option>
+                        <option value="enterprise">Enterprise (368 dias)</option>
                       </select>
                     </div>
                   </div>
@@ -680,11 +784,18 @@ export default function TenantsAdmin() {
                       </TableCell>
                       <TableCell>
                         {daysRemaining !== null ? (
-                          <div className="text-sm">
-                            <strong>{daysRemaining}</strong> dias
-                          </div>
+                          daysRemaining <= 0 ? (
+                            <Badge variant="destructive">Expirado</Badge>
+                          ) : (
+                            <div className="text-sm">
+                              <strong className={daysRemaining <= 5 ? 'text-destructive' : daysRemaining <= 10 ? 'text-yellow-600' : ''}>{daysRemaining}</strong> dias
+                            </div>
+                          )
                         ) : (
-                          <span className="text-muted-foreground">-</span>
+                          <Badge variant="secondary" className="gap-1">
+                            <CheckCircle className="h-3 w-3" />
+                            Ilimitado
+                          </Badge>
                         )}
                       </TableCell>
                     <TableCell className="text-right">
