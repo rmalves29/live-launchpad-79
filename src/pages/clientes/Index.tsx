@@ -1313,7 +1313,7 @@ const Clientes = () => {
       title: 'Relatórios',
       description: 'Análises e estatísticas dos clientes',
       icon: BarChart3,
-      action: () => navigate('/relatorios?tab=clientes'),
+      action: () => navigate('/relatorios?tab=customers'),
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
       borderColor: 'border-purple-200'

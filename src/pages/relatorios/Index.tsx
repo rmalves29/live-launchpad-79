@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,9 @@ interface CustomerStats {
 const Relatorios = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'overview';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loading, setLoading] = useState(false);
   const [todaySales, setTodaySales] = useState<DailySales | null>(null);
   const [periodStats, setPeriodStats] = useState<{
@@ -772,7 +776,7 @@ const Relatorios = () => {
         </Button>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="products">Produtos Mais Vendidos</TabsTrigger>
