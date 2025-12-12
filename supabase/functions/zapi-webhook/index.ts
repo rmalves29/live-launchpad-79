@@ -22,6 +22,10 @@ interface ZAPIWebhookPayload {
   momment?: number;
   timestamp?: number;
   type?: string;
+  // Message status callback fields
+  status?: string;
+  ids?: string[];
+  instanceId?: string;
 }
 
 serve(async (req) => {
@@ -38,6 +42,11 @@ serve(async (req) => {
     const payload: ZAPIWebhookPayload = await req.json();
     
     console.log('[zapi-webhook] Received payload:', JSON.stringify(payload, null, 2));
+
+    // Check if this is a message status callback
+    if (payload.type === 'MessageStatusCallback' && payload.status && payload.ids) {
+      return await handleMessageStatusCallback(supabase, payload);
+    }
 
     // Extract message text
     const messageText = payload.text?.message || payload.message || '';
@@ -232,6 +241,71 @@ serve(async (req) => {
     });
   }
 });
+
+// Handle message status callbacks from Z-API
+async function handleMessageStatusCallback(supabase: any, payload: ZAPIWebhookPayload) {
+  const { status, ids, phone } = payload;
+  
+  console.log(`[zapi-webhook] Message status callback: ${status} for ${ids?.length || 0} message(s)`);
+
+  if (!ids || ids.length === 0) {
+    return new Response(JSON.stringify({ success: true, skipped: 'no_message_ids' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Map Z-API status to our status
+  // SENT = enviada, RECEIVED = entregue (✓✓), READ = lida
+  const deliveryStatus = status || 'UNKNOWN';
+  const isDelivered = ['RECEIVED', 'READ', 'PLAYED'].includes(deliveryStatus);
+
+  // Update all messages with these IDs
+  for (const messageId of ids) {
+    // Update the whatsapp_messages table
+    const { data: messages, error: msgError } = await supabase
+      .from('whatsapp_messages')
+      .update({ delivery_status: deliveryStatus })
+      .eq('zapi_message_id', messageId)
+      .select('order_id, type');
+
+    if (msgError) {
+      console.log(`[zapi-webhook] Error updating message status for ${messageId}:`, msgError);
+      continue;
+    }
+
+    console.log(`[zapi-webhook] Updated ${messages?.length || 0} message(s) to status ${deliveryStatus}`);
+
+    // If message was delivered (RECEIVED), update the order delivery flags
+    if (isDelivered && messages && messages.length > 0) {
+      for (const msg of messages) {
+        if (msg.order_id) {
+          if (msg.type === 'item_added') {
+            await supabase
+              .from('orders')
+              .update({ item_added_delivered: true })
+              .eq('id', msg.order_id);
+            console.log(`[zapi-webhook] Updated order ${msg.order_id} item_added_delivered = true`);
+          } else if (msg.type === 'outgoing') {
+            // This is a paid order confirmation
+            await supabase
+              .from('orders')
+              .update({ payment_confirmation_delivered: true })
+              .eq('id', msg.order_id);
+            console.log(`[zapi-webhook] Updated order ${msg.order_id} payment_confirmation_delivered = true`);
+          }
+        }
+      }
+    }
+  }
+
+  return new Response(JSON.stringify({ 
+    success: true, 
+    status: deliveryStatus,
+    updated_ids: ids 
+  }), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
 
 function normalizePhone(phone: string): string {
   if (!phone) return '';
