@@ -1301,8 +1301,9 @@ const Clientes = () => {
       description: 'Adicionar novo cliente ao sistema',
       icon: UserPlus,
       action: () => {
-        setActiveTab('create');
         setActiveView('management');
+        // Usar setTimeout para garantir que a view mude primeiro, depois a tab
+        setTimeout(() => setActiveTab('create'), 0);
       },
       color: 'text-green-600',
       bgColor: 'bg-green-50',
