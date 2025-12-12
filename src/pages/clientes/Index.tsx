@@ -89,6 +89,7 @@ const Clientes = () => {
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [activeView, setActiveView] = useState<'dashboard' | 'management' | 'orderHistory'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'list' | 'create'>('list');
   const [allOrders, setAllOrders] = useState<OrderWithCustomer[]>([]);
   const [orderSearchTerm, setOrderSearchTerm] = useState('');
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
@@ -555,7 +556,7 @@ const Clientes = () => {
           </div>
 
           <div className="space-y-6">
-            <Tabs defaultValue="list" className="space-y-6">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'list' | 'create')} className="space-y-6">
         <TabsList>
           <TabsTrigger value="list" className="flex items-center">
             <Users className="h-4 w-4 mr-2" />
@@ -1300,6 +1301,7 @@ const Clientes = () => {
       description: 'Adicionar novo cliente ao sistema',
       icon: UserPlus,
       action: () => {
+        setActiveTab('create');
         setActiveView('management');
       },
       color: 'text-green-600',
