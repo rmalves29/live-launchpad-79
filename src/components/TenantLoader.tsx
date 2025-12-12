@@ -1,8 +1,7 @@
 import { ReactNode, useContext, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { Card, CardContent } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Building2 } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 import { TenantContext } from '@/contexts/TenantContext';
 
 interface TenantLoaderProps {
@@ -34,25 +33,14 @@ export const TenantLoader = ({ children }: TenantLoaderProps) => {
     );
   }
 
-  const { tenant, loading, error, isValidSubdomain, tenantId, isMainSite } = contextValue;
+  const { tenant, loading, tenantId } = contextValue;
 
-  // Configurar o cliente Supabase com o tenant atual (apenas se válido)
+  // Configurar o cliente Supabase com o tenant atual
   useEffect(() => {
-    // Apenas usar tenantId se for válido (não usar previewId do localStorage aqui)
-    // O hook useTenant já cuidou de validar o previewId
     supabaseTenant.setTenantId(tenantId);
-    
-    // Se não há tenant válido, limpar qualquer previewId antigo
-    if (!tenantId) {
-      const previewId = localStorage.getItem('previewTenantId');
-      if (previewId) {
-        console.log('🧹 Limpando preview tenant ID inválido do localStorage');
-        localStorage.removeItem('previewTenantId');
-      }
-    }
   }, [tenantId]);
 
-  // Loading state
+  // Loading state - apenas se authLoading também (loading já inclui authLoading)
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
@@ -69,58 +57,13 @@ export const TenantLoader = ({ children }: TenantLoaderProps) => {
     );
   }
 
-  // Site principal (sem tenant) - verificar ANTES de isValidSubdomain
-  if (isMainSite) {
-    console.log('🏢 Renderizando site principal');
-    return <>{children}</>;
-  }
-
-  // Site do tenant
+  // Sempre renderizar children - o controle de acesso é feito pelas rotas (RequireAuth, RequireTenantAuth)
+  // Isso permite que a página /auth seja acessível mesmo sem estar logado
   if (tenant) {
-    console.log(`🏢 Renderizando site do tenant: ${tenant.name}`);
-    return <>{children}</>;
+    console.log(`🏢 Renderizando com tenant: ${tenant.name}`);
+  } else {
+    console.log('🏢 Renderizando sem tenant (usuário pode precisar fazer login)');
   }
-
-  // Error state - subdomínio inválido (apenas se NÃO é o site principal)
-  if (!isValidSubdomain) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="flex flex-col items-center justify-center py-8">
-            <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-            <h2 className="text-xl font-semibold mb-4 text-center">Empresa não encontrada</h2>
-            
-            <Alert variant="destructive" className="mb-6">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                {error || 'Esta empresa não existe ou está inativa'}
-              </AlertDescription>
-            </Alert>
-
-            <div className="text-sm text-muted-foreground text-center space-y-2">
-              <p>Verifique se o endereço está correto:</p>
-              <code className="bg-muted px-2 py-1 rounded text-xs">
-                https://sua-empresa.seudominio.com
-              </code>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Fallback - não deveria acontecer
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
-      <Card className="w-full max-w-md">
-        <CardContent className="flex flex-col items-center justify-center py-8">
-          <AlertTriangle className="h-12 w-12 text-muted-foreground mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Estado inesperado</h2>
-          <p className="text-muted-foreground text-center">
-            Por favor, recarregue a página
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  
+  return <>{children}</>;
 };
