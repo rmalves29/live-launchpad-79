@@ -74,7 +74,13 @@ const Navbar = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48 bg-popover/95 backdrop-blur-xl border-border/50">
-                    <DropdownMenuItem onClick={() => supabase.auth.signOut()} className="cursor-pointer text-destructive">
+                    <DropdownMenuItem 
+                      onClick={async () => {
+                        await supabase.auth.signOut();
+                        navigate('/auth');
+                      }} 
+                      className="cursor-pointer text-destructive"
+                    >
                       <LogOut className="h-4 w-4 mr-2" />
                       Sair
                     </DropdownMenuItem>
@@ -160,7 +166,11 @@ const Navbar = () => {
                             variant="outline" 
                             size="sm" 
                             className="w-full rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10" 
-                            onClick={() => { supabase.auth.signOut(); setOpen(false); }}
+                            onClick={async () => { 
+                              await supabase.auth.signOut(); 
+                              setOpen(false); 
+                              navigate('/auth');
+                            }}
                           >
                             <LogOut className="h-4 w-4 mr-2" />
                             Sair
