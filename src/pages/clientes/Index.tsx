@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp } from 'lucide-react';
+import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp, FileText, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
@@ -49,18 +50,33 @@ interface Order {
   total_amount: number;
   is_paid: boolean;
   created_at: string;
+  customer_name?: string;
+  customer_phone: string;
+  customer_cpf?: string;
+  customer_street?: string;
+  customer_number?: string;
+  customer_complement?: string;
+  customer_city?: string;
+  customer_state?: string;
+  customer_cep?: string;
   cart_items: Array<{
     qty: number;
     unit_price: number;
     product: {
       name: string;
       code: string;
+      image_url?: string;
     };
   }>;
 }
 
+interface OrderWithCustomer extends Order {
+  customer: Customer;
+}
+
 const Clientes = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const { tenantId } = useTenantContext();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -72,7 +88,11 @@ const Clientes = () => {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
-  const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'management' | 'orderHistory'>('dashboard');
+  const [allOrders, setAllOrders] = useState<OrderWithCustomer[]>([]);
+  const [orderSearchTerm, setOrderSearchTerm] = useState('');
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
+  const [showOrderDetailsDialog, setShowOrderDetailsDialog] = useState(false);
 
   const normalizePhone = (phone: string): string => {
     return normalizeForStorage(phone);
@@ -309,11 +329,106 @@ const Clientes = () => {
     }
   };
 
+  const loadAllOrdersWithCustomers = async () => {
+    setLoading(true);
+    try {
+      // Load all orders
+      const { data: ordersData, error: ordersError } = await supabaseTenant
+        .from('orders')
+        .select(`
+          id,
+          cart_id,
+          event_type,
+          event_date,
+          total_amount,
+          is_paid,
+          created_at,
+          customer_name,
+          customer_phone,
+          customer_cep,
+          customer_street,
+          customer_number,
+          customer_complement,
+          customer_city,
+          customer_state
+        `)
+        .order('created_at', { ascending: false });
+
+      if (ordersError) throw ordersError;
+
+      // Get cart items for each order
+      const ordersWithItems = await Promise.all(
+        (ordersData || []).map(async (order) => {
+          const { data: cartItems, error: itemsError } = await supabaseTenant
+            .from('cart_items')
+            .select(`
+              qty,
+              unit_price,
+              products(name, code, image_url)
+            `)
+            .eq('cart_id', order.cart_id || 0);
+
+          // Find customer info
+          const customer = customers.find(c => c.phone === order.customer_phone) || {
+            id: 0,
+            phone: order.customer_phone,
+            name: order.customer_name || 'Cliente',
+            created_at: order.created_at,
+            updated_at: order.created_at,
+            total_orders: 0,
+            total_spent: 0,
+            paid_orders_count: 0,
+          };
+
+          if (itemsError) {
+            console.error('Error loading cart items:', itemsError);
+            return {
+              ...order,
+              customer,
+              cart_items: []
+            } as OrderWithCustomer;
+          }
+
+          return {
+            ...order,
+            customer,
+            cart_items: (cartItems || []).map(item => ({
+              qty: item.qty,
+              unit_price: item.unit_price,
+              product: {
+                name: item.products?.name || 'Produto removido',
+                code: item.products?.code || 'N/A',
+                image_url: item.products?.image_url || undefined
+              }
+            }))
+          } as OrderWithCustomer;
+        })
+      );
+
+      setAllOrders(ordersWithItems);
+    } catch (error) {
+      console.error('Error loading all orders:', error);
+      toast({
+        title: 'Erro',
+        description: 'Erro ao carregar pedidos',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (tenantId) {
       loadCustomers();
     }
   }, [tenantId]);
+
+  useEffect(() => {
+    if (activeView === 'orderHistory' && customers.length > 0) {
+      loadAllOrdersWithCustomers();
+    }
+  }, [activeView, customers.length]);
 
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -321,8 +436,19 @@ const Clientes = () => {
     (customer.cpf && customer.cpf.includes(searchTerm))
   );
 
+  const filteredOrders = allOrders.filter(order =>
+    order.customer.name.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
+    order.customer.phone.includes(orderSearchTerm) ||
+    order.id.toString().includes(orderSearchTerm)
+  );
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
+  };
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return `${date.toLocaleDateString('pt-BR')} às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   };
 
   const formatCurrency = (value: number) => {
@@ -330,6 +456,11 @@ const Clientes = () => {
       style: 'currency',
       currency: 'BRL'
     }).format(value);
+  };
+
+  const openOrderDetails = (order: OrderWithCustomer) => {
+    setSelectedOrderForDetails(order);
+    setShowOrderDetailsDialog(true);
   };
 
   const loadCustomerOrders = async (customer: Customer) => {
@@ -868,6 +999,256 @@ const Clientes = () => {
     );
   }
 
+  // Order History View
+  if (activeView === 'orderHistory') {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center">
+                <ShoppingBag className="h-8 w-8 mr-3 text-primary" />
+                Histórico de Pedidos
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                Visualize todos os pedidos dos clientes
+              </p>
+            </div>
+            <Button 
+              onClick={() => setActiveView('dashboard')} 
+              variant="outline"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Voltar ao Dashboard
+            </Button>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center">
+                  <FileText className="h-5 w-5 mr-2" />
+                  Pedidos ({filteredOrders.length})
+                </span>
+                <Button onClick={loadAllOrdersWithCustomers} disabled={loading} size="sm" variant="outline">
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  Atualizar
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nome, telefone ou ID do pedido..."
+                    value={orderSearchTerm}
+                    onChange={(e) => setOrderSearchTerm(e.target.value)}
+                    className="max-w-sm"
+                  />
+                </div>
+
+                <Separator />
+
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                    <span>Carregando pedidos...</span>
+                  </div>
+                ) : filteredOrders.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    {orderSearchTerm ? 'Nenhum pedido encontrado com os critérios de busca.' : 'Nenhum pedido encontrado.'}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Pedido</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Telefone</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredOrders.map((order) => (
+                          <TableRow key={order.id}>
+                            <TableCell className="font-medium">
+                              #{order.id}
+                            </TableCell>
+                            <TableCell>
+                              {order.customer_name || order.customer.name}
+                            </TableCell>
+                            <TableCell className="font-mono">
+                              {formatPhone(order.customer_phone)}
+                            </TableCell>
+                            <TableCell>
+                              {formatDate(order.created_at)}
+                            </TableCell>
+                            <TableCell className="font-semibold text-green-600">
+                              {formatCurrency(order.total_amount)}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={order.is_paid ? "default" : "secondary"}>
+                                {order.is_paid ? "Pago" : "Pendente"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                onClick={() => openOrderDetails(order)}
+                                size="sm"
+                                variant="outline"
+                                title="Ver detalhes"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Order Details Dialog */}
+        <Dialog open={showOrderDetailsDialog} onOpenChange={setShowOrderDetailsDialog}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl">
+                Detalhes do Pedido #{selectedOrderForDetails?.id}
+              </DialogTitle>
+              <p className="text-sm text-muted-foreground">
+                Visualize todos os produtos e informações do pedido.
+              </p>
+            </DialogHeader>
+            
+            {selectedOrderForDetails && (
+              <div className="space-y-4">
+                {/* Customer Information */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Informações do Cliente</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-semibold">Nome:</span>{' '}
+                      {selectedOrderForDetails.customer_name || 'N/A'}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Telefone:</span>{' '}
+                      {formatPhone(selectedOrderForDetails.customer_phone)}
+                    </div>
+                    <div>
+                      <span className="font-semibold">CPF:</span>{' '}
+                      {selectedOrderForDetails.customer_cpf || 'N/A'}
+                    </div>
+                    <div className="col-span-2">
+                      <span className="font-semibold">Endereço:</span>{' '}
+                      {selectedOrderForDetails.customer_street ? (
+                        `${selectedOrderForDetails.customer_street}, ${selectedOrderForDetails.customer_number || 'S/N'}${selectedOrderForDetails.customer_complement ? `, ${selectedOrderForDetails.customer_complement}` : ''} - ${selectedOrderForDetails.customer_city || ''} - ${selectedOrderForDetails.customer_state || ''}, CEP: ${selectedOrderForDetails.customer_cep || 'N/A'}`
+                      ) : 'N/A'}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Order Summary */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Resumo do Pedido</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex flex-wrap gap-6 text-sm">
+                    <div>
+                      <span className="font-semibold">Total:</span>{' '}
+                      <span className="text-green-600 font-bold">{formatCurrency(selectedOrderForDetails.total_amount)}</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold">Status:</span>{' '}
+                      <Badge variant={selectedOrderForDetails.is_paid ? "default" : "secondary"}>
+                        {selectedOrderForDetails.is_paid ? "Pago" : "Pendente"}
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="font-semibold">Data:</span>{' '}
+                      {formatDate(selectedOrderForDetails.event_date)}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Shipping Info */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Informações de Frete</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-muted-foreground">
+                    {selectedOrderForDetails.customer_cep || '00'}
+                  </CardContent>
+                </Card>
+
+                {/* Products */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center justify-between">
+                      Produtos do Pedido
+                      <Badge variant="outline">
+                        {selectedOrderForDetails.cart_items.reduce((sum, item) => sum + item.qty, 0)} itens
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {selectedOrderForDetails.cart_items.map((item, index) => (
+                      <div key={index} className="flex items-start gap-4 p-4 border rounded-lg">
+                        {item.product.image_url ? (
+                          <img 
+                            src={item.product.image_url} 
+                            alt={item.product.name}
+                            className="w-16 h-16 object-cover rounded-lg border"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
+                            <ShoppingBag className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <h4 className="font-semibold">{item.product.name}</h4>
+                          <p className="text-sm text-muted-foreground">Código: {item.product.code}</p>
+                          <div className="flex gap-4 mt-1 text-sm">
+                            <span><span className="font-medium text-primary">Preço unitário:</span> {formatCurrency(item.unit_price)}</span>
+                            <span><span className="font-medium text-primary">Quantidade:</span> {item.qty}</span>
+                            <span><span className="font-medium">Subtotal:</span> {formatCurrency(item.qty * item.unit_price)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* Additional Info */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Informações Adicionais</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm">
+                    <span className="font-semibold">Pedido criado em:</span>{' '}
+                    {formatDateTime(selectedOrderForDetails.created_at)}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
   // Calculate statistics from paid orders only
   const totalPaidRevenue = customers.reduce((sum, c) => sum + c.total_spent, 0);
   const totalPaidOrdersCount = customers.reduce((sum, c) => sum + c.paid_orders_count, 0);
@@ -920,7 +1301,6 @@ const Clientes = () => {
       icon: UserPlus,
       action: () => {
         setActiveView('management');
-        // Will auto-switch to create tab
       },
       color: 'text-green-600',
       bgColor: 'bg-green-50',
@@ -930,10 +1310,7 @@ const Clientes = () => {
       title: 'Relatórios',
       description: 'Análises e estatísticas dos clientes',
       icon: BarChart3,
-      action: () => toast({
-        title: 'Em desenvolvimento',
-        description: 'Funcionalidade em breve'
-      }),
+      action: () => navigate('/relatorios?tab=clientes'),
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
       borderColor: 'border-purple-200'
@@ -942,7 +1319,7 @@ const Clientes = () => {
       title: 'Histórico de Pedidos',
       description: 'Visualizar pedidos por cliente',
       icon: ShoppingBag,
-      action: () => setActiveView('management'),
+      action: () => setActiveView('orderHistory'),
       color: 'text-orange-600',
       bgColor: 'bg-orange-50',
       borderColor: 'border-orange-200'
