@@ -396,13 +396,29 @@ const Relatorios = () => {
             body: { action: 'list-groups', tenant_id: tenantId }
           });
           
-          if (response.data?.groups) {
-            for (const group of response.data.groups) {
-              if (group.id && group.name) {
-                zapiGroupNames.set(group.id, group.name);
+          // Z-API retorna array de chats com phone e name
+          // Grupos têm isGroup: true e phone no formato "120363424101599485-group"
+          const chats = response.data;
+          if (Array.isArray(chats)) {
+            for (const chat of chats) {
+              if (chat.isGroup === true && chat.phone && chat.name) {
+                // Mapear pelo phone ID do grupo
+                zapiGroupNames.set(chat.phone, chat.name);
+                // Também mapear por variações comuns
+                const phoneClean = chat.phone.replace('-group', '');
+                zapiGroupNames.set(phoneClean, chat.name);
+                // E pelo nome também para permitir busca reversa
+                zapiGroupNames.set(chat.name, chat.name);
               }
             }
-            console.log('📱 Grupos Z-API carregados:', zapiGroupNames.size);
+            console.log('📱 Grupos Z-API carregados:', zapiGroupNames.size, Array.from(zapiGroupNames.entries()));
+          } else if (response.data?.groups) {
+            // Fallback para formato antigo
+            for (const group of response.data.groups) {
+              if (group.phone && group.name) {
+                zapiGroupNames.set(group.phone, group.name);
+              }
+            }
           }
         } catch (zapiError) {
           console.warn('⚠️ Não foi possível carregar nomes dos grupos via Z-API:', zapiError);
