@@ -812,8 +812,8 @@ const Clientes = () => {
                                               <p className="text-sm">{selectedCustomer?.complement || '-'}</p>
                                             </div>
                                             <div>
-                                              <Label className="text-sm font-medium">CEP</Label>
-                                              <p className="text-sm">{selectedCustomer?.cep || '-'}</p>
+                                              <Label className="text-sm font-medium">Bairro</Label>
+                                              <p className="text-sm">{selectedCustomer?.neighborhood || '-'}</p>
                                             </div>
                                             <div>
                                               <Label className="text-sm font-medium">Cidade</Label>
@@ -822,6 +822,10 @@ const Clientes = () => {
                                             <div>
                                               <Label className="text-sm font-medium">Estado</Label>
                                               <p className="text-sm">{selectedCustomer?.state || '-'}</p>
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm font-medium">CEP</Label>
+                                              <p className="text-sm">{selectedCustomer?.cep || '-'}</p>
                                             </div>
                                           </CardContent>
                                         </Card>
