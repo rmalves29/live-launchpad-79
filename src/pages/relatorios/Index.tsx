@@ -435,7 +435,7 @@ const Relatorios = () => {
           break;
       }
 
-      // Buscar pedidos com informação de grupo do carrinho
+      // Buscar pedidos com informação de grupo do carrinho (LEFT JOIN para incluir todos os pedidos)
       let query = supabaseTenant
         .from('orders')
         .select(`
@@ -445,7 +445,7 @@ const Relatorios = () => {
           cart_id, 
           customer_phone,
           whatsapp_group_name,
-          carts!inner(whatsapp_group_name)
+          carts(whatsapp_group_name)
         `);
 
       if (whatsappFilter === 'custom' && dateFilter && endDateFilter) {
