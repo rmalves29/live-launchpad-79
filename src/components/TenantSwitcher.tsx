@@ -20,15 +20,15 @@ export const TenantSwitcher = () => {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string | undefined>(undefined);
 
-  // Esconde quando não é super admin (isMainSite só é true para super admin)
-  if (!isMainSite) return null;
-
   useEffect(() => {
     const current = localStorage.getItem(PREVIEW_TENANT_KEY) || undefined;
     setSelected(current);
   }, []);
 
   useEffect(() => {
+    // Só carrega tenants se for super admin
+    if (!isMainSite) return;
+    
     const load = async () => {
       try {
         setLoading(true);
@@ -65,13 +65,16 @@ export const TenantSwitcher = () => {
       }
     };
     load();
-  }, []);
+  }, [isMainSite]);
 
   const currentLabel = useMemo(() => {
     if (!selected) return 'Selecionar empresa';
     const t = tenants.find(t => t.id === selected);
     return t ? t.name : 'Selecionar empresa';
   }, [selected, tenants]);
+
+  // Esconde quando não é super admin (APÓS todos os hooks)
+  if (!isMainSite) return null;
 
   const handleChange = (value: string) => {
     setSelected(value);
