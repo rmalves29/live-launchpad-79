@@ -14,6 +14,7 @@ import { WhatsAppSettings } from '@/components/WhatsAppSettings';
 import TenantsManager from '@/components/TenantsManager';
 import { AvailabilitySettings } from '@/components/AvailabilitySettings';
 import { TenantSimulator } from '@/components/TenantSimulator';
+import IntegrationsChecklist from '@/components/IntegrationsChecklist';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -278,6 +279,9 @@ const Config = () => {
               </TabsList>
 
               <TabsContent value="config" className="space-y-6 mt-6">
+                {/* Integrations Checklist */}
+                <IntegrationsChecklist />
+                
                 {/* WhatsApp Settings */}
                 <WhatsAppSettings />
                 
