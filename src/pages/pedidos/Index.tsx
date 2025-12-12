@@ -112,7 +112,7 @@
           // Fetch customer data
           const { data: customerData } = await supabaseTenant
             .from('customers')
-            .select('name, cpf, street, number, complement, city, state, cep')
+            .select('name, cpf, street, number, complement, neighborhood, city, state, cep')
             .eq('phone', order.customer_phone)
             .maybeSingle();
 
@@ -560,7 +560,7 @@
         const customerName = order.customer?.name || 'Cliente';
         const customerCPF = order.customer?.cpf || 'Não informado';
         const customerAddress = order.customer ? 
-          `${order.customer.street || 'Endereço'}, ${order.customer.number || 'S/N'}${order.customer.complement ? `, ${order.customer.complement}` : ''}, ${order.customer.city || 'Cidade'} - ${order.customer.state || 'Estado'}, CEP: ${order.customer.cep || 'Não informado'}` 
+          `${order.customer.street || 'Endereço'}, ${order.customer.number || 'S/N'}${order.customer.complement ? `, ${order.customer.complement}` : ''}, ${order.customer.neighborhood || ''} - ${order.customer.city || 'Cidade'} - ${order.customer.state || 'Estado'}, CEP: ${order.customer.cep || 'Não informado'}` 
           : 'Endereço não cadastrado';
 
         const cartItemsRows = order.cart_items && order.cart_items.length > 0 

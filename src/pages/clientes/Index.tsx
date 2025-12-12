@@ -1231,7 +1231,7 @@ const Clientes = () => {
                     <div className="col-span-2">
                       <span className="font-semibold">Endereço:</span>{' '}
                       {selectedOrderForDetails.customer_street ? (
-                        `${selectedOrderForDetails.customer_street}, ${selectedOrderForDetails.customer_number || 'S/N'}${selectedOrderForDetails.customer_complement ? `, ${selectedOrderForDetails.customer_complement}` : ''} - ${selectedOrderForDetails.customer_city || ''} - ${selectedOrderForDetails.customer_state || ''}, CEP: ${selectedOrderForDetails.customer_cep || 'N/A'}`
+                        `${selectedOrderForDetails.customer_street}, ${selectedOrderForDetails.customer_number || 'S/N'}${selectedOrderForDetails.customer_complement ? `, ${selectedOrderForDetails.customer_complement}` : ''}, ${(selectedOrderForDetails as any).customer_neighborhood || ''} - ${selectedOrderForDetails.customer_city || ''} - ${selectedOrderForDetails.customer_state || ''}, CEP: ${selectedOrderForDetails.customer_cep || 'N/A'}`
                       ) : 'N/A'}
                     </div>
                   </CardContent>

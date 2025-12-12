@@ -22,6 +22,7 @@ interface Order {
     street?: string;
     number?: string;
     complement?: string;
+    neighborhood?: string;
     city?: string;
     state?: string;
     cep?: string;
@@ -74,7 +75,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
 
   const customerName = order.customer?.name || 'Cliente não identificado';
   const customerAddress = order.customer ? 
-    `${order.customer.street || ''}, ${order.customer.number || ''}${order.customer.complement ? `, ${order.customer.complement}` : ''}, ${order.customer.city || ''} - ${order.customer.state || ''}, CEP: ${order.customer.cep || ''}` 
+    `${order.customer.street || ''}, ${order.customer.number || ''}${order.customer.complement ? `, ${order.customer.complement}` : ''}, ${order.customer.neighborhood || ''} - ${order.customer.city || ''} - ${order.customer.state || ''}, CEP: ${order.customer.cep || ''}` 
     : 'Endereço não cadastrado';
 
   const totalItems = order.cart_items?.reduce((sum, item) => sum + item.qty, 0) || 0;
