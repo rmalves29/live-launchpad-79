@@ -177,8 +177,28 @@ export default function TenantsManager() {
 
       if (tenantError) throw tenantError;
 
-      // Criar credencial - senha em texto puro
-      const { error: credentialError } = await supabase
+      // Criar usuário Supabase Auth e associar ao tenant
+      const { data: adminData, error: adminError } = await supabase.functions.invoke('create-tenant-admin', {
+        body: {
+          tenant_id: newTenant.id,
+          email: formData.adminEmail,
+          password: formData.adminPassword,
+          tenant_name: formData.name
+        }
+      });
+
+      if (adminError) {
+        console.error("Erro ao criar admin:", adminError);
+        // Mesmo com erro, o tenant foi criado - apenas avisa
+        toast({
+          title: "Aviso",
+          description: `Empresa criada, mas houve erro ao criar o admin: ${adminError.message}`,
+          variant: "destructive",
+        });
+      }
+
+      // Também salvar na tabela tenant_credentials (backup)
+      await supabase
         .from("tenant_credentials")
         .insert({
           tenant_id: newTenant.id,
@@ -187,14 +207,12 @@ export default function TenantsManager() {
           is_active: true
         });
 
-      if (credentialError) throw credentialError;
-
       // Selecionar automaticamente o novo tenant no modo preview
       localStorage.setItem('previewTenantId', newTenant.id);
 
       toast({
         title: "Sucesso",
-        description: `Empresa "${formData.name}" criada e selecionada automaticamente!`,
+        description: `Empresa "${formData.name}" criada! O admin pode fazer login com ${formData.adminEmail}`,
       });
 
       setFormData({ 
