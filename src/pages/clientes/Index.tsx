@@ -483,17 +483,23 @@ const Clientes = () => {
     }
   }, [activeView, customers.length]);
 
-  const filteredCustomers = customers.filter(customer =>
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm) ||
-    (customer.cpf && customer.cpf.includes(searchTerm))
-  );
+  const filteredCustomers = customers.filter(customer => {
+    const normalizedSearch = normalizeForStorage(searchTerm);
+    const normalizedCustomerPhone = normalizeForStorage(customer.phone);
+    return customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      normalizedCustomerPhone.includes(normalizedSearch) ||
+      customer.phone.includes(searchTerm) ||
+      (customer.cpf && customer.cpf.includes(searchTerm));
+  });
 
-  const filteredOrders = allOrders.filter(order =>
-    order.customer.name.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
-    order.customer.phone.includes(orderSearchTerm) ||
-    order.id.toString().includes(orderSearchTerm)
-  );
+  const filteredOrders = allOrders.filter(order => {
+    const normalizedSearch = normalizeForStorage(orderSearchTerm);
+    const normalizedOrderPhone = normalizeForStorage(order.customer.phone);
+    return order.customer.name.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
+      normalizedOrderPhone.includes(normalizedSearch) ||
+      order.customer.phone.includes(orderSearchTerm) ||
+      order.id.toString().includes(orderSearchTerm);
+  });
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
