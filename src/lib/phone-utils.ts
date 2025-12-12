@@ -29,14 +29,9 @@ function applyRegionalNinthDigitRule(clean: string): string {
   const prefix = clean.slice(0, 2);
   let number = clean.slice(2);
 
-  if (ddd >= 31) {
-    if (number.length === 9 && number.startsWith('9')) {
-      number = number.slice(1);
-    }
-  } else {
-    if (number.length === 8) {
-      number = `9${number}`;
-    }
+  // Se o número tem apenas 8 dígitos, adiciona o 9 na frente (celular)
+  if (number.length === 8) {
+    number = `9${number}`;
   }
 
   return `${prefix}${number}`;
