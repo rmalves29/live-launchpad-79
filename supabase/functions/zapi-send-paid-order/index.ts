@@ -160,10 +160,15 @@ serve(async (req) => {
     }
 
     const template = await getTemplate(supabase, tenant_id);
+    const totalFormatted = order.total_amount?.toFixed(2).replace('.', ',') || '0,00';
+    
     const message = template
       .replace(/\{\{order_id\}\}/g, String(order_id))
-      .replace(/\{\{total\}\}/g, order.total_amount?.toFixed(2) || '0.00')
-      .replace(/\{\{customer_name\}\}/g, order.customer_name || 'Cliente');
+      .replace(/\{\{total\}\}/g, totalFormatted)
+      .replace(/\{\{total_amount\}\}/g, totalFormatted)
+      .replace(/\{\{valor\}\}/g, totalFormatted)
+      .replace(/\{\{customer_name\}\}/g, order.customer_name || 'Cliente')
+      .replace(/\{\{nome\}\}/g, order.customer_name || 'Cliente');
 
     const formattedPhone = formatPhoneNumber(order.customer_phone);
     const { instanceId, token, clientToken } = credentials;
