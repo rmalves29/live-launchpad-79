@@ -99,9 +99,9 @@ const MpReturn = () => {
               total: Number(order.total_amount || 0)
             };
 
-            const res = await supabase.functions.invoke('whatsapp-send-paid-order', { body: payload });
+            const res = await supabase.functions.invoke('zapi-send-paid-order', { body: payload });
             if (res.error) {
-              console.error('Erro na edge function whatsapp-send-paid-order (automatic):', res.error);
+              console.error('Erro na edge function zapi-send-paid-order (automatic):', res.error);
               toast({
                 title: 'Aviso',
                 description: 'Pedido marcado como pago, mas não foi possível enviar confirmação por WhatsApp.',
@@ -114,7 +114,7 @@ const MpReturn = () => {
               });
             }
           } catch (err) {
-            console.error('Erro ao chamar whatsapp-send-paid-order:', err);
+            console.error('Erro ao chamar zapi-send-paid-order:', err);
             toast({
               title: 'Aviso',
               description: 'Pedido marcado como pago, mas ocorreu um erro ao enviar confirmação por WhatsApp.',

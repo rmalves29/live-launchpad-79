@@ -318,9 +318,9 @@ const Pedidos = () => {
       };
 
       // Invocar edge function que envia o template PAID_ORDER
-      const res = await supabase.functions.invoke('whatsapp-send-paid-order', { body: payload });
+      const res = await supabase.functions.invoke('zapi-send-paid-order', { body: payload });
       if (res.error) {
-        console.error('Erro na edge function whatsapp-send-paid-order:', res.error);
+        console.error('Erro na edge function zapi-send-paid-order:', res.error);
         return false;
       }
 

@@ -146,14 +146,14 @@ export default function TenantOrders() {
           total: Number(orderData.total_amount || 0)
         };
 
-        const res = await supabase.functions.invoke('whatsapp-send-paid-order', { body: payload });
+        const res = await supabase.functions.invoke('zapi-send-paid-order', { body: payload });
         if (!res.error) {
           messageSent = true;
         } else {
-          console.error('Erro na edge function whatsapp-send-paid-order:', res.error);
+          console.error('Erro na edge function zapi-send-paid-order:', res.error);
         }
       } catch (err) {
-        console.error('Erro ao chamar edge function whatsapp-send-paid-order:', err);
+        console.error('Erro ao chamar edge function zapi-send-paid-order:', err);
       }
 
       // Atualizar o status do pedido no banco
