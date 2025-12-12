@@ -1013,7 +1013,7 @@ const Pedidos = () => {
                   <TableHead>Impresso?</TableHead>
                   <TableHead>Tipo Evento</TableHead>
                   <TableHead>Data Evento</TableHead>
-                  <TableHead>Mensagens</TableHead>
+                  <TableHead>Disparo</TableHead>
                   <TableHead>Observação</TableHead>
                   <TableHead>Ações</TableHead>
                 </TableRow>
@@ -1090,15 +1090,29 @@ const Pedidos = () => {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {/* Indicador de mensagem de item adicionado */}
-                          <div className="flex items-center gap-1" title="Mensagem de item adicionado">
-                            <MessageCircle className="h-3 w-3" />
-                            {order.item_added_message_sent ? '✅' : '☑️'}
+                          <div 
+                            className="flex items-center gap-1" 
+                            title={order.item_added_message_sent ? "Mensagem de item adicionado enviada" : "Mensagem de item adicionado não enviada"}
+                          >
+                            <MessageCircle 
+                              className={cn(
+                                "h-4 w-4",
+                                order.item_added_message_sent ? "text-green-500" : "text-muted-foreground"
+                              )} 
+                            />
                           </div>
                           {/* Indicador de confirmação de pagamento */}
                           {order.is_paid && (
-                            <div className="flex items-center gap-1" title="Confirmação de pagamento enviada">
-                              <Send className="h-3 w-3" />
-                              {order.payment_confirmation_sent ? '✅' : '☑️'}
+                            <div 
+                              className="flex items-center gap-1" 
+                              title={order.payment_confirmation_sent ? "Confirmação de pagamento enviada" : "Confirmação de pagamento não enviada"}
+                            >
+                              <DollarSign 
+                                className={cn(
+                                  "h-4 w-4",
+                                  order.payment_confirmation_sent ? "text-green-500" : "text-muted-foreground"
+                                )} 
+                              />
                             </div>
                           )}
                         </div>
