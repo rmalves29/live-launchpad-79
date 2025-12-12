@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { Plus, Users, Edit, Phone, MapPin } from 'lucide-react';
-import { formatPhoneForDisplay } from '@/lib/phone-utils';
+import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 
 interface Customer {
   id: number;
@@ -137,7 +137,7 @@ export default function TenantCustomers() {
       const customerData = {
         tenant_id: profile.tenant_id,
         name: formData.name,
-        phone: formData.phone,
+        phone: normalizeForStorage(formData.phone),
         email: formData.email || null,
         cpf: formData.cpf || null,
         street: formData.street || null,
@@ -190,10 +190,13 @@ export default function TenantCustomers() {
     return formatPhoneForDisplay(phone);
   };
 
-  const filteredCustomers = customers.filter(customer =>
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm)
-  );
+  const filteredCustomers = customers.filter(customer => {
+    const normalizedSearch = normalizeForStorage(searchTerm);
+    const normalizedCustomerPhone = normalizeForStorage(customer.phone);
+    return customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      normalizedCustomerPhone.includes(normalizedSearch) ||
+      customer.phone.includes(searchTerm);
+  });
 
   return (
     <Card>

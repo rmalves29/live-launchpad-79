@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
+import { formatPhoneForDisplay } from '@/lib/phone-utils';
 
 interface DailySales {
   date: string;
@@ -1149,7 +1150,7 @@ const Relatorios = () => {
                               {customer.customer_name}
                             </TableCell>
                             <TableCell className="font-mono text-sm">
-                              {customer.customer_phone}
+                              {formatPhoneForDisplay(customer.customer_phone)}
                             </TableCell>
                             <TableCell className="text-center font-semibold">
                               {customer.total_orders}
