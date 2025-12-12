@@ -20,6 +20,7 @@ interface Customer {
   street?: string;
   number?: string;
   complement?: string;
+  neighborhood?: string;
   city?: string;
   state?: string;
   cep?: string;
@@ -35,6 +36,7 @@ interface CustomerForm {
   street: string;
   number: string;
   complement: string;
+  neighborhood: string;
   city: string;
   state: string;
   cep: string;
@@ -52,6 +54,7 @@ export default function TenantCustomers() {
     street: '',
     number: '',
     complement: '',
+    neighborhood: '',
     city: '',
     state: '',
     cep: ''
@@ -96,6 +99,7 @@ export default function TenantCustomers() {
       street: '',
       number: '',
       complement: '',
+      neighborhood: '',
       city: '',
       state: '',
       cep: ''
@@ -117,6 +121,7 @@ export default function TenantCustomers() {
       street: customer.street || '',
       number: customer.number || '',
       complement: customer.complement || '',
+      neighborhood: customer.neighborhood || '',
       city: customer.city || '',
       state: customer.state || '',
       cep: customer.cep || ''
@@ -138,6 +143,7 @@ export default function TenantCustomers() {
         street: formData.street || null,
         number: formData.number || null,
         complement: formData.complement || null,
+        neighborhood: formData.neighborhood || null,
         city: formData.city || null,
         state: formData.state || null,
         cep: formData.cep || null
@@ -352,6 +358,16 @@ export default function TenantCustomers() {
                   value={formData.complement}
                   onChange={(e) => setFormData({ ...formData, complement: e.target.value })}
                   placeholder="Ex: Apto 45"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="neighborhood">Bairro</Label>
+                <Input
+                  id="neighborhood"
+                  value={formData.neighborhood}
+                  onChange={(e) => setFormData({ ...formData, neighborhood: e.target.value })}
+                  placeholder="Ex: Centro"
                 />
               </div>
 
