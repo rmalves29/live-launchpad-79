@@ -15,12 +15,12 @@ interface Tenant {
 const PREVIEW_TENANT_KEY = 'previewTenantId';
 
 export const TenantSwitcher = () => {
-  const { tenant, isMainSite } = useTenantContext();
+  const { isMainSite } = useTenantContext();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string | undefined>(undefined);
 
-  // Esconde quando já estamos dentro de um tenant real
+  // Esconde quando não é super admin (isMainSite só é true para super admin)
   if (!isMainSite) return null;
 
   useEffect(() => {
