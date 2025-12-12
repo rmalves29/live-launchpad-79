@@ -103,7 +103,9 @@ const Relatorios = () => {
   const [customersFilter, setCustomersFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
   const [customersStartDate, setCustomersStartDate] = useState('');
   const [customersEndDate, setCustomersEndDate] = useState('');
-
+  
+  // Cache de nomes de grupos do WhatsApp
+  const [groupNamesCache, setGroupNamesCache] = useState<Map<string, string>>(new Map());
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -385,26 +387,25 @@ const Relatorios = () => {
 
   const loadWhatsAppGroupStats = async () => {
     try {
-      // Buscar mapeamento de grupos (por id e por whatsapp_group_name) para nomes amigáveis
-      const { data: groupMappings } = await supabaseTenant
-        .from('customer_whatsapp_groups')
-        .select('id, whatsapp_group_name, group_display_name')
-        .order('created_at', { ascending: true });
-
-      // Criar mapas de lookup por whatsapp_group_name e por id
-      const groupNameByCode = new Map<string, string>();
-      const groupNameById = new Map<string, string>();
-      if (groupMappings) {
-        for (const mapping of groupMappings) {
-          const groupCode = mapping.whatsapp_group_name;
-          const gid = mapping.id;
-          const displayName = mapping.group_display_name || (groupCode ? `Grupo ${groupCode.split('@')[0].slice(-8)}` : `Grupo ${gid?.toString().slice(-8)}`);
-          if (groupCode && !groupNameByCode.has(groupCode)) {
-            groupNameByCode.set(groupCode, displayName);
+      // Buscar lista de grupos via Z-API para obter os nomes reais
+      let zapiGroupNames = new Map<string, string>();
+      
+      if (tenantId) {
+        try {
+          const response = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+            body: { action: 'list-groups', tenant_id: tenantId }
+          });
+          
+          if (response.data?.groups) {
+            for (const group of response.data.groups) {
+              if (group.id && group.name) {
+                zapiGroupNames.set(group.id, group.name);
+              }
+            }
+            console.log('📱 Grupos Z-API carregados:', zapiGroupNames.size);
           }
-          if (gid && !groupNameById.has(gid)) {
-            groupNameById.set(gid, displayName);
-          }
+        } catch (zapiError) {
+          console.warn('⚠️ Não foi possível carregar nomes dos grupos via Z-API:', zapiError);
         }
       }
       
@@ -480,18 +481,17 @@ const Relatorios = () => {
 
       // Processar cada pedido e agrupar por grupo WhatsApp
       orders?.forEach(order => {
-        // Determinar código do grupo - priorizar whatsapp_group_id (uuid) -> depois whatsapp_group_name -> depois cart
+        // Determinar código do grupo
         let groupCode = order.whatsapp_group_name || order.carts?.whatsapp_group_name || 'Sem Grupo';
-        let groupId = (order as any).whatsapp_group_id || order.carts?.whatsapp_group_id || null;
 
-        // Extrair nome amigável do grupo: preferir lookup por id, depois por code, caso contrário fallback
+        // Obter nome amigável do grupo: preferir Z-API, caso contrário fallback
         let groupName = 'Sem Grupo';
-        if (groupId && groupNameById.has(groupId)) {
-          groupName = groupNameById.get(groupId)!;
-        } else if (groupCode && groupCode !== 'Sem Grupo') {
-          if (groupNameByCode.has(groupCode)) {
-            groupName = groupNameByCode.get(groupCode)!;
+        if (groupCode && groupCode !== 'Sem Grupo') {
+          if (zapiGroupNames.has(groupCode)) {
+            // Nome obtido via Z-API
+            groupName = zapiGroupNames.get(groupCode)!;
           } else if (groupCode.includes('@g.us')) {
+            // Fallback: usar últimos 8 dígitos do JID
             groupName = `Grupo ${groupCode.split('@')[0].slice(-8)}`;
           } else if (groupCode.includes('-')) {
             groupName = `Grupo ${groupCode.slice(-8)}`;
@@ -500,7 +500,7 @@ const Relatorios = () => {
           }
         }
         
-  console.log(`📞 Pedido ${order.id} - Grupo ID: ${groupId} - Grupo Code: ${groupCode} - Nome: ${groupName}`);
+        console.log(`📞 Pedido ${order.id} - Grupo Code: ${groupCode} - Nome: ${groupName}`);
         
         const amount = Number(order.total_amount);
         const items = cartItemsMap.get(order.cart_id) || [];
