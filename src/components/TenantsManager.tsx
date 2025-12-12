@@ -189,9 +189,12 @@ export default function TenantsManager() {
 
       if (credentialError) throw credentialError;
 
+      // Selecionar automaticamente o novo tenant no modo preview
+      localStorage.setItem('previewTenantId', newTenant.id);
+
       toast({
         title: "Sucesso",
-        description: `Empresa "${formData.name}" criada com sucesso!`,
+        description: `Empresa "${formData.name}" criada e selecionada automaticamente!`,
       });
 
       setFormData({ 
@@ -204,7 +207,9 @@ export default function TenantsManager() {
         max_whatsapp_groups: null
       });
       setShowCreateDialog(false);
-      loadData();
+      
+      // Recarrega a página para carregar o novo tenant
+      window.location.reload();
 
     } catch (error: any) {
       console.error("Erro ao criar empresa:", error);
