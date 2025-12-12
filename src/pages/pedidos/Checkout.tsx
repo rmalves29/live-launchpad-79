@@ -1893,24 +1893,27 @@ const Checkout = () => {
           <CardContent>
             <div className="space-y-4">
               {selectedHistoryOrder.items.map((item, index) => (
-                <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                <div key={index} className="flex items-center justify-between p-4 border border-border rounded-lg bg-card hover:bg-accent/50 transition-colors">
                     <div className="flex items-center space-x-4">
-                      <div className="w-16 h-16 flex-shrink-0">
+                      <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-border">
                         {item.image_url ? (
                           <img 
                             src={item.image_url} 
                             alt={item.product_name}
-                            className="w-16 h-16 object-cover rounded"
+                            className="w-16 h-16 object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                            }}
                           />
-                        ) : (
-                          <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center">
-                            <ShoppingCart className="h-8 w-8 text-gray-400" />
-                          </div>
-                        )}
+                        ) : null}
+                        <div className={`w-16 h-16 bg-muted rounded-lg flex items-center justify-center ${item.image_url ? 'hidden' : ''}`}>
+                          <ShoppingCart className="h-6 w-6 text-muted-foreground" />
+                        </div>
                       </div>
                       <div>
-                        <h4 className="font-medium">{item.product_name}</h4>
-                        <p className="text-sm text-muted-foreground">Código: {item.product_code}</p>
+                        <h4 className="font-medium text-foreground">{item.product_name}</h4>
+                        <p className="text-sm text-muted-foreground">Código: {item.product_code || 'N/A'}</p>
                       </div>
                     </div>
                   <div className="text-right">
