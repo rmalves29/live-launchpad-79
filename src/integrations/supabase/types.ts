@@ -541,8 +541,10 @@ export type Database = {
           group_name: string | null
           id: number
           is_paid: boolean
+          item_added_delivered: boolean | null
           item_added_message_sent: boolean | null
           observation: string | null
+          payment_confirmation_delivered: boolean | null
           payment_confirmation_sent: boolean | null
           payment_link: string | null
           printed: boolean | null
@@ -568,8 +570,10 @@ export type Database = {
           group_name?: string | null
           id?: number
           is_paid?: boolean
+          item_added_delivered?: boolean | null
           item_added_message_sent?: boolean | null
           observation?: string | null
+          payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
@@ -595,8 +599,10 @@ export type Database = {
           group_name?: string | null
           id?: number
           is_paid?: boolean
+          item_added_delivered?: boolean | null
           item_added_message_sent?: boolean | null
           observation?: string | null
+          payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
@@ -1383,6 +1389,7 @@ export type Database = {
         Row: {
           amount: number | null
           created_at: string | null
+          delivery_status: string | null
           group_name: string | null
           id: number
           message: string
@@ -1396,10 +1403,12 @@ export type Database = {
           type: Database["public"]["Enums"]["whatsapp_message_type"]
           updated_at: string | null
           whatsapp_group_name: string | null
+          zapi_message_id: string | null
         }
         Insert: {
           amount?: number | null
           created_at?: string | null
+          delivery_status?: string | null
           group_name?: string | null
           id?: number
           message: string
@@ -1413,10 +1422,12 @@ export type Database = {
           type: Database["public"]["Enums"]["whatsapp_message_type"]
           updated_at?: string | null
           whatsapp_group_name?: string | null
+          zapi_message_id?: string | null
         }
         Update: {
           amount?: number | null
           created_at?: string | null
+          delivery_status?: string | null
           group_name?: string | null
           id?: number
           message?: string
@@ -1430,6 +1441,7 @@ export type Database = {
           type?: Database["public"]["Enums"]["whatsapp_message_type"]
           updated_at?: string | null
           whatsapp_group_name?: string | null
+          zapi_message_id?: string | null
         }
         Relationships: [
           {

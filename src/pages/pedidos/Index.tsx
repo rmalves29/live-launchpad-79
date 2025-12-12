@@ -35,6 +35,8 @@
     observation?: string;
     item_added_message_sent?: boolean;
     payment_confirmation_sent?: boolean;
+    item_added_delivered?: boolean;
+    payment_confirmation_delivered?: boolean;
     tenant_id: string;
     customer?: {
       name?: string;
@@ -1165,28 +1167,40 @@
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            {/* Indicador de mensagem de item adicionado */}
+                            {/* Indicador de mensagem de item adicionado - só mostra verde se entregue */}
                             <div 
                               className="flex items-center gap-1" 
-                              title={order.item_added_message_sent ? "Mensagem de item adicionado enviada" : "Mensagem de item adicionado não enviada"}
+                              title={
+                                order.item_added_delivered 
+                                  ? "Mensagem de item adicionado entregue ✓✓" 
+                                  : order.item_added_message_sent 
+                                    ? "Mensagem enviada, aguardando confirmação de entrega" 
+                                    : "Mensagem de item adicionado não enviada"
+                              }
                             >
                               <MessageCircle 
                                 className={cn(
                                   "h-4 w-4",
-                                  order.item_added_message_sent ? "text-green-500" : "text-muted-foreground"
+                                  order.item_added_delivered ? "text-green-500" : "text-muted-foreground"
                                 )} 
                               />
                             </div>
-                            {/* Indicador de confirmação de pagamento */}
+                            {/* Indicador de confirmação de pagamento - só mostra verde se entregue */}
                             {order.is_paid && (
                               <div 
                                 className="flex items-center gap-1" 
-                                title={order.payment_confirmation_sent ? "Confirmação de pagamento enviada" : "Confirmação de pagamento não enviada"}
+                                title={
+                                  order.payment_confirmation_delivered 
+                                    ? "Confirmação de pagamento entregue ✓✓" 
+                                    : order.payment_confirmation_sent 
+                                      ? "Confirmação enviada, aguardando entrega" 
+                                      : "Confirmação de pagamento não enviada"
+                                }
                               >
                                 <DollarSign 
                                   className={cn(
                                     "h-4 w-4",
-                                    order.payment_confirmation_sent ? "text-green-500" : "text-muted-foreground"
+                                    order.payment_confirmation_delivered ? "text-green-500" : "text-muted-foreground"
                                   )} 
                                 />
                               </div>

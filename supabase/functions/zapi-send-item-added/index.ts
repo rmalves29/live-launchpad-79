@@ -15,6 +15,7 @@ interface ItemAddedRequest {
   product_code: string;
   quantity: number;
   unit_price: number;
+  order_id?: number;
 }
 
 // Validate that request comes from internal source (database trigger)
@@ -144,7 +145,7 @@ serve(async (req) => {
       );
     }
 
-    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price } = body;
+    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, order_id } = body;
 
     console.log(`[${timestamp}] [zapi-send-item-added] Processing for tenant ${tenant_id}`);
 
@@ -201,17 +202,39 @@ serve(async (req) => {
     const responseText = await response.text();
     console.log(`[zapi-send-item-added] Response: ${response.status} - ${responseText.substring(0, 200)}`);
 
+    // Parse response to get message ID
+    let zapiMessageId = null;
+    try {
+      const responseJson = JSON.parse(responseText);
+      zapiMessageId = responseJson.messageId || responseJson.id || null;
+      console.log(`[zapi-send-item-added] Z-API Message ID: ${zapiMessageId}`);
+    } catch (e) {
+      console.log(`[zapi-send-item-added] Could not parse Z-API response for message ID`);
+    }
+
+    // Insert message record with Z-API message ID for tracking
     await supabase.from('whatsapp_messages').insert({
       tenant_id,
       phone: formattedPhone,
       message: message.substring(0, 500),
       type: 'item_added',
       product_name: product_name.substring(0, 100),
-      sent_at: new Date().toISOString()
+      sent_at: new Date().toISOString(),
+      order_id: order_id || null,
+      zapi_message_id: zapiMessageId,
+      delivery_status: response.ok ? 'SENT' : 'FAILED'
     });
 
+    // Update order item_added_message_sent flag
+    if (order_id && response.ok) {
+      await supabase
+        .from('orders')
+        .update({ item_added_message_sent: true })
+        .eq('id', order_id);
+    }
+
     return new Response(
-      JSON.stringify({ sent: response.ok, status: response.status }),
+      JSON.stringify({ sent: response.ok, status: response.status, messageId: zapiMessageId }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
