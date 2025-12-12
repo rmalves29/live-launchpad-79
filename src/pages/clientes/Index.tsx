@@ -27,6 +27,7 @@ interface Customer {
   street?: string;
   number?: string;
   complement?: string;
+  neighborhood?: string;
   city?: string;
   state?: string;
   cep?: string;
@@ -303,6 +304,7 @@ const Clientes = () => {
           street: editingCustomer.street || null,
           number: editingCustomer.number || null,
           complement: editingCustomer.complement || null,
+          neighborhood: editingCustomer.neighborhood || null,
           city: editingCustomer.city || null,
           state: editingCustomer.state || null,
           cep: editingCustomer.cep || null,
@@ -928,6 +930,14 @@ const Clientes = () => {
                                                 id="complement"
                                                 value={editingCustomer.complement || ''}
                                                 onChange={(e) => setEditingCustomer(prev => prev ? {...prev, complement: e.target.value} : null)}
+                                              />
+                                            </div>
+                                            <div className="col-span-2">
+                                              <Label htmlFor="neighborhood">Bairro</Label>
+                                              <Input
+                                                id="neighborhood"
+                                                value={editingCustomer.neighborhood || ''}
+                                                onChange={(e) => setEditingCustomer(prev => prev ? {...prev, neighborhood: e.target.value} : null)}
                                               />
                                             </div>
                                             <div>
