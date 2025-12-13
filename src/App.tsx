@@ -19,6 +19,7 @@ import MpReturn from "./pages/callbacks/MpReturn";
 import PedidosManual from "./pages/pedidos/Manual";
 import Live from "./pages/pedidos/Live";
 import Checkout from "./pages/pedidos/Checkout";
+import PublicCheckout from "./pages/pedidos/PublicCheckout";
 import Pedidos from "./pages/pedidos/Index";
 
 // Módulos
@@ -176,6 +177,7 @@ const AppContent = () => {
         
         {/* Rotas públicas da loja por slug (path-based) - prefixo /t/ para evitar conflitos */}
         <Route path="/t/:slug" element={<TenantStorefront />} />
+        <Route path="/t/:slug/checkout" element={<PublicCheckout />} />
         <Route path="/t/:slug/*" element={<TenantStorefront />} />
         
         <Route path="*" element={<NotFound />} />
