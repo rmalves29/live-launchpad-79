@@ -1221,15 +1221,10 @@ const Checkout = () => {
 
   const renderCheckoutView = () => (
     <div className="max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold">Finalizar Checkout</h2>
-        <Button onClick={() => setActiveView('dashboard')} variant="outline">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Voltar ao Dashboard
-        </Button>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold">Checkout</h2>
+        <p className="text-muted-foreground">Processe pagamentos e finalize pedidos</p>
       </div>
-      
-      <p className="text-muted-foreground mb-6">Processe pagamentos e finalize pedidos</p>
 
 
       {/* Alerta quando não há tenant selecionado no modo preview */}
@@ -1998,83 +1993,143 @@ const Checkout = () => {
     </div>
   );
 
-  if (activeView === 'checkout') {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-6">
-          {renderCheckoutView()}
-        </div>
-      </div>
-    );
-  }
-
-  if (activeView === 'history') {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-6">
-          {renderHistoryView()}
-        </div>
-      </div>
-    );
-  }
-
+  // Renderizar diretamente o checkout com histórico integrado
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-6">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-4 flex items-center justify-center">
-            <CreditCard className="h-10 w-10 mr-3 text-primary" />
-            Centro de Controle - Checkout
-          </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Finalize pedidos e processe pagamentos
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 bg-blue-50 border-blue-200"
-            onClick={() => setActiveView('checkout')}
-          >
+        {renderCheckoutView()}
+        
+        {/* Seção de Histórico de Pedidos Pagos */}
+        <div className="max-w-4xl mx-auto mt-8">
+          <Card>
             <CardHeader>
-              <CardTitle className="flex items-center text-xl">
-                <div className="p-3 rounded-lg bg-blue-50 mr-4">
-                  <CreditCard className="h-8 w-8 text-blue-600" />
-                </div>
-                Pagar Pedido Realizado
+              <CardTitle className="flex items-center">
+                <BarChart3 className="h-5 w-5 mr-2" />
+                Histórico de Pedidos Pagos
               </CardTitle>
-              <CardDescription className="text-base">
-                Buscar pedidos e processar pagamentos
+              <CardDescription>
+                Visualize os pedidos já finalizados deste cliente
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full">
-                Acessar
-              </Button>
+              <div className="flex gap-4 mb-6">
+                <Input
+                  placeholder="Telefone do cliente"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="flex-1"
+                />
+                <Button onClick={loadCustomerHistory} disabled={loadingHistory}>
+                  {loadingHistory ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <Search className="h-4 w-4 mr-2" />
+                  )}
+                  Buscar Histórico
+                </Button>
+              </div>
+
+              {customerOrders.length > 0 && (
+                <div className="space-y-4">
+                  {customerOrders.map((order) => (
+                    <div key={order.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold">Pedido #{order.id}</span>
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              Pago
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold">R$ {Number(order.total_amount).toFixed(2)}</div>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setSelectedHistoryOrder(order)}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            Ver Produtos
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {customerOrders.length === 0 && phone && !loadingHistory && (
+                <div className="text-center py-4 text-muted-foreground">
+                  Nenhum pedido pago encontrado para este telefone
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          <Card 
-            className="cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 border-2 bg-purple-50 border-purple-200"
-            onClick={() => setActiveView('history')}
-          >
-            <CardHeader>
-              <CardTitle className="flex items-center text-xl">
-                <div className="p-3 rounded-lg bg-purple-50 mr-4">
-                  <BarChart3 className="h-8 w-8 text-purple-600" />
+          {selectedHistoryOrder && (
+            <Card className="mt-6 border-2 border-primary">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Produtos do Pedido #{selectedHistoryOrder.id}</CardTitle>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setSelectedHistoryOrder(null)}
+                  >
+                    Fechar
+                  </Button>
                 </div>
-                Histórico de Pedidos
-              </CardTitle>
-              <CardDescription className="text-base">
-                Ver pedidos finalizados do cliente
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button className="w-full">
-                Acessar
-              </Button>
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {selectedHistoryOrder.items.map((item, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 border border-border rounded-lg bg-card hover:bg-accent/50 transition-colors">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-border">
+                          {item.image_url ? (
+                            <img 
+                              src={item.image_url} 
+                              alt={item.product_name}
+                              className="w-16 h-16 object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-16 h-16 bg-muted rounded-lg flex items-center justify-center ${item.image_url ? 'hidden' : ''}`}>
+                            <ShoppingCart className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-foreground">{item.product_name}</h4>
+                          <p className="text-sm text-muted-foreground">Código: {item.product_code || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium">
+                          {item.qty}x R$ {Number(item.unit_price).toFixed(2)}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Total: R$ {(item.qty * Number(item.unit_price)).toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <Separator />
+                  <div className="text-right">
+                    <div className="text-lg font-bold">
+                      Total do Pedido: R$ {Number(selectedHistoryOrder.total_amount).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
