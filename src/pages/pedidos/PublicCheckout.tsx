@@ -78,18 +78,26 @@ const PublicCheckout = () => {
 
       try {
         const { data, error } = await supabase
-          .from('tenants')
-          .select('id, name, slug, logo_url, primary_color, phone')
-          .eq('slug', slug)
-          .eq('is_active', true)
-          .maybeSingle();
+          .rpc('get_tenant_by_slug', { slug_param: slug });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Erro no RPC get_tenant_by_slug:', error);
+          throw error;
+        }
 
-        if (!data) {
+        const tenantData = (Array.isArray(data) && data.length > 0 ? data[0] : null) as any;
+
+        if (!tenantData || !tenantData.is_active) {
           setTenantError('Loja não encontrada');
         } else {
-          setTenant(data);
+          setTenant({
+            id: tenantData.id,
+            name: tenantData.name,
+            slug: tenantData.slug,
+            logo_url: null,
+            primary_color: null,
+            phone: null,
+          });
         }
       } catch (error) {
         console.error('Erro ao carregar loja:', error);
