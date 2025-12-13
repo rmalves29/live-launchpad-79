@@ -89,6 +89,7 @@ const Checkout = () => {
 
   // Estado para slug do tenant (para link do checkout público)
   const [tenantSlug, setTenantSlug] = useState<string | null>(null);
+  const [publicBaseUrl, setPublicBaseUrl] = useState<string>('https://app.orderzaps.com');
 
   // Detectar retorno da página de pagamento e limpar dados duplicados  
   useEffect(() => {
@@ -139,21 +140,31 @@ const Checkout = () => {
     loadActiveGifts();
   }, []);
 
-  // Carregar slug do tenant para gerar link do checkout público
+  // Carregar slug do tenant e URL base para gerar link do checkout público
   useEffect(() => {
-    const loadTenantSlug = async () => {
+    const loadTenantSlugAndBaseUrl = async () => {
       if (!tenantId) return;
       try {
-        const { data } = await supabase
+        // Carregar slug do tenant
+        const { data: tenantData } = await supabase
           .rpc('get_tenant_by_id', { tenant_id_param: tenantId });
-        if (data && data.length > 0) {
-          setTenantSlug(data[0].slug);
+        if (tenantData && tenantData.length > 0) {
+          setTenantSlug(tenantData[0].slug);
+        }
+        
+        // Carregar URL base das configurações
+        const { data: settingsData } = await supabase
+          .from('app_settings')
+          .select('public_base_url')
+          .single();
+        if (settingsData?.public_base_url) {
+          setPublicBaseUrl(settingsData.public_base_url);
         }
       } catch (error) {
-        console.error('Erro ao carregar slug do tenant:', error);
+        console.error('Erro ao carregar dados do tenant:', error);
       }
     };
-    loadTenantSlug();
+    loadTenantSlugAndBaseUrl();
   }, [tenantId]);
 
   useEffect(() => {
@@ -1241,14 +1252,14 @@ const Checkout = () => {
                 <ExternalLink className="h-4 w-4 text-primary" />
                 <span className="text-muted-foreground">Link do checkout para clientes:</span>
                 <code className="bg-muted px-2 py-1 rounded text-xs font-mono">
-                  {window.location.origin}/t/{tenantSlug}/checkout
+                  {publicBaseUrl}/t/{tenantSlug}/checkout
                 </code>
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/t/${tenantSlug}/checkout`);
+                  navigator.clipboard.writeText(`${publicBaseUrl}/t/${tenantSlug}/checkout`);
                   toast({ title: 'Link copiado!', description: 'Envie para seus clientes finalizarem os pedidos' });
                 }}
               >
