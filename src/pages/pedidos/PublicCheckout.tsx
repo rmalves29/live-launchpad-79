@@ -52,6 +52,7 @@ const PublicCheckout = () => {
   const [tenantError, setTenantError] = useState<string | null>(null);
   
   const [phone, setPhone] = useState('');
+  const [historyPhone, setHistoryPhone] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -61,7 +62,7 @@ const PublicCheckout = () => {
   const [paidOrders, setPaidOrders] = useState<Order[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const [historySearched, setHistorySearched] = useState(false);
   
   const [customerData, setCustomerData] = useState({
     name: '',
@@ -613,15 +614,20 @@ const PublicCheckout = () => {
       if ((customerOrders || []).length === 0) {
         toast({ title: 'Nenhum pedido encontrado', description: 'Não há pedidos em aberto para este telefone' });
       }
-
-      // Carregar também histórico de pedidos pagos
-      loadPaidOrdersHistory(normalizedPhone);
     } catch (error) {
       console.error('Erro ao buscar pedidos:', error);
       toast({ title: 'Erro', description: 'Erro ao buscar seus pedidos', variant: 'destructive' });
     } finally {
       setLoadingOrders(false);
     }
+  };
+
+  const searchPaidOrdersHistory = async () => {
+    if (!historyPhone.trim() || !tenant) return;
+    
+    const normalizedPhone = normalizeForStorage(historyPhone);
+    setHistorySearched(true);
+    loadPaidOrdersHistory(normalizedPhone);
   };
 
   const loadPaidOrdersHistory = async (normalizedPhone: string) => {
@@ -719,49 +725,40 @@ const PublicCheckout = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted">
-      {/* Header da loja */}
-      <div className="border-b py-4 px-4 bg-primary">
-        <div className="max-w-4xl mx-auto flex items-center gap-4">
-          {tenant.logo_url ? (
-            <img src={tenant.logo_url} alt={tenant.name} className="h-12 w-12 rounded-full object-cover bg-white" />
-          ) : (
-            <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
-              <Store className="h-6 w-6 text-primary-foreground" />
-            </div>
-          )}
-          <div>
-            <h1 className="text-xl font-bold text-primary-foreground">{tenant.name}</h1>
-            <p className="text-primary-foreground/80 text-sm">Checkout</p>
-          </div>
+      {/* Header */}
+      <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold">Checkout</h1>
+          <p className="text-muted-foreground">Processe pagamentos e finalize pedidos</p>
         </div>
-      </div>
 
-      <div className="max-w-4xl mx-auto p-4 space-y-6">
-        {/* Card de busca */}
+        {/* Card de busca pedidos em aberto */}
         <Card className="glass-card">
-          <CardHeader>
+          <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2">
-              <Phone className="h-5 w-5" />
-              Consultar Meus Pedidos
+              <Search className="h-5 w-5" />
+              Buscar Pedidos em Aberto
             </CardTitle>
-            <CardDescription>
-              Digite seu telefone para visualizar seus pedidos em aberto
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex gap-2">
               <Input
-                placeholder="(XX) XXXXX-XXXX"
+                placeholder="digite seu telefone completo incluindo o DDD"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
                 className="flex-1"
               />
-              <Button onClick={searchOrders} disabled={loadingOrders}>
+              <Button onClick={searchOrders} disabled={loadingOrders} className="bg-emerald-500 hover:bg-emerald-600 text-white">
                 {loadingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                <span className="ml-2">Buscar</span>
+                <span className="ml-2">Buscar Pedidos</span>
               </Button>
             </div>
+            {!searched && (
+              <p className="text-center text-muted-foreground mt-4">
+                Use a busca acima para encontrar pedidos em aberto
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -1153,104 +1150,105 @@ const PublicCheckout = () => {
           </>
         )}
 
-        {/* Histórico de Pedidos Pagos */}
-        {searched && paidOrders.length > 0 && (
-          <Card className="glass-card">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <History className="h-5 w-5" />
-                  Histórico de Pedidos Pagos ({paidOrders.length})
-                </CardTitle>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setShowHistory(!showHistory)}
-                >
-                  {showHistory ? 'Ocultar' : 'Ver Histórico'}
-                </Button>
+        {/* Histórico de Pedidos Pagos - Card com busca separada */}
+        <Card className="glass-card">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              <div>
+                <CardTitle>Histórico de Pedidos Pagos</CardTitle>
+                <CardDescription>Visualize os pedidos já finalizados deste cliente</CardDescription>
               </div>
-            </CardHeader>
-            {showHistory && (
-              <CardContent className="space-y-4">
-                {loadingHistory ? (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : (
-                  <>
-                    {paidOrders.map((order) => (
-                      <div key={order.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
-                        <div className="flex justify-between items-start">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="secondary">Pedido #{order.id}</Badge>
-                              <Badge variant="default" className="bg-green-600">Pago</Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              Data: {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {order.items.length} {order.items.length === 1 ? 'produto' : 'produtos'}
-                            </p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Telefone do cliente"
+                value={historyPhone}
+                onChange={(e) => setHistoryPhone(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && searchPaidOrdersHistory()}
+                className="flex-1"
+              />
+              <Button onClick={searchPaidOrdersHistory} disabled={loadingHistory} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                {loadingHistory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                <span className="ml-2">Buscar Histórico</span>
+              </Button>
+            </div>
+
+            {historySearched && (
+              loadingHistory ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : paidOrders.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4">
+                  Nenhum pedido pago encontrado para este telefone
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {paidOrders.map((order) => (
+                    <div key={order.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">Pedido #{order.id}</Badge>
+                            <Badge variant="default" className="bg-green-600">Pago</Badge>
                           </div>
-                          <div className="text-right">
-                            <div className="text-lg font-bold text-green-600">{formatCurrency(order.total_amount)}</div>
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              className="mt-2"
-                              onClick={() => setSelectedHistoryOrder(
-                                selectedHistoryOrder?.id === order.id ? null : order
-                              )}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              {selectedHistoryOrder?.id === order.id ? 'Ocultar' : 'Ver Produtos'}
-                            </Button>
+                          <p className="text-sm text-muted-foreground">
+                            Data: {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {order.items.length} {order.items.length === 1 ? 'produto' : 'produtos'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg font-bold text-green-600">{formatCurrency(order.total_amount)}</div>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="mt-2"
+                            onClick={() => setSelectedHistoryOrder(
+                              selectedHistoryOrder?.id === order.id ? null : order
+                            )}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            {selectedHistoryOrder?.id === order.id ? 'Ocultar' : 'Ver Produtos'}
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {/* Detalhes do pedido selecionado */}
+                      {selectedHistoryOrder?.id === order.id && (
+                        <div className="mt-4 pt-4 border-t space-y-3">
+                          {order.items.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                {item.image_url && (
+                                  <img src={item.image_url} alt={item.product_name} className="h-12 w-12 rounded object-cover" />
+                                )}
+                                <div>
+                                  <p className="font-medium">{item.product_name}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Código: {item.product_code} | Qtd: {item.qty}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="font-bold">{formatCurrency(item.unit_price * item.qty)}</span>
+                            </div>
+                          ))}
+                          <div className="text-right pt-2 border-t">
+                            <span className="font-bold text-lg">Total: {formatCurrency(order.total_amount)}</span>
                           </div>
                         </div>
-                        
-                        {/* Detalhes do pedido selecionado */}
-                        {selectedHistoryOrder?.id === order.id && (
-                          <div className="mt-4 pt-4 border-t space-y-3">
-                            {order.items.map((item) => (
-                              <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                                <div className="flex items-center gap-3">
-                                  {item.image_url && (
-                                    <img src={item.image_url} alt={item.product_name} className="h-12 w-12 rounded object-cover" />
-                                  )}
-                                  <div>
-                                    <p className="font-medium">{item.product_name}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      Código: {item.product_code} | Qtd: {item.qty}
-                                    </p>
-                                  </div>
-                                </div>
-                                <span className="font-bold">{formatCurrency(item.unit_price * item.qty)}</span>
-                              </div>
-                            ))}
-                            <div className="text-right pt-2 border-t">
-                              <span className="font-bold text-lg">Total: {formatCurrency(order.total_amount)}</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </CardContent>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
             )}
-          </Card>
-        )}
-
-        {/* Contato da loja */}
-        {tenant.phone && (
-          <Card className="glass-card">
-            <CardContent className="pt-4 text-center text-sm text-muted-foreground">
-              Dúvidas? Entre em contato: {formatPhoneForDisplay(tenant.phone)}
-            </CardContent>
-          </Card>
-        )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
