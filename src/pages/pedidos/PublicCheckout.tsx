@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift } from 'lucide-react';
+import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 
@@ -56,6 +56,12 @@ const PublicCheckout = () => {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [searched, setSearched] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  
+  // Histórico de pedidos pagos
+  const [paidOrders, setPaidOrders] = useState<Order[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [selectedHistoryOrder, setSelectedHistoryOrder] = useState<Order | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   
   const [customerData, setCustomerData] = useState({
     name: '',
@@ -607,11 +613,72 @@ const PublicCheckout = () => {
       if ((customerOrders || []).length === 0) {
         toast({ title: 'Nenhum pedido encontrado', description: 'Não há pedidos em aberto para este telefone' });
       }
+
+      // Carregar também histórico de pedidos pagos
+      loadPaidOrdersHistory(normalizedPhone);
     } catch (error) {
       console.error('Erro ao buscar pedidos:', error);
       toast({ title: 'Erro', description: 'Erro ao buscar seus pedidos', variant: 'destructive' });
     } finally {
       setLoadingOrders(false);
+    }
+  };
+
+  const loadPaidOrdersHistory = async (normalizedPhone: string) => {
+    if (!tenant) return;
+
+    setLoadingHistory(true);
+    try {
+      const { data: paidOrdersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .eq('customer_phone', normalizedPhone)
+        .eq('is_paid', true)
+        .order('created_at', { ascending: false });
+
+      if (ordersError) throw ordersError;
+
+      const ordersWithItems = await Promise.all(
+        (paidOrdersData || []).map(async (order) => {
+          if (!order.cart_id) return { ...order, items: [] };
+
+          const { data: cartItems } = await supabase
+            .from('cart_items')
+            .select('id, qty, unit_price, product_id')
+            .eq('cart_id', order.cart_id)
+            .eq('tenant_id', tenant.id);
+
+          if (!cartItems || cartItems.length === 0) return { ...order, items: [] };
+
+          const productIds = cartItems.map(item => item.product_id);
+          const { data: products } = await supabase
+            .from('products')
+            .select('id, name, code, image_url')
+            .in('id', productIds)
+            .eq('tenant_id', tenant.id);
+
+          const items = cartItems.map(item => {
+            const product = (products || []).find(p => p.id === item.product_id);
+            return {
+              id: item.id,
+              product_name: product?.name || `Produto ID ${item.product_id}`,
+              product_code: product?.code || '',
+              qty: item.qty,
+              unit_price: Number(item.unit_price),
+              image_url: product?.image_url
+            };
+          });
+
+          return { ...order, items };
+        })
+      );
+
+      setPaidOrders(ordersWithItems);
+    } catch (error) {
+      console.error('Erro ao carregar histórico:', error);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -1084,6 +1151,96 @@ const PublicCheckout = () => {
               </Card>
             ) : null}
           </>
+        )}
+
+        {/* Histórico de Pedidos Pagos */}
+        {searched && paidOrders.length > 0 && (
+          <Card className="glass-card">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Histórico de Pedidos Pagos ({paidOrders.length})
+                </CardTitle>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setShowHistory(!showHistory)}
+                >
+                  {showHistory ? 'Ocultar' : 'Ver Histórico'}
+                </Button>
+              </div>
+            </CardHeader>
+            {showHistory && (
+              <CardContent className="space-y-4">
+                {loadingHistory ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <>
+                    {paidOrders.map((order) => (
+                      <div key={order.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary">Pedido #{order.id}</Badge>
+                              <Badge variant="default" className="bg-green-600">Pago</Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Data: {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {order.items.length} {order.items.length === 1 ? 'produto' : 'produtos'}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-green-600">{formatCurrency(order.total_amount)}</div>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="mt-2"
+                              onClick={() => setSelectedHistoryOrder(
+                                selectedHistoryOrder?.id === order.id ? null : order
+                              )}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              {selectedHistoryOrder?.id === order.id ? 'Ocultar' : 'Ver Produtos'}
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        {/* Detalhes do pedido selecionado */}
+                        {selectedHistoryOrder?.id === order.id && (
+                          <div className="mt-4 pt-4 border-t space-y-3">
+                            {order.items.map((item) => (
+                              <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                                <div className="flex items-center gap-3">
+                                  {item.image_url && (
+                                    <img src={item.image_url} alt={item.product_name} className="h-12 w-12 rounded object-cover" />
+                                  )}
+                                  <div>
+                                    <p className="font-medium">{item.product_name}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Código: {item.product_code} | Qtd: {item.qty}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="font-bold">{formatCurrency(item.unit_price * item.qty)}</span>
+                              </div>
+                            ))}
+                            <div className="text-right pt-2 border-t">
+                              <span className="font-bold text-lg">Total: {formatCurrency(order.total_amount)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </CardContent>
+            )}
+          </Card>
         )}
 
         {/* Contato da loja */}
