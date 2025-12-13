@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent, Gift, AlertTriangle } from 'lucide-react';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent, Gift, AlertTriangle, ExternalLink } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
@@ -87,6 +87,9 @@ const Checkout = () => {
   const [eligibleGift, setEligibleGift] = useState<any>(null);
   const [progressGift, setProgressGift] = useState<any>(null);
 
+  // Estado para slug do tenant (para link do checkout público)
+  const [tenantSlug, setTenantSlug] = useState<string | null>(null);
+
   // Detectar retorno da página de pagamento e limpar dados duplicados  
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -135,6 +138,23 @@ const Checkout = () => {
   useEffect(() => {
     loadActiveGifts();
   }, []);
+
+  // Carregar slug do tenant para gerar link do checkout público
+  useEffect(() => {
+    const loadTenantSlug = async () => {
+      if (!tenantId) return;
+      try {
+        const { data } = await supabase
+          .rpc('get_tenant_by_id', { tenant_id_param: tenantId });
+        if (data && data.length > 0) {
+          setTenantSlug(data[0].slug);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar slug do tenant:', error);
+      }
+    };
+    loadTenantSlug();
+  }, [tenantId]);
 
   useEffect(() => {
     if (activeGifts.length === 0 || !selectedOrder) return;
@@ -1211,6 +1231,34 @@ const Checkout = () => {
           </AlertDescription>
         </Alert>
       )}
+
+      {/* Link do Checkout Público */}
+      {tenantSlug && (
+        <Card className="mb-4 border-primary/30 bg-primary/5">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 text-sm">
+                <ExternalLink className="h-4 w-4 text-primary" />
+                <span className="text-muted-foreground">Link do checkout para clientes:</span>
+                <code className="bg-muted px-2 py-1 rounded text-xs font-mono">
+                  {window.location.origin}/t/{tenantSlug}/checkout
+                </code>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/t/${tenantSlug}/checkout`);
+                  toast({ title: 'Link copiado!', description: 'Envie para seus clientes finalizarem os pedidos' });
+                }}
+              >
+                <Copy className="h-4 w-4 mr-1" />
+                Copiar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )
 
       <Card className="mt-4">
         <CardHeader>
