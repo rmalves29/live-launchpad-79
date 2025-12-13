@@ -134,21 +134,23 @@ const PublicCheckout = () => {
     setSearched(true);
 
     try {
-      // Buscar pedidos não pagos do cliente neste tenant
-      const { data: allOrders, error: ordersError } = await supabase
+      console.log('[PublicCheckout] Buscando pedidos para tenant:', tenant.id, 'phone:', normalizedPhone);
+      
+      // Buscar pedidos não pagos do cliente neste tenant usando filtro direto
+      const { data: customerOrders, error: ordersError } = await supabase
         .from('orders')
         .select('*')
         .eq('tenant_id', tenant.id)
+        .eq('customer_phone', normalizedPhone)
         .eq('is_paid', false)
         .order('created_at', { ascending: false });
 
-      if (ordersError) throw ordersError;
+      if (ordersError) {
+        console.error('[PublicCheckout] Erro ao buscar pedidos:', ordersError);
+        throw ordersError;
+      }
 
-      // Filtrar pelo telefone normalizado
-      const customerOrders = (allOrders || []).filter(order => {
-        const orderPhone = normalizeForStorage(order.customer_phone);
-        return orderPhone === normalizedPhone;
-      });
+      console.log('[PublicCheckout] Pedidos encontrados:', customerOrders?.length || 0, customerOrders);
 
       // Carregar itens de cada pedido
       const ordersWithItems = await Promise.all(
