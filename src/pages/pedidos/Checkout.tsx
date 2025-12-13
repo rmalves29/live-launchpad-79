@@ -1258,7 +1258,7 @@ const Checkout = () => {
             </div>
           </CardContent>
         </Card>
-      )
+      )}
 
       <Card className="mt-4">
         <CardHeader>
