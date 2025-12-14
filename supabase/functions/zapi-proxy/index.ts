@@ -139,7 +139,8 @@ serve(async (req) => {
         break;
 
       case "list-groups":
-        endpoint = "/chats";
+        // Use pagination to get all chats (page=1, pageSize=500 to get more results)
+        endpoint = "/chats?page=1&pageSize=500";
         method = "GET";
         break;
 
