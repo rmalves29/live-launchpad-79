@@ -775,7 +775,37 @@ export default function SendFlow() {
       )}
 
       {/* Botão de Envio */}
-      <div className="flex justify-center">
+      <div className="flex flex-col items-center gap-3">
+        {selectedProducts.size > 0 && selectedGroups.size > 0 && (
+          <div className="text-center text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-lg">
+            <Clock className="inline h-4 w-4 mr-1" />
+            <span>
+              Tempo estimado: {(() => {
+                const numProducts = selectedProducts.size;
+                const numGroups = selectedGroups.size;
+                // Tempo para enviar todos os grupos de um produto (em segundos)
+                const timePerProduct = numGroups * perGroupDelaySeconds;
+                // Tempo total: (tempo por produto * produtos) + delays entre produtos
+                const totalSeconds = (timePerProduct * numProducts) + ((numProducts - 1) * perProductDelayMinutes * 60);
+                
+                const hours = Math.floor(totalSeconds / 3600);
+                const minutes = Math.floor((totalSeconds % 3600) / 60);
+                const seconds = totalSeconds % 60;
+                
+                if (hours > 0) {
+                  return `${hours}h ${minutes}min ${seconds}s`;
+                } else if (minutes > 0) {
+                  return `${minutes}min ${seconds}s`;
+                } else {
+                  return `${seconds}s`;
+                }
+              })()}
+            </span>
+            <span className="ml-2 text-xs opacity-70">
+              ({selectedProducts.size} produtos × {selectedGroups.size} grupos)
+            </span>
+          </div>
+        )}
         <Button
           onClick={handleSendMessages}
           disabled={
@@ -797,7 +827,7 @@ export default function SendFlow() {
             <>
               <Send className="mr-2 h-5 w-5" />
               Enviar {selectedProducts.size > 0 && selectedGroups.size > 0 
-                ? `(${selectedProducts.size} × ${selectedGroups.size} = ${selectedProducts.size * selectedGroups.size} mensagens)`
+                ? `${selectedProducts.size * selectedGroups.size} mensagens`
                 : 'Mensagens'}
             </>
           )}
