@@ -429,22 +429,45 @@ export default function SendFlow() {
           if (isCancelledRef.current) break;
           
           try {
-            const { error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-              body: { 
-                action: 'send-group', 
-                tenant_id: tenant?.id,
-                phone: groupId,
-                message: message
-              }
-            });
+            // Se o produto tem imagem, envia a imagem com o texto como legenda
+            if (product.image_url) {
+              const { error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+                body: { 
+                  action: 'send-group-image', 
+                  tenant_id: tenant?.id,
+                  phone: groupId,
+                  mediaUrl: product.image_url,
+                  caption: message
+                }
+              });
 
-            if (error) {
-              console.error(`Erro ao enviar para grupo ${groupId}:`, error);
-              errorCount++;
-              setErrorMessages(errorCount);
+              if (error) {
+                console.error(`Erro ao enviar imagem para grupo ${groupId}:`, error);
+                errorCount++;
+                setErrorMessages(errorCount);
+              } else {
+                sentCount++;
+                setSentMessages(sentCount);
+              }
             } else {
-              sentCount++;
-              setSentMessages(sentCount);
+              // Sem imagem, envia apenas texto
+              const { error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+                body: { 
+                  action: 'send-group', 
+                  tenant_id: tenant?.id,
+                  phone: groupId,
+                  message: message
+                }
+              });
+
+              if (error) {
+                console.error(`Erro ao enviar para grupo ${groupId}:`, error);
+                errorCount++;
+                setErrorMessages(errorCount);
+              } else {
+                sentCount++;
+                setSentMessages(sentCount);
+              }
             }
 
             // Delay entre grupos (check pause during delay)

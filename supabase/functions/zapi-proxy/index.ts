@@ -164,6 +164,16 @@ serve(async (req) => {
         };
         break;
 
+      case "send-group-image":
+        endpoint = "/send-image";
+        method = "POST";
+        body = {
+          phone: phone, // groupId
+          image: mediaUrl,
+          caption: caption || ""
+        };
+        break;
+
       case "list-tags":
         endpoint = "/tags";
         method = "GET";
