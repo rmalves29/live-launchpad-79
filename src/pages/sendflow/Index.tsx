@@ -48,6 +48,8 @@ export default function SendFlow() {
   const [sending, setSending] = useState(false);
   const [sendingStatus, setSendingStatus] = useState<'idle' | 'validating' | 'sending' | 'completed'>('idle');
   const [totalMessages, setTotalMessages] = useState(0);
+  const [sentMessages, setSentMessages] = useState(0);
+  const [errorMessages, setErrorMessages] = useState(0);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
   
@@ -393,6 +395,10 @@ export default function SendFlow() {
 
       console.log(`📦 Enviando ${total} mensagens via Z-API...`);
 
+      // Reset counters
+      setSentMessages(0);
+      setErrorMessages(0);
+
       let sentCount = 0;
       let errorCount = 0;
 
@@ -414,8 +420,10 @@ export default function SendFlow() {
             if (error) {
               console.error(`Erro ao enviar para grupo ${groupId}:`, error);
               errorCount++;
+              setErrorMessages(errorCount);
             } else {
               sentCount++;
+              setSentMessages(sentCount);
             }
 
             // Delay entre grupos
@@ -425,6 +433,7 @@ export default function SendFlow() {
           } catch (err) {
             console.error(`Erro ao enviar para grupo ${groupId}:`, err);
             errorCount++;
+            setErrorMessages(errorCount);
           }
         }
 
@@ -755,7 +764,7 @@ export default function SendFlow() {
               {sendingStatus === 'sending' && (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  Enviando mensagens...
+                  Enviando mensagens... {sentMessages}/{totalMessages}
                 </>
               )}
               {sendingStatus === 'completed' && (
@@ -767,8 +776,24 @@ export default function SendFlow() {
             </CardTitle>
             <CardDescription>
               {sendingStatus === 'validating' && 'Verificando se o WhatsApp está conectado...'}
-              {sendingStatus === 'sending' && `Adicionando ${totalMessages} mensagens à fila...`}
-              {sendingStatus === 'completed' && 'Todas as mensagens foram adicionadas à fila e estão sendo enviadas no background'}
+              {sendingStatus === 'sending' && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>{sentMessages} enviadas de {totalMessages}</span>
+                    <span>{Math.round((sentMessages / totalMessages) * 100)}%</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2.5">
+                    <div 
+                      className="bg-primary h-2.5 rounded-full transition-all duration-300" 
+                      style={{ width: `${(sentMessages / totalMessages) * 100}%` }}
+                    />
+                  </div>
+                  {errorMessages > 0 && (
+                    <p className="text-destructive text-xs">{errorMessages} erro(s) encontrado(s)</p>
+                  )}
+                </div>
+              )}
+              {sendingStatus === 'completed' && `${sentMessages} mensagens enviadas${errorMessages > 0 ? `, ${errorMessages} erro(s)` : ''}`}
             </CardDescription>
           </CardHeader>
         </Card>
