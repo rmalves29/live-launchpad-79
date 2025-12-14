@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 interface Product {
@@ -50,6 +50,20 @@ export default function SendFlow() {
   const [totalMessages, setTotalMessages] = useState(0);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
+  
+  // Estados de busca
+  const [groupSearch, setGroupSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  
+  // Filtros
+  const filteredGroups = groups.filter(group => 
+    group.name.toLowerCase().includes(groupSearch.toLowerCase())
+  );
+  
+  const filteredProducts = products.filter(product => 
+    product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+    product.code.toLowerCase().includes(productSearch.toLowerCase())
+  );
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -534,19 +548,30 @@ export default function SendFlow() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Campo de busca de grupos */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar grupos..."
+              value={groupSearch}
+              onChange={(e) => setGroupSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          
           {loadingGroups ? (
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
-          ) : groups.length === 0 ? (
+          ) : filteredGroups.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Nenhum grupo encontrado</p>
-              <p className="text-sm">Certifique-se de que o WhatsApp está conectado</p>
+              <p>{groups.length === 0 ? 'Nenhum grupo encontrado' : 'Nenhum grupo corresponde à busca'}</p>
+              {groups.length === 0 && <p className="text-sm">Certifique-se de que o WhatsApp está conectado</p>}
             </div>
           ) : (
             <div className="space-y-3 max-h-64 overflow-y-auto">
-              {groups.map((group) => (
+              {filteredGroups.map((group) => (
                 <div
                   key={group.id}
                   className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer"
@@ -593,49 +618,62 @@ export default function SendFlow() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Campo de busca de produtos */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome ou código..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          
           {loading ? (
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-8 w-8 animate-spin" />
             </div>
-          ) : products.length === 0 ? (
+          ) : filteredProducts.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Nenhum produto cadastrado</p>
+              <p>{products.length === 0 ? 'Nenhum produto cadastrado' : 'Nenhum produto corresponde à busca'}</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12"></TableHead>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Cor</TableHead>
-                  <TableHead>Tamanho</TableHead>
-                  <TableHead>Preço</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {products.map((product) => (
-                  <TableRow
-                    key={product.id}
-                    className="cursor-pointer hover:bg-accent"
-                    onClick={() => toggleProduct(product.id)}
-                  >
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedProducts.has(product.id)}
-                        onCheckedChange={() => toggleProduct(product.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="font-mono">{product.code}</TableCell>
-                    <TableCell className="font-medium">{product.name}</TableCell>
-                    <TableCell>{product.color || '-'}</TableCell>
-                    <TableCell>{product.size || '-'}</TableCell>
-                    <TableCell>{formatPrice(product.price)}</TableCell>
+            <div className="max-h-64 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12"></TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Cor</TableHead>
+                    <TableHead>Tamanho</TableHead>
+                    <TableHead>Preço</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredProducts.map((product) => (
+                    <TableRow
+                      key={product.id}
+                      className="cursor-pointer hover:bg-accent"
+                      onClick={() => toggleProduct(product.id)}
+                    >
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedProducts.has(product.id)}
+                          onCheckedChange={() => toggleProduct(product.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="font-mono">{product.code}</TableCell>
+                      <TableCell className="font-medium">{product.name}</TableCell>
+                      <TableCell>{product.color || '-'}</TableCell>
+                      <TableCell>{product.size || '-'}</TableCell>
+                      <TableCell>{formatPrice(product.price)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
         </Card>
