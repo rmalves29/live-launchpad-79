@@ -18,6 +18,7 @@
   import { cn } from '@/lib/utils';
   import { EditOrderDialog } from '@/components/EditOrderDialog';
   import { ViewOrderDialog } from '@/components/ViewOrderDialog';
+  import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
   import { useAuth } from '@/hooks/useAuth';
   import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 
@@ -78,6 +79,12 @@
     const [viewOrderOpen, setViewOrderOpen] = useState(false);
     const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Estado para diálogo de confirmação de pagamento
+    const [paymentConfirmDialog, setPaymentConfirmDialog] = useState<{
+      open: boolean;
+      orderId: number | null;
+    }>({ open: false, orderId: null });
 
     // Filtros específicos para Mensagem em Massa
     const [broadcastPaid, setBroadcastPaid] = useState<'all' | 'paid' | 'unpaid'>('all');
@@ -237,92 +244,35 @@
         return;
       }
 
-      // Se está MARCANDO como pago, pede confirmação com opções
-      const sendMessage = confirm('Deseja marcar este pedido como pago?\n\nClique OK para marcar como pago E enviar confirmação por WhatsApp.\nClique Cancelar para mais opções.');
+      // Se está MARCANDO como pago, abre diálogo de confirmação
+      setPaymentConfirmDialog({ open: true, orderId });
+    };
+
+    // Confirmar marcação como pago
+    const confirmMarkAsPaid = async () => {
+      const orderId = paymentConfirmDialog.orderId;
+      if (!orderId) return;
       
-      // Se clicou Cancelar, oferece opção de marcar sem mensagem
-      if (!sendMessage) {
-        const silentConfirm = confirm('Deseja marcar como pago SEM enviar mensagem WhatsApp?');
-        if (!silentConfirm) {
-          return;
-        }
-        
-        // Marcar como pago silenciosamente (sem enviar mensagem)
-        setProcessingIds(prev => new Set(prev).add(orderId));
-        
-        try {
-          const { error } = await supabaseTenant
-            .from('orders')
-            .update({ is_paid: true, skip_paid_message: true })
-            .eq('id', orderId);
-
-          if (error) throw error;
-          
-          setOrders(prev => prev.map(order => 
-            order.id === orderId 
-              ? { ...order, is_paid: true }
-              : order
-          ));
-
-          toast({
-            title: 'Sucesso',
-            description: 'Pedido marcado como pago (sem envio de mensagem)'
-          });
-        } catch (error) {
-          console.error('❌ Erro ao atualizar status:', error);
-          toast({
-            title: 'Erro',
-            description: 'Erro ao atualizar status do pagamento',
-            variant: 'destructive'
-          });
-        } finally {
-          setProcessingIds(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(orderId);
-            return newSet;
-          });
-        }
-        return;
-      }
-
-      // Marcar como pago COM envio de mensagem
+      setPaymentConfirmDialog({ open: false, orderId: null });
       setProcessingIds(prev => new Set(prev).add(orderId));
       
       try {
-        let messageSent = false;
-        
-        console.log('💰 Pedido sendo marcado como PAGO - enviando mensagem');
-        try {
-          messageSent = await sendPaidOrderMessage(orderId);
-          console.log('📨 Resultado do envio:', messageSent);
-        } catch (msgError) {
-          console.error('❌ Erro ao enviar mensagem:', msgError);
-          // Continua mesmo se falhar o envio
-        }
-
-        // Update payment status in database
-        const updateData: any = { is_paid: true };
-        if (messageSent) {
-          updateData.payment_confirmation_sent = true;
-        }
-
         const { error } = await supabaseTenant
           .from('orders')
-          .update(updateData)
+          .update({ is_paid: true, skip_paid_message: false })
           .eq('id', orderId);
 
         if (error) throw error;
         
-        // Update local state
         setOrders(prev => prev.map(order => 
           order.id === orderId 
-            ? { ...order, is_paid: true, payment_confirmation_sent: messageSent }
+            ? { ...order, is_paid: true }
             : order
         ));
 
         toast({
           title: 'Sucesso',
-          description: messageSent ? 'Pedido marcado como pago e mensagem enviada' : 'Pedido marcado como pago'
+          description: 'Pedido marcado como pago'
         });
       } catch (error) {
         console.error('❌ Erro ao atualizar status:', error);
@@ -1309,6 +1259,22 @@
           onOpenChange={setViewOrderOpen}
           order={viewingOrder}
         />
+
+        {/* Diálogo de confirmação de pagamento */}
+        <AlertDialog open={paymentConfirmDialog.open} onOpenChange={(open) => setPaymentConfirmDialog({ open, orderId: open ? paymentConfirmDialog.orderId : null })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmação de Pagamento</AlertDialogTitle>
+              <AlertDialogDescription>
+                Você está mudando esse pedido para pago, manualmente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmMarkAsPaid}>Confirmar</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
           </div>
         </div>
       </div>
