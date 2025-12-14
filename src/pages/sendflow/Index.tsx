@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/hooks/useTenant';
@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search } from 'lucide-react';
+import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 interface Product {
@@ -46,12 +46,16 @@ export default function SendFlow() {
   const [loading, setLoading] = useState(false);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [sending, setSending] = useState(false);
-  const [sendingStatus, setSendingStatus] = useState<'idle' | 'validating' | 'sending' | 'completed'>('idle');
+  const [sendingStatus, setSendingStatus] = useState<'idle' | 'validating' | 'sending' | 'paused' | 'completed'>('idle');
   const [totalMessages, setTotalMessages] = useState(0);
   const [sentMessages, setSentMessages] = useState(0);
   const [errorMessages, setErrorMessages] = useState(0);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
+  
+  // Refs para controle de pausa/cancelamento
+  const isPausedRef = useRef(false);
+  const isCancelledRef = useRef(false);
   
   // Estados de busca
   const [groupSearch, setGroupSearch] = useState('');
@@ -395,18 +399,35 @@ export default function SendFlow() {
 
       console.log(`📦 Enviando ${total} mensagens via Z-API...`);
 
-      // Reset counters
+      // Reset counters and pause state
       setSentMessages(0);
       setErrorMessages(0);
+      isPausedRef.current = false;
+      isCancelledRef.current = false;
 
       let sentCount = 0;
       let errorCount = 0;
 
+      // Helper function to wait while paused
+      const waitWhilePaused = async () => {
+        while (isPausedRef.current && !isCancelledRef.current) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      };
+
       // 3. Enviar mensagens com delays
       for (const product of selectedProductArray) {
+        if (isCancelledRef.current) break;
+        
         const message = personalizeMessage(product);
         
         for (const groupId of selectedGroupArray) {
+          if (isCancelledRef.current) break;
+          
+          // Wait if paused
+          await waitWhilePaused();
+          if (isCancelledRef.current) break;
+          
           try {
             const { error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
               body: { 
@@ -426,9 +447,17 @@ export default function SendFlow() {
               setSentMessages(sentCount);
             }
 
-            // Delay entre grupos
+            // Delay entre grupos (check pause during delay)
             if (perGroupDelaySeconds > 0) {
-              await new Promise(resolve => setTimeout(resolve, perGroupDelaySeconds * 1000));
+              const delayMs = perGroupDelaySeconds * 1000;
+              const delayStep = 500;
+              let elapsed = 0;
+              while (elapsed < delayMs && !isCancelledRef.current) {
+                await waitWhilePaused();
+                if (isCancelledRef.current) break;
+                await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
+                elapsed += delayStep;
+              }
             }
           } catch (err) {
             console.error(`Erro ao enviar para grupo ${groupId}:`, err);
@@ -437,9 +466,17 @@ export default function SendFlow() {
           }
         }
 
-        // Delay entre produtos
-        if (perProductDelayMinutes > 0 && selectedProductArray.indexOf(product) < selectedProductArray.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, perProductDelayMinutes * 60 * 1000));
+        // Delay entre produtos (check pause during delay)
+        if (perProductDelayMinutes > 0 && selectedProductArray.indexOf(product) < selectedProductArray.length - 1 && !isCancelledRef.current) {
+          const delayMs = perProductDelayMinutes * 60 * 1000;
+          const delayStep = 500;
+          let elapsed = 0;
+          while (elapsed < delayMs && !isCancelledRef.current) {
+            await waitWhilePaused();
+            if (isCancelledRef.current) break;
+            await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
+            elapsed += delayStep;
+          }
         }
       }
 
@@ -767,6 +804,12 @@ export default function SendFlow() {
                   Enviando mensagens... {sentMessages}/{totalMessages}
                 </>
               )}
+              {sendingStatus === 'paused' && (
+                <>
+                  <Pause className="h-5 w-5 text-yellow-500" />
+                  Envio pausado - {sentMessages}/{totalMessages}
+                </>
+              )}
               {sendingStatus === 'completed' && (
                 <>
                   <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -776,21 +819,66 @@ export default function SendFlow() {
             </CardTitle>
             <CardDescription>
               {sendingStatus === 'validating' && 'Verificando se o WhatsApp está conectado...'}
-              {sendingStatus === 'sending' && (
-                <div className="space-y-2">
+              {(sendingStatus === 'sending' || sendingStatus === 'paused') && (
+                <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span>{sentMessages} enviadas de {totalMessages}</span>
                     <span>{Math.round((sentMessages / totalMessages) * 100)}%</span>
                   </div>
                   <div className="w-full bg-muted rounded-full h-2.5">
                     <div 
-                      className="bg-primary h-2.5 rounded-full transition-all duration-300" 
+                      className={`h-2.5 rounded-full transition-all duration-300 ${sendingStatus === 'paused' ? 'bg-yellow-500' : 'bg-primary'}`}
                       style={{ width: `${(sentMessages / totalMessages) * 100}%` }}
                     />
                   </div>
                   {errorMessages > 0 && (
                     <p className="text-destructive text-xs">{errorMessages} erro(s) encontrado(s)</p>
                   )}
+                  <div className="flex gap-2 pt-2">
+                    {sendingStatus === 'sending' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          isPausedRef.current = true;
+                          setSendingStatus('paused');
+                        }}
+                      >
+                        <Pause className="h-4 w-4 mr-1" />
+                        Pausar
+                      </Button>
+                    )}
+                    {sendingStatus === 'paused' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          isPausedRef.current = false;
+                          setSendingStatus('sending');
+                        }}
+                      >
+                        <Play className="h-4 w-4 mr-1" />
+                        Retomar
+                      </Button>
+                    )}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        isCancelledRef.current = true;
+                        isPausedRef.current = false;
+                        setSendingStatus('idle');
+                        setSending(false);
+                        toast({
+                          title: 'Envio cancelado',
+                          description: `${sentMessages} mensagens foram enviadas antes do cancelamento.`,
+                        });
+                      }}
+                    >
+                      <Square className="h-4 w-4 mr-1" />
+                      Cancelar
+                    </Button>
+                  </div>
                 </div>
               )}
               {sendingStatus === 'completed' && `${sentMessages} mensagens enviadas${errorMessages > 0 ? `, ${errorMessages} erro(s)` : ''}`}
