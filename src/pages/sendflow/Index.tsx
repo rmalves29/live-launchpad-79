@@ -558,11 +558,11 @@ export default function SendFlow() {
                   />
                   <div className="flex-1">
                     <p className="font-medium">{group.name}</p>
-                    {group.participantCount && (
-                      <p className="text-sm text-muted-foreground">
-                        {group.participantCount} participantes
-                      </p>
-                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {group.participantCount !== undefined && group.participantCount > 0 
+                        ? `${group.participantCount} participantes` 
+                        : 'Carregando participantes...'}
+                    </p>
                   </div>
                 </div>
               ))}
