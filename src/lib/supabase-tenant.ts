@@ -71,32 +71,20 @@ class TenantSupabaseClient {
         return (base as any).select(columns ?? '*', options).eq('tenant_id', tenantId);
       },
       update: (values: any) => {
-        // Retornar query builder que adiciona tenant_id junto com outras condições
         const query = (base as any).update(values);
         
-        const wrapWithTenant = (q: any) => {
-          const finalQuery = q.eq('tenant_id', tenantId);
-          // Preservar a interface de promise
-          const promise = finalQuery;
-          promise.eq = (col: string, val: any) => wrapWithTenant(q.eq(col, val));
-          promise.in = (col: string, vals: any[]) => wrapWithTenant(q.in(col, vals));
-          promise.neq = (col: string, val: any) => wrapWithTenant(q.neq(col, val));
-          promise.select = (cols?: string) => finalQuery.select(cols);
-          return promise;
-        };
-        
+        // Retornar objeto que adiciona tenant_id no final de qualquer cadeia
         return {
           eq: (column: string, value: any) => {
-            if (column === 'tenant_id') {
-              return query.eq(column, value);
-            }
-            return wrapWithTenant(query.eq(column, value));
+            // Adiciona o filtro de tenant junto com a condição
+            const combined = query.eq(column, value).eq('tenant_id', tenantId);
+            return combined;
           },
           in: (column: string, values: any[]) => {
-            return wrapWithTenant(query.in(column, values));
+            return query.in(column, values).eq('tenant_id', tenantId);
           },
           neq: (column: string, value: any) => {
-            return wrapWithTenant(query.neq(column, value));
+            return query.neq(column, value).eq('tenant_id', tenantId);
           },
           select: (cols?: string) => query.eq('tenant_id', tenantId).select(cols),
           then: (resolve?: any, reject?: any) => {
