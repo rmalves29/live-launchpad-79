@@ -175,7 +175,8 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        endpoint = `/profile-picture/${phone}`;
+        // Z-API usa /contacts/{phone} para obter informações do contato incluindo foto
+        endpoint = `/contacts/${phone}`;
         method = "GET";
         break;
 

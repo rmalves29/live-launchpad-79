@@ -38,27 +38,36 @@ const Sorteio = () => {
       if (!tenantId) throw new Error('Tenant não identificado');
       
       const cleanPhone = phone.replace(/\D/g, '');
+      // Garantir formato com código do país (55)
+      const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
       
       const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
         body: {
           action: 'profile-picture',
           tenant_id: tenantId,
-          phone: cleanPhone
+          phone: formattedPhone
         }
       });
 
-      if (!error && data?.link) {
-        return data.link;
+      console.log('Z-API profile-picture response:', data);
+
+      // Z-API retorna { imgUrl: "https://..." } no endpoint /contacts/{phone}
+      if (!error && data?.imgUrl) {
+        return data.imgUrl;
       }
       
-      console.log('Z-API profile-picture response:', data);
+      // Fallback se tiver link ou image
+      if (!error && (data?.link || data?.image)) {
+        return data.link || data.image;
+      }
     } catch (error) {
       console.log('Erro ao buscar foto do WhatsApp:', error);
     }
 
-    // Fallback: gerar avatar baseado no número
+    // Fallback: gerar avatar baseado nos últimos dígitos
     const cleanPhone = phone.replace(/\D/g, '');
-    return `https://ui-avatars.com/api/?name=${cleanPhone}&background=random&size=256&format=png&rounded=true&bold=true`;
+    const lastDigits = cleanPhone.slice(-2);
+    return `https://ui-avatars.com/api/?name=${lastDigits}&background=9b59b6&color=fff&size=256&format=png&rounded=true&bold=true`;
   };
 
   // Função para gerar avatar baseado no número de telefone (fallback)
