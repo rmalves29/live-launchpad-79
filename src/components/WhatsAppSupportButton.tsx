@@ -19,7 +19,7 @@ export function WhatsAppSupportButton() {
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const { tenantId } = useTenant();
+  const { tenant, loading } = useTenant();
 
   const handleSendMessage = async () => {
     if (!selectedDepartment || !message.trim()) {
@@ -27,8 +27,8 @@ export function WhatsAppSupportButton() {
       return;
     }
 
-    if (!tenantId) {
-      toast.error('Tenant não identificado');
+    if (!tenant?.id) {
+      toast.error('Tenant não identificado. Faça login novamente.');
       return;
     }
 
@@ -36,12 +36,13 @@ export function WhatsAppSupportButton() {
 
     try {
       const dept = departments.find(d => d.id === selectedDepartment);
-      const fullMessage = `*[${dept?.label}]*\n\n${message.trim()}`;
+      const tenantInfo = tenant?.name ? ` - Empresa: ${tenant.name}` : '';
+      const fullMessage = `*[${dept?.label}]*${tenantInfo}\n\n${message.trim()}`;
 
       const { data, error } = await supabase.functions.invoke('zapi-proxy', {
         body: {
           action: 'send-text',
-          tenant_id: tenantId,
+          tenant_id: tenant.id,
           phone: SUPPORT_NUMBER,
           message: fullMessage
         }
