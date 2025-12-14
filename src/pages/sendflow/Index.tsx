@@ -185,10 +185,7 @@ export default function SendFlow() {
         }));
       }
 
-      const maxGroups = tenant.max_whatsapp_groups;
-      const limitedGroups = maxGroups && maxGroups > 0 
-        ? groupsList.slice(0, maxGroups) 
-        : groupsList;
+      const limitedGroups = groupsList;
       
       setGroups(limitedGroups);
       
