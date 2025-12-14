@@ -568,9 +568,13 @@
               </div>
               
               <div style="margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; border-left: 4px solid #16a34a;">
-                <div style="font-size: 11px; line-height: 1.5;">
-                  <strong style="display: block; margin-bottom: 4px; font-size: 11px; color: #374151;">📍 Endereço de entrega:</strong>
-                  <span style="color: #4b5563;">${customerAddress}</span>
+                <strong style="display: block; margin-bottom: 6px; font-size: 11px; color: #374151;">📍 Endereço de entrega:</strong>
+                <div style="font-size: 11px; line-height: 1.8; color: #4b5563;">
+                  <div><strong>Rua:</strong> ${order.customer?.street || 'Não informado'}</div>
+                  <div><strong>Número:</strong> ${order.customer?.number || 'S/N'}${order.customer?.complement ? ` - ${order.customer.complement}` : ''}</div>
+                  <div><strong>Bairro:</strong> ${order.customer?.neighborhood || 'Não informado'}</div>
+                  <div><strong>Cidade:</strong> ${order.customer?.city || 'Não informada'} - ${order.customer?.state || 'UF'}</div>
+                  <div><strong>CEP:</strong> ${order.customer?.cep || 'Não informado'}</div>
                 </div>
               </div>
               
