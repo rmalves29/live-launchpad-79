@@ -512,62 +512,72 @@
         const customerName = order.customer?.name || 'Cliente';
         const customerCPF = order.customer?.cpf || 'Não informado';
         const customerNeighborhood = order.customer?.neighborhood || '';
-        const customerAddress = order.customer ? 
-          `${order.customer.street || 'Endereço'}, ${order.customer.number || 'S/N'}${order.customer.complement ? `, ${order.customer.complement}` : ''}${customerNeighborhood ? `, ${customerNeighborhood}` : ''} - ${order.customer.city || 'Cidade'} - ${order.customer.state || 'Estado'}, CEP: ${order.customer.cep || 'Não informado'}` 
-          : 'Endereço não cadastrado';
+        
+        // Build address with explicit bairro
+        let customerAddress = 'Endereço não cadastrado';
+        if (order.customer) {
+          const parts = [];
+          if (order.customer.street) parts.push(`${order.customer.street}, ${order.customer.number || 'S/N'}`);
+          if (order.customer.complement) parts.push(order.customer.complement);
+          if (customerNeighborhood) parts.push(customerNeighborhood);
+          if (order.customer.city && order.customer.state) parts.push(`${order.customer.city} - ${order.customer.state}`);
+          if (order.customer.cep) parts.push(`CEP: ${order.customer.cep}`);
+          customerAddress = parts.join(', ');
+        }
 
         const cartItemsRows = order.cart_items && order.cart_items.length > 0 
           ? order.cart_items.map(item => `
               <tr>
-                <td style="border: 1px solid #ddd; padding: 10px; vertical-align: middle;">
-                  <div style="display: flex; align-items: center; gap: 12px;">
+                <td style="border: 1px solid #ddd; padding: 8px; vertical-align: middle;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
                     ${item.product.image_url ? 
                       `<img src="${item.product.image_url}" alt="${item.product.name}" style="width: 70px; height: 70px; object-fit: cover; border: 1px solid #ddd; border-radius: 6px; flex-shrink: 0;" />` :
-                      `<div style="width: 70px; height: 70px; border: 1px solid #ddd; background-color: #f9f9f9; display: flex; align-items: center; justify-content: center; font-size: 10px; border-radius: 6px; flex-shrink: 0; color: #999;">Sem foto</div>`
+                      `<div style="width: 70px; height: 70px; border: 1px solid #ddd; background-color: #f9f9f9; display: flex; align-items: center; justify-content: center; font-size: 9px; border-radius: 6px; flex-shrink: 0; color: #999;">Sem foto</div>`
                     }
                     <div style="flex: 1;">
-                      <div style="font-weight: 600; margin-bottom: 4px; font-size: 13px; color: #333;">${item.product.name}</div>
-                      <div style="font-size: 11px; color: #666; background: #f5f5f5; padding: 3px 8px; border-radius: 4px; display: inline-block;">Código: ${item.product.code}</div>
+                      <div style="font-weight: 600; margin-bottom: 3px; font-size: 11px; color: #333;">${item.product.name}</div>
+                      <div style="font-size: 10px; color: #666; background: #f5f5f5; padding: 2px 6px; border-radius: 4px; display: inline-block;">Código: ${item.product.code}</div>
                     </div>
                   </div>
                 </td>
-                <td style="border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; font-size: 13px; font-weight: 500;">
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: middle; font-size: 11px; font-weight: 500;">
                   R$ ${item.unit_price.toFixed(2)}
                 </td>
-                <td style="border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; font-size: 14px; font-weight: 600;">
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: middle; font-size: 12px; font-weight: 600;">
                   ${item.qty}
                 </td>
-                <td style="border: 1px solid #ddd; padding: 10px; text-align: right; vertical-align: middle; font-size: 13px; font-weight: 600; color: #16a34a;">
+                <td style="border: 1px solid #ddd; padding: 8px; text-align: right; vertical-align: middle; font-size: 11px; font-weight: 600; color: #16a34a;">
                   R$ ${(item.qty * item.unit_price).toFixed(2)}
                 </td>
               </tr>
             `).join('')
           : `<tr>
-              <td style="border: 1px solid #ddd; padding: 12px; font-size: 12px;" colspan="4">
+              <td style="border: 1px solid #ddd; padding: 10px; font-size: 11px;" colspan="4">
                 <div style="text-align: center; color: #666;">Produtos do pedido - detalhes não disponíveis</div>
               </td>
             </tr>`;
 
         return `
-          <div style="page-break-after: always; padding: 20px; font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto;">
+          <div style="page-break-after: always; padding: 16px; font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto;">
             <!-- Header -->
-            <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; padding: 18px; margin-bottom: 20px;">
-              <h1 style="margin: 0 0 10px 0; font-size: 22px; font-weight: 700; color: #1a1a2e;">${customerName}</h1>
-              <div style="display: flex; gap: 24px; margin-bottom: 10px; font-size: 13px;">
-                <span style="background: #fff; padding: 4px 10px; border-radius: 5px;"><strong>CPF:</strong> ${customerCPF}</span>
-                <span style="background: #fff; padding: 4px 10px; border-radius: 5px;"><strong>Celular:</strong> ${formatPhoneForDisplay(order.customer_phone)}</span>
+            <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 10px;">
+                <h1 style="margin: 0; font-size: 18px; font-weight: 700; color: #1a1a2e;">${customerName}</h1>
+                <span style="background: #fff; padding: 3px 8px; border-radius: 5px; font-size: 11px;"><strong>CPF:</strong> ${customerCPF}</span>
+                <span style="background: #fff; padding: 3px 8px; border-radius: 5px; font-size: 11px;"><strong>Celular:</strong> ${formatPhoneForDisplay(order.customer_phone)}</span>
               </div>
-              <div style="margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; border-left: 4px solid #16a34a;">
-                <div style="font-size: 12px; line-height: 1.6;">
-                  <strong style="display: block; margin-bottom: 5px; font-size: 13px; color: #374151;">📍 Endereço de entrega:</strong>
+              
+              <div style="margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; border-left: 4px solid #16a34a;">
+                <div style="font-size: 11px; line-height: 1.5;">
+                  <strong style="display: block; margin-bottom: 4px; font-size: 11px; color: #374151;">📍 Endereço de entrega:</strong>
                   <span style="color: #4b5563;">${customerAddress}</span>
                 </div>
               </div>
               
               <!-- Shipping Information -->
-              <div style="margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; border-left: 4px solid #3b82f6;">
-                <div style="font-size: 12px; line-height: 1.6;">
-                  <strong style="display: block; margin-bottom: 5px; font-size: 13px; color: #374151;">🚚 Informações de envio:</strong>
+              <div style="margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                <div style="font-size: 11px; line-height: 1.5;">
+                  <strong style="display: block; margin-bottom: 4px; font-size: 11px; color: #374151;">🚚 Informações de envio:</strong>
                   <span style="color: #4b5563;">${order.event_type || 'Não especificado'} - ${format(new Date(order.event_date), 'dd/MM/yyyy')}</span>
                 </div>
               </div>
