@@ -1275,10 +1275,9 @@
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-          </div>
-        </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
-  export default Pedidos;
+export default Pedidos;
