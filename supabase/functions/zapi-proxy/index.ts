@@ -143,6 +143,17 @@ serve(async (req) => {
         method = "GET";
         break;
 
+      case "group-metadata":
+        if (!phone) {
+          return new Response(
+            JSON.stringify({ error: "phone (groupId) é obrigatório para group-metadata" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        endpoint = `/group-metadata/${phone}`;
+        method = "GET";
+        break;
+
       case "send-group":
         endpoint = "/send-text";
         method = "POST";

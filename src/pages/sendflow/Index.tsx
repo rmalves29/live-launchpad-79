@@ -148,13 +148,35 @@ export default function SendFlow() {
       let groupsList: WhatsAppGroup[] = [];
       
       if (Array.isArray(data)) {
-        groupsList = data
-          .filter((chat: any) => chat.isGroup === true)
-          .map((chat: any) => ({
-            id: chat.phone || chat.id,
-            name: chat.name || chat.phone || 'Grupo sem nome',
-            participantCount: chat.participants?.length || 0
-          }));
+        const groupsFromApi = data.filter((chat: any) => chat.isGroup === true);
+        
+        // Fetch participant count for each group
+        const groupsWithParticipants = await Promise.all(
+          groupsFromApi.map(async (chat: any) => {
+            const groupId = chat.phone || chat.id;
+            let participantCount = 0;
+            
+            try {
+              const { data: metadata } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+                body: { action: 'group-metadata', tenant_id: tenant.id, phone: groupId }
+              });
+              
+              if (metadata?.participants) {
+                participantCount = metadata.participants.length;
+              }
+            } catch (err) {
+              console.log(`Não foi possível obter participantes do grupo ${groupId}`);
+            }
+            
+            return {
+              id: groupId,
+              name: chat.name || chat.phone || 'Grupo sem nome',
+              participantCount
+            };
+          })
+        );
+        
+        groupsList = groupsWithParticipants;
       } else if (data?.groups && Array.isArray(data.groups)) {
         groupsList = data.groups.map((g: any) => ({
           id: g.id || g.phone,
