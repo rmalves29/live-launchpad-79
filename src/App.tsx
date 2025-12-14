@@ -44,6 +44,7 @@ import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
 import { useTenantContext } from "@/contexts/TenantContext";
+import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -195,8 +196,9 @@ const App = () => (
           <TooltipProvider>
             <Toaster />
             <Sonner />
-            <BrowserRouter>
+          <BrowserRouter>
               <AppContent />
+              <WhatsAppSupportButton />
             </BrowserRouter>
           </TooltipProvider>
         </TenantLoader>
