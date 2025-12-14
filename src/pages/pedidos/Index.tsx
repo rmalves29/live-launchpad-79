@@ -511,8 +511,9 @@
       const reportContent = ordersToExport.map(order => {
         const customerName = order.customer?.name || 'Cliente';
         const customerCPF = order.customer?.cpf || 'Não informado';
+        const customerNeighborhood = order.customer?.neighborhood || '';
         const customerAddress = order.customer ? 
-          `${order.customer.street || 'Endereço'}, ${order.customer.number || 'S/N'}${order.customer.complement ? `, ${order.customer.complement}` : ''}, ${order.customer.neighborhood || ''} - ${order.customer.city || 'Cidade'} - ${order.customer.state || 'Estado'}, CEP: ${order.customer.cep || 'Não informado'}` 
+          `${order.customer.street || 'Endereço'}, ${order.customer.number || 'S/N'}${order.customer.complement ? `, ${order.customer.complement}` : ''}${customerNeighborhood ? `, ${customerNeighborhood}` : ''} - ${order.customer.city || 'Cidade'} - ${order.customer.state || 'Estado'}, CEP: ${order.customer.cep || 'Não informado'}` 
           : 'Endereço não cadastrado';
 
         const cartItemsRows = order.cart_items && order.cart_items.length > 0 
@@ -562,6 +563,14 @@
                   <span style="color: #4b5563;">${customerAddress}</span>
                 </div>
               </div>
+              
+              <!-- Shipping Information -->
+              <div style="margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                <div style="font-size: 12px; line-height: 1.6;">
+                  <strong style="display: block; margin-bottom: 5px; font-size: 13px; color: #374151;">🚚 Informações de envio:</strong>
+                  <span style="color: #4b5563;">${order.event_type || 'Não especificado'} - ${format(new Date(order.event_date), 'dd/MM/yyyy')}</span>
+                </div>
+              </div>
             </div>
 
             <!-- Order Summary -->
@@ -585,42 +594,29 @@
               </table>
             </div>
 
-            <!-- Payment Information -->
-            <div style="display: flex; gap: 16px; margin-bottom: 20px;">
-              <!-- Payment Method -->
-              <div style="flex: 1;">
-                <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1a1a2e;">💳 Forma de pagamento</h3>
-                <div style="background: #f0fdf4; padding: 14px; border-radius: 8px; border: 1px solid #86efac;">
-                  <div style="font-size: 13px; line-height: 1.6;">
-                    <div style="margin-bottom: 6px; font-weight: 600; color: #166534;">Pix - Mercado Pago</div>
-                    <div style="font-size: 18px; font-weight: 700; color: #16a34a;">R$ ${order.total_amount.toFixed(2)}</div>
-                    <div style="color: #4b5563; margin-top: 6px; font-size: 12px;">📅 Data: ${format(new Date(order.created_at), 'dd/MM/yy')}</div>
+            <!-- Payment Information - Side by Side -->
+            <div style="margin-bottom: 20px;">
+              <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1a1a2e;">💳 Forma de pagamento</h3>
+              <div style="background: #f0fdf4; padding: 14px; border-radius: 8px; border: 1px solid #86efac;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+                  <div style="font-size: 13px; font-weight: 600; color: #166534;">Pix - Mercado Pago</div>
+                  <div style="font-size: 16px; font-weight: 700; color: #16a34a;">R$ ${order.total_amount.toFixed(2)}</div>
+                  <div style="color: #4b5563; font-size: 12px; display: flex; align-items: center; gap: 4px;">📅 ${format(new Date(order.created_at), 'dd/MM/yyyy')}</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Observations -->
+            ${order.observation ? `
+              <div style="margin-bottom: 20px;">
+                <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1a1a2e;">📝 Observações</h3>
+                <div style="background: #fef3c7; padding: 14px; border-radius: 8px; border: 1px solid #fcd34d;">
+                  <div style="font-size: 12px; line-height: 1.6; color: #92400e;">
+                    ${order.observation}
                   </div>
                 </div>
               </div>
-
-              <!-- Payment Observations -->
-              ${order.observation ? `
-                <div style="flex: 1;">
-                  <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1a1a2e;">📝 Observações</h3>
-                  <div style="background: #fef3c7; padding: 14px; border-radius: 8px; border: 1px solid #fcd34d;">
-                    <div style="font-size: 12px; line-height: 1.6; color: #92400e;">
-                      ${order.observation}
-                    </div>
-                  </div>
-                </div>
-              ` : ''}
-            </div>
-
-            <!-- Footer -->
-            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%); color: #fff; padding: 16px; border-radius: 10px; text-align: center;">
-              <div style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">Total: R$ ${order.total_amount.toFixed(2)}</div>
-              <div style="display: flex; justify-content: center; gap: 16px; font-size: 12px; opacity: 0.9;">
-                <span style="background: ${order.is_paid ? '#16a34a' : '#dc2626'}; padding: 4px 12px; border-radius: 12px;">${order.is_paid ? '✅ Pago' : '⏳ Pendente'}</span>
-                <span>Pedido #${order.id}</span>
-                <span>${format(new Date(order.created_at), 'dd/MM/yyyy \'às\' HH:mm')}</span>
-              </div>
-            </div>
+            ` : ''}
           </div>
         `;
       }).join('');
