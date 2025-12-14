@@ -518,65 +518,65 @@
         const cartItemsRows = order.cart_items && order.cart_items.length > 0 
           ? order.cart_items.map(item => `
               <tr>
-                <td style="border: 1px solid #ddd; padding: 6px; vertical-align: top; font-size: 12px;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
+                <td style="border: 1px solid #ddd; padding: 10px; vertical-align: middle;">
+                  <div style="display: flex; align-items: center; gap: 12px;">
                     ${item.product.image_url ? 
-                      `<img src="${item.product.image_url}" alt="${item.product.name}" style="width: 40px; height: 40px; object-fit: cover; border: 1px solid #ddd; border-radius: 3px;" />` :
-                      `<div style="width: 40px; height: 40px; border: 1px solid #ddd; background-color: #f9f9f9; display: flex; align-items: center; justify-content: center; font-size: 10px; border-radius: 3px;">Sem foto</div>`
+                      `<img src="${item.product.image_url}" alt="${item.product.name}" style="width: 70px; height: 70px; object-fit: cover; border: 1px solid #ddd; border-radius: 6px; flex-shrink: 0;" />` :
+                      `<div style="width: 70px; height: 70px; border: 1px solid #ddd; background-color: #f9f9f9; display: flex; align-items: center; justify-content: center; font-size: 10px; border-radius: 6px; flex-shrink: 0; color: #999;">Sem foto</div>`
                     }
-                    <div>
-                      <div style="font-weight: bold; margin-bottom: 2px; font-size: 11px;">${item.product.name}</div>
-                      <div style="font-size: 10px; color: #666;">Código: ${item.product.code}</div>
+                    <div style="flex: 1;">
+                      <div style="font-weight: 600; margin-bottom: 4px; font-size: 13px; color: #333;">${item.product.name}</div>
+                      <div style="font-size: 11px; color: #666; background: #f5f5f5; padding: 3px 8px; border-radius: 4px; display: inline-block;">Código: ${item.product.code}</div>
                     </div>
                   </div>
                 </td>
-                <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top; font-size: 11px;">
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; font-size: 13px; font-weight: 500;">
                   R$ ${item.unit_price.toFixed(2)}
                 </td>
-                <td style="border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: top; font-size: 11px;">
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle; font-size: 14px; font-weight: 600;">
                   ${item.qty}
                 </td>
-                <td style="border: 1px solid #ddd; padding: 6px; text-align: right; vertical-align: top; font-size: 11px;">
+                <td style="border: 1px solid #ddd; padding: 10px; text-align: right; vertical-align: middle; font-size: 13px; font-weight: 600; color: #16a34a;">
                   R$ ${(item.qty * item.unit_price).toFixed(2)}
                 </td>
               </tr>
             `).join('')
           : `<tr>
-              <td style="border: 1px solid #ddd; padding: 6px; font-size: 11px;" colspan="4">
+              <td style="border: 1px solid #ddd; padding: 12px; font-size: 12px;" colspan="4">
                 <div style="text-align: center; color: #666;">Produtos do pedido - detalhes não disponíveis</div>
               </td>
             </tr>`;
 
         return `
-          <div style="page-break-after: always; padding: 14px; font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; font-size: 11px;">
+          <div style="page-break-after: always; padding: 20px; font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto;">
             <!-- Header -->
-            <div style="border-bottom: 1px solid #ddd; padding-bottom: 12px; margin-bottom: 14px;">
-              <h1 style="margin: 0 0 6px 0; font-size: 16px; font-weight: bold;">${customerName}</h1>
-              <div style="display: flex; gap: 14px; margin-bottom: 6px; font-size: 10px;">
-                <span><strong>CPF:</strong> ${customerCPF}</span>
-                <span><strong>Celular:</strong> ${formatPhoneForDisplay(order.customer_phone)}</span>
+            <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+              <h1 style="margin: 0 0 10px 0; font-size: 22px; font-weight: 700; color: #1a1a2e;">${customerName}</h1>
+              <div style="display: flex; gap: 24px; margin-bottom: 10px; font-size: 13px;">
+                <span style="background: #fff; padding: 4px 10px; border-radius: 5px;"><strong>CPF:</strong> ${customerCPF}</span>
+                <span style="background: #fff; padding: 4px 10px; border-radius: 5px;"><strong>Celular:</strong> ${formatPhoneForDisplay(order.customer_phone)}</span>
               </div>
-              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;">
-                <div style="font-size: 10px; line-height: 1.5;">
-                  <strong style="display: block; margin-bottom: 3px;">Endereço de entrega:</strong>
-                  ${customerAddress}
+              <div style="margin-top: 12px; padding: 12px; background: #fff; border-radius: 8px; border-left: 4px solid #16a34a;">
+                <div style="font-size: 12px; line-height: 1.6;">
+                  <strong style="display: block; margin-bottom: 5px; font-size: 13px; color: #374151;">📍 Endereço de entrega:</strong>
+                  <span style="color: #4b5563;">${customerAddress}</span>
                 </div>
               </div>
             </div>
 
             <!-- Order Summary -->
-            <div style="margin-bottom: 20px;">
-              <h3 style="margin: 0 0 10px 0; font-size: 12px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 3px;">
-                Resumo do pedido (${order.cart_items?.length || 0})
+            <div style="margin-bottom: 24px;">
+              <h3 style="margin: 0 0 14px 0; font-size: 15px; font-weight: 600; color: #1a1a2e; display: flex; align-items: center; gap: 8px;">
+                📦 Resumo do pedido <span style="background: #16a34a; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px;">${order.cart_items?.length || 0} ${(order.cart_items?.length || 0) === 1 ? 'item' : 'itens'}</span>
               </h3>
               
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 10px;">
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <thead>
-                  <tr style="background-color: #f8f9fa;">
-                    <th style="border: 1px solid #ddd; padding: 5px; text-align: left; font-size: 10px;">Produto</th>
-                    <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 60px; font-size: 10px;">Unitário</th>
-                    <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 40px; font-size: 10px;">Qtd</th>
-                    <th style="border: 1px solid #ddd; padding: 5px; text-align: center; width: 60px; font-size: 10px;">Valor</th>
+                  <tr style="background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%); color: #fff;">
+                    <th style="padding: 12px 10px; text-align: left; font-size: 12px; font-weight: 600;">Produto</th>
+                    <th style="padding: 12px 10px; text-align: center; width: 80px; font-size: 12px; font-weight: 600;">Unitário</th>
+                    <th style="padding: 12px 10px; text-align: center; width: 50px; font-size: 12px; font-weight: 600;">Qtd</th>
+                    <th style="padding: 12px 10px; text-align: right; width: 80px; font-size: 12px; font-weight: 600;">Valor</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -586,39 +586,40 @@
             </div>
 
             <!-- Payment Information -->
-            <div style="border-top: 1px solid #ddd; padding-top: 14px;">
-              <div style="display: flex; gap: 16px;">
-                <!-- Payment Method -->
+            <div style="display: flex; gap: 16px; margin-bottom: 20px;">
+              <!-- Payment Method -->
+              <div style="flex: 1;">
+                <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1a1a2e;">💳 Forma de pagamento</h3>
+                <div style="background: #f0fdf4; padding: 14px; border-radius: 8px; border: 1px solid #86efac;">
+                  <div style="font-size: 13px; line-height: 1.6;">
+                    <div style="margin-bottom: 6px; font-weight: 600; color: #166534;">Pix - Mercado Pago</div>
+                    <div style="font-size: 18px; font-weight: 700; color: #16a34a;">R$ ${order.total_amount.toFixed(2)}</div>
+                    <div style="color: #4b5563; margin-top: 6px; font-size: 12px;">📅 Data: ${format(new Date(order.created_at), 'dd/MM/yy')}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Payment Observations -->
+              ${order.observation ? `
                 <div style="flex: 1;">
-                  <h3 style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold;">Forma de pagamento</h3>
-                  <div style="background-color: #f8f9fa; padding: 10px; border-radius: 6px; height: 100%;">
-                    <div style="font-size: 10px; line-height: 1.5;">
-                      <div style="margin-bottom: 4px;"><strong>Pix - mercado pago</strong></div>
-                      <div>R$ ${order.total_amount.toFixed(2)}</div>
-                      <div style="color: #666; margin-top: 4px;">Data: ${format(new Date(order.created_at), 'dd/MM/yy')}</div>
+                  <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1a1a2e;">📝 Observações</h3>
+                  <div style="background: #fef3c7; padding: 14px; border-radius: 8px; border: 1px solid #fcd34d;">
+                    <div style="font-size: 12px; line-height: 1.6; color: #92400e;">
+                      ${order.observation}
                     </div>
                   </div>
                 </div>
-
-                <!-- Payment Observations -->
-                ${order.observation ? `
-                  <div style="flex: 1;">
-                    <h3 style="margin: 0 0 8px 0; font-size: 12px; font-weight: bold;">Observações do pagamento</h3>
-                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 6px; height: 100%;">
-                      <div style="font-size: 10px; line-height: 1.5;">
-                        ${order.observation}
-                      </div>
-                    </div>
-                  </div>
-                ` : ''}
-              </div>
+              ` : ''}
             </div>
 
             <!-- Footer -->
-            <div style="margin-top: 20px; text-align: center; font-size: 9px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
-              <div><strong>Total do pedido: R$ ${order.total_amount.toFixed(2)}</strong></div>
-              <div style="margin-top: 3px;">Status: ${order.is_paid ? 'Pago' : 'Pendente'}</div>
-              <div style="margin-top: 3px;">Pedido #${order.id} - ${format(new Date(order.created_at), 'dd/MM/yyyy \'às\' HH:mm')}</div>
+            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #2d2d44 100%); color: #fff; padding: 16px; border-radius: 10px; text-align: center;">
+              <div style="font-size: 18px; font-weight: 700; margin-bottom: 8px;">Total: R$ ${order.total_amount.toFixed(2)}</div>
+              <div style="display: flex; justify-content: center; gap: 16px; font-size: 12px; opacity: 0.9;">
+                <span style="background: ${order.is_paid ? '#16a34a' : '#dc2626'}; padding: 4px 12px; border-radius: 12px;">${order.is_paid ? '✅ Pago' : '⏳ Pendente'}</span>
+                <span>Pedido #${order.id}</span>
+                <span>${format(new Date(order.created_at), 'dd/MM/yyyy \'às\' HH:mm')}</span>
+              </div>
             </div>
           </div>
         `;
