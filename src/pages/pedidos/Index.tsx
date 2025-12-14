@@ -568,8 +568,8 @@
               </div>
               
               <div style="margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; border-left: 4px solid #16a34a;">
-                <strong style="display: block; margin-bottom: 6px; font-size: 11px; color: #374151;">📍 Endereço de entrega:</strong>
-                <div style="font-size: 11px; line-height: 1.8; color: #4b5563;">
+                <strong style="display: block; margin-bottom: 8px; font-size: 11px; color: #374151;">📍 Endereço de entrega:</strong>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; font-size: 11px; color: #4b5563;">
                   <div><strong>Rua:</strong> ${order.customer?.street || 'Não informado'}</div>
                   <div><strong>Número:</strong> ${order.customer?.number || 'S/N'}${order.customer?.complement ? ` - ${order.customer.complement}` : ''}</div>
                   <div><strong>Bairro:</strong> ${order.customer?.neighborhood || 'Não informado'}</div>
