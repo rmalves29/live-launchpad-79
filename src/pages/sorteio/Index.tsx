@@ -32,22 +32,28 @@ const Sorteio = () => {
   const [loading, setLoading] = useState(false);
   const [eligibleCount, setEligibleCount] = useState<number>(0);
 
-  // Função para buscar foto de perfil do WhatsApp
+  // Função para buscar foto de perfil do WhatsApp via Z-API
   const getWhatsAppProfilePicture = async (phone: string): Promise<string> => {
     try {
-      // Chama o endpoint do backend (/wa-profile) que faz cache e proxy seguro
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (tenantId) headers['x-tenant-id'] = String(tenantId);
-      const resp = await fetch(`/wa-profile?phone=${encodeURIComponent(phone)}`, { headers });
-      if (resp.ok) {
-        const j = await resp.json();
-        if (j?.url) return j.url;
-      } else {
-        // tentar ler body para debug mas não falhar
-        try { const txt = await resp.text(); console.log('wa-profile resp:', resp.status, txt); } catch(e){}
+      if (!tenantId) throw new Error('Tenant não identificado');
+      
+      const cleanPhone = phone.replace(/\D/g, '');
+      
+      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+        body: {
+          action: 'profile-picture',
+          tenant_id: tenantId,
+          phone: cleanPhone
+        }
+      });
+
+      if (!error && data?.link) {
+        return data.link;
       }
+      
+      console.log('Z-API profile-picture response:', data);
     } catch (error) {
-      console.log('Erro ao chamar /wa-profile:', error);
+      console.log('Erro ao buscar foto do WhatsApp:', error);
     }
 
     // Fallback: gerar avatar baseado no número
