@@ -168,6 +168,17 @@ serve(async (req) => {
         method = "PUT";
         break;
 
+      case "profile-picture":
+        if (!phone) {
+          return new Response(
+            JSON.stringify({ error: "phone é obrigatório para profile-picture" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        endpoint = `/profile-picture/${phone}`;
+        method = "GET";
+        break;
+
       default:
         return new Response(
           JSON.stringify({ error: `Ação desconhecida: ${action}` }),
