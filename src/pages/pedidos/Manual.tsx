@@ -367,27 +367,7 @@ const PedidosManual = () => {
           : `Novo pedido criado: ${product.code} x${qty} para ${normalizedPhone}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
 
-      // Enviar mensagem WhatsApp via Z-API (Item Adicionado)
-      if (tenant?.id) {
-        try {
-          const { error: whatsappError } = await supabase.functions.invoke('zapi-send-item-added', {
-            body: {
-              tenant_id: tenant.id,
-              customer_phone: normalizedPhone,
-              product_name: product.name,
-              product_code: product.code,
-              quantity: qty,
-              unit_price: product.price
-            }
-          });
-
-          if (whatsappError) {
-            console.error('Error sending WhatsApp message:', whatsappError);
-          }
-        } catch (whatsappError) {
-          console.error('Error sending WhatsApp message:', whatsappError);
-        }
-      }
+      // Mensagem WhatsApp é enviada automaticamente pelo trigger do banco (send_whatsapp_on_item_added)
 
       // Clear inputs for this product
       setPhones(prev => ({ ...prev, [product.id]: '' }));

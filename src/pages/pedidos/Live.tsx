@@ -379,32 +379,7 @@ const Live = () => {
           : p
       ));
       
-      // Enviar mensagem WhatsApp usando Z-API (template Item Adicionado)
-      if (tenant?.id) {
-        try {
-          const { error: whatsappError } = await supabase.functions.invoke('zapi-send-item-added', {
-            body: {
-              tenant_id: tenant.id,
-              customer_phone: normalizedPhone,
-              product_name: product.name,
-              product_code: product.code,
-              quantity: qty,
-              unit_price: product.price
-            }
-          });
-
-          if (whatsappError) {
-            console.error('Error sending WhatsApp message:', whatsappError);
-            toast({
-              title: 'Aviso',
-              description: 'Produto adicionado, mas houve erro ao enviar mensagem WhatsApp',
-              variant: 'default'
-            });
-          }
-        } catch (whatsappError) {
-          console.error('Error sending WhatsApp message:', whatsappError);
-        }
-      }
+      // Mensagem WhatsApp é enviada automaticamente pelo trigger do banco (send_whatsapp_on_item_added)
       
       toast({
         title: 'Sucesso',
