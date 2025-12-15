@@ -186,14 +186,16 @@ useEffect(() => {
 
         if (error) throw error;
       } else {
-        // Add new item
+        // Add new item with product name/code preserved
         const { error } = await supabaseTenant
           .from('cart_items')
           .insert({
             cart_id: targetCartId,
             product_id: selectedProduct.id,
             qty: quantity,
-            unit_price: unitPrice || selectedProduct.price
+            unit_price: unitPrice || selectedProduct.price,
+            product_name: selectedProduct.name,
+            product_code: selectedProduct.code
           });
 
         if (error) throw error;
@@ -230,8 +232,8 @@ useEffect(() => {
     const item = cartItems.find(i => i.id === itemId);
     if (!item) return;
 
-    const productName = item.product?.name || 'produto';
-    const productCode = item.product?.code || '';
+    const productName = item.product?.name || item.product_name || 'produto';
+    const productCode = item.product?.code || item.product_code || '';
     
     if (!confirm(`Tem certeza que deseja cancelar ${productName}? Uma mensagem será enviada ao cliente.`)) {
       return;
@@ -439,9 +441,9 @@ useEffect(() => {
                     <CardContent className="p-4">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <h4 className="font-medium">{item.product?.name}</h4>
+                          <h4 className="font-medium">{item.product?.name || item.product_name || 'Produto deletado'}</h4>
                           <p className="text-sm text-muted-foreground">
-                            Código: {item.product?.code}
+                            Código: {item.product?.code || item.product_code || 'N/A'}
                           </p>
                           <p className="text-sm">
                             {formatCurrency(item.unit_price)} × {item.qty} = {formatCurrency(item.qty * item.unit_price)}

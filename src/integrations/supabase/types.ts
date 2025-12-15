@@ -107,7 +107,9 @@ export type Database = {
           created_at: string | null
           id: number
           printed: boolean
-          product_id: number
+          product_code: string | null
+          product_id: number | null
+          product_name: string | null
           qty: number
           tenant_id: string
           unit_price: number
@@ -117,7 +119,9 @@ export type Database = {
           created_at?: string | null
           id?: number
           printed?: boolean
-          product_id: number
+          product_code?: string | null
+          product_id?: number | null
+          product_name?: string | null
           qty?: number
           tenant_id: string
           unit_price: number
@@ -127,7 +131,9 @@ export type Database = {
           created_at?: string | null
           id?: number
           printed?: boolean
-          product_id?: number
+          product_code?: string | null
+          product_id?: number | null
+          product_name?: string | null
           qty?: number
           tenant_id?: string
           unit_price?: number

@@ -142,6 +142,8 @@
                 id,
                 qty,
                 unit_price,
+                product_name,
+                product_code,
                 product:products!cart_items_product_id_fkey (
                   name,
                   code,
@@ -178,6 +180,8 @@
                   id,
                   qty,
                   unit_price,
+                  product_name,
+                  product_code,
                   product:products!cart_items_product_id_fkey (
                     name,
                     code,
