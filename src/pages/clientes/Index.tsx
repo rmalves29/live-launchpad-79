@@ -491,12 +491,25 @@ const Clientes = () => {
   }, [activeView, customers.length]);
 
   const filteredCustomers = customers.filter(customer => {
+    const searchLower = searchTerm.toLowerCase().trim();
+    if (!searchLower) return true;
+    
+    // Search by name
+    if (customer.name.toLowerCase().includes(searchLower)) return true;
+    
+    // Search by phone (normalized and raw)
     const normalizedSearch = normalizeForStorage(searchTerm);
     const normalizedCustomerPhone = normalizeForStorage(customer.phone);
-    return customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      normalizedCustomerPhone.includes(normalizedSearch) ||
-      customer.phone.includes(searchTerm) ||
-      (customer.cpf && customer.cpf.includes(searchTerm));
+    if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
+    if (customer.phone.includes(searchTerm)) return true;
+    
+    // Search by CPF
+    if (customer.cpf && customer.cpf.includes(searchTerm)) return true;
+    
+    // Search by Instagram
+    if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
+    
+    return false;
   });
 
   const filteredOrders = allOrders.filter(order => {
