@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 
-const TIMEOUT_DURATION = 30 * 60 * 1000; // 30 minutos
+const TIMEOUT_DURATION = 60 * 60 * 1000; // 1 hora
 
 export const useSessionTimeout = () => {
   const navigate = useNavigate();
