@@ -48,7 +48,7 @@ export function useConfirmDialog() {
     <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          {options.title && <AlertDialogTitle>{options.title}</AlertDialogTitle>}
+          <AlertDialogTitle>{options.title || 'Confirmar'}</AlertDialogTitle>
           <AlertDialogDescription className="text-base">
             {options.description}
           </AlertDialogDescription>

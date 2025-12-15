@@ -310,8 +310,10 @@ const Clientes = () => {
 
   const deleteCustomer = async (id: number) => {
     const confirmed = await confirm({
-      description: 'Deseja excluir este cliente?',
+      title: 'Excluir Cliente',
+      description: 'Deseja excluir este cliente? Esta ação não pode ser desfeita.',
       confirmText: 'Excluir',
+      cancelText: 'Cancelar',
       variant: 'destructive',
     });
     if (!confirmed) return;
