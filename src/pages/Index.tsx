@@ -15,7 +15,7 @@ import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText,
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 import { useAuth } from '@/hooks/useAuth';
@@ -1047,7 +1047,7 @@ const Pedidos = () => {
                         <Badge variant="outline">#{order.id}</Badge>
                       </TableCell>
                       <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
-                      <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
+                      <TableCell>{formatCurrency(order.total_amount)}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <Switch
@@ -1214,7 +1214,7 @@ const Pedidos = () => {
                 Total de pedidos: {orders.length} | 
                 Pagos: {orders.filter(o => o.is_paid).length} | 
                 Pendentes: {orders.filter(o => !o.is_paid).length} |
-                Valor total: R$ {orders.reduce((sum, o) => sum + o.total_amount, 0).toFixed(2)}
+                Valor total: {formatCurrency(orders.reduce((sum, o) => sum + o.total_amount, 0))}
               </div>
             </div>
           )}

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
+import { formatCurrency } from '@/lib/utils';
 
 
 interface Product {
@@ -609,7 +610,7 @@ const PedidosManual = () => {
                           {product.stock}
                         </Badge>
                       </TableCell>
-                      <TableCell>R$ {product.price.toFixed(2)}</TableCell>
+                      <TableCell>{formatCurrency(product.price)}</TableCell>
                       <TableCell className="max-w-[200px] truncate">
                         {product.name}
                       </TableCell>
@@ -696,7 +697,7 @@ const PedidosManual = () => {
                               <TableCell>#{order.id}</TableCell>
                               <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                               <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
-                              <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
+                              <TableCell>{formatCurrency(order.total_amount)}</TableCell>
                               <TableCell>
                                 <Badge variant={order.is_paid ? 'default' : 'secondary'}>
                                   {order.is_paid ? 'Pago' : 'Pendente'}

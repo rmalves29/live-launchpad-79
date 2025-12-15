@@ -15,7 +15,7 @@
   import { Separator } from '@/components/ui/separator';
   import { format } from 'date-fns';
   import { ptBR } from 'date-fns/locale';
-  import { cn } from '@/lib/utils';
+  import { cn, formatCurrency } from '@/lib/utils';
   import { EditOrderDialog } from '@/components/EditOrderDialog';
   import { ViewOrderDialog } from '@/components/ViewOrderDialog';
   import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -1084,7 +1084,7 @@
                           <Badge variant="outline">#{order.id}</Badge>
                         </TableCell>
                         <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
-                        <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
+                        <TableCell>{formatCurrency(order.total_amount)}</TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-2">
                             <Switch

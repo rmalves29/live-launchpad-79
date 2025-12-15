@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
+import { formatCurrency } from '@/lib/utils';
 
 
 interface OrderItem {
@@ -903,7 +904,7 @@ const Checkout = () => {
 
       toast({
         title: 'Cupom Aplicado!',
-        description: `Desconto de R$ ${discount.toFixed(2)} aplicado`,
+        description: `Desconto de ${formatCurrency(discount)} aplicado`,
       });
     } catch (error) {
       console.error('Erro ao aplicar cupom:', error);
@@ -1335,7 +1336,7 @@ const Checkout = () => {
                             <span className="font-medium">Data:</span> {new Date(order.event_date).toLocaleDateString('pt-BR')}
                           </div>
                           <div>
-                            <span className="font-medium">Total:</span> R$ {Number(order.total_amount).toFixed(2)}
+                            <span className="font-medium">Total:</span> {formatCurrency(order.total_amount)}
                           </div>
                         </div>
                         <div className="text-sm">
@@ -1343,7 +1344,7 @@ const Checkout = () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-lg font-bold text-primary">R$ {Number(order.total_amount).toFixed(2)}</div>
+                        <div className="text-lg font-bold text-primary">{formatCurrency(order.total_amount)}</div>
                         <div className="text-sm text-muted-foreground">{order.items.length} item(s)</div>
                       </div>
                     </div>
@@ -1429,11 +1430,11 @@ const Checkout = () => {
                             <div className="flex-1">
                               <p className="text-sm font-medium">{item.product_code} - {item.product_name}</p>
                               <p className="text-xs text-muted-foreground">
-                                Quantidade: {item.qty} • Preço unitário: R$ {Number(item.unit_price).toFixed(2)}
+                                Quantidade: {item.qty} • Preço unitário: {formatCurrency(item.unit_price)}
                               </p>
                             </div>
                             <div className="text-right">
-                              <p className="text-sm font-bold">R$ {(item.qty * Number(item.unit_price)).toFixed(2)}</p>
+                              <p className="text-sm font-bold">{formatCurrency(item.qty * Number(item.unit_price))}</p>
                             </div>
                           </div>
                         ))}
