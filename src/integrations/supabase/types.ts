@@ -543,6 +543,8 @@ export type Database = {
           is_paid: boolean
           item_added_delivered: boolean | null
           item_added_message_sent: boolean | null
+          melhor_envio_shipment_id: string | null
+          melhor_envio_tracking_code: string | null
           observation: string | null
           payment_confirmation_delivered: boolean | null
           payment_confirmation_sent: boolean | null
@@ -572,6 +574,8 @@ export type Database = {
           is_paid?: boolean
           item_added_delivered?: boolean | null
           item_added_message_sent?: boolean | null
+          melhor_envio_shipment_id?: string | null
+          melhor_envio_tracking_code?: string | null
           observation?: string | null
           payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
@@ -601,6 +605,8 @@ export type Database = {
           is_paid?: boolean
           item_added_delivered?: boolean | null
           item_added_message_sent?: boolean | null
+          melhor_envio_shipment_id?: string | null
+          melhor_envio_tracking_code?: string | null
           observation?: string | null
           payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
