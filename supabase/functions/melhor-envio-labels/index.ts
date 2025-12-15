@@ -165,6 +165,19 @@ async function createShipment(
     );
   }
 
+  // Buscar CPF do cliente na tabela customers pelo telefone
+  let customerCpf = "";
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("cpf")
+    .eq("phone", order.customer_phone)
+    .eq("tenant_id", tenant.id)
+    .single();
+  
+  if (customer?.cpf) {
+    customerCpf = cleanDocument(customer.cpf);
+  }
+
   // Buscar itens do pedido para calcular peso/dimensões
   let totalWeight = 0.3; // Peso mínimo padrão
   let totalVolumes = 1;
@@ -190,6 +203,10 @@ async function createShipment(
   const fromDocument = isCPF ? cleanedDocument : "";
   const fromCompanyDocument = isCNPJ ? cleanedDocument : "";
 
+  // Determinar CPF/CNPJ do destinatário
+  const toDocument = customerCpf.length === 11 ? customerCpf : "";
+  const toCompanyDocument = customerCpf.length === 14 ? customerCpf : "";
+
   // Montar payload da remessa
   const shipmentPayload = {
     service: 1, // PAC (pode ser configurável)
@@ -214,8 +231,8 @@ async function createShipment(
       name: order.customer_name,
       phone: cleanPhone(order.customer_phone),
       email: "",
-      document: "",
-      company_document: "",
+      document: toDocument,
+      company_document: toCompanyDocument,
       state_register: "",
       address: order.customer_street,
       complement: order.customer_complement || "",
