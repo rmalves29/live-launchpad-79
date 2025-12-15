@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
+import { formatCurrency } from '@/lib/utils';
 
 
 interface Product {
@@ -596,7 +597,7 @@ const Live = () => {
                             <TableRow key={product.id}>
                               <TableCell className="font-medium">{product.code}</TableCell>
                               <TableCell>{product.name}</TableCell>
-                              <TableCell>R$ {product.price.toFixed(2)}</TableCell>
+                              <TableCell>{formatCurrency(product.price)}</TableCell>
                               <TableCell>
                                 <Badge variant={product.stock > 0 ? "default" : "destructive"}>
                                   {product.stock}
@@ -677,7 +678,7 @@ const Live = () => {
                               <TableCell>{order.id}</TableCell>
                               <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                               <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
-                              <TableCell>R$ {order.total_amount.toFixed(2)}</TableCell>
+                              <TableCell>{formatCurrency(order.total_amount)}</TableCell>
                               <TableCell>
                                 <Badge variant={order.is_paid ? "default" : "secondary"}>
                                   {order.is_paid ? 'Pago' : 'Pendente'}

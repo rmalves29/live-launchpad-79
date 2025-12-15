@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { Trash2, Plus, Edit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { formatCurrency } from '@/lib/utils';
 
 interface Coupon {
   id: number;
@@ -401,8 +402,8 @@ export const CouponsManager = () => {
                         <div className="text-sm text-muted-foreground mt-1 space-y-1">
                           {coupon.progressive_tiers?.map((tier, idx) => (
                             <div key={idx}>
-                              • R$ {tier.min_value.toFixed(2)} 
-                              {tier.max_value ? ` - R$ ${tier.max_value.toFixed(2)}` : '+'}: 
+                              • {formatCurrency(tier.min_value)} 
+                              {tier.max_value ? ` - ${formatCurrency(tier.max_value)}` : '+'}: 
                               <span className="font-semibold text-primary"> {tier.discount}% off</span>
                             </div>
                           ))}
@@ -412,7 +413,7 @@ export const CouponsManager = () => {
                       <span className="font-medium">
                         {coupon.discount_type === 'percentage' 
                           ? `${coupon.discount_value}%` 
-                          : `R$ ${coupon.discount_value.toFixed(2)}`} de desconto
+                          : formatCurrency(coupon.discount_value)} de desconto
                       </span>
                     )}
                     {coupon.expires_at && (

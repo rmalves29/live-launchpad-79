@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Package, Printer, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface Order {
   id: number;
@@ -320,7 +322,7 @@ const Etiquetas = () => {
                     <div className="text-sm space-y-1">
                       <div><strong>Nome:</strong> {order.customer_name}</div>
                       <div><strong>Telefone:</strong> {formatPhone(order.customer_phone)}</div>
-                      <div><strong>Total:</strong> R$ {Number(order.total_amount).toFixed(2)}</div>
+                      <div><strong>Total:</strong> {formatCurrency(order.total_amount)}</div>
                     </div>
                   </div>
                   
@@ -342,7 +344,7 @@ const Etiquetas = () => {
                        {order.items.map((item, index) => (
                          <div key={index} className="text-sm flex justify-between">
                            <span>{item.product?.name || 'Produto'} ({item.product?.code || 'N/A'})</span>
-                            <span>{item.qty}x R$ {Number(item.unit_price).toFixed(2)}</span>
+                            <span>{item.qty}x {formatCurrency(item.unit_price)}</span>
                          </div>
                        ))}
                     </div>

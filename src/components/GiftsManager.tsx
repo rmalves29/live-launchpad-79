@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Trash2, Plus, Edit, Gift } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { formatCurrency } from '@/lib/utils';
 
 interface Gift {
   id: number;
@@ -246,7 +247,7 @@ export const GiftsManager = () => {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Compras acima de R$ {gift.minimum_purchase_amount.toFixed(2)}
+                      Compras acima de {formatCurrency(gift.minimum_purchase_amount)}
                     </p>
                     {gift.description && (
                       <p className="text-sm text-muted-foreground mt-1">

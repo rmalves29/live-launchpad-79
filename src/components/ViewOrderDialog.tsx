@@ -6,6 +6,7 @@ import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
+import { formatCurrency } from '@/lib/utils';
 
 interface Order {
   id: number;
@@ -118,7 +119,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
               <h3 className="text-lg font-semibold mb-3">Resumo do Pedido</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
-                  <strong>Total:</strong> R$ {order.total_amount.toFixed(2)}
+                  <strong>Total:</strong> {formatCurrency(order.total_amount)}
                 </div>
                 <div>
                   <strong>Status:</strong> 
@@ -151,7 +152,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                   )}
                   {freteInfo.valor_frete && (
                     <div>
-                      <strong>Valor do Frete:</strong> R$ {Number(freteInfo.valor_frete).toFixed(2)}
+                      <strong>Valor do Frete:</strong> {formatCurrency(freteInfo.valor_frete)}
                     </div>
                   )}
                   {freteInfo.prazo && (
@@ -203,13 +204,13 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                             <p className="text-sm text-muted-foreground">Código: {item.product.code}</p>
                             <div className="flex items-center gap-4 mt-2 text-sm">
                               <div>
-                                <strong>Preço unitário:</strong> R$ {item.unit_price.toFixed(2)}
+                                <strong>Preço unitário:</strong> {formatCurrency(item.unit_price)}
                               </div>
                               <div>
                                 <strong>Quantidade:</strong> {item.qty}
                               </div>
                               <div>
-                                <strong>Subtotal:</strong> R$ {(item.qty * item.unit_price).toFixed(2)}
+                                <strong>Subtotal:</strong> {formatCurrency(item.qty * item.unit_price)}
                               </div>
                             </div>
                           </div>

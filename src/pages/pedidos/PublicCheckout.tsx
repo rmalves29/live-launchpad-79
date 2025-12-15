@@ -11,6 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
+import { formatCurrency } from '@/lib/utils';
 
 interface Tenant {
   id: string;
@@ -399,7 +400,7 @@ const PublicCheckout = () => {
 
       setAppliedCoupon(coupon);
       setCouponDiscount(discount);
-      toast({ title: 'Cupom Aplicado!', description: `Desconto de R$ ${discount.toFixed(2)} aplicado` });
+      toast({ title: 'Cupom Aplicado!', description: `Desconto de ${formatCurrency(discount)} aplicado` });
     } catch (error) {
       console.error('Erro ao aplicar cupom:', error);
       toast({ title: 'Erro', description: 'Erro ao aplicar cupom', variant: 'destructive' });
@@ -1093,7 +1094,7 @@ const PublicCheckout = () => {
                             <p className="text-sm text-muted-foreground mt-1">
                               {appliedCoupon.discount_type === 'progressive' ? 'Desconto Progressivo' :
                                appliedCoupon.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% de desconto` :
-                               `R$ ${appliedCoupon.discount_value.toFixed(2)} de desconto`}
+                               `${formatCurrency(appliedCoupon.discount_value)} de desconto`}
                             </p>
                           </div>
                           <Button variant="outline" size="sm" onClick={removeCoupon} className="text-red-600">

@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2, Plus, Trash2, Search } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 
 interface Product {
   id: number;
@@ -379,7 +380,7 @@ useEffect(() => {
                   <SelectContent>
                     {filteredProducts.map((product) => (
                       <SelectItem key={product.id} value={product.id.toString()}>
-                        {product.name} - {product.code} (R$ {product.price.toFixed(2)})
+                        {product.name} - {product.code} ({formatCurrency(product.price)})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -422,7 +423,7 @@ useEffect(() => {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold">Itens do Pedido</h3>
-              <Badge variant="outline">Total: R$ {currentTotal.toFixed(2)}</Badge>
+              <Badge variant="outline">Total: {formatCurrency(currentTotal)}</Badge>
             </div>
 
             <div className="space-y-3 max-h-96 overflow-y-auto">
@@ -443,7 +444,7 @@ useEffect(() => {
                             Código: {item.product?.code}
                           </p>
                           <p className="text-sm">
-                            R$ {item.unit_price.toFixed(2)} × {item.qty} = R$ {(item.qty * item.unit_price).toFixed(2)}
+                            {formatCurrency(item.unit_price)} × {item.qty} = {formatCurrency(item.qty * item.unit_price)}
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
