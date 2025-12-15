@@ -20,11 +20,42 @@ interface Template {
 }
 
 const TEMPLATE_TYPES = [
-  { value: 'ITEM_ADDED', label: 'Item Adicionado' },
-  { value: 'PAID_ORDER', label: 'Pedido Pago' },
-  { value: 'PRODUCT_CANCELED', label: 'Item Cancelado' },
-  { value: 'MSG_MASSA', label: 'Cobrança em Massa' },
-  { value: 'SENDFLOW', label: 'SendFlow MSG' }
+  { 
+    value: 'ITEM_ADDED', 
+    label: 'Item Adicionado',
+    description: 'Enviado quando um item é adicionado ao pedido',
+    variables: ['{{produto}}', '{{codigo}}', '{{quantidade}}', '{{valor}}', '{{customer_name}}']
+  },
+  { 
+    value: 'PAID_ORDER', 
+    label: 'Pedido Pago',
+    description: 'Enviado quando um pedido é marcado como pago',
+    variables: ['{{order_id}}', '{{total}}', '{{customer_name}}']
+  },
+  { 
+    value: 'PRODUCT_CANCELED', 
+    label: 'Item Cancelado',
+    description: 'Enviado quando um item é removido do pedido',
+    variables: ['{{produto}}', '{{codigo}}', '{{quantidade}}', '{{customer_name}}']
+  },
+  { 
+    value: 'MSG_MASSA', 
+    label: 'Cobrança em Massa',
+    description: 'Template para envio em massa de cobranças',
+    variables: ['{{customer_name}}', '{{total}}', '{{order_id}}']
+  },
+  { 
+    value: 'SENDFLOW', 
+    label: 'SendFlow MSG',
+    description: 'Mensagem de divulgação de produtos',
+    variables: ['{{codigo}}', '{{nome}}', '{{cor}}', '{{tamanho}}', '{{valor}}']
+  },
+  { 
+    value: 'TRACKING', 
+    label: 'Código de Rastreio',
+    description: 'Enviado quando o código de rastreio é adicionado',
+    variables: ['{{customer_name}}', '{{order_id}}', '{{tracking_code}}', '{{shipped_at}}']
+  }
 ];
 
 export default function WhatsappTemplates() {
@@ -144,6 +175,10 @@ export default function WhatsappTemplates() {
     return TEMPLATE_TYPES.find(t => t.value === type)?.label || type;
   };
 
+  const getSelectedTemplateInfo = () => {
+    return TEMPLATE_TYPES.find(t => t.value === formData.type);
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -221,9 +256,23 @@ export default function WhatsappTemplates() {
                 placeholder="Digite o conteúdo do template..."
                 className="min-h-[200px]"
               />
-              <p className="text-sm text-muted-foreground">
-                Você pode usar variáveis como: {`{{produto}}, {{quantidade}}, {{valor}}, {{order_id}}, {{total}}`}
-              </p>
+              {getSelectedTemplateInfo() ? (
+                <div className="p-3 bg-muted/50 rounded-lg border border-border/50">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    <strong>Descrição:</strong> {getSelectedTemplateInfo()?.description}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Variáveis disponíveis:</strong>{' '}
+                    <code className="text-xs bg-primary/10 text-primary px-1 py-0.5 rounded">
+                      {getSelectedTemplateInfo()?.variables.join(', ')}
+                    </code>
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Selecione um tipo de template para ver as variáveis disponíveis
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2">
