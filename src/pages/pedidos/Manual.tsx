@@ -184,9 +184,10 @@ const PedidosManual = () => {
         const { data: existingOrders, error: searchError } = await supabaseTenant
           .from('orders')
           .select('*')
-    .eq('customer_phone', normalizedPhone)
-    .eq('event_date', today)
-    .eq('is_paid', false)
+          .eq('customer_phone', normalizedPhone)
+          .eq('event_date', today)
+          .eq('is_paid', false)
+          .in('event_type', ['BAZAR', 'MANUAL'])
           .order('created_at', { ascending: false });
 
         if (searchError) {
@@ -240,6 +241,7 @@ const PedidosManual = () => {
                 .eq('customer_phone', normalizedPhone)
                 .eq('event_date', today)
                 .eq('is_paid', false)
+                .in('event_type', ['BAZAR', 'MANUAL'])
                 .order('created_at', { ascending: false })
                 .limit(1);
 

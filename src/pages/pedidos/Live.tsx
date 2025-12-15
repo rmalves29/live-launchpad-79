@@ -214,6 +214,7 @@ const Live = () => {
           .eq('customer_phone', normalizedPhone)
           .eq('event_date', today)
           .eq('is_paid', false)
+          .eq('event_type', 'LIVE')
           .order('created_at', { ascending: false });
 
         if (searchError) {
@@ -265,6 +266,7 @@ const Live = () => {
                 .eq('customer_phone', normalizedPhone)
                 .eq('event_date', today)
                 .eq('is_paid', false)
+                .eq('event_type', 'LIVE')
                 .order('created_at', { ascending: false })
                 .limit(1);
 
