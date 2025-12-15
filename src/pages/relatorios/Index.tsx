@@ -99,6 +99,9 @@ const Relatorios = () => {
   const [salesStartDate, setSalesStartDate] = useState('');
   const [salesEndDate, setSalesEndDate] = useState('');
   
+  // Filtro global de tipo de venda (BAZAR/LIVE/TODOS)
+  const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'BAZAR' | 'LIVE'>('ALL');
+  
   // Filtros específicos para Grupos WhatsApp
   const [whatsappFilter, setWhatsappFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
   const [whatsappStartDate, setWhatsappStartDate] = useState('');
@@ -151,7 +154,7 @@ const Relatorios = () => {
       
       let query = supabaseTenant
         .from('orders')
-        .select('total_amount, is_paid, cart_id');
+        .select('id, total_amount, is_paid, cart_id');
 
       if (salesFilter === 'custom' && dateFilter && endDateFilter) {
         query = query
@@ -165,21 +168,58 @@ const Relatorios = () => {
 
       if (error) throw error;
 
-      const totalPaid = orders?.filter(o => o.is_paid).reduce((sum, o) => sum + Number(o.total_amount), 0) || 0;
-      const totalUnpaid = orders?.filter(o => !o.is_paid).reduce((sum, o) => sum + Number(o.total_amount), 0) || 0;
-      const totalOrders = orders?.length || 0;
+      // Se temos filtro de tipo de venda, precisamos filtrar as orders que têm produtos do tipo selecionado
+      let filteredOrders = orders || [];
+      
+      if (saleTypeFilter !== 'ALL' && orders && orders.length > 0) {
+        const cartIds = orders.map(o => o.cart_id).filter(Boolean);
+        
+        if (cartIds.length > 0) {
+          // Buscar cart_items com produtos do tipo correto
+          const { data: cartItems } = await supabaseTenant
+            .from('cart_items')
+            .select('cart_id, product_id, products(sale_type)')
+            .in('cart_id', cartIds);
+          
+          // Filtrar cart_ids que têm produtos do tipo selecionado
+          const validCartIds = new Set<number>();
+          cartItems?.forEach(item => {
+            const productSaleType = (item.products as any)?.sale_type;
+            if (productSaleType === saleTypeFilter || productSaleType === 'AMBOS') {
+              validCartIds.add(item.cart_id);
+            }
+          });
+          
+          // Filtrar orders pelos cart_ids válidos
+          filteredOrders = orders.filter(o => o.cart_id && validCartIds.has(o.cart_id));
+        }
+      }
+
+      const totalPaid = filteredOrders.filter(o => o.is_paid).reduce((sum, o) => sum + Number(o.total_amount), 0) || 0;
+      const totalUnpaid = filteredOrders.filter(o => !o.is_paid).reduce((sum, o) => sum + Number(o.total_amount), 0) || 0;
+      const totalOrders = filteredOrders.length || 0;
       
       // Get products count for these orders
-      const cartIds = orders?.map(o => o.cart_id).filter(Boolean) || [];
+      const cartIds = filteredOrders.map(o => o.cart_id).filter(Boolean) || [];
       let totalProducts = 0;
       
       if (cartIds.length > 0) {
-        const { data: cartItems } = await supabaseTenant
+        let cartItemsQuery = supabaseTenant
           .from('cart_items')
-          .select('qty')
+          .select('qty, products(sale_type)')
           .in('cart_id', cartIds);
         
-        totalProducts = cartItems?.reduce((sum, item) => sum + item.qty, 0) || 0;
+        const { data: cartItems } = await cartItemsQuery;
+        
+        // Filtrar por tipo de venda se necessário
+        const filteredItems = saleTypeFilter === 'ALL' 
+          ? cartItems 
+          : cartItems?.filter(item => {
+              const productSaleType = (item.products as any)?.sale_type;
+              return productSaleType === saleTypeFilter || productSaleType === 'AMBOS';
+            });
+        
+        totalProducts = filteredItems?.reduce((sum, item) => sum + item.qty, 0) || 0;
       }
       
       const ticketMedio = totalOrders > 0 ? (totalPaid + totalUnpaid) / totalOrders : 0;
@@ -227,28 +267,68 @@ const Relatorios = () => {
         .select('total_amount, cart_id')
         .gte('created_at', startOfYear.toISOString());
 
-      // Helper function to get products count for given cart IDs
-      const getProductsCount = async (cartIds: number[]) => {
+      // Helper function to get products count for given cart IDs with sale_type filter
+      const getProductsCountFiltered = async (cartIds: number[]) => {
         if (cartIds.length === 0) return [];
         
         const { data } = await supabaseTenant
           .from('cart_items')
-          .select('qty')
+          .select('qty, products(sale_type)')
           .in('cart_id', cartIds);
         
-        return data || [];
+        if (saleTypeFilter === 'ALL') {
+          return data || [];
+        }
+        
+        // Filtrar por tipo de venda
+        return (data || []).filter(item => {
+          const productSaleType = (item.products as any)?.sale_type;
+          return productSaleType === saleTypeFilter || productSaleType === 'AMBOS';
+        });
       };
 
+      // Helper to filter orders by cart_ids that have products of the correct type
+      const filterOrdersBySaleType = async (orders: any[]) => {
+        if (saleTypeFilter === 'ALL' || !orders || orders.length === 0) {
+          return orders || [];
+        }
+        
+        const cartIds = orders.map(o => o.cart_id).filter(Boolean);
+        if (cartIds.length === 0) return orders;
+        
+        const { data: cartItems } = await supabaseTenant
+          .from('cart_items')
+          .select('cart_id, products(sale_type)')
+          .in('cart_id', cartIds);
+        
+        const validCartIds = new Set<number>();
+        cartItems?.forEach(item => {
+          const productSaleType = (item.products as any)?.sale_type;
+          if (productSaleType === saleTypeFilter || productSaleType === 'AMBOS') {
+            validCartIds.add(item.cart_id);
+          }
+        });
+        
+        return orders.filter(o => o.cart_id && validCartIds.has(o.cart_id));
+      };
+
+      // Filtrar orders por tipo de venda
+      const [filteredDaily, filteredMonthly, filteredYearly] = await Promise.all([
+        filterOrdersBySaleType(dailyOrders.data || []),
+        filterOrdersBySaleType(monthlyOrders.data || []),
+        filterOrdersBySaleType(yearlyOrders.data || [])
+      ]);
+
       // Get cart IDs for each period
-      const dailyCartIds = (dailyOrders.data || []).map(o => o.cart_id).filter(Boolean);
-      const monthlyCartIds = (monthlyOrders.data || []).map(o => o.cart_id).filter(Boolean);
-      const yearlyCartIds = (yearlyOrders.data || []).map(o => o.cart_id).filter(Boolean);
+      const dailyCartIds = filteredDaily.map(o => o.cart_id).filter(Boolean);
+      const monthlyCartIds = filteredMonthly.map(o => o.cart_id).filter(Boolean);
+      const yearlyCartIds = filteredYearly.map(o => o.cart_id).filter(Boolean);
 
       // Get products for each period
       const [dailyProducts, monthlyProducts, yearlyProducts] = await Promise.all([
-        getProductsCount(dailyCartIds),
-        getProductsCount(monthlyCartIds),
-        getProductsCount(yearlyCartIds)
+        getProductsCountFiltered(dailyCartIds),
+        getProductsCountFiltered(monthlyCartIds),
+        getProductsCountFiltered(yearlyCartIds)
       ]);
 
       const calculateStats = (orders: any[], products: any[]): PeriodStats => {
@@ -266,9 +346,9 @@ const Relatorios = () => {
       };
 
       setPeriodStats({
-        daily: calculateStats(dailyOrders.data || [], dailyProducts),
-        monthly: calculateStats(monthlyOrders.data || [], monthlyProducts),
-        yearly: calculateStats(yearlyOrders.data || [], yearlyProducts)
+        daily: calculateStats(filteredDaily, dailyProducts),
+        monthly: calculateStats(filteredMonthly, monthlyProducts),
+        yearly: calculateStats(filteredYearly, yearlyProducts)
       });
     } catch (error) {
       console.error('Error loading period stats:', error);
@@ -335,22 +415,30 @@ const Relatorios = () => {
         return;
       }
 
-      // Now get cart items for these carts
+      // Now get cart items for these carts with product sale_type
       const { data: cartItemsData, error: cartItemsError } = await supabaseTenant
         .from('cart_items')
         .select(`
           qty,
           unit_price,
-          products(name, code)
+          products(name, code, sale_type)
         `)
         .in('cart_id', cartIds);
 
       if (cartItemsError) throw cartItemsError;
 
+      // Filtrar por tipo de venda se necessário
+      const filteredCartItems = saleTypeFilter === 'ALL' 
+        ? cartItemsData 
+        : cartItemsData?.filter(item => {
+            const productSaleType = (item.products as any)?.sale_type;
+            return productSaleType === saleTypeFilter || productSaleType === 'AMBOS';
+          });
+
       // Agrupar por produto
       const productMap = new Map<string, ProductSales>();
 
-      cartItemsData?.forEach(item => {
+      filteredCartItems?.forEach(item => {
         const productName = item.products?.name || 'Produto removido';
         const productCode = item.products?.code || 'N/A';
         const key = `${productName}-${productCode}`;
@@ -762,20 +850,49 @@ const Relatorios = () => {
     loadTopCustomers();
   }, [customersFilter, customersStartDate, customersEndDate]);
 
+  // Re-carregar quando mudar o filtro de tipo de venda
+  useEffect(() => {
+    if (tenantId) {
+      loadAllReports();
+    }
+  }, [saleTypeFilter]);
+
   return (
     <div className="container mx-auto py-6 max-w-7xl space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h1 className="text-3xl font-bold flex items-center">
           <BarChart3 className="h-8 w-8 mr-3 text-primary" />
           Relatórios
         </h1>
-        <Button onClick={loadAllReports} disabled={loading}>
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          ) : null}
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Filtro Global de Tipo de Venda */}
+          <div className="flex items-center gap-2">
+            <Label className="text-sm whitespace-nowrap">Tipo:</Label>
+            <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'BAZAR' | 'LIVE') => setSaleTypeFilter(value)}>
+              <SelectTrigger className="w-32 bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-background z-50">
+                <SelectItem value="ALL">Todos</SelectItem>
+                <SelectItem value="BAZAR">Bazar</SelectItem>
+                <SelectItem value="LIVE">Live</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={loadAllReports} disabled={loading}>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : null}
+            Atualizar
+          </Button>
+        </div>
       </div>
+
+      {saleTypeFilter !== 'ALL' && (
+        <Badge variant="outline" className="w-fit">
+          Filtrando por: {saleTypeFilter === 'BAZAR' ? 'Bazar (Manual/Automático)' : 'Live'}
+        </Badge>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList>
