@@ -181,6 +181,15 @@ async function createShipment(
     }
   }
 
+  // Determinar CPF/CNPJ do remetente
+  const cleanedDocument = cleanDocument(tenant.company_document);
+  const isCNPJ = cleanedDocument.length === 14;
+  const isCPF = cleanedDocument.length === 11;
+  
+  // Melhor Envio: document = CPF (11 dígitos), company_document = CNPJ (14 dígitos)
+  const fromDocument = isCPF ? cleanedDocument : "";
+  const fromCompanyDocument = isCNPJ ? cleanedDocument : "";
+
   // Montar payload da remessa
   const shipmentPayload = {
     service: 1, // PAC (pode ser configurável)
@@ -189,8 +198,8 @@ async function createShipment(
       name: tenant.company_name,
       phone: cleanPhone(tenant.company_phone || tenant.phone),
       email: tenant.company_email || tenant.email || "",
-      document: cleanDocument(tenant.company_document),
-      company_document: cleanDocument(tenant.company_document),
+      document: fromDocument,
+      company_document: fromCompanyDocument,
       state_register: "",
       address: tenant.company_address || tenant.address || "",
       complement: tenant.company_complement || "",
