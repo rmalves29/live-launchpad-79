@@ -785,12 +785,58 @@ const Relatorios = () => {
 
       console.log('📦 Orders encontrados para clientes:', orders?.length);
 
+      // Aplicar filtro de tipo de venda se necessário
+      let filteredOrders = orders || [];
+      
+      if (saleTypeFilter !== 'ALL' && orders && orders.length > 0) {
+        const cartIds = orders.map(o => o.cart_id).filter(Boolean);
+        
+        if (cartIds.length > 0) {
+          // Buscar cart_items com product_code
+          const { data: cartItems } = await supabaseTenant
+            .from('cart_items')
+            .select('cart_id, product_code')
+            .in('cart_id', cartIds);
+          
+          // Coletar todos os product_codes únicos
+          const productCodes = [...new Set(cartItems?.map(ci => ci.product_code).filter(Boolean) || [])];
+          
+          // Buscar products por código para obter sale_type
+          let productSaleTypes: Record<string, string> = {};
+          if (productCodes.length > 0) {
+            const { data: products } = await supabaseTenant
+              .from('products')
+              .select('code, sale_type')
+              .in('code', productCodes);
+            
+            products?.forEach(p => {
+              productSaleTypes[p.code] = p.sale_type;
+            });
+          }
+          
+          // Filtrar cart_ids que têm produtos do tipo selecionado
+          const validCartIds = new Set<number>();
+          cartItems?.forEach(item => {
+            const productSaleType = item.product_code ? productSaleTypes[item.product_code] : null;
+            if (productSaleType === saleTypeFilter || productSaleType === 'AMBOS') {
+              validCartIds.add(item.cart_id);
+            }
+          });
+          
+          // Filtrar orders pelos cart_ids válidos
+          filteredOrders = orders.filter(o => o.cart_id && validCartIds.has(o.cart_id));
+        } else {
+          // Se não há cart_ids, não há como filtrar - mostrar todos quando ALL, ou vazio quando filtro específico
+          filteredOrders = [];
+        }
+      }
+
       // Buscar dados dos clientes cadastrados
-      const phones = [...new Set(orders?.map(o => o.customer_phone).filter(Boolean))] as string[];
-      const { data: customers } = await supabaseTenant
+      const phones = [...new Set(filteredOrders?.map(o => o.customer_phone).filter(Boolean))] as string[];
+      const { data: customers } = phones.length > 0 ? await supabaseTenant
         .from('customers')
         .select('phone, name')
-        .in('phone', phones);
+        .in('phone', phones) : { data: [] };
       
       // Criar mapa de telefone -> nome cadastrado
       const customerNamesMap = new Map<string, string>();
@@ -802,7 +848,7 @@ const Relatorios = () => {
       const customerMap = new Map<string, CustomerStats>();
 
       // Coletar cart items para contar produtos
-      const cartIds = orders?.map(o => o.cart_id).filter(Boolean) as number[];
+      const cartIds = filteredOrders?.map(o => o.cart_id).filter(Boolean) as number[];
       let cartItemsMap = new Map<number, any[]>();
       if (cartIds.length > 0) {
         const { data: cartItems } = await supabaseTenant
@@ -816,7 +862,7 @@ const Relatorios = () => {
       }
 
       // Processar cada pedido e agrupar por cliente
-      orders?.forEach(order => {
+      filteredOrders?.forEach(order => {
         const phone = order.customer_phone || 'Sem telefone';
         const amount = Number(order.total_amount);
         const items = cartItemsMap.get(order.cart_id) || [];
