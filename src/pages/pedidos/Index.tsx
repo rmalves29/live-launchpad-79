@@ -1260,6 +1260,7 @@
                               </Button>
                             )}
                           </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             {/* Indicador de mensagem de item adicionado - só mostra verde se entregue */}
