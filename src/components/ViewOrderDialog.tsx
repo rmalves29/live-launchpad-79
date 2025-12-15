@@ -32,11 +32,13 @@ interface Order {
     id: number;
     qty: number;
     unit_price: number;
+    product_name?: string;
+    product_code?: string;
     product: {
       name: string;
       code: string;
       image_url?: string;
-    };
+    } | null;
   }[];
 }
 
@@ -179,45 +181,51 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {order.cart_items.map((item) => (
-                    <Card key={item.id} className="border">
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-4">
-                          {/* Product Image */}
-                          <div className="flex-shrink-0">
-                            {item.product.image_url ? (
-                              <img 
-                                src={item.product.image_url} 
-                                alt={item.product.name}
-                                className="w-16 h-16 object-cover rounded border"
-                              />
-                            ) : (
-                              <div className="w-16 h-16 bg-muted rounded border flex items-center justify-center text-xs text-muted-foreground">
-                                Sem foto
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Product Details */}
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium truncate">{item.product.name}</h4>
-                            <p className="text-sm text-muted-foreground">Código: {item.product.code}</p>
-                            <div className="flex items-center gap-4 mt-2 text-sm">
-                              <div>
-                                <strong>Preço unitário:</strong> {formatCurrency(item.unit_price)}
-                              </div>
-                              <div>
-                                <strong>Quantidade:</strong> {item.qty}
-                              </div>
-                              <div>
-                                <strong>Subtotal:</strong> {formatCurrency(item.qty * item.unit_price)}
+                  {order.cart_items.map((item) => {
+                    const productName = item.product?.name || item.product_name || 'Produto removido';
+                    const productCode = item.product?.code || item.product_code || '-';
+                    const productImage = item.product?.image_url;
+                    
+                    return (
+                      <Card key={item.id} className="border">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-4">
+                            {/* Product Image */}
+                            <div className="flex-shrink-0">
+                              {productImage ? (
+                                <img 
+                                  src={productImage} 
+                                  alt={productName}
+                                  className="w-16 h-16 object-cover rounded border"
+                                />
+                              ) : (
+                                <div className="w-16 h-16 bg-muted rounded border flex items-center justify-center text-xs text-muted-foreground">
+                                  Sem foto
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Product Details */}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium truncate">{productName}</h4>
+                              <p className="text-sm text-muted-foreground">Código: {productCode}</p>
+                              <div className="flex items-center gap-4 mt-2 text-sm">
+                                <div>
+                                  <strong>Preço unitário:</strong> {formatCurrency(item.unit_price)}
+                                </div>
+                                <div>
+                                  <strong>Quantidade:</strong> {item.qty}
+                                </div>
+                                <div>
+                                  <strong>Subtotal:</strong> {formatCurrency(item.qty * item.unit_price)}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
