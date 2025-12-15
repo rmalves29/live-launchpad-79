@@ -170,49 +170,27 @@ export default function SendFlow() {
       if (Array.isArray(data)) {
         const groupsFromApi = data.filter((chat: any) => chat.isGroup === true);
         
-        // Fetch participant count for each group
-        const groupsWithParticipants = await Promise.all(
-          groupsFromApi.map(async (chat: any) => {
-            const groupId = chat.phone || chat.id;
-            let participantCount = 0;
-            
-            try {
-              const { data: metadata } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-                body: { action: 'group-metadata', tenant_id: tenant.id, phone: groupId }
-              });
-              
-              if (metadata?.participants) {
-                participantCount = metadata.participants.length;
-              }
-            } catch (err) {
-              console.log(`Não foi possível obter participantes do grupo ${groupId}`);
-            }
-            
-            return {
-              id: groupId,
-              name: chat.name || chat.phone || 'Grupo sem nome',
-              participantCount
-            };
-          })
-        );
-        
-        groupsList = groupsWithParticipants;
+        // Usa os dados disponíveis diretamente, sem chamadas extras de group-metadata
+        groupsList = groupsFromApi.map((chat: any) => ({
+          id: chat.phone || chat.id,
+          name: chat.name || chat.phone || 'Grupo sem nome',
+          // Z-API /chats pode incluir participantCount em alguns casos
+          participantCount: chat.participantCount || chat.participants?.length || undefined
+        }));
       } else if (data?.groups && Array.isArray(data.groups)) {
         groupsList = data.groups.map((g: any) => ({
           id: g.id || g.phone,
           name: g.name || 'Grupo sem nome',
-          participantCount: g.participantCount || 0
+          participantCount: g.participantCount || g.participants?.length || undefined
         }));
       }
-
-      const limitedGroups = groupsList;
       
-      setGroups(limitedGroups);
+      setGroups(groupsList);
       
-      if (limitedGroups.length > 0) {
+      if (groupsList.length > 0) {
         toast({
           title: 'Grupos carregados',
-          description: `${limitedGroups.length} grupo(s) encontrado(s)`,
+          description: `${groupsList.length} grupo(s) encontrado(s)`,
         });
       } else {
         toast({
@@ -655,7 +633,7 @@ export default function SendFlow() {
                     <p className="text-sm text-muted-foreground">
                       {group.participantCount !== undefined && group.participantCount > 0 
                         ? `${group.participantCount} participantes` 
-                        : 'Carregando participantes...'}
+                        : 'Grupo do WhatsApp'}
                     </p>
                   </div>
                 </div>
