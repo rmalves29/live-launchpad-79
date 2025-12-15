@@ -178,7 +178,7 @@ serve(async (req) => {
       // Find or create cart for this customer
       const cart = await findOrCreateCart(supabase, tenantId, normalizedPhone, groupName);
 
-      // Add item to cart
+      // Add item to cart with product snapshot (name, code, image for when product is deleted)
       const { data: cartItem, error: cartItemError } = await supabase
         .from('cart_items')
         .insert({
@@ -187,6 +187,9 @@ serve(async (req) => {
           qty: 1,
           unit_price: product.price,
           tenant_id: tenantId,
+          product_name: product.name,
+          product_code: product.code,
+          product_image_url: product.image_url,
         })
         .select()
         .single();

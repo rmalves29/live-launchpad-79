@@ -144,6 +144,7 @@
                 unit_price,
                 product_name,
                 product_code,
+                product_image_url,
                 product:products!cart_items_product_id_fkey (
                   name,
                   code,
@@ -182,6 +183,7 @@
                   unit_price,
                   product_name,
                   product_code,
+                  product_image_url,
                   product:products!cart_items_product_id_fkey (
                     name,
                     code,

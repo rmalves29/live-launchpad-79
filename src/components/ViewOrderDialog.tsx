@@ -34,6 +34,7 @@ interface Order {
     unit_price: number;
     product_name?: string;
     product_code?: string;
+    product_image_url?: string;
     product: {
       name: string;
       code: string;
@@ -184,7 +185,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                   {order.cart_items.map((item) => {
                     const productName = item.product?.name || item.product_name || 'Produto removido';
                     const productCode = item.product?.code || item.product_code || '-';
-                    const productImage = item.product?.image_url;
+                    const productImage = item.product?.image_url || item.product_image_url;
                     
                     return (
                       <Card key={item.id} className="border">
