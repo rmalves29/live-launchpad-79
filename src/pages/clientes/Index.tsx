@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -77,6 +78,7 @@ interface OrderWithCustomer extends Order {
 
 const Clientes = () => {
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { tenantId } = useTenantContext();
@@ -307,7 +309,12 @@ const Clientes = () => {
   };
 
   const deleteCustomer = async (id: number) => {
-    if (!confirm('Tem certeza que deseja excluir este cliente?')) return;
+    const confirmed = await confirm({
+      description: 'Deseja excluir este cliente?',
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const { error } = await supabaseTenant
@@ -1483,6 +1490,7 @@ const Clientes = () => {
           })}
         </div>
       </div>
+      <ConfirmDialog />
     </div>
   );
 };

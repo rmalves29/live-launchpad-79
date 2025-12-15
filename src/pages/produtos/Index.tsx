@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +30,7 @@ interface Product {
 
 const Produtos = () => {
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const { profile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -264,7 +266,12 @@ const Produtos = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Tem certeza que deseja excluir este produto?')) return;
+    const confirmed = await confirm({
+      description: 'Deseja excluir este produto?',
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const { error } = await supabaseTenant
@@ -300,7 +307,12 @@ const Produtos = () => {
       return;
     }
 
-    if (!confirm(`Tem certeza que deseja excluir ${selectedProducts.length} produto(s)?`)) return;
+    const confirmed = await confirm({
+      description: `Deseja excluir ${selectedProducts.length} produto(s)?`,
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
 
     try {
       const { error } = await supabaseTenant
@@ -703,6 +715,7 @@ const Produtos = () => {
           </CardContent>
         </Card>
       </div>
+      <ConfirmDialog />
     </div>
   );
 };
