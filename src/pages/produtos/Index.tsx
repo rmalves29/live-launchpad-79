@@ -859,8 +859,7 @@ const Produtos = () => {
             </DialogContent>
           </Dialog>
           </div>
-
-        <Card>
+        </div>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
