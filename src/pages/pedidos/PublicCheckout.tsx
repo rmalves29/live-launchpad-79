@@ -753,55 +753,80 @@ const PublicCheckout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted">
-      {/* Header com logo centralizada */}
-      <div className="w-full py-6 mb-4">
-        <div className="flex justify-center">
-          {tenant.logo_url ? (
-            <img src={tenant.logo_url} alt={tenant.name} className="h-16 object-contain" />
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center">
-                <Store className="h-6 w-6 text-primary-foreground" />
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      {/* Header elegante com logo */}
+      <div className="relative w-full">
+        {/* Background decorativo */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-primary/10 blur-[100px] rounded-full" />
+        
+        <div className="relative pt-8 pb-6">
+          <div className="flex flex-col items-center gap-4">
+            {tenant.logo_url ? (
+              <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-xl shadow-primary/10 border border-slate-100 dark:border-slate-700">
+                <img src={tenant.logo_url} alt={tenant.name} className="h-20 w-auto object-contain" />
               </div>
-              <span className="text-2xl font-bold">{tenant.name}</span>
-            </div>
-          )}
+            ) : (
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-xl shadow-primary/30">
+                  <Store className="h-8 w-8 text-primary-foreground" />
+                </div>
+                <span className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">{tenant.name}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Checkout</h1>
-          <p className="text-muted-foreground">Processe pagamentos e finalize pedidos</p>
+      <div className="max-w-3xl mx-auto px-4 md:px-6 pb-12 space-y-8">
+        {/* Título da página */}
+        <div className="text-center space-y-2 pt-4">
+          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/60 bg-clip-text">
+            Finalizar Compra
+          </h1>
+          <p className="text-muted-foreground text-lg">
+            Localize seus pedidos e finalize o pagamento
+          </p>
         </div>
 
         {/* Card de busca pedidos em aberto */}
-        <Card className="glass-card">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5" />
+        <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
+          <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-b border-slate-100 dark:border-slate-700/50 pb-5">
+            <CardTitle className="flex items-center gap-3 text-lg">
+              <div className="p-2 bg-emerald-500/10 rounded-lg">
+                <ShoppingCart className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
               Buscar Pedidos em Aberto
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex gap-2">
-              <Input
-                placeholder="(31)-99999-9999"
-                value={phone}
-                onChange={(e) => handlePhoneChange(e.target.value, setPhone)}
-                onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
-                className="flex-1"
-              />
-              <Button onClick={searchOrders} disabled={loadingOrders} className="bg-emerald-500 hover:bg-emerald-600 text-white">
-                {loadingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                <span className="ml-2">Buscar Pedidos</span>
+          <CardContent className="p-6">
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="(31) 99999-9999"
+                  value={phone}
+                  onChange={(e) => handlePhoneChange(e.target.value, setPhone)}
+                  onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
+                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500/20"
+                />
+              </div>
+              <Button 
+                onClick={searchOrders} 
+                disabled={loadingOrders} 
+                className="h-12 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200"
+              >
+                {loadingOrders ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                <span className="ml-2 font-medium">Buscar</span>
               </Button>
             </div>
             {!searched && (
-              <p className="text-center text-muted-foreground mt-4">
-                Use a busca acima para encontrar pedidos em aberto
-              </p>
+              <div className="mt-6 text-center py-6 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                <Search className="h-10 w-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+                <p className="text-muted-foreground">
+                  Digite seu telefone para localizar pedidos pendentes
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -1195,94 +1220,115 @@ const PublicCheckout = () => {
         )}
 
         {/* Histórico de Pedidos Pagos - Card com busca separada */}
-        <Card className="glass-card">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-2">
-              <History className="h-5 w-5" />
+        <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
+          <CardHeader className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-b border-slate-100 dark:border-slate-700/50 pb-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-500/10 rounded-lg">
+                <History className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
               <div>
-                <CardTitle>Histórico de Pedidos Pagos</CardTitle>
-                <CardDescription>Visualize os pedidos já finalizados deste cliente</CardDescription>
+                <CardTitle className="text-lg">Histórico de Pedidos</CardTitle>
+                <CardDescription className="mt-1">Visualize pedidos já finalizados</CardDescription>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="(31)-99999-9999"
-                value={historyPhone}
-                onChange={(e) => handlePhoneChange(e.target.value, setHistoryPhone)}
-                onKeyPress={(e) => e.key === 'Enter' && searchPaidOrdersHistory()}
-                className="flex-1"
-              />
-              <Button onClick={searchPaidOrdersHistory} disabled={loadingHistory} className="bg-emerald-500 hover:bg-emerald-600 text-white">
-                {loadingHistory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                <span className="ml-2">Buscar Histórico</span>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="(31) 99999-9999"
+                  value={historyPhone}
+                  onChange={(e) => handlePhoneChange(e.target.value, setHistoryPhone)}
+                  onKeyPress={(e) => e.key === 'Enter' && searchPaidOrdersHistory()}
+                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+              <Button 
+                onClick={searchPaidOrdersHistory} 
+                disabled={loadingHistory} 
+                className="h-12 px-6 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white shadow-lg shadow-blue-500/25 transition-all duration-200"
+              >
+                {loadingHistory ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                <span className="ml-2 font-medium">Buscar</span>
               </Button>
             </div>
 
             {historySearched && (
               loadingHistory ? (
-                <div className="flex justify-center py-4">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="flex flex-col items-center justify-center py-10">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-3" />
+                  <p className="text-muted-foreground">Buscando histórico...</p>
                 </div>
               ) : paidOrders.length === 0 ? (
-                <p className="text-center text-muted-foreground py-4">
-                  Nenhum pedido pago encontrado para este telefone
-                </p>
+                <div className="text-center py-10 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
+                  <History className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+                  <p className="text-muted-foreground font-medium">Nenhum pedido encontrado</p>
+                  <p className="text-sm text-muted-foreground/70 mt-1">Não há pedidos pagos para este telefone</p>
+                </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-4 mt-4">
                   {paidOrders.map((order) => (
-                    <div key={order.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
+                    <div key={order.id} className="group bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-5 hover:shadow-lg hover:border-blue-200 dark:hover:border-blue-800 transition-all duration-200">
                       <div className="flex justify-between items-start">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary">Pedido #{order.id}</Badge>
-                            <Badge variant="default" className="bg-green-600">Pago</Badge>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="secondary" className="bg-slate-200 dark:bg-slate-700 font-medium">
+                              Pedido #{order.id}
+                            </Badge>
+                            <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
+                              ✓ Pago
+                            </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            Data: {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
+                            {new Date(order.event_date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} • {order.event_type}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {order.items.length} {order.items.length === 1 ? 'produto' : 'produtos'}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold text-green-600">{formatCurrency(order.total_amount)}</div>
+                        <div className="text-right space-y-2">
+                          <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                            {formatCurrency(order.total_amount)}
+                          </div>
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="mt-2"
+                            className="border-slate-200 dark:border-slate-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
                             onClick={() => setSelectedHistoryOrder(
                               selectedHistoryOrder?.id === order.id ? null : order
                             )}
                           >
-                            <Eye className="h-4 w-4 mr-1" />
-                            {selectedHistoryOrder?.id === order.id ? 'Ocultar' : 'Ver Produtos'}
+                            <Eye className="h-4 w-4 mr-1.5" />
+                            {selectedHistoryOrder?.id === order.id ? 'Ocultar' : 'Detalhes'}
                           </Button>
                         </div>
                       </div>
                       
-                      {/* Detalhes do pedido selecionado */}
+                      {/* Detalhes expandidos */}
                       {selectedHistoryOrder?.id === order.id && (
-                        <div className="mt-4 pt-4 border-t space-y-3">
+                        <div className="mt-5 pt-5 border-t border-slate-200 dark:border-slate-700 space-y-3 animate-fade-in">
                           {order.items.map((item) => (
-                            <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                              <div className="flex items-center gap-3">
+                            <div key={item.id} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-700">
+                              <div className="flex items-center gap-4">
                                 {item.image_url && (
-                                  <img src={item.image_url} alt={item.product_name} className="h-12 w-12 rounded object-cover" />
+                                  <img src={item.image_url} alt={item.product_name} className="h-14 w-14 rounded-lg object-cover shadow-sm" />
                                 )}
                                 <div>
-                                  <p className="font-medium">{item.product_name}</p>
+                                  <p className="font-semibold">{item.product_name}</p>
                                   <p className="text-sm text-muted-foreground">
-                                    Código: {item.product_code} | Qtd: {item.qty}
+                                    {item.product_code} • Quantidade: {item.qty}
                                   </p>
                                 </div>
                               </div>
-                              <span className="font-bold">{formatCurrency(item.unit_price * item.qty)}</span>
+                              <span className="font-bold text-lg">{formatCurrency(item.unit_price * item.qty)}</span>
                             </div>
                           ))}
-                          <div className="text-right pt-2 border-t">
-                            <span className="font-bold text-lg">Total: {formatCurrency(order.total_amount)}</span>
+                          <div className="flex justify-end pt-3">
+                            <div className="bg-green-50 dark:bg-green-900/20 px-5 py-3 rounded-xl border border-green-200 dark:border-green-800">
+                              <span className="text-sm text-green-600 dark:text-green-400 mr-2">Total pago:</span>
+                              <span className="font-bold text-xl text-green-700 dark:text-green-300">{formatCurrency(order.total_amount)}</span>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -1293,6 +1339,13 @@ const PublicCheckout = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Footer */}
+        <div className="text-center pt-6 pb-4">
+          <p className="text-sm text-muted-foreground/60">
+            Powered by <span className="font-semibold text-primary">OrderZap</span>
+          </p>
+        </div>
       </div>
     </div>
   );
