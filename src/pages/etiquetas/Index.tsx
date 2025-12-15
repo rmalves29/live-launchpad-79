@@ -436,7 +436,7 @@ const Etiquetas = () => {
                     </div>
                   )}
 
-                  {/* Botões de Ação */}
+                  {/* Botão de Ação */}
                   <div className="flex flex-wrap gap-2 pt-2 border-t">
                     <Button
                       onClick={() => sendToMelhorEnvio(order.id)}
@@ -452,36 +452,6 @@ const Etiquetas = () => {
                         <Send className="h-4 w-4 mr-2" />
                       )}
                       {order.melhor_envio_shipment_id ? 'Remessa Criada' : 'Criar Remessa'}
-                    </Button>
-                    
-                    <Button
-                      onClick={() => buyShipment(order.id)}
-                      disabled={processingOrders.has(order.id) || !order.melhor_envio_shipment_id || !!order.melhor_envio_tracking_code}
-                      variant={order.melhor_envio_tracking_code ? "outline" : "secondary"}
-                      size="sm"
-                    >
-                      {processingOrders.has(order.id) ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : order.melhor_envio_tracking_code ? (
-                        <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                      ) : (
-                        <Package className="h-4 w-4 mr-2" />
-                      )}
-                      {order.melhor_envio_tracking_code ? 'Frete Comprado' : 'Comprar Frete'}
-                    </Button>
-                    
-                    <Button
-                      onClick={() => printLabel(order.id)}
-                      disabled={processingOrders.has(order.id) || !order.melhor_envio_shipment_id}
-                      variant="outline"
-                      size="sm"
-                    >
-                      {processingOrders.has(order.id) ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <Printer className="h-4 w-4 mr-2" />
-                      )}
-                      Imprimir Etiqueta
                     </Button>
                   </div>
                 </CardContent>
