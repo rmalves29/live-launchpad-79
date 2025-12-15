@@ -64,7 +64,7 @@ const PedidosManual = () => {
         .from('products')
         .select('*')
         .eq('is_active', true)
-        .eq('sale_type', 'BAZAR')
+        .in('sale_type', ['BAZAR', 'AMBOS'])
         .order('code');
 
       if (searchQuery) {
