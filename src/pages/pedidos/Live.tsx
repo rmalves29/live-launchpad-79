@@ -61,27 +61,46 @@ const Live = () => {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editPhone, setEditPhone] = useState('');
   const [editAmount, setEditAmount] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
 
   const loadProducts = async () => {
     try {
       setLoading(true);
+      const limit = parseInt(itemsPerPage);
+      const offset = (currentPage - 1) * limit;
+
+      // First, get total count
+      let countQuery = supabaseTenant
+        .from('products')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true)
+        .in('sale_type', ['LIVE', 'AMBOS']);
+
+      if (searchQuery) {
+        const cleanCode = searchQuery.replace(/[^0-9]/g, '');
+        const codeWithC = cleanCode ? `C${cleanCode}` : '';
+        countQuery = countQuery.or(`code.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,code.ilike.%${codeWithC}%`);
+      }
+
+      const { count, error: countError } = await countQuery;
+      if (countError) throw countError;
+      setTotalProducts(count || 0);
+
+      // Then get paginated data
       let query = supabaseTenant
         .from('products')
         .select('*')
         .eq('is_active', true)
         .in('sale_type', ['LIVE', 'AMBOS'])
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
 
       if (searchQuery) {
-        // Search by code (with or without C) or name
         const cleanCode = searchQuery.replace(/[^0-9]/g, '');
         const codeWithC = cleanCode ? `C${cleanCode}` : '';
-        
         query = query.or(`code.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,code.ilike.%${codeWithC}%`);
       }
-
-      const limit = parseInt(itemsPerPage);
-      query = query.limit(limit);
 
       const { data, error } = await query;
 
@@ -97,6 +116,12 @@ const Live = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const totalPages = Math.ceil(totalProducts / parseInt(itemsPerPage));
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
   };
 
   const loadOrders = async () => {
@@ -124,7 +149,15 @@ const Live = () => {
 
   useEffect(() => {
     loadProducts();
+  }, [searchQuery, itemsPerPage, currentPage]);
+
+  useEffect(() => {
     loadOrders();
+  }, []);
+
+  // Reset to first page when search or items per page changes
+  useEffect(() => {
+    setCurrentPage(1);
   }, [searchQuery, itemsPerPage]);
 
   const normalizeInstagram = (instagram: string): string => {
@@ -634,6 +667,58 @@ const Live = () => {
                           ))}
                         </TableBody>
                       </Table>
+                    </div>
+                  )}
+
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between mt-4 px-2">
+                      <div className="text-sm text-muted-foreground">
+                        Mostrando {((currentPage - 1) * parseInt(itemsPerPage)) + 1} - {Math.min(currentPage * parseInt(itemsPerPage), totalProducts)} de {totalProducts} produtos
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 1}
+                        >
+                          Anterior
+                        </Button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum;
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = currentPage - 2 + i;
+                            }
+                            return (
+                              <Button
+                                key={pageNum}
+                                variant={currentPage === pageNum ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => handlePageChange(pageNum)}
+                                className="w-8 h-8 p-0"
+                              >
+                                {pageNum}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                        >
+                          Próximo
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </CardContent>
