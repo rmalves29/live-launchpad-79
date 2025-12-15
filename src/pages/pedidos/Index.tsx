@@ -19,6 +19,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn, formatCurrency } from '@/lib/utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 
