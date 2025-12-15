@@ -4,7 +4,7 @@
  * Permite criar, editar, bloquear e gerenciar tenants
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,10 @@ import {
   Eye,
   EyeOff,
   Key,
-  Search
+  Search,
+  Upload,
+  Image,
+  Trash2
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
@@ -50,6 +53,7 @@ interface Tenant {
   name: string;
   slug: string;
   email: string | null;
+  logo_url: string | null;
   is_active: boolean;
   is_blocked: boolean | null;
   trial_ends_at: string | null;
@@ -98,6 +102,61 @@ export default function TenantsAdmin() {
   const [formBlockedReason, setFormBlockedReason] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formAccessType, setFormAccessType] = useState<'tenant_admin' | 'super_admin'>('tenant_admin');
+  
+  // Logo upload states
+  const [formLogoUrl, setFormLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de arquivo
+    if (!file.type.startsWith('image/')) {
+      setError('Por favor, selecione apenas arquivos de imagem');
+      return;
+    }
+
+    // Validar tamanho (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      setError('A imagem deve ter no máximo 2MB');
+      return;
+    }
+
+    setUploadingLogo(true);
+    setError(null);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${editingTenant?.id || 'new'}-${Date.now()}.${fileExt}`;
+      const filePath = `logos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('tenant-logos')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('tenant-logos')
+        .getPublicUrl(filePath);
+
+      setFormLogoUrl(publicUrl);
+    } catch (err: any) {
+      console.error('Erro ao fazer upload:', err);
+      setError('Erro ao fazer upload da logo: ' + err.message);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const removeLogo = () => {
+    setFormLogoUrl(null);
+    if (logoInputRef.current) {
+      logoInputRef.current.value = '';
+    }
+  };
 
   useEffect(() => {
     loadTenants();
@@ -158,6 +217,7 @@ export default function TenantsAdmin() {
       setEditingTenant(tenant);
       setFormName(tenant.name);
       setFormEmail(tenant.email || '');
+      setFormLogoUrl(tenant.logo_url || null);
       const credential = getTenantCredential(tenant.id);
       setFormAdminEmail(credential?.email || '');
       setFormAdminPassword('');
@@ -196,6 +256,7 @@ export default function TenantsAdmin() {
       setEditingTenant(null);
       setFormName('');
       setFormEmail('');
+      setFormLogoUrl(null);
       setFormAdminEmail('');
       setFormAdminPassword('');
       setFormContactName('');
@@ -234,6 +295,7 @@ export default function TenantsAdmin() {
       const tenantData: any = {
         name: formName,
         email: formEmail || null,
+        logo_url: formLogoUrl || null,
         plan_type: formPlan,
         is_active: formIsActive,
         is_blocked: formIsBlocked,
@@ -495,6 +557,52 @@ export default function TenantsAdmin() {
                       onChange={(e) => setFormEmail(e.target.value)}
                       placeholder="contato@empresa.com"
                     />
+                  </div>
+
+                  {/* Upload de Logo */}
+                  <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <Image className="h-4 w-4 text-primary" />
+                      <Label className="font-semibold">Logo da Empresa</Label>
+                    </div>
+                    
+                    {formLogoUrl ? (
+                      <div className="flex items-center gap-4">
+                        <img 
+                          src={formLogoUrl} 
+                          alt="Logo" 
+                          className="h-16 w-16 object-contain border rounded"
+                        />
+                        <div className="flex flex-col gap-2">
+                          <p className="text-sm text-muted-foreground">Logo atual</p>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={removeLogo}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Remover
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          ref={logoInputRef}
+                          id="logo"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          disabled={uploadingLogo}
+                          className="flex-1"
+                        />
+                        {uploadingLogo && <Loader2 className="h-4 w-4 animate-spin" />}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      A logo aparecerá no checkout público. Tamanho máximo: 2MB
+                    </p>
                   </div>
 
                   {/* Credenciais de Acesso */}
