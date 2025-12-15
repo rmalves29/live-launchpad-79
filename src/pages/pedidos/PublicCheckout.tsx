@@ -736,11 +736,39 @@ const PublicCheckout = () => {
 
   const currentOrder = selectedOrder || (orders.length === 1 ? orders[0] : null);
 
+  // Função para formatar telefone com máscara
+  const formatPhoneMask = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 7) return `(${digits.slice(0, 2)})-${digits.slice(2)}`;
+    if (digits.length <= 11) return `(${digits.slice(0, 2)})-${digits.slice(2, 7)}-${digits.slice(7)}`;
+    return `(${digits.slice(0, 2)})-${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+  };
+
+  const handlePhoneChange = (value: string, setter: (val: string) => void) => {
+    setter(formatPhoneMask(value));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted">
-      {/* Header */}
+      {/* Header com logo centralizada */}
+      <div className="w-full py-6 mb-4">
+        <div className="flex justify-center">
+          {tenant.logo_url ? (
+            <img src={tenant.logo_url} alt={tenant.name} className="h-16 object-contain" />
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center">
+                <Store className="h-6 w-6 text-primary-foreground" />
+              </div>
+              <span className="text-2xl font-bold">{tenant.name}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
-        <div>
+        <div className="text-center">
           <h1 className="text-2xl font-bold">Checkout</h1>
           <p className="text-muted-foreground">Processe pagamentos e finalize pedidos</p>
         </div>
@@ -756,9 +784,9 @@ const PublicCheckout = () => {
           <CardContent>
             <div className="flex gap-2">
               <Input
-                placeholder="digite seu telefone completo incluindo o DDD"
+                placeholder="(31)-99999-9999"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => handlePhoneChange(e.target.value, setPhone)}
                 onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
                 className="flex-1"
               />
@@ -1177,9 +1205,9 @@ const PublicCheckout = () => {
           <CardContent className="space-y-4">
             <div className="flex gap-2">
               <Input
-                placeholder="Telefone do cliente"
+                placeholder="(31)-99999-9999"
                 value={historyPhone}
-                onChange={(e) => setHistoryPhone(e.target.value)}
+                onChange={(e) => handlePhoneChange(e.target.value, setHistoryPhone)}
                 onKeyPress={(e) => e.key === 'Enter' && searchPaidOrdersHistory()}
                 className="flex-1"
               />
