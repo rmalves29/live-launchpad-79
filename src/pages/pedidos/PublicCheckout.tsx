@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
@@ -57,7 +58,8 @@ const PublicCheckout = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
+  const [showCheckout, setShowCheckout] = useState(false);
   
   // Histórico de pedidos pagos
   const [paidOrders, setPaidOrders] = useState<Order[]>([]);
@@ -180,12 +182,16 @@ const PublicCheckout = () => {
     loadHandlingDays();
   }, []);
 
-  // Calcular brinde elegível quando pedido muda
+  // Calcular brinde elegível quando pedidos selecionados mudam
+  const selectedOrders = orders.filter(o => selectedOrderIds.includes(o.id));
+  
   useEffect(() => {
-    if (activeGifts.length === 0 || !selectedOrder) return;
+    if (activeGifts.length === 0 || selectedOrders.length === 0) return;
 
-    const productsTotal = selectedOrder.items.reduce((sum: number, item: any) => {
-      return sum + (parseFloat(String(item.unit_price)) * item.qty);
+    const productsTotal = selectedOrders.reduce((total, order) => {
+      return total + order.items.reduce((sum: number, item: any) => {
+        return sum + (parseFloat(String(item.unit_price)) * item.qty);
+      }, 0);
     }, 0);
 
     const eligible = activeGifts
@@ -212,7 +218,7 @@ const PublicCheckout = () => {
       }
       setEligibleGift(null);
     }
-  }, [selectedOrder, activeGifts]);
+  }, [selectedOrderIds, orders, activeGifts]);
 
   const formatDeliveryTime = (originalTime: string, companyName: string) => {
     if (companyName === 'Retirada') return originalTime;
@@ -238,8 +244,8 @@ const PublicCheckout = () => {
     });
   };
 
-  const calculateShipping = async (cep: string, order: Order) => {
-    if (!cep || !order || !tenant) return;
+  const calculateShipping = async (cep: string, ordersToCalc: Order[]) => {
+    if (!cep || ordersToCalc.length === 0 || !tenant) return;
     if (cep.replace(/[^0-9]/g, '').length !== 8) return;
 
     const fallbackShipping = [{
@@ -279,8 +285,9 @@ const PublicCheckout = () => {
         return;
       }
 
-      // Calcular frete
-      const products = order.items.map(item => ({
+      // Calcular frete com todos os items dos pedidos selecionados
+      const allItems = ordersToCalc.flatMap(order => order.items);
+      const products = allItems.map(item => ({
         id: String(item.id || Math.random()),
         width: 16,
         height: 2,
@@ -353,7 +360,7 @@ const PublicCheckout = () => {
     }
   };
 
-  const applyCoupon = async (order: Order) => {
+  const applyCouponToOrders = async (ordersToApply: Order[]) => {
     if (!couponCode.trim()) {
       toast({ title: 'Erro', description: 'Digite um código de cupom', variant: 'destructive' });
       return;
@@ -385,7 +392,9 @@ const PublicCheckout = () => {
         return;
       }
 
-      const productsTotal = order.items.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
+      const productsTotal = ordersToApply.reduce((total, order) => {
+        return total + order.items.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
+      }, 0);
       let discount = 0;
 
       if (coupon.discount_type === 'progressive') {
@@ -419,7 +428,7 @@ const PublicCheckout = () => {
     toast({ title: 'Cupom Removido', description: 'O cupom foi removido do pedido' });
   };
 
-  const processPayment = async (order: Order) => {
+  const processMultipleOrdersPayment = async (ordersToProcess: Order[]) => {
     if (!tenant) {
       toast({ title: 'Erro', description: 'Loja não identificada', variant: 'destructive' });
       return;
@@ -456,7 +465,9 @@ const PublicCheckout = () => {
         shippingCost = selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
       }
 
-      const productsTotal = Number(order.total_amount);
+      // Calcular total combinado de todos os pedidos
+      const allItems = ordersToProcess.flatMap(order => order.items);
+      const productsTotal = allItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
       const totalWithDiscount = Math.max(0, productsTotal - couponDiscount);
       const totalAmount = totalWithDiscount + shippingCost;
 
@@ -482,8 +493,9 @@ const PublicCheckout = () => {
       }
 
       const paymentData = {
-        order_id: order.id,
-        cartItems: order.items.map(item => ({
+        order_ids: ordersToProcess.map(o => o.id),
+        order_id: ordersToProcess[0].id, // Primary order for backwards compatibility
+        cartItems: allItems.map(item => ({
           product_name: item.product_name,
           product_code: item.product_code,
           qty: item.qty,
@@ -491,7 +503,7 @@ const PublicCheckout = () => {
         })),
         customerData: {
           name: customerData.name,
-          phone: order.customer_phone
+          phone: ordersToProcess[0].customer_phone
         },
         addressData: {
           cep: customerData.cep,
@@ -547,7 +559,8 @@ const PublicCheckout = () => {
     const normalizedPhone = normalizeForStorage(phone);
     setLoadingOrders(true);
     setSearched(true);
-    setSelectedOrder(null);
+    setSelectedOrderIds([]);
+    setShowCheckout(false);
 
     try {
       const { data: customerOrders, error: ordersError } = await supabase
@@ -618,13 +631,6 @@ const PublicCheckout = () => {
           city: customer.city || '',
           state: customer.state || ''
         });
-
-        // Calcular frete automaticamente se tiver CEP
-        if (customer.cep && customer.cep.replace(/[^0-9]/g, '').length === 8 && ordersWithItems.length > 0) {
-          setTimeout(() => {
-            calculateShipping(customer.cep, ordersWithItems[0]);
-          }, 500);
-        }
       }
 
       if ((customerOrders || []).length === 0) {
@@ -635,6 +641,38 @@ const PublicCheckout = () => {
       toast({ title: 'Erro', description: 'Erro ao buscar seus pedidos', variant: 'destructive' });
     } finally {
       setLoadingOrders(false);
+    }
+  };
+
+  const toggleOrderSelection = (orderId: number) => {
+    setSelectedOrderIds(prev => 
+      prev.includes(orderId) 
+        ? prev.filter(id => id !== orderId)
+        : [...prev, orderId]
+    );
+  };
+
+  const selectAllOrders = () => {
+    if (selectedOrderIds.length === orders.length) {
+      setSelectedOrderIds([]);
+    } else {
+      setSelectedOrderIds(orders.map(o => o.id));
+    }
+  };
+
+  const proceedToCheckout = () => {
+    if (selectedOrderIds.length === 0) {
+      toast({ title: 'Selecione pelo menos um pedido', description: 'Marque os pedidos que deseja finalizar', variant: 'destructive' });
+      return;
+    }
+    setShowCheckout(true);
+    
+    // Calcular frete se tiver CEP
+    if (customerData.cep && customerData.cep.replace(/[^0-9]/g, '').length === 8) {
+      const ordersToCalc = orders.filter(o => selectedOrderIds.includes(o.id));
+      setTimeout(() => {
+        calculateShipping(customerData.cep, ordersToCalc);
+      }, 300);
     }
   };
 
@@ -737,7 +775,12 @@ const PublicCheckout = () => {
     );
   }
 
-  const currentOrder = selectedOrder || (orders.length === 1 ? orders[0] : null);
+  // Calcular totais combinados dos pedidos selecionados
+  const combinedSubtotal = selectedOrders.reduce((total, order) => {
+    return total + order.items.reduce((sum, item) => sum + (item.unit_price * item.qty), 0);
+  }, 0);
+  
+  const allSelectedItems = selectedOrders.flatMap(order => order.items);
 
   // Função para formatar telefone com máscara
   const formatPhoneMask = (value: string) => {
@@ -841,92 +884,165 @@ const PublicCheckout = () => {
                   Nenhum pedido em aberto encontrado para este telefone.
                 </AlertDescription>
               </Alert>
-            ) : orders.length > 1 && !selectedOrder ? (
-              // Seleção de pedido quando há múltiplos
-              <Card className="glass-card">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ShoppingCart className="h-5 w-5" />
-                    Selecione o Pedido para Finalizar
-                  </CardTitle>
-                  <CardDescription>
-                    Você possui {orders.length} pedidos em aberto. Selecione qual deseja finalizar:
-                  </CardDescription>
+            ) : !showCheckout ? (
+              // Seleção de pedidos com checkboxes
+              <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
+                <CardHeader className="bg-gradient-to-r from-violet-500/10 to-purple-500/10 border-b border-slate-100 dark:border-slate-700/50">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <CheckCircle2 className="h-5 w-5 text-violet-600" />
+                        Selecione os Pedidos
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        Você possui {orders.length} pedido(s) em aberto. Selecione quais deseja finalizar juntos:
+                      </CardDescription>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={selectAllOrders}
+                      className="shrink-0"
+                    >
+                      {selectedOrderIds.length === orders.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                    </Button>
+                  </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="p-6">
                   <div className="space-y-3">
-                    {orders.map((order) => (
-                      <div 
-                        key={order.id} 
-                        className="border rounded-lg p-4 hover:bg-muted/50 cursor-pointer transition-colors"
-                        onClick={() => setSelectedOrder(order)}
-                      >
-                        <div className="flex justify-between items-center">
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-3">
-                              <Badge variant="secondary">Pedido #{order.id}</Badge>
-                              <Badge variant="outline">{order.event_type}</Badge>
+                    {orders.map((order) => {
+                      const isSelected = selectedOrderIds.includes(order.id);
+                      return (
+                        <div 
+                          key={order.id} 
+                          className={`relative border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                            isSelected 
+                              ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
+                              : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }`}
+                          onClick={() => toggleOrderSelection(order.id)}
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className="pt-1">
+                              <Checkbox 
+                                checked={isSelected}
+                                onCheckedChange={() => toggleOrderSelection(order.id)}
+                                className="h-5 w-5 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+                              />
                             </div>
-                            <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
-                              <div><span className="font-medium">Data:</span> {new Date(order.event_date).toLocaleDateString('pt-BR')}</div>
-                              <div><span className="font-medium">Items:</span> {order.items.length} produto(s)</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-2">
+                                <Badge variant="secondary" className="font-medium">Pedido #{order.id}</Badge>
+                                <Badge variant="outline">{order.event_type}</Badge>
+                                {isSelected && (
+                                  <Badge className="bg-emerald-500 text-white">Selecionado</Badge>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground mb-3">
+                                <div><span className="font-medium">Data:</span> {new Date(order.event_date).toLocaleDateString('pt-BR')}</div>
+                                <div><span className="font-medium">Itens:</span> {order.items.length} produto(s)</div>
+                              </div>
+                              {/* Lista de produtos */}
+                              <div className="space-y-1.5">
+                                {order.items.slice(0, 3).map((item) => (
+                                  <div key={item.id} className="flex items-center gap-2 text-sm">
+                                    {item.image_url && (
+                                      <img src={item.image_url} alt={item.product_name} className="h-8 w-8 rounded object-cover" />
+                                    )}
+                                    <span className="truncate flex-1">{item.product_name}</span>
+                                    <span className="text-muted-foreground">x{item.qty}</span>
+                                  </div>
+                                ))}
+                                {order.items.length > 3 && (
+                                  <p className="text-xs text-muted-foreground">+ {order.items.length - 3} outros produtos</p>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-lg font-bold text-primary">{formatCurrency(order.total_amount)}</div>
+                            <div className="text-right shrink-0">
+                              <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                                {formatCurrency(order.total_amount)}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
+
+                  {/* Resumo da seleção */}
+                  {selectedOrderIds.length > 0 && (
+                    <div className="mt-6 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-medium text-emerald-800 dark:text-emerald-300">
+                          {selectedOrderIds.length} pedido(s) selecionado(s)
+                        </span>
+                        <span className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(combinedSubtotal)}
+                        </span>
+                      </div>
+                      <Button 
+                        className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold py-3 shadow-lg shadow-emerald-500/25"
+                        onClick={proceedToCheckout}
+                      >
+                        <CreditCard className="h-5 w-5 mr-2" />
+                        Continuar para Finalizar
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            ) : currentOrder ? (
-              // Checkout do pedido selecionado
-              <Card className="glass-card">
-                <CardHeader>
+            ) : selectedOrders.length > 0 ? (
+              // Checkout dos pedidos selecionados
+              <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
+                <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-b border-slate-100 dark:border-slate-700/50">
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle className="text-lg flex items-center gap-2">
-                        Pedido #{currentOrder.id}
-                        <Badge variant="outline">{currentOrder.event_type}</Badge>
-                        {orders.length > 1 && (
-                          <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(null)} className="ml-2">
-                            ← Voltar
-                          </Button>
-                        )}
+                        Finalizar {selectedOrders.length} Pedido(s)
+                        <Button variant="ghost" size="sm" onClick={() => setShowCheckout(false)} className="ml-2">
+                          ← Voltar
+                        </Button>
                       </CardTitle>
                       <CardDescription>
-                        Data: {new Date(currentOrder.event_date).toLocaleDateString('pt-BR')}
+                        Pedidos: {selectedOrders.map(o => `#${o.id}`).join(', ')}
                       </CardDescription>
                     </div>
-                    <Badge variant={currentOrder.is_paid ? "default" : "secondary"}>
-                      {currentOrder.is_paid ? 'Pago' : 'Aguardando Pagamento'}
+                    <Badge variant="secondary" className="text-lg px-3 py-1">
+                      Total: {formatCurrency(combinedSubtotal)}
                     </Badge>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Itens do pedido */}
+                <CardContent className="p-6 space-y-6">
+                  {/* Itens de todos os pedidos */}
                   <div>
                     <h4 className="font-medium mb-3 flex items-center gap-2">
                       <Package className="h-4 w-4" />
-                      Produtos do Pedido
+                      Produtos ({allSelectedItems.length} itens)
                     </h4>
-                    <div className="space-y-2">
-                      {currentOrder.items.map((item) => (
-                        <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                          <div className="flex items-center gap-3">
-                            {item.image_url && (
-                              <img src={item.image_url} alt={item.product_name} className="h-12 w-12 rounded object-cover" />
-                            )}
-                            <div>
-                              <p className="font-medium">{item.product_name}</p>
-                              <p className="text-sm text-muted-foreground">
-                                Código: {item.product_code} | Qtd: {item.qty}
-                              </p>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {selectedOrders.map((order) => (
+                        <div key={order.id} className="space-y-2">
+                          {selectedOrders.length > 1 && (
+                            <div className="text-xs font-medium text-muted-foreground bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded">
+                              Pedido #{order.id}
                             </div>
-                          </div>
-                          <span className="font-bold">{formatCurrency(item.unit_price * item.qty)}</span>
+                          )}
+                          {order.items.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                {item.image_url && (
+                                  <img src={item.image_url} alt={item.product_name} className="h-12 w-12 rounded object-cover" />
+                                )}
+                                <div>
+                                  <p className="font-medium">{item.product_name}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Código: {item.product_code} | Qtd: {item.qty}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="font-bold">{formatCurrency(item.unit_price * item.qty)}</span>
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>
@@ -958,7 +1074,7 @@ const PublicCheckout = () => {
                       </div>
                       <Progress value={progressGift.percentageAchieved} className="h-2" />
                       <p className="text-xs text-muted-foreground mt-2">
-                        Faltam {formatCurrency(progressGift.minimum_purchase_amount - currentOrder.items.reduce((sum, i) => sum + i.unit_price * i.qty, 0))} para ganhar
+                        Faltam {formatCurrency(progressGift.minimum_purchase_amount - combinedSubtotal)} para ganhar
                       </p>
                     </div>
                   )}
@@ -1018,14 +1134,14 @@ const PublicCheckout = () => {
                               const newCep = e.target.value;
                               setCustomerData({...customerData, cep: newCep});
                               if (newCep.replace(/[^0-9]/g, '').length === 8) {
-                                calculateShipping(newCep, currentOrder);
+                                calculateShipping(newCep, selectedOrders);
                               }
                             }}
                           />
                           <Button 
                             variant="outline" 
                             size="sm"
-                            onClick={() => calculateShipping(customerData.cep, currentOrder)}
+                            onClick={() => calculateShipping(customerData.cep, selectedOrders)}
                             disabled={loadingShipping}
                           >
                             {loadingShipping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
@@ -1135,7 +1251,7 @@ const PublicCheckout = () => {
                           className="flex-1"
                         />
                         <Button
-                          onClick={() => applyCoupon(currentOrder)}
+                          onClick={() => applyCouponToOrders(selectedOrders)}
                           disabled={loadingCoupon || !couponCode.trim()}
                           className="bg-green-600 hover:bg-green-700"
                         >
@@ -1170,8 +1286,8 @@ const PublicCheckout = () => {
                   {/* Resumo */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Subtotal:</span>
-                      <span>{formatCurrency(currentOrder.items.reduce((sum, i) => sum + i.unit_price * i.qty, 0))}</span>
+                      <span className="text-muted-foreground">Subtotal ({allSelectedItems.length} itens):</span>
+                      <span>{formatCurrency(combinedSubtotal)}</span>
                     </div>
                     
                     {selectedShipping !== 'retirada' && (
@@ -1194,7 +1310,7 @@ const PublicCheckout = () => {
                       <span>Total:</span>
                       <span className="text-green-600">
                         {formatCurrency(
-                          Math.max(0, currentOrder.items.reduce((sum, i) => sum + i.unit_price * i.qty, 0) - couponDiscount) +
+                          Math.max(0, combinedSubtotal - couponDiscount) +
                           (selectedShipping !== 'retirada' ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || '0') : 0)
                         )}
                       </span>
@@ -1202,8 +1318,8 @@ const PublicCheckout = () => {
                   </div>
 
                   <Button
-                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 text-lg"
-                    onClick={() => processPayment(currentOrder)}
+                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 text-lg shadow-lg shadow-emerald-500/25"
+                    onClick={() => processMultipleOrdersPayment(selectedOrders)}
                     disabled={loadingPayment}
                   >
                     {loadingPayment ? (
@@ -1211,7 +1327,7 @@ const PublicCheckout = () => {
                     ) : (
                       <CreditCard className="h-4 w-4 mr-2" />
                     )}
-                    Finalizar Pedido - Mercado Pago
+                    Finalizar {selectedOrders.length > 1 ? `${selectedOrders.length} Pedidos` : 'Pedido'} - Mercado Pago
                   </Button>
                 </CardContent>
               </Card>
