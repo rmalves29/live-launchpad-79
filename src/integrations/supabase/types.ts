@@ -1749,6 +1749,7 @@ export type Database = {
         | "sendflow"
         | "MSG_MASSA"
         | "SENDFLOW"
+        | "TRACKING"
     }
     CompositeTypes: {
       http_header: {
@@ -1913,6 +1914,7 @@ export const Constants = {
         "sendflow",
         "MSG_MASSA",
         "SENDFLOW",
+        "TRACKING",
       ],
     },
   },
