@@ -421,9 +421,9 @@ const Etiquetas = () => {
                                     className="w-8 h-8 rounded object-cover"
                                   />
                                 )}
-                                <span>{item.product?.name || 'Produto'}</span>
+                                <span>{item.product?.name || item.product_name || 'Produto'}</span>
                                 <Badge variant="outline" className="text-xs">
-                                  {item.product?.code || 'N/A'}
+                                  {item.product?.code || item.product_code || 'N/A'}
                                 </Badge>
                               </div>
                               <span className="font-medium">
