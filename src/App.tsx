@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
+import { usePageTitle } from "@/hooks/usePageTitle";
 
 // Callbacks
 import MercadoPagoCallback from "./pages/callbacks/MercadoPagoCallback";
@@ -60,6 +61,9 @@ const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
   const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && !location.pathname.startsWith('/t/');
+  
+  // Atualiza o título da aba do navegador baseado na página atual
+  usePageTitle();
 
   // Se estamos em um subdomínio de tenant, usar autenticação específica
   const TenantAuthComponent = tenant ? TenantAuth : Auth;
