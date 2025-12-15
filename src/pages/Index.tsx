@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -62,6 +63,7 @@ interface Order {
 
 const Pedidos = () => {
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const { profile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -244,7 +246,10 @@ const Pedidos = () => {
     }
 
     // Se está MARCANDO como pago, pede confirmação
-    const confirmed = confirm('Deseja marcar este pedido como pago e enviar a confirmação por WhatsApp?');
+    const confirmed = await confirm({
+      description: 'Deseja marcar este pedido como pago e enviar a confirmação por WhatsApp?',
+      confirmText: 'Confirmar',
+    });
     
     if (!confirmed) {
       return;
@@ -460,7 +465,12 @@ const Pedidos = () => {
       return;
     }
 
-    if (!confirm(`Tem certeza que deseja deletar ${selectedOrders.size} pedido(s)? Esta ação não pode ser desfeita.`)) {
+    const confirmed = await confirm({
+      description: `Deseja deletar ${selectedOrders.size} pedido(s)?`,
+      confirmText: 'Deletar',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -764,7 +774,11 @@ const Pedidos = () => {
         return;
       }
 
-      if (!confirm(`Tem certeza que deseja enviar mensagem em massa para ${uniquePhones.length} cliente(s)?`)) {
+      const confirmed = await confirm({
+        description: `Deseja enviar mensagem em massa para ${uniquePhones.length} cliente(s)?`,
+        confirmText: 'Enviar',
+      });
+      if (!confirmed) {
         setLoading(false);
         return;
       }
@@ -1239,6 +1253,7 @@ const Pedidos = () => {
         onOpenChange={setViewOrderOpen}
         order={viewingOrder}
       />
+      <ConfirmDialog />
         </div>
       </div>
     </div>

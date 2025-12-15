@@ -10,6 +10,7 @@ import { Checkbox } from "./ui/checkbox";
 import { Separator } from "./ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "./ui/use-toast";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Edit, Users, Mail, Trash2, UserCheck, Eye, EyeOff } from "lucide-react";
 
@@ -46,6 +47,7 @@ export default function TenantsManager() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [showPasswords, setShowPasswords] = useState<{[key: string]: boolean}>({});
   const { toast } = useToast();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const { user, profile } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -327,7 +329,12 @@ export default function TenantsManager() {
   };
 
   const handleDeleteTenant = async (tenant: Tenant) => {
-    if (!confirm(`Tem certeza que deseja excluir a empresa "${tenant.name}"?\n\nEsta ação irá:\n- Deletar todas as credenciais\n- Remover todos os dados da empresa\n\nEsta ação NÃO pode ser desfeita!`)) {
+    const confirmed = await confirm({
+      description: `Deseja excluir a empresa "${tenant.name}"?`,
+      confirmText: 'Excluir',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -411,6 +418,7 @@ export default function TenantsManager() {
   }
 
   return (
+    <>
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Gerenciar Empresas</h1>
@@ -705,5 +713,7 @@ export default function TenantsManager() {
         </Card>
       )}
     </div>
+      <ConfirmDialog />
+    </>
   );
 }

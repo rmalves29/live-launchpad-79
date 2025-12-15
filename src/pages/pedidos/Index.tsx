@@ -1,26 +1,26 @@
-  import { useState, useEffect } from 'react';
-  import { supabaseTenant } from '@/lib/supabase-tenant';
-  import { supabase } from '@/integrations/supabase/client';
-  import { useToast } from '@/hooks/use-toast';
-  import { Button } from '@/components/ui/button';
-  import { Input } from '@/components/ui/input';
-  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-  import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-  import { Badge } from '@/components/ui/badge';
-  import { Switch } from '@/components/ui/switch';
-  import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-  import { Calendar } from '@/components/ui/calendar';
-  import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-  import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck } from 'lucide-react';
-  import { Separator } from '@/components/ui/separator';
-  import { format } from 'date-fns';
-  import { ptBR } from 'date-fns/locale';
-  import { cn, formatCurrency } from '@/lib/utils';
-  import { EditOrderDialog } from '@/components/EditOrderDialog';
-  import { ViewOrderDialog } from '@/components/ViewOrderDialog';
-  import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-  import { useAuth } from '@/hooks/useAuth';
-  import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
+import { useState, useEffect } from 'react';
+import { supabaseTenant } from '@/lib/supabase-tenant';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn, formatCurrency } from '@/lib/utils';
+import { EditOrderDialog } from '@/components/EditOrderDialog';
+import { ViewOrderDialog } from '@/components/ViewOrderDialog';
+import { useAuth } from '@/hooks/useAuth';
+import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 
   interface Order {
     id: number;
@@ -66,6 +66,7 @@
 
   const Pedidos = () => {
     const { toast } = useToast();
+    const { confirm, ConfirmDialog } = useConfirmDialog();
     const { profile } = useAuth();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -529,7 +530,12 @@
         return;
       }
 
-      if (!confirm(`Tem certeza que deseja deletar ${selectedOrders.size} pedido(s)? Esta ação não pode ser desfeita.`)) {
+      const confirmed = await confirm({
+        description: `Deseja deletar ${selectedOrders.size} pedido(s)?`,
+        confirmText: 'Deletar',
+        variant: 'destructive',
+      });
+      if (!confirmed) {
         return;
       }
 
@@ -844,7 +850,11 @@
           return;
         }
 
-        if (!confirm(`Tem certeza que deseja enviar mensagem em massa para ${uniquePhones.length} cliente(s)?`)) {
+        const confirmed = await confirm({
+          description: `Deseja enviar mensagem em massa para ${uniquePhones.length} cliente(s)?`,
+          confirmText: 'Enviar',
+        });
+        if (!confirmed) {
           setLoading(false);
           return;
         }
@@ -1411,9 +1421,8 @@
         <AlertDialog open={paymentConfirmDialog.open} onOpenChange={(open) => setPaymentConfirmDialog({ open, orderId: open ? paymentConfirmDialog.orderId : null })}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Confirmação de Pagamento</AlertDialogTitle>
-              <AlertDialogDescription>
-                Você está mudando esse pedido para pago, manualmente.
+              <AlertDialogDescription className="text-base">
+                Deseja marcar esse pedido como pago manualmente?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -1422,6 +1431,8 @@
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <ConfirmDialog />
       </div>
     </div>
   </div>
