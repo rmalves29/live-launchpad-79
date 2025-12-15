@@ -216,13 +216,13 @@ const PedidosManual = () => {
           };
         }
 
-        // Try to create new order - Manual page always creates MANUAL orders (BAZAR)
+        // Try to create new order - Manual page always creates BAZAR orders
         try {
           const { data: newOrder, error: orderError } = await supabaseTenant
             .from('orders')
             .insert([{
               customer_phone: normalizedPhone,
-              event_type: 'MANUAL',
+              event_type: 'BAZAR',
               event_date: today,
               total_amount: subtotal,
               is_paid: false
