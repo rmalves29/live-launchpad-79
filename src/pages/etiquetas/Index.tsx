@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Package, Printer, Send, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
-import { toast } from 'sonner';
 
 interface Order {
   id: number;
