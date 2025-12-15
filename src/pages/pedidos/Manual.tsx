@@ -201,10 +201,6 @@ const PedidosManual = () => {
           const newTotal = existingOrder.total_amount + subtotal;
           
           const updatePayload: any = { total_amount: newTotal };
-          // Se o produto for do tipo BAZAR, garantir que o pedido seja marcado como BAZAR
-          if (product.sale_type === 'BAZAR' && existingOrder.event_type !== 'BAZAR') {
-            updatePayload.event_type = 'BAZAR';
-          }
 
           const { error: updateError } = await supabaseTenant
             .from('orders')
@@ -220,14 +216,13 @@ const PedidosManual = () => {
           };
         }
 
-        // Try to create new order
+        // Try to create new order - Manual page always creates MANUAL orders (BAZAR)
         try {
-          const orderEventType = product.sale_type === 'BAZAR' ? 'BAZAR' : 'MANUAL';
           const { data: newOrder, error: orderError } = await supabaseTenant
             .from('orders')
             .insert([{
               customer_phone: normalizedPhone,
-              event_type: orderEventType,
+              event_type: 'MANUAL',
               event_date: today,
               total_amount: subtotal,
               is_paid: false

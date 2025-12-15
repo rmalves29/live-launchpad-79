@@ -176,9 +176,9 @@ serve(async (req) => {
       let customer = await findOrCreateCustomer(supabase, tenantId, normalizedPhone, payload.senderName || '');
 
       // Determine event type based on product sale_type
-      // BAZAR products → BAZAR event type (automatic bazar order)
-      // LIVE or AMBOS products → LIVE event type
-      const eventType = product.sale_type === 'BAZAR' ? 'BAZAR' : 'LIVE';
+      // BAZAR or AMBOS products → BAZAR event type (automatic orders are always BAZAR)
+      // LIVE products → LIVE event type
+      const eventType = product.sale_type === 'LIVE' ? 'LIVE' : 'BAZAR';
 
       // Find or create cart for this customer
       const cart = await findOrCreateCart(supabase, tenantId, normalizedPhone, groupName, eventType);
