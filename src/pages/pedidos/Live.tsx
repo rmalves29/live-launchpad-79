@@ -70,7 +70,7 @@ const Live = () => {
         .select('*')
         .eq('is_active', true)
         .in('sale_type', ['LIVE', 'AMBOS'])
-        .order('code');
+        .order('id', { ascending: true });
 
       if (searchQuery) {
         // Search by code (with or without C) or name
