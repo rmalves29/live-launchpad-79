@@ -178,29 +178,68 @@ serve(async (req) => {
       // Find or create cart for this customer
       const cart = await findOrCreateCart(supabase, tenantId, normalizedPhone, groupName);
 
-      // Add item to cart with product snapshot (name, code, image for when product is deleted)
-      const { data: cartItem, error: cartItemError } = await supabase
-        .from('cart_items')
-        .insert({
-          cart_id: cart.id,
-          product_id: product.id,
-          qty: 1,
-          unit_price: product.price,
-          tenant_id: tenantId,
-          product_name: product.name,
-          product_code: product.code,
-          product_image_url: product.image_url,
-        })
-        .select()
-        .single();
+      // Find or create order for this cart
+      const order = await findOrCreateOrder(supabase, tenantId, normalizedPhone, cart.id, groupName);
 
-      if (cartItemError) {
-        console.log(`[zapi-webhook] Error adding cart item:`, cartItemError);
-        results.push({ code, success: false, error: 'cart_item_error' });
-        continue;
+      // Check if product already in cart
+      const { data: existingItem } = await supabase
+        .from('cart_items')
+        .select('*')
+        .eq('cart_id', cart.id)
+        .eq('product_id', product.id)
+        .maybeSingle();
+
+      let cartItem;
+      if (existingItem) {
+        // Update existing item - also refresh product snapshot
+        const { data: updatedItem, error: updateError } = await supabase
+          .from('cart_items')
+          .update({
+            qty: existingItem.qty + 1,
+            unit_price: product.price,
+            product_name: product.name,
+            product_code: product.code,
+            product_image_url: product.image_url,
+          })
+          .eq('id', existingItem.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.log(`[zapi-webhook] Error updating cart item:`, updateError);
+          results.push({ code, success: false, error: 'cart_item_update_error' });
+          continue;
+        }
+        cartItem = updatedItem;
+        console.log(`[zapi-webhook] Updated existing cart item: ${cartItem.id}, new qty: ${cartItem.qty}`);
+      } else {
+        // Add new item to cart with product snapshot
+        const { data: newItem, error: cartItemError } = await supabase
+          .from('cart_items')
+          .insert({
+            cart_id: cart.id,
+            product_id: product.id,
+            qty: 1,
+            unit_price: product.price,
+            tenant_id: tenantId,
+            product_name: product.name,
+            product_code: product.code,
+            product_image_url: product.image_url,
+          })
+          .select()
+          .single();
+
+        if (cartItemError) {
+          console.log(`[zapi-webhook] Error adding cart item:`, cartItemError);
+          results.push({ code, success: false, error: 'cart_item_error' });
+          continue;
+        }
+        cartItem = newItem;
+        console.log(`[zapi-webhook] Added new item to cart: ${cartItem.id}`);
       }
 
-      console.log(`[zapi-webhook] Added item to cart: ${cartItem.id}`);
+      // Update order total
+      await updateOrderTotal(supabase, order.id);
 
       // The trigger on cart_items will automatically send the item added message
       results.push({ 
@@ -209,6 +248,7 @@ serve(async (req) => {
         product_name: product.name,
         price: product.price,
         cart_id: cart.id,
+        order_id: order.id,
         cart_item_id: cartItem.id 
       });
     }
@@ -426,4 +466,87 @@ async function findOrCreateCart(
 
   console.log(`[zapi-webhook] Created new cart: ${newCart.id}`);
   return newCart;
+}
+
+async function findOrCreateOrder(
+  supabase: any,
+  tenantId: string,
+  phone: string,
+  cartId: number,
+  groupName: string
+) {
+  const today = new Date().toISOString().split('T')[0];
+
+  // Try to find existing unpaid order for today
+  const { data: existingOrder } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('customer_phone', phone)
+    .eq('event_date', today)
+    .eq('is_paid', false)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingOrder) {
+    console.log(`[zapi-webhook] Found existing order: ${existingOrder.id}`);
+    // Update cart_id if needed
+    if (existingOrder.cart_id !== cartId) {
+      await supabase
+        .from('orders')
+        .update({ cart_id: cartId })
+        .eq('id', existingOrder.id);
+    }
+    return existingOrder;
+  }
+
+  // Create new order
+  const { data: newOrder, error } = await supabase
+    .from('orders')
+    .insert({
+      tenant_id: tenantId,
+      customer_phone: phone,
+      event_date: today,
+      event_type: 'LIVE',
+      total_amount: 0,
+      is_paid: false,
+      cart_id: cartId,
+      whatsapp_group_name: groupName || null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.log('[zapi-webhook] Error creating order:', error);
+    throw error;
+  }
+
+  console.log(`[zapi-webhook] Created new order: ${newOrder.id}`);
+  return newOrder;
+}
+
+async function updateOrderTotal(supabase: any, orderId: number) {
+  // Calculate total from cart items
+  const { data: order } = await supabase
+    .from('orders')
+    .select('cart_id')
+    .eq('id', orderId)
+    .single();
+
+  if (!order?.cart_id) return;
+
+  const { data: items } = await supabase
+    .from('cart_items')
+    .select('qty, unit_price')
+    .eq('cart_id', order.cart_id);
+
+  const total = items?.reduce((sum: number, item: any) => sum + (item.qty * item.unit_price), 0) || 0;
+
+  await supabase
+    .from('orders')
+    .update({ total_amount: total })
+    .eq('id', orderId);
+
+  console.log(`[zapi-webhook] Updated order ${orderId} total to ${total}`);
 }
