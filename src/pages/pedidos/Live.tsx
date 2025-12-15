@@ -351,14 +351,17 @@ const Live = () => {
 
         if (updateCartError) throw updateCartError;
       } else {
-        // Add new cart item
+        // Add new cart item with product snapshot for when product is deleted
         const { error: cartItemError } = await supabaseTenant
           .from('cart_items')
           .insert({
             cart_id: cartId,
             product_id: product.id,
             qty: qty,
-            unit_price: product.price
+            unit_price: product.price,
+            product_name: product.name,
+            product_code: product.code,
+            product_image_url: product.image_url
           });
 
         if (cartItemError) throw cartItemError;

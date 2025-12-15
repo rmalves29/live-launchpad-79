@@ -109,6 +109,7 @@ export type Database = {
           printed: boolean
           product_code: string | null
           product_id: number | null
+          product_image_url: string | null
           product_name: string | null
           qty: number
           tenant_id: string
@@ -121,6 +122,7 @@ export type Database = {
           printed?: boolean
           product_code?: string | null
           product_id?: number | null
+          product_image_url?: string | null
           product_name?: string | null
           qty?: number
           tenant_id: string
@@ -133,6 +135,7 @@ export type Database = {
           printed?: boolean
           product_code?: string | null
           product_id?: number | null
+          product_image_url?: string | null
           product_name?: string | null
           qty?: number
           tenant_id?: string

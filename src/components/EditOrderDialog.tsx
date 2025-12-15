@@ -186,7 +186,7 @@ useEffect(() => {
 
         if (error) throw error;
       } else {
-        // Add new item with product name/code preserved
+        // Add new item with product snapshot for when product is deleted
         const { error } = await supabaseTenant
           .from('cart_items')
           .insert({
@@ -195,7 +195,8 @@ useEffect(() => {
             qty: quantity,
             unit_price: unitPrice || selectedProduct.price,
             product_name: selectedProduct.name,
-            product_code: selectedProduct.code
+            product_code: selectedProduct.code,
+            product_image_url: selectedProduct.image_url
           });
 
         if (error) throw error;
@@ -436,19 +437,38 @@ useEffect(() => {
                   </CardContent>
                 </Card>
               ) : (
-                cartItems.map((item) => (
-                  <Card key={item.id}>
-                    <CardContent className="p-4">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h4 className="font-medium">{item.product?.name || item.product_name || 'Produto deletado'}</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Código: {item.product?.code || item.product_code || 'N/A'}
-                          </p>
-                          <p className="text-sm">
-                            {formatCurrency(item.unit_price)} × {item.qty} = {formatCurrency(item.qty * item.unit_price)}
-                          </p>
-                        </div>
+                cartItems.map((item) => {
+                  const productName = item.product?.name || item.product_name || 'Produto deletado';
+                  const productCode = item.product?.code || item.product_code || 'N/A';
+                  const productImage = item.product?.image_url || item.product_image_url;
+                  
+                  return (
+                    <Card key={item.id}>
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start gap-3">
+                          {/* Product Image */}
+                          <div className="flex-shrink-0">
+                            {productImage ? (
+                              <img 
+                                src={productImage} 
+                                alt={productName}
+                                className="w-12 h-12 object-cover rounded border"
+                              />
+                            ) : (
+                              <div className="w-12 h-12 bg-muted rounded border flex items-center justify-center text-xs text-muted-foreground">
+                                Sem foto
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-medium">{productName}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Código: {productCode}
+                            </p>
+                            <p className="text-sm">
+                              {formatCurrency(item.unit_price)} × {item.qty} = {formatCurrency(item.qty * item.unit_price)}
+                            </p>
+                          </div>
                         <div className="flex items-center gap-2">
                           <Input
                             type="number"
@@ -468,7 +488,8 @@ useEffect(() => {
                       </div>
                     </CardContent>
                   </Card>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
