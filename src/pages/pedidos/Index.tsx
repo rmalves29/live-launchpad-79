@@ -11,7 +11,7 @@
   import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
   import { Calendar } from '@/components/ui/calendar';
   import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-  import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search } from 'lucide-react';
+  import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck } from 'lucide-react';
   import { Separator } from '@/components/ui/separator';
   import { format } from 'date-fns';
   import { ptBR } from 'date-fns/locale';
@@ -39,6 +39,9 @@
     item_added_delivered?: boolean;
     payment_confirmation_delivered?: boolean;
     tenant_id: string;
+    unique_order_id?: string;
+    melhor_envio_tracking_code?: string;
+    customer_name?: string;
     customer?: {
       name?: string;
       cpf?: string;
@@ -79,6 +82,11 @@
     const [viewOrderOpen, setViewOrderOpen] = useState(false);
     const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Estado para edição de rastreio
+    const [editingTracking, setEditingTracking] = useState<number | null>(null);
+    const [trackingText, setTrackingText] = useState('');
+    const [savingTracking, setSavingTracking] = useState<number | null>(null);
     
     // Estado para diálogo de confirmação de pagamento
     const [paymentConfirmDialog, setPaymentConfirmDialog] = useState<{
@@ -354,6 +362,75 @@
           description: 'Erro ao salvar observação',
           variant: 'destructive'
         });
+      }
+    };
+
+    const saveTrackingCode = async (orderId: number) => {
+      if (!trackingText.trim()) {
+        toast({
+          title: 'Aviso',
+          description: 'Digite um código de rastreio',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setSavingTracking(orderId);
+      
+      try {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
+
+        // Salvar código de rastreio no banco
+        const { error: updateError } = await supabaseTenant
+          .from('orders')
+          .update({ melhor_envio_tracking_code: trackingText.trim() })
+          .eq('id', orderId);
+
+        if (updateError) throw updateError;
+
+        // Enviar WhatsApp com código de rastreio
+        const { error: whatsappError } = await supabase.functions.invoke('zapi-send-tracking', {
+          body: {
+            order_id: orderId,
+            tenant_id: order.tenant_id,
+            tracking_code: trackingText.trim(),
+            shipped_at: new Date().toISOString()
+          }
+        });
+
+        if (whatsappError) {
+          console.error('Erro ao enviar WhatsApp:', whatsappError);
+          toast({
+            title: 'Rastreio Salvo',
+            description: 'Código salvo, mas houve erro ao enviar WhatsApp',
+            variant: 'destructive'
+          });
+        } else {
+          toast({
+            title: 'Sucesso',
+            description: 'Código de rastreio salvo e WhatsApp enviado ao cliente!'
+          });
+        }
+
+        // Atualizar estado local
+        setOrders(prev => prev.map(o => 
+          o.id === orderId 
+            ? { ...o, melhor_envio_tracking_code: trackingText.trim() }
+            : o
+        ));
+
+        setEditingTracking(null);
+        setTrackingText('');
+      } catch (error) {
+        console.error('Erro ao salvar rastreio:', error);
+        toast({
+          title: 'Erro',
+          description: 'Erro ao salvar código de rastreio',
+          variant: 'destructive'
+        });
+      } finally {
+        setSavingTracking(null);
       }
     };
 
@@ -1052,6 +1129,7 @@
                     <TableHead>Impresso?</TableHead>
                     <TableHead>Tipo Evento</TableHead>
                     <TableHead>Data Evento</TableHead>
+                    <TableHead>Rastreio</TableHead>
                     <TableHead>Disparo</TableHead>
                     <TableHead>Observação</TableHead>
                     <TableHead>Ações</TableHead>
@@ -1060,13 +1138,13 @@
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8">
+                      <TableCell colSpan={12} className="text-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                       </TableCell>
                     </TableRow>
                   ) : filteredOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                         {searchTerm ? 'Nenhum pedido encontrado com este telefone' : 'Nenhum pedido encontrado'}
                       </TableCell>
                     </TableRow>
@@ -1126,6 +1204,62 @@
                         <TableCell>
                           {format(new Date(order.event_date + 'T00:00:00'), 'dd/MM/yyyy')}
                         </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {editingTracking === order.id ? (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  value={trackingText}
+                                  onChange={(e) => setTrackingText(e.target.value)}
+                                  placeholder="Código rastreio"
+                                  className="w-28 h-7 text-xs"
+                                />
+                                <Button 
+                                  size="sm" 
+                                  className="h-7 px-2"
+                                  onClick={() => saveTrackingCode(order.id)}
+                                  disabled={savingTracking === order.id}
+                                >
+                                  {savingTracking === order.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Send className="h-3 w-3" />
+                                  )}
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost"
+                                  className="h-7 px-2"
+                                  onClick={() => {
+                                    setEditingTracking(null);
+                                    setTrackingText('');
+                                  }}
+                                >
+                                  ✕
+                                </Button>
+                              </div>
+                            ) : order.melhor_envio_tracking_code ? (
+                              <div className="flex items-center gap-1">
+                                <Badge variant="default" className="text-xs flex items-center gap-1">
+                                  <Truck className="h-3 w-3" />
+                                  {order.melhor_envio_tracking_code}
+                                </Badge>
+                              </div>
+                            ) : (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => {
+                                  setEditingTracking(order.id);
+                                  setTrackingText('');
+                                }}
+                              >
+                                <Truck className="h-3 w-3 mr-1" />
+                                Add Rastreio
+                              </Button>
+                            )}
+                          </div>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             {/* Indicador de mensagem de item adicionado - só mostra verde se entregue */}
