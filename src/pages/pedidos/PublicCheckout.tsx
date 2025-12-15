@@ -109,23 +109,26 @@ const PublicCheckout = () => {
       }
 
       try {
-        const { data, error } = await supabase
-          .rpc('get_tenant_by_slug', { slug_param: slug });
+        // Buscar diretamente da tabela para obter todos os campos incluindo logo_url
+        const { data: tenantData, error } = await supabase
+          .from('tenants')
+          .select('id, name, slug, logo_url, primary_color, phone, is_active')
+          .eq('slug', slug)
+          .eq('is_active', true)
+          .maybeSingle();
 
         if (error) throw error;
 
-        const tenantData = (Array.isArray(data) && data.length > 0 ? data[0] : null) as any;
-
-        if (!tenantData || !tenantData.is_active) {
+        if (!tenantData) {
           setTenantError('Loja não encontrada');
         } else {
           setTenant({
             id: tenantData.id,
             name: tenantData.name,
             slug: tenantData.slug,
-            logo_url: null,
-            primary_color: null,
-            phone: null,
+            logo_url: tenantData.logo_url,
+            primary_color: tenantData.primary_color,
+            phone: tenantData.phone,
           });
         }
       } catch (error) {
