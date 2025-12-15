@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.melhor-envio-labels]
 verify_jwt = true
 
+[functions.melhor-envio-shipping]
+verify_jwt = true
+
 [functions.melhor-envio-test-token]
 verify_jwt = true
 
