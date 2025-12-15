@@ -3,7 +3,7 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Package, Printer, Send, Loader2 } from 'lucide-react';
+import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/lib/utils';
 
@@ -22,6 +22,8 @@ interface Order {
   created_at: string;
   event_type: string;
   event_date: string;
+  melhor_envio_shipment_id?: string;
+  melhor_envio_tracking_code?: string;
   items?: any[];
 }
 
@@ -60,7 +62,7 @@ const Etiquetas = () => {
               id,
               qty,
               unit_price,
-              product:products(name, code)
+              product:products(name, code, image_url)
             `)
             .eq('cart_id', order.cart_id);
 
@@ -138,10 +140,8 @@ const Etiquetas = () => {
       if (data.success === true) {
         console.log('✅ [ETIQUETAS] Remessa criada com sucesso:', data);
         toast.success('Remessa criada no Melhor Envio com sucesso!');
-        // Recarregar os pedidos para atualizar o status
         loadPaidOrders();
       } else {
-        // Se não tem success definido mas não há erro, assumir sucesso se há dados de shipment
         if (data.shipment) {
           console.log('✅ [ETIQUETAS] Remessa criada (sem flag success):', data);
           toast.success('Remessa criada no Melhor Envio com sucesso!');
@@ -162,7 +162,6 @@ const Etiquetas = () => {
       let userMessage = 'Erro ao enviar para Melhor Envio';
       
       if (error.message) {
-        // Tratar mensagens de erro específicas para o usuário
         if (error.message.includes('Dados da empresa incompletos')) {
           userMessage = `Erro: ${error.message}`;
         } else if (error.message.includes('Integração')) {
@@ -199,12 +198,17 @@ const Etiquetas = () => {
       if (error) throw error;
 
       if (data.success) {
-        toast.success('Frete comprado no Melhor Envio!');
+        const trackingCode = data.tracking_code;
+        if (trackingCode) {
+          toast.success(`Frete comprado! Código de rastreio: ${trackingCode}`);
+        } else {
+          toast.success('Frete comprado no Melhor Envio!');
+        }
         loadPaidOrders();
       } else {
         throw new Error(data.error || 'Erro desconhecido');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao comprar frete:', error);
       toast.error(`Erro ao comprar frete: ${error.message}`);
     } finally {
@@ -231,13 +235,12 @@ const Etiquetas = () => {
       if (error) throw error;
 
       if (data.success && data.data.url) {
-        // Abrir a etiqueta em nova aba para impressão
         window.open(data.data.url, '_blank');
         toast.success('Etiqueta gerada com sucesso!');
       } else {
         throw new Error(data.error || 'Erro ao gerar etiqueta');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao imprimir etiqueta:', error);
       toast.error(`Erro ao imprimir etiqueta: ${error.message}`);
     } finally {
@@ -247,6 +250,11 @@ const Etiquetas = () => {
         return newSet;
       });
     }
+  };
+
+  const copyTrackingCode = (trackingCode: string) => {
+    navigator.clipboard.writeText(trackingCode);
+    toast.success('Código de rastreio copiado!');
   };
 
   const formatDate = (dateString: string) => {
@@ -260,6 +268,16 @@ const Etiquetas = () => {
       return `(${match[1]}) ${match[2]}-${match[3]}`;
     }
     return phone;
+  };
+
+  const getShipmentStatus = (order: Order) => {
+    if (order.melhor_envio_tracking_code) {
+      return { status: 'shipped', label: 'Enviado', variant: 'default' as const };
+    }
+    if (order.melhor_envio_shipment_id) {
+      return { status: 'ready', label: 'Remessa Criada', variant: 'secondary' as const };
+    }
+    return { status: 'pending', label: 'Pendente', variant: 'outline' as const };
   };
 
   if (loading) {
@@ -294,105 +312,182 @@ const Etiquetas = () => {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {orders.map((order) => (
-            <Card key={order.id}>
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-lg">
-                      Pedido #{order.unique_order_id || order.id}
-                    </CardTitle>
-                    <div className="flex gap-2 mt-2">
-                      <Badge variant="secondary">Pago</Badge>
-                      <Badge variant="outline">{order.event_type}</Badge>
+          {orders.map((order) => {
+            const shipmentStatus = getShipmentStatus(order);
+            
+            return (
+              <Card key={order.id} className="overflow-hidden">
+                {/* Header com status */}
+                <CardHeader className="bg-muted/30 pb-3">
+                  <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="text-lg">
+                          Pedido #{order.unique_order_id || order.id}
+                        </CardTitle>
+                        <Badge variant="default" className="bg-green-600">
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Pago
+                        </Badge>
+                        <Badge variant={shipmentStatus.variant}>
+                          <Truck className="h-3 w-3 mr-1" />
+                          {shipmentStatus.label}
+                        </Badge>
+                      </div>
+                      
+                      {/* Código de rastreio em destaque */}
+                      {order.melhor_envio_tracking_code && (
+                        <div className="flex items-center gap-2 bg-primary/10 px-3 py-2 rounded-lg w-fit">
+                          <Truck className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-medium">Rastreio:</span>
+                          <code className="bg-background px-2 py-0.5 rounded text-sm font-mono">
+                            {order.melhor_envio_tracking_code}
+                          </code>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => copyTrackingCode(order.melhor_envio_tracking_code!)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <div>Criado: {formatDate(order.created_at)}</div>
+                      <div>Evento: {formatDate(order.event_date)}</div>
                     </div>
                   </div>
-                  <div className="text-right text-sm text-muted-foreground">
-                    <div>Data: {formatDate(order.created_at)}</div>
-                    <div>Evento: {formatDate(order.event_date)}</div>
-                  </div>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="font-semibold mb-2">Dados do Cliente</h4>
-                    <div className="text-sm space-y-1">
-                      <div><strong>Nome:</strong> {order.customer_name}</div>
-                      <div><strong>Telefone:</strong> {formatPhone(order.customer_phone)}</div>
-                      <div><strong>Total:</strong> {formatCurrency(order.total_amount)}</div>
+                </CardHeader>
+                
+                <CardContent className="pt-4 space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Dados do Cliente */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                        <User className="h-4 w-4" />
+                        Dados do Cliente
+                      </div>
+                      <div className="bg-muted/30 rounded-lg p-3 space-y-1.5">
+                        <div className="font-medium">{order.customer_name}</div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {formatPhone(order.customer_phone)}
+                        </div>
+                        <div className="text-sm font-semibold text-primary">
+                          {formatCurrency(order.total_amount)}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Endereço */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                        <MapPin className="h-4 w-4" />
+                        Endereço de Entrega
+                      </div>
+                      <div className="bg-muted/30 rounded-lg p-3 space-y-1 text-sm">
+                        <div>{order.customer_street}, {order.customer_number}</div>
+                        {order.customer_complement && (
+                          <div className="text-muted-foreground">{order.customer_complement}</div>
+                        )}
+                        <div>{order.customer_city} - {order.customer_state}</div>
+                        <div className="font-mono text-xs">CEP: {order.customer_cep}</div>
+                      </div>
                     </div>
                   </div>
-                  
-                  <div>
-                    <h4 className="font-semibold mb-2">Endereço de Entrega</h4>
-                    <div className="text-sm space-y-1">
-                      <div>{order.customer_street}, {order.customer_number}</div>
-                      {order.customer_complement && <div>{order.customer_complement}</div>}
-                      <div>{order.customer_city} - {order.customer_state}</div>
-                      <div>CEP: {order.customer_cep}</div>
-                    </div>
-                  </div>
-                </div>
 
-                {order.items && order.items.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold mb-2">Itens do Pedido</h4>
-                    <div className="space-y-1">
-                       {order.items.map((item, index) => (
-                         <div key={index} className="text-sm flex justify-between">
-                           <span>{item.product?.name || 'Produto'} ({item.product?.code || 'N/A'})</span>
-                            <span>{item.qty}x {formatCurrency(item.unit_price)}</span>
-                         </div>
-                       ))}
+                  {/* Itens do Pedido */}
+                  {order.items && order.items.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                        <Package className="h-4 w-4" />
+                        Itens ({order.items.length})
+                      </div>
+                      <div className="bg-muted/30 rounded-lg p-3">
+                        <div className="grid gap-2">
+                          {order.items.map((item, index) => (
+                            <div 
+                              key={index} 
+                              className="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0"
+                            >
+                              <div className="flex items-center gap-2">
+                                {item.product?.image_url && (
+                                  <img 
+                                    src={item.product.image_url} 
+                                    alt={item.product?.name}
+                                    className="w-8 h-8 rounded object-cover"
+                                  />
+                                )}
+                                <span>{item.product?.name || 'Produto'}</span>
+                                <Badge variant="outline" className="text-xs">
+                                  {item.product?.code || 'N/A'}
+                                </Badge>
+                              </div>
+                              <span className="font-medium">
+                                {item.qty}x {formatCurrency(item.unit_price)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="flex gap-2 pt-4 border-t">
-                  <Button
-                    onClick={() => sendToMelhorEnvio(order.id)}
-                    disabled={processingOrders.has(order.id)}
-                    className="flex-1"
-                  >
-                    {processingOrders.has(order.id) ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Send className="h-4 w-4 mr-2" />
-                    )}
-                    Criar Remessa
-                  </Button>
-                  
-                  <Button
-                    onClick={() => buyShipment(order.id)}
-                    disabled={processingOrders.has(order.id)}
-                    variant="outline"
-                  >
-                    {processingOrders.has(order.id) ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Package className="h-4 w-4 mr-2" />
-                    )}
-                    Comprar Frete
-                  </Button>
-                  
-                  <Button
-                    onClick={() => printLabel(order.id)}
-                    disabled={processingOrders.has(order.id)}
-                    variant="secondary"
-                  >
-                    {processingOrders.has(order.id) ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Printer className="h-4 w-4 mr-2" />
-                    )}
-                    Imprimir Etiqueta
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  {/* Botões de Ação */}
+                  <div className="flex flex-wrap gap-2 pt-2 border-t">
+                    <Button
+                      onClick={() => sendToMelhorEnvio(order.id)}
+                      disabled={processingOrders.has(order.id) || !!order.melhor_envio_shipment_id}
+                      variant={order.melhor_envio_shipment_id ? "outline" : "default"}
+                      size="sm"
+                    >
+                      {processingOrders.has(order.id) ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : order.melhor_envio_shipment_id ? (
+                        <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-2" />
+                      )}
+                      {order.melhor_envio_shipment_id ? 'Remessa Criada' : 'Criar Remessa'}
+                    </Button>
+                    
+                    <Button
+                      onClick={() => buyShipment(order.id)}
+                      disabled={processingOrders.has(order.id) || !order.melhor_envio_shipment_id || !!order.melhor_envio_tracking_code}
+                      variant={order.melhor_envio_tracking_code ? "outline" : "secondary"}
+                      size="sm"
+                    >
+                      {processingOrders.has(order.id) ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : order.melhor_envio_tracking_code ? (
+                        <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                      ) : (
+                        <Package className="h-4 w-4 mr-2" />
+                      )}
+                      {order.melhor_envio_tracking_code ? 'Frete Comprado' : 'Comprar Frete'}
+                    </Button>
+                    
+                    <Button
+                      onClick={() => printLabel(order.id)}
+                      disabled={processingOrders.has(order.id) || !order.melhor_envio_shipment_id}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {processingOrders.has(order.id) ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Printer className="h-4 w-4 mr-2" />
+                      )}
+                      Imprimir Etiqueta
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
