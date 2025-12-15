@@ -175,16 +175,32 @@ const Relatorios = () => {
         const cartIds = orders.map(o => o.cart_id).filter(Boolean);
         
         if (cartIds.length > 0) {
-          // Buscar cart_items com produtos do tipo correto
+          // Buscar cart_items com product_code (armazenado diretamente)
           const { data: cartItems } = await supabaseTenant
             .from('cart_items')
-            .select('cart_id, product_id, products(sale_type)')
+            .select('cart_id, product_code')
             .in('cart_id', cartIds);
+          
+          // Coletar todos os product_codes únicos
+          const productCodes = [...new Set(cartItems?.map(ci => ci.product_code).filter(Boolean) || [])];
+          
+          // Buscar products por código para obter sale_type
+          let productSaleTypes: Record<string, string> = {};
+          if (productCodes.length > 0) {
+            const { data: products } = await supabaseTenant
+              .from('products')
+              .select('code, sale_type')
+              .in('code', productCodes);
+            
+            products?.forEach(p => {
+              productSaleTypes[p.code] = p.sale_type;
+            });
+          }
           
           // Filtrar cart_ids que têm produtos do tipo selecionado
           const validCartIds = new Set<number>();
           cartItems?.forEach(item => {
-            const productSaleType = (item.products as any)?.sale_type;
+            const productSaleType = item.product_code ? productSaleTypes[item.product_code] : null;
             if (productSaleType === saleTypeFilter || productSaleType === 'AMBOS') {
               validCartIds.add(item.cart_id);
             }
@@ -204,22 +220,37 @@ const Relatorios = () => {
       let totalProducts = 0;
       
       if (cartIds.length > 0) {
-        let cartItemsQuery = supabaseTenant
+        const { data: cartItems } = await supabaseTenant
           .from('cart_items')
-          .select('qty, products(sale_type)')
+          .select('qty, product_code')
           .in('cart_id', cartIds);
         
-        const { data: cartItems } = await cartItemsQuery;
-        
         // Filtrar por tipo de venda se necessário
-        const filteredItems = saleTypeFilter === 'ALL' 
-          ? cartItems 
-          : cartItems?.filter(item => {
-              const productSaleType = (item.products as any)?.sale_type;
-              return productSaleType === saleTypeFilter || productSaleType === 'AMBOS';
+        if (saleTypeFilter === 'ALL') {
+          totalProducts = cartItems?.reduce((sum, item) => sum + item.qty, 0) || 0;
+        } else {
+          // Buscar sale_type pelos códigos
+          const productCodes = [...new Set(cartItems?.map(ci => ci.product_code).filter(Boolean) || [])];
+          let productSaleTypes: Record<string, string> = {};
+          
+          if (productCodes.length > 0) {
+            const { data: products } = await supabaseTenant
+              .from('products')
+              .select('code, sale_type')
+              .in('code', productCodes);
+            
+            products?.forEach(p => {
+              productSaleTypes[p.code] = p.sale_type;
             });
-        
-        totalProducts = filteredItems?.reduce((sum, item) => sum + item.qty, 0) || 0;
+          }
+          
+          const filteredItems = cartItems?.filter(item => {
+            const productSaleType = item.product_code ? productSaleTypes[item.product_code] : null;
+            return productSaleType === saleTypeFilter || productSaleType === 'AMBOS';
+          });
+          
+          totalProducts = filteredItems?.reduce((sum, item) => sum + item.qty, 0) || 0;
+        }
       }
       
       const ticketMedio = totalOrders > 0 ? (totalPaid + totalUnpaid) / totalOrders : 0;
@@ -271,18 +302,31 @@ const Relatorios = () => {
       const getProductsCountFiltered = async (cartIds: number[]) => {
         if (cartIds.length === 0) return [];
         
-        const { data } = await supabaseTenant
+        const { data: cartItems } = await supabaseTenant
           .from('cart_items')
-          .select('qty, products(sale_type)')
+          .select('qty, product_code')
           .in('cart_id', cartIds);
         
         if (saleTypeFilter === 'ALL') {
-          return data || [];
+          return cartItems || [];
         }
         
-        // Filtrar por tipo de venda
-        return (data || []).filter(item => {
-          const productSaleType = (item.products as any)?.sale_type;
+        // Buscar sale_type pelos códigos
+        const productCodes = [...new Set(cartItems?.map(ci => ci.product_code).filter(Boolean) || [])];
+        if (productCodes.length === 0) return [];
+        
+        const { data: products } = await supabaseTenant
+          .from('products')
+          .select('code, sale_type')
+          .in('code', productCodes);
+        
+        const productSaleTypes: Record<string, string> = {};
+        products?.forEach(p => {
+          productSaleTypes[p.code] = p.sale_type;
+        });
+        
+        return (cartItems || []).filter(item => {
+          const productSaleType = item.product_code ? productSaleTypes[item.product_code] : null;
           return productSaleType === saleTypeFilter || productSaleType === 'AMBOS';
         });
       };
@@ -298,12 +342,26 @@ const Relatorios = () => {
         
         const { data: cartItems } = await supabaseTenant
           .from('cart_items')
-          .select('cart_id, products(sale_type)')
+          .select('cart_id, product_code')
           .in('cart_id', cartIds);
+        
+        // Buscar sale_type pelos códigos
+        const productCodes = [...new Set(cartItems?.map(ci => ci.product_code).filter(Boolean) || [])];
+        if (productCodes.length === 0) return [];
+        
+        const { data: products } = await supabaseTenant
+          .from('products')
+          .select('code, sale_type')
+          .in('code', productCodes);
+        
+        const productSaleTypes: Record<string, string> = {};
+        products?.forEach(p => {
+          productSaleTypes[p.code] = p.sale_type;
+        });
         
         const validCartIds = new Set<number>();
         cartItems?.forEach(item => {
-          const productSaleType = (item.products as any)?.sale_type;
+          const productSaleType = item.product_code ? productSaleTypes[item.product_code] : null;
           if (productSaleType === saleTypeFilter || productSaleType === 'AMBOS') {
             validCartIds.add(item.cart_id);
           }
@@ -415,32 +473,47 @@ const Relatorios = () => {
         return;
       }
 
-      // Now get cart items for these carts with product sale_type
+      // Now get cart items for these carts
       const { data: cartItemsData, error: cartItemsError } = await supabaseTenant
         .from('cart_items')
-        .select(`
-          qty,
-          unit_price,
-          products(name, code, sale_type)
-        `)
+        .select('qty, unit_price, product_name, product_code')
         .in('cart_id', cartIds);
 
       if (cartItemsError) throw cartItemsError;
 
       // Filtrar por tipo de venda se necessário
-      const filteredCartItems = saleTypeFilter === 'ALL' 
-        ? cartItemsData 
-        : cartItemsData?.filter(item => {
-            const productSaleType = (item.products as any)?.sale_type;
+      let filteredCartItems = cartItemsData || [];
+      
+      if (saleTypeFilter !== 'ALL' && cartItemsData && cartItemsData.length > 0) {
+        // Buscar sale_type pelos códigos
+        const productCodes = [...new Set(cartItemsData.map(ci => ci.product_code).filter(Boolean))];
+        
+        if (productCodes.length > 0) {
+          const { data: products } = await supabaseTenant
+            .from('products')
+            .select('code, sale_type')
+            .in('code', productCodes);
+          
+          const productSaleTypes: Record<string, string> = {};
+          products?.forEach(p => {
+            productSaleTypes[p.code] = p.sale_type;
+          });
+          
+          filteredCartItems = cartItemsData.filter(item => {
+            const productSaleType = item.product_code ? productSaleTypes[item.product_code] : null;
             return productSaleType === saleTypeFilter || productSaleType === 'AMBOS';
           });
+        } else {
+          filteredCartItems = [];
+        }
+      }
 
       // Agrupar por produto
       const productMap = new Map<string, ProductSales>();
 
-      filteredCartItems?.forEach(item => {
-        const productName = item.products?.name || 'Produto removido';
-        const productCode = item.products?.code || 'N/A';
+      filteredCartItems.forEach(item => {
+        const productName = item.product_name || 'Produto removido';
+        const productCode = item.product_code || 'N/A';
         const key = `${productName}-${productCode}`;
 
         if (productMap.has(key)) {
