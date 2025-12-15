@@ -946,13 +946,25 @@ const Checkout = () => {
       return;
     }
 
-    if (selectedShipping !== 'retirada' && (!customerData.cep || !customerData.street)) {
-      toast({
-        title: 'Endereço obrigatório',
-        description: 'Endereço completo é obrigatório para entrega',
-        variant: 'destructive'
-      });
-      return;
+    // Validação completa de endereço para entregas (não retirada)
+    if (selectedShipping !== 'retirada') {
+      const missingFields: string[] = [];
+      if (!customerData.name) missingFields.push('Nome');
+      if (!customerData.cep) missingFields.push('CEP');
+      if (!customerData.street) missingFields.push('Rua');
+      if (!customerData.number) missingFields.push('Número');
+      if (!customerData.neighborhood) missingFields.push('Bairro');
+      if (!customerData.city) missingFields.push('Cidade');
+      if (!customerData.state) missingFields.push('Estado');
+
+      if (missingFields.length > 0) {
+        toast({
+          title: 'Endereço incompleto',
+          description: `Campos obrigatórios faltando: ${missingFields.join(', ')}`,
+          variant: 'destructive'
+        });
+        return;
+      }
     }
 
     // Salvar dados do cliente
