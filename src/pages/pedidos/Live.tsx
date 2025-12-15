@@ -69,7 +69,7 @@ const Live = () => {
         .from('products')
         .select('*')
         .eq('is_active', true)
-        .eq('sale_type', 'LIVE')
+        .in('sale_type', ['LIVE', 'AMBOS'])
         .order('code');
 
       if (searchQuery) {
