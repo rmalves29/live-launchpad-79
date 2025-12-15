@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp, FileText, X } from 'lucide-react';
+import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp, FileText, X, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
@@ -539,6 +539,78 @@ const Clientes = () => {
     }).format(value);
   };
 
+  const exportToCSV = () => {
+    if (filteredCustomers.length === 0) {
+      toast({
+        title: 'Nenhum cliente para exportar',
+        description: 'A lista de clientes está vazia',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const headers = [
+      'Nome',
+      'Telefone',
+      'Email',
+      'Instagram',
+      'CPF',
+      'CEP',
+      'Rua',
+      'Número',
+      'Complemento',
+      'Bairro',
+      'Cidade',
+      'Estado',
+      'Total Pedidos',
+      'Pedidos Pagos',
+      'Total Gasto',
+      'Último Pedido',
+      'Criado em'
+    ];
+
+    const rows = filteredCustomers.map(customer => [
+      customer.name,
+      formatPhone(customer.phone),
+      customer.email || '',
+      customer.instagram || '',
+      customer.cpf || '',
+      customer.cep || '',
+      customer.street || '',
+      customer.number || '',
+      customer.complement || '',
+      customer.neighborhood || '',
+      customer.city || '',
+      customer.state || '',
+      customer.total_orders.toString(),
+      customer.paid_orders_count.toString(),
+      formatCurrency(customer.total_spent),
+      customer.last_order_date ? formatDate(customer.last_order_date) : '',
+      formatDate(customer.created_at)
+    ]);
+
+    const csvContent = [
+      headers.join(';'),
+      ...rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(';'))
+    ].join('\n');
+
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: 'Exportação concluída',
+      description: `${filteredCustomers.length} clientes exportados para CSV`
+    });
+  };
+
   const openOrderDetails = (order: OrderWithCustomer) => {
     setSelectedOrderForDetails(order);
     setShowOrderDetailsDialog(true);
@@ -697,12 +769,18 @@ const Clientes = () => {
                   <Users className="h-5 w-5 mr-2" />
                   Lista de Clientes ({filteredCustomers.length})
                 </span>
-                <Button onClick={loadCustomers} disabled={loading} size="sm" variant="outline">
-                  {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : null}
-                  Atualizar
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button onClick={exportToCSV} disabled={loading || filteredCustomers.length === 0} size="sm" variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar CSV
+                  </Button>
+                  <Button onClick={loadCustomers} disabled={loading} size="sm" variant="outline">
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : null}
+                    Atualizar
+                  </Button>
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>
