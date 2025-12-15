@@ -52,6 +52,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       city?: string;
       state?: string;
       cep?: string;
+      instagram?: string;
     };
     cart_items?: {
       id: number;
@@ -131,7 +132,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
           // Fetch customer data
           const { data: customerData } = await supabaseTenant
             .from('customers')
-            .select('name, cpf, street, number, complement, neighborhood, city, state, cep')
+            .select('name, cpf, street, number, complement, neighborhood, city, state, cep, instagram')
             .eq('phone', order.customer_phone)
             .maybeSingle();
 
@@ -1141,6 +1142,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                     </TableHead>
                     <TableHead className="px-2 whitespace-nowrap">#Pedido</TableHead>
                     <TableHead className="px-2">Telefone</TableHead>
+                    <TableHead className="px-2">@ Live</TableHead>
                     <TableHead className="px-2">Total</TableHead>
                     <TableHead className="px-2">Pago?</TableHead>
                     <TableHead className="px-2">Impresso?</TableHead>
@@ -1155,13 +1157,13 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center py-8">
+                      <TableCell colSpan={13} className="text-center py-8">
                         <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                       </TableCell>
                     </TableRow>
                   ) : filteredOrders.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
+                      <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
                         {searchTerm ? 'Nenhum pedido encontrado com este telefone' : 'Nenhum pedido encontrado'}
                       </TableCell>
                     </TableRow>
@@ -1179,6 +1181,9 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                           <Badge variant="outline" className="text-xs">#{order.id}</Badge>
                         </TableCell>
                         <TableCell className="px-2 text-xs">{formatPhoneForDisplay(order.customer_phone)}</TableCell>
+                        <TableCell className="px-2 text-xs text-muted-foreground">
+                          {order.customer?.instagram ? `@${order.customer.instagram.replace('@', '')}` : '-'}
+                        </TableCell>
                         <TableCell className="px-2 text-xs whitespace-nowrap">{formatCurrency(order.total_amount)}</TableCell>
                         <TableCell className="px-2">
                           <div className="flex items-center gap-1">
