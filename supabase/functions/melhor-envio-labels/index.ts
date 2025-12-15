@@ -311,15 +311,24 @@ async function createShipment(
   }
 
   const shipmentData = JSON.parse(responseText);
+  
+  // Salvar o melhor_envio_shipment_id no pedido para rastreamento
+  const melhorEnvioShipmentId = shipmentData.id;
+  if (melhorEnvioShipmentId) {
+    await supabase
+      .from("orders")
+      .update({ melhor_envio_shipment_id: melhorEnvioShipmentId })
+      .eq("id", order.id);
+    console.log("[melhor-envio-labels] Shipment ID salvo no pedido:", melhorEnvioShipmentId);
+  }
 
-  // Salvar ID da remessa no pedido (se houver campo)
-  // Por enquanto apenas retornamos sucesso
   console.log("[melhor-envio-labels] Remessa criada:", shipmentData);
 
   return new Response(
     JSON.stringify({ 
       success: true, 
       shipment: shipmentData,
+      shipment_id: melhorEnvioShipmentId,
       message: "Remessa adicionada ao carrinho do Melhor Envio"
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -334,7 +343,59 @@ async function buyShipment(
 ) {
   console.log("[melhor-envio-labels] Comprando frete para pedido:", order.id);
 
-  // Buscar remessas no carrinho
+  // Verificar se o pedido tem um shipment_id salvo
+  const savedShipmentId = order.melhor_envio_shipment_id;
+  
+  if (savedShipmentId) {
+    // Comprar apenas a remessa específica deste pedido
+    console.log("[melhor-envio-labels] Usando shipment_id salvo:", savedShipmentId);
+    
+    const checkoutResponse = await fetch(`${baseUrl}/me/shipment/checkout`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ orders: [savedShipmentId] })
+    });
+
+    const checkoutText = await checkoutResponse.text();
+    console.log("[melhor-envio-labels] Checkout response:", checkoutText);
+
+    if (!checkoutResponse.ok) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Erro ao finalizar compra: " + checkoutText }),
+        { status: checkoutResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const checkoutData = JSON.parse(checkoutText);
+    
+    // Extrair código de rastreio da resposta
+    let trackingCode = "";
+    if (checkoutData.purchase && checkoutData.purchase.orders) {
+      const orderInfo = Object.values(checkoutData.purchase.orders)[0] as any;
+      trackingCode = orderInfo?.tracking || "";
+    }
+    
+    // Salvar código de rastreio no pedido
+    if (trackingCode) {
+      await supabase
+        .from("orders")
+        .update({ melhor_envio_tracking_code: trackingCode })
+        .eq("id", order.id);
+      console.log("[melhor-envio-labels] Código de rastreio salvo:", trackingCode);
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        data: checkoutData,
+        tracking_code: trackingCode,
+        message: "Frete comprado com sucesso!"
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Fallback: buscar no carrinho (comportamento antigo)
   const cartResponse = await fetch(`${baseUrl}/me/cart`, {
     method: "GET",
     headers
@@ -397,52 +458,20 @@ async function getLabel(
 ) {
   console.log("[melhor-envio-labels] Gerando etiqueta para pedido:", order.id);
 
-  // Buscar remessas compradas
-  const shipmentsResponse = await fetch(`${baseUrl}/me/orders?status=released,posted`, {
-    method: "GET",
-    headers
-  });
-
-  if (!shipmentsResponse.ok) {
-    return new Response(
-      JSON.stringify({ success: false, error: "Erro ao buscar remessas" }),
-      { status: shipmentsResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-
-  const shipmentsData = await shipmentsResponse.json();
-  console.log("[melhor-envio-labels] Remessas:", shipmentsData);
-
-  // Encontrar a remessa relacionada ao pedido (pela tag ou referência)
-  let shipmentId = null;
+  // Usar o shipment_id salvo no pedido (OBRIGATÓRIO - não usar fallback)
+  const shipmentId = order.melhor_envio_shipment_id;
   
-  if (shipmentsData.data && shipmentsData.data.length > 0) {
-    // Buscar pela tag que contém o ID do pedido
-    const matchingShipment = shipmentsData.data.find((s: any) => {
-      const tags = s.tags || [];
-      return tags.some((tag: any) => 
-        tag.tag?.includes(order.unique_order_id) || 
-        tag.tag?.includes(`Pedido ${order.id}`)
-      );
-    });
-
-    if (matchingShipment) {
-      shipmentId = matchingShipment.id;
-    } else {
-      // Pegar a remessa mais recente como fallback
-      shipmentId = shipmentsData.data[0]?.id;
-    }
-  }
-
   if (!shipmentId) {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: "Nenhuma remessa encontrada. Compre o frete primeiro." 
+        error: "Este pedido não tem uma remessa criada. Clique em 'Criar Remessa' primeiro." 
       }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
+
+  console.log("[melhor-envio-labels] Usando shipment_id salvo:", shipmentId);
 
   // Gerar etiqueta
   const generateResponse = await fetch(`${baseUrl}/me/shipment/generate`, {
@@ -453,10 +482,8 @@ async function getLabel(
 
   if (!generateResponse.ok) {
     const errorText = await generateResponse.text();
-    return new Response(
-      JSON.stringify({ success: false, error: "Erro ao gerar etiqueta: " + errorText }),
-      { status: generateResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.log("[melhor-envio-labels] Erro ao gerar:", errorText);
+    // Tentar continuar mesmo com erro (pode já estar gerada)
   }
 
   // Imprimir etiqueta (obter URL)
