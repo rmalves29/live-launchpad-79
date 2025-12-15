@@ -1106,10 +1106,10 @@
             </div>
 
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="text-sm">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>
+                    <TableHead className="w-8 px-2">
                       <input 
                         type="checkbox" 
                         onChange={(e) => {
@@ -1122,17 +1122,17 @@
                         checked={selectedOrders.size === orders.length && orders.length > 0}
                       />
                     </TableHead>
-                    <TableHead>#Pedido</TableHead>
-                    <TableHead>Telefone</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Pago?</TableHead>
-                    <TableHead>Impresso?</TableHead>
-                    <TableHead>Tipo Evento</TableHead>
-                    <TableHead>Data Evento</TableHead>
-                    <TableHead>Rastreio</TableHead>
-                    <TableHead>Disparo</TableHead>
-                    <TableHead>Observação</TableHead>
-                    <TableHead>Ações</TableHead>
+                    <TableHead className="px-2 whitespace-nowrap">#Pedido</TableHead>
+                    <TableHead className="px-2">Telefone</TableHead>
+                    <TableHead className="px-2">Total</TableHead>
+                    <TableHead className="px-2">Pago?</TableHead>
+                    <TableHead className="px-2">Impresso?</TableHead>
+                    <TableHead className="px-2 whitespace-nowrap">Tipo Evento</TableHead>
+                    <TableHead className="px-2 whitespace-nowrap">Data Evento</TableHead>
+                    <TableHead className="px-2">Rastreio</TableHead>
+                    <TableHead className="px-2">Disparo</TableHead>
+                    <TableHead className="px-2">Observação</TableHead>
+                    <TableHead className="px-2">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1151,46 +1151,48 @@
                   ) : (
                     filteredOrders.map((order) => (
                       <TableRow key={order.id}>
-                        <TableCell>
+                        <TableCell className="px-2">
                           <input 
                             type="checkbox"
                             checked={selectedOrders.has(order.id)}
                         onChange={() => toggleOrderSelection(order.id)}
                           />
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">#{order.id}</Badge>
+                        <TableCell className="px-2">
+                          <Badge variant="outline" className="text-xs">#{order.id}</Badge>
                         </TableCell>
-                        <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
-                        <TableCell>{formatCurrency(order.total_amount)}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
+                        <TableCell className="px-2 text-xs">{formatPhoneForDisplay(order.customer_phone)}</TableCell>
+                        <TableCell className="px-2 text-xs whitespace-nowrap">{formatCurrency(order.total_amount)}</TableCell>
+                        <TableCell className="px-2">
+                          <div className="flex items-center gap-1">
                             <Switch
                               checked={order.is_paid}
                               onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
                               disabled={processingIds.has(order.id)}
+                              className="scale-90"
                             />
-                            <Badge variant={order.is_paid ? 'default' : 'secondary'}>
+                            <Badge variant={order.is_paid ? 'default' : 'secondary'} className="text-xs">
                               {order.is_paid ? 'Pago' : 'Pendente'}
                             </Badge>
                             {processingIds.has(order.id) && (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <Loader2 className="h-3 w-3 animate-spin" />
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
+                        <TableCell className="px-2">
+                          <div className="flex items-center gap-1">
                             {order.printed ? (
-                              <Badge variant="default" className="flex items-center">
+                              <Badge variant="default" className="flex items-center text-xs">
                                 <Check className="h-3 w-3 mr-1" />
-                                Impresso
+                                Imp
                               </Badge>
                             ) : (
-                              <Badge variant="secondary">Não impresso</Badge>
+                              <Badge variant="secondary" className="text-xs">Não imp</Badge>
                             )}
                             <Button 
                               size="sm" 
                               variant="ghost"
+                              className="h-6 w-6 p-0"
                               onClick={() => togglePrintedStatus(order.id, order.printed || false)}
                               title={order.printed ? "Desmarcar como impresso" : "Marcar como impresso"}
                             >
@@ -1198,25 +1200,25 @@
                             </Button>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{order.event_type}</Badge>
+                        <TableCell className="px-2">
+                          <Badge variant="outline" className="text-xs">{order.event_type}</Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="px-2 text-xs whitespace-nowrap">
                           {format(new Date(order.event_date + 'T00:00:00'), 'dd/MM/yyyy')}
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
+                        <TableCell className="px-2">
+                          <div className="flex items-center gap-1">
                             {editingTracking === order.id ? (
                               <div className="flex items-center gap-1">
                                 <Input
                                   value={trackingText}
                                   onChange={(e) => setTrackingText(e.target.value)}
-                                  placeholder="Código rastreio"
-                                  className="w-28 h-7 text-xs"
+                                  placeholder="Código"
+                                  className="w-20 h-6 text-xs"
                                 />
                                 <Button 
                                   size="sm" 
-                                  className="h-7 px-2"
+                                  className="h-6 px-1"
                                   onClick={() => saveTrackingCode(order.id)}
                                   disabled={savingTracking === order.id}
                                 >
@@ -1229,7 +1231,7 @@
                                 <Button 
                                   size="sm" 
                                   variant="ghost"
-                                  className="h-7 px-2"
+                                  className="h-6 px-1"
                                   onClick={() => {
                                     setEditingTracking(null);
                                     setTrackingText('');
@@ -1239,17 +1241,15 @@
                                 </Button>
                               </div>
                             ) : order.melhor_envio_tracking_code ? (
-                              <div className="flex items-center gap-1">
-                                <Badge variant="default" className="text-xs flex items-center gap-1">
-                                  <Truck className="h-3 w-3" />
-                                  {order.melhor_envio_tracking_code}
-                                </Badge>
-                              </div>
+                              <Badge variant="default" className="text-xs flex items-center gap-1">
+                                <Truck className="h-3 w-3" />
+                                {order.melhor_envio_tracking_code}
+                              </Badge>
                             ) : (
                               <Button 
                                 size="sm" 
                                 variant="outline"
-                                className="h-7 text-xs"
+                                className="h-6 text-xs px-2"
                                 onClick={() => {
                                   setEditingTracking(order.id);
                                   setTrackingText('');
@@ -1261,83 +1261,76 @@
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {/* Indicador de mensagem de item adicionado - só mostra verde se entregue */}
-                            <div 
-                              className="flex items-center gap-1" 
+                        <TableCell className="px-2">
+                          <div className="flex items-center gap-1">
+                            <MessageCircle 
+                              className={cn(
+                                "h-4 w-4",
+                                order.item_added_delivered ? "text-green-500" : "text-muted-foreground"
+                              )} 
                               title={
                                 order.item_added_delivered 
-                                  ? "Mensagem de item adicionado entregue ✓✓" 
+                                  ? "Item adicionado entregue ✓✓" 
                                   : order.item_added_message_sent 
-                                    ? "Mensagem enviada, aguardando confirmação de entrega" 
-                                    : "Mensagem de item adicionado não enviada"
+                                    ? "Aguardando entrega" 
+                                    : "Não enviada"
                               }
-                            >
-                              <MessageCircle 
+                            />
+                            {order.is_paid && (
+                              <DollarSign 
                                 className={cn(
                                   "h-4 w-4",
-                                  order.item_added_delivered ? "text-green-500" : "text-muted-foreground"
+                                  order.payment_confirmation_delivered ? "text-green-500" : "text-muted-foreground"
                                 )} 
-                              />
-                            </div>
-                            {/* Indicador de confirmação de pagamento - só mostra verde se entregue */}
-                            {order.is_paid && (
-                              <div 
-                                className="flex items-center gap-1" 
                                 title={
                                   order.payment_confirmation_delivered 
-                                    ? "Confirmação de pagamento entregue ✓✓" 
+                                    ? "Pagamento confirmado ✓✓" 
                                     : order.payment_confirmation_sent 
-                                      ? "Confirmação enviada, aguardando entrega" 
-                                      : "Confirmação de pagamento não enviada"
+                                      ? "Aguardando entrega" 
+                                      : "Não enviada"
                                 }
-                              >
-                                <DollarSign 
-                                  className={cn(
-                                    "h-4 w-4",
-                                    order.payment_confirmation_delivered ? "text-green-500" : "text-muted-foreground"
-                                  )} 
-                                />
-                              </div>
+                              />
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
+                        <TableCell className="px-2">
+                          <div className="flex items-center gap-1">
                             {editingObservation === order.id ? (
-                              <div className="flex items-center space-x-2">
+                              <div className="flex items-center gap-1">
                                 <Input
                                   value={observationText}
                                   onChange={(e) => setObservationText(e.target.value)}
-                                  placeholder="Adicionar observação"
-                                  className="w-32"
+                                  placeholder="Obs"
+                                  className="w-24 h-6 text-xs"
                                 />
                                 <Button 
-                                  size="sm" 
+                                  size="sm"
+                                  className="h-6 px-1"
                                   onClick={() => saveObservation(order.id)}
                                 >
                                   <Save className="h-3 w-3" />
                                 </Button>
                                 <Button 
                                   size="sm" 
-                                  variant="outline"
+                                  variant="ghost"
+                                  className="h-6 px-1"
                                   onClick={() => {
                                     setEditingObservation(null);
                                     setObservationText('');
                                   }}
                                 >
-                                  Cancelar
+                                  ✕
                                 </Button>
                               </div>
                             ) : (
-                              <div className="flex items-center space-x-2">
-                                <span className="text-sm max-w-32 truncate">
-                                  {order.observation || 'Sem observação'}
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs max-w-20 truncate" title={order.observation || 'Sem observação'}>
+                                  {order.observation || 'Sem obs'}
                                 </span>
                                 <Button 
                                   size="sm" 
-                                  variant="outline"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0"
                                   onClick={() => {
                                     setEditingObservation(order.id);
                                     setObservationText(order.observation || '');
@@ -1349,28 +1342,30 @@
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
+                        <TableCell className="px-2">
+                          <div className="flex items-center gap-1">
                             <Button 
                               size="sm" 
                               variant="outline"
+                              className="h-7 w-7 p-0"
                               onClick={() => {
                                 setEditingOrder(order);
                                 setEditOrderOpen(true);
                               }}
                             >
-                              <Edit className="h-4 w-4" />
+                              <Edit className="h-3 w-3" />
                             </Button>
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => {
-                                  setViewingOrder(order);
-                                  setViewOrderOpen(true);
-                                }}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                setViewingOrder(order);
+                                setViewOrderOpen(true);
+                              }}
+                            >
+                              <Eye className="h-3 w-3" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
