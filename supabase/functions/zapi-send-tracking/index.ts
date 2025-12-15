@@ -77,7 +77,10 @@ Seu pedido *#{{order_id}}* foi enviado!
 🚚 *Código de Rastreio:* {{tracking_code}}
 📅 *Data de Envio:* {{shipped_at}}
 
-Você pode acompanhar sua entrega pelos Correios ou transportadora.
+🔗 *Rastreie seu pedido:*
+https://www.melhorrastreio.com.br/rastreio/{{tracking_code}}
+
+⏳ _O rastreio pode demorar até 2 dias úteis para aparecer no sistema._
 
 Obrigado pela preferência! 💚`;
 
