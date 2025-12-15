@@ -147,12 +147,19 @@ async function createShipment(
     );
   }
 
-  // Validar dados do destinatário
-  if (!order.customer_cep || !order.customer_name || !order.customer_street) {
+  // Validar dados do destinatário e listar campos faltantes
+  const missingFields = [];
+  if (!order.customer_name) missingFields.push("Nome do cliente");
+  if (!order.customer_cep) missingFields.push("CEP");
+  if (!order.customer_street) missingFields.push("Rua");
+  if (!order.customer_city) missingFields.push("Cidade");
+  if (!order.customer_state) missingFields.push("Estado");
+
+  if (missingFields.length > 0) {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: "Dados de endereço do cliente incompletos." 
+        error: `Dados de endereço incompletos. Campos faltando: ${missingFields.join(", ")}` 
       }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
