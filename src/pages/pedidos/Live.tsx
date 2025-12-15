@@ -567,6 +567,7 @@ const Live = () => {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Código</TableHead>
+                            <TableHead>Foto</TableHead>
                             <TableHead>Nome</TableHead>
                             <TableHead>Preço</TableHead>
                             <TableHead>Estoque</TableHead>
@@ -579,6 +580,19 @@ const Live = () => {
                           {products.map((product) => (
                             <TableRow key={product.id}>
                               <TableCell className="font-medium">{product.code}</TableCell>
+                              <TableCell>
+                                {product.image_url ? (
+                                  <img 
+                                    src={product.image_url} 
+                                    alt={product.name} 
+                                    className="w-12 h-12 object-cover rounded-md"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 bg-muted rounded-md flex items-center justify-center text-muted-foreground text-xs">
+                                    Sem foto
+                                  </div>
+                                )}
+                              </TableCell>
                               <TableCell>{product.name}</TableCell>
                               <TableCell>{formatCurrency(product.price)}</TableCell>
                               <TableCell>
