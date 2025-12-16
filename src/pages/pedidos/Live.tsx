@@ -148,12 +148,16 @@ const Live = () => {
   };
 
   useEffect(() => {
-    loadProducts();
-  }, [searchQuery, itemsPerPage, currentPage]);
+    if (tenant?.id) {
+      loadProducts();
+    }
+  }, [tenant?.id, searchQuery, itemsPerPage, currentPage]);
 
   useEffect(() => {
-    loadOrders();
-  }, []);
+    if (tenant?.id) {
+      loadOrders();
+    }
+  }, [tenant?.id]);
 
   // Reset to first page when search or items per page changes
   useEffect(() => {
