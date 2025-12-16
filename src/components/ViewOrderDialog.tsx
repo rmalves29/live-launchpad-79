@@ -143,13 +143,8 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
             <CardContent className="p-4">
               <h3 className="text-lg font-semibold mb-3">Informações de Frete</h3>
               <div className="space-y-2 text-sm">
-                {shippingOptionLabel && (
-                  <div>
-                    <strong>Opção:</strong> {shippingOptionLabel}
-                  </div>
-                )}
                 <div>
-                  <strong>Valor do Frete:</strong> {freteValue > 0 ? formatCurrency(freteValue) : 'Retirada / Não informado'}
+                  <strong>Opção:</strong> {shippingOptionLabel || (freteValue > 0 ? `Frete: ${formatCurrency(freteValue)}` : 'Retirada / Não informado')}
                 </div>
               </div>
             </CardContent>
