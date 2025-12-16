@@ -3,6 +3,9 @@ project_id = "hxtbsieodbtzgcvvkeqx"
 [functions.create-tenant-admin]
 verify_jwt = false
 
+[functions.create-payment]
+verify_jwt = false
+
 [functions.melhor-envio-labels]
 verify_jwt = true
 
@@ -38,3 +41,4 @@ verify_jwt = false
 
 [functions.zapi-send-tracking]
 verify_jwt = false
+
