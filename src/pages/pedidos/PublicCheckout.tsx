@@ -12,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 
 interface Tenant {
@@ -435,8 +435,6 @@ const PublicCheckout = () => {
       return;
     }
 
-    // Validação completa de dados - SEMPRE exigir endereço completo
-    const missingFields: string[] = [];
     // Validação específica para CPF primeiro
     if (!customerData.cpf) {
       toast({ title: 'CPF obrigatório', description: 'Informe seu CPF para finalizar o pedido', variant: 'destructive' });
@@ -1103,7 +1101,8 @@ const PublicCheckout = () => {
                         <Input
                           placeholder="000.000.000-00"
                           value={customerData.cpf}
-                          onChange={(e) => setCustomerData({...customerData, cpf: e.target.value})}
+                          onChange={(e) => setCustomerData({...customerData, cpf: formatCPF(e.target.value)})}
+                          maxLength={14}
                         />
                       </div>
                       <div>
