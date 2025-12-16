@@ -3,9 +3,13 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle } from 'lucide-react';
+import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 interface Order {
   id: number;
@@ -31,19 +35,33 @@ const Etiquetas = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingOrders, setProcessingOrders] = useState<Set<number>>(new Set());
+  const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
     loadPaidOrders();
-  }, []);
+  }, [dateFilter]);
 
   const loadPaidOrders = async () => {
     console.log('🔄 Carregando pedidos pagos...');
     try {
-      const { data, error } = await supabaseTenant
+      let query = supabaseTenant
         .from('orders')
         .select('*')
-        .eq('is_paid', true)
-        .order('created_at', { ascending: false });
+        .eq('is_paid', true);
+
+      // Aplicar filtro de data se selecionada
+      if (dateFilter) {
+        const startOfDay = new Date(dateFilter);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(dateFilter);
+        endOfDay.setHours(23, 59, 59, 999);
+        
+        query = query
+          .gte('created_at', startOfDay.toISOString())
+          .lte('created_at', endOfDay.toISOString());
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
         console.error('❌ Erro na query de pedidos:', error);
@@ -308,14 +326,52 @@ const Etiquetas = () => {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Package className="h-8 w-8" />
-          Etiquetas de Envio
-        </h1>
-        <p className="text-muted-foreground">
-          Gerencie as etiquetas dos pedidos pagos no Melhor Envio
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Package className="h-8 w-8" />
+            Etiquetas de Envio
+          </h1>
+          <p className="text-muted-foreground">
+            Gerencie as etiquetas dos pedidos pagos no Melhor Envio
+          </p>
+        </div>
+
+        {/* Filtro por data */}
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-[200px] justify-start text-left font-normal",
+                  !dateFilter && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateFilter ? format(dateFilter, "dd/MM/yyyy", { locale: ptBR }) : "Filtrar por data"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                selected={dateFilter}
+                onSelect={setDateFilter}
+                locale={ptBR}
+                className="pointer-events-auto"
+              />
+            </PopoverContent>
+          </Popover>
+          {dateFilter && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDateFilter(undefined)}
+            >
+              Limpar
+            </Button>
+          )}
+        </div>
       </div>
 
       {orders.length === 0 ? (
