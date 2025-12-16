@@ -24,6 +24,8 @@ interface OrderItem {
   qty: number;
   unit_price: number;
   image_url?: string;
+  color?: string;
+  size?: string;
 }
 
 interface Order {
@@ -286,7 +288,7 @@ const Checkout = () => {
           const productIds = cartItems.map(item => item.product_id);
           const { data: products, error: productsError } = await supabaseTenant.raw
             .from('products')
-            .select('id, name, code, image_url, tenant_id')
+            .select('id, name, code, image_url, color, size, tenant_id')
             .in('id', productIds)
             .eq('tenant_id', tenantId);
 
@@ -314,7 +316,9 @@ const Checkout = () => {
               product_code: product?.code || '',
               qty: item.qty,
               unit_price: Number(item.unit_price),
-              image_url: product?.image_url
+              image_url: product?.image_url,
+              color: product?.color,
+              size: product?.size
             };
           });
 
@@ -1194,7 +1198,7 @@ const Checkout = () => {
           const productIds = cartItems.map(item => item.product_id);
           const { data: products, error: productsError } = await supabaseTenant.raw
             .from('products')
-            .select('id, name, code, image_url, tenant_id')
+            .select('id, name, code, image_url, color, size, tenant_id')
             .in('id', productIds)
             .eq('tenant_id', tenantId);
 
@@ -1214,7 +1218,9 @@ const Checkout = () => {
               product_code: product?.code || '',
               qty: item.qty,
               unit_price: Number(item.unit_price),
-              image_url: product?.image_url
+              image_url: product?.image_url,
+              color: product?.color,
+              size: product?.size
             };
           });
 
@@ -1443,6 +1449,9 @@ const Checkout = () => {
                               <p className="text-sm font-medium">{item.product_code} - {item.product_name}</p>
                               <p className="text-xs text-muted-foreground">
                                 Quantidade: {item.qty} • Preço unitário: {formatCurrency(item.unit_price)}
+                                {(item.color || item.size) && (
+                                  <> • {item.color && `Cor: ${item.color}`}{item.color && item.size && ' | '}{item.size && `Tam: ${item.size}`}</>
+                                )}
                               </p>
                             </div>
                             <div className="text-right">
@@ -1990,7 +1999,12 @@ const Checkout = () => {
                       </div>
                       <div>
                         <h4 className="font-medium text-foreground">{item.product_name}</h4>
-                        <p className="text-sm text-muted-foreground">Código: {item.product_code || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Código: {item.product_code || 'N/A'}
+                          {(item.color || item.size) && (
+                            <> • {item.color && `Cor: ${item.color}`}{item.color && item.size && ' | '}{item.size && `Tam: ${item.size}`}</>
+                          )}
+                        </p>
                       </div>
                     </div>
                   <div className="text-right">
@@ -2127,7 +2141,12 @@ const Checkout = () => {
                         </div>
                         <div>
                           <h4 className="font-medium text-foreground">{item.product_name}</h4>
-                          <p className="text-sm text-muted-foreground">Código: {item.product_code || 'N/A'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Código: {item.product_code || 'N/A'}
+                            {(item.color || item.size) && (
+                              <> • {item.color && `Cor: ${item.color}`}{item.color && item.size && ' | '}{item.size && `Tam: ${item.size}`}</>
+                            )}
+                          </p>
                         </div>
                       </div>
                       <div className="text-right">
