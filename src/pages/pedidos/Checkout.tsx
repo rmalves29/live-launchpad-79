@@ -1042,6 +1042,7 @@ const Checkout = () => {
           street: customerData.street,
           number: customerData.number,
           complement: customerData.complement,
+          neighborhood: customerData.neighborhood,
           city: customerData.city,
           state: customerData.state
         },
@@ -1089,6 +1090,7 @@ const Checkout = () => {
           street: '',
           number: '',
           complement: '',
+          neighborhood: '',
           city: '',
           state: ''
         });
