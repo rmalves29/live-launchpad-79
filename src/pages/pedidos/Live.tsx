@@ -3,6 +3,7 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { getBrasiliaDateISO, formatBrasiliaDate } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -54,6 +55,7 @@ const Live = () => {
   const [loading, setLoading] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [defaultInstagram, setDefaultInstagram] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState('10');
   const [instagrams, setInstagrams] = useState<{[key: number]: string}>({});
@@ -78,10 +80,10 @@ const Live = () => {
         .eq('is_active', true)
         .in('sale_type', ['LIVE', 'AMBOS']);
 
-      if (searchQuery) {
-        const cleanCode = searchQuery.replace(/[^0-9]/g, '');
+      if (debouncedSearchQuery) {
+        const cleanCode = debouncedSearchQuery.replace(/[^0-9]/g, '');
         const codeWithC = cleanCode ? `C${cleanCode}` : '';
-        countQuery = countQuery.or(`code.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,code.ilike.%${codeWithC}%`);
+        countQuery = countQuery.or(`code.ilike.%${debouncedSearchQuery}%,name.ilike.%${debouncedSearchQuery}%,code.ilike.%${codeWithC}%`);
       }
 
       const { count, error: countError } = await countQuery;
@@ -97,10 +99,10 @@ const Live = () => {
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
-      if (searchQuery) {
-        const cleanCode = searchQuery.replace(/[^0-9]/g, '');
+      if (debouncedSearchQuery) {
+        const cleanCode = debouncedSearchQuery.replace(/[^0-9]/g, '');
         const codeWithC = cleanCode ? `C${cleanCode}` : '';
-        query = query.or(`code.ilike.%${searchQuery}%,name.ilike.%${searchQuery}%,code.ilike.%${codeWithC}%`);
+        query = query.or(`code.ilike.%${debouncedSearchQuery}%,name.ilike.%${debouncedSearchQuery}%,code.ilike.%${codeWithC}%`);
       }
 
       const { data, error } = await query;
@@ -152,7 +154,7 @@ const Live = () => {
     if (tenant?.id) {
       loadProducts();
     }
-  }, [tenant?.id, searchQuery, itemsPerPage, currentPage]);
+  }, [tenant?.id, debouncedSearchQuery, itemsPerPage, currentPage]);
 
   useEffect(() => {
     if (tenant?.id) {
@@ -163,7 +165,7 @@ const Live = () => {
   // Reset to first page when search or items per page changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, itemsPerPage]);
+  }, [debouncedSearchQuery, itemsPerPage]);
 
   const normalizeInstagram = (instagram: string): string => {
     // Remove @ if present

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/hooks/useTenant';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -64,14 +65,18 @@ export default function SendFlow() {
   const [productSearch, setProductSearch] = useState('');
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'BAZAR' | 'LIVE'>('ALL');
   
+  // Debounce para buscas
+  const debouncedGroupSearch = useDebounce(groupSearch, 300);
+  const debouncedProductSearch = useDebounce(productSearch, 300);
+  
   // Filtros
   const filteredGroups = groups.filter(group => 
-    group.name.toLowerCase().includes(groupSearch.toLowerCase())
+    group.name.toLowerCase().includes(debouncedGroupSearch.toLowerCase())
   );
   
   const filteredProducts = products.filter(product => 
-    product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-    product.code.toLowerCase().includes(productSearch.toLowerCase())
+    product.name.toLowerCase().includes(debouncedProductSearch.toLowerCase()) ||
+    product.code.toLowerCase().includes(debouncedProductSearch.toLowerCase())
   );
 
   // Carregar dados iniciais
