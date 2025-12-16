@@ -610,7 +610,6 @@ const PedidosManual = () => {
                         </Badge>
                       </TableCell>
                       <TableCell>{formatCurrency(product.price)}</TableCell>
-                      </TableCell>
                       <TableCell>
                         {product.image_url ? (
                           <img 
