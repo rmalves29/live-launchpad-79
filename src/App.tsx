@@ -89,8 +89,8 @@ const AppContent = () => {
             // Se há tenant, sempre mostrar auth primeiro, Index será protegido
             <RequireTenantAuth><Index /></RequireTenantAuth>
           ) : (
-            // Site principal
-            <Index />
+            // Site principal - também requer autenticação
+            <RequireAuth><Index /></RequireAuth>
           )
         } />
         
