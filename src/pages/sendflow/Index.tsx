@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ZoomableImage } from '@/components/ui/zoomable-image';
 
 interface Product {
   id: number;
@@ -735,18 +736,18 @@ export default function SendFlow() {
                           onCheckedChange={() => toggleProduct(product.id)}
                         />
                       </TableCell>
-                      <TableCell>
-                        {product.image_url ? (
-                          <img 
-                            src={product.image_url} 
-                            alt={product.name}
-                            className="w-10 h-10 object-cover rounded"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 bg-muted rounded flex items-center justify-center">
-                            <Package className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        )}
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <ZoomableImage
+                          src={product.image_url || ''}
+                          alt={product.name}
+                          className="w-10 h-10"
+                          containerClassName="w-10 h-10 rounded"
+                          fallback={
+                            <div className="w-10 h-10 bg-muted rounded flex items-center justify-center">
+                              <Package className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                          }
+                        />
                       </TableCell>
                       <TableCell className="font-mono">{product.code}</TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
