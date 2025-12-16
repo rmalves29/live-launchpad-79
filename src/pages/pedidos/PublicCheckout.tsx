@@ -434,26 +434,20 @@ const PublicCheckout = () => {
       return;
     }
 
-    if (!customerData.name || !customerData.cpf) {
-      toast({ title: 'Dados obrigatórios', description: 'Nome e CPF são obrigatórios para finalizar o pedido', variant: 'destructive' });
+    // Validação completa de dados - SEMPRE exigir endereço completo
+    const missingFields: string[] = [];
+    if (!customerData.name) missingFields.push('Nome');
+    if (!customerData.cpf) missingFields.push('CPF');
+    if (!customerData.cep) missingFields.push('CEP');
+    if (!customerData.street) missingFields.push('Rua');
+    if (!customerData.number) missingFields.push('Número');
+    if (!customerData.neighborhood) missingFields.push('Bairro');
+    if (!customerData.city) missingFields.push('Cidade');
+    if (!customerData.state) missingFields.push('Estado');
+
+    if (missingFields.length > 0) {
+      toast({ title: 'Dados incompletos', description: `Campos obrigatórios faltando: ${missingFields.join(', ')}`, variant: 'destructive' });
       return;
-    }
-
-    // Validação completa de endereço para entregas (não retirada)
-    if (selectedShipping !== 'retirada') {
-      const missingFields: string[] = [];
-      if (!customerData.name) missingFields.push('Nome');
-      if (!customerData.cep) missingFields.push('CEP');
-      if (!customerData.street) missingFields.push('Rua');
-      if (!customerData.number) missingFields.push('Número');
-      if (!customerData.neighborhood) missingFields.push('Bairro');
-      if (!customerData.city) missingFields.push('Cidade');
-      if (!customerData.state) missingFields.push('Estado');
-
-      if (missingFields.length > 0) {
-        toast({ title: 'Endereço incompleto', description: `Campos obrigatórios faltando: ${missingFields.join(', ')}`, variant: 'destructive' });
-        return;
-      }
     }
 
     setLoadingPayment(true);
