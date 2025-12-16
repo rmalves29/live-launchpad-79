@@ -29,6 +29,8 @@ interface Product {
   image_url?: string;
   is_active: boolean;
   sale_type: 'LIVE' | 'BAZAR';
+  color?: string;
+  size?: string;
 }
 
 interface Order {
@@ -623,6 +625,7 @@ const Live = () => {
                             <TableHead>Código</TableHead>
                             <TableHead>Foto</TableHead>
                             <TableHead>Nome</TableHead>
+                            <TableHead>Variação</TableHead>
                             <TableHead>Preço</TableHead>
                             <TableHead>Estoque</TableHead>
                             <TableHead>Instagram</TableHead>
@@ -648,6 +651,16 @@ const Live = () => {
                                 />
                               </TableCell>
                               <TableCell>{product.name}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {product.color || product.size ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {product.color && <span>🎨 {product.color}</span>}
+                                    {product.size && <span>📏 {product.size}</span>}
+                                  </div>
+                                ) : (
+                                  <span>-</span>
+                                )}
+                              </TableCell>
                               <TableCell>{formatCurrency(product.price)}</TableCell>
                               <TableCell>
                                 <Badge variant={product.stock > 0 ? "default" : "destructive"}>
