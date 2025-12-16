@@ -81,9 +81,16 @@ const Live = () => {
         .in('sale_type', ['LIVE', 'AMBOS']);
 
       if (debouncedSearchQuery) {
-        const cleanCode = debouncedSearchQuery.replace(/[^0-9]/g, '');
+        const searchTerm = debouncedSearchQuery.trim();
+        const cleanCode = searchTerm.replace(/[^0-9]/g, '');
         const codeWithC = cleanCode ? `C${cleanCode}` : '';
-        countQuery = countQuery.or(`code.ilike.%${debouncedSearchQuery}%,name.ilike.%${debouncedSearchQuery}%,code.ilike.%${codeWithC}%`);
+        
+        // Build OR conditions for search
+        const orConditions = [`name.ilike.%${searchTerm}%`, `code.ilike.%${searchTerm}%`];
+        if (codeWithC) {
+          orConditions.push(`code.ilike.%${codeWithC}%`);
+        }
+        countQuery = countQuery.or(orConditions.join(','));
       }
 
       const { count, error: countError } = await countQuery;
@@ -100,9 +107,16 @@ const Live = () => {
         .range(offset, offset + limit - 1);
 
       if (debouncedSearchQuery) {
-        const cleanCode = debouncedSearchQuery.replace(/[^0-9]/g, '');
+        const searchTerm = debouncedSearchQuery.trim();
+        const cleanCode = searchTerm.replace(/[^0-9]/g, '');
         const codeWithC = cleanCode ? `C${cleanCode}` : '';
-        query = query.or(`code.ilike.%${debouncedSearchQuery}%,name.ilike.%${debouncedSearchQuery}%,code.ilike.%${codeWithC}%`);
+        
+        // Build OR conditions for search
+        const orConditions = [`name.ilike.%${searchTerm}%`, `code.ilike.%${searchTerm}%`];
+        if (codeWithC) {
+          orConditions.push(`code.ilike.%${codeWithC}%`);
+        }
+        query = query.or(orConditions.join(','));
       }
 
       const { data, error } = await query;
