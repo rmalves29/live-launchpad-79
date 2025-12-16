@@ -27,6 +27,8 @@ interface Product {
   image_url?: string;
   is_active: boolean;
   sale_type: 'LIVE' | 'BAZAR';
+  color?: string;
+  size?: string;
 }
 
 interface Order {
@@ -552,9 +554,10 @@ const PedidosManual = () => {
                 <TableRow>
                   <TableHead>Celular</TableHead>
                   <TableHead>Cód</TableHead>
-                  <TableHead>Qtd em estoque</TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Variação</TableHead>
+                  <TableHead>Estoque</TableHead>
                   <TableHead>Valor</TableHead>
-                  <TableHead>Descrição</TableHead>
                   <TableHead>Foto</TableHead>
                   <TableHead>Ação</TableHead>
                 </TableRow>
@@ -562,13 +565,13 @@ const PedidosManual = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : products.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       Nenhum produto encontrado
                     </TableCell>
                   </TableRow>
@@ -588,14 +591,25 @@ const PedidosManual = () => {
                           {product.code.replace('C', '')}
                         </Badge>
                       </TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {product.name}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {product.color || product.size ? (
+                          <div className="flex flex-col gap-0.5">
+                            {product.color && <span>{product.color}</span>}
+                            {product.size && <span>{product.size}</span>}
+                          </div>
+                        ) : (
+                          <span>-</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={product.stock > 0 ? 'default' : 'destructive'}>
                           {product.stock}
                         </Badge>
                       </TableCell>
                       <TableCell>{formatCurrency(product.price)}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {product.name}
                       </TableCell>
                       <TableCell>
                         {product.image_url ? (
