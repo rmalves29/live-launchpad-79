@@ -714,6 +714,7 @@ export default function SendFlow() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12"></TableHead>
+                    <TableHead className="w-16">Foto</TableHead>
                     <TableHead>Código</TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Cor</TableHead>
@@ -733,6 +734,19 @@ export default function SendFlow() {
                           checked={selectedProducts.has(product.id)}
                           onCheckedChange={() => toggleProduct(product.id)}
                         />
+                      </TableCell>
+                      <TableCell>
+                        {product.image_url ? (
+                          <img 
+                            src={product.image_url} 
+                            alt={product.name}
+                            className="w-10 h-10 object-cover rounded"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-muted rounded flex items-center justify-center">
+                            <Package className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="font-mono">{product.code}</TableCell>
                       <TableCell className="font-medium">{product.name}</TableCell>
