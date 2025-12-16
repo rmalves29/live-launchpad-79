@@ -39,6 +39,8 @@ interface Order {
       name: string;
       code: string;
       image_url?: string;
+      color?: string;
+      size?: string;
     } | null;
   }[];
 }
@@ -182,10 +184,12 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {order.cart_items.map((item) => {
+                {order.cart_items.map((item) => {
                     const productName = item.product?.name || item.product_name || 'Produto removido';
                     const productCode = item.product?.code || item.product_code || '-';
                     const productImage = item.product?.image_url || item.product_image_url;
+                    const productColor = item.product?.color;
+                    const productSize = item.product?.size;
                     
                     return (
                       <Card key={item.id} className="border">
@@ -210,6 +214,13 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                             <div className="flex-1 min-w-0">
                               <h4 className="font-medium truncate">{productName}</h4>
                               <p className="text-sm text-muted-foreground">Código: {productCode}</p>
+                              {(productColor || productSize) && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {productColor && <span>Cor: {productColor}</span>}
+                                  {productColor && productSize && <span> | </span>}
+                                  {productSize && <span>Tamanho: {productSize}</span>}
+                                </p>
+                              )}
                               <div className="flex items-center gap-4 mt-2 text-sm">
                                 <div>
                                   <strong>Preço unitário:</strong> {formatCurrency(item.unit_price)}

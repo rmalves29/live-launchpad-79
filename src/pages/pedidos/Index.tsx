@@ -62,6 +62,8 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
         name: string;
         code: string;
         image_url?: string;
+        color?: string;
+        size?: string;
       };
     }[];
   }
@@ -151,7 +153,9 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                 product:products!cart_items_product_id_fkey (
                   name,
                   code,
-                  image_url
+                  image_url,
+                  color,
+                  size
                 )
               `)
               .eq('cart_id', order.cart_id);
@@ -190,7 +194,9 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                   product:products!cart_items_product_id_fkey (
                     name,
                     code,
-                    image_url
+                    image_url,
+                    color,
+                    size
                   )
                 `)
                 .eq('cart_id', resolvedCartId);
@@ -617,7 +623,15 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
         }
 
         const cartItemsRows = order.cart_items && order.cart_items.length > 0 
-          ? order.cart_items.map(item => `
+          ? order.cart_items.map(item => {
+              const variations = [];
+              if (item.product.color) variations.push(`Cor: ${item.product.color}`);
+              if (item.product.size) variations.push(`Tam: ${item.product.size}`);
+              const variationsHtml = variations.length > 0 
+                ? `<div style="font-size: 9px; color: #888; margin-top: 2px;">${variations.join(' | ')}</div>` 
+                : '';
+              
+              return `
               <tr>
                 <td style="border: 1px solid #ddd; padding: 8px; vertical-align: middle;">
                   <div style="display: flex; align-items: center; gap: 10px;">
@@ -628,6 +642,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                     <div style="flex: 1;">
                       <div style="font-weight: 600; margin-bottom: 3px; font-size: 11px; color: #333;">${item.product.name}</div>
                       <div style="font-size: 10px; color: #666; background: #f5f5f5; padding: 2px 6px; border-radius: 4px; display: inline-block;">Código: ${item.product.code}</div>
+                      ${variationsHtml}
                     </div>
                   </div>
                 </td>
@@ -641,7 +656,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                   R$ ${(item.qty * item.unit_price).toFixed(2)}
                 </td>
               </tr>
-            `).join('')
+            `;}).join('')
           : `<tr>
               <td style="border: 1px solid #ddd; padding: 10px; font-size: 11px;" colspan="4">
                 <div style="text-align: center; color: #666;">Produtos do pedido - detalhes não disponíveis</div>
