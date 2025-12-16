@@ -31,6 +31,8 @@ interface OrderItem {
   qty: number;
   unit_price: number;
   image_url?: string;
+  color?: string;
+  size?: string;
 }
 
 interface Order {
@@ -588,7 +590,7 @@ const PublicCheckout = () => {
           const productIds = cartItems.map(item => item.product_id);
           const { data: products } = await supabase
             .from('products')
-            .select('id, name, code, image_url')
+            .select('id, name, code, image_url, color, size')
             .in('id', productIds)
             .eq('tenant_id', tenant.id);
 
@@ -600,7 +602,9 @@ const PublicCheckout = () => {
               product_code: product?.code || '',
               qty: item.qty,
               unit_price: Number(item.unit_price),
-              image_url: product?.image_url
+              image_url: product?.image_url,
+              color: product?.color,
+              size: product?.size
             };
           });
 
@@ -714,7 +718,7 @@ const PublicCheckout = () => {
           const productIds = cartItems.map(item => item.product_id);
           const { data: products } = await supabase
             .from('products')
-            .select('id, name, code, image_url')
+            .select('id, name, code, image_url, color, size')
             .in('id', productIds)
             .eq('tenant_id', tenant.id);
 
@@ -726,7 +730,9 @@ const PublicCheckout = () => {
               product_code: product?.code || '',
               qty: item.qty,
               unit_price: Number(item.unit_price),
-              image_url: product?.image_url
+              image_url: product?.image_url,
+              color: product?.color,
+              size: product?.size
             };
           });
 
@@ -1037,6 +1043,9 @@ const PublicCheckout = () => {
                                   <p className="font-medium">{item.product_name}</p>
                                   <p className="text-sm text-muted-foreground">
                                     Código: {item.product_code} | Qtd: {item.qty}
+                                    {(item.color || item.size) && (
+                                      <> | {item.color && `Cor: ${item.color}`}{item.color && item.size && ' | '}{item.size && `Tam: ${item.size}`}</>
+                                    )}
                                   </p>
                                 </div>
                               </div>
@@ -1435,6 +1444,9 @@ const PublicCheckout = () => {
                                   <p className="font-semibold">{item.product_name}</p>
                                   <p className="text-sm text-muted-foreground">
                                     {item.product_code} • Quantidade: {item.qty}
+                                    {(item.color || item.size) && (
+                                      <> • {item.color && `Cor: ${item.color}`}{item.color && item.size && ' | '}{item.size && `Tam: ${item.size}`}</>
+                                    )}
                                   </p>
                                 </div>
                               </div>
