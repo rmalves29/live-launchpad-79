@@ -60,10 +60,11 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
     : 'Endereço não cadastrado';
 
   const totalItems = order.cart_items?.reduce((sum, item) => sum + item.qty, 0) || 0;
-  
+
   // Calculate freight as total_amount minus products subtotal
-  const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + (item.qty * item.unit_price), 0) || 0;
-  const freteValue = order.total_amount - productsSubtotal;
+  const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + item.qty * item.unit_price, 0) || 0;
+  const freteValueRaw = order.total_amount - productsSubtotal;
+  const freteValue = freteValueRaw > 0 ? freteValueRaw : 0;
 
   // Parse shipping info from observation field (supports both formats)
   const parseShippingInfo = (obs: string | undefined) => {
@@ -76,7 +77,13 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
     if (oldFormatMatch) return oldFormatMatch[1].trim();
     return null;
   };
+
   const shippingOption = parseShippingInfo(order.observation);
+  const shippingOptionLabel = shippingOption
+    ? shippingOption
+    : freteValue > 0
+      ? 'Não registrado (valor calculado pelo total)'
+      : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -136,9 +143,9 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
             <CardContent className="p-4">
               <h3 className="text-lg font-semibold mb-3">Informações de Frete</h3>
               <div className="space-y-2 text-sm">
-                {shippingOption && (
+                {shippingOptionLabel && (
                   <div>
-                    <strong>Opção:</strong> {shippingOption}
+                    <strong>Opção:</strong> {shippingOptionLabel}
                   </div>
                 )}
                 <div>
