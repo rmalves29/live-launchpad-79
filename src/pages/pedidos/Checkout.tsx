@@ -939,10 +939,19 @@ const Checkout = () => {
       return;
     }
 
-    if (!customerData.name || !customerData.cpf) {
+    if (!customerData.name) {
       toast({
-        title: 'Dados obrigatórios',
-        description: 'Nome e CPF são obrigatórios para finalizar o pedido',
+        title: 'Nome obrigatório',
+        description: 'Informe seu nome para finalizar o pedido',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!customerData.cpf) {
+      toast({
+        title: 'CPF obrigatório',
+        description: 'Informe seu CPF para finalizar o pedido',
         variant: 'destructive'
       });
       return;

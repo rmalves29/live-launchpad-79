@@ -437,8 +437,15 @@ const PublicCheckout = () => {
 
     // Validação completa de dados - SEMPRE exigir endereço completo
     const missingFields: string[] = [];
+    // Validação específica para CPF primeiro
+    if (!customerData.cpf) {
+      toast({ title: 'CPF obrigatório', description: 'Informe seu CPF para finalizar o pedido', variant: 'destructive' });
+      return;
+    }
+
+    // Validação dos outros campos obrigatórios
+    const missingFields: string[] = [];
     if (!customerData.name) missingFields.push('Nome');
-    if (!customerData.cpf) missingFields.push('CPF');
     if (!customerData.cep) missingFields.push('CEP');
     if (!customerData.street) missingFields.push('Rua');
     if (!customerData.number) missingFields.push('Número');
