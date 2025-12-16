@@ -14,6 +14,7 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
+import { ZoomableImage } from '@/components/ui/zoomable-image';
 
 
 interface OrderItem {
@@ -1415,17 +1416,17 @@ const Checkout = () => {
                         {order.items.map((item, index) => (
                           <div key={index} className="flex items-center mt-2 p-2 bg-gray-50 rounded">
                             <div className="w-10 h-10 mr-3 flex-shrink-0">
-                              {item.image_url ? (
-                                <img 
-                                  src={item.image_url} 
-                                  alt={item.product_name}
-                                  className="w-10 h-10 object-cover rounded"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center">
-                                  <ShoppingCart className="h-5 w-5 text-gray-400" />
-                                </div>
-                              )}
+                              <ZoomableImage
+                                src={item.image_url || ''}
+                                alt={item.product_name}
+                                className="w-10 h-10"
+                                containerClassName="w-10 h-10 rounded"
+                                fallback={
+                                  <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center">
+                                    <ShoppingCart className="h-5 w-5 text-gray-400" />
+                                  </div>
+                                }
+                              />
                             </div>
                             <div className="flex-1">
                               <p className="text-sm font-medium">{item.product_code} - {item.product_name}</p>
@@ -1963,20 +1964,17 @@ const Checkout = () => {
                 <div key={index} className="flex items-center justify-between p-4 border border-border rounded-lg bg-card hover:bg-accent/50 transition-colors">
                     <div className="flex items-center space-x-4">
                       <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-border">
-                        {item.image_url ? (
-                          <img 
-                            src={item.image_url} 
-                            alt={item.product_name}
-                            className="w-16 h-16 object-cover"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).style.display = 'none';
-                              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                            }}
-                          />
-                        ) : null}
-                        <div className={`w-16 h-16 bg-muted rounded-lg flex items-center justify-center ${item.image_url ? 'hidden' : ''}`}>
-                          <ShoppingCart className="h-6 w-6 text-muted-foreground" />
-                        </div>
+                        <ZoomableImage
+                          src={item.image_url || ''}
+                          alt={item.product_name}
+                          className="w-16 h-16"
+                          containerClassName="w-16 h-16"
+                          fallback={
+                            <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
+                              <ShoppingCart className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                          }
+                        />
                       </div>
                       <div>
                         <h4 className="font-medium text-foreground">{item.product_name}</h4>
@@ -2103,20 +2101,17 @@ const Checkout = () => {
                     <div key={index} className="flex items-center justify-between p-4 border border-border rounded-lg bg-card hover:bg-accent/50 transition-colors">
                       <div className="flex items-center space-x-4">
                         <div className="w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-border">
-                          {item.image_url ? (
-                            <img 
-                              src={item.image_url} 
-                              alt={item.product_name}
-                              className="w-16 h-16 object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
-                              }}
-                            />
-                          ) : null}
-                          <div className={`w-16 h-16 bg-muted rounded-lg flex items-center justify-center ${item.image_url ? 'hidden' : ''}`}>
-                            <ShoppingCart className="h-6 w-6 text-muted-foreground" />
-                          </div>
+                          <ZoomableImage
+                            src={item.image_url || ''}
+                            alt={item.product_name}
+                            className="w-16 h-16"
+                            containerClassName="w-16 h-16"
+                            fallback={
+                              <div className="w-16 h-16 bg-muted rounded-lg flex items-center justify-center">
+                                <ShoppingCart className="h-6 w-6 text-muted-foreground" />
+                              </div>
+                            }
+                          />
                         </div>
                         <div>
                           <h4 className="font-medium text-foreground">{item.product_name}</h4>
