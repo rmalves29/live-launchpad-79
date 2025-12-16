@@ -65,6 +65,15 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
   const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + (item.qty * item.unit_price), 0) || 0;
   const freteValue = order.total_amount - productsSubtotal;
 
+  // Parse shipping info from observation field
+  const parseShippingInfo = (obs: string | undefined) => {
+    if (!obs) return null;
+    const freteMatch = obs.match(/Frete:\s*(.+)/);
+    if (!freteMatch) return null;
+    return freteMatch[1].trim();
+  };
+  const shippingOption = parseShippingInfo(order.observation);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -122,7 +131,12 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
           <Card>
             <CardContent className="p-4">
               <h3 className="text-lg font-semibold mb-3">Informações de Frete</h3>
-              <div className="text-sm">
+              <div className="space-y-2 text-sm">
+                {shippingOption && (
+                  <div>
+                    <strong>Opção:</strong> {shippingOption}
+                  </div>
+                )}
                 <div>
                   <strong>Valor do Frete:</strong> {freteValue > 0 ? formatCurrency(freteValue) : 'Retirada / Não informado'}
                 </div>
