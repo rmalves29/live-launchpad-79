@@ -13,6 +13,7 @@ import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, Ale
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
+import { ZoomableImage } from '@/components/ui/zoomable-image';
 
 interface Tenant {
   id: string;
@@ -941,7 +942,7 @@ const PublicCheckout = () => {
                                 {order.items.slice(0, 3).map((item) => (
                                   <div key={item.id} className="flex items-center gap-2 text-sm">
                                     {item.image_url && (
-                                      <img src={item.image_url} alt={item.product_name} className="h-8 w-8 rounded object-cover" />
+                                      <ZoomableImage src={item.image_url} alt={item.product_name} className="h-8 w-8" containerClassName="h-8 w-8 rounded" />
                                     )}
                                     <span className="truncate flex-1">{item.product_name}</span>
                                     <span className="text-muted-foreground">x{item.qty}</span>
@@ -1025,7 +1026,7 @@ const PublicCheckout = () => {
                             <div key={item.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                               <div className="flex items-center gap-3">
                                 {item.image_url && (
-                                  <img src={item.image_url} alt={item.product_name} className="h-12 w-12 rounded object-cover" />
+                                  <ZoomableImage src={item.image_url} alt={item.product_name} className="h-12 w-12" containerClassName="h-12 w-12 rounded" />
                                 )}
                                 <div>
                                   <p className="font-medium">{item.product_name}</p>
@@ -1422,7 +1423,7 @@ const PublicCheckout = () => {
                             <div key={item.id} className="flex items-center justify-between p-4 bg-white dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-700">
                               <div className="flex items-center gap-4">
                                 {item.image_url && (
-                                  <img src={item.image_url} alt={item.product_name} className="h-14 w-14 rounded-lg object-cover shadow-sm" />
+                                  <ZoomableImage src={item.image_url} alt={item.product_name} className="h-14 w-14" containerClassName="h-14 w-14 rounded-lg shadow-sm" />
                                 )}
                                 <div>
                                   <p className="font-semibold">{item.product_name}</p>

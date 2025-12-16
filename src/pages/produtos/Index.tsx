@@ -15,6 +15,8 @@ import { Progress } from '@/components/ui/progress';
 import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
+import { ZoomableImage } from '@/components/ui/zoomable-image';
+import { formatCurrency } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
 interface Product {
@@ -940,20 +942,17 @@ const Produtos = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            {product.image_url ? (
-                              <img 
-                                src={product.image_url} 
-                                alt={product.name}
-                                className="h-12 w-12 object-cover rounded"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                            ) : (
-                              <div className="h-12 w-12 bg-muted rounded flex items-center justify-center">
-                                <Package className="h-6 w-6 text-muted-foreground" />
-                              </div>
-                            )}
+                            <ZoomableImage
+                              src={product.image_url || ''}
+                              alt={product.name}
+                              className="h-12 w-12"
+                              containerClassName="h-12 w-12 rounded"
+                              fallback={
+                                <div className="h-12 w-12 bg-muted rounded flex items-center justify-center">
+                                  <Package className="h-6 w-6 text-muted-foreground" />
+                                </div>
+                              }
+                            />
                           </TableCell>
                           <TableCell className="font-mono">{product.code}</TableCell>
                           <TableCell>{product.name}</TableCell>

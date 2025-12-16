@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
+import { ZoomableImage } from '@/components/ui/zoomable-image';
 
 interface Order {
   id: number;
@@ -195,19 +196,19 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                       <Card key={item.id} className="border">
                         <CardContent className="p-4">
                           <div className="flex items-start gap-4">
-                            {/* Product Image */}
+                            {/* Product Image with Zoom */}
                             <div className="flex-shrink-0">
-                              {productImage ? (
-                                <img 
-                                  src={productImage} 
-                                  alt={productName}
-                                  className="w-16 h-16 object-cover rounded border"
-                                />
-                              ) : (
-                                <div className="w-16 h-16 bg-muted rounded border flex items-center justify-center text-xs text-muted-foreground">
-                                  Sem foto
-                                </div>
-                              )}
+                              <ZoomableImage
+                                src={productImage || ''}
+                                alt={productName}
+                                className="w-16 h-16"
+                                containerClassName="w-16 h-16 rounded border"
+                                fallback={
+                                  <div className="w-16 h-16 bg-muted rounded border flex items-center justify-center text-xs text-muted-foreground">
+                                    Sem foto
+                                  </div>
+                                }
+                              />
                             </div>
                             
                             {/* Product Details */}
