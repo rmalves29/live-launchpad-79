@@ -31,6 +31,21 @@ interface Product {
   size?: string;
 }
 
+interface CartItem {
+  id: number;
+  product_id: number | null;
+  product_name: string | null;
+  product_code: string | null;
+  product_image_url: string | null;
+  qty: number;
+  unit_price: number;
+  product?: {
+    color?: string;
+    size?: string;
+    stock?: number;
+  };
+}
+
 interface Order {
   id: number;
   customer_phone: string;
@@ -39,6 +54,8 @@ interface Order {
   total_amount: number;
   is_paid: boolean;
   created_at: string;
+  cart_id: number | null;
+  cart_items?: CartItem[];
 }
 
 const PedidosManual = () => {
@@ -99,14 +116,46 @@ const PedidosManual = () => {
   const loadOrders = async () => {
     try {
       setOrdersLoading(true);
-      const { data, error } = await supabaseTenant
+      
+      // Buscar pedidos BAZAR (antigo MANUAL)
+      const { data: ordersData, error } = await supabaseTenant
         .from('orders')
         .select('*')
-        .eq('event_type', 'MANUAL')
+        .in('event_type', ['MANUAL', 'BAZAR'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setOrders(data || []);
+      
+      // Para cada pedido, buscar os itens do carrinho
+      const ordersWithItems = await Promise.all(
+        (ordersData || []).map(async (order) => {
+          if (!order.cart_id) return { ...order, cart_items: [] };
+          
+          const { data: cartItems } = await supabaseTenant
+            .from('cart_items')
+            .select('*')
+            .eq('cart_id', order.cart_id);
+          
+          // Buscar dados dos produtos para cor/tamanho/estoque
+          const itemsWithProducts = await Promise.all(
+            (cartItems || []).map(async (item) => {
+              if (!item.product_id) return item;
+              
+              const { data: product } = await supabaseTenant
+                .from('products')
+                .select('color, size, stock')
+                .eq('id', item.product_id)
+                .maybeSingle();
+              
+              return { ...item, product };
+            })
+          );
+          
+          return { ...order, cart_items: itemsWithProducts };
+        })
+      );
+      
+      setOrders(ordersWithItems);
     } catch (error) {
       console.error('Error loading orders:', error);
       toast({
@@ -666,10 +715,13 @@ const PedidosManual = () => {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>ID</TableHead>
-                          <TableHead>Telefone</TableHead>
-                          <TableHead>Data</TableHead>
+                          <TableHead>Celular</TableHead>
+                          <TableHead>Cód</TableHead>
+                          <TableHead>Nome</TableHead>
+                          <TableHead>Variação</TableHead>
+                          <TableHead>Estoque</TableHead>
                           <TableHead>Valor</TableHead>
+                          <TableHead>Foto</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Ações</TableHead>
                         </TableRow>
@@ -677,48 +729,113 @@ const PedidosManual = () => {
                       <TableBody>
                         {ordersLoading ? (
                           <TableRow>
-                            <TableCell colSpan={6} className="text-center py-8">
+                            <TableCell colSpan={9} className="text-center py-8">
                               <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                             </TableCell>
                           </TableRow>
                         ) : orders.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                               Nenhum pedido manual encontrado
                             </TableCell>
                           </TableRow>
                         ) : (
-                          orders.map((order) => (
-                            <TableRow key={order.id}>
-                              <TableCell>#{order.id}</TableCell>
-                              <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
-                              <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
-                              <TableCell>{formatCurrency(order.total_amount)}</TableCell>
-                              <TableCell>
-                                <Badge variant={order.is_paid ? 'default' : 'secondary'}>
-                                  {order.is_paid ? 'Pago' : 'Pendente'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex space-x-2">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleEditOrder(order)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleDeleteOrder(order.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))
+                          orders.flatMap((order) => {
+                            const items = order.cart_items || [];
+                            if (items.length === 0) {
+                              // Pedido sem itens
+                              return (
+                                <TableRow key={order.id}>
+                                  <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
+                                  <TableCell>-</TableCell>
+                                  <TableCell className="text-muted-foreground">Sem produtos</TableCell>
+                                  <TableCell>-</TableCell>
+                                  <TableCell>-</TableCell>
+                                  <TableCell>{formatCurrency(order.total_amount)}</TableCell>
+                                  <TableCell>-</TableCell>
+                                  <TableCell>
+                                    <Badge variant={order.is_paid ? 'default' : 'secondary'}>
+                                      {order.is_paid ? 'Pago' : 'Pendente'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex space-x-2">
+                                      <Button variant="outline" size="sm" onClick={() => handleEditOrder(order)}>
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="outline" size="sm" onClick={() => handleDeleteOrder(order.id)}>
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            }
+                            
+                            return items.map((item, idx) => (
+                              <TableRow key={`${order.id}-${item.id}`}>
+                                <TableCell>
+                                  {idx === 0 ? formatPhoneForDisplay(order.customer_phone) : ''}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">
+                                    {item.product_code?.replace('C', '') || '-'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="max-w-[200px] truncate">
+                                  {item.product_name || 'Produto removido'}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground">
+                                  {item.product?.color || item.product?.size ? (
+                                    <div className="flex flex-col gap-0.5">
+                                      {item.product?.color && <span>{item.product.color}</span>}
+                                      {item.product?.size && <span>{item.product.size}</span>}
+                                    </div>
+                                  ) : '-'}
+                                </TableCell>
+                                <TableCell>
+                                  {item.product?.stock !== undefined ? (
+                                    <Badge variant={item.product.stock > 0 ? 'default' : 'destructive'}>
+                                      {item.product.stock}
+                                    </Badge>
+                                  ) : '-'}
+                                </TableCell>
+                                <TableCell>{formatCurrency(item.unit_price * item.qty)}</TableCell>
+                                <TableCell>
+                                  {item.product_image_url ? (
+                                    <img 
+                                      src={item.product_image_url} 
+                                      alt={item.product_name || ''}
+                                      className="w-12 h-12 object-cover rounded"
+                                    />
+                                  ) : (
+                                    <div className="w-12 h-12 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">
+                                      Sem foto
+                                    </div>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {idx === 0 && (
+                                    <Badge variant={order.is_paid ? 'default' : 'secondary'}>
+                                      {order.is_paid ? 'Pago' : 'Pendente'}
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {idx === 0 && (
+                                    <div className="flex space-x-2">
+                                      <Button variant="outline" size="sm" onClick={() => handleEditOrder(order)}>
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="outline" size="sm" onClick={() => handleDeleteOrder(order.id)}>
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ));
+                          })
                         )}
                       </TableBody>
                     </Table>
