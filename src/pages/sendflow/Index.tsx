@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Product {
   id: number;
@@ -60,6 +61,7 @@ export default function SendFlow() {
   // Estados de busca
   const [groupSearch, setGroupSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'BAZAR' | 'LIVE'>('ALL');
   
   // Filtros
   const filteredGroups = groups.filter(group => 
@@ -79,7 +81,7 @@ export default function SendFlow() {
       loadGroups();
       checkWhatsAppConnection();
     }
-  }, [tenant?.id]);
+  }, [tenant?.id, saleTypeFilter]);
 
   const checkWhatsAppConnection = async () => {
     if (!tenant?.id) return;
@@ -107,14 +109,23 @@ export default function SendFlow() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabaseTenant
+      let query = supabaseTenant
         .from('products')
         .select('*')
-        .eq('is_active', true)
-        .order('name');
+        .eq('is_active', true);
+
+      // Aplicar filtro de tipo de venda
+      if (saleTypeFilter === 'BAZAR') {
+        query = query.in('sale_type', ['BAZAR', 'AMBOS']);
+      } else if (saleTypeFilter === 'LIVE') {
+        query = query.in('sale_type', ['LIVE', 'AMBOS']);
+      }
+
+      const { data, error } = await query.order('name');
 
       if (error) throw error;
       setProducts(data || []);
+      setSelectedProducts(new Set()); // Limpar seleção ao mudar filtro
     } catch (error) {
       console.error('Erro ao carregar produtos:', error);
       toast({
@@ -651,14 +662,26 @@ export default function SendFlow() {
               <Package className="h-5 w-5" />
               <CardTitle>Produtos</CardTitle>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={toggleAllProducts}
-              disabled={products.length === 0}
-            >
-              {selectedProducts.size === products.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'BAZAR' | 'LIVE') => setSaleTypeFilter(value)}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue placeholder="Tipo de Evento" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos</SelectItem>
+                  <SelectItem value="BAZAR">Bazar</SelectItem>
+                  <SelectItem value="LIVE">Live</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleAllProducts}
+                disabled={products.length === 0}
+              >
+                {selectedProducts.size === products.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+              </Button>
+            </div>
           </div>
           <CardDescription>
             Selecione os produtos que serão enviados ({selectedProducts.size} selecionado(s))
