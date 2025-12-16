@@ -258,9 +258,9 @@ const Clientes = () => {
           name: newCustomer.name,
         };
 
-        // Adicionar Instagram se fornecido
+        // Adicionar Instagram se fornecido (remove espaços e @)
         if (newCustomer.instagram) {
-          updateData.instagram = newCustomer.instagram;
+          updateData.instagram = newCustomer.instagram.trim().replace('@', '');
         }
 
         const { error: updateError } = await supabaseTenant
@@ -283,7 +283,7 @@ const Clientes = () => {
           .insert({
             phone: normalizedPhone,
             name: newCustomer.name,
-            instagram: newCustomer.instagram || null
+            instagram: newCustomer.instagram?.trim().replace('@', '') || null
           });
 
         if (error) throw error;
@@ -358,7 +358,7 @@ const Clientes = () => {
         .from('customers')
         .update({
           name: editingCustomer.name,
-          instagram: editingCustomer.instagram || null,
+          instagram: editingCustomer.instagram?.trim().replace('@', '') || null,
           cpf: editingCustomer.cpf || null,
           street: editingCustomer.street || null,
           number: editingCustomer.number || null,
