@@ -654,8 +654,8 @@ const Live = () => {
                               <TableCell className="text-xs text-muted-foreground">
                                 {product.color || product.size ? (
                                   <div className="flex flex-col gap-0.5">
-                                    {product.color && <span>🎨 {product.color}</span>}
-                                    {product.size && <span>📏 {product.size}</span>}
+                                    {product.color && <span>{product.color}</span>}
+                                    {product.size && <span>{product.size}</span>}
                                   </div>
                                 ) : (
                                   <span>-</span>
