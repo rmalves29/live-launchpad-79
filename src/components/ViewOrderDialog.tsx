@@ -65,12 +65,16 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
   const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + (item.qty * item.unit_price), 0) || 0;
   const freteValue = order.total_amount - productsSubtotal;
 
-  // Parse shipping info from observation field
+  // Parse shipping info from observation field (supports both formats)
   const parseShippingInfo = (obs: string | undefined) => {
     if (!obs) return null;
-    const freteMatch = obs.match(/Frete:\s*(.+)/);
-    if (!freteMatch) return null;
-    return freteMatch[1].trim();
+    // New format: [FRETE] Transportadora - Serviço | R$ XX.XX | Prazo: X dias
+    const newFormatMatch = obs.match(/\[FRETE\]\s*(.+)/);
+    if (newFormatMatch) return newFormatMatch[1].trim();
+    // Old format: Frete: Transportadora - Serviço - R$ XX.XX - Prazo
+    const oldFormatMatch = obs.match(/Frete:\s*(.+)/);
+    if (oldFormatMatch) return oldFormatMatch[1].trim();
+    return null;
   };
   const shippingOption = parseShippingInfo(order.observation);
 

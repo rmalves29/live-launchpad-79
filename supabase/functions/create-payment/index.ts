@@ -176,31 +176,40 @@ serve(async (req) => {
     const freightNote = buildFreightNote(payload.shippingData, payload.shippingCost);
     const orderIds = (payload.order_ids && payload.order_ids.length > 0 ? payload.order_ids : [payload.order_id]).filter(Boolean);
 
-    // Buscar observações atuais para não sobrescrever
-    const { data: existingOrders } = await sb
-      .from("orders")
-      .select("id, observation")
-      .in("id", orderIds);
+    // Atualizar cada pedido individualmente com os dados de endereço e frete
+    for (const orderId of orderIds) {
+      // Buscar observation atual
+      const { data: existingOrder } = await sb
+        .from("orders")
+        .select("id, observation")
+        .eq("id", orderId)
+        .single();
 
-    const updates = (existingOrders || []).map((o: any) => {
-      const obs = (o.observation ?? "").toString();
-      const cleaned = obs.replace(/\n?\[FRETE\][^\n]*/g, "").trim();
-      const nextObs = cleaned ? `${cleaned}\n${freightNote}` : freightNote;
-      return {
-        id: o.id,
-        customer_name: payload.customerData.name,
-        customer_cep: payload.addressData.cep,
-        customer_street: payload.addressData.street,
-        customer_number: payload.addressData.number,
-        customer_complement: payload.addressData.complement ?? null,
-        customer_city: payload.addressData.city,
-        customer_state: payload.addressData.state,
-        observation: nextObs,
-      };
-    });
+      if (existingOrder) {
+        const obs = (existingOrder.observation ?? "").toString();
+        const cleaned = obs.replace(/\n?\[FRETE\][^\n]*/g, "").trim();
+        const nextObs = cleaned ? `${cleaned}\n${freightNote}` : freightNote;
 
-    if (updates.length > 0) {
-      await sb.from("orders").upsert(updates, { onConflict: "id" });
+        const { error: updateError } = await sb
+          .from("orders")
+          .update({
+            customer_name: payload.customerData.name,
+            customer_cep: payload.addressData.cep,
+            customer_street: payload.addressData.street,
+            customer_number: payload.addressData.number,
+            customer_complement: payload.addressData.complement ?? null,
+            customer_city: payload.addressData.city,
+            customer_state: payload.addressData.state,
+            observation: nextObs,
+          })
+          .eq("id", orderId);
+
+        if (updateError) {
+          console.log(`[create-payment] Error updating order ${orderId}:`, updateError);
+        } else {
+          console.log(`[create-payment] Order ${orderId} updated with observation: ${nextObs}`);
+        }
+      }
     }
 
     // 3) Criar preferência no Mercado Pago
