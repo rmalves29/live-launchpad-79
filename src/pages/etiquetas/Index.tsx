@@ -52,9 +52,12 @@ const Etiquetas = () => {
 
       console.log('✅ Pedidos carregados:', data?.length || 0);
       
-      // Carregar itens dos pedidos separadamente
+      // Carregar itens dos pedidos e dados dos clientes
       const ordersWithItems = [];
       for (const order of data || []) {
+        let orderData = { ...order, items: [] as any[] };
+        
+        // Carregar itens do carrinho
         if (order.cart_id) {
           const { data: cartItems, error: itemsError } = await supabaseTenant
             .from('cart_items')
@@ -62,28 +65,43 @@ const Etiquetas = () => {
               id,
               qty,
               unit_price,
+              product_name,
+              product_code,
               product:products(name, code, image_url)
             `)
             .eq('cart_id', order.cart_id);
 
           if (!itemsError) {
-            ordersWithItems.push({
-              ...order,
-              items: cartItems || []
-            });
+            orderData.items = cartItems || [];
           } else {
             console.error('❌ Erro ao carregar itens do carrinho:', itemsError);
-            ordersWithItems.push({
-              ...order,
-              items: []
-            });
           }
-        } else {
-          ordersWithItems.push({
-            ...order,
-            items: []
-          });
         }
+        
+        // Se os dados do cliente não estiverem no pedido, buscar na tabela customers
+        if (!order.customer_name || !order.customer_cep) {
+          const { data: customerData } = await supabaseTenant
+            .from('customers')
+            .select('name, cpf, cep, street, number, complement, neighborhood, city, state')
+            .eq('phone', order.customer_phone)
+            .limit(1)
+            .single();
+          
+          if (customerData) {
+            orderData = {
+              ...orderData,
+              customer_name: order.customer_name || customerData.name,
+              customer_cep: order.customer_cep || customerData.cep,
+              customer_street: order.customer_street || customerData.street,
+              customer_number: order.customer_number || customerData.number,
+              customer_complement: order.customer_complement || customerData.complement,
+              customer_city: order.customer_city || customerData.city,
+              customer_state: order.customer_state || customerData.state,
+            };
+          }
+        }
+        
+        ordersWithItems.push(orderData);
       }
 
       console.log('✅ Pedidos com itens carregados:', ordersWithItems.length);
