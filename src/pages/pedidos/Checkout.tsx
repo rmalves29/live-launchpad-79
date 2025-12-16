@@ -13,7 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 
 
@@ -1558,9 +1558,10 @@ const Checkout = () => {
                           placeholder="000.000.000-00"
                           value={customerData.cpf}
                           onChange={(e) => {
-                            const newData = {...customerData, cpf: e.target.value};
-                            setCustomerData(newData);
+                            const formatted = formatCPF(e.target.value);
+                            setCustomerData({...customerData, cpf: formatted});
                           }}
+                          maxLength={14}
                         />
                       </div>
                     </div>
