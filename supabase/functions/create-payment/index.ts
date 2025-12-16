@@ -238,6 +238,9 @@ serve(async (req) => {
       });
     }
 
+    // Webhook URL for payment notifications
+    const webhookUrl = `${supabaseUrl}/functions/v1/mp-webhook`;
+
     const preferenceBody = {
       items,
       external_reference: `tenant:${payload.tenant_id};orders:${orderIds.join(",")}`,
@@ -247,8 +250,13 @@ serve(async (req) => {
           number: payload.customerData.phone,
         },
       },
-      // Deixa callbacks configurados no MP dashboard (webhooks) e usa payment_link no pedido
-      notification_url: undefined,
+      notification_url: webhookUrl,
+      back_urls: {
+        success: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=success`,
+        failure: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=failure`,
+        pending: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=pending`,
+      },
+      auto_return: "approved",
     };
 
     const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {

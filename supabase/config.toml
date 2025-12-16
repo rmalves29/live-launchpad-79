@@ -42,3 +42,5 @@ verify_jwt = false
 [functions.zapi-send-tracking]
 verify_jwt = false
 
+[functions.mp-webhook]
+verify_jwt = false
