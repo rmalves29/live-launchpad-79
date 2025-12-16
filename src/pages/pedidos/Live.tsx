@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, RefreshCw, Edit, Trash2, Plus } from 'lucide-react';
+import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package } from 'lucide-react';
+import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/hooks/useAuth';
@@ -617,18 +618,18 @@ const Live = () => {
                           {products.map((product) => (
                             <TableRow key={product.id}>
                               <TableCell className="font-medium">{product.code}</TableCell>
-                              <TableCell>
-                                {product.image_url ? (
-                                  <img 
-                                    src={product.image_url} 
-                                    alt={product.name} 
-                                    className="w-12 h-12 object-cover rounded-md"
-                                  />
-                                ) : (
-                                  <div className="w-12 h-12 bg-muted rounded-md flex items-center justify-center text-muted-foreground text-xs">
-                                    Sem foto
-                                  </div>
-                                )}
+                              <TableCell onClick={(e) => e.stopPropagation()}>
+                                <ZoomableImage
+                                  src={product.image_url || ''}
+                                  alt={product.name}
+                                  className="w-12 h-12"
+                                  containerClassName="w-12 h-12 rounded-md"
+                                  fallback={
+                                    <div className="w-12 h-12 bg-muted rounded-md flex items-center justify-center">
+                                      <Package className="h-4 w-4 text-muted-foreground" />
+                                    </div>
+                                  }
+                                />
                               </TableCell>
                               <TableCell>{product.name}</TableCell>
                               <TableCell>{formatCurrency(product.price)}</TableCell>
