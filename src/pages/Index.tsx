@@ -962,7 +962,6 @@ const Pedidos = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="MANUAL">Manual</SelectItem>
                   <SelectItem value="BAZAR">BAZAR</SelectItem>
                   <SelectItem value="LIVE">LIVE</SelectItem>
                 </SelectContent>
