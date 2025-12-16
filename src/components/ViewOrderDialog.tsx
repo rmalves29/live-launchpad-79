@@ -3,8 +3,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { supabase } from '@/integrations/supabase/client';
-import { useState, useEffect } from 'react';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
@@ -46,12 +44,6 @@ interface Order {
   }[];
 }
 
-interface FreteInfo {
-  transportadora?: string;
-  servico_escolhido?: string;
-  valor_frete?: number;
-  prazo?: number;
-}
 
 interface ViewOrderDialogProps {
   open: boolean;
@@ -60,24 +52,6 @@ interface ViewOrderDialogProps {
 }
 
 export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogProps) => {
-  const [freteInfo, setFreteInfo] = useState<FreteInfo | null>(null);
-
-  useEffect(() => {
-    if (order?.id) {
-      loadFreteInfo(order.id);
-    }
-  }, [order?.id]);
-
-  const loadFreteInfo = async (orderId: number) => {
-    // Frete info removed - no longer available
-    setFreteInfo({
-      transportadora: '',
-      servico_escolhido: '',
-      valor_frete: 0,
-      prazo: 0
-    });
-  };
-
   if (!order) return null;
 
   const customerName = order.customer?.name || 'Cliente não identificado';
@@ -86,6 +60,10 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
     : 'Endereço não cadastrado';
 
   const totalItems = order.cart_items?.reduce((sum, item) => sum + item.qty, 0) || 0;
+  
+  // Calculate freight as total_amount minus products subtotal
+  const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + (item.qty * item.unit_price), 0) || 0;
+  const freteValue = order.total_amount - productsSubtotal;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -141,35 +119,16 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
           </Card>
 
           {/* Shipping Info */}
-          {freteInfo && (
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="text-lg font-semibold mb-3">Informações de Frete</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  {freteInfo.transportadora && (
-                    <div>
-                      <strong>Transportadora:</strong> {freteInfo.transportadora}
-                    </div>
-                  )}
-                  {freteInfo.servico_escolhido && (
-                    <div>
-                      <strong>Serviço:</strong> {freteInfo.servico_escolhido}
-                    </div>
-                  )}
-                  {freteInfo.valor_frete && (
-                    <div>
-                      <strong>Valor do Frete:</strong> {formatCurrency(freteInfo.valor_frete)}
-                    </div>
-                  )}
-                  {freteInfo.prazo && (
-                    <div>
-                      <strong>Prazo:</strong> {freteInfo.prazo} dias úteis
-                    </div>
-                  )}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold mb-3">Informações de Frete</h3>
+              <div className="text-sm">
+                <div>
+                  <strong>Valor do Frete:</strong> {freteValue > 0 ? formatCurrency(freteValue) : 'Retirada / Não informado'}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Products */}
           <Card>
