@@ -176,19 +176,27 @@ serve(async (req) => {
     const freightNote = buildFreightNote(payload.shippingData, payload.shippingCost);
     const orderIds = (payload.order_ids && payload.order_ids.length > 0 ? payload.order_ids : [payload.order_id]).filter(Boolean);
 
-    // Atualizar cada pedido individualmente com os dados de endereço e frete
+    // Atualizar cada pedido individualmente com os dados de endereço, frete e total atualizado
     for (const orderId of orderIds) {
-      // Buscar observation atual
+      // Buscar pedido atual
       const { data: existingOrder } = await sb
         .from("orders")
-        .select("id, observation")
+        .select("id, observation, total_amount")
         .eq("id", orderId)
         .single();
 
       if (existingOrder) {
+        // Montar observação com frete
         const obs = (existingOrder.observation ?? "").toString();
         const cleaned = obs.replace(/\n?\[FRETE\][^\n]*/g, "").trim();
         const nextObs = cleaned ? `${cleaned}\n${freightNote}` : freightNote;
+
+        // Calcular novo total (produtos + frete)
+        const currentTotal = Number(existingOrder.total_amount || 0);
+        const shippingValue = toNumber(payload.shippingCost, 0);
+        const newTotal = currentTotal + shippingValue;
+
+        console.log(`[create-payment] Order ${orderId}: current total=${currentTotal}, shipping=${shippingValue}, new total=${newTotal}`);
 
         const { error: updateError } = await sb
           .from("orders")
@@ -201,13 +209,14 @@ serve(async (req) => {
             customer_city: payload.addressData.city,
             customer_state: payload.addressData.state,
             observation: nextObs,
+            total_amount: newTotal,
           })
           .eq("id", orderId);
 
         if (updateError) {
           console.log(`[create-payment] Error updating order ${orderId}:`, updateError);
         } else {
-          console.log(`[create-payment] Order ${orderId} updated with observation: ${nextObs}`);
+          console.log(`[create-payment] Order ${orderId} updated - observation: ${nextObs}, total: ${newTotal}`);
         }
       }
     }
