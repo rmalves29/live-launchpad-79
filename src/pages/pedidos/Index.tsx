@@ -972,44 +972,13 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     const totalOrdersCount = filteredOrders.length;
     const paidOrdersCount = filteredOrders.filter(o => o.is_paid).length;
     const unpaidOrdersCount = totalOrdersCount - paidOrdersCount;
-    const totalSalesValue = filteredOrders.reduce((sum, o) => sum + calculateTotalWithFreight(o), 0);
-    const totalPaidValue = filteredOrders.filter(o => o.is_paid).reduce((sum, o) => sum + calculateTotalWithFreight(o), 0);
+    const totalSalesValue = filteredOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    const totalPaidValue = filteredOrders.filter(o => o.is_paid).reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
     const percentPaid = totalOrdersCount > 0 ? (paidOrdersCount / totalOrdersCount) * 100 : 0;
     const ticketMedio = totalOrdersCount > 0 ? (totalSalesValue / totalOrdersCount) : 0;
 
     const formatCurrencyLocal = (value: number) => {
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-    };
-
-    // Função para extrair valor do frete da observação
-    const extractFreightValue = (observation?: string): number => {
-      if (!observation) return 0;
-      
-      // Padrões para encontrar o valor do frete:
-      // "[FRETE] ... | R$ XX,XX" ou "[FRETE] ... | R$ XX.XX"
-      // "Frete: ... R$ XX,XX" ou "Frete: ... R$ XX.XX"
-      const patterns = [
-        /R\$\s*([\d.,]+)/i,  // Captura R$ XX,XX ou R$ XX.XX
-      ];
-      
-      for (const pattern of patterns) {
-        const match = observation.match(pattern);
-        if (match && match[1]) {
-          // Converter para número (trocar vírgula por ponto)
-          const value = parseFloat(match[1].replace(',', '.'));
-          if (!isNaN(value)) {
-            return value;
-          }
-        }
-      }
-      return 0;
-    };
-
-    // Função para calcular total com frete
-    const calculateTotalWithFreight = (order: Order): number => {
-      const productsTotal = Number(order.total_amount || 0);
-      const freightValue = extractFreightValue(order.observation);
-      return productsTotal + freightValue;
     };
 
     return (
@@ -1232,7 +1201,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                         <TableCell className="px-2 text-xs text-muted-foreground">
                           {order.customer?.instagram ? `@${order.customer.instagram.replace('@', '')}` : '-'}
                         </TableCell>
-                        <TableCell className="px-2 text-xs whitespace-nowrap">{formatCurrency(calculateTotalWithFreight(order))}</TableCell>
+                        <TableCell className="px-2 text-xs whitespace-nowrap">{formatCurrency(order.total_amount)}</TableCell>
                         <TableCell className="px-2">
                           <div className="flex items-center gap-1">
                             <Switch
