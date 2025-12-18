@@ -3,13 +3,16 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency, cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface Order {
   id: number;
@@ -31,15 +34,41 @@ interface Order {
   items?: any[];
 }
 
+interface IntegrationLog {
+  id: string;
+  created_at: string;
+  webhook_type: string;
+  status_code: number;
+  payload: {
+    order_id?: number;
+    action?: string;
+    request?: any;
+  };
+  response: string;
+  error_message?: string;
+}
+
 const Etiquetas = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingOrders, setProcessingOrders] = useState<Set<number>>(new Set());
   const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState('etiquetas');
+  
+  // Logs state
+  const [logs, setLogs] = useState<IntegrationLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<IntegrationLog | null>(null);
 
   useEffect(() => {
     loadPaidOrders();
   }, [dateFilter]);
+
+  useEffect(() => {
+    if (activeTab === 'logs') {
+      loadLogs();
+    }
+  }, [activeTab]);
 
   const loadPaidOrders = async () => {
     console.log('🔄 Carregando pedidos pagos...');
@@ -129,6 +158,26 @@ const Etiquetas = () => {
       toast.error(error?.message || 'Erro ao carregar pedidos pagos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLogs = async () => {
+    setLogsLoading(true);
+    try {
+      const { data, error } = await supabaseTenant
+        .from('webhook_logs')
+        .select('*')
+        .like('webhook_type', 'melhor_envio_%')
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      setLogs(data || []);
+    } catch (error: any) {
+      console.error('Erro ao carregar logs:', error);
+      toast.error('Erro ao carregar logs de integração');
+    } finally {
+      setLogsLoading(false);
     }
   };
 
@@ -328,6 +377,10 @@ const Etiquetas = () => {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
 
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString('pt-BR');
+  };
+
   const formatPhone = (phone: string) => {
     const cleaned = phone.replace(/\D/g, '');
     const match = cleaned.match(/^(\d{2})(\d{5})(\d{4})$/);
@@ -345,6 +398,36 @@ const Etiquetas = () => {
       return { status: 'ready', label: 'Remessa Criada', variant: 'secondary' as const };
     }
     return { status: 'pending', label: 'Pendente', variant: 'outline' as const };
+  };
+
+  const getStatusBadge = (statusCode: number) => {
+    if (statusCode >= 200 && statusCode < 300) {
+      return <Badge className="bg-green-600">Sucesso ({statusCode})</Badge>;
+    } else if (statusCode >= 400 && statusCode < 500) {
+      return <Badge variant="destructive">Erro Cliente ({statusCode})</Badge>;
+    } else if (statusCode >= 500) {
+      return <Badge variant="destructive">Erro Servidor ({statusCode})</Badge>;
+    }
+    return <Badge variant="secondary">{statusCode}</Badge>;
+  };
+
+  const getActionLabel = (webhookType: string) => {
+    const actions: Record<string, string> = {
+      'melhor_envio_create_shipment': 'Criar Remessa',
+      'melhor_envio_buy_shipment': 'Comprar Frete',
+      'melhor_envio_get_label': 'Gerar Etiqueta',
+      'melhor_envio_get_label_generate': 'Gerar Etiqueta (Generate)',
+      'melhor_envio_get_label_print': 'Gerar Etiqueta (Print)',
+    };
+    return actions[webhookType] || webhookType;
+  };
+
+  const parseResponse = (response: string) => {
+    try {
+      return JSON.stringify(JSON.parse(response), null, 2);
+    } catch {
+      return response;
+    }
   };
 
   if (loading) {
@@ -367,204 +450,345 @@ const Etiquetas = () => {
             Gerencie as etiquetas dos pedidos pagos no Melhor Envio
           </p>
         </div>
-
-        {/* Filtro por data */}
-        <div className="flex items-center gap-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-[200px] justify-start text-left font-normal",
-                  !dateFilter && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateFilter ? format(dateFilter, "dd/MM/yyyy", { locale: ptBR }) : "Filtrar por data"}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="single"
-                selected={dateFilter}
-                onSelect={setDateFilter}
-                locale={ptBR}
-                className="pointer-events-auto"
-              />
-            </PopoverContent>
-          </Popover>
-          {dateFilter && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDateFilter(undefined)}
-            >
-              Limpar
-            </Button>
-          )}
-        </div>
       </div>
 
-      {orders.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Package className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum pedido pago encontrado</h3>
-            <p className="text-muted-foreground">
-              Os pedidos pagos aparecerão aqui para gerar etiquetas de envio.
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="etiquetas" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            Etiquetas
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Logs de Integração
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="etiquetas" className="space-y-4">
+          {/* Filtro por data */}
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-[200px] justify-start text-left font-normal",
+                    !dateFilter && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {dateFilter ? format(dateFilter, "dd/MM/yyyy", { locale: ptBR }) : "Filtrar por data"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={dateFilter}
+                  onSelect={setDateFilter}
+                  locale={ptBR}
+                  className="pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+            {dateFilter && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDateFilter(undefined)}
+              >
+                Limpar
+              </Button>
+            )}
+          </div>
+
+          {orders.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Package className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-semibold mb-2">Nenhum pedido pago encontrado</h3>
+                <p className="text-muted-foreground">
+                  Os pedidos pagos aparecerão aqui para gerar etiquetas de envio.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {orders.map((order) => {
+                const shipmentStatus = getShipmentStatus(order);
+                
+                return (
+                  <Card key={order.id} className="overflow-hidden">
+                    {/* Header com status */}
+                    <CardHeader className="bg-muted/30 pb-3">
+                      <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <CardTitle className="text-lg">
+                              Pedido #{order.unique_order_id || order.id}
+                            </CardTitle>
+                            <Badge variant="default" className="bg-green-600">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Pago
+                            </Badge>
+                            <Badge variant={shipmentStatus.variant}>
+                              <Truck className="h-3 w-3 mr-1" />
+                              {shipmentStatus.label}
+                            </Badge>
+                          </div>
+                          
+                          {/* Código de rastreio em destaque */}
+                          {order.melhor_envio_tracking_code && (
+                            <div className="flex items-center gap-2 bg-primary/10 px-3 py-2 rounded-lg w-fit">
+                              <Truck className="h-4 w-4 text-primary" />
+                              <span className="text-sm font-medium">Rastreio:</span>
+                              <code className="bg-background px-2 py-0.5 rounded text-sm font-mono">
+                                {order.melhor_envio_tracking_code}
+                              </code>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                onClick={() => copyTrackingCode(order.melhor_envio_tracking_code!)}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <div>Criado: {formatDate(order.created_at)}</div>
+                          <div>Evento: {formatDate(order.event_date)}</div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    
+                    <CardContent className="pt-4 space-y-4">
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Dados do Cliente */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                            <User className="h-4 w-4" />
+                            Dados do Cliente
+                          </div>
+                          <div className="bg-muted/30 rounded-lg p-3 space-y-1.5">
+                            <div className="font-medium">{order.customer_name}</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-1">
+                              <Phone className="h-3 w-3" />
+                              {formatPhone(order.customer_phone)}
+                            </div>
+                            <div className="text-sm font-semibold text-primary">
+                              {formatCurrency(order.total_amount)}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Endereço */}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                            <MapPin className="h-4 w-4" />
+                            Endereço de Entrega
+                          </div>
+                          <div className="bg-muted/30 rounded-lg p-3 space-y-1 text-sm">
+                            <div>{order.customer_street}, {order.customer_number}</div>
+                            {order.customer_complement && (
+                              <div className="text-muted-foreground">{order.customer_complement}</div>
+                            )}
+                            <div>{order.customer_city} - {order.customer_state}</div>
+                            <div className="font-mono text-xs">CEP: {order.customer_cep}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Itens do Pedido */}
+                      {order.items && order.items.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                            <Package className="h-4 w-4" />
+                            Itens ({order.items.length})
+                          </div>
+                          <div className="bg-muted/30 rounded-lg p-3">
+                            <div className="grid gap-2">
+                              {order.items.map((item, index) => (
+                                <div 
+                                  key={index} 
+                                  className="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {item.product?.image_url && (
+                                      <img 
+                                        src={item.product.image_url} 
+                                        alt={item.product?.name}
+                                        className="w-8 h-8 rounded object-cover"
+                                      />
+                                    )}
+                                    <span>{item.product?.name || item.product_name || 'Produto'}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {item.product?.code || item.product_code || 'N/A'}
+                                    </Badge>
+                                  </div>
+                                  <span className="font-medium">
+                                    {item.qty}x {formatCurrency(item.unit_price)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Botão de Ação */}
+                      <div className="flex flex-wrap gap-2 pt-2 border-t">
+                        <Button
+                          onClick={() => sendToMelhorEnvio(order.id)}
+                          disabled={processingOrders.has(order.id) || !!order.melhor_envio_shipment_id}
+                          variant={order.melhor_envio_shipment_id ? "outline" : "default"}
+                          size="sm"
+                        >
+                          {processingOrders.has(order.id) ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : order.melhor_envio_shipment_id ? (
+                            <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                          ) : (
+                            <Send className="h-4 w-4 mr-2" />
+                          )}
+                          {order.melhor_envio_shipment_id ? 'Remessa Criada' : 'Criar Remessa'}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="logs" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Últimas 100 requisições para o Melhor Envio
             </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {orders.map((order) => {
-            const shipmentStatus = getShipmentStatus(order);
-            
-            return (
-              <Card key={order.id} className="overflow-hidden">
-                {/* Header com status */}
-                <CardHeader className="bg-muted/30 pb-3">
-                  <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <CardTitle className="text-lg">
-                          Pedido #{order.unique_order_id || order.id}
-                        </CardTitle>
-                        <Badge variant="default" className="bg-green-600">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Pago
-                        </Badge>
-                        <Badge variant={shipmentStatus.variant}>
-                          <Truck className="h-3 w-3 mr-1" />
-                          {shipmentStatus.label}
-                        </Badge>
+            <Button variant="outline" size="sm" onClick={loadLogs} disabled={logsLoading}>
+              <RefreshCw className={cn("h-4 w-4 mr-2", logsLoading && "animate-spin")} />
+              Atualizar
+            </Button>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Lista de Logs */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Histórico de Requisições</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[500px]">
+                  {logsLoading ? (
+                    <div className="flex items-center justify-center h-32">
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    </div>
+                  ) : logs.length === 0 ? (
+                    <div className="p-6 text-center text-muted-foreground">
+                      Nenhum log encontrado
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Data</TableHead>
+                          <TableHead>Ação</TableHead>
+                          <TableHead>Pedido</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {logs.map((log) => (
+                          <TableRow 
+                            key={log.id} 
+                            className={cn(
+                              "cursor-pointer hover:bg-muted/50",
+                              selectedLog?.id === log.id && "bg-muted"
+                            )}
+                            onClick={() => setSelectedLog(log)}
+                          >
+                            <TableCell className="text-xs">
+                              {formatDateTime(log.created_at)}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              {getActionLabel(log.webhook_type)}
+                            </TableCell>
+                            <TableCell className="text-xs">
+                              #{log.payload?.order_id || '-'}
+                            </TableCell>
+                            <TableCell>
+                              {getStatusBadge(log.status_code)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* Detalhes do Log Selecionado */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Detalhes da Requisição</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {selectedLog ? (
+                  <ScrollArea className="h-[450px]">
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-muted-foreground mb-1">Data/Hora</p>
+                        <p className="text-sm">{formatDateTime(selectedLog.created_at)}</p>
                       </div>
                       
-                      {/* Código de rastreio em destaque */}
-                      {order.melhor_envio_tracking_code && (
-                        <div className="flex items-center gap-2 bg-primary/10 px-3 py-2 rounded-lg w-fit">
-                          <Truck className="h-4 w-4 text-primary" />
-                          <span className="text-sm font-medium">Rastreio:</span>
-                          <code className="bg-background px-2 py-0.5 rounded text-sm font-mono">
-                            {order.melhor_envio_tracking_code}
-                          </code>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6"
-                            onClick={() => copyTrackingCode(order.melhor_envio_tracking_code!)}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
+                      <div>
+                        <p className="text-sm font-semibold text-muted-foreground mb-1">Ação</p>
+                        <p className="text-sm">{getActionLabel(selectedLog.webhook_type)}</p>
+                      </div>
+                      
+                      <div>
+                        <p className="text-sm font-semibold text-muted-foreground mb-1">Status Code</p>
+                        {getStatusBadge(selectedLog.status_code)}
+                      </div>
+
+                      {selectedLog.error_message && (
+                        <div>
+                          <p className="text-sm font-semibold text-destructive mb-1">Erro</p>
+                          <pre className="text-xs bg-destructive/10 p-2 rounded overflow-auto max-h-32">
+                            {selectedLog.error_message}
+                          </pre>
                         </div>
                       )}
-                    </div>
-                    
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <div>Criado: {formatDate(order.created_at)}</div>
-                      <div>Evento: {formatDate(order.event_date)}</div>
-                    </div>
-                  </div>
-                </CardHeader>
-                
-                <CardContent className="pt-4 space-y-4">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {/* Dados do Cliente */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                        <User className="h-4 w-4" />
-                        Dados do Cliente
-                      </div>
-                      <div className="bg-muted/30 rounded-lg p-3 space-y-1.5">
-                        <div className="font-medium">{order.customer_name}</div>
-                        <div className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {formatPhone(order.customer_phone)}
-                        </div>
-                        <div className="text-sm font-semibold text-primary">
-                          {formatCurrency(order.total_amount)}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Endereço */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                        <MapPin className="h-4 w-4" />
-                        Endereço de Entrega
-                      </div>
-                      <div className="bg-muted/30 rounded-lg p-3 space-y-1 text-sm">
-                        <div>{order.customer_street}, {order.customer_number}</div>
-                        {order.customer_complement && (
-                          <div className="text-muted-foreground">{order.customer_complement}</div>
-                        )}
-                        <div>{order.customer_city} - {order.customer_state}</div>
-                        <div className="font-mono text-xs">CEP: {order.customer_cep}</div>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* Itens do Pedido */}
-                  {order.items && order.items.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                        <Package className="h-4 w-4" />
-                        Itens ({order.items.length})
+                      <div>
+                        <p className="text-sm font-semibold text-muted-foreground mb-1">Request Payload</p>
+                        <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-48">
+                          {JSON.stringify(selectedLog.payload?.request || selectedLog.payload, null, 2)}
+                        </pre>
                       </div>
-                      <div className="bg-muted/30 rounded-lg p-3">
-                        <div className="grid gap-2">
-                          {order.items.map((item, index) => (
-                            <div 
-                              key={index} 
-                              className="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0"
-                            >
-                              <div className="flex items-center gap-2">
-                                {item.product?.image_url && (
-                                  <img 
-                                    src={item.product.image_url} 
-                                    alt={item.product?.name}
-                                    className="w-8 h-8 rounded object-cover"
-                                  />
-                                )}
-                                <span>{item.product?.name || item.product_name || 'Produto'}</span>
-                                <Badge variant="outline" className="text-xs">
-                                  {item.product?.code || item.product_code || 'N/A'}
-                                </Badge>
-                              </div>
-                              <span className="font-medium">
-                                {item.qty}x {formatCurrency(item.unit_price)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+
+                      <div>
+                        <p className="text-sm font-semibold text-muted-foreground mb-1">Response Body</p>
+                        <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-48">
+                          {parseResponse(selectedLog.response || '')}
+                        </pre>
                       </div>
                     </div>
-                  )}
-
-                  {/* Botão de Ação */}
-                  <div className="flex flex-wrap gap-2 pt-2 border-t">
-                    <Button
-                      onClick={() => sendToMelhorEnvio(order.id)}
-                      disabled={processingOrders.has(order.id) || !!order.melhor_envio_shipment_id}
-                      variant={order.melhor_envio_shipment_id ? "outline" : "default"}
-                      size="sm"
-                    >
-                      {processingOrders.has(order.id) ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : order.melhor_envio_shipment_id ? (
-                        <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                      ) : (
-                        <Send className="h-4 w-4 mr-2" />
-                      )}
-                      {order.melhor_envio_shipment_id ? 'Remessa Criada' : 'Criar Remessa'}
-                    </Button>
+                  </ScrollArea>
+                ) : (
+                  <div className="h-[450px] flex items-center justify-center text-muted-foreground">
+                    <p>Selecione um log para ver os detalhes</p>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
