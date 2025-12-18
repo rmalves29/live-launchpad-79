@@ -14,7 +14,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
-
+import { useAuth } from '@/hooks/useAuth';
 interface Order {
   id: number;
   unique_order_id: string;
@@ -50,6 +50,7 @@ interface IntegrationLog {
 }
 
 const Etiquetas = () => {
+  const { isSuperAdmin } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingOrders, setProcessingOrders] = useState<Set<number>>(new Set());
@@ -57,7 +58,7 @@ const Etiquetas = () => {
   const [activeTab, setActiveTab] = useState('etiquetas');
   const [syncingAll, setSyncingAll] = useState(false);
   
-  // Logs state
+  // Logs state (só usado por super_admin)
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [selectedLog, setSelectedLog] = useState<IntegrationLog | null>(null);
@@ -423,6 +424,34 @@ const Etiquetas = () => {
     }
   };
 
+  // Enviar mensagem de rastreio via WhatsApp
+  const sendTrackingMessage = async (orderId: number, trackingCode: string) => {
+    try {
+      const { data, error } = await supabaseTenant.functions.invoke('zapi-send-tracking', {
+        body: {
+          order_id: orderId,
+          tenant_id: supabaseTenant.getTenantId(),
+          tracking_code: trackingCode,
+          shipped_at: new Date().toISOString()
+        }
+      });
+
+      if (error) {
+        console.error('❌ Erro ao enviar mensagem de rastreio:', error);
+        return false;
+      }
+
+      if (data?.success) {
+        console.log('✅ Mensagem de rastreio enviada para pedido', orderId);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('❌ Erro ao enviar mensagem de rastreio:', e);
+      return false;
+    }
+  };
+
   // Sincronizar todos os pedidos com remessa no Melhor Envio
   const syncAllOrdersStatus = async () => {
     const ordersWithShipment = orders.filter(o => o.melhor_envio_shipment_id && !o.melhor_envio_tracking_code);
@@ -435,6 +464,7 @@ const Etiquetas = () => {
     setSyncingAll(true);
     let updated = 0;
     let errors = 0;
+    let messagesSent = 0;
 
     for (const order of ordersWithShipment) {
       try {
@@ -448,6 +478,12 @@ const Etiquetas = () => {
 
         if (!error && data?.success && data?.tracking) {
           updated++;
+          
+          // Enviar mensagem de rastreio via WhatsApp
+          const sent = await sendTrackingMessage(order.id, data.tracking);
+          if (sent) {
+            messagesSent++;
+          }
         }
       } catch (e) {
         errors++;
@@ -462,7 +498,11 @@ const Etiquetas = () => {
     loadPaidOrders();
     
     if (updated > 0) {
-      toast.success(`${updated} pedido(s) atualizado(s) com código de rastreio!`);
+      let message = `${updated} pedido(s) atualizado(s) com código de rastreio!`;
+      if (messagesSent > 0) {
+        message += ` ${messagesSent} mensagem(ns) de WhatsApp enviada(s).`;
+      }
+      toast.success(message);
     } else if (errors > 0) {
       toast.error(`${errors} erro(s) ao sincronizar. Verifique os logs.`);
     } else {
@@ -555,14 +595,18 @@ const Etiquetas = () => {
             <Truck className="h-4 w-4" />
             Etiquetas
           </TabsTrigger>
-          <TabsTrigger value="logs" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Logs de Integração
-          </TabsTrigger>
-          <TabsTrigger value="config" className="flex items-center gap-2">
-            <Settings className="h-4 w-4" />
-            Configuração Webhook
-          </TabsTrigger>
+          {isSuperAdmin && (
+            <>
+              <TabsTrigger value="logs" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Logs de Integração
+              </TabsTrigger>
+              <TabsTrigger value="config" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Configuração Webhook
+              </TabsTrigger>
+            </>
+          )}
         </TabsList>
 
         <TabsContent value="etiquetas" className="space-y-4">
@@ -828,226 +872,230 @@ const Etiquetas = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="logs" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Últimas 100 requisições para o Melhor Envio
-            </p>
-            <Button variant="outline" size="sm" onClick={loadLogs} disabled={logsLoading}>
-              <RefreshCw className={cn("h-4 w-4 mr-2", logsLoading && "animate-spin")} />
-              Atualizar
-            </Button>
-          </div>
+        {isSuperAdmin && (
+          <TabsContent value="logs" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Últimas 100 requisições para o Melhor Envio
+              </p>
+              <Button variant="outline" size="sm" onClick={loadLogs} disabled={logsLoading}>
+                <RefreshCw className={cn("h-4 w-4 mr-2", logsLoading && "animate-spin")} />
+                Atualizar
+              </Button>
+            </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* Lista de Logs */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Histórico de Requisições</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="h-[500px]">
-                  {logsLoading ? (
-                    <div className="flex items-center justify-center h-32">
-                      <Loader2 className="h-6 w-6 animate-spin" />
-                    </div>
-                  ) : logs.length === 0 ? (
-                    <div className="p-6 text-center text-muted-foreground">
-                      Nenhum log encontrado
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Data</TableHead>
-                          <TableHead>Ação</TableHead>
-                          <TableHead>Pedido</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {logs.map((log) => (
-                          <TableRow 
-                            key={log.id} 
-                            className={cn(
-                              "cursor-pointer hover:bg-muted/50",
-                              selectedLog?.id === log.id && "bg-muted"
-                            )}
-                            onClick={() => setSelectedLog(log)}
-                          >
-                            <TableCell className="text-xs">
-                              {formatDateTime(log.created_at)}
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              {getActionLabel(log.webhook_type)}
-                            </TableCell>
-                            <TableCell className="text-xs">
-                              #{log.payload?.order_id || '-'}
-                            </TableCell>
-                            <TableCell>
-                              {getStatusBadge(log.status_code)}
-                            </TableCell>
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Lista de Logs */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Histórico de Requisições</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ScrollArea className="h-[500px]">
+                    {logsLoading ? (
+                      <div className="flex items-center justify-center h-32">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : logs.length === 0 ? (
+                      <div className="p-6 text-center text-muted-foreground">
+                        Nenhum log encontrado
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Data</TableHead>
+                            <TableHead>Ação</TableHead>
+                            <TableHead>Pedido</TableHead>
+                            <TableHead>Status</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
+                        </TableHeader>
+                        <TableBody>
+                          {logs.map((log) => (
+                            <TableRow 
+                              key={log.id} 
+                              className={cn(
+                                "cursor-pointer hover:bg-muted/50",
+                                selectedLog?.id === log.id && "bg-muted"
+                              )}
+                              onClick={() => setSelectedLog(log)}
+                            >
+                              <TableCell className="text-xs">
+                                {formatDateTime(log.created_at)}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                {getActionLabel(log.webhook_type)}
+                              </TableCell>
+                              <TableCell className="text-xs">
+                                #{log.payload?.order_id || '-'}
+                              </TableCell>
+                              <TableCell>
+                                {getStatusBadge(log.status_code)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </ScrollArea>
+                </CardContent>
+              </Card>
 
-            {/* Detalhes do Log Selecionado */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Detalhes da Requisição</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {selectedLog ? (
-                  <ScrollArea className="h-[450px]">
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-sm font-semibold text-muted-foreground mb-1">Data/Hora</p>
-                        <p className="text-sm">{formatDateTime(selectedLog.created_at)}</p>
-                      </div>
-                      
-                      <div>
-                        <p className="text-sm font-semibold text-muted-foreground mb-1">Ação</p>
-                        <p className="text-sm">{getActionLabel(selectedLog.webhook_type)}</p>
-                      </div>
-                      
-                      <div>
-                        <p className="text-sm font-semibold text-muted-foreground mb-1">Status Code</p>
-                        {getStatusBadge(selectedLog.status_code)}
-                      </div>
-
-                      {selectedLog.error_message && (
+              {/* Detalhes do Log Selecionado */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">Detalhes da Requisição</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {selectedLog ? (
+                    <ScrollArea className="h-[450px]">
+                      <div className="space-y-4">
                         <div>
-                          <p className="text-sm font-semibold text-destructive mb-1">Erro</p>
-                          <pre className="text-xs bg-destructive/10 p-2 rounded overflow-auto max-h-32">
-                            {selectedLog.error_message}
+                          <p className="text-sm font-semibold text-muted-foreground mb-1">Data/Hora</p>
+                          <p className="text-sm">{formatDateTime(selectedLog.created_at)}</p>
+                        </div>
+                        
+                        <div>
+                          <p className="text-sm font-semibold text-muted-foreground mb-1">Ação</p>
+                          <p className="text-sm">{getActionLabel(selectedLog.webhook_type)}</p>
+                        </div>
+                        
+                        <div>
+                          <p className="text-sm font-semibold text-muted-foreground mb-1">Status Code</p>
+                          {getStatusBadge(selectedLog.status_code)}
+                        </div>
+
+                        {selectedLog.error_message && (
+                          <div>
+                            <p className="text-sm font-semibold text-destructive mb-1">Erro</p>
+                            <pre className="text-xs bg-destructive/10 p-2 rounded overflow-auto max-h-32">
+                              {selectedLog.error_message}
+                            </pre>
+                          </div>
+                        )}
+
+                        <div>
+                          <p className="text-sm font-semibold text-muted-foreground mb-1">Request Payload</p>
+                          <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-48">
+                            {JSON.stringify(selectedLog.payload?.request || selectedLog.payload, null, 2)}
                           </pre>
                         </div>
-                      )}
 
-                      <div>
-                        <p className="text-sm font-semibold text-muted-foreground mb-1">Request Payload</p>
-                        <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-48">
-                          {JSON.stringify(selectedLog.payload?.request || selectedLog.payload, null, 2)}
-                        </pre>
+                        <div>
+                          <p className="text-sm font-semibold text-muted-foreground mb-1">Response Body</p>
+                          <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-48">
+                            {parseResponse(selectedLog.response || '')}
+                          </pre>
+                        </div>
                       </div>
-
-                      <div>
-                        <p className="text-sm font-semibold text-muted-foreground mb-1">Response Body</p>
-                        <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-48">
-                          {parseResponse(selectedLog.response || '')}
-                        </pre>
-                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="h-[450px] flex items-center justify-center text-muted-foreground">
+                      <p>Selecione um log para ver os detalhes</p>
                     </div>
-                  </ScrollArea>
-                ) : (
-                  <div className="h-[450px] flex items-center justify-center text-muted-foreground">
-                    <p>Selecione um log para ver os detalhes</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        )}
+
+        {isSuperAdmin && (
+          <TabsContent value="config" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="h-5 w-5" />
+                  Configuração do Webhook do Melhor Envio
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Por que configurar o webhook?</AlertTitle>
+                  <AlertDescription>
+                    O webhook permite que o Melhor Envio notifique automaticamente o sistema sobre atualizações de status das etiquetas (postado, em trânsito, entregue, etc.) e envie o código de rastreio para seus clientes via WhatsApp.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg">URL do Webhook para cadastrar no Melhor Envio:</h3>
+                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                    <code className="text-sm flex-1 break-all">
+                      https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/melhor-envio-webhook
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/melhor-envio-webhook');
+                        toast.success('URL copiada!');
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
                   </div>
-                )}
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg">Passo a passo para configurar:</h3>
+                  <ol className="list-decimal list-inside space-y-3 text-sm">
+                    <li>Acesse o painel do Melhor Envio em <a href="https://melhorenvio.com.br" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">melhorenvio.com.br <ExternalLink className="h-3 w-3" /></a></li>
+                    <li>No menu lateral, clique em <strong>"Integrações"</strong> → <strong>"Área Dev"</strong></li>
+                    <li>Encontre seu aplicativo na lista (o mesmo usado para gerar as etiquetas)</li>
+                    <li>Clique no botão <strong>"Novo Webhook"</strong></li>
+                    <li>Cole a URL acima no campo de URL</li>
+                    <li>Salve a configuração</li>
+                  </ol>
+                </div>
+
+                <Alert className="bg-amber-500/10 border-amber-500/50">
+                  <AlertCircle className="h-4 w-4 text-amber-500" />
+                  <AlertTitle className="text-amber-600">Importante</AlertTitle>
+                  <AlertDescription className="text-amber-600">
+                    Para que o webhook funcione, as etiquetas precisam ser geradas usando o mesmo aplicativo onde o webhook está configurado. Etiquetas criadas pelo site ou por outro aplicativo não serão notificadas.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-lg">Eventos suportados:</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <Badge variant="outline">order.created</Badge>
+                      <span>Etiqueta criada</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <Badge variant="outline">order.released</Badge>
+                      <span>Etiqueta paga</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <Badge variant="outline">order.posted</Badge>
+                      <span>Encomenda postada</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <Badge variant="outline">order.delivered</Badge>
+                      <span>Encomenda entregue</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <Badge variant="outline">order.cancelled</Badge>
+                      <span>Etiqueta cancelada</span>
+                    </div>
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <Badge variant="outline">order.undelivered</Badge>
+                      <span>Não foi possível entregar</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    Quando um evento <strong>order.posted</strong> for recebido com código de rastreio, o sistema enviará automaticamente uma mensagem para o cliente via WhatsApp com o código de rastreio.
+                  </p>
+                </div>
               </CardContent>
             </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="config" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Settings className="h-5 w-5" />
-                Configuração do Webhook do Melhor Envio
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Por que configurar o webhook?</AlertTitle>
-                <AlertDescription>
-                  O webhook permite que o Melhor Envio notifique automaticamente o sistema sobre atualizações de status das etiquetas (postado, em trânsito, entregue, etc.) e envie o código de rastreio para seus clientes via WhatsApp.
-                </AlertDescription>
-              </Alert>
-
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">URL do Webhook para cadastrar no Melhor Envio:</h3>
-                <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                  <code className="text-sm flex-1 break-all">
-                    https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/melhor-envio-webhook
-                  </code>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      navigator.clipboard.writeText('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/melhor-envio-webhook');
-                      toast.success('URL copiada!');
-                    }}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Passo a passo para configurar:</h3>
-                <ol className="list-decimal list-inside space-y-3 text-sm">
-                  <li>Acesse o painel do Melhor Envio em <a href="https://melhorenvio.com.br" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">melhorenvio.com.br <ExternalLink className="h-3 w-3" /></a></li>
-                  <li>No menu lateral, clique em <strong>"Integrações"</strong> → <strong>"Área Dev"</strong></li>
-                  <li>Encontre seu aplicativo na lista (o mesmo usado para gerar as etiquetas)</li>
-                  <li>Clique no botão <strong>"Novo Webhook"</strong></li>
-                  <li>Cole a URL acima no campo de URL</li>
-                  <li>Salve a configuração</li>
-                </ol>
-              </div>
-
-              <Alert className="bg-amber-500/10 border-amber-500/50">
-                <AlertCircle className="h-4 w-4 text-amber-500" />
-                <AlertTitle className="text-amber-600">Importante</AlertTitle>
-                <AlertDescription className="text-amber-600">
-                  Para que o webhook funcione, as etiquetas precisam ser geradas usando o mesmo aplicativo onde o webhook está configurado. Etiquetas criadas pelo site ou por outro aplicativo não serão notificadas.
-                </AlertDescription>
-              </Alert>
-
-              <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Eventos suportados:</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                    <Badge variant="outline">order.created</Badge>
-                    <span>Etiqueta criada</span>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                    <Badge variant="outline">order.released</Badge>
-                    <span>Etiqueta paga</span>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                    <Badge variant="outline">order.posted</Badge>
-                    <span>Encomenda postada</span>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                    <Badge variant="outline">order.delivered</Badge>
-                    <span>Encomenda entregue</span>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                    <Badge variant="outline">order.cancelled</Badge>
-                    <span>Etiqueta cancelada</span>
-                  </div>
-                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                    <Badge variant="outline">order.undelivered</Badge>
-                    <span>Não foi possível entregar</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t">
-                <p className="text-sm text-muted-foreground">
-                  Quando um evento <strong>order.posted</strong> for recebido com código de rastreio, o sistema enviará automaticamente uma mensagem para o cliente via WhatsApp com o código de rastreio.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
