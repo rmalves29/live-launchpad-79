@@ -292,7 +292,7 @@ async function createShipment(
       {
         name: `Pedido #${order.unique_order_id || order.id}`,
         quantity: totalVolumes,
-        unitary_value: Number(order.total_amount) / totalVolumes
+        unitary_value: parseFloat((Number(order.total_amount) / totalVolumes).toFixed(2))
       }
     ],
     volumes: [
@@ -304,7 +304,7 @@ async function createShipment(
       }
     ],
     options: {
-      insurance_value: Number(order.total_amount),
+      insurance_value: parseFloat(Number(order.total_amount).toFixed(2)),
       receipt: false,
       own_hand: false,
       reverse: false,
