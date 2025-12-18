@@ -55,6 +55,7 @@ const Etiquetas = () => {
   const [processingOrders, setProcessingOrders] = useState<Set<number>>(new Set());
   const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined);
   const [activeTab, setActiveTab] = useState('etiquetas');
+  const [syncingAll, setSyncingAll] = useState(false);
   
   // Logs state
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
@@ -374,6 +375,101 @@ const Etiquetas = () => {
     toast.success('Código de rastreio copiado!');
   };
 
+  // Consultar status de um pedido específico
+  const checkOrderStatus = async (orderId: number) => {
+    setProcessingOrders(prev => new Set(prev).add(orderId));
+    
+    try {
+      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+        body: {
+          action: 'get_status',
+          order_id: orderId,
+          tenant_id: supabaseTenant.getTenantId()
+        }
+      });
+
+      if (error) {
+        console.error('❌ [ETIQUETAS] Erro ao consultar status:', error, 'Data:', data);
+        let errorMessage = data?.error || data?.message;
+        if (!errorMessage && error.context) {
+          try {
+            const contextBody = await error.context.json();
+            errorMessage = contextBody?.error || contextBody?.message;
+          } catch { }
+        }
+        errorMessage = errorMessage || error.message || 'Erro ao consultar status';
+        throw new Error(errorMessage);
+      }
+
+      if (data.success) {
+        if (data.tracking) {
+          toast.success(`Tracking encontrado: ${data.tracking}`);
+        } else {
+          toast.info(`Status: ${data.status || 'Sem tracking disponível ainda'}`);
+        }
+        loadPaidOrders();
+      } else {
+        throw new Error(data.error || 'Erro desconhecido');
+      }
+    } catch (error: any) {
+      console.error('Erro ao consultar status:', error);
+      toast.error(`Erro ao consultar status: ${error.message}`);
+    } finally {
+      setProcessingOrders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
+    }
+  };
+
+  // Sincronizar todos os pedidos com remessa no Melhor Envio
+  const syncAllOrdersStatus = async () => {
+    const ordersWithShipment = orders.filter(o => o.melhor_envio_shipment_id && !o.melhor_envio_tracking_code);
+    
+    if (ordersWithShipment.length === 0) {
+      toast.info('Nenhum pedido pendente de tracking para sincronizar');
+      return;
+    }
+
+    setSyncingAll(true);
+    let updated = 0;
+    let errors = 0;
+
+    for (const order of ordersWithShipment) {
+      try {
+        const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+          body: {
+            action: 'get_status',
+            order_id: order.id,
+            tenant_id: supabaseTenant.getTenantId()
+          }
+        });
+
+        if (!error && data?.success && data?.tracking) {
+          updated++;
+        }
+      } catch (e) {
+        errors++;
+        console.error(`Erro ao sincronizar pedido ${order.id}:`, e);
+      }
+      
+      // Pequeno delay para não sobrecarregar a API
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    setSyncingAll(false);
+    loadPaidOrders();
+    
+    if (updated > 0) {
+      toast.success(`${updated} pedido(s) atualizado(s) com código de rastreio!`);
+    } else if (errors > 0) {
+      toast.error(`${errors} erro(s) ao sincronizar. Verifique os logs.`);
+    } else {
+      toast.info('Nenhum tracking disponível ainda para os pedidos');
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
@@ -470,8 +566,8 @@ const Etiquetas = () => {
         </TabsList>
 
         <TabsContent value="etiquetas" className="space-y-4">
-          {/* Filtro por data */}
-          <div className="flex items-center gap-2">
+          {/* Filtro por data e botão de sincronização */}
+          <div className="flex flex-wrap items-center gap-2">
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -504,6 +600,22 @@ const Etiquetas = () => {
                 Limpar
               </Button>
             )}
+            
+            <div className="flex-1" />
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={syncAllOrdersStatus}
+              disabled={syncingAll}
+            >
+              {syncingAll ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              {syncingAll ? 'Sincronizando...' : 'Sincronizar Rastreios'}
+            </Button>
           </div>
 
           {orders.length === 0 ? (
@@ -642,7 +754,7 @@ const Etiquetas = () => {
                         </div>
                       )}
 
-                      {/* Botão de Ação */}
+                      {/* Botões de Ação */}
                       <div className="flex flex-wrap gap-2 pt-2 border-t">
                         <Button
                           onClick={() => sendToMelhorEnvio(order.id)}
@@ -659,6 +771,54 @@ const Etiquetas = () => {
                           )}
                           {order.melhor_envio_shipment_id ? 'Remessa Criada' : 'Criar Remessa'}
                         </Button>
+
+                        {order.melhor_envio_shipment_id && !order.melhor_envio_tracking_code && (
+                          <Button
+                            onClick={() => checkOrderStatus(order.id)}
+                            disabled={processingOrders.has(order.id)}
+                            variant="outline"
+                            size="sm"
+                          >
+                            {processingOrders.has(order.id) ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                            )}
+                            Consultar Status
+                          </Button>
+                        )}
+
+                        {order.melhor_envio_shipment_id && (
+                          <>
+                            <Button
+                              onClick={() => buyShipment(order.id)}
+                              disabled={processingOrders.has(order.id)}
+                              variant="outline"
+                              size="sm"
+                            >
+                              {processingOrders.has(order.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Truck className="h-4 w-4 mr-2" />
+                              )}
+                              Comprar Frete
+                            </Button>
+                            
+                            <Button
+                              onClick={() => printLabel(order.id)}
+                              disabled={processingOrders.has(order.id)}
+                              variant="outline"
+                              size="sm"
+                            >
+                              {processingOrders.has(order.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Printer className="h-4 w-4 mr-2" />
+                              )}
+                              Imprimir Etiqueta
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
