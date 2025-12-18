@@ -15,6 +15,9 @@ verify_jwt = true
 [functions.melhor-envio-test-token]
 verify_jwt = true
 
+[functions.melhor-envio-webhook]
+verify_jwt = false
+
 [functions.zapi-proxy]
 verify_jwt = true
 

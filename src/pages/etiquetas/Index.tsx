@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw } from 'lucide-react';
+import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw, Settings, AlertCircle, ExternalLink } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { formatCurrency, cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -462,6 +463,10 @@ const Etiquetas = () => {
             <FileText className="h-4 w-4" />
             Logs de Integração
           </TabsTrigger>
+          <TabsTrigger value="config" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Configuração Webhook
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="etiquetas" className="space-y-4">
@@ -787,6 +792,101 @@ const Etiquetas = () => {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="config" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Configuração do Webhook do Melhor Envio
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Por que configurar o webhook?</AlertTitle>
+                <AlertDescription>
+                  O webhook permite que o Melhor Envio notifique automaticamente o sistema sobre atualizações de status das etiquetas (postado, em trânsito, entregue, etc.) e envie o código de rastreio para seus clientes via WhatsApp.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">URL do Webhook para cadastrar no Melhor Envio:</h3>
+                <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                  <code className="text-sm flex-1 break-all">
+                    https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/melhor-envio-webhook
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/melhor-envio-webhook');
+                      toast.success('URL copiada!');
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">Passo a passo para configurar:</h3>
+                <ol className="list-decimal list-inside space-y-3 text-sm">
+                  <li>Acesse o painel do Melhor Envio em <a href="https://melhorenvio.com.br" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">melhorenvio.com.br <ExternalLink className="h-3 w-3" /></a></li>
+                  <li>No menu lateral, clique em <strong>"Integrações"</strong> → <strong>"Área Dev"</strong></li>
+                  <li>Encontre seu aplicativo na lista (o mesmo usado para gerar as etiquetas)</li>
+                  <li>Clique no botão <strong>"Novo Webhook"</strong></li>
+                  <li>Cole a URL acima no campo de URL</li>
+                  <li>Salve a configuração</li>
+                </ol>
+              </div>
+
+              <Alert className="bg-amber-500/10 border-amber-500/50">
+                <AlertCircle className="h-4 w-4 text-amber-500" />
+                <AlertTitle className="text-amber-600">Importante</AlertTitle>
+                <AlertDescription className="text-amber-600">
+                  Para que o webhook funcione, as etiquetas precisam ser geradas usando o mesmo aplicativo onde o webhook está configurado. Etiquetas criadas pelo site ou por outro aplicativo não serão notificadas.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg">Eventos suportados:</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                    <Badge variant="outline">order.created</Badge>
+                    <span>Etiqueta criada</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                    <Badge variant="outline">order.released</Badge>
+                    <span>Etiqueta paga</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                    <Badge variant="outline">order.posted</Badge>
+                    <span>Encomenda postada</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                    <Badge variant="outline">order.delivered</Badge>
+                    <span>Encomenda entregue</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                    <Badge variant="outline">order.cancelled</Badge>
+                    <span>Etiqueta cancelada</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                    <Badge variant="outline">order.undelivered</Badge>
+                    <span>Não foi possível entregar</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t">
+                <p className="text-sm text-muted-foreground">
+                  Quando um evento <strong>order.posted</strong> for recebido com código de rastreio, o sistema enviará automaticamente uma mensagem para o cliente via WhatsApp com o código de rastreio.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
