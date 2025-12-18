@@ -160,9 +160,16 @@ const Etiquetas = () => {
       });
 
       if (error) {
-        console.error('❌ [ETIQUETAS] Erro da edge function:', error);
-        // Tentar extrair mensagem de erro do data (Edge Functions retornam erro no body)
-        const errorMessage = data?.error || data?.message || error.message || `Erro na comunicação: ${JSON.stringify(error)}`;
+        console.error('❌ [ETIQUETAS] Erro da edge function:', error, 'Data:', data);
+        // Extrair mensagem de erro: priorizar data.error, depois context do FunctionsHttpError
+        let errorMessage = data?.error || data?.message;
+        if (!errorMessage && error.context) {
+          try {
+            const contextBody = await error.context.json();
+            errorMessage = contextBody?.error || contextBody?.message;
+          } catch { }
+        }
+        errorMessage = errorMessage || error.message || `Erro na comunicação: ${JSON.stringify(error)}`;
         throw new Error(errorMessage);
       }
 
@@ -234,7 +241,15 @@ const Etiquetas = () => {
       });
 
       if (error) {
-        const errorMessage = data?.error || data?.message || error.message || 'Erro ao comprar frete';
+        console.error('❌ [ETIQUETAS] Erro ao comprar frete:', error, 'Data:', data);
+        let errorMessage = data?.error || data?.message;
+        if (!errorMessage && error.context) {
+          try {
+            const contextBody = await error.context.json();
+            errorMessage = contextBody?.error || contextBody?.message;
+          } catch { }
+        }
+        errorMessage = errorMessage || error.message || 'Erro ao comprar frete';
         throw new Error(errorMessage);
       }
 
@@ -274,7 +289,15 @@ const Etiquetas = () => {
       });
 
       if (error) {
-        const errorMessage = data?.error || data?.message || error.message || 'Erro ao gerar etiqueta';
+        console.error('❌ [ETIQUETAS] Erro ao gerar etiqueta:', error, 'Data:', data);
+        let errorMessage = data?.error || data?.message;
+        if (!errorMessage && error.context) {
+          try {
+            const contextBody = await error.context.json();
+            errorMessage = contextBody?.error || contextBody?.message;
+          } catch { }
+        }
+        errorMessage = errorMessage || error.message || 'Erro ao gerar etiqueta';
         throw new Error(errorMessage);
       }
 
