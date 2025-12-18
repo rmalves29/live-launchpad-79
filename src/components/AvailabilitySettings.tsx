@@ -59,11 +59,11 @@ export const AvailabilitySettings = () => {
         title: 'Configurações salvas',
         description: 'Disponibilidade atualizada com sucesso',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving settings:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao salvar configurações',
+        description: error?.message || 'Erro ao salvar configurações',
         variant: 'destructive'
       });
     } finally {

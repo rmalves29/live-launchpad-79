@@ -47,12 +47,12 @@ export const GiftsManager = () => {
 
       if (error) throw error;
       setGifts((data || []) as Gift[]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao carregar brindes:', error);
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Erro ao carregar brindes"
+        description: error?.message || "Erro ao carregar brindes"
       });
     } finally {
       setLoading(false);
@@ -126,12 +126,12 @@ export const GiftsManager = () => {
         description: "Brinde excluído com sucesso"
       });
       loadGifts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao excluir brinde:', error);
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Erro ao excluir brinde"
+        description: error?.message || "Erro ao excluir brinde"
       });
     }
   };

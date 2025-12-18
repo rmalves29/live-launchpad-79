@@ -62,7 +62,7 @@ export function ZAPISettings() {
       console.error('Error loading Z-API integration:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar integração Z-API',
+        description: error?.message || 'Erro ao carregar integração Z-API',
         variant: 'destructive'
       });
     } finally {

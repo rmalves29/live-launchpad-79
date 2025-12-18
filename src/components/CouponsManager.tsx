@@ -61,12 +61,12 @@ export const CouponsManager = () => {
         ...coupon,
         progressive_tiers: coupon.progressive_tiers as any || undefined
       })) as Coupon[]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao carregar cupons:', error);
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Erro ao carregar cupons"
+        description: error?.message || "Erro ao carregar cupons"
       });
     } finally {
       setLoading(false);
@@ -162,12 +162,12 @@ export const CouponsManager = () => {
         description: "Cupom excluído com sucesso"
       });
       loadCoupons();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao excluir cupom:', error);
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Erro ao excluir cupom"
+        description: error?.message || "Erro ao excluir cupom"
       });
     }
   };

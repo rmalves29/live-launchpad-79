@@ -81,10 +81,10 @@ export default function TenantCustomers() {
       
       if (error) throw error;
       setCustomers(data || []);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar clientes',
+        description: error?.message || 'Erro ao carregar clientes',
         variant: 'destructive'
       });
     }

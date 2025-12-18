@@ -72,9 +72,9 @@ export default function SendingControl({ jobType, onResume }: SendingControlProp
       onResume(pendingJob);
       setPendingJob(null);
       toast.success('Retomando envio de onde parou...');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao retomar envio:', error);
-      toast.error('Erro ao retomar envio');
+      toast.error(error?.message || 'Erro ao retomar envio');
     } finally {
       setLoading(false);
     }
@@ -94,9 +94,9 @@ export default function SendingControl({ jobType, onResume }: SendingControlProp
 
       setPendingJob(null);
       toast.success('Envio cancelado');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao cancelar envio:', error);
-      toast.error('Erro ao cancelar envio');
+      toast.error(error?.message || 'Erro ao cancelar envio');
     } finally {
       setLoading(false);
     }

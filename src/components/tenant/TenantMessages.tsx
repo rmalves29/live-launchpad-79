@@ -55,11 +55,11 @@ export const TenantMessages = () => {
 
       if (error) throw error;
       setMessages(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading messages:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar mensagens',
+        description: error?.message || 'Erro ao carregar mensagens',
         variant: 'destructive'
       });
     } finally {

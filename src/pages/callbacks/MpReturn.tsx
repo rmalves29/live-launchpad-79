@@ -130,11 +130,11 @@ const MpReturn = () => {
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating payment status:", error);
       toast({
         title: "Erro",
-        description: "Erro inesperado ao processar o pagamento.",
+        description: error?.message || "Erro inesperado ao processar o pagamento.",
         variant: "destructive",
       });
     } finally {

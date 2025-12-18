@@ -120,11 +120,11 @@ const Config = () => {
       if (appData) {
         setAppSettings(appData);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading settings:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar configurações',
+        description: error?.message || 'Erro ao carregar configurações',
         variant: 'destructive'
       });
     } finally {

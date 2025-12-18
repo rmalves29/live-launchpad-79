@@ -44,11 +44,11 @@ export const MelhorEnvioStatus = () => {
       }
 
       setStatus(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao verificar token:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao verificar status do Melhor Envio',
+        description: error?.message || 'Erro ao verificar status do Melhor Envio',
         variant: 'destructive'
       });
     } finally {

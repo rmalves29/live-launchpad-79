@@ -72,9 +72,9 @@ export const CompanySettings = () => {
           company_cep: data.company_cep || '',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao carregar dados da empresa:', error);
-      toast.error('Erro ao carregar dados da empresa');
+      toast.error(error?.message || 'Erro ao carregar dados da empresa');
     } finally {
       setLoading(false);
     }
@@ -93,9 +93,9 @@ export const CompanySettings = () => {
       if (error) throw error;
 
       toast.success('Dados da empresa salvos com sucesso!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao salvar dados da empresa:', error);
-      toast.error('Erro ao salvar dados da empresa');
+      toast.error(error?.message || 'Erro ao salvar dados da empresa');
     } finally {
       setSaving(false);
     }

@@ -124,9 +124,9 @@ const Etiquetas = () => {
 
       console.log('✅ Pedidos com itens carregados:', ordersWithItems.length);
       setOrders(ordersWithItems);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro ao carregar pedidos:', error);
-      toast.error('Erro ao carregar pedidos pagos');
+      toast.error(error?.message || 'Erro ao carregar pedidos pagos');
     } finally {
       setLoading(false);
     }

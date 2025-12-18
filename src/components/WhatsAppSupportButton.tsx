@@ -54,9 +54,9 @@ export function WhatsAppSupportButton() {
       setMessage('');
       setSelectedDepartment(null);
       setIsOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao enviar mensagem:', error);
-      toast.error('Erro ao enviar mensagem. Tente novamente.');
+      toast.error(error?.message || 'Erro ao enviar mensagem. Tente novamente.');
     } finally {
       setIsSending(false);
     }
