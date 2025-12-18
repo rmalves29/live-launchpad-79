@@ -6,10 +6,40 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Função helper para salvar logs de integração
+async function saveIntegrationLog(
+  supabase: any,
+  tenant_id: string,
+  order_id: number,
+  action: string,
+  status_code: number,
+  request_payload: any,
+  response_body: string,
+  error_message?: string
+) {
+  try {
+    await supabase.from("webhook_logs").insert({
+      tenant_id,
+      webhook_type: `melhor_envio_${action}`,
+      status_code,
+      payload: { order_id, action, request: request_payload },
+      response: response_body?.substring(0, 10000), // Limitar tamanho
+      error_message
+    });
+    console.log(`[melhor-envio-labels] Log salvo: ${action} - Status ${status_code}`);
+  } catch (logError) {
+    console.error("[melhor-envio-labels] Erro ao salvar log:", logError);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
     const { action, order_id, tenant_id } = await req.json();
@@ -30,10 +60,6 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
     // Buscar integração do Melhor Envio
     const { data: integration, error: integrationError } = await supabase
       .from("shipping_integrations")
@@ -44,15 +70,19 @@ serve(async (req) => {
 
     if (integrationError || !integration) {
       console.error("[melhor-envio-labels] Integração não encontrada:", integrationError);
+      const errorMsg = "Configuração de frete não encontrada";
+      await saveIntegrationLog(supabase, tenant_id, order_id, action, 404, {}, "", errorMsg);
       return new Response(
-        JSON.stringify({ success: false, error: "Configuração de frete não encontrada" }),
+        JSON.stringify({ success: false, error: errorMsg }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     if (!integration.access_token) {
+      const errorMsg = "Token do Melhor Envio não configurado";
+      await saveIntegrationLog(supabase, tenant_id, order_id, action, 400, {}, "", errorMsg);
       return new Response(
-        JSON.stringify({ success: false, error: "Token do Melhor Envio não configurado" }),
+        JSON.stringify({ success: false, error: errorMsg }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -67,8 +97,10 @@ serve(async (req) => {
 
     if (orderError || !order) {
       console.error("[melhor-envio-labels] Pedido não encontrado:", orderError);
+      const errorMsg = "Pedido não encontrado";
+      await saveIntegrationLog(supabase, tenant_id, order_id, action, 404, {}, "", errorMsg);
       return new Response(
-        JSON.stringify({ success: false, error: "Pedido não encontrado" }),
+        JSON.stringify({ success: false, error: errorMsg }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -82,8 +114,10 @@ serve(async (req) => {
 
     if (tenantError || !tenant) {
       console.error("[melhor-envio-labels] Tenant não encontrado:", tenantError);
+      const errorMsg = "Dados da empresa não encontrados";
+      await saveIntegrationLog(supabase, tenant_id, order_id, action, 404, {}, "", errorMsg);
       return new Response(
-        JSON.stringify({ success: false, error: "Dados da empresa não encontrados" }),
+        JSON.stringify({ success: false, error: errorMsg }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -105,14 +139,16 @@ serve(async (req) => {
         return await createShipment(baseUrl, headers, order, tenant, integration, supabase);
       
       case "buy_shipment":
-        return await buyShipment(baseUrl, headers, order, supabase);
+        return await buyShipment(baseUrl, headers, order, supabase, tenant_id);
       
       case "get_label":
-        return await getLabel(baseUrl, headers, order, supabase);
+        return await getLabel(baseUrl, headers, order, supabase, tenant_id);
       
       default:
+        const errorMsg = `Ação desconhecida: ${action}`;
+        await saveIntegrationLog(supabase, tenant_id, order_id, action, 400, {}, "", errorMsg);
         return new Response(
-          JSON.stringify({ success: false, error: `Ação desconhecida: ${action}` }),
+          JSON.stringify({ success: false, error: errorMsg }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     }
@@ -138,11 +174,10 @@ async function createShipment(
 
   // Validar dados do remetente
   if (!tenant.company_cep || !tenant.company_name) {
+    const errorMsg = "Dados da empresa incompletos. Configure o CEP e nome da empresa nas configurações.";
+    await saveIntegrationLog(supabase, tenant.id, order.id, "create_shipment", 400, {}, "", errorMsg);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: "Dados da empresa incompletos. Configure o CEP e nome da empresa nas configurações." 
-      }),
+      JSON.stringify({ success: false, error: errorMsg }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -156,11 +191,10 @@ async function createShipment(
   if (!order.customer_state) missingFields.push("Estado");
 
   if (missingFields.length > 0) {
+    const errorMsg = `Dados de endereço incompletos. Campos faltando: ${missingFields.join(", ")}`;
+    await saveIntegrationLog(supabase, tenant.id, order.id, "create_shipment", 400, {}, "", errorMsg);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Dados de endereço incompletos. Campos faltando: ${missingFields.join(", ")}` 
-      }),
+      JSON.stringify({ success: false, error: errorMsg }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -176,6 +210,16 @@ async function createShipment(
   
   if (customer?.cpf) {
     customerCpf = cleanDocument(customer.cpf);
+  }
+
+  // Validar CPF/CNPJ do destinatário
+  if (!customerCpf || (customerCpf.length !== 11 && customerCpf.length !== 14)) {
+    const errorMsg = "CNPJ ou CPF do destinatário é obrigatório. Cadastre o CPF do cliente.";
+    await saveIntegrationLog(supabase, tenant.id, order.id, "create_shipment", 422, {}, "", errorMsg);
+    return new Response(
+      JSON.stringify({ success: false, error: errorMsg }),
+      { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   // Buscar itens do pedido para calcular peso/dimensões
@@ -291,6 +335,18 @@ async function createShipment(
   console.log("[melhor-envio-labels] Response status:", response.status);
   console.log("[melhor-envio-labels] Response:", responseText);
 
+  // Salvar log da integração
+  await saveIntegrationLog(
+    supabase, 
+    tenant.id, 
+    order.id, 
+    "create_shipment", 
+    response.status, 
+    shipmentPayload, 
+    responseText,
+    !response.ok ? responseText : undefined
+  );
+
   if (!response.ok) {
     let errorMessage = "Erro ao criar remessa";
     try {
@@ -339,7 +395,8 @@ async function buyShipment(
   baseUrl: string, 
   headers: Record<string, string>, 
   order: any,
-  supabase: any
+  supabase: any,
+  tenant_id: string
 ) {
   console.log("[melhor-envio-labels] Comprando frete para pedido:", order.id);
 
@@ -358,6 +415,18 @@ async function buyShipment(
 
     const checkoutText = await checkoutResponse.text();
     console.log("[melhor-envio-labels] Checkout response:", checkoutText);
+
+    // Salvar log
+    await saveIntegrationLog(
+      supabase,
+      tenant_id,
+      order.id,
+      "buy_shipment",
+      checkoutResponse.status,
+      { orders: [savedShipmentId] },
+      checkoutText,
+      !checkoutResponse.ok ? checkoutText : undefined
+    );
 
     if (!checkoutResponse.ok) {
       return new Response(
@@ -402,6 +471,8 @@ async function buyShipment(
   });
 
   if (!cartResponse.ok) {
+    const errorText = await cartResponse.text();
+    await saveIntegrationLog(supabase, tenant_id, order.id, "buy_shipment", cartResponse.status, {}, errorText, errorText);
     return new Response(
       JSON.stringify({ success: false, error: "Erro ao buscar carrinho" }),
       { status: cartResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -412,8 +483,10 @@ async function buyShipment(
   console.log("[melhor-envio-labels] Carrinho:", cartData);
 
   if (!cartData || cartData.length === 0) {
+    const errorMsg = "Carrinho vazio. Crie uma remessa primeiro.";
+    await saveIntegrationLog(supabase, tenant_id, order.id, "buy_shipment", 400, {}, "", errorMsg);
     return new Response(
-      JSON.stringify({ success: false, error: "Carrinho vazio. Crie uma remessa primeiro." }),
+      JSON.stringify({ success: false, error: errorMsg }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -430,6 +503,18 @@ async function buyShipment(
 
   const checkoutText = await checkoutResponse.text();
   console.log("[melhor-envio-labels] Checkout response:", checkoutText);
+
+  // Salvar log
+  await saveIntegrationLog(
+    supabase,
+    tenant_id,
+    order.id,
+    "buy_shipment",
+    checkoutResponse.status,
+    { orders: orderIds },
+    checkoutText,
+    !checkoutResponse.ok ? checkoutText : undefined
+  );
 
   if (!checkoutResponse.ok) {
     return new Response(
@@ -454,7 +539,8 @@ async function getLabel(
   baseUrl: string, 
   headers: Record<string, string>, 
   order: any,
-  supabase: any
+  supabase: any,
+  tenant_id: string
 ) {
   console.log("[melhor-envio-labels] Gerando etiqueta para pedido:", order.id);
 
@@ -462,11 +548,10 @@ async function getLabel(
   const shipmentId = order.melhor_envio_shipment_id;
   
   if (!shipmentId) {
+    const errorMsg = "Este pedido não tem uma remessa criada. Clique em 'Criar Remessa' primeiro.";
+    await saveIntegrationLog(supabase, tenant_id, order.id, "get_label", 400, {}, "", errorMsg);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: "Este pedido não tem uma remessa criada. Clique em 'Criar Remessa' primeiro." 
-      }),
+      JSON.stringify({ success: false, error: errorMsg }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -480,9 +565,22 @@ async function getLabel(
     body: JSON.stringify({ orders: [shipmentId] })
   });
 
+  const generateText = await generateResponse.text();
+  
+  // Salvar log do generate
+  await saveIntegrationLog(
+    supabase,
+    tenant_id,
+    order.id,
+    "get_label_generate",
+    generateResponse.status,
+    { orders: [shipmentId] },
+    generateText,
+    !generateResponse.ok ? generateText : undefined
+  );
+
   if (!generateResponse.ok) {
-    const errorText = await generateResponse.text();
-    console.log("[melhor-envio-labels] Erro ao gerar:", errorText);
+    console.log("[melhor-envio-labels] Erro ao gerar:", generateText);
     // Tentar continuar mesmo com erro (pode já estar gerada)
   }
 
@@ -496,15 +594,28 @@ async function getLabel(
     })
   });
 
+  const printText = await printResponse.text();
+
+  // Salvar log do print
+  await saveIntegrationLog(
+    supabase,
+    tenant_id,
+    order.id,
+    "get_label_print",
+    printResponse.status,
+    { mode: "public", orders: [shipmentId] },
+    printText,
+    !printResponse.ok ? printText : undefined
+  );
+
   if (!printResponse.ok) {
-    const errorText = await printResponse.text();
     return new Response(
-      JSON.stringify({ success: false, error: "Erro ao imprimir etiqueta: " + errorText }),
+      JSON.stringify({ success: false, error: "Erro ao imprimir etiqueta: " + printText }),
       { status: printResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
-  const printData = await printResponse.json();
+  const printData = JSON.parse(printText);
   console.log("[melhor-envio-labels] Print response:", printData);
 
   return new Response(
