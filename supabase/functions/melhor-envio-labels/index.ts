@@ -144,6 +144,9 @@ serve(async (req) => {
       case "get_label":
         return await getLabel(baseUrl, headers, order, supabase, tenant_id);
       
+      case "get_status":
+        return await getShipmentStatus(baseUrl, headers, order, supabase, tenant_id);
+      
       default:
         const errorMsg = `Ação desconhecida: ${action}`;
         await saveIntegrationLog(supabase, tenant_id, order_id, action, 400, {}, "", errorMsg);
@@ -623,6 +626,77 @@ async function getLabel(
       success: true, 
       data: { url: printData.url },
       message: "Etiqueta gerada com sucesso!"
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// Consultar status da remessa
+async function getShipmentStatus(
+  baseUrl: string,
+  headers: Record<string, string>,
+  order: any,
+  supabase: any,
+  tenant_id: string
+) {
+  const shipmentId = order.melhor_envio_shipment_id;
+  
+  if (!shipmentId) {
+    return new Response(
+      JSON.stringify({ success: false, error: "Pedido não possui remessa no Melhor Envio" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  console.log("[melhor-envio-labels] Consultando status da remessa:", shipmentId);
+
+  const response = await fetch(`${baseUrl}/me/shipment/tracking`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ orders: [shipmentId] })
+  });
+
+  const responseText = await response.text();
+  console.log("[melhor-envio-labels] Response status:", response.status);
+  console.log("[melhor-envio-labels] Response:", responseText);
+
+  await saveIntegrationLog(
+    supabase,
+    tenant_id,
+    order.id,
+    "get_status",
+    response.status,
+    { shipment_id: shipmentId },
+    responseText,
+    !response.ok ? responseText : undefined
+  );
+
+  if (!response.ok) {
+    return new Response(
+      JSON.stringify({ success: false, error: "Erro ao consultar status: " + responseText }),
+      { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const data = JSON.parse(responseText);
+  
+  // Verificar se tem tracking e atualizar pedido
+  const shipmentData = data[shipmentId];
+  if (shipmentData?.tracking) {
+    console.log("[melhor-envio-labels] Tracking encontrado:", shipmentData.tracking);
+    
+    await supabase
+      .from("orders")
+      .update({ melhor_envio_tracking_code: shipmentData.tracking })
+      .eq("id", order.id);
+  }
+
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      data: shipmentData,
+      tracking: shipmentData?.tracking || null,
+      status: shipmentData?.status || null
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
