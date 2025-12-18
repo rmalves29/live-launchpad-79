@@ -161,7 +161,9 @@ const Etiquetas = () => {
 
       if (error) {
         console.error('❌ [ETIQUETAS] Erro da edge function:', error);
-        throw new Error(error.message || `Erro na comunicação: ${JSON.stringify(error)}`);
+        // Tentar extrair mensagem de erro do data (Edge Functions retornam erro no body)
+        const errorMessage = data?.error || data?.message || error.message || `Erro na comunicação: ${JSON.stringify(error)}`;
+        throw new Error(errorMessage);
       }
 
       if (!data) {
@@ -231,7 +233,10 @@ const Etiquetas = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorMessage = data?.error || data?.message || error.message || 'Erro ao comprar frete';
+        throw new Error(errorMessage);
+      }
 
       if (data.success) {
         const trackingCode = data.tracking_code;
@@ -268,7 +273,10 @@ const Etiquetas = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorMessage = data?.error || data?.message || error.message || 'Erro ao gerar etiqueta';
+        throw new Error(errorMessage);
+      }
 
       if (data.success && data.data.url) {
         window.open(data.data.url, '_blank');
