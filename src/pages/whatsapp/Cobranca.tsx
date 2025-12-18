@@ -112,11 +112,11 @@ export default function Cobranca() {
         console.warn('⚠️ Resposta de tags não é array:', data);
         setTags([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro ao carregar tags:', error);
       toast({
         title: 'Aviso',
-        description: 'Não foi possível carregar as tags do WhatsApp',
+        description: error?.message || 'Não foi possível carregar as tags do WhatsApp',
         variant: 'destructive'
       });
     } finally {
@@ -238,11 +238,11 @@ export default function Cobranca() {
         title: 'Filtro aplicado',
         description: `${uniqueCustomers.length} cliente(s) encontrado(s)`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao carregar clientes:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao aplicar filtros',
+        description: error?.message || 'Erro ao aplicar filtros',
         variant: 'destructive'
       });
     } finally {
@@ -399,11 +399,11 @@ export default function Cobranca() {
       console.log('✅ Processo de envio finalizado');
       console.log(`📊 Sucesso: ${successCount}, Erros: ${errorCount}`);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao enviar mensagens:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao enviar mensagens em massa',
+        description: error?.message || 'Erro ao enviar mensagens em massa',
         variant: 'destructive'
       });
     } finally {

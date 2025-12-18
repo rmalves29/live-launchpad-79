@@ -92,11 +92,11 @@ useEffect(() => {
 
       if (error) throw error;
       setProducts((data as any) || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar produtos',
+        description: error?.message || 'Erro ao carregar produtos',
         variant: 'destructive'
       });
     }
@@ -117,11 +117,11 @@ useEffect(() => {
 
       if (error) throw error;
       setCartItems((data as any) || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading cart items:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar itens do pedido',
+        description: error?.message || 'Erro ao carregar itens do pedido',
         variant: 'destructive'
       });
     }
@@ -217,11 +217,11 @@ useEffect(() => {
         title: 'Sucesso',
         description: 'Produto adicionado e mensagem enviada'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding product:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao adicionar produto',
+        description: error?.message || 'Erro ao adicionar produto',
         variant: 'destructive'
       });
     } finally {
@@ -273,11 +273,11 @@ useEffect(() => {
           ? 'Produto removido (erro ao enviar mensagem)' 
           : 'Produto removido e mensagem de cancelamento enviada'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error removing item:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao cancelar produto',
+        description: error?.message || 'Erro ao cancelar produto',
         variant: 'destructive'
       });
     } finally {
@@ -298,11 +298,11 @@ useEffect(() => {
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating quantity:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao atualizar quantidade',
+        description: error?.message || 'Erro ao atualizar quantidade',
         variant: 'destructive'
       });
     }

@@ -416,9 +416,9 @@ const PublicCheckout = () => {
       setAppliedCoupon(coupon);
       setCouponDiscount(discount);
       toast({ title: 'Cupom Aplicado!', description: `Desconto de ${formatCurrency(discount)} aplicado` });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao aplicar cupom:', error);
-      toast({ title: 'Erro', description: 'Erro ao aplicar cupom', variant: 'destructive' });
+      toast({ title: 'Erro', description: error?.message || 'Erro ao aplicar cupom', variant: 'destructive' });
     } finally {
       setLoadingCoupon(false);
     }
@@ -640,9 +640,9 @@ const PublicCheckout = () => {
       if ((customerOrders || []).length === 0) {
         toast({ title: 'Nenhum pedido encontrado', description: 'Não há pedidos em aberto para este telefone' });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao buscar pedidos:', error);
-      toast({ title: 'Erro', description: 'Erro ao buscar seus pedidos', variant: 'destructive' });
+      toast({ title: 'Erro', description: error?.message || 'Erro ao buscar seus pedidos', variant: 'destructive' });
     } finally {
       setLoadingOrders(false);
     }

@@ -89,9 +89,9 @@ export default function MassMessageControl({
       if (error) throw error;
 
       toast.success('Template salvo com sucesso');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao salvar template:', error);
-      toast.error('Erro ao salvar template');
+      toast.error(error?.message || 'Erro ao salvar template');
     } finally {
       setSavingTemplate(false);
     }

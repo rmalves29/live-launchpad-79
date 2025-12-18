@@ -362,11 +362,11 @@ const Checkout = () => {
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading open orders:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar pedidos em aberto',
+        description: error?.message || 'Erro ao carregar pedidos em aberto',
         variant: 'destructive'
       });
     } finally {
@@ -911,11 +911,11 @@ const Checkout = () => {
         title: 'Cupom Aplicado!',
         description: `Desconto de ${formatCurrency(discount)} aplicado`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao aplicar cupom:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao aplicar cupom',
+        description: error?.message || 'Erro ao aplicar cupom',
         variant: 'destructive'
       });
     } finally {
@@ -1238,11 +1238,11 @@ const Checkout = () => {
           description: 'Este cliente não possui histórico de pedidos'
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading order history:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar histórico de pedidos',
+        description: error?.message || 'Erro ao carregar histórico de pedidos',
         variant: 'destructive'
       });
     } finally {

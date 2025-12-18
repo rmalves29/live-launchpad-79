@@ -88,11 +88,11 @@ const Produtos = () => {
 
       if (error) throw error;
       setProducts(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar produtos',
+        description: error?.message || 'Erro ao carregar produtos',
         variant: 'destructive'
       });
     } finally {
@@ -306,11 +306,11 @@ const Produtos = () => {
       });
       
       loadProducts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting product:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao excluir produto',
+        description: error?.message || 'Erro ao excluir produto',
         variant: 'destructive'
       });
     }
@@ -348,11 +348,11 @@ const Produtos = () => {
       
       setSelectedProducts([]);
       loadProducts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting products:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao excluir produtos',
+        description: error?.message || 'Erro ao excluir produtos',
         variant: 'destructive'
       });
     }

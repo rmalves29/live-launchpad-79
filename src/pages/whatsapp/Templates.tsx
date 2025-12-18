@@ -86,7 +86,7 @@ export default function WhatsappTemplates() {
       setTemplates(data || []);
     } catch (error: any) {
       console.error('Erro ao carregar templates:', error);
-      toast.error('Erro ao carregar templates');
+      toast.error(error?.message || 'Erro ao carregar templates');
     } finally {
       setLoading(false);
     }
@@ -133,7 +133,7 @@ export default function WhatsappTemplates() {
       loadTemplates();
     } catch (error: any) {
       console.error('Erro ao salvar template:', error);
-      toast.error('Erro ao salvar template');
+      toast.error(error?.message || 'Erro ao salvar template');
     }
   };
 
@@ -161,7 +161,7 @@ export default function WhatsappTemplates() {
       loadTemplates();
     } catch (error: any) {
       console.error('Erro ao excluir template:', error);
-      toast.error('Erro ao excluir template');
+      toast.error(error?.message || 'Erro ao excluir template');
     }
   };
 

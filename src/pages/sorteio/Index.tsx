@@ -138,11 +138,11 @@ const Sorteio = () => {
         title: 'Sorteio Realizado!',
         description: `Vencedor selecionado entre ${paidOrders.length} pedidos elegíveis`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error performing raffle:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao realizar sorteio',
+        description: error?.message || 'Erro ao realizar sorteio',
         variant: 'destructive'
       });
     } finally {

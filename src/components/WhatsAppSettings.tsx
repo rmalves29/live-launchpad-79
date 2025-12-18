@@ -45,7 +45,7 @@ export function WhatsAppSettings() {
       console.error('Error loading WhatsApp integration:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar integração do WhatsApp',
+        description: error?.message || 'Erro ao carregar integração do WhatsApp',
         variant: 'destructive'
       });
     } finally {

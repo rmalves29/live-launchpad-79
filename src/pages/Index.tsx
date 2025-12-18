@@ -190,11 +190,11 @@ const Pedidos = () => {
       }));
 
       setOrders(ordersWithDetails);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading orders:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar pedidos',
+        description: error?.message || 'Erro ao carregar pedidos',
         variant: 'destructive'
       });
     } finally {
@@ -229,10 +229,10 @@ const Pedidos = () => {
           title: 'Sucesso',
           description: 'Pedido desmarcado como pago'
         });
-      } catch (error) {
+      } catch (error: any) {
         toast({
           title: 'Erro',
-          description: 'Erro ao atualizar status',
+          description: error?.message || 'Erro ao atualizar status',
           variant: 'destructive'
         });
       } finally {
@@ -293,11 +293,11 @@ const Pedidos = () => {
         title: 'Sucesso',
         description: 'Pedido marcado como pago'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Erro ao atualizar status:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao atualizar status do pagamento',
+        description: error?.message || 'Erro ao atualizar status do pagamento',
         variant: 'destructive'
       });
     } finally {
@@ -367,10 +367,10 @@ const Pedidos = () => {
         title: 'Sucesso',
         description: 'Observação salva com sucesso'
       });
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao salvar observação',
+        description: error?.message || 'Erro ao salvar observação',
         variant: 'destructive'
       });
     }
@@ -418,10 +418,10 @@ const Pedidos = () => {
         title: 'Sucesso',
         description: `${selectedOrders.size} pedido(s) marcado(s) como impresso(s)`
       });
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao marcar pedidos como impressos',
+        description: error?.message || 'Erro ao marcar pedidos como impressos',
         variant: 'destructive'
       });
     }
@@ -446,10 +446,10 @@ const Pedidos = () => {
         title: 'Sucesso',
         description: `Pedido ${!currentStatus ? 'marcado como impresso' : 'desmarcado como impresso'}`
       });
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao alterar status de impressão',
+        description: error?.message || 'Erro ao alterar status de impressão',
         variant: 'destructive'
       });
     }
@@ -507,11 +507,11 @@ const Pedidos = () => {
         title: 'Sucesso',
         description: `${selectedOrders.size} pedido(s) deletado(s) com sucesso`
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting orders:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao deletar pedidos',
+        description: error?.message || 'Erro ao deletar pedidos',
         variant: 'destructive'
       });
     }

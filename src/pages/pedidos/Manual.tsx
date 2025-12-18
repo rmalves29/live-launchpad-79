@@ -68,11 +68,11 @@ const PedidosManual = () => {
 
       if (error) throw error;
       setProducts(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar produtos',
+        description: error?.message || 'Erro ao carregar produtos',
         variant: 'destructive'
       });
     } finally {
@@ -340,11 +340,11 @@ const PedidosManual = () => {
 
 
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error launching sale:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao lançar venda',
+        description: error?.message || 'Erro ao lançar venda',
         variant: 'destructive'
       });
     } finally {

@@ -71,10 +71,10 @@ export default function TenantOrders() {
       
       if (error) throw error;
       setOrders(data || []);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar pedidos',
+        description: error?.message || 'Erro ao carregar pedidos',
         variant: 'destructive'
       });
     }
@@ -110,10 +110,10 @@ export default function TenantOrders() {
 
       setSelectedOrder(orderWithItems);
       setIsViewDialogOpen(true);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar detalhes do pedido',
+        description: error?.message || 'Erro ao carregar detalhes do pedido',
         variant: 'destructive'
       });
     }

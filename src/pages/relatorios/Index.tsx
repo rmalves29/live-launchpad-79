@@ -263,11 +263,11 @@ const Relatorios = () => {
         total_products: totalProducts,
         ticket_medio: ticketMedio
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading today sales:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar vendas',
+        description: error?.message || 'Erro ao carregar vendas',
         variant: 'destructive'
       });
     }
@@ -408,11 +408,11 @@ const Relatorios = () => {
         monthly: calculateStats(filteredMonthly, monthlyProducts),
         yearly: calculateStats(filteredYearly, yearlyProducts)
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading period stats:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar estatísticas do período',
+        description: error?.message || 'Erro ao carregar estatísticas do período',
         variant: 'destructive'
       });
     }
@@ -541,11 +541,11 @@ const Relatorios = () => {
         .slice(0, 10); // Top 10
 
       setTopProducts(productsArray);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading top products:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar produtos mais vendidos',
+        description: error?.message || 'Erro ao carregar produtos mais vendidos',
         variant: 'destructive'
       });
     }
@@ -725,9 +725,9 @@ const Relatorios = () => {
       
       console.log('📊 Estatísticas finais por grupo:', groupsArray);
       setWhatsappGroupStats(groupsArray);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading WhatsApp group stats:', error);
-      toast({ title: 'Erro', description: 'Erro ao carregar estatísticas por grupo de WhatsApp', variant: 'destructive' });
+      toast({ title: 'Erro', description: error?.message || 'Erro ao carregar estatísticas por grupo de WhatsApp', variant: 'destructive' });
     }
   };
 
@@ -922,11 +922,11 @@ const Relatorios = () => {
       
       console.log('📊 Top clientes:', customersArray);
       setTopCustomers(customersArray);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading top customers:', error);
       toast({ 
         title: 'Erro', 
-        description: 'Erro ao carregar clientes com mais compras', 
+        description: error?.message || 'Erro ao carregar clientes com mais compras', 
         variant: 'destructive' 
       });
     }

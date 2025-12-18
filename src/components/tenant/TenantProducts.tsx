@@ -64,10 +64,10 @@ export default function TenantProducts() {
       
       if (error) throw error;
       setProducts(data || []);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar produtos',
+        description: error?.message || 'Erro ao carregar produtos',
         variant: 'destructive'
       });
     }
