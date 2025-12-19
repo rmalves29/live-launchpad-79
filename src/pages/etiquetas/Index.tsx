@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw, Settings, AlertCircle, ExternalLink } from 'lucide-react';
+import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw, Settings, AlertCircle, ExternalLink, Pencil, Save, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -57,6 +58,11 @@ const Etiquetas = () => {
   const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined);
   const [activeTab, setActiveTab] = useState('etiquetas');
   const [syncingAll, setSyncingAll] = useState(false);
+  
+  // Estado para edição de código de rastreio
+  const [editingTrackingOrderId, setEditingTrackingOrderId] = useState<number | null>(null);
+  const [editingTrackingCode, setEditingTrackingCode] = useState('');
+  const [savingTracking, setSavingTracking] = useState(false);
   
   // Logs state (só usado por super_admin)
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
@@ -452,6 +458,46 @@ const Etiquetas = () => {
     }
   };
 
+  // Iniciar edição do código de rastreio
+  const startEditingTracking = (orderId: number, currentCode: string) => {
+    setEditingTrackingOrderId(orderId);
+    setEditingTrackingCode(currentCode || '');
+  };
+
+  // Cancelar edição
+  const cancelEditingTracking = () => {
+    setEditingTrackingOrderId(null);
+    setEditingTrackingCode('');
+  };
+
+  // Salvar código de rastreio editado
+  const saveTrackingCode = async (orderId: number) => {
+    if (!editingTrackingCode.trim()) {
+      toast.error('Digite um código de rastreio válido');
+      return;
+    }
+
+    setSavingTracking(true);
+    try {
+      const { error } = await supabaseTenant
+        .from('orders')
+        .update({ melhor_envio_tracking_code: editingTrackingCode.trim() })
+        .eq('id', orderId);
+
+      if (error) throw error;
+
+      toast.success('Código de rastreio atualizado!');
+      setEditingTrackingOrderId(null);
+      setEditingTrackingCode('');
+      loadPaidOrders();
+    } catch (error: any) {
+      console.error('Erro ao salvar código de rastreio:', error);
+      toast.error(`Erro ao salvar: ${error.message}`);
+    } finally {
+      setSavingTracking(false);
+    }
+  };
+
   // Sincronizar todos os pedidos com remessa no Melhor Envio
   const syncAllOrdersStatus = async () => {
     const ordersWithShipment = orders.filter(o => o.melhor_envio_shipment_id && !o.melhor_envio_tracking_code);
@@ -698,23 +744,69 @@ const Etiquetas = () => {
                           </div>
                           
                           {/* Código de rastreio em destaque */}
-                          {order.melhor_envio_tracking_code && (
-                            <div className="flex items-center gap-2 bg-primary/10 px-3 py-2 rounded-lg w-fit">
-                              <Truck className="h-4 w-4 text-primary" />
-                              <span className="text-sm font-medium">Rastreio:</span>
-                              <code className="bg-background px-2 py-0.5 rounded text-sm font-mono">
-                                {order.melhor_envio_tracking_code}
-                              </code>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6"
-                                onClick={() => copyTrackingCode(order.melhor_envio_tracking_code!)}
-                              >
-                                <Copy className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2 bg-primary/10 px-3 py-2 rounded-lg w-fit">
+                            <Truck className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-medium">Rastreio:</span>
+                            
+                            {editingTrackingOrderId === order.id ? (
+                              <>
+                                <Input
+                                  value={editingTrackingCode}
+                                  onChange={(e) => setEditingTrackingCode(e.target.value)}
+                                  placeholder="Digite o código"
+                                  className="h-7 w-40 text-sm font-mono"
+                                  autoFocus
+                                />
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 text-green-600 hover:text-green-700"
+                                  onClick={() => saveTrackingCode(order.id)}
+                                  disabled={savingTracking}
+                                >
+                                  {savingTracking ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Save className="h-3 w-3" />
+                                  )}
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6 text-destructive hover:text-destructive"
+                                  onClick={cancelEditingTracking}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <code className="bg-background px-2 py-0.5 rounded text-sm font-mono">
+                                  {order.melhor_envio_tracking_code || 'Não definido'}
+                                </code>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6"
+                                  onClick={() => startEditingTracking(order.id, order.melhor_envio_tracking_code || '')}
+                                  title="Editar código de rastreio"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                                {order.melhor_envio_tracking_code && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6"
+                                    onClick={() => copyTrackingCode(order.melhor_envio_tracking_code!)}
+                                    title="Copiar código"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                         
                         <div className="text-sm text-muted-foreground space-y-1">
