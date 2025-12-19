@@ -35,6 +35,7 @@ import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
 import TenantsAdmin from "./pages/admin/TenantsAdmin";
 import Debug from "./pages/Debug";
+import LandingPage from "./pages/LandingPage";
 
 // WhatsApp
 import WhatsappTemplates from "./pages/whatsapp/Templates";
@@ -83,6 +84,9 @@ const AppContent = () => {
     <>
       {showNavbar && <Navbar />}
       <Routes>
+        {/* Landing page pública institucional */}
+        <Route path="/landing" element={<LandingPage />} />
+        
         {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
         <Route path="/" element={
           tenant ? (
