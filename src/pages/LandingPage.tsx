@@ -426,12 +426,12 @@ export default function LandingPage() {
               </p>
               <Link to="/auth">
                 <Button size="lg" className="bg-emerald-500 hover:bg-emerald-600 text-white px-12 h-14 text-lg">
-                  Criar Conta Grátis
+                  Contratar
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </Link>
               <p className="mt-4 text-sm text-gray-500">
-                Sem cartão de crédito • Setup em 5 minutos
+                Quero saber mais
               </p>
             </div>
           </div>
