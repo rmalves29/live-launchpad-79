@@ -29,16 +29,16 @@ export default function LandingPage() {
     {
       icon: MessageSquare,
       title: "WhatsApp Integrado",
-      description: "Envio automático de mensagens, cobranças e rastreio via Z-API"
+      description: "Envio automático de mensagens, cobranças e rastreio via whatsapp"
     },
     {
       icon: CreditCard,
-      title: "Mercado Pago",
+      title: "Pagamento",
       description: "Links de pagamento automáticos com confirmação instantânea"
     },
     {
       icon: Truck,
-      title: "Melhor Envio",
+      title: "Sistema de Envio",
       description: "Etiquetas e rastreio automático integrado às transportadoras"
     },
     {
