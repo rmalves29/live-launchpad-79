@@ -123,7 +123,7 @@ export default function LandingPage() {
           <div className="max-w-4xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-6">
               <Star className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm text-emerald-400">Sistema #1 para vendas em lives</span>
+              <span className="text-sm text-emerald-400">Sistema #1 para vendas em lives e grupos de whatsapp</span>
             </div>
             
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold leading-tight mb-6">
@@ -146,24 +146,20 @@ export default function LandingPage() {
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </Link>
-              <Button size="lg" variant="outline" className="border-gray-700 text-white hover:bg-white/5 px-8 h-12 text-base">
+              <Button size="lg" variant="outline" className="border-gray-700 text-emerald-400 hover:bg-white/5 px-8 h-12 text-base">
                 <Play className="mr-2 w-5 h-5" />
                 Ver Demonstração
               </Button>
             </div>
 
-            <div className="mt-12 flex items-center justify-center gap-8 text-sm text-gray-500">
+            <div className="mt-12 flex flex-wrap items-center justify-center gap-6 md:gap-8 text-sm text-gray-500">
               <span className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-500" />
-                Sem mensalidade obrigatória
+                Sem cobrança adicional por mensagem enviada
               </span>
               <span className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-500" />
                 WhatsApp gratuito
-              </span>
-              <span className="flex items-center gap-2">
-                <Check className="w-4 h-4 text-emerald-500" />
-                Setup em 5 minutos
               </span>
             </div>
           </div>
