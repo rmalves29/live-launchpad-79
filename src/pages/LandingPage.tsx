@@ -54,10 +54,10 @@ export default function LandingPage() {
   ];
 
   const comparison = [
-    { without: "Anotar pedidos em papel", with: "Captura automática na live" },
-    { without: "Cobrar cliente por DM", with: "Link de pagamento automático" },
+    { without: "Anotar pedidos em excel", with: "Organização de Pedidos" },
+    { without: "Cobrar cliente por 1 a 1", with: "Link de pagamento automático" },
     { without: "Enviar rastreio manualmente", with: "Notificação automática" },
-    { without: "Perder vendas por demora", with: "Resposta instantânea" },
+    { without: "Perder vendas por demora", with: "Lançamento de vendas automáticas" },
     { without: "Horas organizando planilhas", with: "Dashboard em tempo real" },
   ];
 
