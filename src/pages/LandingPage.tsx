@@ -71,8 +71,7 @@ export default function LandingPage() {
 
   const audiences = [
     { icon: Play, title: "Lojas de Live", description: "Vendedores que fazem lives no Instagram, Facebook ou TikTok" },
-    { icon: ShoppingBag, title: "Bazares e Brechós", description: "Negócios que vendem roupas, acessórios e produtos usados" },
-    { icon: Users, title: "Revendedores", description: "Profissionais que trabalham com vendas diretas e catálogos" },
+    { icon: MessageSquare, title: "Grupos de Whatsapp", description: "Negócios que vendem produtos em grupos de whatsapp" },
   ];
 
   const benefits = [
