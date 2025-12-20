@@ -248,17 +248,14 @@ export default function LandingPage() {
               e rastreio via WhatsApp, tudo integrado em uma única plataforma.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <span className="px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm">
-                Multi-Tenant
-              </span>
               <span className="px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-sm">
                 WhatsApp Nativo
               </span>
               <span className="px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-sm">
-                Mercado Pago
+                Sistema de Pagamento Integrado
               </span>
               <span className="px-4 py-2 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 text-sm">
-                Melhor Envio
+                Sistema de Envio Integrado
               </span>
             </div>
           </div>
