@@ -127,7 +127,7 @@ export default function LandingPage() {
             </div>
             
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold leading-tight mb-6">
-              Venda na Live
+              Venda na Live e grupos de whatsapp
               <br />
               <span className="bg-gradient-to-r from-emerald-400 to-emerald-600 bg-clip-text text-transparent">
                 sem perder vendas
