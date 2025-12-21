@@ -99,13 +99,8 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-3">
             <Link to="/auth">
-              <Button variant="ghost" size="sm" className="text-gray-300 hover:text-white">
-                Entrar
-              </Button>
-            </Link>
-            <Link to="/auth">
               <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
-                Começar Grátis
+                Área do Cliente
               </Button>
             </Link>
           </div>
@@ -139,12 +134,12 @@ export default function LandingPage() {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/auth">
+              <a href="http://api.whatsapp.com/send?l=pt&phone=5531992904210" target="_blank" rel="noopener noreferrer">
                 <Button size="lg" className="bg-emerald-500 hover:bg-emerald-600 text-white px-8 h-12 text-base">
                   Começar Agora
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
-              </Link>
+              </a>
               <Button size="lg" variant="outline" className="border-gray-700 text-emerald-400 hover:bg-white/5 px-8 h-12 text-base">
                 <Play className="mr-2 w-5 h-5" />
                 Ver Demonstração
