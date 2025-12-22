@@ -68,18 +68,47 @@ serve(async (req) => {
 
     console.log(`[zapi-webhook] Message: "${messageText}", From: ${senderPhone}, Group: ${groupName}, IsGroup: ${isGroup}`);
 
-    // Recognize product codes (format: C followed by numbers, like C300, C111, etc.)
-    const productCodeRegex = /\b[Cc](\d{1,4})\b/g;
-    const matches = messageText.match(productCodeRegex);
+    // Recognize product codes in multiple formats:
+    // - With C prefix: C300, c111, C1
+    // - Just numbers: 300, 111, 001, 1
+    // - With leading zeros: 001, 01
+    const productCodes: string[] = [];
+    
+    // Pattern 1: C followed by digits (e.g., C300, c111)
+    const codeWithCRegex = /\b[Cc](\d{1,4})\b/g;
+    let match;
+    while ((match = codeWithCRegex.exec(messageText)) !== null) {
+      productCodes.push('C' + match[1]); // Normalize to uppercase C
+    }
+    
+    // Pattern 2: Standalone numbers that could be product codes (1-4 digits)
+    // Only match if the message is primarily a product code (short message)
+    const trimmedMessage = messageText.trim();
+    const pureNumberRegex = /^(\d{1,4})$/;
+    const pureNumberMatch = trimmedMessage.match(pureNumberRegex);
+    if (pureNumberMatch) {
+      // Message is just a number - treat as product code
+      productCodes.push(pureNumberMatch[1]);
+    }
+    
+    // Pattern 3: Numbers with leading zeros or standalone in message (e.g., "001", "123")
+    // Look for numbers that are likely product codes (not part of longer text)
+    const numbersInMessageRegex = /(?:^|\s)(\d{1,4})(?:\s|$)/g;
+    while ((match = numbersInMessageRegex.exec(messageText)) !== null) {
+      const code = match[1];
+      if (!productCodes.includes(code) && !productCodes.includes('C' + code)) {
+        productCodes.push(code);
+      }
+    }
 
-    if (!matches || matches.length === 0) {
+    if (productCodes.length === 0) {
       console.log('[zapi-webhook] No product codes found in message');
       return new Response(JSON.stringify({ success: true, skipped: 'no_product_codes' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`[zapi-webhook] Found product codes: ${matches.join(', ')}`);
+    console.log(`[zapi-webhook] Found product codes: ${productCodes.join(', ')}`);
 
     // Normalize phone number (remove country code if present)
     const normalizedPhone = normalizePhone(senderPhone);
@@ -151,26 +180,67 @@ serve(async (req) => {
 
     // Process each product code
     const results = [];
-    for (const codeMatch of matches) {
-      const code = codeMatch.toUpperCase();
+    for (const code of productCodes) {
+      const codeUpper = code.toUpperCase();
       
-      // Find product by code
-      const { data: product, error: productError } = await supabase
+      // Try to find product by exact code first
+      let product = null;
+      let productError = null;
+      
+      // Try exact match
+      const { data: exactProduct, error: exactError } = await supabase
         .from('products')
         .select('*')
         .eq('tenant_id', tenantId)
-        .eq('code', code)
+        .ilike('code', codeUpper)
         .eq('is_active', true)
         .limit(1)
-        .single();
+        .maybeSingle();
+      
+      if (exactProduct) {
+        product = exactProduct;
+      } else {
+        // Try with C prefix if not found and code doesn't start with C
+        if (!codeUpper.startsWith('C')) {
+          const { data: cPrefixProduct } = await supabase
+            .from('products')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .ilike('code', 'C' + codeUpper)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          
+          if (cPrefixProduct) {
+            product = cPrefixProduct;
+          }
+        }
+        
+        // Try without C prefix if code starts with C
+        if (!product && codeUpper.startsWith('C')) {
+          const withoutC = codeUpper.substring(1);
+          const { data: noPrefixProduct } = await supabase
+            .from('products')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .ilike('code', withoutC)
+            .eq('is_active', true)
+            .limit(1)
+            .maybeSingle();
+          
+          if (noPrefixProduct) {
+            product = noPrefixProduct;
+          }
+        }
+      }
 
-      if (productError || !product) {
-        console.log(`[zapi-webhook] Product not found: ${code}`);
-        results.push({ code, success: false, error: 'product_not_found' });
+      if (!product) {
+        console.log(`[zapi-webhook] Product not found: ${codeUpper}`);
+        results.push({ code: codeUpper, success: false, error: 'product_not_found' });
         continue;
       }
 
-      console.log(`[zapi-webhook] Found product: ${product.name} (${code}) - R$ ${product.price}`);
+      console.log(`[zapi-webhook] Found product: ${product.name} (${product.code}) - R$ ${product.price}`);
 
       // Find or create customer
       let customer = await findOrCreateCustomer(supabase, tenantId, normalizedPhone, payload.senderName || '');
