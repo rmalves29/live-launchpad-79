@@ -415,20 +415,24 @@ async function handleMessageStatusCallback(supabase: any, payload: ZAPIWebhookPa
 
 function normalizePhone(phone: string): string {
   if (!phone) return '';
-  
+
   // Remove all non-digit characters
   let clean = phone.replace(/\D/g, '');
-  
+
   // Remove country code 55 if present
   if (clean.startsWith('55') && clean.length > 11) {
     clean = clean.substring(2);
   }
-  
-  // Ensure we have at least 10 digits (DDD + number)
+
+  // Expect DDD + number
   if (clean.length < 10) return '';
-  
-  // Keep the phone number as-is from WhatsApp
-  // Don't apply 9th digit normalization as WhatsApp already sends the correct format
+
+  // If WhatsApp sends DDD + 8 digits (10 total), assume mobile and add the 9th digit
+  // (landlines typically don't use WhatsApp).
+  if (clean.length === 10) {
+    clean = clean.substring(0, 2) + '9' + clean.substring(2);
+  }
+
   return clean;
 }
 
