@@ -68,37 +68,15 @@ serve(async (req) => {
 
     console.log(`[zapi-webhook] Message: "${messageText}", From: ${senderPhone}, Group: ${groupName}, IsGroup: ${isGroup}`);
 
-    // Recognize product codes in multiple formats:
-    // - With C prefix: C300, c111, C1
-    // - Just numbers: 300, 111, 001, 1
-    // - With leading zeros: 001, 01
+    // Recognize product codes strictly in the format: C + 1-4 digits (e.g., C100)
+    // IMPORTANT: We intentionally do NOT accept plain numbers like "100" to avoid false positives.
     const productCodes: string[] = [];
-    
-    // Pattern 1: C followed by digits (e.g., C300, c111)
+
     const codeWithCRegex = /\b[Cc](\d{1,4})\b/g;
     let match;
     while ((match = codeWithCRegex.exec(messageText)) !== null) {
-      productCodes.push('C' + match[1]); // Normalize to uppercase C
-    }
-    
-    // Pattern 2: Standalone numbers that could be product codes (1-4 digits)
-    // Only match if the message is primarily a product code (short message)
-    const trimmedMessage = messageText.trim();
-    const pureNumberRegex = /^(\d{1,4})$/;
-    const pureNumberMatch = trimmedMessage.match(pureNumberRegex);
-    if (pureNumberMatch) {
-      // Message is just a number - treat as product code
-      productCodes.push(pureNumberMatch[1]);
-    }
-    
-    // Pattern 3: Numbers with leading zeros or standalone in message (e.g., "001", "123")
-    // Look for numbers that are likely product codes (not part of longer text)
-    const numbersInMessageRegex = /(?:^|\s)(\d{1,4})(?:\s|$)/g;
-    while ((match = numbersInMessageRegex.exec(messageText)) !== null) {
-      const code = match[1];
-      if (!productCodes.includes(code) && !productCodes.includes('C' + code)) {
-        productCodes.push(code);
-      }
+      const normalized = `C${match[1]}`;
+      if (!productCodes.includes(normalized)) productCodes.push(normalized);
     }
 
     if (productCodes.length === 0) {
@@ -121,52 +99,62 @@ serve(async (req) => {
       });
     }
 
-    // Find tenant by group (we need to identify which tenant this message belongs to)
-    // First, try to find tenant by customer_whatsapp_groups
+    // Identify tenant (MUST be tied to the Z-API instance that received the message)
+    // Priority:
+    // 1) payload.instanceId -> integration_whatsapp.zapi_instance_id (prevents cross-tenant leakage)
+    // 2) group mapping (customer_whatsapp_groups)
+    // 3) customer phone mapping (customers)
     let tenantId: string | null = null;
-    
-    if (groupName) {
+
+    if (payload.instanceId) {
+      const { data: integrations, error: instErr } = await supabase
+        .from('integration_whatsapp')
+        .select('tenant_id')
+        .eq('provider', 'zapi')
+        .eq('is_active', true)
+        .eq('zapi_instance_id', payload.instanceId);
+
+      if (instErr) {
+        console.log('[zapi-webhook] Error looking up tenant by instanceId:', instErr);
+      } else if ((integrations?.length || 0) === 1) {
+        tenantId = integrations![0].tenant_id;
+        console.log(`[zapi-webhook] Found tenant by instanceId (${payload.instanceId}): ${tenantId}`);
+      } else if ((integrations?.length || 0) > 1) {
+        console.log(`[zapi-webhook] ERROR: instanceId ${payload.instanceId} is linked to multiple tenants (${integrations?.length}). Aborting.`);
+        return new Response(JSON.stringify({ success: false, error: 'instance_id_conflict' }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      } else {
+        console.log(`[zapi-webhook] No active integration found for instanceId ${payload.instanceId}`);
+      }
+    }
+
+    if (!tenantId && groupName) {
       const { data: groupData } = await supabase
         .from('customer_whatsapp_groups')
         .select('tenant_id')
         .eq('whatsapp_group_name', groupName)
         .limit(1)
-        .single();
-      
+        .maybeSingle();
+
       if (groupData) {
         tenantId = groupData.tenant_id;
         console.log(`[zapi-webhook] Found tenant by group name: ${tenantId}`);
       }
     }
 
-    // If not found by group, try to find by customer phone
     if (!tenantId) {
       const { data: customerData } = await supabase
         .from('customers')
         .select('tenant_id')
         .eq('phone', normalizedPhone)
         .limit(1)
-        .single();
-      
+        .maybeSingle();
+
       if (customerData) {
         tenantId = customerData.tenant_id;
         console.log(`[zapi-webhook] Found tenant by customer phone: ${tenantId}`);
-      }
-    }
-
-    // If still not found, try to find active tenant with WhatsApp integration
-    if (!tenantId) {
-      const { data: integrationData } = await supabase
-        .from('integration_whatsapp')
-        .select('tenant_id')
-        .eq('provider', 'zapi')
-        .eq('is_active', true)
-        .limit(1)
-        .single();
-      
-      if (integrationData) {
-        tenantId = integrationData.tenant_id;
-        console.log(`[zapi-webhook] Using first active Z-API tenant: ${tenantId}`);
       }
     }
 
