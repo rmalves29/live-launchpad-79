@@ -427,23 +427,9 @@ function normalizePhone(phone: string): string {
   // Ensure we have at least 10 digits (DDD + number)
   if (clean.length < 10) return '';
   
-  // Apply regional ninth digit rule
-  const ddd = parseInt(clean.substring(0, 2));
-  let number = clean.substring(2);
-  
-  // DDDs 11-30: should have 9 digits (add 9 if missing)
-  // DDDs 31+: should have 8 digits (remove 9 if present)
-  if (ddd >= 11 && ddd <= 30) {
-    if (number.length === 8) {
-      number = '9' + number;
-    }
-  } else if (ddd >= 31) {
-    if (number.length === 9 && number.startsWith('9')) {
-      number = number.substring(1);
-    }
-  }
-  
-  return clean.substring(0, 2) + number;
+  // Keep the phone number as-is from WhatsApp
+  // Don't apply 9th digit normalization as WhatsApp already sends the correct format
+  return clean;
 }
 
 async function findOrCreateCustomer(
