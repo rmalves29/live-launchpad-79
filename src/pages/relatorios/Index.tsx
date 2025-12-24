@@ -664,11 +664,11 @@ const Relatorios = () => {
       // Processar cada pedido e agrupar por grupo WhatsApp
       orders?.forEach(order => {
         // Determinar código do grupo
-        let groupCode = order.whatsapp_group_name || order.carts?.whatsapp_group_name || 'Sem Grupo';
+        let groupCode = order.whatsapp_group_name || order.carts?.whatsapp_group_name || 'Venda Manual';
 
         // Obter nome amigável do grupo: preferir Z-API, caso contrário fallback
-        let groupName = 'Sem Grupo';
-        if (groupCode && groupCode !== 'Sem Grupo') {
+        let groupName = 'Venda Manual';
+        if (groupCode && groupCode !== 'Venda Manual') {
           if (zapiGroupNames.has(groupCode)) {
             // Nome obtido via Z-API
             groupName = zapiGroupNames.get(groupCode)!;
