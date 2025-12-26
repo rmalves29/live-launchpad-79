@@ -1,6 +1,6 @@
 import { useTenantContext } from '@/contexts/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -59,9 +59,42 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
-  const isLoading = zapiLoading || mpLoading || shippingLoading;
+  // Bling ERP Status
+  const { data: blingIntegration, isLoading: blingLoading } = useQuery({
+    queryKey: ['bling-checklist-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_bling')
+        .select('is_active, sync_orders, sync_products, sync_stock, sync_invoices, sync_marketplaces, sync_ecommerce, sync_logistics')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const isLoading = zapiLoading || mpLoading || shippingLoading || blingLoading;
+
+  // Contagem de módulos ativos do Bling
+  const blingActiveModules = blingIntegration ? [
+    blingIntegration.sync_orders,
+    blingIntegration.sync_products,
+    blingIntegration.sync_stock,
+    blingIntegration.sync_invoices,
+    blingIntegration.sync_marketplaces,
+    blingIntegration.sync_ecommerce,
+    blingIntegration.sync_logistics,
+  ].filter(Boolean).length : 0;
 
   const integrations: IntegrationStatus[] = [
+    {
+      name: 'Bling ERP',
+      icon: <Building2 className="h-5 w-5" />,
+      isActive: blingIntegration?.is_active || false,
+      details: blingIntegration?.is_active 
+        ? `${blingActiveModules} módulo(s) ativo(s)` 
+        : 'Não configurado',
+    },
     {
       name: 'Z-API (WhatsApp)',
       icon: <MessageSquare className="h-5 w-5" />,
