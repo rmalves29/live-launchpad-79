@@ -2,10 +2,11 @@
  * Página de Integrações por Tenant
  * Permite configurar Mercado Pago, Melhor Envio e Bling ERP
  * Usa automaticamente o tenant do usuário logado
+ * Bling ERP só visível para super_admin até validação completa
  */
 
 import { useTenantContext } from '@/contexts/TenantContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2 } from 'lucide-react';
@@ -17,7 +18,9 @@ import { supabase } from '@/integrations/supabase/client';
 
 export default function TenantIntegrationsPage() {
   const { tenant, loading: tenantLoading } = useTenantContext();
+  const { profile } = useAuth();
   const tenantId = tenant?.id || '';
+  const isSuperAdmin = profile?.role === 'super_admin';
 
   // Buscar status das integrações
   const { data: mpIntegration } = useQuery({
@@ -57,8 +60,11 @@ export default function TenantIntegrationsPage() {
         .maybeSingle();
       return data;
     },
-    enabled: !!tenantId,
+    enabled: !!tenantId && isSuperAdmin,
   });
+
+  // Determinar número de colunas baseado no acesso
+  const tabColumns = isSuperAdmin ? 3 : 2;
 
   // Verificar se tenant está carregando
   if (tenantLoading) {
@@ -90,15 +96,17 @@ export default function TenantIntegrationsPage() {
         Configure suas integrações de pagamento, envio e ERP para a empresa <strong>{tenant.name}</strong>
       </p>
 
-      <Tabs defaultValue="bling" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="bling" className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
-            Bling ERP
-            {blingIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-            )}
-          </TabsTrigger>
+      <Tabs defaultValue={isSuperAdmin ? "bling" : "mercadopago"} className="w-full">
+        <TabsList className={`grid w-full grid-cols-${tabColumns}`}>
+          {isSuperAdmin && (
+            <TabsTrigger value="bling" className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Bling ERP
+              {blingIntegration?.is_active && (
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="mercadopago" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
             Mercado Pago
@@ -115,9 +123,11 @@ export default function TenantIntegrationsPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="bling" className="mt-6">
-          <BlingIntegration tenantId={tenantId} />
-        </TabsContent>
+        {isSuperAdmin && (
+          <TabsContent value="bling" className="mt-6">
+            <BlingIntegration tenantId={tenantId} />
+          </TabsContent>
+        )}
 
         <TabsContent value="mercadopago" className="mt-6">
           <PaymentIntegrations tenantId={tenantId} />
