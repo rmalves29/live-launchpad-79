@@ -387,6 +387,83 @@ export type Database = {
         }
         Relationships: []
       }
+      integration_bling: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          environment: string
+          id: string
+          is_active: boolean
+          last_sync_at: string | null
+          refresh_token: string | null
+          sync_ecommerce: boolean
+          sync_invoices: boolean
+          sync_logistics: boolean
+          sync_marketplaces: boolean
+          sync_orders: boolean
+          sync_products: boolean
+          sync_stock: boolean
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          refresh_token?: string | null
+          sync_ecommerce?: boolean
+          sync_invoices?: boolean
+          sync_logistics?: boolean
+          sync_marketplaces?: boolean
+          sync_orders?: boolean
+          sync_products?: boolean
+          sync_stock?: boolean
+          tenant_id: string
+          token_expires_at?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          refresh_token?: string | null
+          sync_ecommerce?: boolean
+          sync_invoices?: boolean
+          sync_logistics?: boolean
+          sync_marketplaces?: boolean
+          sync_orders?: boolean
+          sync_products?: boolean
+          sync_stock?: boolean
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_bling_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_mp: {
         Row: {
           access_token: string | null
