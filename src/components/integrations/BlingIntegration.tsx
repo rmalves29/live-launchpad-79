@@ -120,6 +120,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   const [modules, setModules] = useState<Record<string, boolean>>({
     sync_orders: false,
     sync_products: false,
@@ -570,6 +571,55 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         </Card>
       )}
 
+      {/* Alerta de erro de escopo/permissão */}
+      {scopeError && (
+        <Card className="border-red-500 bg-red-50 dark:bg-red-950">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg flex items-center gap-2 text-red-700 dark:text-red-300">
+              <AlertTriangle className="h-5 w-5" />
+              Erro de Permissão no Bling
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-red-800 dark:text-red-200">
+              {scopeError}
+            </p>
+            <Alert className="border-red-400 bg-red-100 dark:bg-red-900">
+              <Info className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800 dark:text-red-200">
+                <strong>Como resolver:</strong>
+                <ol className="list-decimal ml-4 mt-2 space-y-1">
+                  <li>Acesse o <a href="https://developer.bling.com.br/aplicativos" target="_blank" rel="noopener noreferrer" className="underline font-medium">Portal de Desenvolvedores do Bling</a></li>
+                  <li>Edite seu aplicativo e adicione os escopos de <strong>Contatos</strong> e <strong>Vendas/Pedidos</strong> (leitura e escrita)</li>
+                  <li>Salve as alterações no Bling</li>
+                  <li>Clique em "Reautorizar Bling" abaixo para gerar um novo token com as permissões corretas</li>
+                </ol>
+              </AlertDescription>
+            </Alert>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => authorizeMutation.mutate()}
+                disabled={isAuthorizing || authorizeMutation.isPending}
+                variant="destructive"
+              >
+                {isAuthorizing || authorizeMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Key className="h-4 w-4 mr-2" />
+                )}
+                Reautorizar Bling
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setScopeError(null)}
+              >
+                Fechar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Painel de Sincronização de Pedidos */}
       {isAuthorized && !isExpired && modules.sync_orders && (
         <Card>
@@ -596,6 +646,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                 <Button
                   onClick={async () => {
                     try {
+                      setScopeError(null);
                       toast.info('Iniciando sincronização...');
                       const session = await supabase.auth.getSession();
                       const response = await fetch(
@@ -621,6 +672,13 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                       
                       if (result.success) {
                         const data = result.data;
+                        // Check for scope errors in failed items
+                        const scopeIssue = data.details?.find((d: any) => 
+                          d.error?.includes('escopo') || d.error?.includes('scope') || d.error?.includes('permissão')
+                        );
+                        if (scopeIssue) {
+                          setScopeError(scopeIssue.error);
+                        }
                         toast.success(`Sincronização concluída! ${data.synced} pedido(s) enviado(s), ${data.failed} falha(s).`);
                         queryClient.invalidateQueries({ queryKey: ['bling-integration', tenantId] });
                       } else {
@@ -628,6 +686,10 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                       }
                     } catch (error: any) {
                       console.error('Erro ao sincronizar pedidos:', error);
+                      // Detect scope error from message
+                      if (error.message?.includes('escopo') || error.message?.includes('scope') || error.message?.includes('permissão')) {
+                        setScopeError(error.message);
+                      }
                       toast.error(error.message || 'Erro ao sincronizar pedidos');
                     }
                   }}
