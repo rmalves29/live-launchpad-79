@@ -8,54 +8,8 @@ const corsHeaders = {
 
 const BLING_API_URL = 'https://www.bling.com.br/Api/v3';
 
-interface BlingOrder {
-  numero?: number;
-  data?: string;
-  dataPrevista?: string;
-  contato: {
-    id?: number;
-    nome: string;
-    tipoPessoa?: string;
-    numeroDocumento?: string;
-    telefone?: string;
-    email?: string;
-    endereco?: {
-      endereco?: string;
-      numero?: string;
-      complemento?: string;
-      bairro?: string;
-      cep?: string;
-      municipio?: string;
-      uf?: string;
-    };
-  };
-  itens: Array<{
-    codigo?: string;
-    descricao: string;
-    unidade?: string;
-    quantidade: number;
-    valor: number;
-    aliquotaIPI?: number;
-    descricaoDetalhada?: string;
-  }>;
-  parcelas?: Array<{
-    dataVencimento: string;
-    valor: number;
-    observacoes?: string;
-    formaPagamento?: {
-      id: number;
-    };
-  }>;
-  transporte?: {
-    frete?: number;
-    volumes?: Array<{
-      servico?: string;
-      codigoRastreamento?: string;
-    }>;
-  };
-  observacoes?: string;
-  observacoesInternas?: string;
-}
+// Helper to delay between requests (Bling limit: 3 req/second)
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function refreshBlingToken(supabase: any, integration: any): Promise<string | null> {
   if (!integration.refresh_token || !integration.client_id || !integration.client_secret) {
@@ -86,7 +40,6 @@ async function refreshBlingToken(supabase: any, integration: any): Promise<strin
 
     const tokenData = await response.json();
     
-    // Update tokens in database
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
     
     await supabase
@@ -108,11 +61,10 @@ async function refreshBlingToken(supabase: any, integration: any): Promise<strin
 }
 
 async function getValidAccessToken(supabase: any, integration: any): Promise<string | null> {
-  // Check if token is expired or about to expire (5 min buffer)
   if (integration.token_expires_at) {
     const expiresAt = new Date(integration.token_expires_at);
     const now = new Date();
-    const bufferMs = 5 * 60 * 1000; // 5 minutes
+    const bufferMs = 5 * 60 * 1000;
     
     if (expiresAt.getTime() - now.getTime() < bufferMs) {
       console.log('[bling-sync-orders] Token expired or expiring soon, refreshing...');
@@ -123,110 +75,35 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
   return integration.access_token;
 }
 
-async function createOrGetContact(order: any, accessToken: string): Promise<number | null> {
-  // Try to find existing contact by phone
-  const phone = order.customer_phone?.replace(/\D/g, '') || '';
-  
-  if (phone) {
-    const searchResponse = await fetch(
-      `${BLING_API_URL}/contatos?pesquisa=${encodeURIComponent(phone)}&limite=1`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      }
-    );
-    
-    if (searchResponse.ok) {
-      const searchResult = await searchResponse.json();
-      if (searchResult.data && searchResult.data.length > 0) {
-        console.log('[bling-sync-orders] Found existing contact:', searchResult.data[0].id);
-        return searchResult.data[0].id;
-      }
-    }
-  }
-
-  // Create new contact
-  const contactData = {
-    nome: order.customer_name || 'Cliente',
-    tipo: 'F', // F = Pessoa Física
-    telefone: phone,
-    celular: phone,
-    endereco: {
-      geral: {
-        endereco: order.customer_street || '',
-        numero: order.customer_number || '',
-        complemento: order.customer_complement || '',
-        bairro: '',
-        cep: (order.customer_cep || '').replace(/\D/g, ''),
-        municipio: order.customer_city || '',
-        uf: order.customer_state || '',
-      },
-    },
-  };
-
-  console.log('[bling-sync-orders] Creating contact:', JSON.stringify(contactData, null, 2));
-
-  const createResponse = await fetch(`${BLING_API_URL}/contatos`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(contactData),
-  });
-
-  const responseText = await createResponse.text();
-  console.log('[bling-sync-orders] Contact creation response:', createResponse.status, responseText);
-
-  if (createResponse.ok) {
-    const result = JSON.parse(responseText);
-    return result.data?.id || null;
-  }
-
-  // If contact already exists (conflict), try to extract ID from error
-  if (createResponse.status === 409) {
-    const errorResult = JSON.parse(responseText);
-    console.log('[bling-sync-orders] Contact already exists, trying to get ID...');
-    // Try searching again
-    const retrySearch = await fetch(
-      `${BLING_API_URL}/contatos?pesquisa=${encodeURIComponent(order.customer_name || phone)}&limite=1`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      }
-    );
-    if (retrySearch.ok) {
-      const retryResult = await retrySearch.json();
-      if (retryResult.data && retryResult.data.length > 0) {
-        return retryResult.data[0].id;
-      }
-    }
-  }
-
-  return null;
-}
-
 async function sendOrderToBling(order: any, cartItems: any[], accessToken: string): Promise<any> {
-  // First, create or get the contact ID
-  const contactId = await createOrGetContact(order, accessToken);
-  
-  if (!contactId) {
-    throw new Error('Não foi possível criar/encontrar o contato no Bling');
-  }
-
   // Check if there are items to send
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
   }
 
-  // Map order to Bling format
-  const blingOrder: BlingOrder = {
+  const phone = order.customer_phone?.replace(/\D/g, '') || '';
+  const cep = (order.customer_cep || '').replace(/\D/g, '');
+
+  // Use the correct Bling V3 structure for pedidos/vendas
+  // The contato object can have inline data without requiring a pre-registered ID
+  const blingOrder = {
+    numero: order.id,
     data: new Date(order.created_at).toISOString().split('T')[0],
     dataPrevista: order.event_date,
     contato: {
-      id: contactId,
+      nome: order.customer_name || 'Cliente',
+      tipoPessoa: 'F',
+      telefone: phone,
+      celular: phone,
+      endereco: {
+        endereco: order.customer_street || '',
+        numero: order.customer_number || '',
+        complemento: order.customer_complement || '',
+        bairro: '',
+        cep: cep,
+        municipio: order.customer_city || '',
+        uf: order.customer_state || '',
+      },
     },
     itens: cartItems.map(item => ({
       codigo: item.product_code || `PROD-${item.id}`,
@@ -300,7 +177,6 @@ serve(async (req) => {
       );
     }
 
-    // Get Bling integration settings
     const { data: integration, error: integrationError } = await supabase
       .from('integration_bling')
       .select('*')
@@ -329,7 +205,6 @@ serve(async (req) => {
       );
     }
 
-    // Get valid access token
     const accessToken = await getValidAccessToken(supabase, integration);
     if (!accessToken) {
       return new Response(
@@ -342,7 +217,6 @@ serve(async (req) => {
 
     switch (action) {
       case 'send_order': {
-        // Send a specific order to Bling
         if (!order_id) {
           return new Response(
             JSON.stringify({ error: 'order_id is required for send_order action' }),
@@ -350,7 +224,6 @@ serve(async (req) => {
           );
         }
 
-        // Get order details
         const { data: order, error: orderError } = await supabase
           .from('orders')
           .select('*')
@@ -366,7 +239,6 @@ serve(async (req) => {
           );
         }
 
-        // Get cart items
         let cartItems = [];
         if (order.cart_id) {
           const { data: items, error: itemsError } = await supabase
@@ -381,7 +253,6 @@ serve(async (req) => {
 
         result = await sendOrderToBling(order, cartItems, accessToken);
         
-        // Update last sync timestamp
         await supabase
           .from('integration_bling')
           .update({ last_sync_at: new Date().toISOString() })
@@ -391,13 +262,11 @@ serve(async (req) => {
       }
 
       case 'fetch_orders': {
-        // Fetch orders from Bling
         result = await fetchOrdersFromBling(accessToken);
         break;
       }
 
       case 'sync_all': {
-        // Sync all pending orders to Bling
         const { data: orders, error: ordersError } = await supabase
           .from('orders')
           .select('*')
@@ -411,7 +280,14 @@ serve(async (req) => {
         }
 
         const results = [];
-        for (const order of orders || []) {
+        for (let i = 0; i < (orders || []).length; i++) {
+          const order = orders![i];
+          
+          // Add delay between requests to respect Bling rate limit (3 req/sec)
+          if (i > 0) {
+            await delay(400); // 400ms delay = ~2.5 req/sec (safe margin)
+          }
+
           try {
             let cartItems = [];
             if (order.cart_id) {
@@ -422,6 +298,13 @@ serve(async (req) => {
               cartItems = items || [];
             }
 
+            // Skip orders without items
+            if (cartItems.length === 0) {
+              console.log(`[bling-sync-orders] Skipping order ${order.id}: no items`);
+              results.push({ order_id: order.id, success: false, error: 'Pedido sem itens' });
+              continue;
+            }
+
             const blingResult = await sendOrderToBling(order, cartItems, accessToken);
             results.push({ order_id: order.id, success: true, bling_response: blingResult });
           } catch (error) {
@@ -430,13 +313,17 @@ serve(async (req) => {
           }
         }
 
-        // Update last sync timestamp
         await supabase
           .from('integration_bling')
           .update({ last_sync_at: new Date().toISOString() })
           .eq('tenant_id', tenant_id);
 
-        result = { synced: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length, details: results };
+        result = { 
+          synced: results.filter(r => r.success).length, 
+          failed: results.filter(r => !r.success).length, 
+          skipped: results.filter(r => r.error === 'Pedido sem itens').length,
+          details: results 
+        };
         break;
       }
 
