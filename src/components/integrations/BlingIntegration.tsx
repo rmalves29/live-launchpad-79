@@ -31,7 +31,9 @@ import {
   Info,
   Key,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Upload,
+  Download
 } from 'lucide-react';
 
 interface BlingIntegrationProps {
@@ -564,6 +566,141 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Painel de Sincronização de Pedidos */}
+      {isAuthorized && !isExpired && modules.sync_orders && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5" />
+              Sincronização de Pedidos
+            </CardTitle>
+            <CardDescription>
+              Envie pedidos do sistema para o Bling ou busque pedidos do Bling
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Enviar todos os pedidos pagos */}
+              <div className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Upload className="h-5 w-5 text-primary" />
+                  <h4 className="font-medium">Exportar para Bling</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Envia todos os pedidos pagos para o Bling ERP. Útil para sincronizar pedidos existentes.
+                </p>
+                <Button
+                  onClick={async () => {
+                    try {
+                      toast.info('Iniciando sincronização...');
+                      const session = await supabase.auth.getSession();
+                      const response = await fetch(
+                        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-sync-orders',
+                        {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${session.data.session?.access_token}`,
+                          },
+                          body: JSON.stringify({
+                            action: 'sync_all',
+                            tenant_id: tenantId,
+                          }),
+                        }
+                      );
+                      
+                      const result = await response.json();
+                      
+                      if (!response.ok) {
+                        throw new Error(result.error || 'Erro ao sincronizar');
+                      }
+                      
+                      if (result.success) {
+                        const data = result.data;
+                        toast.success(`Sincronização concluída! ${data.synced} pedido(s) enviado(s), ${data.failed} falha(s).`);
+                        queryClient.invalidateQueries({ queryKey: ['bling-integration', tenantId] });
+                      } else {
+                        throw new Error(result.error || 'Erro desconhecido');
+                      }
+                    } catch (error: any) {
+                      console.error('Erro ao sincronizar pedidos:', error);
+                      toast.error(error.message || 'Erro ao sincronizar pedidos');
+                    }
+                  }}
+                  className="w-full"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Enviar Pedidos Pagos
+                </Button>
+              </div>
+
+              {/* Buscar pedidos do Bling */}
+              <div className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Download className="h-5 w-5 text-primary" />
+                  <h4 className="font-medium">Importar do Bling</h4>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Busca os últimos pedidos cadastrados no Bling para visualização.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      toast.info('Buscando pedidos do Bling...');
+                      const session = await supabase.auth.getSession();
+                      const response = await fetch(
+                        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-sync-orders',
+                        {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${session.data.session?.access_token}`,
+                          },
+                          body: JSON.stringify({
+                            action: 'fetch_orders',
+                            tenant_id: tenantId,
+                          }),
+                        }
+                      );
+                      
+                      const result = await response.json();
+                      
+                      if (!response.ok) {
+                        throw new Error(result.error || 'Erro ao buscar pedidos');
+                      }
+                      
+                      if (result.success) {
+                        const orders = result.data?.data || [];
+                        toast.success(`${orders.length} pedido(s) encontrado(s) no Bling`);
+                        console.log('Pedidos do Bling:', orders);
+                      } else {
+                        throw new Error(result.error || 'Erro desconhecido');
+                      }
+                    } catch (error: any) {
+                      console.error('Erro ao buscar pedidos:', error);
+                      toast.error(error.message || 'Erro ao buscar pedidos do Bling');
+                    }
+                  }}
+                  className="w-full"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Buscar Pedidos do Bling
+                </Button>
+              </div>
+            </div>
+
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Dica:</strong> A sincronização automática envia até 50 pedidos pagos por vez.
+                Para enviar um pedido específico, use o botão na página de pedidos.
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       )}
