@@ -54,8 +54,23 @@ serve(async (req) => {
     // Decodificar state para obter tenant_id
     let stateData;
     try {
-      // Tentar decodificar o state como base64 JSON
-      const decodedState = atob(state);
+      // Tentar decodificar o state - primeiro tenta decodeURIComponent, depois atob como fallback
+      let decodedState: string;
+      
+      // Verificar se parece ser um JSON válido diretamente
+      if (state.startsWith('{') || state.startsWith('%7B')) {
+        // É um JSON encoded com URI
+        decodedState = decodeURIComponent(state);
+      } else {
+        // Tentar base64 como fallback
+        try {
+          decodedState = atob(state);
+        } catch {
+          // Último recurso: tentar decodificar URI mesmo sem prefixo
+          decodedState = decodeURIComponent(state);
+        }
+      }
+      
       stateData = JSON.parse(decodedState);
       console.log("[bling-oauth-callback] State decodificado:", stateData);
     } catch (e) {
