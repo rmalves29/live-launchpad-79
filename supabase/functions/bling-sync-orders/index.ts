@@ -123,29 +123,117 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
   return integration.access_token;
 }
 
+async function createOrGetContact(order: any, accessToken: string): Promise<number | null> {
+  // Try to find existing contact by phone
+  const phone = order.customer_phone?.replace(/\D/g, '') || '';
+  
+  if (phone) {
+    const searchResponse = await fetch(
+      `${BLING_API_URL}/contatos?pesquisa=${encodeURIComponent(phone)}&limite=1`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      }
+    );
+    
+    if (searchResponse.ok) {
+      const searchResult = await searchResponse.json();
+      if (searchResult.data && searchResult.data.length > 0) {
+        console.log('[bling-sync-orders] Found existing contact:', searchResult.data[0].id);
+        return searchResult.data[0].id;
+      }
+    }
+  }
+
+  // Create new contact
+  const contactData = {
+    nome: order.customer_name || 'Cliente',
+    tipo: 'F', // F = Pessoa Física
+    telefone: phone,
+    celular: phone,
+    endereco: {
+      geral: {
+        endereco: order.customer_street || '',
+        numero: order.customer_number || '',
+        complemento: order.customer_complement || '',
+        bairro: '',
+        cep: (order.customer_cep || '').replace(/\D/g, ''),
+        municipio: order.customer_city || '',
+        uf: order.customer_state || '',
+      },
+    },
+  };
+
+  console.log('[bling-sync-orders] Creating contact:', JSON.stringify(contactData, null, 2));
+
+  const createResponse = await fetch(`${BLING_API_URL}/contatos`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(contactData),
+  });
+
+  const responseText = await createResponse.text();
+  console.log('[bling-sync-orders] Contact creation response:', createResponse.status, responseText);
+
+  if (createResponse.ok) {
+    const result = JSON.parse(responseText);
+    return result.data?.id || null;
+  }
+
+  // If contact already exists (conflict), try to extract ID from error
+  if (createResponse.status === 409) {
+    const errorResult = JSON.parse(responseText);
+    console.log('[bling-sync-orders] Contact already exists, trying to get ID...');
+    // Try searching again
+    const retrySearch = await fetch(
+      `${BLING_API_URL}/contatos?pesquisa=${encodeURIComponent(order.customer_name || phone)}&limite=1`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      }
+    );
+    if (retrySearch.ok) {
+      const retryResult = await retrySearch.json();
+      if (retryResult.data && retryResult.data.length > 0) {
+        return retryResult.data[0].id;
+      }
+    }
+  }
+
+  return null;
+}
+
 async function sendOrderToBling(order: any, cartItems: any[], accessToken: string): Promise<any> {
+  // First, create or get the contact ID
+  const contactId = await createOrGetContact(order, accessToken);
+  
+  if (!contactId) {
+    throw new Error('Não foi possível criar/encontrar o contato no Bling');
+  }
+
+  // Check if there are items to send
+  if (!cartItems || cartItems.length === 0) {
+    throw new Error('O pedido não possui itens para enviar ao Bling');
+  }
+
   // Map order to Bling format
   const blingOrder: BlingOrder = {
     data: new Date(order.created_at).toISOString().split('T')[0],
     dataPrevista: order.event_date,
     contato: {
-      nome: order.customer_name || 'Cliente',
-      telefone: order.customer_phone,
-      endereco: {
-        endereco: order.customer_street || '',
-        numero: order.customer_number || '',
-        complemento: order.customer_complement || '',
-        bairro: '', // Not available in current schema
-        cep: order.customer_cep || '',
-        municipio: order.customer_city || '',
-        uf: order.customer_state || '',
-      },
+      id: contactId,
     },
     itens: cartItems.map(item => ({
-      codigo: item.product_code || '',
+      codigo: item.product_code || `PROD-${item.id}`,
       descricao: item.product_name || 'Produto',
-      quantidade: item.qty,
-      valor: Number(item.unit_price),
+      quantidade: item.qty || 1,
+      valor: Number(item.unit_price) || 0,
+      unidade: 'UN',
     })),
     observacoes: order.observation || '',
     observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
