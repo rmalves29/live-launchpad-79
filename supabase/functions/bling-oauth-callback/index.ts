@@ -4,11 +4,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Bling OAuth2 Token URL
 const BLING_TOKEN_URL = "https://www.bling.com.br/Api/v3/oauth/token";
 
+// URL base para redirecionamentos
+const getPublicBaseUrl = () => {
+  return Deno.env.get("PUBLIC_BASE_URL") || "https://hxtbsieodbtzgcvvkeqx.lovableproject.com";
+};
+
 serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const publicBaseUrl = Deno.env.get("PUBLIC_BASE_URL") || "https://hxtbsieodbtzgcvvkeqx.lovableproject.com";
+    const publicBaseUrl = getPublicBaseUrl();
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const url = new URL(req.url);
@@ -18,37 +23,52 @@ serve(async (req) => {
     const errorDescription = url.searchParams.get("error_description");
 
     console.log("[bling-oauth-callback] Recebido callback OAuth");
+    console.log("[bling-oauth-callback] State recebido:", state);
+    console.log("[bling-oauth-callback] Code recebido:", code ? "sim" : "não");
 
     // Verificar se houve erro na autorização
     if (error) {
       console.error("[bling-oauth-callback] Erro na autorização:", error, errorDescription);
-      const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent(errorDescription || error)}`;
-      return Response.redirect(redirectUrl, 302);
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", errorDescription || error);
+      return Response.redirect(redirectUrl.toString(), 302);
     }
 
     // Verificar se temos code e state
     if (!code || !state) {
       console.error("[bling-oauth-callback] Code ou state faltando");
-      const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent("Parâmetros inválidos")}`;
-      return Response.redirect(redirectUrl, 302);
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", "Parâmetros inválidos - code ou state faltando");
+      return Response.redirect(redirectUrl.toString(), 302);
     }
 
     // Decodificar state para obter tenant_id
     let stateData;
     try {
-      stateData = JSON.parse(atob(state));
+      // Tentar decodificar o state como base64 JSON
+      const decodedState = atob(state);
+      stateData = JSON.parse(decodedState);
+      console.log("[bling-oauth-callback] State decodificado:", stateData);
     } catch (e) {
       console.error("[bling-oauth-callback] Erro ao decodificar state:", e);
-      const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent("State inválido")}`;
-      return Response.redirect(redirectUrl, 302);
+      console.error("[bling-oauth-callback] State bruto:", state);
+      
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", "State inválido. Use o botão 'Autorizar Bling ERP' no sistema para gerar o link correto.");
+      return Response.redirect(redirectUrl.toString(), 302);
     }
 
     const { tenant_id } = stateData;
 
     if (!tenant_id) {
       console.error("[bling-oauth-callback] tenant_id não encontrado no state");
-      const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent("Tenant não identificado")}`;
-      return Response.redirect(redirectUrl, 302);
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", "Tenant não identificado no state");
+      return Response.redirect(redirectUrl.toString(), 302);
     }
 
     console.log(`[bling-oauth-callback] Processando callback para tenant: ${tenant_id}`);
@@ -62,8 +82,18 @@ serve(async (req) => {
 
     if (integrationError || !integration) {
       console.error("[bling-oauth-callback] Integração não encontrada:", integrationError);
-      const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent("Integração não encontrada")}`;
-      return Response.redirect(redirectUrl, 302);
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", "Integração não encontrada para este tenant");
+      return Response.redirect(redirectUrl.toString(), 302);
+    }
+
+    if (!integration.client_id || !integration.client_secret) {
+      console.error("[bling-oauth-callback] Credenciais incompletas");
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", "Client ID ou Client Secret não configurados");
+      return Response.redirect(redirectUrl.toString(), 302);
     }
 
     // Trocar authorization code por tokens
@@ -71,6 +101,7 @@ serve(async (req) => {
     const credentials = btoa(`${integration.client_id}:${integration.client_secret}`);
 
     console.log("[bling-oauth-callback] Trocando code por tokens...");
+    console.log("[bling-oauth-callback] Callback URL usado:", callbackUrl);
 
     const tokenResponse = await fetch(BLING_TOKEN_URL, {
       method: "POST",
@@ -88,11 +119,14 @@ serve(async (req) => {
 
     const tokenText = await tokenResponse.text();
     console.log(`[bling-oauth-callback] Token response status: ${tokenResponse.status}`);
+    console.log(`[bling-oauth-callback] Token response: ${tokenText.substring(0, 200)}`);
 
     if (!tokenResponse.ok) {
       console.error("[bling-oauth-callback] Erro ao obter tokens:", tokenText);
-      const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent("Falha ao obter tokens")}`;
-      return Response.redirect(redirectUrl, 302);
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", `Falha ao obter tokens: ${tokenText.substring(0, 100)}`);
+      return Response.redirect(redirectUrl.toString(), 302);
     }
 
     let tokenData;
@@ -100,8 +134,10 @@ serve(async (req) => {
       tokenData = JSON.parse(tokenText);
     } catch (e) {
       console.error("[bling-oauth-callback] Erro ao parsear resposta:", tokenText);
-      const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent("Resposta inválida do Bling")}`;
-      return Response.redirect(redirectUrl, 302);
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", "Resposta inválida do Bling ao obter tokens");
+      return Response.redirect(redirectUrl.toString(), 302);
     }
 
     console.log("[bling-oauth-callback] Tokens obtidos com sucesso");
@@ -124,20 +160,26 @@ serve(async (req) => {
 
     if (updateError) {
       console.error("[bling-oauth-callback] Erro ao salvar tokens:", updateError);
-      const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent("Erro ao salvar tokens")}`;
-      return Response.redirect(redirectUrl, 302);
+      const redirectUrl = new URL("/integracoes", publicBaseUrl);
+      redirectUrl.searchParams.set("bling", "error");
+      redirectUrl.searchParams.set("reason", "Erro ao salvar tokens no banco de dados");
+      return Response.redirect(redirectUrl.toString(), 302);
     }
 
     console.log(`[bling-oauth-callback] Autorização completa para tenant: ${tenant_id}`);
 
     // Redirecionar para a página de integrações com sucesso
-    const redirectUrl = `${publicBaseUrl}/integracoes?bling=success`;
-    return Response.redirect(redirectUrl, 302);
+    const redirectUrl = new URL("/integracoes", publicBaseUrl);
+    redirectUrl.searchParams.set("bling", "success");
+    return Response.redirect(redirectUrl.toString(), 302);
 
   } catch (error) {
     console.error("[bling-oauth-callback] Erro geral:", error);
-    const publicBaseUrl = Deno.env.get("PUBLIC_BASE_URL") || "https://hxtbsieodbtzgcvvkeqx.lovableproject.com";
-    const redirectUrl = `${publicBaseUrl}/integracoes?bling=error&reason=${encodeURIComponent(error.message)}`;
-    return Response.redirect(redirectUrl, 302);
+    
+    const publicBaseUrl = getPublicBaseUrl();
+    const redirectUrl = new URL("/integracoes", publicBaseUrl);
+    redirectUrl.searchParams.set("bling", "error");
+    redirectUrl.searchParams.set("reason", `Erro interno: ${error.message}`);
+    return Response.redirect(redirectUrl.toString(), 302);
   }
 });
