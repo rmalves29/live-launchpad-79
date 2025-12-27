@@ -97,7 +97,7 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue={isSuperAdmin ? "bling" : "mercadopago"} className="w-full">
-        <TabsList className={`grid w-full grid-cols-${tabColumns}`}>
+        <TabsList className={`grid w-full ${isSuperAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
           {isSuperAdmin && (
             <TabsTrigger value="bling" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
