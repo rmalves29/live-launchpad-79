@@ -56,7 +56,9 @@ serve(async (req) => {
       }
 
       // Gerar state para segurança (inclui tenant_id codificado)
-      const state = btoa(JSON.stringify({ tenant_id, timestamp: Date.now() }));
+      // Usar encodeURIComponent para evitar problemas com caracteres especiais
+      const statePayload = JSON.stringify({ tenant_id, timestamp: Date.now() });
+      const state = encodeURIComponent(statePayload);
 
       // Callback URL - aponta para a edge function de callback
       const callbackUrl = `${supabaseUrl}/functions/v1/bling-oauth-callback`;
