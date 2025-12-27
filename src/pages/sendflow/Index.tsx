@@ -98,14 +98,17 @@ export default function SendFlow() {
         body: { action: 'status', tenant_id: tenant.id }
       });
 
+      // Silenciar erros - apenas definir como desconectado
       if (error) {
+        console.log('WhatsApp não configurado ou erro de conexão:', error.message);
         setWhatsappConnected(false);
         return;
       }
 
       setWhatsappConnected(data?.connected === true);
     } catch (error) {
-      console.error('Erro ao verificar conexão WhatsApp:', error);
+      // Silenciar erros - não exibir toast
+      console.log('WhatsApp não conectado');
       setWhatsappConnected(false);
     } finally {
       setCheckingConnection(false);
@@ -216,12 +219,8 @@ export default function SendFlow() {
         });
       }
     } catch (error: any) {
-      console.error('Erro ao carregar grupos:', error);
-      toast({
-        title: 'Erro',
-        description: error.message || 'Erro ao carregar grupos do WhatsApp',
-        variant: 'destructive'
-      });
+      // Silenciar erros de grupos quando WhatsApp não configurado
+      console.log('Erro ao carregar grupos (WhatsApp pode não estar conectado):', error?.message);
       setGroups([]);
     } finally {
       setLoadingGroups(false);
