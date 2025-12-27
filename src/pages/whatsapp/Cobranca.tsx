@@ -113,12 +113,9 @@ export default function Cobranca() {
         setTags([]);
       }
     } catch (error: any) {
-      console.error('❌ Erro ao carregar tags:', error);
-      toast({
-        title: 'Aviso',
-        description: error?.message || 'Não foi possível carregar as tags do WhatsApp',
-        variant: 'destructive'
-      });
+      // Silenciar erros quando WhatsApp não configurado
+      console.log('Tags não disponíveis (WhatsApp pode não estar conectado):', error?.message);
+      setTags([]);
     } finally {
       setLoadingTags(false);
     }
