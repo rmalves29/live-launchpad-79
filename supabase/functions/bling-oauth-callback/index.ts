@@ -6,7 +6,14 @@ const BLING_TOKEN_URL = "https://www.bling.com.br/Api/v3/oauth/token";
 
 // URL base para redirecionamentos
 const getPublicBaseUrl = () => {
-  return Deno.env.get("PUBLIC_BASE_URL") || "https://hxtbsieodbtzgcvvkeqx.lovableproject.com";
+  let baseUrl = Deno.env.get("PUBLIC_BASE_URL") || "https://hxtbsieodbtzgcvvkeqx.lovableproject.com";
+  
+  // Garantir que a URL tenha o protocolo https://
+  if (baseUrl && !baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
+    baseUrl = `https://${baseUrl}`;
+  }
+  
+  return baseUrl;
 };
 
 serve(async (req) => {
