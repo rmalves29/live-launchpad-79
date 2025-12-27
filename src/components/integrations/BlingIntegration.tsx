@@ -180,26 +180,22 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
   const { data: oauthStatus, isLoading: statusLoading } = useQuery({
     queryKey: ['bling-oauth-status', tenantId],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('bling-oauth', {
-        body: { tenant_id: tenantId },
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      // Adicionar query param na URL para a action
+      const session = await supabase.auth.getSession();
       const response = await fetch(
         `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-oauth?action=status`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
           },
           body: JSON.stringify({ tenant_id: tenantId }),
         }
       );
 
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Erro ao verificar status OAuth:', errorData);
         throw new Error('Falha ao verificar status OAuth');
       }
 
