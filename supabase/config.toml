@@ -53,3 +53,9 @@ verify_jwt = false
 
 [functions.bling-sync-orders]
 verify_jwt = true
+
+[functions.bling-oauth]
+verify_jwt = true
+
+[functions.bling-oauth-callback]
+verify_jwt = false
