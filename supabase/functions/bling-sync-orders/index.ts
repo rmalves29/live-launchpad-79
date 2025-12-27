@@ -75,37 +75,103 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
   return integration.access_token;
 }
 
+async function getOrCreateBlingContactId(order: any, accessToken: string): Promise<number> {
+  const phone = (order.customer_phone || '').replace(/\D/g, '');
+  const cep = (order.customer_cep || '').replace(/\D/g, '');
+
+  // 1) Try to find an existing contact (best-effort; API may vary by account)
+  try {
+    const searchRes = await fetch(
+      `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(phone || (order.customer_name || ''))}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+      }
+    );
+
+    const searchText = await searchRes.text();
+    if (searchRes.ok) {
+      const parsed = JSON.parse(searchText);
+      const first = parsed?.data?.[0] || parsed?.data?.contatos?.[0] || parsed?.[0];
+      const id = first?.id;
+      if (typeof id === 'number') return id;
+      if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+    } else {
+      // If scope is missing, Bling returns 403 with insufficient_scope
+      if (searchText.includes('insufficient_scope')) {
+        throw new Error(
+          'Token do Bling sem permissão para CONTATOS. No Bling, adicione os escopos de Contatos (leitura/escrita) ao seu aplicativo e autorize novamente.'
+        );
+      }
+    }
+  } catch (e) {
+    // Ignore parse/search errors and try to create the contact below.
+    console.log('[bling-sync-orders] Contact search failed (will try create):', String(e?.message || e));
+  }
+
+  // 2) Create the contact
+  const payload = {
+    nome: order.customer_name || 'Cliente',
+    tipoPessoa: 'F',
+    telefone: phone || undefined,
+    celular: phone || undefined,
+    endereco: {
+      endereco: order.customer_street || '',
+      numero: order.customer_number || '',
+      complemento: order.customer_complement || '',
+      bairro: '',
+      cep,
+      municipio: order.customer_city || '',
+      uf: order.customer_state || '',
+    },
+  };
+
+  const createRes = await fetch(`${BLING_API_URL}/contatos`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const createText = await createRes.text();
+  console.log('[bling-sync-orders] Bling create contact status:', createRes.status);
+  console.log('[bling-sync-orders] Bling create contact response:', createText);
+
+  if (!createRes.ok) {
+    if (createText.includes('insufficient_scope')) {
+      throw new Error(
+        'Token do Bling sem permissão para criar CONTATOS. No Bling, adicione os escopos de Contatos (leitura/escrita) ao seu aplicativo e autorize novamente.'
+      );
+    }
+    throw new Error(`Bling API error creating contact: ${createRes.status} - ${createText}`);
+  }
+
+  const created = JSON.parse(createText);
+  const id = created?.data?.id ?? created?.id;
+  if (typeof id === 'number') return id;
+  if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+
+  throw new Error('Contato criado no Bling, mas não foi possível obter o ID do contato na resposta.');
+}
+
 async function sendOrderToBling(order: any, cartItems: any[], accessToken: string): Promise<any> {
-  // Check if there are items to send
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
   }
 
-  const phone = order.customer_phone?.replace(/\D/g, '') || '';
-  const cep = (order.customer_cep || '').replace(/\D/g, '');
+  const contactId = await getOrCreateBlingContactId(order, accessToken);
 
-  // Use the correct Bling V3 structure for pedidos/vendas
-  // The contato object can have inline data without requiring a pre-registered ID
   const blingOrder = {
     numero: order.id,
     data: new Date(order.created_at).toISOString().split('T')[0],
     dataPrevista: order.event_date,
-    contato: {
-      nome: order.customer_name || 'Cliente',
-      tipoPessoa: 'F',
-      telefone: phone,
-      celular: phone,
-      endereco: {
-        endereco: order.customer_street || '',
-        numero: order.customer_number || '',
-        complemento: order.customer_complement || '',
-        bairro: '',
-        cep: cep,
-        municipio: order.customer_city || '',
-        uf: order.customer_state || '',
-      },
-    },
-    itens: cartItems.map(item => ({
+    contato: { id: contactId },
+    itens: cartItems.map((item) => ({
       codigo: item.product_code || `PROD-${item.id}`,
       descricao: item.product_name || 'Produto',
       quantidade: item.qty || 1,
@@ -132,6 +198,11 @@ async function sendOrderToBling(order: any, cartItems: any[], accessToken: strin
   console.log('[bling-sync-orders] Bling API response:', responseText);
 
   if (!response.ok) {
+    if (responseText.includes('insufficient_scope')) {
+      throw new Error(
+        'Token do Bling sem permissão para VENDAS/PEDIDOS. No Bling, adicione os escopos de Vendas/Pedidos (leitura/escrita) ao seu aplicativo e autorize novamente.'
+      );
+    }
     throw new Error(`Bling API error: ${response.status} - ${responseText}`);
   }
 
