@@ -32,7 +32,7 @@ interface TenantProviderProps {
 const PREVIEW_TENANT_KEY = 'previewTenantId';
 
 export const TenantProvider = ({ children }: TenantProviderProps) => {
-  const { profile, isLoading: authLoading } = useAuth();
+  const { user, profile, isLoading: authLoading } = useAuth();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,9 +44,10 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
         return;
       }
 
-      // Se não tem profile, não está logado
-      if (!profile) {
+      // Se não tem profile ou user, não está logado
+      if (!profile || !user) {
         setTenant(null);
+        supabaseTenant.setTenantId(null);
         setLoading(false);
         return;
       }
@@ -86,15 +87,24 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
         return;
       }
 
-      // Usuário normal - usa tenant do profile
+      // =========================================
+      // USUÁRIO NORMAL - DEVE VER APENAS SUA TENANT
+      // =========================================
+      
+      // Limpar qualquer preview tenant do localStorage (segurança)
+      localStorage.removeItem(PREVIEW_TENANT_KEY);
+
       if (!profile.tenant_id) {
         setError('Usuário não está associado a nenhuma empresa');
         setTenant(null);
+        supabaseTenant.setTenantId(null);
         setLoading(false);
         return;
       }
 
       try {
+        console.log('🔐 [TenantContext] Carregando tenant para:', user.id, 'tenant_id:', profile.tenant_id);
+        
         const { data, error: fetchError } = await supabase
           .rpc('get_tenant_by_id', { tenant_id_param: profile.tenant_id })
           .maybeSingle();
@@ -102,24 +112,26 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
         if (fetchError || !data) {
           setError('Empresa não encontrada ou inativa');
           setTenant(null);
+          supabaseTenant.setTenantId(null);
         } else {
+          console.log('✅ [TenantContext] Tenant carregado:', data.name, '(id:', data.id, ')');
           setTenant(data);
           supabaseTenant.setTenantId(data.id);
         }
       } catch (err) {
         console.error('Erro ao carregar tenant:', err);
         setError('Erro ao carregar dados da empresa');
+        supabaseTenant.setTenantId(null);
       } finally {
         setLoading(false);
       }
     }
 
     loadTenant();
-  }, [profile, authLoading]);
+  }, [user?.id, profile?.tenant_id, profile?.role, authLoading]);
 
   const tenantId = tenant?.id || null;
   const tenantSlug = tenant?.slug || null;
-  const isMainSite = profile?.role === 'super_admin' && !tenant;
 
   const value: TenantContextType = {
     tenant,
@@ -128,7 +140,7 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
     isValidSubdomain: !!tenant || profile?.role === 'super_admin',
     tenantId,
     tenantSlug,
-    isMainSite: profile?.role === 'super_admin', // Só super admin vê como "main site"
+    isMainSite: profile?.role === 'super_admin',
   };
 
   return (
