@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Zap, AlertTriangle } from "lucide-react";
+import { Zap, AlertTriangle, Phone, Mail } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function Auth() {
@@ -193,7 +193,17 @@ export default function Auth() {
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Acesso Bloqueado</AlertTitle>
             <AlertDescription className="mt-2">
-              <p>{accessError}</p>
+              <p className="mb-3">{accessError}</p>
+              <div className="flex flex-col gap-1 text-sm">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-3 w-3" />
+                  <span>Suporte: (11) 99999-9999</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mail className="h-3 w-3" />
+                  <span>suporte@orderzap.com.br</span>
+                </div>
+              </div>
             </AlertDescription>
           </Alert>
         )}
