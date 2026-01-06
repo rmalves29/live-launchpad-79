@@ -95,6 +95,8 @@ export default function EmpresasIndex() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [showPasswords, setShowPasswords] = useState<{[key: string]: boolean}>({});
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'blocked' | 'expired'>('all');
+  const [filterPrazo, setFilterPrazo] = useState<'all' | 'expired' | 'critical' | 'warning' | 'ok' | 'unlimited'>('all');
 
   // Form states
   const [formName, setFormName] = useState('');
@@ -576,16 +578,67 @@ export default function EmpresasIndex() {
   };
 
   const filteredTenants = tenants.filter(tenant => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
-    const credential = getTenantCredential(tenant.id);
-    return (
-      tenant.name.toLowerCase().includes(search) ||
-      tenant.slug.toLowerCase().includes(search) ||
-      (tenant.email && tenant.email.toLowerCase().includes(search)) ||
-      (tenant.admin_email && tenant.admin_email.toLowerCase().includes(search)) ||
-      (credential && credential.email.toLowerCase().includes(search))
-    );
+    // Filtro de busca por texto
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      const credential = getTenantCredential(tenant.id);
+      const matchesSearch = (
+        tenant.name.toLowerCase().includes(search) ||
+        tenant.slug.toLowerCase().includes(search) ||
+        (tenant.email && tenant.email.toLowerCase().includes(search)) ||
+        (tenant.admin_email && tenant.admin_email.toLowerCase().includes(search)) ||
+        (credential && credential.email.toLowerCase().includes(search))
+      );
+      if (!matchesSearch) return false;
+    }
+
+    // Filtro de status
+    if (filterStatus !== 'all') {
+      const isBlocked = tenant.is_blocked === true;
+      const isActive = tenant.is_active && !isBlocked;
+      const days = getDaysRemaining(tenant.subscription_ends_at || tenant.trial_ends_at);
+      const isExpired = days !== null && days <= 0;
+
+      switch (filterStatus) {
+        case 'active':
+          if (!isActive || isExpired) return false;
+          break;
+        case 'inactive':
+          if (isActive || isBlocked) return false;
+          break;
+        case 'blocked':
+          if (!isBlocked) return false;
+          break;
+        case 'expired':
+          if (!isExpired) return false;
+          break;
+      }
+    }
+
+    // Filtro de prazo (dias)
+    if (filterPrazo !== 'all') {
+      const days = getDaysRemaining(tenant.subscription_ends_at || tenant.trial_ends_at);
+      
+      switch (filterPrazo) {
+        case 'expired':
+          if (days === null || days > 0) return false;
+          break;
+        case 'critical':
+          if (days === null || days <= 0 || days > 5) return false;
+          break;
+        case 'warning':
+          if (days === null || days <= 5 || days > 10) return false;
+          break;
+        case 'ok':
+          if (days === null || days <= 10) return false;
+          break;
+        case 'unlimited':
+          if (days !== null) return false;
+          break;
+      }
+    }
+
+    return true;
   });
 
   // Estatísticas
@@ -957,21 +1010,74 @@ export default function EmpresasIndex() {
       {/* Lista de Empresas */}
       <Card>
         <CardHeader>
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <CardTitle>Lista de Empresas</CardTitle>
-              <CardDescription>
-                {filteredTenants.length} empresa{filteredTenants.length !== 1 ? 's' : ''} encontrada{filteredTenants.length !== 1 ? 's' : ''}
-              </CardDescription>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <CardTitle>Lista de Empresas</CardTitle>
+                <CardDescription>
+                  {filteredTenants.length} empresa{filteredTenants.length !== 1 ? 's' : ''} encontrada{filteredTenants.length !== 1 ? 's' : ''}
+                </CardDescription>
+              </div>
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar empresa..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
-            <div className="relative w-full md:w-64">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar empresa..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            
+            {/* Filtros */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="filter-status" className="text-sm whitespace-nowrap">Status:</Label>
+                <select
+                  id="filter-status"
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
+                  className="flex h-9 w-full sm:w-40 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="all">Todos</option>
+                  <option value="active">Ativas</option>
+                  <option value="inactive">Inativas</option>
+                  <option value="blocked">Bloqueadas</option>
+                  <option value="expired">Expiradas</option>
+                </select>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Label htmlFor="filter-prazo" className="text-sm whitespace-nowrap">Prazo:</Label>
+                <select
+                  id="filter-prazo"
+                  value={filterPrazo}
+                  onChange={(e) => setFilterPrazo(e.target.value as typeof filterPrazo)}
+                  className="flex h-9 w-full sm:w-44 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="all">Todos</option>
+                  <option value="expired">Expirado (0 dias)</option>
+                  <option value="critical">Crítico (1-5 dias)</option>
+                  <option value="warning">Atenção (6-10 dias)</option>
+                  <option value="ok">OK (+10 dias)</option>
+                  <option value="unlimited">Ilimitado</option>
+                </select>
+              </div>
+
+              {(filterStatus !== 'all' || filterPrazo !== 'all') && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setFilterStatus('all');
+                    setFilterPrazo('all');
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <XCircle className="h-4 w-4 mr-1" />
+                  Limpar filtros
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
