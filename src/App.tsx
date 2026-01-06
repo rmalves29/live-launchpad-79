@@ -33,7 +33,7 @@ import SendFlow from "./pages/sendflow/Index";
 import Etiquetas from "./pages/etiquetas/Index";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
-import TenantsAdmin from "./pages/admin/TenantsAdmin";
+
 import EmpresasIndex from "./pages/empresas/Index";
 import Debug from "./pages/Debug";
 import LandingPage from "./pages/LandingPage";
@@ -130,14 +130,6 @@ const AppContent = () => {
           </RequireAuth>
         } />
         
-        {/* Administração de Tenants (apenas super_admin) */}
-        <Route path="/admin/tenants" element={
-          <RequireAuth>
-            <SuperAdminOnly>
-              <TenantsAdmin />
-            </SuperAdminOnly>
-          </RequireAuth>
-        } />
         
         {/* Dashboard de Empresas (apenas super_admin) */}
         <Route path="/empresas" element={

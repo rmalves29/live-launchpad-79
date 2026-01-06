@@ -36,7 +36,6 @@ const Navbar = () => {
     { path: '/integracoes', label: 'Integrações' },
     ...(isSuperAdmin ? [
       { path: '/empresas', label: 'Empresas' },
-      { path: '/admin/tenants', label: 'Gerenciar' },
       { path: '/config', label: 'Config' }
     ] : [])
   ];
