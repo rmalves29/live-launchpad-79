@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Zap } from "lucide-react";
+import { Zap, AlertTriangle, Phone, Mail } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function Auth() {
   const { toast } = useToast();
@@ -18,22 +19,107 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = mode === "login" ? "Entrar - Sistema" : "Criar conta - Sistema";
   }, [mode]);
 
+  const checkTenantAccess = async (userId: string): Promise<{ allowed: boolean; reason?: string }> => {
+    try {
+      // Buscar o perfil do usuário para saber o tenant_id e role
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('tenant_id, role')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+
+      // Super admin sempre tem acesso
+      if (profile?.role === 'super_admin') {
+        return { allowed: true };
+      }
+
+      // Se não tem tenant_id, não tem acesso
+      if (!profile?.tenant_id) {
+        return { allowed: false, reason: 'Usuário não está associado a nenhuma empresa.' };
+      }
+
+      // Buscar dados da tenant
+      const { data: tenant, error: tenantError } = await supabase
+        .from('tenants')
+        .select('id, name, is_active, is_blocked, subscription_ends_at')
+        .eq('id', profile.tenant_id)
+        .maybeSingle();
+
+      if (tenantError) throw tenantError;
+
+      if (!tenant) {
+        return { allowed: false, reason: 'Empresa não encontrada no sistema.' };
+      }
+
+      // Verificar se a empresa está inativa
+      if (!tenant.is_active) {
+        return { 
+          allowed: false, 
+          reason: `A empresa "${tenant.name}" está desativada. Entre em contato com o suporte para reativar o acesso.` 
+        };
+      }
+
+      // Verificar se a empresa está bloqueada manualmente
+      if (tenant.is_blocked) {
+        return { 
+          allowed: false, 
+          reason: `A empresa "${tenant.name}" foi bloqueada. Entre em contato com o suporte para mais informações.` 
+        };
+      }
+
+      // Verificar se a assinatura expirou
+      if (tenant.subscription_ends_at) {
+        const expirationDate = new Date(tenant.subscription_ends_at);
+        const now = new Date();
+        
+        if (expirationDate < now) {
+          return { 
+            allowed: false, 
+            reason: `O prazo de acesso da empresa "${tenant.name}" expirou. Entre em contato com o suporte para renovar sua assinatura.` 
+          };
+        }
+      }
+
+      return { allowed: true };
+    } catch (error) {
+      console.error('Erro ao verificar acesso da tenant:', error);
+      return { allowed: false, reason: 'Erro ao verificar permissões de acesso.' };
+    }
+  };
+
   const handleLogin = async () => {
     setLoading(true);
+    setAccessError(null);
+    
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+
+      // Verificar se a tenant do usuário tem acesso
+      if (data.user) {
+        const accessCheck = await checkTenantAccess(data.user.id);
+        
+        if (!accessCheck.allowed) {
+          // Fazer logout imediatamente
+          await supabase.auth.signOut();
+          setAccessError(accessCheck.reason || 'Acesso negado.');
+          return;
+        }
+      }
+
       toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
       navigate(from, { replace: true });
     } catch (err: any) {
       const msg = (err?.message || '').toLowerCase();
       const isInvalidCreds = msg.includes('invalid login credentials') || msg.includes('invalid login');
-      const isMasterEmail = email.trim().toLowerCase() === 'rmalves21@hotmail.com';
 
       if (isInvalidCreds) {
         toast({ title: 'Credenciais inválidas', description: 'Verifique seu e-mail e senha. Use "Esqueci minha senha" para redefinir.', variant: 'destructive' });
@@ -100,6 +186,28 @@ export default function Auth() {
             </div>
           </div>
         </div>
+
+        {/* Mensagem de erro de acesso */}
+        {accessError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Acesso Bloqueado</AlertTitle>
+            <AlertDescription className="mt-2">
+              <p className="mb-3">{accessError}</p>
+              <div className="flex flex-col gap-1 text-sm">
+                <div className="flex items-center gap-2">
+                  <Phone className="h-3 w-3" />
+                  <span>Suporte: (11) 99999-9999</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mail className="h-3 w-3" />
+                  <span>suporte@orderzap.com.br</span>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle className="text-center">
@@ -109,11 +217,29 @@ export default function Auth() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" />
+              <Input 
+                id="email" 
+                type="email" 
+                value={email} 
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setAccessError(null);
+                }} 
+                placeholder="seu@email.com" 
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Senha</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+              <Input 
+                id="password" 
+                type="password" 
+                value={password} 
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setAccessError(null);
+                }} 
+                placeholder="••••••••" 
+              />
             </div>
 
             {mode === "login" ? (
