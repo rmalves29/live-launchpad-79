@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Search, Building2, CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw } from "lucide-react";
+import { Search, Building2, CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw, Pencil } from "lucide-react";
 import { differenceInDays } from "date-fns";
+import { useNavigate } from "react-router-dom";
 
 interface Tenant {
   id: string;
@@ -23,6 +24,7 @@ interface Tenant {
 
 export default function EmpresasIndex() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -288,6 +290,7 @@ export default function EmpresasIndex() {
                     <TableHead className="text-center">Status</TableHead>
                     <TableHead className="text-center">Plano</TableHead>
                     <TableHead className="text-center">Prazo</TableHead>
+                    <TableHead className="text-center">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -312,6 +315,16 @@ export default function EmpresasIndex() {
                       </TableCell>
                       <TableCell className="text-center">
                         {getPrazoBadge(tenant)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => navigate('/admin/tenants')}
+                          title="Editar empresa"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
