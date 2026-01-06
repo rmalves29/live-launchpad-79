@@ -479,14 +479,24 @@ const Etiquetas = () => {
 
     setSavingTracking(true);
     try {
+      const trackingCode = editingTrackingCode.trim();
+      
       const { error } = await supabaseTenant
         .from('orders')
-        .update({ melhor_envio_tracking_code: editingTrackingCode.trim() })
+        .update({ melhor_envio_tracking_code: trackingCode })
         .eq('id', orderId);
 
       if (error) throw error;
 
-      toast.success('Código de rastreio atualizado!');
+      // Enviar mensagem de rastreio via WhatsApp
+      const messageSent = await sendTrackingMessage(orderId, trackingCode);
+      
+      if (messageSent) {
+        toast.success('Código de rastreio salvo e mensagem enviada ao cliente!');
+      } else {
+        toast.success('Código de rastreio salvo! (Erro ao enviar WhatsApp)');
+      }
+      
       setEditingTrackingOrderId(null);
       setEditingTrackingCode('');
       loadPaidOrders();
