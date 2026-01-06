@@ -2,6 +2,8 @@
  * Hook para obter tenant do usuário logado
  * - Super admin: pode usar preview tenant do localStorage
  * - Tenant admin/staff: usa tenant do profile automaticamente
+ * 
+ * IMPORTANTE: Cada usuário deve ver APENAS os dados da sua própria tenant
  */
 
 import { useEffect, useState, useRef } from 'react';
@@ -21,16 +23,15 @@ interface Tenant {
 
 const PREVIEW_TENANT_KEY = 'previewTenantId';
 
-// Cache global para evitar refetch desnecessário
-let cachedTenant: Tenant | null = null;
-let cachedTenantId: string | null = null;
+// Cache por usuário - key = user_id, value = { tenantId, tenant }
+const userTenantCache: Map<string, { tenantId: string; tenant: Tenant }> = new Map();
 
 export function useTenant() {
-  const { profile, isLoading: authLoading } = useAuth();
-  const [tenant, setTenant] = useState<Tenant | null>(cachedTenant);
-  const [loading, setLoading] = useState(!cachedTenant);
+  const { user, profile, isLoading: authLoading } = useAuth();
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef(false);
+  const fetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
     async function loadTenant() {
@@ -39,22 +40,25 @@ export function useTenant() {
         return;
       }
 
-      // Se não tem perfil, não está logado
-      if (!profile) {
-        cachedTenant = null;
-        cachedTenantId = null;
+      // Se não tem perfil ou usuário, não está logado
+      if (!profile || !user) {
         setTenant(null);
         setLoading(false);
+        supabaseTenant.setTenantId(null);
         return;
       }
+
+      const userId = user.id;
 
       // Super admin pode usar preview tenant
       if (profile.role === 'super_admin') {
         const previewTenantId = localStorage.getItem(PREVIEW_TENANT_KEY);
         
-        // Se já temos cache para este tenant, usar
-        if (previewTenantId && cachedTenantId === previewTenantId && cachedTenant) {
-          setTenant(cachedTenant);
+        // Se já temos cache para este usuário e tenant, usar
+        const cached = userTenantCache.get(userId);
+        if (previewTenantId && cached?.tenantId === previewTenantId) {
+          setTenant(cached.tenant);
+          supabaseTenant.setTenantId(cached.tenantId);
           setLoading(false);
           return;
         }
@@ -66,8 +70,7 @@ export function useTenant() {
               .maybeSingle();
 
             if (!fetchError && data) {
-              cachedTenant = data;
-              cachedTenantId = data.id;
+              userTenantCache.set(userId, { tenantId: data.id, tenant: data });
               setTenant(data);
               supabaseTenant.setTenantId(data.id);
               setLoading(false);
@@ -85,8 +88,7 @@ export function useTenant() {
         if (tenants && tenants.length > 0) {
           const firstTenant = tenants[0];
           localStorage.setItem(PREVIEW_TENANT_KEY, firstTenant.id);
-          cachedTenant = firstTenant;
-          cachedTenantId = firstTenant.id;
+          userTenantCache.set(userId, { tenantId: firstTenant.id, tenant: firstTenant });
           setTenant(firstTenant);
           supabaseTenant.setTenantId(firstTenant.id);
         }
@@ -94,34 +96,42 @@ export function useTenant() {
         return;
       }
 
-      // Usuário normal - usa tenant do profile
+      // =========================================
+      // USUÁRIO NORMAL - DEVE VER APENAS SUA TENANT
+      // =========================================
+      
+      // Limpar qualquer preview tenant do localStorage (segurança)
+      localStorage.removeItem(PREVIEW_TENANT_KEY);
+      
       if (!profile.tenant_id) {
         setError('Usuário não está associado a nenhuma empresa');
-        cachedTenant = null;
-        cachedTenantId = null;
         setTenant(null);
+        supabaseTenant.setTenantId(null);
         setLoading(false);
         return;
       }
 
-      // Se já buscou esse tenant, usar cache
-      if (cachedTenantId === profile.tenant_id && cachedTenant) {
-        setTenant(cachedTenant);
-        supabaseTenant.setTenantId(cachedTenant.id);
+      // Verificar cache específico deste usuário
+      const cached = userTenantCache.get(userId);
+      if (cached?.tenantId === profile.tenant_id) {
+        setTenant(cached.tenant);
+        supabaseTenant.setTenantId(cached.tenantId);
         setLoading(false);
         return;
       }
 
-      // Evitar fetch duplicado
-      if (fetchedRef.current && cachedTenantId === profile.tenant_id) {
+      // Evitar fetch duplicado para o mesmo profile.tenant_id
+      if (fetchedRef.current === profile.tenant_id) {
         return;
       }
 
-      fetchedRef.current = true;
+      fetchedRef.current = profile.tenant_id;
 
       try {
         setLoading(true);
         setError(null);
+
+        console.log('🔐 Carregando tenant para usuário:', userId, 'tenant_id:', profile.tenant_id);
 
         const { data, error: fetchError } = await supabase
           .rpc('get_tenant_by_id', { tenant_id_param: profile.tenant_id })
@@ -131,25 +141,28 @@ export function useTenant() {
           console.error('Erro ao buscar tenant:', fetchError);
           setError('Empresa não encontrada ou inativa');
           setTenant(null);
+          supabaseTenant.setTenantId(null);
           return;
         }
 
-        // Atualiza cache
-        cachedTenant = data;
-        cachedTenantId = profile.tenant_id;
+        // Atualiza cache por usuário
+        userTenantCache.set(userId, { tenantId: profile.tenant_id, tenant: data });
         setTenant(data);
         supabaseTenant.setTenantId(data.id);
+        
+        console.log('✅ Tenant carregado:', data.name, '(id:', data.id, ')');
       } catch (err) {
         console.error('Erro ao carregar tenant:', err);
         setError('Erro ao carregar dados da empresa');
         setTenant(null);
+        supabaseTenant.setTenantId(null);
       } finally {
         setLoading(false);
       }
     }
 
     loadTenant();
-  }, [profile?.tenant_id, profile?.role, authLoading]);
+  }, [user?.id, profile?.tenant_id, profile?.role, authLoading]);
 
   return {
     tenant,

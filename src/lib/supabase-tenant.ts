@@ -18,8 +18,10 @@ class TenantSupabaseClient {
 
   // Definir tenant atual (chamado pelo TenantProvider)
   setTenantId(tenantId: string | null) {
+    if (this.currentTenantId !== tenantId) {
+      console.log('🏢 [supabaseTenant] Tenant ID alterado:', this.currentTenantId, '→', tenantId);
+    }
     this.currentTenantId = tenantId;
-    console.log('🏢 Tenant ID definido:', tenantId);
   }
 
   // Obter tenant atual (útil para inserts no preview ou simulação)
@@ -60,11 +62,22 @@ class TenantSupabaseClient {
 
     const tenantId = this.currentTenantId;
     if (!tenantId) {
-      console.warn(`⚠️ Query na tabela ${table} sem tenant definido`);
-      return base;
+      console.error(`❌ [supabaseTenant] ERRO CRÍTICO: Query na tabela ${table} sem tenant_id definido! Isso pode causar vazamento de dados.`);
+      // Retornar um wrapper que adiciona filtro impossível para evitar vazamento
+      const safeWrapper: any = {
+        select: (columns?: any, options?: any) => {
+          console.error(`❌ [supabaseTenant] SELECT bloqueado em ${table} - tenant_id não definido`);
+          return (base as any).select(columns ?? '*', options).eq('tenant_id', '00000000-0000-0000-0000-000000000000');
+        },
+        update: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }) }),
+        delete: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }) }),
+        insert: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }),
+        upsert: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }),
+      };
+      return safeWrapper;
     }
 
-    console.log(`🔍 Aplicando filtro tenant_id=${tenantId} na tabela ${table}`);
+    console.log(`🔍 [supabaseTenant] Filtrando ${table} por tenant_id=${tenantId}`);
 
     const wrapped: any = {
       select: (columns?: any, options?: any) => {

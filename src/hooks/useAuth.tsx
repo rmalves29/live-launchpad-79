@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 
 interface UserProfile {
   id: string;
@@ -79,6 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }, 0);
           }
         } else if (event === 'SIGNED_OUT') {
+          // Limpar tudo ao fazer logout
+          localStorage.removeItem('previewTenantId');
+          supabaseTenant.setTenantId(null);
           setSession(null);
           setUser(null);
           setProfile(null);
@@ -131,6 +135,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    // Limpar localStorage de preview tenant para segurança
+    localStorage.removeItem('previewTenantId');
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
