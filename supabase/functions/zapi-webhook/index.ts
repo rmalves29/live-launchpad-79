@@ -482,8 +482,30 @@ async function findOrCreateCart(
   groupName: string,
   eventType: string
 ) {
+  const today = new Date().toISOString().split('T')[0];
+  
+  console.log(`[zapi-webhook] 🔍 findOrCreateCart - tenant: ${tenantId}, phone: ${phone}, eventType: ${eventType}, date: ${today}`);
+
+  // First, check ALL carts for this customer (not just OPEN) to debug
+  const { data: allCarts, error: allCartsError } = await supabase
+    .from('carts')
+    .select('id, status, event_type, event_date, created_at')
+    .eq('tenant_id', tenantId)
+    .eq('customer_phone', phone)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (allCartsError) {
+    console.log(`[zapi-webhook] ❌ Error fetching all carts: ${allCartsError.message}`);
+  } else {
+    console.log(`[zapi-webhook] 📋 Found ${allCarts?.length || 0} total carts for this phone:`);
+    for (const c of allCarts || []) {
+      console.log(`[zapi-webhook]   - Cart ID: ${c.id}, Status: ${c.status}, Type: ${c.event_type}, Date: ${c.event_date}, Created: ${c.created_at}`);
+    }
+  }
+
   // Try to find an open cart for this customer with same event type
-  const { data: existingCart } = await supabase
+  const { data: existingCart, error: openCartError } = await supabase
     .from('carts')
     .select('*')
     .eq('tenant_id', tenantId)
@@ -492,15 +514,33 @@ async function findOrCreateCart(
     .eq('status', 'OPEN')
     .order('created_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
+
+  if (openCartError) {
+    console.log(`[zapi-webhook] ❌ Error finding open cart: ${openCartError.message}`);
+  }
 
   if (existingCart) {
-    console.log(`[zapi-webhook] Found existing cart: ${existingCart.id} (${eventType})`);
+    console.log(`[zapi-webhook] ✅ Found existing OPEN cart: ${existingCart.id} (${eventType})`);
     return existingCart;
   }
 
+  // Check if there's a CLOSED cart for today - this is the case we want to debug
+  const closedCart = allCarts?.find((c: any) => 
+    c.status === 'CLOSED' && 
+    c.event_type === eventType && 
+    c.event_date === today
+  );
+
+  if (closedCart) {
+    console.log(`[zapi-webhook] ⚠️ Found CLOSED cart for today: ID=${closedCart.id} - Will create a NEW cart`);
+  } else {
+    console.log(`[zapi-webhook] ℹ️ No existing cart found for this event type/date - Will create a NEW cart`);
+  }
+
   // Create new cart with correct event type
-  const today = new Date().toISOString().split('T')[0];
+  console.log(`[zapi-webhook] 🆕 Creating new cart - tenant: ${tenantId}, phone: ${phone}, eventType: ${eventType}, date: ${today}, group: ${groupName || 'null'}`);
+  
   const { data: newCart, error } = await supabase
     .from('carts')
     .insert({
@@ -515,11 +555,12 @@ async function findOrCreateCart(
     .single();
 
   if (error) {
-    console.log('[zapi-webhook] Error creating cart:', error);
+    console.log(`[zapi-webhook] ❌ Error creating cart: ${error.message}`);
+    console.log(`[zapi-webhook] ❌ Error details:`, JSON.stringify(error));
     throw error;
   }
 
-  console.log(`[zapi-webhook] Created new cart: ${newCart.id} (${eventType})`);
+  console.log(`[zapi-webhook] ✅ Created new cart: ${newCart.id} (${eventType})`);
   return newCart;
 }
 
@@ -533,8 +574,28 @@ async function findOrCreateOrder(
 ) {
   const today = new Date().toISOString().split('T')[0];
 
+  console.log(`[zapi-webhook] 🔍 findOrCreateOrder - tenant: ${tenantId}, phone: ${phone}, cartId: ${cartId}, eventType: ${eventType}, date: ${today}`);
+
+  // First, check ALL orders for this customer to debug
+  const { data: allOrders, error: allOrdersError } = await supabase
+    .from('orders')
+    .select('id, is_paid, event_type, event_date, cart_id, created_at')
+    .eq('tenant_id', tenantId)
+    .eq('customer_phone', phone)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  if (allOrdersError) {
+    console.log(`[zapi-webhook] ❌ Error fetching all orders: ${allOrdersError.message}`);
+  } else {
+    console.log(`[zapi-webhook] 📋 Found ${allOrders?.length || 0} total orders for this phone:`);
+    for (const o of allOrders || []) {
+      console.log(`[zapi-webhook]   - Order ID: ${o.id}, Paid: ${o.is_paid}, Type: ${o.event_type}, Date: ${o.event_date}, CartID: ${o.cart_id}, Created: ${o.created_at}`);
+    }
+  }
+
   // Try to find existing unpaid order for today with same event type
-  const { data: existingOrder } = await supabase
+  const { data: existingOrder, error: findError } = await supabase
     .from('orders')
     .select('*')
     .eq('tenant_id', tenantId)
@@ -546,10 +607,15 @@ async function findOrCreateOrder(
     .limit(1)
     .maybeSingle();
 
+  if (findError) {
+    console.log(`[zapi-webhook] ❌ Error finding unpaid order: ${findError.message}`);
+  }
+
   if (existingOrder) {
-    console.log(`[zapi-webhook] Found existing order: ${existingOrder.id} (${eventType})`);
+    console.log(`[zapi-webhook] ✅ Found existing unpaid order: ${existingOrder.id} (${eventType}), cart_id: ${existingOrder.cart_id}`);
     // Update cart_id if needed
     if (existingOrder.cart_id !== cartId) {
+      console.log(`[zapi-webhook] ⚠️ Updating order ${existingOrder.id} cart_id from ${existingOrder.cart_id} to ${cartId}`);
       await supabase
         .from('orders')
         .update({ cart_id: cartId })
@@ -558,7 +624,22 @@ async function findOrCreateOrder(
     return existingOrder;
   }
 
+  // Check if there's a PAID order for today - this would explain why we need new one
+  const paidOrder = allOrders?.find((o: any) => 
+    o.is_paid === true && 
+    o.event_type === eventType && 
+    o.event_date === today
+  );
+
+  if (paidOrder) {
+    console.log(`[zapi-webhook] ℹ️ Found PAID order for today: ID=${paidOrder.id} - Will create a NEW order`);
+  } else {
+    console.log(`[zapi-webhook] ℹ️ No existing unpaid order found - Will create a NEW order`);
+  }
+
   // Create new order with correct event type
+  console.log(`[zapi-webhook] 🆕 Creating new order - tenant: ${tenantId}, phone: ${phone}, cartId: ${cartId}, eventType: ${eventType}`);
+  
   const { data: newOrder, error } = await supabase
     .from('orders')
     .insert({
@@ -575,11 +656,12 @@ async function findOrCreateOrder(
     .single();
 
   if (error) {
-    console.log('[zapi-webhook] Error creating order:', error);
+    console.log(`[zapi-webhook] ❌ Error creating order: ${error.message}`);
+    console.log(`[zapi-webhook] ❌ Error details:`, JSON.stringify(error));
     throw error;
   }
 
-  console.log(`[zapi-webhook] Created new order: ${newOrder.id} (${eventType})`);
+  console.log(`[zapi-webhook] ✅ Created new order: ${newOrder.id} (${eventType})`);
   return newOrder;
 }
 
