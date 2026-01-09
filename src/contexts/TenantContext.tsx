@@ -52,79 +52,83 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
         return;
       }
 
-      // Super admin pode usar preview tenant
-      if (profile.role === 'super_admin') {
-        const previewTenantId = localStorage.getItem(PREVIEW_TENANT_KEY);
-        
-        if (previewTenantId) {
-          try {
-            const { data, error: fetchError } = await supabase
-              .rpc('get_tenant_by_id', { tenant_id_param: previewTenantId })
-              .maybeSingle();
-
-            if (!fetchError && data) {
-              setTenant(data);
-              supabaseTenant.setTenantId(data.id);
-              setLoading(false);
-              return;
-            }
-            // Se o tenant preview não existe, limpa
-            localStorage.removeItem(PREVIEW_TENANT_KEY);
-          } catch (err) {
-            console.error('Erro ao carregar preview tenant:', err);
-          }
-        }
-        
-        // Super admin sem preview - carrega primeiro tenant disponível
-        const { data: tenants } = await supabase.rpc('list_active_tenants_basic');
-        if (tenants && tenants.length > 0) {
-          const firstTenant = tenants[0];
-          localStorage.setItem(PREVIEW_TENANT_KEY, firstTenant.id);
-          setTenant(firstTenant);
-          supabaseTenant.setTenantId(firstTenant.id);
-        }
-        setLoading(false);
-        return;
-      }
-
       // =========================================
       // USUÁRIO NORMAL - DEVE VER APENAS SUA TENANT
+      // Verificar PRIMEIRO se NÃO é super_admin
       // =========================================
-      
-      // Limpar qualquer preview tenant do localStorage (segurança)
-      localStorage.removeItem(PREVIEW_TENANT_KEY);
+      if (profile.role !== 'super_admin') {
+        // Limpar qualquer preview tenant do localStorage (segurança absoluta)
+        localStorage.removeItem(PREVIEW_TENANT_KEY);
 
-      if (!profile.tenant_id) {
-        setError('Usuário não está associado a nenhuma empresa');
-        setTenant(null);
-        supabaseTenant.setTenantId(null);
-        setLoading(false);
+        if (!profile.tenant_id) {
+          setError('Usuário não está associado a nenhuma empresa');
+          setTenant(null);
+          supabaseTenant.setTenantId(null);
+          setLoading(false);
+          return;
+        }
+
+        try {
+          console.log('🔐 [TenantContext] Carregando tenant para usuário normal:', user.id, 'tenant_id:', profile.tenant_id);
+          
+          const { data, error: fetchError } = await supabase
+            .rpc('get_tenant_by_id', { tenant_id_param: profile.tenant_id })
+            .maybeSingle();
+
+          if (fetchError || !data) {
+            setError('Empresa não encontrada ou inativa');
+            setTenant(null);
+            supabaseTenant.setTenantId(null);
+          } else {
+            console.log('✅ [TenantContext] Tenant carregado para usuário normal:', data.name, '(id:', data.id, ')');
+            setTenant(data);
+            supabaseTenant.setTenantId(data.id);
+          }
+        } catch (err) {
+          console.error('Erro ao carregar tenant:', err);
+          setError('Erro ao carregar dados da empresa');
+          supabaseTenant.setTenantId(null);
+        } finally {
+          setLoading(false);
+        }
         return;
       }
 
-      try {
-        console.log('🔐 [TenantContext] Carregando tenant para:', user.id, 'tenant_id:', profile.tenant_id);
-        
-        const { data, error: fetchError } = await supabase
-          .rpc('get_tenant_by_id', { tenant_id_param: profile.tenant_id })
-          .maybeSingle();
+      // =========================================
+      // SUPER ADMIN - pode usar preview tenant
+      // =========================================
+      const previewTenantId = localStorage.getItem(PREVIEW_TENANT_KEY);
+      
+      if (previewTenantId) {
+        try {
+          const { data, error: fetchError } = await supabase
+            .rpc('get_tenant_by_id', { tenant_id_param: previewTenantId })
+            .maybeSingle();
 
-        if (fetchError || !data) {
-          setError('Empresa não encontrada ou inativa');
-          setTenant(null);
-          supabaseTenant.setTenantId(null);
-        } else {
-          console.log('✅ [TenantContext] Tenant carregado:', data.name, '(id:', data.id, ')');
-          setTenant(data);
-          supabaseTenant.setTenantId(data.id);
+          if (!fetchError && data) {
+            console.log('👁️ [TenantContext] Super admin usando preview tenant:', data.name, '(id:', data.id, ')');
+            setTenant(data);
+            supabaseTenant.setTenantId(data.id);
+            setLoading(false);
+            return;
+          }
+          // Se o tenant preview não existe, limpa
+          localStorage.removeItem(PREVIEW_TENANT_KEY);
+        } catch (err) {
+          console.error('Erro ao carregar preview tenant:', err);
         }
-      } catch (err) {
-        console.error('Erro ao carregar tenant:', err);
-        setError('Erro ao carregar dados da empresa');
-        supabaseTenant.setTenantId(null);
-      } finally {
-        setLoading(false);
       }
+      
+      // Super admin sem preview - carrega primeiro tenant disponível
+      const { data: tenants } = await supabase.rpc('list_active_tenants_basic');
+      if (tenants && tenants.length > 0) {
+        const firstTenant = tenants[0];
+        localStorage.setItem(PREVIEW_TENANT_KEY, firstTenant.id);
+        console.log('👁️ [TenantContext] Super admin carregou primeiro tenant:', firstTenant.name);
+        setTenant(firstTenant);
+        supabaseTenant.setTenantId(firstTenant.id);
+      }
+      setLoading(false);
     }
 
     loadTenant();
