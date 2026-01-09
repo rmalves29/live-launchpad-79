@@ -77,6 +77,14 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
   // Salvar integração
   const saveMutation = useMutation({
     mutationFn: async () => {
+      console.log('[PaymentIntegrations] Salvando para tenant:', tenantId);
+      console.log('[PaymentIntegrations] Dados do formulário:', {
+        access_token: formData.access_token ? '***' : null,
+        public_key: formData.public_key,
+        client_id: formData.client_id,
+        environment: formData.environment
+      });
+      
       const dataToSave = {
         tenant_id: tenantId,
         access_token: formData.access_token || null,
@@ -90,17 +98,23 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
       };
 
       if (integration) {
-        const { error } = await supabase
+        console.log('[PaymentIntegrations] Atualizando integração existente:', integration.id);
+        const { data, error } = await supabase
           .from('integration_mp')
           .update(dataToSave)
-          .eq('id', integration.id);
+          .eq('id', integration.id)
+          .select();
 
+        console.log('[PaymentIntegrations] Resultado update:', { data, error });
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        console.log('[PaymentIntegrations] Criando nova integração');
+        const { data, error } = await supabase
           .from('integration_mp')
-          .insert([dataToSave]);
+          .insert([dataToSave])
+          .select();
 
+        console.log('[PaymentIntegrations] Resultado insert:', { data, error });
         if (error) throw error;
       }
     },
