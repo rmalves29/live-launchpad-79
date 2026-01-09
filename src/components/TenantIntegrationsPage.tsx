@@ -22,6 +22,15 @@ export default function TenantIntegrationsPage() {
   const tenantId = tenant?.id || '';
   const isSuperAdmin = profile?.role === 'super_admin';
 
+  // Debug: mostrar qual tenant está sendo usado
+  console.log('[TenantIntegrationsPage] Tenant carregado:', {
+    tenantId,
+    tenantName: tenant?.name,
+    tenantSlug: tenant?.slug,
+    isSuperAdmin,
+    previewTenantId: localStorage.getItem('previewTenantId')
+  });
+
   // Buscar status das integrações
   const { data: mpIntegration } = useQuery({
     queryKey: ['mp-status', tenantId],
