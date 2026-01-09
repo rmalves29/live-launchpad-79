@@ -811,18 +811,18 @@ const PublicCheckout = () => {
         
         <div className="relative pt-8 pb-6">
           <div className="flex flex-col items-center gap-4">
-            {tenant.logo_url ? (
-              <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-xl shadow-primary/10 border border-slate-100 dark:border-slate-700">
-                <img src={tenant.logo_url} alt={tenant.name} className="h-20 w-auto object-contain" />
-              </div>
-            ) : (
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-xl shadow-primary/30">
-                  <Store className="h-8 w-8 text-primary-foreground" />
+            <div className="flex items-center gap-4">
+              {tenant.logo_url ? (
+                <div className="p-2 bg-white dark:bg-slate-800 rounded-2xl shadow-xl shadow-primary/10 border border-slate-100 dark:border-slate-700">
+                  <img src={tenant.logo_url} alt={tenant.name} className="h-14 w-auto object-contain" />
                 </div>
-                <span className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">{tenant.name}</span>
-              </div>
-            )}
+              ) : (
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-xl shadow-primary/30">
+                  <Store className="h-7 w-7 text-primary-foreground" />
+                </div>
+              )}
+              <span className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">{tenant.name}</span>
+            </div>
           </div>
         </div>
       </div>
