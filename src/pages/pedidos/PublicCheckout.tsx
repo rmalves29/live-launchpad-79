@@ -251,7 +251,29 @@ const PublicCheckout = () => {
     if (!cep || ordersToCalc.length === 0 || !tenant) return;
     if (cep.replace(/[^0-9]/g, '').length !== 8) return;
 
-    const fallbackShipping = [{
+    // Tenant específico OF Beauty
+    const OF_BEAUTY_TENANT_ID = '4247aa21-4a46-4988-8845-fa15aa202310';
+    const isOfBeauty = tenant.id === OF_BEAUTY_TENANT_ID;
+
+    // Definir opções de frete baseadas no tenant
+    const fallbackShipping = isOfBeauty ? [
+      {
+        id: 'retirada',
+        name: 'Retirar no local',
+        company: 'Retirada',
+        price: '3.00',
+        delivery_time: 'Imediato',
+        custom_price: '3.00'
+      },
+      {
+        id: 'frete_fixo',
+        name: 'Frete Fixo - Envio',
+        company: 'Envio',
+        price: '19.90',
+        delivery_time: '5-10 dias úteis',
+        custom_price: '19.90'
+      }
+    ] : [{
       id: 'retirada',
       name: 'Retirada - Retirar na Fábrica',
       company: 'Retirada',
@@ -262,6 +284,12 @@ const PublicCheckout = () => {
 
     setLoadingShipping(true);
     setShippingOptions(fallbackShipping);
+
+    // Se for OF Beauty, não precisa calcular frete via Melhor Envio
+    if (isOfBeauty) {
+      setLoadingShipping(false);
+      return;
+    }
 
     try {
       // Buscar endereço pelo CEP

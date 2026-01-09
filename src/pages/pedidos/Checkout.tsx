@@ -95,6 +95,9 @@ const Checkout = () => {
   const [tenantSlug, setTenantSlug] = useState<string | null>(null);
   const [publicBaseUrl, setPublicBaseUrl] = useState<string>('https://app.orderzaps.com');
 
+  // Tenant específico OF Beauty - definição global
+  const OF_BEAUTY_TENANT_ID = '4247aa21-4a46-4988-8845-fa15aa202310';
+
   // Detectar retorno da página de pagamento e limpar dados duplicados  
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -102,10 +105,31 @@ const Checkout = () => {
     
     if (isReturningFromPayment) {
       console.log('🔄 Detectado retorno da página de pagamento via URL, resetando dados de frete');
+      
+      // Verificar se é OF Beauty para usar valores corretos
+      const isOfBeauty = tenantId === OF_BEAUTY_TENANT_ID;
+      
       // Limpar qualquer dado de frete que possa causar duplicação
       setSelectedShipping('retirada');
       setSelectedShippingData(null);
-      setShippingOptions([{
+      setShippingOptions(isOfBeauty ? [
+        {
+          id: 'retirada',
+          name: 'Retirar no local',
+          company: 'Retirada',
+          price: '3.00',
+          delivery_time: 'Imediato',
+          custom_price: '3.00'
+        },
+        {
+          id: 'frete_fixo',
+          name: 'Frete Fixo - Envio',
+          company: 'Envio',
+          price: '19.90',
+          delivery_time: '5-10 dias úteis',
+          custom_price: '19.90'
+        }
+      ] : [{
         id: 'retirada',
         name: 'Retirada - Retirar na Fábrica', 
         company: 'Retirada',
@@ -123,7 +147,7 @@ const Checkout = () => {
       const newUrl = window.location.pathname;
       window.history.replaceState({}, '', newUrl);
     }
-  }, []);
+  }, [tenantId]);
 
   const loadActiveGifts = async () => {
     try {
@@ -457,8 +481,28 @@ const Checkout = () => {
     console.log('📋 Tenant ID:', tenantId);
     console.log('📦 Order items:', order.items);
     
-    // Definir opção de retirada como fallback imediato
-    const fallbackShipping = [{
+    // Verificar se é OF Beauty (usando constante do escopo do componente)
+    const isOfBeauty = tenantId === OF_BEAUTY_TENANT_ID;
+
+    // Definir opções de frete baseadas no tenant
+    const fallbackShipping = isOfBeauty ? [
+      {
+        id: 'retirada',
+        name: 'Retirar no local',
+        company: 'Retirada',
+        price: '3.00',
+        delivery_time: 'Imediato',
+        custom_price: '3.00'
+      },
+      {
+        id: 'frete_fixo',
+        name: 'Frete Fixo - Envio',
+        company: 'Envio',
+        price: '19.90',
+        delivery_time: '5-10 dias úteis',
+        custom_price: '19.90'
+      }
+    ] : [{
       id: 'retirada',
       name: 'Retirada - Retirar na Fábrica',
       company: 'Retirada',
@@ -469,8 +513,14 @@ const Checkout = () => {
 
     setLoadingShipping(true);
     
-    // Sempre garantir que há pelo menos a opção de retirada
+    // Sempre garantir que há pelo menos as opções de frete padrão
     setShippingOptions(fallbackShipping);
+    
+    // Se for OF Beauty, não precisa calcular frete via Melhor Envio
+    if (isOfBeauty) {
+      setLoadingShipping(false);
+      return;
+    }
     
     try {
       // Buscar endereço pelo CEP (ViaCEP) - forma segura
