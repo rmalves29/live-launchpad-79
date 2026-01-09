@@ -13,7 +13,6 @@ serve(async (req) => {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const mpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
 
   if (!supabaseUrl || !serviceKey) {
     console.error("[mp-webhook] Missing Supabase config");
@@ -26,16 +25,36 @@ serve(async (req) => {
   const sb = createClient(supabaseUrl, serviceKey);
 
   try {
+    const url = new URL(req.url);
+    const tenantIdFromQuery = url.searchParams.get("tenant_id");
+
     const body = await req.json();
-    console.log("[mp-webhook] Received webhook:", JSON.stringify(body));
+    console.log("[mp-webhook] Received webhook:", JSON.stringify({ tenant_id: tenantIdFromQuery, body }));
 
     // Log webhook received
     await sb.from("webhook_logs").insert({
       webhook_type: "mercadopago_webhook",
       status_code: 200,
+      tenant_id: tenantIdFromQuery,
       payload: body,
       response: "Webhook received",
     });
+
+    // Resolver token do MP por tenant (fallback: MP_ACCESS_TOKEN global)
+    let mpAccessToken: string | null = null;
+    if (tenantIdFromQuery) {
+      const { data: mpIntegration } = await sb
+        .from("integration_mp")
+        .select("access_token, is_active")
+        .eq("tenant_id", tenantIdFromQuery)
+        .maybeSingle();
+
+      mpAccessToken = mpIntegration?.is_active ? mpIntegration?.access_token : null;
+    }
+
+    if (!mpAccessToken) {
+      mpAccessToken = Deno.env.get("MP_ACCESS_TOKEN") || null;
+    }
 
     // Handle different webhook types
     const { type, data, topic, resource } = body;
@@ -65,7 +84,7 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("[mp-webhook] Error processing webhook:", error);
-    
+
     await sb.from("webhook_logs").insert({
       webhook_type: "mercadopago_webhook_error",
       status_code: 500,
@@ -79,11 +98,11 @@ serve(async (req) => {
   }
 });
 
-async function processPayment(sb: any, paymentId: string, mpAccessToken: string | undefined) {
+async function processPayment(sb: any, paymentId: string, mpAccessToken: string | null) {
   console.log(`[mp-webhook] Processing payment: ${paymentId}`);
 
   if (!mpAccessToken) {
-    console.error("[mp-webhook] MP_ACCESS_TOKEN not configured");
+    console.error("[mp-webhook] Mercado Pago token não encontrado (tenant/global)");
     return;
   }
 
@@ -142,9 +161,9 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string 
   }
 }
 
-async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken: string | undefined) {
+async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken: string | null) {
   if (!mpAccessToken) {
-    console.error("[mp-webhook] MP_ACCESS_TOKEN not configured");
+    console.error("[mp-webhook] Mercado Pago token não encontrado (tenant/global)");
     return;
   }
 

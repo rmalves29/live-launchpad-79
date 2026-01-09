@@ -221,10 +221,20 @@ serve(async (req) => {
       }
     }
 
-    // 3) Criar preferência no Mercado Pago
-    const mpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
-    if (!mpAccessToken) {
-      return new Response(JSON.stringify({ error: "MP_ACCESS_TOKEN não configurado" }), {
+    // 3) Criar preferência no Mercado Pago (por tenant)
+    // Preferência: token da tabela integration_mp; fallback: secret global MP_ACCESS_TOKEN
+    const { data: mpIntegration } = await sb
+      .from("integration_mp")
+      .select("access_token, environment, is_active")
+      .eq("tenant_id", payload.tenant_id)
+      .maybeSingle();
+
+    const mpAccessToken = mpIntegration?.is_active ? mpIntegration?.access_token : null;
+    const fallbackMpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
+
+    const effectiveMpAccessToken = mpAccessToken || fallbackMpAccessToken;
+    if (!effectiveMpAccessToken) {
+      return new Response(JSON.stringify({ error: "Integração Mercado Pago não configurada para este tenant" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -247,8 +257,8 @@ serve(async (req) => {
       });
     }
 
-    // Webhook URL for payment notifications
-    const webhookUrl = `${supabaseUrl}/functions/v1/mp-webhook`;
+    // Webhook URL for payment notifications (inclui tenant_id para resolver token correto)
+    const webhookUrl = `${supabaseUrl}/functions/v1/mp-webhook?tenant_id=${payload.tenant_id}`;
 
     const preferenceBody = {
       items,
@@ -271,7 +281,7 @@ serve(async (req) => {
     const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${mpAccessToken}`,
+        Authorization: `Bearer ${effectiveMpAccessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(preferenceBody),
