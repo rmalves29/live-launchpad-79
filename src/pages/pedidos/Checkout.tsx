@@ -516,11 +516,8 @@ const Checkout = () => {
     // Sempre garantir que há pelo menos as opções de frete padrão
     setShippingOptions(fallbackShipping);
     
-    // Se for OF Beauty, não precisa calcular frete via Melhor Envio
-    if (isOfBeauty) {
-      setLoadingShipping(false);
-      return;
-    }
+    // Salvar opções customizadas do OF Beauty para adicionar junto com Melhor Envio
+    const ofBeautyCustomOptions = isOfBeauty ? fallbackShipping : [];
     
     try {
       // Buscar endereço pelo CEP (ViaCEP) - forma segura
@@ -641,19 +638,29 @@ const Checkout = () => {
         if (validOptions.length > 0) {
           // Filter shipping options to show only desired services
           const filteredOptions = filterShippingOptions(validOptions);
-          const allOptions = [...fallbackShipping, ...filteredOptions];
+          // Para OF Beauty, adiciona as opções customizadas (retirada R$3 + frete fixo R$19.90) junto com Melhor Envio
+          // Para outros tenants, usa apenas a retirada grátis + Melhor Envio
+          const baseOptions = isOfBeauty ? ofBeautyCustomOptions : [{
+            id: 'retirada',
+            name: 'Retirada - Retirar na Fábrica',
+            company: 'Retirada',
+            price: '0.00',
+            delivery_time: 'Imediato',
+            custom_price: '0.00'
+          }];
+          const allOptions = [...baseOptions, ...filteredOptions];
           setShippingOptions(allOptions);
           
           console.log('✅ Opções de frete filtradas:', filteredOptions.length);
           toast({
             title: 'Frete calculado',
-            description: `${filteredOptions.length} opções de frete encontradas`,
+            description: `${filteredOptions.length + baseOptions.length} opções de frete encontradas`,
           });
         } else {
           console.log('⚠️ Nenhuma opção válida retornada');
           toast({
             title: 'Frete não disponível',
-            description: 'Apenas retirada disponível para este CEP',
+            description: isOfBeauty ? 'Opções de frete fixo disponíveis' : 'Apenas retirada disponível para este CEP',
           });
         }
       } else {

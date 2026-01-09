@@ -285,11 +285,8 @@ const PublicCheckout = () => {
     setLoadingShipping(true);
     setShippingOptions(fallbackShipping);
 
-    // Se for OF Beauty, não precisa calcular frete via Melhor Envio
-    if (isOfBeauty) {
-      setLoadingShipping(false);
-      return;
-    }
+    // Salvar opções customizadas do OF Beauty para adicionar junto com Melhor Envio
+    const ofBeautyCustomOptions = isOfBeauty ? fallbackShipping : [];
 
     try {
       // Buscar endereço pelo CEP
@@ -353,10 +350,19 @@ const PublicCheckout = () => {
 
         if (validOptions.length > 0) {
           const filteredOptions = filterShippingOptions(validOptions);
-          setShippingOptions([...fallbackShipping, ...filteredOptions]);
+          // Para OF Beauty, adiciona as opções customizadas junto com Melhor Envio
+          const baseOptions = isOfBeauty ? ofBeautyCustomOptions : [{
+            id: 'retirada',
+            name: 'Retirada - Retirar na Fábrica',
+            company: 'Retirada',
+            price: '0.00',
+            delivery_time: 'Imediato',
+            custom_price: '0.00'
+          }];
+          setShippingOptions([...baseOptions, ...filteredOptions]);
           toast({
             title: 'Frete calculado',
-            description: `${filteredOptions.length} opções de frete encontradas`,
+            description: `${filteredOptions.length + baseOptions.length} opções de frete encontradas`,
           });
         }
       }
@@ -369,25 +375,16 @@ const PublicCheckout = () => {
 
   const handleShippingChange = (shippingId: string) => {
     setSelectedShipping(shippingId);
-    if (shippingId === 'retirada') {
+    // Buscar a opção selecionada das opções disponíveis
+    const selectedOption = shippingOptions.find(opt => opt.id === shippingId);
+    if (selectedOption) {
       setSelectedShippingData({
-        id: 'retirada',
-        name: 'Retirada - Retirar na Fábrica',
-        company: 'Retirada',
-        price: '0.00',
-        delivery_time: 'Imediato'
+        id: selectedOption.id,
+        name: selectedOption.name,
+        company: selectedOption.company,
+        price: selectedOption.custom_price || selectedOption.price,
+        delivery_time: selectedOption.delivery_time
       });
-    } else {
-      const selectedOption = shippingOptions.find(opt => opt.id === shippingId);
-      if (selectedOption) {
-        setSelectedShippingData({
-          id: selectedOption.id,
-          name: selectedOption.name,
-          company: selectedOption.company,
-          price: selectedOption.custom_price || selectedOption.price,
-          delivery_time: selectedOption.delivery_time
-        });
-      }
     }
   };
 
