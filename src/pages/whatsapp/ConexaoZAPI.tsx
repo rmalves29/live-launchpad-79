@@ -17,7 +17,9 @@ import {
   MessageCircle,
   Zap,
   Shield,
-  ExternalLink
+  ExternalLink,
+  Clock,
+  Timer
 } from "lucide-react";
 import { ZAPISettings } from "@/components/ZAPISettings";
 
@@ -32,6 +34,7 @@ interface WhatsAppStatus {
 }
 
 const POLLING_INTERVAL_MS = 5000;
+const QR_CODE_EXPIRATION_SECONDS = 60; // QR Code expira em 60 segundos
 
 export default function ConexaoZAPI() {
   const { tenant } = useTenantContext();
@@ -42,9 +45,11 @@ export default function ConexaoZAPI() {
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
+  const [qrCountdown, setQrCountdown] = useState<number>(0);
   
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const mountedRef = useRef(true);
+  const qrTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -53,7 +58,53 @@ export default function ConexaoZAPI() {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
       }
+      if (qrTimerRef.current) {
+        clearInterval(qrTimerRef.current);
+      }
     };
+  }, []);
+
+  // Timer de expiração do QR Code
+  const startQRCountdown = useCallback(() => {
+    // Limpa timer anterior
+    if (qrTimerRef.current) {
+      clearInterval(qrTimerRef.current);
+    }
+    
+    setQrCountdown(QR_CODE_EXPIRATION_SECONDS);
+    
+    qrTimerRef.current = setInterval(() => {
+      setQrCountdown(prev => {
+        if (prev <= 1) {
+          // Timer expirou
+          if (qrTimerRef.current) {
+            clearInterval(qrTimerRef.current);
+          }
+          // Limpa o QR Code expirado
+          setWhatsappStatus(prevStatus => {
+            if (prevStatus?.status === 'qr_ready') {
+              return {
+                ...prevStatus,
+                status: 'qr_expired',
+                qrCode: undefined,
+                hasQR: false
+              };
+            }
+            return prevStatus;
+          });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  const stopQRCountdown = useCallback(() => {
+    if (qrTimerRef.current) {
+      clearInterval(qrTimerRef.current);
+      qrTimerRef.current = null;
+    }
+    setQrCountdown(0);
   }, []);
 
   useEffect(() => {
@@ -156,8 +207,9 @@ export default function ConexaoZAPI() {
         return;
       }
 
-      // Se está conectado, limpa o QR Code e atualiza o status
+      // Se está conectado, limpa o QR Code e para o timer
       if (data.connected) {
+        stopQRCountdown();
         setWhatsappStatus({
           connected: true,
           status: data.status,
@@ -220,9 +272,12 @@ export default function ConexaoZAPI() {
           message: 'Escaneie o QR Code com seu WhatsApp'
         }));
 
+        // Inicia contagem regressiva
+        startQRCountdown();
+
         toast({
           title: "QR Code gerado",
-          description: "Escaneie com seu WhatsApp",
+          description: "Você tem 60 segundos para escanear",
         });
       } else if (data.error) {
         toast({
@@ -420,6 +475,37 @@ export default function ConexaoZAPI() {
               {/* QR Code State */}
               {whatsappStatus?.status === 'qr_ready' && whatsappStatus.qrCode && (
                 <div className="space-y-4">
+                  {/* Timer de expiração */}
+                  {qrCountdown > 0 && (
+                    <div className={`flex items-center justify-center gap-2 p-3 rounded-lg ${
+                      qrCountdown <= 15 
+                        ? 'bg-red-500/10 border border-red-500/30' 
+                        : qrCountdown <= 30 
+                          ? 'bg-yellow-500/10 border border-yellow-500/30'
+                          : 'bg-purple-500/10 border border-purple-500/30'
+                    }`}>
+                      <Timer className={`h-5 w-5 ${
+                        qrCountdown <= 15 
+                          ? 'text-red-500' 
+                          : qrCountdown <= 30 
+                            ? 'text-yellow-500'
+                            : 'text-purple-500'
+                      }`} />
+                      <span className={`text-lg font-bold ${
+                        qrCountdown <= 15 
+                          ? 'text-red-600 dark:text-red-400' 
+                          : qrCountdown <= 30 
+                            ? 'text-yellow-600 dark:text-yellow-400'
+                            : 'text-purple-600 dark:text-purple-400'
+                      }`}>
+                        {qrCountdown}s
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {qrCountdown <= 15 ? 'Expirando!' : 'para escanear'}
+                      </span>
+                    </div>
+                  )}
+                  
                   <div className="flex flex-col items-center p-6 bg-white rounded-xl">
                     <img 
                       src={whatsappStatus.qrCode} 
@@ -430,6 +516,44 @@ export default function ConexaoZAPI() {
                   <p className="text-center text-sm text-muted-foreground">
                     Abra o WhatsApp no celular → Menu → Aparelhos conectados → Conectar aparelho
                   </p>
+                  <Button 
+                    variant="outline"
+                    onClick={getQRCode}
+                    disabled={loadingQR}
+                    className="w-full"
+                  >
+                    {loadingQR ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Gerar Novo QR Code
+                  </Button>
+                </div>
+              )}
+
+              {/* QR Code Expired State */}
+              {whatsappStatus?.status === 'qr_expired' && (
+                <div className="space-y-4">
+                  <Alert className="border-yellow-500/30 bg-yellow-500/5">
+                    <Clock className="h-4 w-4 text-yellow-500" />
+                    <AlertDescription className="text-foreground">
+                      O QR Code expirou. Clique no botão abaixo para gerar um novo.
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <Button 
+                    onClick={getQRCode}
+                    disabled={loadingQR}
+                    className="w-full"
+                  >
+                    {loadingQR ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <QrCodeIcon className="h-4 w-4 mr-2" />
+                    )}
+                    Gerar Novo QR Code
+                  </Button>
                 </div>
               )}
 
