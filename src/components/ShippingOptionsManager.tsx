@@ -21,14 +21,6 @@ interface ShippingOption {
   is_active: boolean;
 }
 
-interface TenantShippingConfig {
-  custom_shipping_options: ShippingOption[];
-  order_merge_days: number;
-}
-
-// Chave para localStorage como fallback
-const getStorageKey = (tenantId: string) => `shipping_options_${tenantId}`;
-
 export const ShippingOptionsManager = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
@@ -37,6 +29,7 @@ export const ShippingOptionsManager = () => {
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [orderMergeDays, setOrderMergeDays] = useState<number>(3);
   const [savingMergeDays, setSavingMergeDays] = useState(false);
+  const [tableExists, setTableExists] = useState(false);
   
   // Form state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -53,53 +46,45 @@ export const ShippingOptionsManager = () => {
     
     setLoading(true);
     try {
-      // Tentar carregar do localStorage primeiro (fallback enquanto tabela não existe)
-      const storageKey = getStorageKey(tenantId);
-      const stored = localStorage.getItem(storageKey);
-      
-      if (stored) {
-        try {
-          const config: TenantShippingConfig = JSON.parse(stored);
-          setOptions(config.custom_shipping_options || []);
-          setOrderMergeDays(config.order_merge_days ?? 3);
-        } catch (e) {
-          console.error('Erro ao parsear config do localStorage:', e);
-        }
+      // Tentar carregar opções de frete do banco
+      const { data: shippingOptions, error: shippingError } = await supabase
+        .from('custom_shipping_options' as any)
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: true });
+
+      if (!shippingError && shippingOptions) {
+        setTableExists(true);
+        setOptions(shippingOptions.map((opt: any) => ({
+          id: opt.id,
+          name: opt.name,
+          delivery_days: opt.delivery_days,
+          price: Number(opt.price),
+          is_active: opt.is_active
+        })));
+      } else {
+        console.log('Tabela custom_shipping_options não existe ou erro:', shippingError);
+        setTableExists(false);
       }
 
-      // Tentar carregar order_merge_days do tenant se existir na tabela
-      try {
-        const { data: tenantData } = await supabase
-          .from('tenants')
-          .select('*')
-          .eq('id', tenantId)
-          .single();
+      // Carregar order_merge_days do tenant
+      const { data: tenantData, error: tenantError } = await supabase
+        .from('tenants')
+        .select('*')
+        .eq('id', tenantId)
+        .single();
 
-        // Se tiver a coluna order_merge_days, usa ela
-        if (tenantData && 'order_merge_days' in tenantData) {
+      if (!tenantError && tenantData) {
+        // Verificar se a coluna existe
+        if ('order_merge_days' in tenantData) {
           setOrderMergeDays((tenantData as any).order_merge_days ?? 3);
         }
-      } catch (e) {
-        console.log('Coluna order_merge_days não existe ainda na tabela tenants');
       }
     } catch (error) {
       console.error('Erro ao carregar configurações de frete:', error);
     } finally {
       setLoading(false);
     }
-  };
-
-  const saveConfig = async (newOptions: ShippingOption[], newMergeDays: number) => {
-    if (!tenantId) return;
-    
-    const config: TenantShippingConfig = {
-      custom_shipping_options: newOptions,
-      order_merge_days: newMergeDays
-    };
-
-    // Salvar no localStorage como armazenamento principal por enquanto
-    const storageKey = getStorageKey(tenantId);
-    localStorage.setItem(storageKey, JSON.stringify(config));
   };
 
   useEffect(() => {
@@ -140,34 +125,61 @@ export const ShippingOptionsManager = () => {
 
     setSaving(true);
     try {
-      let newOptions: ShippingOption[];
-      
       if (editingOption) {
-        // Atualizar
-        newOptions = options.map(opt => 
+        // Atualizar no banco
+        const { error } = await supabase
+          .from('custom_shipping_options' as any)
+          .update({
+            name: formData.name,
+            delivery_days: formData.delivery_days,
+            price: formData.price,
+            is_active: formData.is_active,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', editingOption.id)
+          .eq('tenant_id', tenantId);
+
+        if (error) throw error;
+        
+        setOptions(prev => prev.map(opt => 
           opt.id === editingOption.id 
             ? { ...opt, ...formData }
             : opt
-        );
+        ));
         toast({ title: 'Sucesso', description: 'Opção de frete atualizada' });
       } else {
-        // Criar
+        // Criar no banco
+        const { data, error } = await supabase
+          .from('custom_shipping_options' as any)
+          .insert({
+            tenant_id: tenantId,
+            name: formData.name,
+            delivery_days: formData.delivery_days,
+            price: formData.price,
+            is_active: formData.is_active
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        
         const newOption: ShippingOption = {
-          id: `custom_${Date.now()}`,
-          ...formData
+          id: data.id,
+          name: data.name,
+          delivery_days: data.delivery_days,
+          price: Number(data.price),
+          is_active: data.is_active
         };
-        newOptions = [...options, newOption];
+        setOptions(prev => [...prev, newOption]);
         toast({ title: 'Sucesso', description: 'Opção de frete criada' });
       }
 
-      setOptions(newOptions);
-      await saveConfig(newOptions, orderMergeDays);
       setIsDialogOpen(false);
     } catch (error: any) {
       console.error('Erro ao salvar opção de frete:', error);
       toast({
         title: 'Erro',
-        description: error?.message || 'Erro ao salvar opção de frete',
+        description: error?.message || 'Erro ao salvar opção de frete. Verifique se a tabela foi criada no banco.',
         variant: 'destructive'
       });
     } finally {
@@ -179,9 +191,15 @@ export const ShippingOptionsManager = () => {
     if (!confirm(`Deseja realmente excluir a opção "${option.name}"?`)) return;
 
     try {
-      const newOptions = options.filter(opt => opt.id !== option.id);
-      setOptions(newOptions);
-      await saveConfig(newOptions, orderMergeDays);
+      const { error } = await supabase
+        .from('custom_shipping_options' as any)
+        .delete()
+        .eq('id', option.id)
+        .eq('tenant_id', tenantId);
+
+      if (error) throw error;
+
+      setOptions(prev => prev.filter(opt => opt.id !== option.id));
       toast({ title: 'Sucesso', description: 'Opção de frete excluída' });
     } catch (error: any) {
       console.error('Erro ao excluir opção de frete:', error);
@@ -195,13 +213,22 @@ export const ShippingOptionsManager = () => {
 
   const handleToggleActive = async (option: ShippingOption) => {
     try {
-      const newOptions = options.map(opt => 
+      const { error } = await supabase
+        .from('custom_shipping_options' as any)
+        .update({ 
+          is_active: !option.is_active,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', option.id)
+        .eq('tenant_id', tenantId);
+
+      if (error) throw error;
+
+      setOptions(prev => prev.map(opt => 
         opt.id === option.id 
           ? { ...opt, is_active: !opt.is_active }
           : opt
-      );
-      setOptions(newOptions);
-      await saveConfig(newOptions, orderMergeDays);
+      ));
     } catch (error: any) {
       console.error('Erro ao atualizar status:', error);
       toast({
@@ -217,7 +244,23 @@ export const ShippingOptionsManager = () => {
     
     setSavingMergeDays(true);
     try {
-      await saveConfig(options, orderMergeDays);
+      // Tentar atualizar no banco
+      const { error } = await supabase
+        .from('tenants')
+        .update({ 
+          order_merge_days: orderMergeDays,
+          updated_at: new Date().toISOString()
+        } as any)
+        .eq('id', tenantId);
+
+      if (error) {
+        // Se a coluna não existe, mostrar erro amigável
+        if (error.message.includes('order_merge_days')) {
+          throw new Error('Coluna order_merge_days ainda não existe no banco. Execute a migração SQL.');
+        }
+        throw error;
+      }
+
       toast({ title: 'Sucesso', description: 'Configuração de juntar pedidos atualizada' });
     } catch (error: any) {
       console.error('Erro ao salvar configuração:', error);
@@ -246,6 +289,17 @@ export const ShippingOptionsManager = () => {
 
   return (
     <div className="space-y-6">
+      {/* Alerta se tabela não existe */}
+      {!tableExists && (
+        <Alert variant="destructive">
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Tabela não encontrada:</strong> A tabela <code>custom_shipping_options</code> precisa ser criada no banco de dados. 
+            Execute a migração SQL no Supabase para habilitar esta funcionalidade.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Card: Opções de Frete Customizadas */}
       <Card>
         <CardHeader>
@@ -261,7 +315,7 @@ export const ShippingOptionsManager = () => {
             </div>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
-                <Button onClick={() => handleOpenDialog()}>
+                <Button onClick={() => handleOpenDialog()} disabled={!tableExists}>
                   <Plus className="h-4 w-4 mr-2" />
                   Nova Opção
                 </Button>
