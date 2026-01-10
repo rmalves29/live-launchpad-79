@@ -312,13 +312,23 @@ useEffect(() => {
   const extractFreightFromObservation = (observation: string | null | undefined): number => {
     if (!observation) return 0;
     
-    // Formato: "[FRETE] ... | R$ 19.90 | ..." ou "[FRETE] Retirar no local | R$ 3.00 | ..."
-    const match = observation.match(/\[FRETE\].*?\|\s*R\$\s*([\d.,]+)/i);
+    console.log('[extractFreight] Observation:', observation);
+    
+    // Tenta diferentes formatos de frete na observation
+    // Formato 1: "[FRETE] ... | R$ 19.90 | ..."
+    // Formato 2: "[FRETE] Retirar no local | R$ 3.00 | ..."
+    // Formato 3: "R$ 19,90" ou "R$ 19.90" em qualquer lugar
+    
+    // Primeiro tenta o formato específico com [FRETE]
+    let match = observation.match(/R\$\s*([\d]+[.,][\d]{2})/i);
     if (match) {
-      // Converte "19.90" ou "19,90" para número
       const value = match[1].replace(',', '.');
-      return parseFloat(value) || 0;
+      const freight = parseFloat(value) || 0;
+      console.log('[extractFreight] Extracted freight:', freight);
+      return freight;
     }
+    
+    console.log('[extractFreight] No freight found');
     return 0;
   };
 
