@@ -9,12 +9,13 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2, Ban } from 'lucide-react';
+import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2, Ban, Merge } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
+import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 
 interface Tenant {
   id: string;
@@ -105,6 +106,12 @@ const PublicCheckout = () => {
   const [activeGifts, setActiveGifts] = useState<any[]>([]);
   const [eligibleGift, setEligibleGift] = useState<any>(null);
   const [progressGift, setProgressGift] = useState<any>(null);
+
+  // Hook para verificar pedidos pagos recentes (juntar pedidos)
+  const { hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays } = useOrderMerge(
+    tenant?.id || null,
+    phone ? normalizeForStorage(phone) : null
+  );
 
   // Carregar tenant pelo slug
   useEffect(() => {
@@ -224,6 +231,21 @@ const PublicCheckout = () => {
       setEligibleGift(null);
     }
   }, [selectedOrderIds, orders, activeGifts]);
+
+  // Adicionar opção de merge quando há pedido pago recente
+  useEffect(() => {
+    if (hasPaidOrderWithinPeriod && mergeableOrders.length > 0) {
+      setShippingOptions(prev => {
+        // Verificar se já tem a opção de merge
+        if (prev.some(opt => opt.id === 'merge_order')) return prev;
+        // Adicionar a opção de merge no início
+        console.log(`🎁 Adicionando opção de frete grátis - cliente tem ${mergeableOrders.length} pedido(s) pago(s) nos últimos ${orderMergeDays} dias`);
+        return [MERGE_ORDER_SHIPPING_OPTION, ...prev];
+      });
+    } else {
+      setShippingOptions(prev => prev.filter(opt => opt.id !== 'merge_order'));
+    }
+  }, [hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays]);
 
   const formatDeliveryTime = (originalTime: string, companyName: string) => {
     if (companyName === 'Retirada') return originalTime;
@@ -487,6 +509,11 @@ const PublicCheckout = () => {
         }
       }
 
+      // Adicionar observação se for merge de pedidos
+      const mergeObservation = selectedShipping === 'merge_order' 
+        ? 'Cliente Possui outro Pedido' 
+        : null;
+
       const paymentData = {
         order_ids: ordersToProcess.map(o => o.id),
         order_id: ordersToProcess[0].id, // Primary order for backwards compatibility
@@ -514,7 +541,8 @@ const PublicCheckout = () => {
         total: totalAmount.toString(),
         coupon_discount: couponDiscount,
         coupon_code: appliedCoupon?.code || null,
-        tenant_id: tenant.id
+        tenant_id: tenant.id,
+        merge_observation: mergeObservation
       };
 
       const { data, error } = await supabase.functions.invoke('create-payment', {

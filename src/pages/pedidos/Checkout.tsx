@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent, Gift, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Loader2, Copy, User, MapPin, Truck, Search, ShoppingCart, ArrowLeft, BarChart3, CreditCard, Eye, Package, Percent, Gift, AlertTriangle, ExternalLink, Merge } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,6 +16,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
+import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 
 
 interface OrderItem {
@@ -95,6 +96,12 @@ const Checkout = () => {
   // Estado para slug do tenant (para link do checkout público)
   const [tenantSlug, setTenantSlug] = useState<string | null>(null);
   const [publicBaseUrl, setPublicBaseUrl] = useState<string>('https://app.orderzaps.com');
+
+  // Hook para verificar pedidos pagos recentes (juntar pedidos)
+  const { hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays } = useOrderMerge(
+    tenantId || null,
+    phone ? normalizeForStorage(phone) : null
+  );
 
   // Tenant específico OF Beauty - definição global
   const OF_BEAUTY_TENANT_ID = '4247aa21-4a46-4988-8845-fa15aa202310';
@@ -218,6 +225,21 @@ const Checkout = () => {
       setEligibleGift(null);
     }
   }, [selectedOrder, openOrders, activeGifts]);
+
+  // Adicionar opção de merge quando há pedido pago recente
+  useEffect(() => {
+    if (hasPaidOrderWithinPeriod && mergeableOrders.length > 0) {
+      setShippingOptions(prev => {
+        // Verificar se já tem a opção de merge
+        if (prev.some(opt => opt.id === 'merge_order')) return prev;
+        // Adicionar a opção de merge no início
+        console.log(`🎁 Adicionando opção de frete grátis - cliente tem ${mergeableOrders.length} pedido(s) pago(s) nos últimos ${orderMergeDays} dias`);
+        return [MERGE_ORDER_SHIPPING_OPTION, ...prev];
+      });
+    } else {
+      setShippingOptions(prev => prev.filter(opt => opt.id !== 'merge_order'));
+    }
+  }, [hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays]);
 
   const loadOpenOrders = async () => {
     if (!phone) {
@@ -1036,6 +1058,11 @@ const Checkout = () => {
         }
       }
 
+      // Adicionar observação se for merge de pedidos
+      const mergeObservation = selectedShipping === 'merge_order' 
+        ? 'Cliente Possui outro Pedido' 
+        : null;
+
       // Preparar dados no formato esperado pela edge function
       const paymentData = {
         order_id: order.id, // Enviar o ID do pedido específico
@@ -1063,7 +1090,8 @@ const Checkout = () => {
         total: totalAmount.toString(),
         coupon_discount: couponDiscount,
         coupon_code: appliedCoupon?.code || null,
-        tenant_id: tenantId
+        tenant_id: tenantId,
+        merge_observation: mergeObservation
       };
 
       console.log('Calling create-payment with data:', paymentData);

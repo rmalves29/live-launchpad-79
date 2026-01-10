@@ -445,7 +445,7 @@ export const ShippingOptionsManager = () => {
           </CardTitle>
           <CardDescription>
             Configure o prazo máximo para que clientes possam juntar pedidos em um único frete.
-            Quando um cliente paga um pedido e possui outros pedidos recentes, aparecerá a opção de enviar tudo junto (frete grátis no segundo pedido).
+            Quando um cliente já tem um pedido <strong>pago</strong> recente, ao fazer um novo pedido aparecerá a opção de enviar tudo junto (frete grátis no novo pedido).
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -453,8 +453,8 @@ export const ShippingOptionsManager = () => {
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
-                <strong>Como funciona:</strong> Se um cliente tem 2+ pedidos dentro do prazo configurado, 
-                ao pagar o segundo pedido aparecerá a opção "Juntar com pedido anterior" que isenta o frete 
+                <strong>Como funciona:</strong> Se um cliente tem um pedido <strong>pago</strong> dentro do prazo configurado, 
+                ao finalizar um novo pedido aparecerá a opção "Juntar com pedido anterior" que isenta o frete 
                 e adiciona automaticamente a observação "Cliente Possui outro Pedido".
               </AlertDescription>
             </Alert>
