@@ -217,23 +217,14 @@ const Config = () => {
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold flex items-center">
-                <Settings className="h-8 w-8 mr-3 text-primary" />
-                Configurações do Sistema
-              </h1>
-              <p className="text-muted-foreground mt-2">
-                Configure integrações, cupons, brindes e parâmetros do sistema
-              </p>
-            </div>
-            <Button 
-              onClick={() => setActiveView('dashboard')} 
-              variant="outline"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Voltar ao Dashboard
-            </Button>
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold flex items-center">
+              <Settings className="h-8 w-8 mr-3 text-primary" />
+              Configurações do Sistema
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              Configure integrações, cupons, brindes e parâmetros do sistema
+            </p>
           </div>
 
           <div className="space-y-6">
