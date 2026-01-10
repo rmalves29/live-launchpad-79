@@ -1269,7 +1269,6 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                             )}
                           </div>
                         </TableCell>
-                        </TableCell>
                         <TableCell className="px-2 text-xs">{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                         <TableCell className="px-2 text-xs text-muted-foreground">
                           {order.customer?.instagram ? `@${order.customer.instagram.replace('@', '')}` : '-'}
