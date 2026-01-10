@@ -405,7 +405,7 @@ export const ShippingOptionsManager = () => {
                   <TableRow key={option.id}>
                     <TableCell className="font-medium">{option.name}</TableCell>
                     <TableCell>{option.delivery_days} {option.delivery_days === 1 ? 'dia' : 'dias'}</TableCell>
-                    <TableCell>{formatCurrency(option.price * 100)}</TableCell>
+                    <TableCell>{formatCurrency(option.price)}</TableCell>
                     <TableCell>
                       <Switch
                         checked={option.is_active}
