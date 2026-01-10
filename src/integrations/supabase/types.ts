@@ -626,6 +626,7 @@ export type Database = {
           event_type: string
           group_name: string | null
           id: number
+          is_cancelled: boolean | null
           is_paid: boolean
           item_added_delivered: boolean | null
           item_added_message_sent: boolean | null
@@ -657,6 +658,7 @@ export type Database = {
           event_type: string
           group_name?: string | null
           id?: number
+          is_cancelled?: boolean | null
           is_paid?: boolean
           item_added_delivered?: boolean | null
           item_added_message_sent?: boolean | null
@@ -688,6 +690,7 @@ export type Database = {
           event_type?: string
           group_name?: string | null
           id?: number
+          is_cancelled?: boolean | null
           is_paid?: boolean
           item_added_delivered?: boolean | null
           item_added_message_sent?: boolean | null
