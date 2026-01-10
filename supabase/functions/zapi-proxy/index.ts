@@ -48,34 +48,59 @@ serve(async (req) => {
       );
     }
 
+    const notConfiguredPayload = (reason: string) => {
+      // For UI stability: do not return 4xx for read/status-like actions when WhatsApp isn't configured.
+      // This prevents pages that auto-fetch groups/status from crashing or showing disruptive errors.
+      if (action === "status") {
+        return {
+          connected: false,
+          status: "not_configured",
+          message: reason,
+        };
+      }
+
+      if (action === "list-groups") {
+        return [];
+      }
+
+      if (action === "list-tags") {
+        return [];
+      }
+
+      return {
+        error: "Integração WhatsApp não configurada",
+        message: reason,
+      };
+    };
+
     if (!integration) {
-      return new Response(
-        JSON.stringify({ 
-          error: "Integração WhatsApp não configurada",
-          message: "Configure as credenciais Z-API nas configurações"
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      const payload = notConfiguredPayload(
+        "Configure as credenciais Z-API nas configurações"
       );
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    if (integration.provider !== 'zapi') {
-      return new Response(
-        JSON.stringify({ 
-          error: "Provedor incorreto",
-          message: "Esta integração não está configurada para Z-API"
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    if (integration.provider !== "zapi") {
+      const payload = notConfiguredPayload(
+        "Esta integração não está configurada para Z-API"
       );
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     if (!integration.zapi_instance_id || !integration.zapi_token) {
-      return new Response(
-        JSON.stringify({ 
-          error: "Credenciais Z-API não configuradas",
-          message: "Configure Instance ID e Token nas configurações"
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      const payload = notConfiguredPayload(
+        "Configure Instance ID e Token nas configurações"
       );
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const instanceId = integration.zapi_instance_id;
