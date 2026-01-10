@@ -251,6 +251,47 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_shipping_options: {
+        Row: {
+          created_at: string
+          delivery_days: number
+          id: string
+          is_active: boolean
+          name: string
+          price: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          delivery_days?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          price?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          delivery_days?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          price?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_shipping_options_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_whatsapp_groups: {
         Row: {
           created_at: string | null
@@ -1279,6 +1320,7 @@ export type Database = {
           max_products: number | null
           max_whatsapp_groups: number | null
           name: string
+          order_merge_days: number | null
           phone: string | null
           plan_type: string | null
           primary_color: string | null
@@ -1317,6 +1359,7 @@ export type Database = {
           max_products?: number | null
           max_whatsapp_groups?: number | null
           name: string
+          order_merge_days?: number | null
           phone?: string | null
           plan_type?: string | null
           primary_color?: string | null
@@ -1355,6 +1398,7 @@ export type Database = {
           max_products?: number | null
           max_whatsapp_groups?: number | null
           name?: string
+          order_merge_days?: number | null
           phone?: string | null
           plan_type?: string | null
           primary_color?: string | null

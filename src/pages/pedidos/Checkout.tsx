@@ -15,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
+import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
 
 
 interface OrderItem {
@@ -109,34 +110,19 @@ const Checkout = () => {
       // Verificar se é OF Beauty para usar valores corretos
       const isOfBeauty = tenantId === OF_BEAUTY_TENANT_ID;
       
+      // Buscar opções de frete customizadas do banco de dados
+      const customOptions = await fetchCustomShippingOptions(tenantId || '');
+      
       // Limpar qualquer dado de frete que possa causar duplicação
       setSelectedShipping('retirada');
       setSelectedShippingData(null);
-      setShippingOptions(isOfBeauty ? [
-        {
-          id: 'retirada',
-          name: 'Retirar no local',
-          company: 'Retirada',
-          price: '3.00',
-          delivery_time: 'Imediato',
-          custom_price: '3.00'
-        },
-        {
-          id: 'frete_fixo',
-          name: 'Frete Fixo - Envio',
-          company: 'Envio',
-          price: '19.90',
-          delivery_time: '5-10 dias úteis',
-          custom_price: '19.90'
-        }
-      ] : [{
-        id: 'retirada',
-        name: 'Retirada - Retirar na Fábrica', 
-        company: 'Retirada',
-        price: '0.00',
-        delivery_time: 'Imediato',
-        custom_price: '0.00'
-      }]);
+      
+      // Usar opções customizadas do banco ou fallback padrão
+      const baseShippingOptions = customOptions.length > 0 
+        ? customOptions 
+        : [DEFAULT_SHIPPING_OPTION];
+      
+      setShippingOptions(baseShippingOptions);
       
       // Limpar cupom de desconto
       setAppliedCoupon(null);
@@ -481,43 +467,18 @@ const Checkout = () => {
     console.log('📋 Tenant ID:', tenantId);
     console.log('📦 Order items:', order.items);
     
-    // Verificar se é OF Beauty (usando constante do escopo do componente)
-    const isOfBeauty = tenantId === OF_BEAUTY_TENANT_ID;
-
-    // Definir opções de frete baseadas no tenant
-    const fallbackShipping = isOfBeauty ? [
-      {
-        id: 'retirada',
-        name: 'Retirar no local',
-        company: 'Retirada',
-        price: '3.00',
-        delivery_time: 'Imediato',
-        custom_price: '3.00'
-      },
-      {
-        id: 'frete_fixo',
-        name: 'Frete Fixo - Envio',
-        company: 'Envio',
-        price: '19.90',
-        delivery_time: '5-10 dias úteis',
-        custom_price: '19.90'
-      }
-    ] : [{
-      id: 'retirada',
-      name: 'Retirada - Retirar na Fábrica',
-      company: 'Retirada',
-      price: '0.00',
-      delivery_time: 'Imediato',
-      custom_price: '0.00'
-    }];
+    // Buscar opções de frete customizadas do banco de dados
+    const customOptions = await fetchCustomShippingOptions(tenantId || '');
+    
+    // Usar opções customizadas do banco ou fallback padrão
+    const fallbackShipping = customOptions.length > 0 
+      ? customOptions 
+      : [DEFAULT_SHIPPING_OPTION];
 
     setLoadingShipping(true);
     
     // Sempre garantir que há pelo menos as opções de frete padrão
     setShippingOptions(fallbackShipping);
-    
-    // Salvar opções customizadas do OF Beauty para adicionar junto com Melhor Envio
-    const ofBeautyCustomOptions = isOfBeauty ? fallbackShipping : [];
     
     try {
       // Buscar endereço pelo CEP (ViaCEP) - forma segura
@@ -638,29 +599,20 @@ const Checkout = () => {
         if (validOptions.length > 0) {
           // Filter shipping options to show only desired services
           const filteredOptions = filterShippingOptions(validOptions);
-          // Para OF Beauty, adiciona as opções customizadas (retirada R$3 + frete fixo R$19.90) junto com Melhor Envio
-          // Para outros tenants, usa apenas a retirada grátis + Melhor Envio
-          const baseOptions = isOfBeauty ? ofBeautyCustomOptions : [{
-            id: 'retirada',
-            name: 'Retirada - Retirar na Fábrica',
-            company: 'Retirada',
-            price: '0.00',
-            delivery_time: 'Imediato',
-            custom_price: '0.00'
-          }];
-          const allOptions = [...baseOptions, ...filteredOptions];
+          // Usar opções customizadas do banco de dados + opções do Melhor Envio
+          const allOptions = [...fallbackShipping, ...filteredOptions];
           setShippingOptions(allOptions);
           
           console.log('✅ Opções de frete filtradas:', filteredOptions.length);
           toast({
             title: 'Frete calculado',
-            description: `${filteredOptions.length + baseOptions.length} opções de frete encontradas`,
+            description: `${allOptions.length} opções de frete encontradas`,
           });
         } else {
           console.log('⚠️ Nenhuma opção válida retornada');
           toast({
             title: 'Frete não disponível',
-            description: isOfBeauty ? 'Opções de frete fixo disponíveis' : 'Apenas retirada disponível para este CEP',
+            description: fallbackShipping.length > 1 ? 'Opções de frete fixo disponíveis' : 'Apenas retirada disponível para este CEP',
           });
         }
       } else {
