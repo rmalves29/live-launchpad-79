@@ -254,13 +254,15 @@ const Config = () => {
           </div>
 
           <div className="space-y-6">
-            <Tabs defaultValue={searchParams.get('tab') || 'config'} className="w-full">
-              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-6' : 'grid-cols-5'}`}>
-                <TabsTrigger value="config" className="flex items-center text-xs sm:text-sm">
-                  <Settings className="h-4 w-4 mr-1 sm:mr-2" />
-                  <span className="hidden sm:inline">Configurações</span>
-                  <span className="sm:hidden">Config</span>
-                </TabsTrigger>
+            <Tabs defaultValue={searchParams.get('tab') || (isMaster ? 'config' : 'company')} className="w-full">
+              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-6' : 'grid-cols-4'}`}>
+                {isMaster && (
+                  <TabsTrigger value="config" className="flex items-center text-xs sm:text-sm">
+                    <Settings className="h-4 w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Configurações</span>
+                    <span className="sm:hidden">Config</span>
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="company" className="flex items-center text-xs sm:text-sm">
                   <Building2 className="h-4 w-4 mr-1 sm:mr-2" />
                   Empresa
@@ -284,88 +286,90 @@ const Config = () => {
                 )}
               </TabsList>
 
-              <TabsContent value="config" className="space-y-6 mt-6">
-                {/* Integrations Checklist */}
-                <IntegrationsChecklist />
-                
-                {/* WhatsApp Settings */}
-                <WhatsAppSettings />
-                
-                {/* Status do Melhor Envio */}
-                <MelhorEnvioStatus />
-                
-                {/* Availability Settings */}
-                <AvailabilitySettings />
-                
-                {/* Current Configuration */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {configSections.map((section) => (
-                    <Card key={section.title}>
-                      <CardHeader>
-                        <CardTitle className="flex items-center text-lg">
-                          <section.icon className="h-5 w-5 mr-2" />
-                          {section.title}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {section.items.map((item) => (
-                            <div key={item.label}>
-                              <div className="text-sm font-medium text-muted-foreground mb-1">
-                                {item.label}
+              {isMaster && (
+                <TabsContent value="config" className="space-y-6 mt-6">
+                  {/* Integrations Checklist */}
+                  <IntegrationsChecklist />
+                  
+                  {/* WhatsApp Settings */}
+                  <WhatsAppSettings />
+                  
+                  {/* Status do Melhor Envio */}
+                  <MelhorEnvioStatus />
+                  
+                  {/* Availability Settings */}
+                  <AvailabilitySettings />
+                  
+                  {/* Current Configuration */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {configSections.map((section) => (
+                      <Card key={section.title}>
+                        <CardHeader>
+                          <CardTitle className="flex items-center text-lg">
+                            <section.icon className="h-5 w-5 mr-2" />
+                            {section.title}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-3">
+                            {section.items.map((item) => (
+                              <div key={item.label}>
+                                <div className="text-sm font-medium text-muted-foreground mb-1">
+                                  {item.label}
+                                </div>
+                                <div className="text-sm">
+                                  {formatValue(item.value, item.type)}
+                                </div>
                               </div>
-                              <div className="text-sm">
-                                {formatValue(item.value, item.type)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
 
-                {/* Integration Status */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Status das Integrações</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {integrationDocs.map((integration) => (
-                        <div 
-                          key={integration.title}
-                          className="p-4 border rounded-lg hover:bg-muted/30 transition-colors"
-                        >
-                          <div className="flex items-center space-x-3 mb-2">
-                            <integration.icon className="h-5 w-5 text-primary" />
-                            <div className="font-medium">{integration.title}</div>
+                  {/* Integration Status */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Status das Integrações</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {integrationDocs.map((integration) => (
+                          <div 
+                            key={integration.title}
+                            className="p-4 border rounded-lg hover:bg-muted/30 transition-colors"
+                          >
+                            <div className="flex items-center space-x-3 mb-2">
+                              <integration.icon className="h-5 w-5 text-primary" />
+                              <div className="font-medium">{integration.title}</div>
+                            </div>
+                            <div className="text-sm text-muted-foreground mb-3">
+                              {integration.description}
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <Badge variant="outline" className="text-xs">
+                                {integration.status}
+                              </Badge>
+                              <Button asChild size="sm" variant="ghost">
+                                <a 
+                                  href={integration.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="flex items-center"
+                                >
+                                  Docs
+                                  <ExternalLink className="h-3 w-3 ml-1" />
+                                </a>
+                              </Button>
+                            </div>
                           </div>
-                          <div className="text-sm text-muted-foreground mb-3">
-                            {integration.description}
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <Badge variant="outline" className="text-xs">
-                              {integration.status}
-                            </Badge>
-                            <Button asChild size="sm" variant="ghost">
-                              <a 
-                                href={integration.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="flex items-center"
-                              >
-                                Docs
-                                <ExternalLink className="h-3 w-3 ml-1" />
-                              </a>
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              )}
 
               <TabsContent value="company" className="space-y-6 mt-6">
                 <CompanySettings />
