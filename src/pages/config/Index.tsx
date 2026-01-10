@@ -15,6 +15,7 @@ import TenantsManager from '@/components/TenantsManager';
 import { AvailabilitySettings } from '@/components/AvailabilitySettings';
 import { TenantSimulator } from '@/components/TenantSimulator';
 import IntegrationsChecklist from '@/components/IntegrationsChecklist';
+import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '@supabase/supabase-js';
@@ -254,25 +255,30 @@ const Config = () => {
 
           <div className="space-y-6">
             <Tabs defaultValue={searchParams.get('tab') || 'config'} className="w-full">
-              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-5' : 'grid-cols-4'}`}>
-                <TabsTrigger value="config" className="flex items-center">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Configurações
+              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-6' : 'grid-cols-5'}`}>
+                <TabsTrigger value="config" className="flex items-center text-xs sm:text-sm">
+                  <Settings className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Configurações</span>
+                  <span className="sm:hidden">Config</span>
                 </TabsTrigger>
-                <TabsTrigger value="company" className="flex items-center">
-                  <Building2 className="h-4 w-4 mr-2" />
+                <TabsTrigger value="company" className="flex items-center text-xs sm:text-sm">
+                  <Building2 className="h-4 w-4 mr-1 sm:mr-2" />
                   Empresa
                 </TabsTrigger>
-                <TabsTrigger value="coupons" className="flex items-center">
-                  <Percent className="h-4 w-4 mr-2" />
+                <TabsTrigger value="shipping" className="flex items-center text-xs sm:text-sm">
+                  <Truck className="h-4 w-4 mr-1 sm:mr-2" />
+                  Frete
+                </TabsTrigger>
+                <TabsTrigger value="coupons" className="flex items-center text-xs sm:text-sm">
+                  <Percent className="h-4 w-4 mr-1 sm:mr-2" />
                   Cupons
                 </TabsTrigger>
-                <TabsTrigger value="gifts" className="flex items-center">
-                  <Gift className="h-4 w-4 mr-2" />
+                <TabsTrigger value="gifts" className="flex items-center text-xs sm:text-sm">
+                  <Gift className="h-4 w-4 mr-1 sm:mr-2" />
                   Brindes
                 </TabsTrigger>
                 {isMaster && (
-                  <TabsTrigger value="tenants" className="flex items-center">
+                  <TabsTrigger value="tenants" className="flex items-center text-xs sm:text-sm">
                     Empresas
                   </TabsTrigger>
                 )}
@@ -363,6 +369,10 @@ const Config = () => {
 
               <TabsContent value="company" className="space-y-6 mt-6">
                 <CompanySettings />
+              </TabsContent>
+
+              <TabsContent value="shipping" className="space-y-6 mt-6">
+                <ShippingOptionsManager />
               </TabsContent>
 
               <TabsContent value="coupons" className="space-y-6 mt-6">
