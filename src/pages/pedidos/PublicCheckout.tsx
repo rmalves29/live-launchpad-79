@@ -828,34 +828,19 @@ const PublicCheckout = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      {/* Header elegante com logo */}
-      <div className="relative w-full">
-        {/* Background decorativo */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-primary/10 blur-[100px] rounded-full" />
-        
-        <div className="relative pt-12 pb-10">
-          <div className="flex flex-col items-center gap-6">
-            {/* Logo container */}
-            {tenant.logo_url ? (
-              <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200/60 dark:border-slate-700/60">
-                <img 
-                  src={tenant.logo_url} 
-                  alt={tenant.name} 
-                  className="h-36 md:h-44 lg:h-52 w-auto object-contain max-w-[320px] md:max-w-[400px]" 
-                />
-              </div>
-            ) : (
-              <div className="w-28 h-28 md:w-36 md:h-36 rounded-3xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-2xl shadow-primary/40 ring-4 ring-white/30">
-                <Store className="h-14 w-14 md:h-18 md:w-18 text-primary-foreground" />
-              </div>
-            )}
-            {/* Nome da empresa */}
-            <h2 className="text-3xl md:text-4xl font-extrabold text-foreground tracking-tight drop-shadow-sm">
-              {tenant.name}
-            </h2>
+      {/* Header compacto com logo */}
+      <div className="w-full py-6 md:py-8 flex justify-center">
+        {tenant.logo_url ? (
+          <img 
+            src={tenant.logo_url} 
+            alt={tenant.name} 
+            className="h-24 md:h-28 lg:h-32 w-auto object-contain" 
+          />
+        ) : (
+          <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
+            <Store className="h-10 w-10 md:h-12 md:w-12 text-primary-foreground" />
           </div>
-        </div>
+        )}
       </div>
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 pb-12 space-y-8">
