@@ -834,24 +834,24 @@ const PublicCheckout = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-primary/10 blur-[100px] rounded-full" />
         
-        <div className="relative pt-10 pb-8">
-          <div className="flex flex-col items-center gap-5">
-            {/* Logo container */}
+        <div className="relative pt-12 pb-10">
+          <div className="flex flex-col items-center gap-6">
+            {/* Logo container - maior e mais visível */}
             {tenant.logo_url ? (
-              <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl shadow-primary/15 border border-slate-100 dark:border-slate-700 ring-1 ring-slate-200/50 dark:ring-slate-700/50">
+              <div className="p-4 md:p-5 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl shadow-slate-900/20 dark:shadow-black/40 border-2 border-slate-200 dark:border-slate-600">
                 <img 
                   src={tenant.logo_url} 
                   alt={tenant.name} 
-                  className="h-20 md:h-24 w-auto object-contain max-w-[200px] md:max-w-[240px]" 
+                  className="h-28 md:h-36 lg:h-40 w-auto object-contain max-w-[280px] md:max-w-[340px]" 
                 />
               </div>
             ) : (
-              <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-2xl shadow-primary/30 ring-4 ring-white/20">
-                <Store className="h-10 w-10 md:h-12 md:w-12 text-primary-foreground" />
+              <div className="w-28 h-28 md:w-36 md:h-36 rounded-3xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-2xl shadow-primary/40 ring-4 ring-white/30">
+                <Store className="h-14 w-14 md:h-18 md:w-18 text-primary-foreground" />
               </div>
             )}
             {/* Nome da empresa */}
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+            <h2 className="text-3xl md:text-4xl font-extrabold text-foreground tracking-tight drop-shadow-sm">
               {tenant.name}
             </h2>
           </div>
