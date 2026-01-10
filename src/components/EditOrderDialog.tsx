@@ -308,11 +308,26 @@ useEffect(() => {
     }
   };
 
+  // Extrai valor do frete do campo observation
+  const extractFreightFromObservation = (observation: string | null | undefined): number => {
+    if (!observation) return 0;
+    
+    // Formato: "[FRETE] ... | R$ 19.90 | ..." ou "[FRETE] Retirar no local | R$ 3.00 | ..."
+    const match = observation.match(/\[FRETE\].*?\|\s*R\$\s*([\d.,]+)/i);
+    if (match) {
+      // Converte "19.90" ou "19,90" para número
+      const value = match[1].replace(',', '.');
+      return parseFloat(value) || 0;
+    }
+    return 0;
+  };
+
   const updateOrderTotal = async (id?: number | null) => {
     const effectiveId = id ?? cartId;
     if (!effectiveId || !order) return;
 
     try {
+      // Buscar itens do carrinho
       const { data, error } = await supabaseTenant
         .from('cart_items')
         .select('qty, unit_price')
@@ -320,7 +335,25 @@ useEffect(() => {
 
       if (error) throw error;
 
-      const total = (data || []).reduce((sum: number, item: any) => sum + (item.qty * item.unit_price), 0);
+      // Buscar observation do pedido para extrair o frete
+      const { data: orderData, error: orderError } = await supabaseTenant
+        .from('orders')
+        .select('observation')
+        .eq('id', order.id)
+        .maybeSingle();
+
+      if (orderError) throw orderError;
+
+      // Calcular total dos produtos
+      const productsTotal = (data || []).reduce((sum: number, item: any) => sum + (item.qty * item.unit_price), 0);
+      
+      // Extrair frete da observation
+      const freightValue = extractFreightFromObservation(orderData?.observation);
+      
+      // Total = produtos + frete
+      const total = productsTotal + freightValue;
+
+      console.log(`[updateOrderTotal] Pedido #${order.id}: Produtos=${productsTotal}, Frete=${freightValue}, Total=${total}`);
 
       const { error: updateError } = await supabaseTenant
         .from('orders')
