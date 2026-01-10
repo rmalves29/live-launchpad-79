@@ -829,13 +829,15 @@ const PublicCheckout = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       {/* Header compacto com logo */}
-      <div className="w-full py-6 md:py-8 flex justify-center">
+      <div className="w-full py-8 md:py-10 flex justify-center">
         {tenant.logo_url ? (
-          <img 
-            src={tenant.logo_url} 
-            alt={tenant.name} 
-            className="h-24 md:h-28 lg:h-32 w-auto object-contain" 
-          />
+          <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200/60 dark:border-slate-700/60">
+            <img 
+              src={tenant.logo_url} 
+              alt={tenant.name} 
+              className="h-36 md:h-44 lg:h-52 w-auto object-contain max-w-[320px] md:max-w-[400px]" 
+            />
+          </div>
         ) : (
           <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg">
             <Store className="h-10 w-10 md:h-12 md:w-12 text-primary-foreground" />
