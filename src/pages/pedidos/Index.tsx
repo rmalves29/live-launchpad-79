@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck, RefreshCw } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck, RefreshCw, Ban, RotateCcw } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -30,6 +30,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     event_date: string;
     total_amount: number;
     is_paid: boolean;
+    is_cancelled?: boolean;
     payment_link?: string;
     created_at: string;
     cart_id?: number;
@@ -74,7 +75,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     const { profile } = useAuth();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filterPaid, setFilterPaid] = useState<boolean | null>(null);
+    const [filterPaid, setFilterPaid] = useState<string>('all'); // 'all' | 'paid' | 'unpaid' | 'cancelled'
     const [filterEventType, setFilterEventType] = useState<string>('all');
     const [filterDate, setFilterDate] = useState<Date | undefined>();
     const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
@@ -112,8 +113,12 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
           .select('*, tenant_id')
           .order('created_at', { ascending: false });
 
-        if (filterPaid !== null) {
-          query = query.eq('is_paid', filterPaid);
+        if (filterPaid === 'paid') {
+          query = query.eq('is_paid', true).eq('is_cancelled', false);
+        } else if (filterPaid === 'unpaid') {
+          query = query.eq('is_paid', false).eq('is_cancelled', false);
+        } else if (filterPaid === 'cancelled') {
+          query = query.eq('is_cancelled', true);
         }
 
         if (filterEventType && filterEventType !== 'all') {
@@ -524,6 +529,64 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
           title: 'Erro',
           description: 'Erro ao alterar status de impressão',
           variant: 'destructive'
+        });
+      }
+    };
+
+    const toggleCancelledStatus = async (orderId: number, currentStatus: boolean) => {
+      const order = orders.find(o => o.id === orderId);
+      
+      // Não permitir cancelar pedido já pago
+      if (!currentStatus && order?.is_paid) {
+        toast({
+          title: 'Não permitido',
+          description: 'Pedidos pagos não podem ser cancelados',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const actionText = currentStatus ? 'reverter o cancelamento' : 'cancelar';
+      const confirmed = await confirm({
+        description: `Deseja ${actionText} do pedido #${orderId}?`,
+        confirmText: currentStatus ? 'Reverter' : 'Cancelar Pedido',
+        variant: currentStatus ? 'default' : 'destructive',
+      });
+
+      if (!confirmed) return;
+
+      setProcessingIds(prev => new Set(prev).add(orderId));
+      
+      try {
+        const { error } = await supabaseTenant
+          .from('orders')
+          .update({ is_cancelled: !currentStatus })
+          .eq('id', orderId);
+
+        if (error) throw error;
+
+        setOrders(prev => prev.map(order => 
+          order.id === orderId 
+            ? { ...order, is_cancelled: !currentStatus }
+            : order
+        ));
+
+        toast({
+          title: 'Sucesso',
+          description: currentStatus ? 'Cancelamento revertido' : 'Pedido cancelado'
+        });
+      } catch (error) {
+        console.error('Erro ao alterar status de cancelamento:', error);
+        toast({
+          title: 'Erro',
+          description: 'Erro ao alterar status do pedido',
+          variant: 'destructive'
+        });
+      } finally {
+        setProcessingIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(orderId);
+          return newSet;
         });
       }
     };
@@ -1048,18 +1111,19 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Status Pagamento</label>
+                  <label className="text-sm font-medium">Status</label>
                 <Select 
-                  value={filterPaid === null ? 'all' : filterPaid.toString()} 
-                  onValueChange={(value) => setFilterPaid(value === 'all' ? null : value === 'true')}
+                  value={filterPaid} 
+                  onValueChange={(value) => setFilterPaid(value)}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="true">Pagos</SelectItem>
-                    <SelectItem value="false">Não pagos</SelectItem>
+                    <SelectItem value="paid">Pagos</SelectItem>
+                    <SelectItem value="unpaid">Não pagos</SelectItem>
+                    <SelectItem value="cancelled">Cancelados</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1186,7 +1250,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                     </TableRow>
                   ) : (
                     filteredOrders.map((order) => (
-                      <TableRow key={order.id}>
+                      <TableRow key={order.id} className={order.is_cancelled ? 'opacity-50 bg-muted/30' : ''}>
                         <TableCell className="px-2">
                           <input 
                             type="checkbox"
@@ -1195,7 +1259,16 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                           />
                         </TableCell>
                         <TableCell className="px-2">
-                          <Badge variant="outline" className="text-xs">#{order.id}</Badge>
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-xs">#{order.id}</Badge>
+                            {order.is_cancelled && (
+                              <Badge variant="destructive" className="text-xs">
+                                <Ban className="h-3 w-3 mr-1" />
+                                Cancelado
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
                         </TableCell>
                         <TableCell className="px-2 text-xs">{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                         <TableCell className="px-2 text-xs text-muted-foreground">
@@ -1203,20 +1276,24 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                         </TableCell>
                         <TableCell className="px-2 text-xs whitespace-nowrap">{formatCurrency(order.total_amount)}</TableCell>
                         <TableCell className="px-2">
-                          <div className="flex items-center gap-1">
-                            <Switch
-                              checked={order.is_paid}
-                              onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
-                              disabled={processingIds.has(order.id)}
-                              className="scale-90"
-                            />
-                            <Badge variant={order.is_paid ? 'default' : 'secondary'} className="text-xs">
-                              {order.is_paid ? 'Pago' : 'Pendente'}
-                            </Badge>
-                            {processingIds.has(order.id) && (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            )}
-                          </div>
+                          {order.is_cancelled ? (
+                            <Badge variant="destructive" className="text-xs">Cancelado</Badge>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <Switch
+                                checked={order.is_paid}
+                                onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
+                                disabled={processingIds.has(order.id) || order.is_cancelled}
+                                className="scale-90"
+                              />
+                              <Badge variant={order.is_paid ? 'default' : 'secondary'} className="text-xs">
+                                {order.is_paid ? 'Pago' : 'Pendente'}
+                              </Badge>
+                              {processingIds.has(order.id) && (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              )}
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell className="px-2">
                           <div className="flex items-center gap-1">
@@ -1404,6 +1481,20 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                               }}
                             >
                               <Eye className="h-3 w-3" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant={order.is_cancelled ? 'outline' : 'destructive'}
+                              className="h-7 w-7 p-0"
+                              onClick={() => toggleCancelledStatus(order.id, order.is_cancelled || false)}
+                              disabled={processingIds.has(order.id) || (order.is_paid && !order.is_cancelled)}
+                              title={order.is_cancelled ? 'Reverter cancelamento' : 'Cancelar pedido'}
+                            >
+                              {order.is_cancelled ? (
+                                <RotateCcw className="h-3 w-3" />
+                              ) : (
+                                <Ban className="h-3 w-3" />
+                              )}
                             </Button>
                           </div>
                         </TableCell>

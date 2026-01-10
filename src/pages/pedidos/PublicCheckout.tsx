@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2 } from 'lucide-react';
+import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2, Ban } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
@@ -43,6 +43,7 @@ interface Order {
   event_date: string;
   total_amount: number;
   is_paid: boolean;
+  is_cancelled?: boolean;
   payment_link: string | null;
   cart_id: number | null;
   items: OrderItem[];
@@ -674,6 +675,10 @@ const PublicCheckout = () => {
   };
 
   const toggleOrderSelection = (orderId: number) => {
+    const order = orders.find(o => o.id === orderId);
+    // Não permitir selecionar pedidos cancelados
+    if (order?.is_cancelled) return;
+    
     setSelectedOrderIds(prev => 
       prev.includes(orderId) 
         ? prev.filter(id => id !== orderId)
@@ -682,10 +687,12 @@ const PublicCheckout = () => {
   };
 
   const selectAllOrders = () => {
-    if (selectedOrderIds.length === orders.length) {
+    // Filtrar apenas pedidos não cancelados
+    const selectableOrders = orders.filter(o => !o.is_cancelled);
+    if (selectedOrderIds.length === selectableOrders.length) {
       setSelectedOrderIds([]);
     } else {
-      setSelectedOrderIds(orders.map(o => o.id));
+      setSelectedOrderIds(selectableOrders.map(o => o.id));
     }
   };
 
@@ -936,29 +943,39 @@ const PublicCheckout = () => {
                   <div className="space-y-3">
                     {orders.map((order) => {
                       const isSelected = selectedOrderIds.includes(order.id);
+                      const isCancelled = order.is_cancelled;
                       return (
                         <div 
                           key={order.id} 
-                          className={`relative border-2 rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                            isSelected 
-                              ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
-                              : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          className={`relative border-2 rounded-xl p-4 transition-all duration-200 ${
+                            isCancelled 
+                              ? 'border-slate-300 dark:border-slate-600 bg-slate-100/50 dark:bg-slate-800/30 opacity-60 cursor-not-allowed'
+                              : isSelected 
+                                ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 cursor-pointer' 
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer'
                           }`}
-                          onClick={() => toggleOrderSelection(order.id)}
+                          onClick={() => !isCancelled && toggleOrderSelection(order.id)}
                         >
                           <div className="flex items-start gap-4">
                             <div className="pt-1">
                               <Checkbox 
                                 checked={isSelected}
                                 onCheckedChange={() => toggleOrderSelection(order.id)}
-                                className="h-5 w-5 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+                                disabled={isCancelled}
+                                className={`h-5 w-5 ${isCancelled ? 'opacity-50' : 'data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500'}`}
                               />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-2">
                                 <Badge variant="secondary" className="font-medium">Pedido #{order.id}</Badge>
                                 <Badge variant="outline">{order.event_type}</Badge>
-                                {isSelected && (
+                                {isCancelled && (
+                                  <Badge variant="destructive" className="flex items-center gap-1">
+                                    <Ban className="h-3 w-3" />
+                                    Cancelado
+                                  </Badge>
+                                )}
+                                {isSelected && !isCancelled && (
                                   <Badge className="bg-emerald-500 text-white">Selecionado</Badge>
                                 )}
                               </div>
@@ -973,7 +990,7 @@ const PublicCheckout = () => {
                                     {item.image_url && (
                                       <ZoomableImage src={item.image_url} alt={item.product_name} className="h-8 w-8" containerClassName="h-8 w-8 rounded" />
                                     )}
-                                    <span className="truncate flex-1">{item.product_name}</span>
+                                    <span className={`truncate flex-1 ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>{item.product_name}</span>
                                     <span className="text-muted-foreground">x{item.qty}</span>
                                   </div>
                                 ))}
@@ -983,9 +1000,12 @@ const PublicCheckout = () => {
                               </div>
                             </div>
                             <div className="text-right shrink-0">
-                              <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                                {formatCurrency(order.total_amount)}
+                              <div className={`text-xl font-bold ${isCancelled ? 'text-muted-foreground line-through' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                {isCancelled ? 'R$ 0,00' : formatCurrency(order.total_amount)}
                               </div>
+                              {isCancelled && (
+                                <p className="text-xs text-destructive mt-1">Pedido cancelado</p>
+                              )}
                             </div>
                           </div>
                         </div>
