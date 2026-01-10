@@ -1300,295 +1300,303 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <Table className="text-xs">
-                <TableHeader>
+            <Table className="text-xs w-full table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8 px-1 text-center">
+                    <input 
+                      type="checkbox" 
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedOrders(new Set(paginatedOrders.map(o => o.id)));
+                        } else {
+                          setSelectedOrders(new Set());
+                        }
+                      }}
+                      checked={selectedOrders.size === paginatedOrders.length && paginatedOrders.length > 0}
+                    />
+                  </TableHead>
+                  <TableHead className="w-28 px-1">Telefone</TableHead>
+                  <TableHead className="w-16 px-1 text-right">Total</TableHead>
+                  <TableHead className="w-24 px-1 text-center">Status</TableHead>
+                  <TableHead className="w-16 px-1 text-center">Tipo</TableHead>
+                  <TableHead className="w-16 px-1 text-center">Data</TableHead>
+                  <TableHead className="w-24 px-1">Rastreio</TableHead>
+                  <TableHead className="w-14 px-1 text-center">Msg</TableHead>
+                  <TableHead className="px-1">Obs</TableHead>
+                  <TableHead className="w-20 px-1 text-center">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
                   <TableRow>
-                    <TableHead className="w-6 px-1">
-                      <input 
-                        type="checkbox" 
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedOrders(new Set(paginatedOrders.map(o => o.id)));
-                          } else {
-                            setSelectedOrders(new Set());
-                          }
-                        }}
-                        checked={selectedOrders.size === paginatedOrders.length && paginatedOrders.length > 0}
-                      />
-                    </TableHead>
-                    <TableHead className="px-1 whitespace-nowrap">Telefone</TableHead>
-                    <TableHead className="px-1">@</TableHead>
-                    <TableHead className="px-1">Total</TableHead>
-                    <TableHead className="px-1">Pago?</TableHead>
-                    <TableHead className="px-1">Imp?</TableHead>
-                    <TableHead className="px-1">Tipo</TableHead>
-                    <TableHead className="px-1">Data</TableHead>
-                    <TableHead className="px-1">Rastreio</TableHead>
-                    <TableHead className="px-1">Disparo</TableHead>
-                    <TableHead className="px-1">Obs</TableHead>
-                    <TableHead className="px-1">Ações</TableHead>
+                    <TableCell colSpan={10} className="text-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={13} className="text-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                ) : paginatedOrders.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                      {searchTerm ? 'Nenhum pedido encontrado com este telefone' : 'Nenhum pedido encontrado'}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  paginatedOrders.map((order) => (
+                    <TableRow key={order.id} className={order.is_cancelled ? 'opacity-50 bg-muted/30' : ''}>
+                      {/* Checkbox */}
+                      <TableCell className="px-1 py-1.5 text-center">
+                        <input 
+                          type="checkbox"
+                          checked={selectedOrders.has(order.id)}
+                          onChange={() => toggleOrderSelection(order.id)}
+                        />
                       </TableCell>
-                    </TableRow>
-                  ) : paginatedOrders.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
-                        {searchTerm ? 'Nenhum pedido encontrado com este telefone' : 'Nenhum pedido encontrado'}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    paginatedOrders.map((order) => (
-                      <TableRow key={order.id} className={order.is_cancelled ? 'opacity-50 bg-muted/30' : ''}>
-                        <TableCell className="px-1 py-1">
-                          <input 
-                            type="checkbox"
-                            checked={selectedOrders.has(order.id)}
-                            onChange={() => toggleOrderSelection(order.id)}
-                          />
-                        </TableCell>
-                        <TableCell className="px-1 py-1">
+                      
+                      {/* Telefone + Instagram */}
+                      <TableCell className="px-1 py-1.5">
+                        <div className="flex flex-col">
                           <div className="flex items-center gap-1">
                             {order.is_cancelled && (
-                              <Badge variant="destructive" className="text-[10px] px-1 py-0">
+                              <Badge variant="destructive" className="text-[9px] px-0.5 py-0 h-4">
                                 <Ban className="h-2.5 w-2.5" />
                               </Badge>
                             )}
-                            <span className="text-xs">{formatPhoneForDisplay(order.customer_phone)}</span>
+                            <span className="text-[11px] font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
                           </div>
-                        </TableCell>
-                        <TableCell className="px-1 py-1 text-xs text-muted-foreground max-w-16 truncate">
-                          {order.customer?.instagram ? `@${order.customer.instagram.replace('@', '')}` : '-'}
-                        </TableCell>
-                        <TableCell className="px-1 py-1 text-xs whitespace-nowrap font-medium">{formatCurrency(order.total_amount)}</TableCell>
-                        <TableCell className="px-1 py-1">
-                          {order.is_cancelled ? (
-                            <Badge variant="destructive" className="text-[10px] px-1 py-0">Canc</Badge>
-                          ) : (
+                          {order.customer?.instagram && (
+                            <span className="text-[10px] text-muted-foreground truncate">@{order.customer.instagram.replace('@', '')}</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      
+                      {/* Total */}
+                      <TableCell className="px-1 py-1.5 text-right">
+                        <span className="text-[11px] font-semibold">{formatCurrency(order.total_amount)}</span>
+                      </TableCell>
+                      
+                      {/* Status (Pago + Impresso) */}
+                      <TableCell className="px-1 py-1.5">
+                        {order.is_cancelled ? (
+                          <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Cancelado</Badge>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1">
                             <div className="flex items-center gap-0.5">
                               <Switch
                                 checked={order.is_paid}
                                 onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
                                 disabled={processingIds.has(order.id) || order.is_cancelled}
-                                className="scale-75"
+                                className="scale-[0.6]"
                               />
-                              <Badge variant={order.is_paid ? 'default' : 'secondary'} className="text-[10px] px-1 py-0">
-                                {order.is_paid ? 'Pago' : 'Pend'}
+                              <Badge variant={order.is_paid ? 'default' : 'secondary'} className="text-[9px] px-1 py-0 h-4">
+                                {order.is_paid ? '✓' : '○'}
                               </Badge>
-                              {processingIds.has(order.id) && (
-                                <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                              )}
                             </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="px-1 py-1">
-                          <div className="flex items-center gap-0.5">
-                            <Badge variant={order.printed ? 'default' : 'secondary'} className="text-[10px] px-1 py-0">
-                              {order.printed ? '✓' : '✗'}
+                            <Badge 
+                              variant={order.printed ? 'default' : 'outline'} 
+                              className={cn("text-[9px] px-1 py-0 h-4 cursor-pointer", !order.printed && "text-muted-foreground")}
+                              onClick={() => togglePrintedStatus(order.id, order.printed || false)}
+                              title={order.printed ? "Impresso - clique para desmarcar" : "Não impresso - clique para marcar"}
+                            >
+                              {order.printed ? '🖨️' : '📄'}
                             </Badge>
+                            {processingIds.has(order.id) && (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
+                      
+                      {/* Tipo Evento */}
+                      <TableCell className="px-1 py-1.5 text-center">
+                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">{order.event_type}</Badge>
+                      </TableCell>
+                      
+                      {/* Data Evento */}
+                      <TableCell className="px-1 py-1.5 text-center text-[11px]">
+                        {format(new Date(order.event_date + 'T00:00:00'), 'dd/MM')}
+                      </TableCell>
+                      
+                      {/* Rastreio */}
+                      <TableCell className="px-1 py-1.5">
+                        {editingTracking === order.id ? (
+                          <div className="flex items-center gap-0.5">
+                            <Input
+                              value={trackingText}
+                              onChange={(e) => setTrackingText(e.target.value)}
+                              placeholder="Cód"
+                              className="w-14 h-5 text-[10px] px-1"
+                            />
+                            <Button 
+                              size="sm" 
+                              className="h-5 w-5 p-0"
+                              onClick={() => saveTrackingCode(order.id)}
+                              disabled={savingTracking === order.id}
+                            >
+                              {savingTracking === order.id ? (
+                                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                              ) : (
+                                <Send className="h-2.5 w-2.5" />
+                              )}
+                            </Button>
                             <Button 
                               size="sm" 
                               variant="ghost"
                               className="h-5 w-5 p-0"
-                              onClick={() => togglePrintedStatus(order.id, order.printed || false)}
-                              title={order.printed ? "Desmarcar" : "Marcar impresso"}
-                            >
-                              <Edit className="h-2.5 w-2.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-1 py-1">
-                          <Badge variant="outline" className="text-[10px] px-1 py-0">{order.event_type}</Badge>
-                        </TableCell>
-                        <TableCell className="px-1 py-1 text-xs whitespace-nowrap">
-                          {format(new Date(order.event_date + 'T00:00:00'), 'dd/MM')}
-                        </TableCell>
-                        <TableCell className="px-1 py-1">
-                          {editingTracking === order.id ? (
-                            <div className="flex items-center gap-0.5">
-                              <Input
-                                value={trackingText}
-                                onChange={(e) => setTrackingText(e.target.value)}
-                                placeholder="Cód"
-                                className="w-16 h-5 text-[10px] px-1"
-                              />
-                              <Button 
-                                size="sm" 
-                                className="h-5 w-5 p-0"
-                                onClick={() => saveTrackingCode(order.id)}
-                                disabled={savingTracking === order.id}
-                              >
-                                {savingTracking === order.id ? (
-                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                                ) : (
-                                  <Send className="h-2.5 w-2.5" />
-                                )}
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                className="h-5 w-5 p-0"
-                                onClick={() => {
-                                  setEditingTracking(null);
-                                  setTrackingText('');
-                                }}
-                              >
-                                ✕
-                              </Button>
-                            </div>
-                          ) : order.melhor_envio_tracking_code ? (
-                            <Badge variant="default" className="text-[10px] px-1 py-0 flex items-center gap-0.5 max-w-20 truncate">
-                              <Truck className="h-2.5 w-2.5 shrink-0" />
-                              <span className="truncate">{order.melhor_envio_tracking_code}</span>
-                            </Badge>
-                          ) : (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="h-5 text-[10px] px-1"
                               onClick={() => {
-                                setEditingTracking(order.id);
+                                setEditingTracking(null);
                                 setTrackingText('');
                               }}
                             >
-                              <Truck className="h-2.5 w-2.5 mr-0.5" />
-                              Add
+                              ✕
                             </Button>
-                          )}
-                        </TableCell>
-                        <TableCell className="px-1 py-1">
-                          <div className="flex items-center gap-0.5">
-                            <MessageCircle 
+                          </div>
+                        ) : order.melhor_envio_tracking_code ? (
+                          <Badge variant="default" className="text-[9px] px-1 py-0 h-4 flex items-center gap-0.5 max-w-full">
+                            <Truck className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">{order.melhor_envio_tracking_code}</span>
+                          </Badge>
+                        ) : (
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            className="h-5 text-[10px] px-1"
+                            onClick={() => {
+                              setEditingTracking(order.id);
+                              setTrackingText('');
+                            }}
+                          >
+                            <Truck className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </TableCell>
+                      
+                      {/* Disparo (Mensagens) */}
+                      <TableCell className="px-1 py-1.5 text-center">
+                        <div className="flex items-center justify-center gap-0.5">
+                          <MessageCircle 
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40"
+                            )} 
+                            title={
+                              order.item_added_delivered 
+                                ? "Item adicionado ✓✓" 
+                                : order.item_added_message_sent 
+                                  ? "Aguardando" 
+                                  : "Não enviada"
+                            }
+                          />
+                          {order.is_paid && (
+                            <DollarSign 
                               className={cn(
                                 "h-3.5 w-3.5",
-                                order.item_added_delivered ? "text-green-500" : "text-muted-foreground"
+                                order.payment_confirmation_delivered ? "text-green-500" : "text-muted-foreground/40"
                               )} 
                               title={
-                                order.item_added_delivered 
-                                  ? "Item adicionado entregue ✓✓" 
-                                  : order.item_added_message_sent 
-                                    ? "Aguardando entrega" 
+                                order.payment_confirmation_delivered 
+                                  ? "Pagamento ✓✓" 
+                                  : order.payment_confirmation_sent 
+                                    ? "Aguardando" 
                                     : "Não enviada"
                               }
                             />
-                            {order.is_paid && (
-                              <DollarSign 
-                                className={cn(
-                                  "h-3.5 w-3.5",
-                                  order.payment_confirmation_delivered ? "text-green-500" : "text-muted-foreground"
-                                )} 
-                                title={
-                                  order.payment_confirmation_delivered 
-                                    ? "Pagamento confirmado ✓✓" 
-                                    : order.payment_confirmation_sent 
-                                      ? "Aguardando entrega" 
-                                      : "Não enviada"
-                                }
-                              />
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="px-1 py-1">
-                          {editingObservation === order.id ? (
-                            <div className="flex items-center gap-0.5">
-                              <Input
-                                value={observationText}
-                                onChange={(e) => setObservationText(e.target.value)}
-                                placeholder="Obs"
-                                className="w-16 h-5 text-[10px] px-1"
-                              />
-                              <Button 
-                                size="sm"
-                                className="h-5 w-5 p-0"
-                                onClick={() => saveObservation(order.id)}
-                              >
-                                <Save className="h-2.5 w-2.5" />
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                className="h-5 w-5 p-0"
-                                onClick={() => {
-                                  setEditingObservation(null);
-                                  setObservationText('');
-                                }}
-                              >
-                                ✕
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-0.5">
-                              <span className="text-[10px] max-w-12 truncate" title={order.observation || 'Sem obs'}>
-                                {order.observation || '-'}
-                              </span>
-                              <Button 
-                                size="sm" 
-                                variant="ghost"
-                                className="h-5 w-5 p-0"
-                                onClick={() => {
-                                  setEditingObservation(order.id);
-                                  setObservationText(order.observation || '');
-                                }}
-                              >
-                                <FileText className="h-2.5 w-2.5" />
-                              </Button>
-                            </div>
                           )}
-                        </TableCell>
-                        <TableCell className="px-1 py-1">
+                        </div>
+                      </TableCell>
+                      
+                      {/* Observação */}
+                      <TableCell className="px-1 py-1.5">
+                        {editingObservation === order.id ? (
                           <div className="flex items-center gap-0.5">
+                            <Input
+                              value={observationText}
+                              onChange={(e) => setObservationText(e.target.value)}
+                              placeholder="Obs"
+                              className="h-5 text-[10px] px-1 flex-1"
+                            />
                             <Button 
-                              size="sm" 
-                              variant="outline"
-                              className="h-6 w-6 p-0"
-                              onClick={() => {
-                                setEditingOrder(order);
-                                setEditOrderOpen(true);
-                              }}
-                              title="Editar"
+                              size="sm"
+                              className="h-5 w-5 p-0"
+                              onClick={() => saveObservation(order.id)}
                             >
-                              <Edit className="h-2.5 w-2.5" />
+                              <Save className="h-2.5 w-2.5" />
                             </Button>
                             <Button 
                               size="sm" 
-                              variant="outline"
-                              className="h-6 w-6 p-0"
+                              variant="ghost"
+                              className="h-5 w-5 p-0"
                               onClick={() => {
-                                setViewingOrder(order);
-                                setViewOrderOpen(true);
+                                setEditingObservation(null);
+                                setObservationText('');
                               }}
-                              title="Visualizar"
                             >
-                              <Eye className="h-2.5 w-2.5" />
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant={order.is_cancelled ? 'outline' : 'destructive'}
-                              className="h-6 w-6 p-0"
-                              onClick={() => toggleCancelledStatus(order.id, order.is_cancelled || false)}
-                              disabled={processingIds.has(order.id) || (order.is_paid && !order.is_cancelled)}
-                              title={order.is_cancelled ? 'Reverter' : 'Cancelar'}
-                            >
-                              {order.is_cancelled ? (
-                                <RotateCcw className="h-2.5 w-2.5" />
-                              ) : (
-                                <Ban className="h-2.5 w-2.5" />
-                              )}
+                              ✕
                             </Button>
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+                        ) : (
+                          <div 
+                            className="flex items-center gap-1 cursor-pointer group"
+                            onClick={() => {
+                              setEditingObservation(order.id);
+                              setObservationText(order.observation || '');
+                            }}
+                          >
+                            <span className="text-[10px] truncate flex-1" title={order.observation || 'Sem obs'}>
+                              {order.observation || <span className="text-muted-foreground/50">-</span>}
+                            </span>
+                            <FileText className="h-3 w-3 text-muted-foreground/50 group-hover:text-foreground shrink-0" />
+                          </div>
+                        )}
+                      </TableCell>
+                      
+                      {/* Ações */}
+                      <TableCell className="px-1 py-1.5">
+                        <div className="flex items-center justify-center gap-0.5">
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            className="h-6 w-6 p-0"
+                            onClick={() => {
+                              setEditingOrder(order);
+                              setEditOrderOpen(true);
+                            }}
+                            title="Editar"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            className="h-6 w-6 p-0"
+                            onClick={() => {
+                              setViewingOrder(order);
+                              setViewOrderOpen(true);
+                            }}
+                            title="Visualizar"
+                          >
+                            <Eye className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            className={cn("h-6 w-6 p-0", order.is_cancelled ? "text-green-600" : "text-destructive")}
+                            onClick={() => toggleCancelledStatus(order.id, order.is_cancelled || false)}
+                            disabled={processingIds.has(order.id) || (order.is_paid && !order.is_cancelled)}
+                            title={order.is_cancelled ? 'Reverter' : 'Cancelar'}
+                          >
+                            {order.is_cancelled ? (
+                              <RotateCcw className="h-3 w-3" />
+                            ) : (
+                              <Ban className="h-3 w-3" />
+                            )}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
             
             {filteredOrders.length > 0 && (
               <div className="p-4 border-t bg-muted/30">
