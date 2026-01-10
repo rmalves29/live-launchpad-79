@@ -18,7 +18,7 @@ import IntegrationsChecklist from '@/components/IntegrationsChecklist';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { User } from '@supabase/supabase-js';
+import { useAuth } from '@/hooks/useAuth';
 
 interface SystemConfig {
   event_date: string;
@@ -47,26 +47,9 @@ interface MelhorEnvioIntegration {
 const Config = () => {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-    });
+  const { user, isLoading, isSuperAdmin } = useAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setUser(session?.user ?? null);
-        setIsLoading(false);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const isMaster = user?.email === 'rmalves21@hotmail.com';
+  const isMaster = isSuperAdmin;
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [mercadoPagoIntegration, setMercadoPagoIntegration] = useState<MercadoPagoIntegration | null>(null);
   const [melhorEnvioIntegration, setMelhorEnvioIntegration] = useState<MelhorEnvioIntegration | null>(null);
