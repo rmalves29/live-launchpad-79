@@ -46,6 +46,7 @@ type CreatePaymentRequest = {
   total: string;
   coupon_discount?: number;
   coupon_code?: string | null;
+  merge_observation?: string | null;
 };
 
 function isUuid(v: string) {
@@ -123,6 +124,7 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
       total: String(body.total ?? "0").slice(0, 50),
       coupon_discount: toNumber(body.coupon_discount, 0),
       coupon_code: body.coupon_code ? String(body.coupon_code).slice(0, 50) : null,
+      merge_observation: body.merge_observation ? String(body.merge_observation).slice(0, 255) : null,
     },
   };
 }
@@ -186,10 +188,18 @@ serve(async (req) => {
         .single();
 
       if (existingOrder) {
-        // Montar observação com frete
-        const obs = (existingOrder.observation ?? "").toString();
+        // Montar observação com frete e merge (se aplicável)
+        let obs = (existingOrder.observation ?? "").toString();
         const cleaned = obs.replace(/\n?\[FRETE\][^\n]*/g, "").trim();
-        const nextObs = cleaned ? `${cleaned}\n${freightNote}` : freightNote;
+        
+        // Adicionar observação de merge se existir
+        let mergeNote = "";
+        if (payload.merge_observation) {
+          mergeNote = `[MERGE] ${payload.merge_observation}`;
+        }
+        
+        const parts = [cleaned, freightNote, mergeNote].filter(Boolean);
+        const nextObs = parts.join("\n");
 
         // Calcular novo total (produtos + frete)
         const currentTotal = Number(existingOrder.total_amount || 0);
