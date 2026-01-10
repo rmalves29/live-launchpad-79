@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck, RefreshCw, Ban, RotateCcw } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck, RefreshCw, Ban, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -104,6 +104,10 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     const [broadcastPaid, setBroadcastPaid] = useState<'all' | 'paid' | 'unpaid'>('all');
     const [broadcastDateMode, setBroadcastDateMode] = useState<'all' | 'specific'>('all');
     const [broadcastDate, setBroadcastDate] = useState<Date | undefined>(undefined);
+    
+    // Paginação
+    const [currentPage, setCurrentPage] = useState(1);
+    const [itemsPerPage, setItemsPerPage] = useState(25);
 
     const loadOrders = async () => {
       try {
@@ -591,6 +595,78 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       }
     };
 
+    const cancelSelectedOrders = async () => {
+      if (selectedOrders.size === 0) {
+        toast({
+          title: 'Aviso',
+          description: 'Selecione pelo menos um pedido para cancelar',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Verificar se algum pedido selecionado já está pago
+      const selectedOrdersList = orders.filter(o => selectedOrders.has(o.id));
+      const paidOrders = selectedOrdersList.filter(o => o.is_paid && !o.is_cancelled);
+      
+      if (paidOrders.length > 0) {
+        toast({
+          title: 'Aviso',
+          description: `${paidOrders.length} pedido(s) pago(s) não podem ser cancelados. Remova-os da seleção.`,
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const cancelableOrders = selectedOrdersList.filter(o => !o.is_paid && !o.is_cancelled);
+      
+      if (cancelableOrders.length === 0) {
+        toast({
+          title: 'Aviso',
+          description: 'Nenhum pedido pode ser cancelado (já cancelados ou pagos)',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const confirmed = await confirm({
+        description: `Deseja cancelar ${cancelableOrders.length} pedido(s)?`,
+        confirmText: 'Cancelar Pedidos',
+        variant: 'destructive',
+      });
+
+      if (!confirmed) return;
+
+      try {
+        const { error } = await supabaseTenant
+          .from('orders')
+          .update({ is_cancelled: true })
+          .in('id', cancelableOrders.map(o => o.id));
+
+        if (error) throw error;
+
+        setOrders(prev => prev.map(order => 
+          cancelableOrders.some(o => o.id === order.id)
+            ? { ...order, is_cancelled: true }
+            : order
+        ));
+
+        setSelectedOrders(new Set());
+
+        toast({
+          title: 'Sucesso',
+          description: `${cancelableOrders.length} pedido(s) cancelado(s)`
+        });
+      } catch (error) {
+        console.error('Erro ao cancelar pedidos:', error);
+        toast({
+          title: 'Erro',
+          description: 'Erro ao cancelar pedidos',
+          variant: 'destructive'
+        });
+      }
+    };
+
     const deleteSelectedOrders = async () => {
       if (selectedOrders.size === 0) {
         toast({
@@ -1040,6 +1116,17 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     const percentPaid = totalOrdersCount > 0 ? (paidOrdersCount / totalOrdersCount) * 100 : 0;
     const ticketMedio = totalOrdersCount > 0 ? (totalSalesValue / totalOrdersCount) : 0;
 
+    // Paginação
+    const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+
+    // Reset página quando filtros mudam
+    useEffect(() => {
+      setCurrentPage(1);
+    }, [filterPaid, filterEventType, filterDate, searchTerm]);
+
     const formatCurrencyLocal = (value: number) => {
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
     };
@@ -1068,12 +1155,21 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                   Marcar como Impresso
                 </Button>
                 <Button 
+                  onClick={cancelSelectedOrders} 
+                  variant="outline"
+                  disabled={selectedOrders.size === 0}
+                  className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                >
+                  <Ban className="h-4 w-4 mr-2" />
+                  Cancelar ({selectedOrders.size})
+                </Button>
+                <Button 
                   onClick={deleteSelectedOrders} 
                   variant="destructive"
                   disabled={selectedOrders.size === 0}
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Deletar Selecionados ({selectedOrders.size})
+                  Deletar ({selectedOrders.size})
                 </Button>
                 <Button onClick={exportToCSV} variant="outline">
                   <Download className="h-4 w-4 mr-2" />
@@ -1213,12 +1309,12 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                         type="checkbox" 
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedOrders(new Set(orders.map(o => o.id)));
+                            setSelectedOrders(new Set(paginatedOrders.map(o => o.id)));
                           } else {
                             setSelectedOrders(new Set());
                           }
                         }}
-                        checked={selectedOrders.size === orders.length && orders.length > 0}
+                        checked={selectedOrders.size === paginatedOrders.length && paginatedOrders.length > 0}
                       />
                     </TableHead>
                     <TableHead className="px-1 whitespace-nowrap">Telefone</TableHead>
@@ -1241,14 +1337,14 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                         <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                       </TableCell>
                     </TableRow>
-                  ) : filteredOrders.length === 0 ? (
+                  ) : paginatedOrders.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={13} className="text-center py-8 text-muted-foreground">
                         {searchTerm ? 'Nenhum pedido encontrado com este telefone' : 'Nenhum pedido encontrado'}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredOrders.map((order) => (
+                    paginatedOrders.map((order) => (
                       <TableRow key={order.id} className={order.is_cancelled ? 'opacity-50 bg-muted/30' : ''}>
                         <TableCell className="px-1 py-1">
                           <input 
@@ -1496,11 +1592,70 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
             
             {filteredOrders.length > 0 && (
               <div className="p-4 border-t bg-muted/30">
-                <div className="text-sm text-muted-foreground">
-                  Total de pedidos (filtro): {filteredOrders.length} | 
-                  Pagos: {paidOrdersCount} | 
-                  Pendentes: {unpaidOrdersCount} |
-                  Valor total: {formatCurrencyLocal(totalSalesValue)}
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    Mostrando {startIndex + 1}-{Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} pedidos | 
+                    Pagos: {paidOrdersCount} | 
+                    Pendentes: {unpaidOrdersCount} |
+                    Total: {formatCurrencyLocal(totalSalesValue)}
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Select value={String(itemsPerPage)} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1); }}>
+                      <SelectTrigger className="w-20 h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">por página</span>
+                    
+                    <div className="flex items-center gap-1 ml-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="text-sm px-2">
+                        {currentPage} / {totalPages || 1}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
