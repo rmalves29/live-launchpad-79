@@ -121,13 +121,11 @@ const AppContent = () => {
           <RequireTenantAuth><Sorteio /></RequireTenantAuth>
         } />
         
-        {/* Configurações apenas para super_admin */}
+        {/* Configurações - tenant_admin e super_admin podem acessar */}
         <Route path="/config" element={
-          <RequireAuth>
-            <SuperAdminOnly>
-              <Config />
-            </SuperAdminOnly>
-          </RequireAuth>
+          <RequireTenantAuth>
+            <Config />
+          </RequireTenantAuth>
         } />
         
         
