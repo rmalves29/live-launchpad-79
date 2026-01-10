@@ -562,31 +562,37 @@ const Relatorios = () => {
             body: { action: 'list-groups', tenant_id: tenantId }
           });
           
-          // Z-API retorna array de chats com phone e name
-          // Grupos têm isGroup: true e phone no formato "120363424101599485-group"
-          const chats = response.data;
-          if (Array.isArray(chats)) {
-            for (const chat of chats) {
-              if (chat.isGroup === true && chat.phone && chat.name) {
-                // Mapear pelo phone ID do grupo
-                zapiGroupNames.set(chat.phone, chat.name);
-                // Também mapear por variações comuns
-                const phoneClean = chat.phone.replace('-group', '');
-                zapiGroupNames.set(phoneClean, chat.name);
-                // E pelo nome também para permitir busca reversa
-                zapiGroupNames.set(chat.name, chat.name);
+          // Silenciar erros de integração não configurada
+          if (response.error) {
+            console.warn('⚠️ Z-API não configurado ou erro na conexão:', response.error);
+          } else if (response.data) {
+            // Z-API retorna array de chats com phone e name
+            // Grupos têm isGroup: true e phone no formato "120363424101599485-group"
+            const chats = response.data;
+            if (Array.isArray(chats)) {
+              for (const chat of chats) {
+                if (chat.isGroup === true && chat.phone && chat.name) {
+                  // Mapear pelo phone ID do grupo
+                  zapiGroupNames.set(chat.phone, chat.name);
+                  // Também mapear por variações comuns
+                  const phoneClean = chat.phone.replace('-group', '');
+                  zapiGroupNames.set(phoneClean, chat.name);
+                  // E pelo nome também para permitir busca reversa
+                  zapiGroupNames.set(chat.name, chat.name);
+                }
               }
-            }
-            console.log('📱 Grupos Z-API carregados:', zapiGroupNames.size, Array.from(zapiGroupNames.entries()));
-          } else if (response.data?.groups) {
-            // Fallback para formato antigo
-            for (const group of response.data.groups) {
-              if (group.phone && group.name) {
-                zapiGroupNames.set(group.phone, group.name);
+              console.log('📱 Grupos Z-API carregados:', zapiGroupNames.size, Array.from(zapiGroupNames.entries()));
+            } else if (response.data?.groups) {
+              // Fallback para formato antigo
+              for (const group of response.data.groups) {
+                if (group.phone && group.name) {
+                  zapiGroupNames.set(group.phone, group.name);
+                }
               }
             }
           }
         } catch (zapiError) {
+          // Silenciar completamente - Z-API pode não estar configurado
           console.warn('⚠️ Não foi possível carregar nomes dos grupos via Z-API:', zapiError);
         }
       }
