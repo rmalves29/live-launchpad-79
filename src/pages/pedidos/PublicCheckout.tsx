@@ -834,20 +834,26 @@ const PublicCheckout = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-primary/10 blur-[100px] rounded-full" />
         
-        <div className="relative pt-8 pb-6">
-          <div className="flex flex-col items-center gap-4">
-            <div className="flex items-center gap-4">
-              {tenant.logo_url ? (
-                <div className="p-2 bg-white dark:bg-slate-800 rounded-2xl shadow-xl shadow-primary/10 border border-slate-100 dark:border-slate-700">
-                  <img src={tenant.logo_url} alt={tenant.name} className="h-14 w-auto object-contain" />
-                </div>
-              ) : (
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-xl shadow-primary/30">
-                  <Store className="h-7 w-7 text-primary-foreground" />
-                </div>
-              )}
-              <span className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">{tenant.name}</span>
-            </div>
+        <div className="relative pt-10 pb-8">
+          <div className="flex flex-col items-center gap-5">
+            {/* Logo container */}
+            {tenant.logo_url ? (
+              <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl shadow-primary/15 border border-slate-100 dark:border-slate-700 ring-1 ring-slate-200/50 dark:ring-slate-700/50">
+                <img 
+                  src={tenant.logo_url} 
+                  alt={tenant.name} 
+                  className="h-20 md:h-24 w-auto object-contain max-w-[200px] md:max-w-[240px]" 
+                />
+              </div>
+            ) : (
+              <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-2xl shadow-primary/30 ring-4 ring-white/20">
+                <Store className="h-10 w-10 md:h-12 md:w-12 text-primary-foreground" />
+              </div>
+            )}
+            {/* Nome da empresa */}
+            <h2 className="text-2xl md:text-3xl font-bold text-foreground tracking-tight">
+              {tenant.name}
+            </h2>
           </div>
         </div>
       </div>
