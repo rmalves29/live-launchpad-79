@@ -140,21 +140,45 @@ export default function ConexaoZAPI() {
       const data = await response.json();
 
       if (data.error) {
-        setWhatsappStatus({
-          connected: false,
-          status: 'error',
-          error: data.error,
-          message: data.message
+        // Se temos QR Code ativo, não substituir pelo erro - apenas atualizar se conectar
+        setWhatsappStatus(prev => {
+          if (prev?.status === 'qr_ready' && prev?.qrCode) {
+            // Preserva o QR Code atual - usuário ainda pode estar escaneando
+            return prev;
+          }
+          return {
+            connected: false,
+            status: 'error',
+            error: data.error,
+            message: data.message
+          };
         });
         return;
       }
 
-      setWhatsappStatus({
-        connected: data.connected,
-        status: data.status,
-        message: data.message,
-        user: data.user
-      });
+      // Se está conectado, limpa o QR Code e atualiza o status
+      if (data.connected) {
+        setWhatsappStatus({
+          connected: true,
+          status: data.status,
+          message: data.message,
+          user: data.user
+        });
+      } else {
+        // Se não está conectado, preserva o QR Code se existir
+        setWhatsappStatus(prev => {
+          if (prev?.status === 'qr_ready' && prev?.qrCode) {
+            // Mantém o QR Code ativo para o usuário escanear
+            return prev;
+          }
+          return {
+            connected: false,
+            status: data.status || 'disconnected',
+            message: data.message,
+            user: data.user
+          };
+        });
+      }
 
     } catch (error: any) {
       if (!mountedRef.current) return;
