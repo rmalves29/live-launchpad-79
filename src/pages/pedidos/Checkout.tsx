@@ -107,27 +107,26 @@ const Checkout = () => {
     if (isReturningFromPayment) {
       console.log('🔄 Detectado retorno da página de pagamento via URL, resetando dados de frete');
       
-      // Verificar se é OF Beauty para usar valores corretos
-      const isOfBeauty = tenantId === OF_BEAUTY_TENANT_ID;
-      
-      // Buscar opções de frete customizadas do banco de dados
-      const customOptions = await fetchCustomShippingOptions(tenantId || '');
-      
-      // Limpar qualquer dado de frete que possa causar duplicação
-      setSelectedShipping('retirada');
-      setSelectedShippingData(null);
-      
-      // Usar opções customizadas do banco ou fallback padrão
-      const baseShippingOptions = customOptions.length > 0 
-        ? customOptions 
-        : [DEFAULT_SHIPPING_OPTION];
-      
-      setShippingOptions(baseShippingOptions);
-      
-      // Limpar cupom de desconto
-      setAppliedCoupon(null);
-      setCouponDiscount(0);
-      setCouponCode('');
+      // Buscar opções de frete customizadas do banco de dados de forma assíncrona
+      (async () => {
+        const customOptions = await fetchCustomShippingOptions(tenantId || '');
+        
+        // Limpar qualquer dado de frete que possa causar duplicação
+        setSelectedShipping('retirada');
+        setSelectedShippingData(null);
+        
+        // Usar opções customizadas do banco ou fallback padrão
+        const baseShippingOptions = customOptions.length > 0 
+          ? customOptions 
+          : [DEFAULT_SHIPPING_OPTION];
+        
+        setShippingOptions(baseShippingOptions);
+        
+        // Limpar cupom de desconto
+        setAppliedCoupon(null);
+        setCouponDiscount(0);
+        setCouponCode('');
+      })();
       
       // Limpar a URL para evitar que o efeito rode novamente desnecessariamente
       const newUrl = window.location.pathname;
