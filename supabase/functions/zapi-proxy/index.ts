@@ -372,6 +372,48 @@ serve(async (req) => {
       );
     }
 
+    // Handle Z-API "not connected" error gracefully for read-only actions
+    // This prevents UI crashes when WhatsApp is not connected
+    if (!response.ok && data?.error === "You need to be connected with whatsapp") {
+      console.log("[zapi-proxy] WhatsApp not connected, returning safe payload for action:", action);
+      
+      if (action === "status") {
+        return new Response(
+          JSON.stringify({
+            connected: false,
+            status: "disconnected",
+            message: "WhatsApp não conectado",
+            user: null
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (action === "list-groups") {
+        return new Response(
+          JSON.stringify([]),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (action === "list-tags") {
+        return new Response(
+          JSON.stringify([]),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // For other actions that require connection, return a user-friendly error
+      return new Response(
+        JSON.stringify({
+          error: "WhatsApp não conectado",
+          message: "Conecte o WhatsApp primeiro para usar esta função",
+          status: "disconnected"
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Map Z-API status to our format
     if (action === "status") {
       const isConnected = data.connected === true || data.smartphoneConnected === true;
@@ -402,7 +444,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify(data),
       { 
-        status: response.status, 
+        status: response.ok ? 200 : response.status, 
         headers: { ...corsHeaders, "Content-Type": "application/json" } 
       }
     );
