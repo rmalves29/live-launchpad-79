@@ -1,0 +1,439 @@
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Plus, Pencil, Trash2, Truck, Package, Info, Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { useTenantContext } from '@/contexts/TenantContext';
+import { supabase } from '@/integrations/supabase/client';
+import { formatCurrency } from '@/lib/utils';
+
+interface ShippingOption {
+  id: string;
+  name: string;
+  delivery_days: number;
+  price: number;
+  is_active: boolean;
+}
+
+interface TenantShippingConfig {
+  custom_shipping_options: ShippingOption[];
+  order_merge_days: number;
+}
+
+// Chave para localStorage como fallback
+const getStorageKey = (tenantId: string) => `shipping_options_${tenantId}`;
+
+export const ShippingOptionsManager = () => {
+  const { toast } = useToast();
+  const { tenantId } = useTenantContext();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [options, setOptions] = useState<ShippingOption[]>([]);
+  const [orderMergeDays, setOrderMergeDays] = useState<number>(3);
+  const [savingMergeDays, setSavingMergeDays] = useState(false);
+  
+  // Form state
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingOption, setEditingOption] = useState<ShippingOption | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    delivery_days: 5,
+    price: 0,
+    is_active: true
+  });
+
+  const loadConfig = async () => {
+    if (!tenantId) return;
+    
+    setLoading(true);
+    try {
+      // Tentar carregar do localStorage primeiro (fallback enquanto tabela não existe)
+      const storageKey = getStorageKey(tenantId);
+      const stored = localStorage.getItem(storageKey);
+      
+      if (stored) {
+        try {
+          const config: TenantShippingConfig = JSON.parse(stored);
+          setOptions(config.custom_shipping_options || []);
+          setOrderMergeDays(config.order_merge_days ?? 3);
+        } catch (e) {
+          console.error('Erro ao parsear config do localStorage:', e);
+        }
+      }
+
+      // Tentar carregar order_merge_days do tenant se existir na tabela
+      try {
+        const { data: tenantData } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('id', tenantId)
+          .single();
+
+        // Se tiver a coluna order_merge_days, usa ela
+        if (tenantData && 'order_merge_days' in tenantData) {
+          setOrderMergeDays((tenantData as any).order_merge_days ?? 3);
+        }
+      } catch (e) {
+        console.log('Coluna order_merge_days não existe ainda na tabela tenants');
+      }
+    } catch (error) {
+      console.error('Erro ao carregar configurações de frete:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveConfig = async (newOptions: ShippingOption[], newMergeDays: number) => {
+    if (!tenantId) return;
+    
+    const config: TenantShippingConfig = {
+      custom_shipping_options: newOptions,
+      order_merge_days: newMergeDays
+    };
+
+    // Salvar no localStorage como armazenamento principal por enquanto
+    const storageKey = getStorageKey(tenantId);
+    localStorage.setItem(storageKey, JSON.stringify(config));
+  };
+
+  useEffect(() => {
+    loadConfig();
+  }, [tenantId]);
+
+  const handleOpenDialog = (option?: ShippingOption) => {
+    if (option) {
+      setEditingOption(option);
+      setFormData({
+        name: option.name,
+        delivery_days: option.delivery_days,
+        price: option.price,
+        is_active: option.is_active
+      });
+    } else {
+      setEditingOption(null);
+      setFormData({
+        name: '',
+        delivery_days: 5,
+        price: 0,
+        is_active: true
+      });
+    }
+    setIsDialogOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!tenantId) return;
+    if (!formData.name.trim()) {
+      toast({
+        title: 'Erro',
+        description: 'Informe o nome da opção de frete',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let newOptions: ShippingOption[];
+      
+      if (editingOption) {
+        // Atualizar
+        newOptions = options.map(opt => 
+          opt.id === editingOption.id 
+            ? { ...opt, ...formData }
+            : opt
+        );
+        toast({ title: 'Sucesso', description: 'Opção de frete atualizada' });
+      } else {
+        // Criar
+        const newOption: ShippingOption = {
+          id: `custom_${Date.now()}`,
+          ...formData
+        };
+        newOptions = [...options, newOption];
+        toast({ title: 'Sucesso', description: 'Opção de frete criada' });
+      }
+
+      setOptions(newOptions);
+      await saveConfig(newOptions, orderMergeDays);
+      setIsDialogOpen(false);
+    } catch (error: any) {
+      console.error('Erro ao salvar opção de frete:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao salvar opção de frete',
+        variant: 'destructive'
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (option: ShippingOption) => {
+    if (!confirm(`Deseja realmente excluir a opção "${option.name}"?`)) return;
+
+    try {
+      const newOptions = options.filter(opt => opt.id !== option.id);
+      setOptions(newOptions);
+      await saveConfig(newOptions, orderMergeDays);
+      toast({ title: 'Sucesso', description: 'Opção de frete excluída' });
+    } catch (error: any) {
+      console.error('Erro ao excluir opção de frete:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao excluir opção de frete',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleToggleActive = async (option: ShippingOption) => {
+    try {
+      const newOptions = options.map(opt => 
+        opt.id === option.id 
+          ? { ...opt, is_active: !opt.is_active }
+          : opt
+      );
+      setOptions(newOptions);
+      await saveConfig(newOptions, orderMergeDays);
+    } catch (error: any) {
+      console.error('Erro ao atualizar status:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao atualizar status',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleSaveMergeDays = async () => {
+    if (!tenantId) return;
+    
+    setSavingMergeDays(true);
+    try {
+      await saveConfig(options, orderMergeDays);
+      toast({ title: 'Sucesso', description: 'Configuração de juntar pedidos atualizada' });
+    } catch (error: any) {
+      console.error('Erro ao salvar configuração:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao salvar configuração',
+        variant: 'destructive'
+      });
+    } finally {
+      setSavingMergeDays(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            <span>Carregando...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Card: Opções de Frete Customizadas */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Truck className="h-5 w-5" />
+                Opções de Frete Customizadas
+              </CardTitle>
+              <CardDescription>
+                Crie opções de frete que aparecerão no checkout junto com as opções da integração Melhor Envio
+              </CardDescription>
+            </div>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button onClick={() => handleOpenDialog()}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nova Opção
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingOption ? 'Editar Opção de Frete' : 'Nova Opção de Frete'}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nome da Opção</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Ex: Frete Expresso, Entrega Local..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="delivery_days">Prazo (dias)</Label>
+                      <Input
+                        id="delivery_days"
+                        type="number"
+                        min={0}
+                        value={formData.delivery_days}
+                        onChange={(e) => setFormData(prev => ({ ...prev, delivery_days: parseInt(e.target.value) || 0 }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="price">Valor (R$)</Label>
+                      <Input
+                        id="price"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={formData.price}
+                        onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="is_active"
+                      checked={formData.is_active}
+                      onCheckedChange={(checked) => setFormData(prev => ({ ...prev, is_active: checked }))}
+                    />
+                    <Label htmlFor="is_active">Ativo</Label>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button variant="outline">Cancelar</Button>
+                  </DialogClose>
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                    {editingOption ? 'Salvar' : 'Criar'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {options.length === 0 ? (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                Nenhuma opção de frete customizada cadastrada. Crie uma nova opção para que apareça no checkout.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Prazo</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {options.map((option) => (
+                  <TableRow key={option.id}>
+                    <TableCell className="font-medium">{option.name}</TableCell>
+                    <TableCell>{option.delivery_days} {option.delivery_days === 1 ? 'dia' : 'dias'}</TableCell>
+                    <TableCell>{formatCurrency(option.price * 100)}</TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={option.is_active}
+                        onCheckedChange={() => handleToggleActive(option)}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenDialog(option)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(option)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Card: Configuração Juntar Pedidos */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5" />
+            Juntar Pedidos no Mesmo Frete
+          </CardTitle>
+          <CardDescription>
+            Configure o prazo máximo para que clientes possam juntar pedidos em um único frete.
+            Quando um cliente paga um pedido e possui outros pedidos recentes, aparecerá a opção de enviar tudo junto (frete grátis no segundo pedido).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Como funciona:</strong> Se um cliente tem 2+ pedidos dentro do prazo configurado, 
+                ao pagar o segundo pedido aparecerá a opção "Juntar com pedido anterior" que isenta o frete 
+                e adiciona automaticamente a observação "Cliente Possui outro Pedido".
+              </AlertDescription>
+            </Alert>
+            
+            <div className="flex items-center gap-4">
+              <div className="space-y-2 flex-1 max-w-xs">
+                <Label htmlFor="merge_days">Prazo máximo entre pedidos</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="merge_days"
+                    type="number"
+                    min={0}
+                    max={30}
+                    value={orderMergeDays}
+                    onChange={(e) => setOrderMergeDays(parseInt(e.target.value) || 0)}
+                    className="w-24"
+                  />
+                  <span className="text-muted-foreground">dias</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  0 = desabilitado. Pedidos feitos com até {orderMergeDays} dias de diferença podem ser juntados.
+                </p>
+              </div>
+              <Button onClick={handleSaveMergeDays} disabled={savingMergeDays}>
+                {savingMergeDays && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default ShippingOptionsManager;
