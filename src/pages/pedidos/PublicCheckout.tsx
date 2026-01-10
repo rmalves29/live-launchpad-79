@@ -836,13 +836,13 @@ const PublicCheckout = () => {
         
         <div className="relative pt-12 pb-10">
           <div className="flex flex-col items-center gap-6">
-            {/* Logo container - maior e mais visível */}
+            {/* Logo container */}
             {tenant.logo_url ? (
-              <div className="p-4 md:p-5 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl shadow-slate-900/20 dark:shadow-black/40 border-2 border-slate-200 dark:border-slate-600">
+              <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200/60 dark:border-slate-700/60">
                 <img 
                   src={tenant.logo_url} 
                   alt={tenant.name} 
-                  className="h-28 md:h-36 lg:h-40 w-auto object-contain max-w-[280px] md:max-w-[340px]" 
+                  className="h-36 md:h-44 lg:h-52 w-auto object-contain max-w-[320px] md:max-w-[400px]" 
                 />
               </div>
             ) : (
