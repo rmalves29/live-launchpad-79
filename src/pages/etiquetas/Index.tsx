@@ -87,6 +87,11 @@ const Etiquetas = () => {
   const [editingTrackingCode, setEditingTrackingCode] = useState('');
   const [savingTracking, setSavingTracking] = useState(false);
   
+  // Estado para edição de CPF do cliente
+  const [editingCpfOrderId, setEditingCpfOrderId] = useState<number | null>(null);
+  const [editingCpf, setEditingCpf] = useState('');
+  const [savingCpf, setSavingCpf] = useState(false);
+  
   // Estado para seleção de pedidos em lote
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
@@ -603,6 +608,63 @@ const Etiquetas = () => {
   const cancelEditingTracking = () => {
     setEditingTrackingOrderId(null);
     setEditingTrackingCode('');
+  };
+
+  // Iniciar edição do CPF
+  const startEditingCpf = (orderId: number, currentCpf: string) => {
+    setEditingCpfOrderId(orderId);
+    setEditingCpf(currentCpf || '');
+  };
+
+  // Cancelar edição do CPF
+  const cancelEditingCpf = () => {
+    setEditingCpfOrderId(null);
+    setEditingCpf('');
+  };
+
+  // Formatar CPF enquanto digita
+  const formatCpfInput = (value: string) => {
+    const numbers = value.replace(/\D/g, '').slice(0, 11);
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 6) return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
+    if (numbers.length <= 9) return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6)}`;
+    return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6, 9)}-${numbers.slice(9)}`;
+  };
+
+  // Salvar CPF do cliente
+  const saveCpf = async (orderId: number, customerPhone: string) => {
+    const cpfNumbers = editingCpf.replace(/\D/g, '');
+    if (cpfNumbers.length !== 11) {
+      toast.error('CPF deve ter 11 dígitos');
+      return;
+    }
+
+    setSavingCpf(true);
+    try {
+      // Atualizar na tabela customers usando o phone
+      const { error } = await supabaseTenant
+        .from('customers')
+        .update({ cpf: cpfNumbers })
+        .eq('phone', customerPhone);
+
+      if (error) throw error;
+
+      toast.success('CPF salvo com sucesso!');
+      setEditingCpfOrderId(null);
+      setEditingCpf('');
+      
+      // Recarregar pedidos para atualizar o CPF
+      if (isSearchMode) {
+        searchOrders();
+      } else {
+        loadPaidOrders();
+      }
+    } catch (error: any) {
+      console.error('Erro ao salvar CPF:', error);
+      toast.error(`Erro ao salvar CPF: ${error.message}`);
+    } finally {
+      setSavingCpf(false);
+    }
   };
 
   // Salvar código de rastreio editado
@@ -1147,12 +1209,70 @@ const Etiquetas = () => {
                             <User className="h-4 w-4" />
                             Dados do Cliente
                           </div>
-                          <div className="bg-muted/30 rounded-lg p-3 space-y-1.5">
+                          <div className={cn(
+                            "bg-muted/30 rounded-lg p-3 space-y-1.5",
+                            !order.customer_cpf && canSelect && "border border-amber-400 bg-amber-50/50"
+                          )}>
                             <div className="font-medium">{order.customer_name}</div>
                             <div className="text-sm text-muted-foreground flex items-center gap-1">
                               <Phone className="h-3 w-3" />
                               {formatPhone(order.customer_phone)}
                             </div>
+                            
+                            {/* CPF com edição inline */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground">CPF:</span>
+                              {editingCpfOrderId === order.id ? (
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    value={editingCpf}
+                                    onChange={(e) => setEditingCpf(formatCpfInput(e.target.value))}
+                                    placeholder="000.000.000-00"
+                                    className="h-7 w-32 text-xs font-mono"
+                                    maxLength={14}
+                                    autoFocus
+                                  />
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 text-green-600 hover:text-green-700"
+                                    onClick={() => saveCpf(order.id, order.customer_phone)}
+                                    disabled={savingCpf}
+                                  >
+                                    {savingCpf ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Save className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 text-destructive hover:text-destructive"
+                                    onClick={cancelEditingCpf}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  {order.customer_cpf ? (
+                                    <span className="text-xs font-mono">{formatCpfInput(order.customer_cpf)}</span>
+                                  ) : (
+                                    <span className="text-xs text-amber-600 font-medium">Não informado</span>
+                                  )}
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                                    onClick={() => startEditingCpf(order.id, order.customer_cpf || '')}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                            
                             <div className="text-sm font-semibold text-primary">
                               {formatCurrency(order.total_amount)}
                             </div>
