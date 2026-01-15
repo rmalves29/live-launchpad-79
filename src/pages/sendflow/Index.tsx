@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square } from 'lucide-react';
+import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, GripVertical } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
@@ -40,6 +40,7 @@ export default function SendFlow() {
   const [products, setProducts] = useState<Product[]>([]);
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
+  const [prioritizedProductIds, setPrioritizedProductIds] = useState<number[]>([]); // Ordem de prioridade dos produtos
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [messageTemplate, setMessageTemplate] = useState('');
   const [perGroupDelaySeconds, setPerGroupDelaySeconds] = useState(10);
@@ -69,15 +70,28 @@ export default function SendFlow() {
   const debouncedGroupSearch = useDebounce(groupSearch, 300);
   const debouncedProductSearch = useDebounce(productSearch, 300);
   
+  // Helper para extrair número do código (C001 -> 1, C100 -> 100)
+  const extractCodeNumber = (code: string): number => {
+    const match = code.match(/[Cc]?(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+  
   // Filtros
   const filteredGroups = groups.filter(group => 
     group.name.toLowerCase().includes(debouncedGroupSearch.toLowerCase())
   );
   
-  const filteredProducts = products.filter(product => 
-    product.name.toLowerCase().includes(debouncedProductSearch.toLowerCase()) ||
-    product.code.toLowerCase().includes(debouncedProductSearch.toLowerCase())
-  );
+  const filteredProducts = products
+    .filter(product => 
+      product.name.toLowerCase().includes(debouncedProductSearch.toLowerCase()) ||
+      product.code.toLowerCase().includes(debouncedProductSearch.toLowerCase())
+    )
+    .sort((a, b) => extractCodeNumber(a.code) - extractCodeNumber(b.code));
+  
+  // Lista de produtos priorizados para exibição
+  const prioritizedProducts = prioritizedProductIds
+    .map(id => products.find(p => p.id === id))
+    .filter((p): p is Product => p !== undefined);
 
   // Carregar dados iniciais
   useEffect(() => {
@@ -130,11 +144,12 @@ export default function SendFlow() {
         query = query.in('sale_type', ['LIVE', 'AMBOS']);
       }
 
-      const { data, error } = await query.order('name');
+      const { data, error } = await query.order('code');
 
       if (error) throw error;
       setProducts(data || []);
       setSelectedProducts(new Set()); // Limpar seleção ao mudar filtro
+      setPrioritizedProductIds([]); // Limpar priorização ao mudar filtro
     } catch (error) {
       console.error('Erro ao carregar produtos:', error);
       toast({
@@ -268,18 +283,61 @@ export default function SendFlow() {
     const newSelection = new Set(selectedProducts);
     if (newSelection.has(productId)) {
       newSelection.delete(productId);
+      // Remover da lista de priorização
+      setPrioritizedProductIds(prev => prev.filter(id => id !== productId));
     } else {
       newSelection.add(productId);
+      // Adicionar ao final da lista de priorização
+      setPrioritizedProductIds(prev => [...prev, productId]);
     }
     setSelectedProducts(newSelection);
   };
 
   const toggleAllProducts = () => {
-    if (selectedProducts.size === products.length) {
+    if (selectedProducts.size === filteredProducts.length) {
       setSelectedProducts(new Set());
+      setPrioritizedProductIds([]);
     } else {
-      setSelectedProducts(new Set(products.map(p => p.id)));
+      const allIds = filteredProducts.map(p => p.id);
+      setSelectedProducts(new Set(allIds));
+      // Ordenar pela ordem atual (código)
+      setPrioritizedProductIds(allIds);
     }
+  };
+  
+  // Funções de priorização
+  const movePriorityUp = (productId: number) => {
+    setPrioritizedProductIds(prev => {
+      const index = prev.indexOf(productId);
+      if (index <= 0) return prev;
+      const newOrder = [...prev];
+      [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+      return newOrder;
+    });
+  };
+  
+  const movePriorityDown = (productId: number) => {
+    setPrioritizedProductIds(prev => {
+      const index = prev.indexOf(productId);
+      if (index < 0 || index >= prev.length - 1) return prev;
+      const newOrder = [...prev];
+      [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+      return newOrder;
+    });
+  };
+  
+  const movePriorityToTop = (productId: number) => {
+    setPrioritizedProductIds(prev => {
+      const filtered = prev.filter(id => id !== productId);
+      return [productId, ...filtered];
+    });
+  };
+  
+  const movePriorityToBottom = (productId: number) => {
+    setPrioritizedProductIds(prev => {
+      const filtered = prev.filter(id => id !== productId);
+      return [...filtered, productId];
+    });
   };
 
   const toggleGroup = (groupId: string) => {
@@ -384,11 +442,15 @@ export default function SendFlow() {
         return;
       }
 
-      // 2. Preparar mensagens
+      // 2. Preparar mensagens - usar ordem priorizada
       setSendingStatus('sending');
-      const selectedProductArray = products.filter(p => selectedProducts.has(p.id));
+      // Usar a ordem de priorização se houver produtos selecionados
+      const selectedProductArray = prioritizedProductIds
+        .map(id => products.find(p => p.id === id))
+        .filter((p): p is Product => p !== undefined && selectedProducts.has(p.id));
       const selectedGroupArray = Array.from(selectedGroups);
       const total = selectedProductArray.length * selectedGroupArray.length;
+      setTotalMessages(total);
       setTotalMessages(total);
 
       console.log(`📦 Enviando ${total} mensagens via Z-API...`);
@@ -767,6 +829,97 @@ export default function SendFlow() {
         </CardContent>
         </Card>
       </div>
+
+      {/* Ordem de Envio / Priorização */}
+      {prioritizedProducts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <GripVertical className="h-5 w-5" />
+                <CardTitle>Ordem de Envio</CardTitle>
+              </div>
+              <Badge variant="outline">
+                {prioritizedProducts.length} produto(s) selecionado(s)
+              </Badge>
+            </div>
+            <CardDescription>
+              Use as setas para reorganizar a ordem de envio dos produtos. O primeiro da lista será enviado primeiro.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {prioritizedProducts.map((product, index) => (
+                <div
+                  key={product.id}
+                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50"
+                >
+                  <div className="flex items-center gap-3">
+                    <Badge variant="secondary" className="font-mono w-8 justify-center">
+                      {index + 1}º
+                    </Badge>
+                    {product.image_url ? (
+                      <img
+                        src={product.image_url}
+                        alt={product.name}
+                        className="w-8 h-8 object-cover rounded"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-muted rounded flex items-center justify-center">
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                    <span className="font-mono text-sm text-muted-foreground">{product.code}</span>
+                    <span className="font-medium">{product.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => movePriorityToTop(product.id)}
+                      disabled={index === 0}
+                      title="Mover para o início"
+                    >
+                      <ChevronsUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => movePriorityUp(product.id)}
+                      disabled={index === 0}
+                      title="Mover para cima"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => movePriorityDown(product.id)}
+                      disabled={index === prioritizedProducts.length - 1}
+                      title="Mover para baixo"
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => movePriorityToBottom(product.id)}
+                      disabled={index === prioritizedProducts.length - 1}
+                      title="Mover para o final"
+                    >
+                      <ChevronsDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Template de Mensagem */}
       <Card>
