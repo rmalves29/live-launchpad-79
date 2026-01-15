@@ -608,22 +608,23 @@ export default function SendFlow() {
       // 3. Enviar mensagens com delays
       for (const product of selectedProductArray) {
         if (isCancelledRef.current) break;
-        
+
+        const productStartedAt = Date.now();
         const message = personalizeMessage(product);
-        
+
         for (const groupId of selectedGroupArray) {
           if (isCancelledRef.current) break;
-          
+
           // Wait if paused
           await waitWhilePaused();
           if (isCancelledRef.current) break;
-          
+
           try {
             // Se o produto tem imagem, envia a imagem com o texto como legenda
             if (product.image_url) {
               const { error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-                body: { 
-                  action: 'send-group-image', 
+                body: {
+                  action: 'send-group-image',
                   tenant_id: tenant?.id,
                   phone: groupId,
                   mediaUrl: product.image_url,
@@ -642,8 +643,8 @@ export default function SendFlow() {
             } else {
               // Sem imagem, envia apenas texto
               const { error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-                body: { 
-                  action: 'send-group', 
+                body: {
+                  action: 'send-group',
                   tenant_id: tenant?.id,
                   phone: groupId,
                   message: message
@@ -680,20 +681,23 @@ export default function SendFlow() {
           }
         }
 
-        // Delay entre produtos (check pause during delay)
-        if (perProductDelayMinutes > 0 && selectedProductArray.indexOf(product) < selectedProductArray.length - 1 && !isCancelledRef.current) {
-          const delayMs = perProductDelayMinutes * 60 * 1000;
+        // Delay entre produtos (mantém o intervalo TOTAL desde o início do produto)
+        const isLastProduct = selectedProductArray.indexOf(product) === selectedProductArray.length - 1;
+        const targetDelayMs = perProductDelayMinutes > 0 ? perProductDelayMinutes * 60 * 1000 : 0;
+        const elapsedForThisProduct = Date.now() - productStartedAt;
+        const remainingMs = Math.max(0, targetDelayMs - elapsedForThisProduct);
+
+        if (remainingMs > 0 && !isLastProduct && !isCancelledRef.current) {
           const delayStep = 500;
-          let elapsed = 0;
-          while (elapsed < delayMs && !isCancelledRef.current) {
+          let waited = 0;
+          while (waited < remainingMs && !isCancelledRef.current) {
             await waitWhilePaused();
             if (isCancelledRef.current) break;
-            await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
-            elapsed += delayStep;
+            await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, remainingMs - waited)));
+            waited += delayStep;
           }
         }
       }
-
       toast({
         title: '✅ Envio concluído!',
         description: `${sentCount} mensagens enviadas${errorCount > 0 ? `, ${errorCount} erros` : ''}.`,
