@@ -525,7 +525,9 @@ const PublicCheckout = () => {
         })),
         customerData: {
           name: customerData.name,
-          phone: ordersToProcess[0].customer_phone
+          phone: ordersToProcess[0].customer_phone,
+          cpf: customerData.cpf,
+          email: customerData.email
         },
         addressData: {
           cep: customerData.cep,
