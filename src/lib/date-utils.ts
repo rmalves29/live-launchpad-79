@@ -26,11 +26,31 @@ export const getBrasiliaDateTimeISO = (): string => {
 };
 
 /**
+ * Parseia uma data YYYY-MM-DD como local (não UTC) para evitar offset de timezone
+ */
+export const parseDateAsLocal = (dateString: string): Date => {
+  // Se já contém horário, usar como está
+  if (dateString.includes('T')) {
+    return new Date(dateString);
+  }
+  // Para datas YYYY-MM-DD, adicionar horário local para evitar interpretação UTC
+  return new Date(dateString + 'T12:00:00');
+};
+
+/**
  * Formata uma data para o padrão brasileiro (dd/MM/yyyy)
  */
 export const formatBrasiliaDate = (date: Date | string): string => {
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  const dateObj = typeof date === 'string' ? parseDateAsLocal(date) : date;
   return formatInTimeZone(dateObj, BRASILIA_TZ, 'dd/MM/yyyy', { locale: ptBR });
+};
+
+/**
+ * Formata uma data para formato longo brasileiro (dd de MMMM de yyyy)
+ */
+export const formatBrasiliaDateLong = (date: Date | string): string => {
+  const dateObj = typeof date === 'string' ? parseDateAsLocal(date) : date;
+  return formatInTimeZone(dateObj, BRASILIA_TZ, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
 };
 
 /**

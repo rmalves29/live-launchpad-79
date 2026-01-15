@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
+import { formatBrasiliaDate } from '@/lib/date-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
@@ -498,8 +499,10 @@ const Checkout = () => {
 
     setLoadingShipping(true);
     
+    // Preservar opção de merge se existir
+    const mergeOption = hasPaidOrderWithinPeriod ? MERGE_ORDER_SHIPPING_OPTION : null;
     // Sempre garantir que há pelo menos as opções de frete padrão
-    setShippingOptions(fallbackShipping);
+    setShippingOptions(mergeOption ? [mergeOption, ...fallbackShipping] : fallbackShipping);
     
     try {
       // Buscar endereço pelo CEP (ViaCEP) - forma segura
@@ -620,8 +623,10 @@ const Checkout = () => {
         if (validOptions.length > 0) {
           // Filter shipping options to show only desired services
           const filteredOptions = filterShippingOptions(validOptions);
-          // Usar opções customizadas do banco de dados + opções do Melhor Envio
-          const allOptions = [...fallbackShipping, ...filteredOptions];
+          // Preservar opção de merge + opções customizadas + opções do Melhor Envio
+          const allOptions = mergeOption 
+            ? [mergeOption, ...fallbackShipping, ...filteredOptions]
+            : [...fallbackShipping, ...filteredOptions];
           setShippingOptions(allOptions);
           
           console.log('✅ Opções de frete filtradas:', filteredOptions.length);
@@ -1432,7 +1437,7 @@ const Checkout = () => {
                         </div>
                         <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
                           <div>
-                            <span className="font-medium">Data:</span> {new Date(order.event_date).toLocaleDateString('pt-BR')}
+                            <span className="font-medium">Data:</span> {formatBrasiliaDate(order.event_date)}
                           </div>
                           <div>
                             <span className="font-medium">Total:</span> {formatCurrency(order.total_amount)}
@@ -2028,7 +2033,7 @@ const Checkout = () => {
                   <div>
                     <CardTitle className="text-lg">Pedido #{order.id}</CardTitle>
                     <CardDescription>
-                      {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
+                      {formatBrasiliaDate(order.event_date)} • {order.event_type}
                     </CardDescription>
                   </div>
                   <div className="text-right">
@@ -2173,7 +2178,7 @@ const Checkout = () => {
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
+                            {formatBrasiliaDate(order.event_date)} • {order.event_type}
                           </p>
                         </div>
                         <div className="text-right">

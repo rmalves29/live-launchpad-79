@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2, Ban, Merge } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
+import { formatBrasiliaDate, formatBrasiliaDateLong } from '@/lib/date-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
@@ -284,7 +285,9 @@ const PublicCheckout = () => {
       : [DEFAULT_SHIPPING_OPTION];
 
     setLoadingShipping(true);
-    setShippingOptions(fallbackShipping);
+    // Preservar opção de merge se existir
+    const mergeOption = hasPaidOrderWithinPeriod ? MERGE_ORDER_SHIPPING_OPTION : null;
+    setShippingOptions(mergeOption ? [mergeOption, ...fallbackShipping] : fallbackShipping);
 
     try {
       // Buscar endereço pelo CEP
@@ -348,11 +351,14 @@ const PublicCheckout = () => {
 
         if (validOptions.length > 0) {
           const filteredOptions = filterShippingOptions(validOptions);
-          // Usar opções customizadas do banco + opções do Melhor Envio
-          setShippingOptions([...fallbackShipping, ...filteredOptions]);
+          // Preservar opção de merge + opções customizadas + opções do Melhor Envio
+          const allOptions = mergeOption 
+            ? [mergeOption, ...fallbackShipping, ...filteredOptions]
+            : [...fallbackShipping, ...filteredOptions];
+          setShippingOptions(allOptions);
           toast({
             title: 'Frete calculado',
-            description: `${filteredOptions.length + fallbackShipping.length} opções de frete encontradas`,
+            description: `${allOptions.length} opções de frete encontradas`,
           });
         }
       }
@@ -1028,7 +1034,7 @@ const PublicCheckout = () => {
                                 )}
                               </div>
                               <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground mb-3">
-                                <div><span className="font-medium">Data:</span> {new Date(order.event_date).toLocaleDateString('pt-BR')}</div>
+                                <div><span className="font-medium">Data:</span> {formatBrasiliaDate(order.event_date)}</div>
                                 <div><span className="font-medium">Itens:</span> {order.items.length} produto(s)</div>
                               </div>
                               {/* Lista de produtos */}
@@ -1506,7 +1512,7 @@ const PublicCheckout = () => {
                             </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {new Date(order.event_date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} • {order.event_type}
+                            {formatBrasiliaDateLong(order.event_date)} • {order.event_type}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {order.items.length} {order.items.length === 1 ? 'produto' : 'produtos'}
