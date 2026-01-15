@@ -11,10 +11,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square, ArrowUp, ArrowDown, ChevronsUp, ChevronsDown, GripVertical } from 'lucide-react';
+import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square, GripVertical } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface Product {
   id: number;
@@ -30,6 +47,61 @@ interface WhatsAppGroup {
   id: string;
   name: string;
   participantCount?: number;
+}
+
+// Componente Sortable para cada produto na lista de priorização
+function SortableProductItem({ product, index }: { product: Product; index: number }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: product.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between p-3 rounded-lg border bg-card ${
+        isDragging ? 'shadow-lg opacity-90 bg-accent' : 'hover:bg-accent/50'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+          title="Arraste para reordenar"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <Badge variant="secondary" className="font-mono w-8 justify-center">
+          {index + 1}º
+        </Badge>
+        {product.image_url ? (
+          <img
+            src={product.image_url}
+            alt={product.name}
+            className="w-8 h-8 object-cover rounded"
+          />
+        ) : (
+          <div className="w-8 h-8 bg-muted rounded flex items-center justify-center">
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </div>
+        )}
+        <span className="font-mono text-sm text-muted-foreground">{product.code}</span>
+        <span className="font-medium">{product.name}</span>
+      </div>
+    </div>
+  );
 }
 
 export default function SendFlow() {
@@ -305,39 +377,30 @@ export default function SendFlow() {
     }
   };
   
-  // Funções de priorização
-  const movePriorityUp = (productId: number) => {
-    setPrioritizedProductIds(prev => {
-      const index = prev.indexOf(productId);
-      if (index <= 0) return prev;
-      const newOrder = [...prev];
-      [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
-      return newOrder;
-    });
-  };
+  // Drag & Drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   
-  const movePriorityDown = (productId: number) => {
-    setPrioritizedProductIds(prev => {
-      const index = prev.indexOf(productId);
-      if (index < 0 || index >= prev.length - 1) return prev;
-      const newOrder = [...prev];
-      [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
-      return newOrder;
-    });
-  };
-  
-  const movePriorityToTop = (productId: number) => {
-    setPrioritizedProductIds(prev => {
-      const filtered = prev.filter(id => id !== productId);
-      return [productId, ...filtered];
-    });
-  };
-  
-  const movePriorityToBottom = (productId: number) => {
-    setPrioritizedProductIds(prev => {
-      const filtered = prev.filter(id => id !== productId);
-      return [...filtered, productId];
-    });
+  // Handler para drag & drop
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setPrioritizedProductIds((items) => {
+        const oldIndex = items.indexOf(active.id as number);
+        const newIndex = items.indexOf(over.id as number);
+
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
   };
 
   const toggleGroup = (groupId: string) => {
@@ -830,7 +893,7 @@ export default function SendFlow() {
         </Card>
       </div>
 
-      {/* Ordem de Envio / Priorização */}
+      {/* Ordem de Envio / Priorização com Drag & Drop */}
       {prioritizedProducts.length > 0 && (
         <Card>
           <CardHeader>
@@ -844,79 +907,30 @@ export default function SendFlow() {
               </Badge>
             </div>
             <CardDescription>
-              Use as setas para reorganizar a ordem de envio dos produtos. O primeiro da lista será enviado primeiro.
+              Arraste os produtos para reorganizar a ordem de envio. O primeiro da lista será enviado primeiro.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {prioritizedProducts.map((product, index) => (
-                <div
-                  key={product.id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <Badge variant="secondary" className="font-mono w-8 justify-center">
-                      {index + 1}º
-                    </Badge>
-                    {product.image_url ? (
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="w-8 h-8 object-cover rounded"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 bg-muted rounded flex items-center justify-center">
-                        <Package className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    )}
-                    <span className="font-mono text-sm text-muted-foreground">{product.code}</span>
-                    <span className="font-medium">{product.name}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => movePriorityToTop(product.id)}
-                      disabled={index === 0}
-                      title="Mover para o início"
-                    >
-                      <ChevronsUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => movePriorityUp(product.id)}
-                      disabled={index === 0}
-                      title="Mover para cima"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => movePriorityDown(product.id)}
-                      disabled={index === prioritizedProducts.length - 1}
-                      title="Mover para baixo"
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => movePriorityToBottom(product.id)}
-                      disabled={index === prioritizedProducts.length - 1}
-                      title="Mover para o final"
-                    >
-                      <ChevronsDown className="h-4 w-4" />
-                    </Button>
-                  </div>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={prioritizedProductIds}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {prioritizedProducts.map((product, index) => (
+                    <SortableProductItem
+                      key={product.id}
+                      product={product}
+                      index={index}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
           </CardContent>
         </Card>
       )}
