@@ -418,9 +418,10 @@ export default function SendFlow() {
       setPrioritizedProductIds(prev => prev.filter(id => id !== productId));
     } else {
       newSelection.add(productId);
-      // Adicionar ao final da lista de priorização apenas se não existir
+      // Adicionar ao final da lista de priorização apenas se não existir (usar Set para garantir)
       setPrioritizedProductIds(prev => {
-        if (prev.includes(productId)) return prev;
+        const uniqueIds = new Set(prev);
+        if (uniqueIds.has(productId)) return prev;
         return [...prev, productId];
       });
     }
@@ -582,15 +583,16 @@ export default function SendFlow() {
         return;
       }
 
-      // 2. Preparar mensagens - usar ordem priorizada
+      // 2. Preparar mensagens - usar ordem priorizada (garantir IDs únicos)
       setSendingStatus('sending');
       // Usar a ordem de priorização se houver produtos selecionados
-      const selectedProductArray = prioritizedProductIds
+      // Garantir que não haja duplicatas no array de produtos
+      const uniqueProductIds = [...new Set(prioritizedProductIds)];
+      const selectedProductArray = uniqueProductIds
         .map(id => products.find(p => p.id === id))
         .filter((p): p is Product => p !== undefined && selectedProducts.has(p.id));
-      const selectedGroupArray = Array.from(selectedGroups);
+      const selectedGroupArray = [...new Set(Array.from(selectedGroups))]; // Garantir grupos únicos também
       const total = selectedProductArray.length * selectedGroupArray.length;
-      setTotalMessages(total);
       setTotalMessages(total);
 
       console.log(`📦 Enviando ${total} mensagens via Z-API...`);
