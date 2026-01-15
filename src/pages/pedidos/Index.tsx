@@ -1107,6 +1107,13 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
             formatPhoneForDisplay(order.customer_phone).includes(searchTerm);
     });
 
+    // Contar pedidos por telefone para identificar clientes com múltiplos pedidos
+    const orderCountByPhone = orders.reduce((acc, order) => {
+      const normalizedPhone = normalizeForStorage(order.customer_phone);
+      acc[normalizedPhone] = (acc[normalizedPhone] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
     // Estatísticas baseadas nos pedidos filtrados (para mostrar resumo do dia ou conforme filtros aplicados)
     const totalOrdersCount = filteredOrders.length;
     const paidOrdersCount = filteredOrders.filter(o => o.is_paid).length;
@@ -1359,10 +1366,27 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                         <span className="text-[10px] font-mono font-semibold text-muted-foreground">#{order.id}</span>
                       </TableCell>
                       
-                      {/* Telefone + Instagram */}
+                      {/* Telefone + Instagram + Badge múltiplos pedidos */}
                       <TableCell className="px-1 py-1">
                         <div className="flex flex-col leading-tight">
-                          <span className="text-[10px] font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
+                            {(() => {
+                              const normalizedPhone = normalizeForStorage(order.customer_phone);
+                              const count = orderCountByPhone[normalizedPhone] || 1;
+                              if (count > 1) {
+                                return (
+                                  <Badge 
+                                    variant="secondary" 
+                                    className="text-[8px] px-1 py-0 h-3.5 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                                  >
+                                    {count} pedidos
+                                  </Badge>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                           {order.customer?.instagram && (
                             <span className="text-[9px] text-muted-foreground truncate">@{order.customer.instagram.replace('@', '')}</span>
                           )}
