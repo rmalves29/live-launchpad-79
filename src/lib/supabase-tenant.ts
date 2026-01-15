@@ -53,8 +53,8 @@ class TenantSupabaseClient {
   from(table: keyof Database['public']['Tables']) {
     const base = this.client.from(table);
 
-    // Tabelas que NÃO devem ser filtradas por tenant
-    const globalTables = ['tenants', 'profiles', 'app_settings', 'audit_logs', 'webhook_logs'];
+    // Tabelas que NÃO devem ser filtradas por tenant (tabelas globais sem tenant_id)
+    const globalTables = ['tenants', 'profiles', 'app_settings', 'audit_logs', 'webhook_logs', 'coupons', 'gifts', 'mkt_mm', 'phone_fix_jobs', 'phone_fix_changes', 'whatsapp_active_sessions', 'whatsapp_session_conflicts'];
 
     if (globalTables.includes(table)) {
       return base;
