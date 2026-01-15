@@ -50,7 +50,20 @@ interface WhatsAppGroup {
 }
 
 // Componente Sortable para cada produto na lista de priorização
-function SortableProductItem({ product, index }: { product: Product; index: number }) {
+function SortableProductItem({ 
+  product, 
+  index, 
+  totalItems,
+  onPositionChange 
+}: { 
+  product: Product; 
+  index: number;
+  totalItems: number;
+  onPositionChange: (productId: number, newPosition: number) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(String(index + 1));
+  
   const {
     attributes,
     listeners,
@@ -64,6 +77,24 @@ function SortableProductItem({ product, index }: { product: Product; index: numb
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 50 : undefined,
+  };
+
+  const handlePositionSubmit = () => {
+    const newPos = parseInt(editValue, 10);
+    if (!isNaN(newPos) && newPos >= 1 && newPos <= totalItems && newPos !== index + 1) {
+      onPositionChange(product.id, newPos);
+    }
+    setIsEditing(false);
+    setEditValue(String(index + 1));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handlePositionSubmit();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+      setEditValue(String(index + 1));
+    }
   };
 
   return (
@@ -83,9 +114,31 @@ function SortableProductItem({ product, index }: { product: Product; index: numb
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
-        <Badge variant="secondary" className="font-mono w-8 justify-center">
-          {index + 1}º
-        </Badge>
+        {isEditing ? (
+          <Input
+            type="number"
+            min={1}
+            max={totalItems}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={handlePositionSubmit}
+            onKeyDown={handleKeyDown}
+            className="w-14 h-7 text-center font-mono text-sm"
+            autoFocus
+          />
+        ) : (
+          <Badge 
+            variant="secondary" 
+            className="font-mono w-10 justify-center cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+            onClick={() => {
+              setEditValue(String(index + 1));
+              setIsEditing(true);
+            }}
+            title="Clique para editar a posição"
+          >
+            {index + 1}º
+          </Badge>
+        )}
         {product.image_url ? (
           <img
             src={product.image_url}
@@ -401,6 +454,21 @@ export default function SendFlow() {
         return arrayMove(items, oldIndex, newIndex);
       });
     }
+  };
+
+  // Função para mudar a posição de um produto diretamente pelo número
+  const handlePositionChange = (productId: number, newPosition: number) => {
+    setPrioritizedProductIds((items) => {
+      const currentIndex = items.indexOf(productId);
+      if (currentIndex === -1) return items;
+      
+      // newPosition é 1-indexed, precisamos converter para 0-indexed
+      const targetIndex = Math.max(0, Math.min(newPosition - 1, items.length - 1));
+      
+      if (currentIndex === targetIndex) return items;
+      
+      return arrayMove(items, currentIndex, targetIndex);
+    });
   };
 
   const toggleGroup = (groupId: string) => {
@@ -926,6 +994,8 @@ export default function SendFlow() {
                       key={product.id}
                       product={product}
                       index={index}
+                      totalItems={prioritizedProducts.length}
+                      onPositionChange={handlePositionChange}
                     />
                   ))}
                 </div>
