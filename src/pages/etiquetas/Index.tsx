@@ -35,12 +35,10 @@ interface Order {
   melhor_envio_shipment_id?: string;
   melhor_envio_tracking_code?: string;
   items?: any[];
-  customer?: {
-    cpf?: string;
-  };
+  customer_cpf?: string; // CPF do cliente (buscado da tabela customers)
 }
 
-// Validar dados obrigatórios para criar remessa
+// Validar dados obrigatórios para criar remessa (incluindo CPF)
 const validateOrderForShipment = (order: Order): { valid: boolean; missingFields: string[] } => {
   const missingFields: string[] = [];
   
@@ -49,6 +47,7 @@ const validateOrderForShipment = (order: Order): { valid: boolean; missingFields
   if (!order.customer_street) missingFields.push('Rua');
   if (!order.customer_city) missingFields.push('Cidade');
   if (!order.customer_state) missingFields.push('Estado');
+  if (!order.customer_cpf) missingFields.push('CPF do cliente');
   
   return {
     valid: missingFields.length === 0,
@@ -172,18 +171,16 @@ const Etiquetas = () => {
         allCartItems = cartItemsData || [];
       }
       
-      // Buscar dados de clientes faltantes de uma vez
-      const phonesNeedingCustomerData = data
-        .filter(o => !o.customer_name || !o.customer_cep)
-        .map(o => o.customer_phone);
+      // Buscar dados de clientes (sempre buscar CPF para todos)
+      const allPhones = data.map(o => o.customer_phone);
       
       let customersMap: Record<string, any> = {};
       
-      if (phonesNeedingCustomerData.length > 0) {
+      if (allPhones.length > 0) {
         const { data: customersData } = await supabaseTenant
           .from('customers')
           .select('phone, name, cpf, cep, street, number, complement, neighborhood, city, state')
-          .in('phone', phonesNeedingCustomerData);
+          .in('phone', allPhones);
         
         if (customersData) {
           customersMap = customersData.reduce((acc, c) => {
@@ -193,7 +190,7 @@ const Etiquetas = () => {
         }
       }
       
-      // Montar os pedidos com itens e dados de clientes
+      // Montar os pedidos com itens e dados de clientes (incluindo CPF)
       const ordersWithItems = data.map(order => {
         const items = allCartItems.filter(item => item.cart_id === order.cart_id);
         const customer = customersMap[order.customer_phone];
@@ -208,6 +205,7 @@ const Etiquetas = () => {
           customer_complement: order.customer_complement || customer?.complement,
           customer_city: order.customer_city || customer?.city,
           customer_state: order.customer_state || customer?.state,
+          customer_cpf: customer?.cpf, // Sempre buscar o CPF do cliente
         };
       });
 
@@ -260,14 +258,15 @@ const Etiquetas = () => {
         allCartItems = cartItemsData || [];
       }
       
-      const phonesNeedingCustomerData = data.filter(o => !o.customer_name || !o.customer_cep).map(o => o.customer_phone);
+      // Buscar dados de clientes (sempre buscar CPF para todos)
+      const allPhones = data.map(o => o.customer_phone);
       let customersMap: Record<string, any> = {};
       
-      if (phonesNeedingCustomerData.length > 0) {
+      if (allPhones.length > 0) {
         const { data: customersData } = await supabaseTenant
           .from('customers')
           .select('phone, name, cpf, cep, street, number, complement, neighborhood, city, state')
-          .in('phone', phonesNeedingCustomerData);
+          .in('phone', allPhones);
         if (customersData) {
           customersMap = customersData.reduce((acc, c) => { acc[c.phone] = c; return acc; }, {} as Record<string, any>);
         }
@@ -286,6 +285,7 @@ const Etiquetas = () => {
           customer_complement: order.customer_complement || customer?.complement,
           customer_city: order.customer_city || customer?.city,
           customer_state: order.customer_state || customer?.state,
+          customer_cpf: customer?.cpf, // Sempre buscar o CPF do cliente
         };
       });
 
