@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { isSendingActive } from '@/hooks/useSendingActivity';
 
 const TIMEOUT_DURATION = 60 * 60 * 1000; // 1 hora
 
@@ -12,6 +13,17 @@ export const useSessionTimeout = () => {
   const isInitialized = useRef(false);
 
   const handleSessionExpired = useCallback(async () => {
+    // NÃO deslogar se houver envio ativo
+    if (isSendingActive()) {
+      console.log('⏸️ Sessão timeout ignorado - envio ativo em andamento');
+      // Reagendar o timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(handleSessionExpired, TIMEOUT_DURATION);
+      return;
+    }
+
     await supabase.auth.signOut();
     localStorage.removeItem('lastActivity');
     toast({
