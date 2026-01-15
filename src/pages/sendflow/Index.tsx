@@ -6,6 +6,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useSendingActivity } from '@/hooks/useSendingActivity';
 import { useSendingJob, SendingJob, SendingJobData } from '@/hooks/useSendingJob';
 import SendingControl from '@/components/SendingControl';
+import SendingProgressLive from '@/components/SendingProgressLive';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -939,6 +940,11 @@ export default function SendFlow() {
           </Badge>
         </div>
       </div>
+
+      {/* Progresso em tempo real de envio em outro dispositivo */}
+      {!sending && (
+        <SendingProgressLive jobType="sendflow" />
+      )}
 
       {/* Card para retomar envio pausado */}
       {showResumeControl && !sending && (
