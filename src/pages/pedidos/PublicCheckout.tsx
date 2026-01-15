@@ -67,6 +67,7 @@ const PublicCheckout = () => {
   const [searched, setSearched] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [cpfError, setCpfError] = useState(false);
   
   // Histórico de pedidos pagos
   const [paidOrders, setPaidOrders] = useState<Order[]>([]);
@@ -510,10 +511,13 @@ const PublicCheckout = () => {
     }
 
     // Validação específica para CPF primeiro
-    if (!customerData.cpf) {
-      toast({ title: 'CPF obrigatório', description: 'Informe seu CPF para finalizar o pedido', variant: 'destructive' });
+    const cpfDigits = customerData.cpf?.replace(/\D/g, '') || '';
+    if (!cpfDigits || cpfDigits.length !== 11) {
+      setCpfError(true);
+      toast({ title: 'CPF obrigatório', description: 'Informe um CPF válido (11 dígitos) para finalizar o pedido', variant: 'destructive' });
       return;
     }
+    setCpfError(false);
 
     // Validação dos outros campos obrigatórios
     const missingFields: string[] = [];
@@ -1202,9 +1206,16 @@ const PublicCheckout = () => {
                         <Input
                           placeholder="000.000.000-00"
                           value={customerData.cpf}
-                          onChange={(e) => setCustomerData({...customerData, cpf: formatCPF(e.target.value)})}
+                          onChange={(e) => {
+                            setCustomerData({...customerData, cpf: formatCPF(e.target.value)});
+                            if (cpfError) setCpfError(false);
+                          }}
                           maxLength={14}
+                          className={cpfError ? 'border-red-500 focus-visible:ring-red-500' : ''}
                         />
+                        {cpfError && (
+                          <p className="text-xs text-red-500 mt-1">CPF obrigatório para gerar etiqueta de envio</p>
+                        )}
                       </div>
                       <div>
                         <label className="text-sm font-medium mb-1 block">Email</label>
