@@ -660,8 +660,9 @@ export default function SendFlow() {
               }
             }
 
-            // Delay entre grupos (check pause during delay)
-            if (perGroupDelaySeconds > 0) {
+            // Delay entre grupos - apenas se NÃO for o último grupo
+            const isLastGroup = selectedGroupArray.indexOf(groupId) === selectedGroupArray.length - 1;
+            if (perGroupDelaySeconds > 0 && !isLastGroup && !isCancelledRef.current) {
               const delayMs = perGroupDelaySeconds * 1000;
               const delayStep = 500;
               let elapsed = 0;
