@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Radio, Clock } from 'lucide-react';
+import { Loader2, Radio, Clock, Pause, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
+import { useToast } from '@/hooks/use-toast';
 
 interface SendingJob {
   id: string;
@@ -32,8 +34,71 @@ interface SendingProgressLiveProps {
 
 export default function SendingProgressLive({ jobType }: SendingProgressLiveProps) {
   const { tenant } = useTenant();
+  const { toast } = useToast();
   const [activeJob, setActiveJob] = useState<SendingJob | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<'pause' | 'cancel' | null>(null);
+
+  const handlePauseJob = async () => {
+    if (!activeJob) return;
+    setActionLoading('pause');
+    try {
+      const { error } = await supabase
+        .from('sending_jobs')
+        .update({
+          status: 'paused',
+          paused_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', activeJob.id);
+
+      if (error) throw error;
+      
+      toast({
+        title: 'Envio pausado',
+        description: 'O envio foi pausado e pode ser retomado posteriormente.',
+      });
+      setActiveJob(null);
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao pausar',
+        description: error?.message || 'Não foi possível pausar o envio.',
+        variant: 'destructive'
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancelJob = async () => {
+    if (!activeJob) return;
+    setActionLoading('cancel');
+    try {
+      const { error } = await supabase
+        .from('sending_jobs')
+        .update({
+          status: 'cancelled',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', activeJob.id);
+
+      if (error) throw error;
+      
+      toast({
+        title: 'Envio cancelado',
+        description: 'O envio foi cancelado permanentemente.',
+      });
+      setActiveJob(null);
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao cancelar',
+        description: error?.message || 'Não foi possível cancelar o envio.',
+        variant: 'destructive'
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   // Buscar job ativo inicial
   useEffect(() => {
@@ -203,6 +268,37 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>Enviando mensagens em outro dispositivo...</span>
+        </div>
+
+        <div className="flex items-center justify-center gap-3 pt-2 border-t">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePauseJob}
+            disabled={actionLoading !== null}
+            className="gap-2"
+          >
+            {actionLoading === 'pause' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Pause className="h-4 w-4" />
+            )}
+            Pausar Envio
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleCancelJob}
+            disabled={actionLoading !== null}
+            className="gap-2"
+          >
+            {actionLoading === 'cancel' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            Cancelar Envio
+          </Button>
         </div>
       </CardContent>
     </Card>

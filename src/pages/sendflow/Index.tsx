@@ -701,6 +701,43 @@ export default function SendFlow() {
         }
       };
 
+      // Helper para verificar se o job foi pausado/cancelado remotamente
+      const checkJobStatusRemotely = async (): Promise<boolean> => {
+        if (!currentJobIdRef.current) return true; // continua se não há job
+        try {
+          const { data } = await supabase
+            .from('sending_jobs')
+            .select('status')
+            .eq('id', currentJobIdRef.current)
+            .single();
+          
+          if (data?.status === 'paused') {
+            isPausedRef.current = true;
+            setSendingStatus('paused');
+            toast({
+              title: 'Envio pausado remotamente',
+              description: 'O envio foi pausado de outro dispositivo.',
+            });
+            return false;
+          }
+          
+          if (data?.status === 'cancelled') {
+            isCancelledRef.current = true;
+            setSendingStatus('cancelled');
+            toast({
+              title: 'Envio cancelado remotamente',
+              description: 'O envio foi cancelado de outro dispositivo.',
+            });
+            return false;
+          }
+          
+          return true; // continua normalmente
+        } catch (error) {
+          console.error('Erro ao verificar status do job:', error);
+          return true; // em caso de erro, continua
+        }
+      };
+
       // Helper para atualizar progresso no banco
       const updateJobProgress = async (productIdx: number, groupIdx: number) => {
         if (currentJobIdRef.current) {
@@ -786,68 +823,78 @@ export default function SendFlow() {
               const delayStep = 500;
               let elapsed = 0;
               while (elapsed < delayMs && !isCancelledRef.current) {
-                await waitWhilePaused();
-                if (isCancelledRef.current) break;
-                await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
-                elapsed += delayStep;
-              }
-            }
-          } catch (err) {
-            console.error(`Erro ao enviar para grupo ${groupId}:`, err);
-            errorCount++;
-            setErrorMessages(errorCount);
-          }
-        }
-
-        // Delay entre produtos - começa a contar APÓS terminar de enviar para todos os grupos
-        // NÃO espera após o último produto
-        const isLastProduct = productIdx === selectedProductArray.length - 1;
-        
-        // Atualiza o índice do produto atual
-        setCurrentProductIndex(productIdx + 1);
-        
-        if (perProductDelayMinutes > 0 && !isLastProduct && !isCancelledRef.current) {
-          const delayMs = perProductDelayMinutes * 60 * 1000;
-          const delayStep = 1000; // 1 segundo para atualizar o countdown
-          let elapsed = 0;
-          
-          // Inicia o countdown visual
-          setIsWaitingForNextProduct(true);
-          setCountdownSeconds(Math.ceil(delayMs / 1000));
-          
-          while (elapsed < delayMs && !isCancelledRef.current) {
             await waitWhilePaused();
             if (isCancelledRef.current) break;
             await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
             elapsed += delayStep;
-            
-            // Atualiza countdown (apenas se não estiver pausado)
-            if (!isPausedRef.current) {
-              const remainingSeconds = Math.ceil((delayMs - elapsed) / 1000);
-              setCountdownSeconds(Math.max(0, remainingSeconds));
-            }
           }
-          
-          // Limpa o countdown
-          setIsWaitingForNextProduct(false);
-          setCountdownSeconds(0);
+        }
+      } catch (err) {
+        console.error(`Erro ao enviar para grupo ${groupId}:`, err);
+        errorCount++;
+        setErrorMessages(errorCount);
+      }
+    }
+
+    // Delay entre produtos - começa a contar APÓS terminar de enviar para todos os grupos
+    // NÃO espera após o último produto
+    const isLastProduct = productIdx === selectedProductArray.length - 1;
+    
+    // Atualiza o índice do produto atual
+    setCurrentProductIndex(productIdx + 1);
+    
+    if (perProductDelayMinutes > 0 && !isLastProduct && !isCancelledRef.current) {
+      const delayMs = perProductDelayMinutes * 60 * 1000;
+      const delayStep = 1000; // 1 segundo para atualizar o countdown
+      let elapsed = 0;
+      let checkCounter = 0;
+      
+      // Inicia o countdown visual
+      setIsWaitingForNextProduct(true);
+      setCountdownSeconds(Math.ceil(delayMs / 1000));
+      
+      while (elapsed < delayMs && !isCancelledRef.current) {
+        await waitWhilePaused();
+        if (isCancelledRef.current) break;
+        
+        // Verificar status remoto a cada 5 segundos durante o delay
+        checkCounter++;
+        if (checkCounter >= 5) {
+          const shouldContinue = await checkJobStatusRemotely();
+          if (!shouldContinue) break;
+          checkCounter = 0;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
+        elapsed += delayStep;
+        
+        // Atualiza countdown (apenas se não estiver pausado)
+        if (!isPausedRef.current) {
+          const remainingSeconds = Math.ceil((delayMs - elapsed) / 1000);
+          setCountdownSeconds(Math.max(0, remainingSeconds));
         }
       }
+      
+      // Limpa o countdown
+      setIsWaitingForNextProduct(false);
+      setCountdownSeconds(0);
+    }
+  }
 
-      // Marcar job como completo
-      if (currentJobIdRef.current && !isCancelledRef.current) {
-        await sendingJob.completeJob(currentJobIdRef.current);
-      }
+  // Marcar job como completo
+  if (currentJobIdRef.current && !isCancelledRef.current) {
+    await sendingJob.completeJob(currentJobIdRef.current);
+  }
 
-      // Desativar flag de envio
-      sendingActivity.setInactive();
-      currentJobIdRef.current = null;
+  // Desativar flag de envio
+  sendingActivity.setInactive();
+  currentJobIdRef.current = null;
 
-      toast({
-        title: '✅ Envio concluído!',
-        description: `${sentCount} mensagens enviadas${errorCount > 0 ? `, ${errorCount} erros` : ''}.`,
-        duration: 10000
-      });
+  toast({
+    title: '✅ Envio concluído!',
+    description: `${sentCount} mensagens enviadas${errorCount > 0 ? `, ${errorCount} erros` : ''}.`,
+    duration: 10000
+  });
 
       setSendingStatus('completed');
       
