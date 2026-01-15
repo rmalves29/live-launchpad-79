@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/hooks/useTenant';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useSendingActivity } from '@/hooks/useSendingActivity';
+import { useSendingJob, SendingJob, SendingJobData } from '@/hooks/useSendingJob';
+import SendingControl from '@/components/SendingControl';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -160,6 +163,8 @@ function SortableProductItem({
 export default function SendFlow() {
   const { toast } = useToast();
   const { tenant } = useTenant();
+  const sendingActivity = useSendingActivity();
+  const sendingJob = useSendingJob();
 
   // Estados principais
   const [products, setProducts] = useState<Product[]>([]);
@@ -181,6 +186,7 @@ export default function SendFlow() {
   const [errorMessages, setErrorMessages] = useState(0);
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
+  const [showResumeControl, setShowResumeControl] = useState(true);
   
   // Estados para countdown visual
   const [countdownSeconds, setCountdownSeconds] = useState(0);
@@ -191,6 +197,7 @@ export default function SendFlow() {
   // Refs para controle de pausa/cancelamento
   const isPausedRef = useRef(false);
   const isCancelledRef = useRef(false);
+  const currentJobIdRef = useRef<string | null>(null);
   
   // Estados de busca
   const [groupSearch, setGroupSearch] = useState('');
@@ -534,36 +541,40 @@ export default function SendFlow() {
     return message.trim();
   };
 
-  const handleSendMessages = async () => {
-    if (selectedProducts.size === 0) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione pelo menos um produto',
-        variant: 'destructive'
-      });
-      return;
-    }
+  const handleSendMessages = async (resumeData?: SendingJobData, resumeJobId?: string) => {
+    // Se não for retomando, validar seleções
+    if (!resumeData) {
+      if (selectedProducts.size === 0) {
+        toast({
+          title: 'Erro',
+          description: 'Selecione pelo menos um produto',
+          variant: 'destructive'
+        });
+        return;
+      }
 
-    if (selectedGroups.size === 0) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione pelo menos um grupo',
-        variant: 'destructive'
-      });
-      return;
-    }
+      if (selectedGroups.size === 0) {
+        toast({
+          title: 'Erro',
+          description: 'Selecione pelo menos um grupo',
+          variant: 'destructive'
+        });
+        return;
+      }
 
-    if (!messageTemplate.trim()) {
-      toast({
-        title: 'Erro',
-        description: 'Digite um template de mensagem',
-        variant: 'destructive'
-      });
-      return;
+      if (!messageTemplate.trim()) {
+        toast({
+          title: 'Erro',
+          description: 'Digite um template de mensagem',
+          variant: 'destructive'
+        });
+        return;
+      }
     }
 
     setSending(true);
     setSendingStatus('validating');
+    setShowResumeControl(false);
 
     try {
       // 1. Verificar conexão WhatsApp via Z-API
@@ -580,35 +591,86 @@ export default function SendFlow() {
         });
         setSending(false);
         setSendingStatus('idle');
+        setShowResumeControl(true);
         return;
       }
 
       // 2. Preparar mensagens - usar ordem priorizada (garantir IDs únicos)
       setSendingStatus('sending');
-      // Usar a ordem de priorização se houver produtos selecionados
-      // Garantir que não haja duplicatas no array de produtos
-      const uniqueProductIds = [...new Set(prioritizedProductIds)];
-      const selectedProductArray = uniqueProductIds
-        .map(id => products.find(p => p.id === id))
-        .filter((p): p is Product => p !== undefined && selectedProducts.has(p.id));
-      const selectedGroupArray = [...new Set(Array.from(selectedGroups))]; // Garantir grupos únicos também
+      
+      // Se estiver retomando, usar dados do job, senão usar seleção atual
+      let selectedProductArray: Product[];
+      let selectedGroupArray: string[];
+      let startProductIndex = 0;
+      let startGroupIndex = 0;
+      let initialSentCount = 0;
+      let initialErrorCount = 0;
+
+      if (resumeData) {
+        // Retomando job pausado
+        selectedProductArray = resumeData.productIds
+          .map(id => products.find(p => p.id === id))
+          .filter((p): p is Product => p !== undefined);
+        selectedGroupArray = resumeData.groupIds;
+        startProductIndex = resumeData.currentProductIndex;
+        startGroupIndex = resumeData.currentGroupIndex;
+        initialSentCount = resumeData.sentMessages;
+        initialErrorCount = resumeData.errorMessages;
+        setPerGroupDelaySeconds(resumeData.perGroupDelaySeconds);
+        setPerProductDelayMinutes(resumeData.perProductDelayMinutes);
+        setMessageTemplate(resumeData.messageTemplate);
+        
+        if (resumeJobId) {
+          currentJobIdRef.current = resumeJobId;
+          await sendingJob.resumeJob(resumeJobId);
+        }
+      } else {
+        const uniqueProductIds = [...new Set(prioritizedProductIds)];
+        selectedProductArray = uniqueProductIds
+          .map(id => products.find(p => p.id === id))
+          .filter((p): p is Product => p !== undefined && selectedProducts.has(p.id));
+        selectedGroupArray = [...new Set(Array.from(selectedGroups))];
+      }
+
       const total = selectedProductArray.length * selectedGroupArray.length;
       setTotalMessages(total);
 
       console.log(`📦 Enviando ${total} mensagens via Z-API...`);
 
       // Reset counters and pause state
-      setSentMessages(0);
-      setErrorMessages(0);
-      setCurrentProductIndex(0);
+      setSentMessages(initialSentCount);
+      setErrorMessages(initialErrorCount);
+      setCurrentProductIndex(startProductIndex);
       setTotalProductsToSend(selectedProductArray.length);
       setIsWaitingForNextProduct(false);
       setCountdownSeconds(0);
       isPausedRef.current = false;
       isCancelledRef.current = false;
 
-      let sentCount = 0;
-      let errorCount = 0;
+      // Marcar envio como ativo (impede logout por timeout)
+      sendingActivity.setActive();
+
+      // Criar job no banco se não estiver retomando
+      if (!resumeData) {
+        const jobData: SendingJobData = {
+          productIds: selectedProductArray.map(p => p.id),
+          groupIds: selectedGroupArray,
+          messageTemplate,
+          perGroupDelaySeconds,
+          perProductDelayMinutes,
+          currentProductIndex: 0,
+          currentGroupIndex: 0,
+          sentMessages: 0,
+          errorMessages: 0
+        };
+        const jobId = await sendingJob.createJob('sendflow', jobData, total);
+        if (jobId) {
+          currentJobIdRef.current = jobId;
+        }
+      }
+
+      let sentCount = initialSentCount;
+      let errorCount = initialErrorCount;
 
       // Helper function to wait while paused
       const waitWhilePaused = async () => {
@@ -617,14 +679,31 @@ export default function SendFlow() {
         }
       };
 
-      // 3. Enviar mensagens com delays
-      for (const product of selectedProductArray) {
-        if (isCancelledRef.current) break;
+      // Helper para atualizar progresso no banco
+      const updateJobProgress = async (productIdx: number, groupIdx: number) => {
+        if (currentJobIdRef.current) {
+          sendingActivity.updateActivity(); // Mantém sessão viva
+          await sendingJob.updateProgress(currentJobIdRef.current, sentCount + errorCount, productIdx, {
+            currentProductIndex: productIdx,
+            currentGroupIndex: groupIdx,
+            sentMessages: sentCount,
+            errorMessages: errorCount
+          });
+        }
+      };
 
+      // 3. Enviar mensagens com delays
+      for (let productIdx = startProductIndex; productIdx < selectedProductArray.length; productIdx++) {
+        if (isCancelledRef.current) break;
+        
+        const product = selectedProductArray[productIdx];
         const message = personalizeMessage(product);
 
+        // Determinar índice inicial do grupo (se estiver retomando no meio de um produto)
+        const groupStartIdx = (productIdx === startProductIndex) ? startGroupIndex : 0;
+
         // Enviar para todos os grupos
-        for (let groupIndex = 0; groupIndex < selectedGroupArray.length; groupIndex++) {
+        for (let groupIndex = groupStartIdx; groupIndex < selectedGroupArray.length; groupIndex++) {
           if (isCancelledRef.current) break;
           
           const groupId = selectedGroupArray[groupIndex];
@@ -676,6 +755,9 @@ export default function SendFlow() {
               }
             }
 
+            // Atualizar progresso no banco a cada mensagem enviada
+            await updateJobProgress(productIdx, groupIndex + 1);
+
             // Delay entre grupos - NÃO espera após o último grupo (zera o delay)
             if (perGroupDelaySeconds > 0 && !isLastGroup && !isCancelledRef.current) {
               const delayMs = perGroupDelaySeconds * 1000;
@@ -697,11 +779,10 @@ export default function SendFlow() {
 
         // Delay entre produtos - começa a contar APÓS terminar de enviar para todos os grupos
         // NÃO espera após o último produto
-        const productIndex = selectedProductArray.indexOf(product);
-        const isLastProduct = productIndex === selectedProductArray.length - 1;
+        const isLastProduct = productIdx === selectedProductArray.length - 1;
         
         // Atualiza o índice do produto atual
-        setCurrentProductIndex(productIndex + 1);
+        setCurrentProductIndex(productIdx + 1);
         
         if (perProductDelayMinutes > 0 && !isLastProduct && !isCancelledRef.current) {
           const delayMs = perProductDelayMinutes * 60 * 1000;
@@ -730,6 +811,16 @@ export default function SendFlow() {
           setCountdownSeconds(0);
         }
       }
+
+      // Marcar job como completo
+      if (currentJobIdRef.current && !isCancelledRef.current) {
+        await sendingJob.completeJob(currentJobIdRef.current);
+      }
+
+      // Desativar flag de envio
+      sendingActivity.setInactive();
+      currentJobIdRef.current = null;
+
       toast({
         title: '✅ Envio concluído!',
         description: `${sentCount} mensagens enviadas${errorCount > 0 ? `, ${errorCount} erros` : ''}.`,
@@ -743,10 +834,18 @@ export default function SendFlow() {
         setSendingStatus('idle');
         setSelectedProducts(new Set());
         setSelectedGroups(new Set());
+        setShowResumeControl(true);
       }, 3000);
 
     } catch (error: any) {
       console.error('Erro ao enviar mensagens:', error);
+      
+      // Pausar job em caso de erro para poder retomar
+      if (currentJobIdRef.current) {
+        await sendingJob.pauseJob(currentJobIdRef.current);
+      }
+      sendingActivity.setInactive();
+      
       toast({
         title: 'Erro',
         description: error.message || 'Erro ao enviar mensagens',
@@ -754,10 +853,34 @@ export default function SendFlow() {
         duration: 8000
       });
       setSendingStatus('idle');
+      setShowResumeControl(true);
     } finally {
       setSending(false);
     }
   };
+
+  // Handler para retomar job pausado
+  const handleResumeJob = useCallback(async (job: SendingJob) => {
+    const jobData = job.job_data as SendingJobData;
+    await handleSendMessages(jobData, job.id);
+  }, [products, tenant?.id]);
+
+  // Handler para cancelar envio atual
+  const handleCancelSending = useCallback(async () => {
+    isCancelledRef.current = true;
+    if (currentJobIdRef.current) {
+      await sendingJob.cancelJob(currentJobIdRef.current);
+      currentJobIdRef.current = null;
+    }
+    sendingActivity.setInactive();
+    setSendingStatus('idle');
+    setSending(false);
+    setShowResumeControl(true);
+    toast({
+      title: 'Envio cancelado',
+      description: 'O envio foi interrompido.',
+    });
+  }, [sendingJob, sendingActivity, toast]);
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -795,6 +918,14 @@ export default function SendFlow() {
           </Badge>
         </div>
       </div>
+
+      {/* Card para retomar envio pausado */}
+      {showResumeControl && !sending && (
+        <SendingControl 
+          jobType="sendflow" 
+          onResume={handleResumeJob}
+        />
+      )}
 
       {!whatsappConnected && (
         <Card className="border-destructive">
