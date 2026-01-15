@@ -44,9 +44,17 @@ interface ProductSales {
 
 interface PeriodStats {
   total_sales: number;
+  paid_sales: number;
+  unpaid_sales: number;
   total_orders: number;
+  paid_orders: number;
+  unpaid_orders: number;
   total_products: number;
+  paid_products: number;
+  unpaid_products: number;
   avg_ticket: number;
+  paid_avg_ticket: number;
+  unpaid_avg_ticket: number;
 }
 
 interface WhatsAppGroupStats {
@@ -279,23 +287,23 @@ const Relatorios = () => {
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       const startOfYear = new Date(today.getFullYear(), 0, 1);
 
-      // Vendas do dia - apenas orders
+      // Vendas do dia - apenas orders (incluindo is_paid)
       const dailyOrders = await supabaseTenant
         .from('orders')
-        .select('total_amount, cart_id')
+        .select('total_amount, cart_id, is_paid')
         .gte('created_at', today.toISOString().split('T')[0] + 'T00:00:00')
         .lt('created_at', today.toISOString().split('T')[0] + 'T23:59:59');
 
       // Vendas do mês
       const monthlyOrders = await supabaseTenant
         .from('orders')
-        .select('total_amount, cart_id')
+        .select('total_amount, cart_id, is_paid')
         .gte('created_at', startOfMonth.toISOString());
 
       // Vendas do ano
       const yearlyOrders = await supabaseTenant
         .from('orders')
-        .select('total_amount, cart_id')
+        .select('total_amount, cart_id, is_paid')
         .gte('created_at', startOfYear.toISOString());
 
       // Helper function to get products count for given cart IDs with sale_type filter
@@ -382,31 +390,63 @@ const Relatorios = () => {
       const monthlyCartIds = filteredMonthly.map(o => o.cart_id).filter(Boolean);
       const yearlyCartIds = filteredYearly.map(o => o.cart_id).filter(Boolean);
 
-      // Get products for each period
-      const [dailyProducts, monthlyProducts, yearlyProducts] = await Promise.all([
-        getProductsCountFiltered(dailyCartIds),
-        getProductsCountFiltered(monthlyCartIds),
-        getProductsCountFiltered(yearlyCartIds)
-      ]);
 
-      const calculateStats = (orders: any[], products: any[]): PeriodStats => {
+      const calculateStats = async (orders: any[], cartIds: number[]): Promise<PeriodStats> => {
+        const paidOrders = orders.filter(o => o.is_paid);
+        const unpaidOrders = orders.filter(o => !o.is_paid);
+        
         const totalSales = orders.reduce((sum, o) => sum + Number(o.total_amount), 0);
-        const totalOrders = orders.length;
+        const paidSales = paidOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+        const unpaidSales = unpaidOrders.reduce((sum, o) => sum + Number(o.total_amount), 0);
+        
+        const totalOrdersCount = orders.length;
+        const paidOrdersCount = paidOrders.length;
+        const unpaidOrdersCount = unpaidOrders.length;
+        
+        // Get products for all cart_ids
+        const products = await getProductsCountFiltered(cartIds);
         const totalProducts = products.reduce((sum, item) => sum + item.qty, 0);
-        const avgTicket = totalOrders > 0 ? totalSales / totalOrders : 0;
+        
+        // Get products for paid orders
+        const paidCartIds = paidOrders.map(o => o.cart_id).filter(Boolean);
+        const paidProductsList = await getProductsCountFiltered(paidCartIds);
+        const paidProducts = paidProductsList.reduce((sum, item) => sum + item.qty, 0);
+        
+        // Get products for unpaid orders
+        const unpaidCartIds = unpaidOrders.map(o => o.cart_id).filter(Boolean);
+        const unpaidProductsList = await getProductsCountFiltered(unpaidCartIds);
+        const unpaidProducts = unpaidProductsList.reduce((sum, item) => sum + item.qty, 0);
+        
+        const avgTicket = totalOrdersCount > 0 ? totalSales / totalOrdersCount : 0;
+        const paidAvgTicket = paidOrdersCount > 0 ? paidSales / paidOrdersCount : 0;
+        const unpaidAvgTicket = unpaidOrdersCount > 0 ? unpaidSales / unpaidOrdersCount : 0;
 
         return {
           total_sales: totalSales,
-          total_orders: totalOrders,
+          paid_sales: paidSales,
+          unpaid_sales: unpaidSales,
+          total_orders: totalOrdersCount,
+          paid_orders: paidOrdersCount,
+          unpaid_orders: unpaidOrdersCount,
           total_products: totalProducts,
-          avg_ticket: avgTicket
+          paid_products: paidProducts,
+          unpaid_products: unpaidProducts,
+          avg_ticket: avgTicket,
+          paid_avg_ticket: paidAvgTicket,
+          unpaid_avg_ticket: unpaidAvgTicket
         };
       };
 
+      const [dailyStats, monthlyStats, yearlyStats] = await Promise.all([
+        calculateStats(filteredDaily, dailyCartIds),
+        calculateStats(filteredMonthly, monthlyCartIds),
+        calculateStats(filteredYearly, yearlyCartIds)
+      ]);
+
       setPeriodStats({
-        daily: calculateStats(filteredDaily, dailyProducts),
-        monthly: calculateStats(filteredMonthly, monthlyProducts),
-        yearly: calculateStats(filteredYearly, yearlyProducts)
+        daily: dailyStats,
+        monthly: monthlyStats,
+        yearly: yearlyStats
       });
     } catch (error: any) {
       console.error('Error loading period stats:', error);
@@ -1119,7 +1159,7 @@ const Relatorios = () => {
           {/* Estatísticas Históricas */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="flex items-center text-lg">
                   <TrendingUp className="h-5 w-5 mr-2" />
                   Hoje
@@ -1128,21 +1168,56 @@ const Relatorios = () => {
               <CardContent>
                 {periodStats && (
                   <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm">Vendas:</span>
-                      <span className="font-semibold">{formatCurrency(periodStats.daily.total_sales)}</span>
+                    {/* Vendas */}
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium text-muted-foreground">Vendas</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagas:</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.daily.paid_sales)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagas:</span>
+                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.daily.unpaid_sales)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Pedidos:</span>
-                      <span className="font-semibold">{periodStats.daily.total_orders}</span>
+                    
+                    {/* Pedidos */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Pedidos</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagos:</span>
+                        <span className="font-semibold text-green-600">{periodStats.daily.paid_orders}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagos:</span>
+                        <span className="font-semibold text-orange-600">{periodStats.daily.unpaid_orders}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Produtos:</span>
-                      <span className="font-semibold">{periodStats.daily.total_products}</span>
+                    
+                    {/* Produtos */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Produtos</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagos:</span>
+                        <span className="font-semibold text-green-600">{periodStats.daily.paid_products}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagos:</span>
+                        <span className="font-semibold text-orange-600">{periodStats.daily.unpaid_products}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Ticket Médio:</span>
-                      <span className="font-semibold">{formatCurrency(periodStats.daily.avg_ticket)}</span>
+                    
+                    {/* Ticket Médio */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Ticket Médio</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pago:</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.daily.paid_avg_ticket)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pago:</span>
+                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.daily.unpaid_avg_ticket)}</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1150,7 +1225,7 @@ const Relatorios = () => {
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="flex items-center text-lg">
                   <DollarSign className="h-5 w-5 mr-2" />
                   Este Mês
@@ -1159,21 +1234,56 @@ const Relatorios = () => {
               <CardContent>
                 {periodStats && (
                   <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm">Vendas:</span>
-                      <span className="font-semibold">{formatCurrency(periodStats.monthly.total_sales)}</span>
+                    {/* Vendas */}
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium text-muted-foreground">Vendas</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagas:</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.monthly.paid_sales)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagas:</span>
+                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.monthly.unpaid_sales)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Pedidos:</span>
-                      <span className="font-semibold">{periodStats.monthly.total_orders}</span>
+                    
+                    {/* Pedidos */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Pedidos</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagos:</span>
+                        <span className="font-semibold text-green-600">{periodStats.monthly.paid_orders}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagos:</span>
+                        <span className="font-semibold text-orange-600">{periodStats.monthly.unpaid_orders}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Produtos:</span>
-                      <span className="font-semibold">{periodStats.monthly.total_products}</span>
+                    
+                    {/* Produtos */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Produtos</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagos:</span>
+                        <span className="font-semibold text-green-600">{periodStats.monthly.paid_products}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagos:</span>
+                        <span className="font-semibold text-orange-600">{periodStats.monthly.unpaid_products}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Ticket Médio:</span>
-                      <span className="font-semibold">{formatCurrency(periodStats.monthly.avg_ticket)}</span>
+                    
+                    {/* Ticket Médio */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Ticket Médio</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pago:</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.monthly.paid_avg_ticket)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pago:</span>
+                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.monthly.unpaid_avg_ticket)}</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1181,7 +1291,7 @@ const Relatorios = () => {
             </Card>
 
             <Card>
-              <CardHeader>
+              <CardHeader className="pb-3">
                 <CardTitle className="flex items-center text-lg">
                   <Target className="h-5 w-5 mr-2" />
                   Este Ano
@@ -1190,21 +1300,56 @@ const Relatorios = () => {
               <CardContent>
                 {periodStats && (
                   <div className="space-y-4">
-                    <div className="flex justify-between">
-                      <span className="text-sm">Vendas:</span>
-                      <span className="font-semibold">{formatCurrency(periodStats.yearly.total_sales)}</span>
+                    {/* Vendas */}
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium text-muted-foreground">Vendas</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagas:</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.yearly.paid_sales)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagas:</span>
+                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.yearly.unpaid_sales)}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Pedidos:</span>
-                      <span className="font-semibold">{periodStats.yearly.total_orders}</span>
+                    
+                    {/* Pedidos */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Pedidos</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagos:</span>
+                        <span className="font-semibold text-green-600">{periodStats.yearly.paid_orders}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagos:</span>
+                        <span className="font-semibold text-orange-600">{periodStats.yearly.unpaid_orders}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Produtos:</span>
-                      <span className="font-semibold">{periodStats.yearly.total_products}</span>
+                    
+                    {/* Produtos */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Produtos</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pagos:</span>
+                        <span className="font-semibold text-green-600">{periodStats.yearly.paid_products}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pagos:</span>
+                        <span className="font-semibold text-orange-600">{periodStats.yearly.unpaid_products}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Ticket Médio:</span>
-                      <span className="font-semibold">{formatCurrency(periodStats.yearly.avg_ticket)}</span>
+                    
+                    {/* Ticket Médio */}
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="text-sm font-medium text-muted-foreground">Ticket Médio</div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-600">Pago:</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.yearly.paid_avg_ticket)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600">Não Pago:</span>
+                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.yearly.unpaid_avg_ticket)}</span>
+                      </div>
                     </div>
                   </div>
                 )}
