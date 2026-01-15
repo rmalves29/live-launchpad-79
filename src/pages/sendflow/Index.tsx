@@ -609,11 +609,14 @@ export default function SendFlow() {
       for (const product of selectedProductArray) {
         if (isCancelledRef.current) break;
 
-        const productStartedAt = Date.now();
         const message = personalizeMessage(product);
 
-        for (const groupId of selectedGroupArray) {
+        // Enviar para todos os grupos
+        for (let groupIndex = 0; groupIndex < selectedGroupArray.length; groupIndex++) {
           if (isCancelledRef.current) break;
+          
+          const groupId = selectedGroupArray[groupIndex];
+          const isLastGroup = groupIndex === selectedGroupArray.length - 1;
 
           // Wait if paused
           await waitWhilePaused();
@@ -661,8 +664,7 @@ export default function SendFlow() {
               }
             }
 
-            // Delay entre grupos - apenas se NÃO for o último grupo
-            const isLastGroup = selectedGroupArray.indexOf(groupId) === selectedGroupArray.length - 1;
+            // Delay entre grupos - NÃO espera após o último grupo (zera o delay)
             if (perGroupDelaySeconds > 0 && !isLastGroup && !isCancelledRef.current) {
               const delayMs = perGroupDelaySeconds * 1000;
               const delayStep = 500;
@@ -681,20 +683,19 @@ export default function SendFlow() {
           }
         }
 
-        // Delay entre produtos (mantém o intervalo TOTAL desde o início do produto)
+        // Delay entre produtos - começa a contar APÓS terminar de enviar para todos os grupos
+        // NÃO espera após o último produto
         const isLastProduct = selectedProductArray.indexOf(product) === selectedProductArray.length - 1;
-        const targetDelayMs = perProductDelayMinutes > 0 ? perProductDelayMinutes * 60 * 1000 : 0;
-        const elapsedForThisProduct = Date.now() - productStartedAt;
-        const remainingMs = Math.max(0, targetDelayMs - elapsedForThisProduct);
-
-        if (remainingMs > 0 && !isLastProduct && !isCancelledRef.current) {
+        
+        if (perProductDelayMinutes > 0 && !isLastProduct && !isCancelledRef.current) {
+          const delayMs = perProductDelayMinutes * 60 * 1000;
           const delayStep = 500;
-          let waited = 0;
-          while (waited < remainingMs && !isCancelledRef.current) {
+          let elapsed = 0;
+          while (elapsed < delayMs && !isCancelledRef.current) {
             await waitWhilePaused();
             if (isCancelledRef.current) break;
-            await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, remainingMs - waited)));
-            waited += delayStep;
+            await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
+            elapsed += delayStep;
           }
         }
       }
