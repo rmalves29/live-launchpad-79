@@ -213,8 +213,8 @@ export default function SendFlow() {
     )
     .sort((a, b) => extractCodeNumber(a.code) - extractCodeNumber(b.code));
   
-  // Lista de produtos priorizados para exibição
-  const prioritizedProducts = prioritizedProductIds
+  // Lista de produtos priorizados para exibição (garantir sem duplicatas)
+  const prioritizedProducts = [...new Set(prioritizedProductIds)]
     .map(id => products.find(p => p.id === id))
     .filter((p): p is Product => p !== undefined);
 
@@ -412,8 +412,11 @@ export default function SendFlow() {
       setPrioritizedProductIds(prev => prev.filter(id => id !== productId));
     } else {
       newSelection.add(productId);
-      // Adicionar ao final da lista de priorização
-      setPrioritizedProductIds(prev => [...prev, productId]);
+      // Adicionar ao final da lista de priorização apenas se não existir
+      setPrioritizedProductIds(prev => {
+        if (prev.includes(productId)) return prev;
+        return [...prev, productId];
+      });
     }
     setSelectedProducts(newSelection);
   };
@@ -425,8 +428,8 @@ export default function SendFlow() {
     } else {
       const allIds = filteredProducts.map(p => p.id);
       setSelectedProducts(new Set(allIds));
-      // Ordenar pela ordem atual (código)
-      setPrioritizedProductIds(allIds);
+      // Garantir IDs únicos na ordem atual (código)
+      setPrioritizedProductIds([...new Set(allIds)]);
     }
   };
   
