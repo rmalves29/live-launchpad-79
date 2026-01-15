@@ -164,8 +164,9 @@ serve(async (req) => {
         break;
 
       case "list-groups":
-        // Use pagination to get all chats (page=1, pageSize=500 to get more results)
-        endpoint = "/chats?page=1&pageSize=500";
+        // Use /groups endpoint to list all groups directly (more reliable than filtering /chats)
+        // Z-API /groups returns only groups, solving pagination issues with mixed contacts
+        endpoint = "/groups";
         method = "GET";
         break;
 
