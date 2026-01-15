@@ -211,6 +211,33 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
   const elapsedMinutes = Math.floor(elapsed / 60);
   const elapsedSeconds = elapsed % 60;
 
+  // Calcular estimativa de tempo restante
+  const remainingProducts = totalProducts - currentProduct;
+  const remainingGroupsThisProduct = totalGroups - currentGroup;
+  
+  // Estimar tempo baseado no progresso atual
+  const processedMessages = sentMessages + errorMessages;
+  const avgTimePerMessage = processedMessages > 0 ? elapsed / processedMessages : 3; // 3s default
+  const remainingMessages = (remainingProducts * totalGroups) + remainingGroupsThisProduct;
+  
+  // Adicionar tempo do countdown atual se estiver aguardando próximo produto
+  const countdownRemaining = isWaitingForNextProduct ? countdownSeconds : 0;
+  const estimatedRemainingSeconds = Math.ceil((remainingMessages * avgTimePerMessage) + countdownRemaining);
+  
+  const estimatedHours = Math.floor(estimatedRemainingSeconds / 3600);
+  const estimatedMinutes = Math.floor((estimatedRemainingSeconds % 3600) / 60);
+  const estimatedSecs = estimatedRemainingSeconds % 60;
+  
+  const formatEstimatedTime = () => {
+    if (estimatedHours > 0) {
+      return `${estimatedHours}h ${estimatedMinutes}m`;
+    } else if (estimatedMinutes > 0) {
+      return `${estimatedMinutes}m ${estimatedSecs}s`;
+    } else {
+      return `${estimatedSecs}s`;
+    }
+  };
+
   return (
     <Card className="border-green-500 bg-green-50 dark:bg-green-950/20 animate-pulse-subtle">
       <CardHeader className="pb-2">
@@ -271,6 +298,27 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
             <div className="font-semibold text-red-600">{errorMessages}</div>
           </div>
         </div>
+
+        {/* Tempo estimado restante */}
+        {remainingMessages > 0 && (
+          <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                <Clock className="h-4 w-4" />
+                <span className="text-sm font-medium">Tempo estimado restante:</span>
+              </div>
+              <span className="font-bold text-blue-600 dark:text-blue-400 tabular-nums">
+                {formatEstimatedTime()}
+              </span>
+            </div>
+            <div className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-1">
+              {remainingProducts > 0 
+                ? `Faltam ${remainingProducts} produto${remainingProducts > 1 ? 's' : ''} (${remainingMessages} mensagens)`
+                : `Faltam ${remainingGroupsThisProduct} grupo${remainingGroupsThisProduct > 1 ? 's' : ''} neste produto`
+              }
+            </div>
+          </div>
+        )}
 
         {isWaitingForNextProduct && countdownSeconds > 0 ? (
           <div className="flex items-center justify-center gap-2 text-sm">
