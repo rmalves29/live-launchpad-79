@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw, Settings, AlertCircle, ExternalLink, Pencil, Save, X } from 'lucide-react';
+import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw, Settings, AlertCircle, ExternalLink, Pencil, Save, X, Square, CheckSquare } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
@@ -34,7 +35,26 @@ interface Order {
   melhor_envio_shipment_id?: string;
   melhor_envio_tracking_code?: string;
   items?: any[];
+  customer?: {
+    cpf?: string;
+  };
 }
+
+// Validar dados obrigatórios para criar remessa
+const validateOrderForShipment = (order: Order): { valid: boolean; missingFields: string[] } => {
+  const missingFields: string[] = [];
+  
+  if (!order.customer_name) missingFields.push('Nome do cliente');
+  if (!order.customer_cep) missingFields.push('CEP');
+  if (!order.customer_street) missingFields.push('Rua');
+  if (!order.customer_city) missingFields.push('Cidade');
+  if (!order.customer_state) missingFields.push('Estado');
+  
+  return {
+    valid: missingFields.length === 0,
+    missingFields
+  };
+};
 
 interface IntegrationLog {
   id: string;
@@ -68,6 +88,10 @@ const Etiquetas = () => {
   const [editingTrackingCode, setEditingTrackingCode] = useState('');
   const [savingTracking, setSavingTracking] = useState(false);
   
+  // Estado para seleção de pedidos em lote
+  const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
+  const [batchProcessing, setBatchProcessing] = useState(false);
+
   // Logs state (só usado por super_admin)
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -677,6 +701,93 @@ const Etiquetas = () => {
     }
   };
 
+  // Pedidos elegíveis para seleção (pendentes e com dados válidos)
+  const selectableOrders = orders.filter(o => !o.melhor_envio_shipment_id);
+  const validSelectableOrders = selectableOrders.filter(o => validateOrderForShipment(o).valid);
+  
+  // Toggle seleção de um pedido
+  const toggleOrderSelection = (orderId: number) => {
+    setSelectedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+  
+  // Selecionar/desselecionar todos os pedidos válidos
+  const toggleSelectAll = () => {
+    if (selectedOrders.size === validSelectableOrders.length && validSelectableOrders.length > 0) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(validSelectableOrders.map(o => o.id)));
+    }
+  };
+  
+  // Criar remessas em lote para todos os selecionados
+  const createBatchShipments = async () => {
+    if (selectedOrders.size === 0) {
+      toast.error('Selecione pelo menos um pedido');
+      return;
+    }
+    
+    setBatchProcessing(true);
+    let success = 0;
+    let errors = 0;
+    const errorMessages: string[] = [];
+    
+    for (const orderId of selectedOrders) {
+      try {
+        const order = orders.find(o => o.id === orderId);
+        if (!order) continue;
+        
+        const validation = validateOrderForShipment(order);
+        if (!validation.valid) {
+          errors++;
+          errorMessages.push(`Pedido #${orderId}: ${validation.missingFields.join(', ')}`);
+          continue;
+        }
+        
+        const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+          body: {
+            action: 'create_shipment',
+            order_id: orderId,
+            tenant_id: supabaseTenant.getTenantId()
+          }
+        });
+        
+        if (error || data?.success === false) {
+          errors++;
+          errorMessages.push(`Pedido #${orderId}: ${data?.error || error?.message || 'Erro desconhecido'}`);
+        } else {
+          success++;
+        }
+        
+        // Delay para não sobrecarregar a API
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (e: any) {
+        errors++;
+        errorMessages.push(`Pedido #${orderId}: ${e.message}`);
+      }
+    }
+    
+    setBatchProcessing(false);
+    setSelectedOrders(new Set());
+    loadPaidOrders();
+    
+    if (success > 0) {
+      toast.success(`${success} remessa(s) criada(s) com sucesso!`);
+    }
+    if (errors > 0) {
+      console.error('Erros no envio em lote:', errorMessages);
+      toast.error(`${errors} erro(s). Verifique o console para detalhes.`);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
@@ -848,6 +959,39 @@ const Etiquetas = () => {
               
               <div className="flex-1" />
               
+              {/* Controles de seleção em lote */}
+              {selectableOrders.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleSelectAll}
+                    disabled={validSelectableOrders.length === 0}
+                  >
+                    {selectedOrders.size === validSelectableOrders.length && validSelectableOrders.length > 0 ? (
+                      <CheckSquare className="h-4 w-4 mr-2" />
+                    ) : (
+                      <Square className="h-4 w-4 mr-2" />
+                    )}
+                    {selectedOrders.size > 0 ? `${selectedOrders.size} selecionado(s)` : 'Selecionar todos'}
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    onClick={createBatchShipments}
+                    disabled={selectedOrders.size === 0 || batchProcessing}
+                    className="bg-primary"
+                  >
+                    {batchProcessing ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    {batchProcessing ? 'Enviando...' : 'Criar Remessas'}
+                  </Button>
+                </div>
+              )}
+              
               <Button
                 variant="outline"
                 size="sm"
@@ -878,14 +1022,30 @@ const Etiquetas = () => {
             <div className="grid gap-4">
               {orders.map((order) => {
                 const shipmentStatus = getShipmentStatus(order);
+                const validation = validateOrderForShipment(order);
+                const canSelect = !order.melhor_envio_shipment_id;
+                const isSelected = selectedOrders.has(order.id);
                 
                 return (
-                  <Card key={order.id} className="overflow-hidden">
+                  <Card key={order.id} className={cn(
+                    "overflow-hidden transition-all",
+                    isSelected && "ring-2 ring-primary",
+                    !validation.valid && canSelect && "border-amber-400"
+                  )}>
                     {/* Header com status */}
                     <CardHeader className="bg-muted/30 pb-3">
                       <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
+                            {/* Checkbox para seleção */}
+                            {canSelect && (
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleOrderSelection(order.id)}
+                                disabled={!validation.valid || batchProcessing}
+                                className="h-5 w-5"
+                              />
+                            )}
                             <CardTitle className="text-lg">
                               Pedido #{order.unique_order_id || order.id}
                             </CardTitle>
@@ -897,6 +1057,13 @@ const Etiquetas = () => {
                               <Truck className="h-3 w-3 mr-1" />
                               {shipmentStatus.label}
                             </Badge>
+                            {/* Badge de erro de validação */}
+                            {!validation.valid && canSelect && (
+                              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                Dados incompletos
+                              </Badge>
+                            )}
                           </div>
                           
                           {/* Código de rastreio em destaque */}
@@ -998,13 +1165,28 @@ const Etiquetas = () => {
                             <MapPin className="h-4 w-4" />
                             Endereço de Entrega
                           </div>
-                          <div className="bg-muted/30 rounded-lg p-3 space-y-1 text-sm">
-                            <div>{order.customer_street}, {order.customer_number}</div>
-                            {order.customer_complement && (
-                              <div className="text-muted-foreground">{order.customer_complement}</div>
+                          <div className={cn(
+                            "bg-muted/30 rounded-lg p-3 space-y-1 text-sm",
+                            !validation.valid && canSelect && "border border-amber-400 bg-amber-50/50"
+                          )}>
+                            {validation.valid ? (
+                              <>
+                                <div>{order.customer_street}, {order.customer_number}</div>
+                                {order.customer_complement && (
+                                  <div className="text-muted-foreground">{order.customer_complement}</div>
+                                )}
+                                <div>{order.customer_city} - {order.customer_state}</div>
+                                <div className="font-mono text-xs">CEP: {order.customer_cep}</div>
+                              </>
+                            ) : (
+                              <div className="text-amber-700 flex items-start gap-2">
+                                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                                <div>
+                                  <div className="font-medium">Dados de endereço incompletos. Campos faltando:</div>
+                                  <div className="text-xs mt-1">{validation.missingFields.join(', ')}</div>
+                                </div>
+                              </div>
                             )}
-                            <div>{order.customer_city} - {order.customer_state}</div>
-                            <div className="font-mono text-xs">CEP: {order.customer_cep}</div>
                           </div>
                         </div>
                       </div>
