@@ -284,27 +284,45 @@ const Relatorios = () => {
   const loadPeriodStats = async () => {
     try {
       const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      const tomorrowDate = new Date(today);
+      tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+      const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+      
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       const startOfYear = new Date(today.getFullYear(), 0, 1);
 
-      // Vendas do dia - apenas orders (incluindo is_paid)
+      console.log('📊 Loading period stats:', {
+        today: todayStr,
+        tomorrow: tomorrowStr,
+        startOfMonth: startOfMonth.toISOString().split('T')[0],
+        startOfYear: startOfYear.toISOString().split('T')[0]
+      });
+
+      // Vendas do dia - apenas hoje
       const dailyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id, is_paid')
-        .gte('created_at', today.toISOString().split('T')[0] + 'T00:00:00')
-        .lt('created_at', today.toISOString().split('T')[0] + 'T23:59:59');
+        .gte('created_at', `${todayStr}T00:00:00`)
+        .lt('created_at', `${tomorrowStr}T00:00:00`);
 
-      // Vendas do mês
+      // Vendas do mês - do início do mês até agora
       const monthlyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id, is_paid')
-        .gte('created_at', startOfMonth.toISOString());
+        .gte('created_at', `${startOfMonth.toISOString().split('T')[0]}T00:00:00`);
 
-      // Vendas do ano
+      // Vendas do ano - do início do ano até agora
       const yearlyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id, is_paid')
-        .gte('created_at', startOfYear.toISOString());
+        .gte('created_at', `${startOfYear.toISOString().split('T')[0]}T00:00:00`);
+
+      console.log('📊 Orders loaded:', {
+        daily: dailyOrders.data?.length || 0,
+        monthly: monthlyOrders.data?.length || 0,
+        yearly: yearlyOrders.data?.length || 0
+      });
 
       // Helper function to get products count for given cart IDs with sale_type filter
       const getProductsCountFiltered = async (cartIds: number[]) => {
