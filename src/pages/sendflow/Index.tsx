@@ -607,18 +607,39 @@ export default function SendFlow() {
       let initialErrorCount = 0;
 
       if (resumeData) {
-        // Retomando job pausado
-        selectedProductArray = resumeData.productIds
+        // Retomando job pausado - validar dados antes de usar
+        const productIds = Array.isArray(resumeData.productIds) ? resumeData.productIds : [];
+        const groupIds = Array.isArray(resumeData.groupIds) ? resumeData.groupIds : [];
+        
+        if (productIds.length === 0 || groupIds.length === 0) {
+          toast({
+            title: 'Erro ao retomar',
+            description: 'Os dados do envio pausado estão incompletos. Inicie um novo envio.',
+            variant: 'destructive'
+          });
+          setSending(false);
+          setSendingStatus('idle');
+          setShowResumeControl(true);
+          // Cancelar job corrompido
+          if (resumeJobId) {
+            await sendingJob.cancelJob(resumeJobId);
+          }
+          return;
+        }
+        
+        selectedProductArray = productIds
           .map(id => products.find(p => p.id === id))
           .filter((p): p is Product => p !== undefined);
-        selectedGroupArray = resumeData.groupIds;
-        startProductIndex = resumeData.currentProductIndex;
-        startGroupIndex = resumeData.currentGroupIndex;
-        initialSentCount = resumeData.sentMessages;
-        initialErrorCount = resumeData.errorMessages;
-        setPerGroupDelaySeconds(resumeData.perGroupDelaySeconds);
-        setPerProductDelayMinutes(resumeData.perProductDelayMinutes);
-        setMessageTemplate(resumeData.messageTemplate);
+        selectedGroupArray = groupIds;
+        startProductIndex = resumeData.currentProductIndex || 0;
+        startGroupIndex = resumeData.currentGroupIndex || 0;
+        initialSentCount = resumeData.sentMessages || 0;
+        initialErrorCount = resumeData.errorMessages || 0;
+        setPerGroupDelaySeconds(resumeData.perGroupDelaySeconds || 5);
+        setPerProductDelayMinutes(resumeData.perProductDelayMinutes || 1);
+        if (resumeData.messageTemplate) {
+          setMessageTemplate(resumeData.messageTemplate);
+        }
         
         if (resumeJobId) {
           currentJobIdRef.current = resumeJobId;
