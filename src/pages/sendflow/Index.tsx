@@ -1152,17 +1152,24 @@ export default function SendFlow() {
                   
                   {/* Countdown para próximo produto */}
                   {isWaitingForNextProduct && countdownSeconds > 0 && (
-                    <div className="flex items-center gap-2 p-3 bg-accent/50 rounded-lg border border-border">
-                      <Clock className="h-4 w-4 text-primary animate-pulse" />
-                      <span className="text-sm">
-                        Próximo produto em{' '}
-                        <span className="font-mono font-bold text-primary">
+                    <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-card to-muted/30 rounded-xl border-2 border-primary/30 shadow-lg">
+                      <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 border border-primary/20">
+                        <Clock className="h-5 w-5 text-primary animate-pulse" />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium text-foreground">
+                          Aguardando próximo produto...
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Produto {currentProductIndex} de {totalProductsToSend}
+                        </span>
+                      </div>
+                      <div className="ml-auto flex items-center gap-2 bg-primary/10 px-4 py-2 rounded-lg border border-primary/20">
+                        <span className="text-xs text-muted-foreground">Tempo restante:</span>
+                        <span className="font-mono text-lg font-bold text-primary">
                           {Math.floor(countdownSeconds / 60)}:{String(countdownSeconds % 60).padStart(2, '0')}
                         </span>
-                      </span>
-                      <span className="text-xs text-muted-foreground ml-auto">
-                        Produto {currentProductIndex}/{totalProductsToSend}
-                      </span>
+                      </div>
                     </div>
                   )}
                   
