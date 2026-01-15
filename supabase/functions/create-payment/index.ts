@@ -39,6 +39,8 @@ type CreatePaymentRequest = {
   customerData: {
     name: string;
     phone: string;
+    cpf?: string;
+    email?: string;
   };
   addressData: AddressData;
   shippingCost: number;
@@ -109,6 +111,8 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
       customerData: {
         name: cd.name.trim().slice(0, 150),
         phone: cd.phone.replace(/\D/g, "").slice(0, 20),
+        cpf: cd.cpf ? String(cd.cpf).replace(/\D/g, "").slice(0, 11) : undefined,
+        email: cd.email ? String(cd.email).trim().slice(0, 255) : undefined,
       },
       addressData: {
         cep: String(ad.cep).trim().slice(0, 20),
