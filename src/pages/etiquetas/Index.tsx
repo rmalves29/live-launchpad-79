@@ -59,6 +59,10 @@ const Etiquetas = () => {
   const [activeTab, setActiveTab] = useState('etiquetas');
   const [syncingAll, setSyncingAll] = useState(false);
   
+  // Busca por nome do cliente
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchMode, setIsSearchMode] = useState(false);
+  
   // Estado para edição de código de rastreio
   const [editingTrackingOrderId, setEditingTrackingOrderId] = useState<number | null>(null);
   const [editingTrackingCode, setEditingTrackingCode] = useState('');
@@ -70,8 +74,10 @@ const Etiquetas = () => {
   const [selectedLog, setSelectedLog] = useState<IntegrationLog | null>(null);
 
   useEffect(() => {
-    loadPaidOrders();
-  }, [dateFilter]);
+    if (!isSearchMode) {
+      loadPaidOrders();
+    }
+  }, [dateFilter, isSearchMode]);
 
   useEffect(() => {
     if (activeTab === 'logs') {
@@ -81,13 +87,14 @@ const Etiquetas = () => {
 
   const loadPaidOrders = async () => {
     console.log('🔄 Carregando pedidos pagos...');
+    setLoading(true);
     try {
       let query = supabaseTenant
         .from('orders')
         .select('*')
         .eq('is_paid', true);
 
-      // Aplicar filtro de data se selecionada
+      // Aplicar filtro de data se selecionada, senão usar últimos 10 dias
       if (dateFilter) {
         const startOfDay = new Date(dateFilter);
         startOfDay.setHours(0, 0, 0, 0);
@@ -97,6 +104,13 @@ const Etiquetas = () => {
         query = query
           .gte('created_at', startOfDay.toISOString())
           .lte('created_at', endOfDay.toISOString());
+      } else {
+        // Padrão: últimos 10 dias
+        const tenDaysAgo = new Date();
+        tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+        tenDaysAgo.setHours(0, 0, 0, 0);
+        
+        query = query.gte('created_at', tenDaysAgo.toISOString());
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -181,6 +195,90 @@ const Etiquetas = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Busca de pedidos por nome do cliente
+  const searchOrders = async () => {
+    if (!searchQuery.trim()) {
+      toast.error('Digite o nome do cliente para buscar');
+      return;
+    }
+    
+    setLoading(true);
+    setIsSearchMode(true);
+    
+    try {
+      const { data, error } = await supabaseTenant
+        .from('orders')
+        .select('*')
+        .eq('is_paid', true)
+        .ilike('customer_name', `%${searchQuery.trim()}%`)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      
+      if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        setOrders([]);
+        toast.info('Nenhum pedido encontrado para este cliente');
+        return;
+      }
+      
+      // Buscar itens e dados de clientes (mesma lógica otimizada)
+      const cartIds = data.filter(o => o.cart_id).map(o => o.cart_id);
+      let allCartItems: any[] = [];
+      
+      if (cartIds.length > 0) {
+        const { data: cartItemsData } = await supabaseTenant
+          .from('cart_items')
+          .select(`id, cart_id, qty, unit_price, product_name, product_code, product:products(name, code, image_url)`)
+          .in('cart_id', cartIds);
+        allCartItems = cartItemsData || [];
+      }
+      
+      const phonesNeedingCustomerData = data.filter(o => !o.customer_name || !o.customer_cep).map(o => o.customer_phone);
+      let customersMap: Record<string, any> = {};
+      
+      if (phonesNeedingCustomerData.length > 0) {
+        const { data: customersData } = await supabaseTenant
+          .from('customers')
+          .select('phone, name, cpf, cep, street, number, complement, neighborhood, city, state')
+          .in('phone', phonesNeedingCustomerData);
+        if (customersData) {
+          customersMap = customersData.reduce((acc, c) => { acc[c.phone] = c; return acc; }, {} as Record<string, any>);
+        }
+      }
+      
+      const ordersWithItems = data.map(order => {
+        const items = allCartItems.filter(item => item.cart_id === order.cart_id);
+        const customer = customersMap[order.customer_phone];
+        return {
+          ...order,
+          items,
+          customer_name: order.customer_name || customer?.name,
+          customer_cep: order.customer_cep || customer?.cep,
+          customer_street: order.customer_street || customer?.street,
+          customer_number: order.customer_number || customer?.number,
+          customer_complement: order.customer_complement || customer?.complement,
+          customer_city: order.customer_city || customer?.city,
+          customer_state: order.customer_state || customer?.state,
+        };
+      });
+
+      setOrders(ordersWithItems);
+      toast.success(`${ordersWithItems.length} pedido(s) encontrado(s)`);
+    } catch (error: any) {
+      console.error('❌ Erro na busca:', error);
+      toast.error('Erro ao buscar pedidos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Limpar busca e voltar ao modo padrão
+  const clearSearch = () => {
+    setSearchQuery('');
+    setIsSearchMode(false);
   };
 
   const loadLogs = async () => {
@@ -679,56 +777,91 @@ const Etiquetas = () => {
         </TabsList>
 
         <TabsContent value="etiquetas" className="space-y-4">
-          {/* Filtro por data e botão de sincronização */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-[200px] justify-start text-left font-normal",
-                    !dateFilter && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {dateFilter ? format(dateFilter, "dd/MM/yyyy", { locale: ptBR }) : "Filtrar por data"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={dateFilter}
-                  onSelect={setDateFilter}
-                  locale={ptBR}
-                  className="pointer-events-auto"
+          {/* Busca por nome e filtro por data */}
+          <div className="flex flex-col gap-3">
+            {/* Campo de busca por nome */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 flex-1 max-w-md">
+                <Input
+                  placeholder="Buscar por nome do cliente..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && searchOrders()}
+                  className="flex-1"
                 />
-              </PopoverContent>
-            </Popover>
-            {dateFilter && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDateFilter(undefined)}
-              >
-                Limpar
-              </Button>
-            )}
-            
-            <div className="flex-1" />
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={syncAllOrdersStatus}
-              disabled={syncingAll}
-            >
-              {syncingAll ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
+                <Button onClick={searchOrders} disabled={loading}>
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
+                </Button>
+              </div>
+              {isSearchMode && (
+                <Button variant="outline" size="sm" onClick={clearSearch}>
+                  <X className="h-4 w-4 mr-1" />
+                  Limpar busca
+                </Button>
               )}
-              {syncingAll ? 'Sincronizando...' : 'Sincronizar Rastreios'}
-            </Button>
+            </div>
+            
+            {/* Filtro por data e sincronização */}
+            <div className="flex flex-wrap items-center gap-2">
+              {!isSearchMode && (
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-[200px] justify-start text-left font-normal",
+                          !dateFilter && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateFilter ? format(dateFilter, "dd/MM/yyyy", { locale: ptBR }) : "Últimos 10 dias"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={dateFilter}
+                        onSelect={setDateFilter}
+                        locale={ptBR}
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {dateFilter && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDateFilter(undefined)}
+                    >
+                      Limpar data
+                    </Button>
+                  )}
+                </>
+              )}
+              
+              {isSearchMode && (
+                <Badge variant="secondary" className="text-sm">
+                  Mostrando resultados da busca por "{searchQuery}"
+                </Badge>
+              )}
+              
+              <div className="flex-1" />
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={syncAllOrdersStatus}
+                disabled={syncingAll}
+              >
+                {syncingAll ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                {syncingAll ? 'Sincronizando...' : 'Sincronizar Rastreios'}
+              </Button>
+            </div>
           </div>
 
           {orders.length === 0 ? (
