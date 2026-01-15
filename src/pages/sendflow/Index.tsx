@@ -182,6 +182,12 @@ export default function SendFlow() {
   const [whatsappConnected, setWhatsappConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
   
+  // Estados para countdown visual
+  const [countdownSeconds, setCountdownSeconds] = useState(0);
+  const [currentProductIndex, setCurrentProductIndex] = useState(0);
+  const [totalProductsToSend, setTotalProductsToSend] = useState(0);
+  const [isWaitingForNextProduct, setIsWaitingForNextProduct] = useState(false);
+  
   // Refs para controle de pausa/cancelamento
   const isPausedRef = useRef(false);
   const isCancelledRef = useRef(false);
@@ -592,6 +598,10 @@ export default function SendFlow() {
       // Reset counters and pause state
       setSentMessages(0);
       setErrorMessages(0);
+      setCurrentProductIndex(0);
+      setTotalProductsToSend(selectedProductArray.length);
+      setIsWaitingForNextProduct(false);
+      setCountdownSeconds(0);
       isPausedRef.current = false;
       isCancelledRef.current = false;
 
@@ -685,18 +695,37 @@ export default function SendFlow() {
 
         // Delay entre produtos - começa a contar APÓS terminar de enviar para todos os grupos
         // NÃO espera após o último produto
-        const isLastProduct = selectedProductArray.indexOf(product) === selectedProductArray.length - 1;
+        const productIndex = selectedProductArray.indexOf(product);
+        const isLastProduct = productIndex === selectedProductArray.length - 1;
+        
+        // Atualiza o índice do produto atual
+        setCurrentProductIndex(productIndex + 1);
         
         if (perProductDelayMinutes > 0 && !isLastProduct && !isCancelledRef.current) {
           const delayMs = perProductDelayMinutes * 60 * 1000;
-          const delayStep = 500;
+          const delayStep = 1000; // 1 segundo para atualizar o countdown
           let elapsed = 0;
+          
+          // Inicia o countdown visual
+          setIsWaitingForNextProduct(true);
+          setCountdownSeconds(Math.ceil(delayMs / 1000));
+          
           while (elapsed < delayMs && !isCancelledRef.current) {
             await waitWhilePaused();
             if (isCancelledRef.current) break;
             await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
             elapsed += delayStep;
+            
+            // Atualiza countdown (apenas se não estiver pausado)
+            if (!isPausedRef.current) {
+              const remainingSeconds = Math.ceil((delayMs - elapsed) / 1000);
+              setCountdownSeconds(Math.max(0, remainingSeconds));
+            }
           }
+          
+          // Limpa o countdown
+          setIsWaitingForNextProduct(false);
+          setCountdownSeconds(0);
         }
       }
       toast({
@@ -1120,6 +1149,23 @@ export default function SendFlow() {
                       style={{ width: `${(sentMessages / totalMessages) * 100}%` }}
                     />
                   </div>
+                  
+                  {/* Countdown para próximo produto */}
+                  {isWaitingForNextProduct && countdownSeconds > 0 && (
+                    <div className="flex items-center gap-2 p-3 bg-accent/50 rounded-lg border border-border">
+                      <Clock className="h-4 w-4 text-primary animate-pulse" />
+                      <span className="text-sm">
+                        Próximo produto em{' '}
+                        <span className="font-mono font-bold text-primary">
+                          {Math.floor(countdownSeconds / 60)}:{String(countdownSeconds % 60).padStart(2, '0')}
+                        </span>
+                      </span>
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        Produto {currentProductIndex}/{totalProductsToSend}
+                      </span>
+                    </div>
+                  )}
+                  
                   {errorMessages > 0 && (
                     <p className="text-destructive text-xs">{errorMessages} erro(s) encontrado(s)</p>
                   )}
