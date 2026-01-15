@@ -860,7 +860,7 @@ const Checkout = () => {
     if (!couponCode.trim()) {
       toast({
         title: 'Erro',
-        description: 'Digite um código de cupom',
+        description: 'Digite um código de cupom ou brinde',
         variant: 'destructive'
       });
       return;
@@ -868,84 +868,129 @@ const Checkout = () => {
 
     setLoadingCoupon(true);
     try {
-      // Buscar cupom no banco
+      const codeToSearch = couponCode.toUpperCase().trim();
+
+      // Primeiro, tentar buscar como cupom de desconto
       const { data: coupon, error } = await supabase
         .from('coupons')
         .select('*')
-        .eq('code', couponCode.toUpperCase())
+        .eq('code', codeToSearch)
         .eq('is_active', true)
         .maybeSingle();
 
       if (error) throw error;
 
-      if (!coupon) {
-        toast({
-          title: 'Cupom Inválido',
-          description: 'Cupom não encontrado ou inativo',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      // Verificar expiração
-      if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
-        toast({
-          title: 'Cupom Expirado',
-          description: 'Este cupom já expirou',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      // Verificar limite de uso
-      if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) {
-        toast({
-          title: 'Cupom Esgotado',
-          description: 'Este cupom atingiu o limite de uso',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      // Calcular total dos produtos
-      const productsTotal = order.items.reduce((sum, item) => {
-        return sum + (Number(item.unit_price) * item.qty);
-      }, 0);
-
-      let discount = 0;
-
-      // Calcular desconto baseado no tipo
-      if (coupon.discount_type === 'progressive') {
-        // Desconto progressivo
-        const tiers = coupon.progressive_tiers as Array<{min_value: number, max_value: number | null, discount: number}>;
-        const applicableTier = tiers.find(tier => {
-          if (tier.max_value === null) {
-            return productsTotal >= tier.min_value;
-          }
-          return productsTotal >= tier.min_value && productsTotal <= tier.max_value;
-        });
-
-        if (applicableTier) {
-          discount = (productsTotal * applicableTier.discount) / 100;
+      if (coupon) {
+        // Verificar expiração
+        if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+          toast({
+            title: 'Cupom Expirado',
+            description: 'Este cupom já expirou',
+            variant: 'destructive'
+          });
+          return;
         }
-      } else if (coupon.discount_type === 'percentage') {
-        discount = (productsTotal * coupon.discount_value) / 100;
-      } else if (coupon.discount_type === 'fixed') {
-        discount = Math.min(coupon.discount_value, productsTotal);
+
+        // Verificar limite de uso
+        if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) {
+          toast({
+            title: 'Cupom Esgotado',
+            description: 'Este cupom atingiu o limite de uso',
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        // Calcular total dos produtos
+        const productsTotal = order.items.reduce((sum, item) => {
+          return sum + (Number(item.unit_price) * item.qty);
+        }, 0);
+
+        let discount = 0;
+
+        // Calcular desconto baseado no tipo
+        if (coupon.discount_type === 'progressive') {
+          const tiers = coupon.progressive_tiers as Array<{min_value: number, max_value: number | null, discount: number}>;
+          const applicableTier = tiers?.find(tier => {
+            if (tier.max_value === null) return productsTotal >= tier.min_value;
+            return productsTotal >= tier.min_value && productsTotal <= tier.max_value;
+          });
+          if (applicableTier) discount = (productsTotal * applicableTier.discount) / 100;
+        } else if (coupon.discount_type === 'percentage') {
+          discount = (productsTotal * coupon.discount_value) / 100;
+        } else if (coupon.discount_type === 'fixed') {
+          discount = Math.min(coupon.discount_value, productsTotal);
+        }
+
+        setAppliedCoupon({ ...coupon, appliedType: 'coupon' });
+        setCouponDiscount(discount);
+
+        toast({
+          title: 'Cupom Aplicado!',
+          description: `Desconto de ${formatCurrency(discount)} aplicado`,
+        });
+        return;
       }
 
-      setAppliedCoupon(coupon);
-      setCouponDiscount(discount);
+      // Se não encontrou cupom, tentar buscar como brinde pelo nome
+      const { data: gifts, error: giftError } = await supabase
+        .from('gifts')
+        .select('*')
+        .eq('is_active', true);
 
+      if (giftError) throw giftError;
+
+      // Buscar brinde pelo nome (comparação case insensitive)
+      const gift = gifts?.find(g => 
+        g.name.toUpperCase().replace(/\s+/g, '') === codeToSearch.replace(/\s+/g, '') ||
+        g.name.toUpperCase() === codeToSearch
+      );
+
+      if (gift) {
+        // Calcular total dos produtos
+        const productsTotal = order.items.reduce((sum, item) => {
+          return sum + (Number(item.unit_price) * item.qty);
+        }, 0);
+
+        // Verificar se o cliente atingiu o valor mínimo
+        if (productsTotal < gift.minimum_purchase_amount) {
+          toast({
+            title: 'Valor Mínimo não Atingido',
+            description: `Para ganhar "${gift.name}", você precisa de ${formatCurrency(gift.minimum_purchase_amount)} em compras. Faltam ${formatCurrency(gift.minimum_purchase_amount - productsTotal)}`,
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        // Aplicar brinde (não dá desconto monetário, apenas adiciona o brinde)
+        setAppliedCoupon({ 
+          code: gift.name.toUpperCase(), 
+          name: gift.name,
+          description: gift.description,
+          appliedType: 'gift',
+          id: gift.id
+        });
+        setCouponDiscount(0);
+
+        toast({
+          title: 'Brinde Aplicado! 🎁',
+          description: `Você ganhou: ${gift.name}`,
+        });
+        return;
+      }
+
+      // Não encontrou nem cupom nem brinde
       toast({
-        title: 'Cupom Aplicado!',
-        description: `Desconto de ${formatCurrency(discount)} aplicado`,
+        title: 'Código Inválido',
+        description: 'Cupom ou brinde não encontrado',
+        variant: 'destructive'
       });
+
     } catch (error: any) {
-      console.error('Erro ao aplicar cupom:', error);
+      console.error('Erro ao aplicar código:', error);
       toast({
         title: 'Erro',
-        description: error?.message || 'Erro ao aplicar cupom',
+        description: error?.message || 'Erro ao aplicar código',
         variant: 'destructive'
       });
     } finally {
@@ -1821,17 +1866,17 @@ const Checkout = () => {
                       </div>
                     )}
 
-                    {/* Campo de Cupom de Desconto */}
+                    {/* Campo de Cupom de Desconto ou Brinde */}
                     <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                       <h4 className="font-medium mb-3 flex items-center">
                         <Percent className="h-4 w-4 mr-2 text-green-600" />
-                        Cupom de Desconto
+                        Cupom de Desconto ou Brinde
                       </h4>
                       
                       {!appliedCoupon ? (
                         <div className="flex gap-2">
                           <Input
-                            placeholder="Digite o código do cupom"
+                            placeholder="Digite o código do cupom ou nome do brinde"
                             value={couponCode}
                             onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                             className="flex-1"
@@ -1851,13 +1896,24 @@ const Checkout = () => {
                       ) : (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between p-3 bg-white border border-green-300 rounded">
-                            <div>
-                              <Badge className="bg-green-600">{appliedCoupon.code}</Badge>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                {appliedCoupon.discount_type === 'progressive' ? 'Desconto Progressivo' :
-                                 appliedCoupon.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% de desconto` :
-                                 `R$ ${appliedCoupon.discount_value.toFixed(2)} de desconto`}
-                              </p>
+                            <div className="flex items-center gap-2">
+                              {appliedCoupon.appliedType === 'gift' ? (
+                                <Gift className="h-5 w-5 text-green-600" />
+                              ) : (
+                                <Percent className="h-5 w-5 text-green-600" />
+                              )}
+                              <div>
+                                <Badge className={appliedCoupon.appliedType === 'gift' ? 'bg-purple-600' : 'bg-green-600'}>
+                                  {appliedCoupon.appliedType === 'gift' ? '🎁 ' : ''}{appliedCoupon.code}
+                                </Badge>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {appliedCoupon.appliedType === 'gift' ? (
+                                    `Brinde: ${appliedCoupon.name}`
+                                  ) : appliedCoupon.discount_type === 'progressive' ? 'Desconto Progressivo' :
+                                   appliedCoupon.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% de desconto` :
+                                   `R$ ${appliedCoupon.discount_value?.toFixed(2)} de desconto`}
+                                </p>
+                              </div>
                             </div>
                             <Button
                               variant="outline"
@@ -1868,10 +1924,12 @@ const Checkout = () => {
                               Remover
                             </Button>
                           </div>
-                          <div className="flex justify-between items-center text-green-700 font-semibold">
-                            <span>Desconto Aplicado:</span>
-                            <span>- R$ {couponDiscount.toFixed(2)}</span>
-                          </div>
+                          {couponDiscount > 0 && (
+                            <div className="flex justify-between items-center text-green-700 font-semibold">
+                              <span>Desconto Aplicado:</span>
+                              <span>- R$ {couponDiscount.toFixed(2)}</span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
