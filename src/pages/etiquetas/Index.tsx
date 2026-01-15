@@ -108,57 +108,70 @@ const Etiquetas = () => {
 
       console.log('✅ Pedidos carregados:', data?.length || 0);
       
-      // Carregar itens dos pedidos e dados dos clientes
-      const ordersWithItems = [];
-      for (const order of data || []) {
-        let orderData = { ...order, items: [] as any[] };
-        
-        // Carregar itens do carrinho
-        if (order.cart_id) {
-          const { data: cartItems, error: itemsError } = await supabaseTenant
-            .from('cart_items')
-            .select(`
-              id,
-              qty,
-              unit_price,
-              product_name,
-              product_code,
-              product:products(name, code, image_url)
-            `)
-            .eq('cart_id', order.cart_id);
-
-          if (!itemsError) {
-            orderData.items = cartItems || [];
-          } else {
-            console.error('❌ Erro ao carregar itens do carrinho:', itemsError);
-          }
-        }
-        
-        // Se os dados do cliente não estiverem no pedido, buscar na tabela customers
-        if (!order.customer_name || !order.customer_cep) {
-          const { data: customerData } = await supabaseTenant
-            .from('customers')
-            .select('name, cpf, cep, street, number, complement, neighborhood, city, state')
-            .eq('phone', order.customer_phone)
-            .limit(1)
-            .single();
-          
-          if (customerData) {
-            orderData = {
-              ...orderData,
-              customer_name: order.customer_name || customerData.name,
-              customer_cep: order.customer_cep || customerData.cep,
-              customer_street: order.customer_street || customerData.street,
-              customer_number: order.customer_number || customerData.number,
-              customer_complement: order.customer_complement || customerData.complement,
-              customer_city: order.customer_city || customerData.city,
-              customer_state: order.customer_state || customerData.state,
-            };
-          }
-        }
-        
-        ordersWithItems.push(orderData);
+      if (!data || data.length === 0) {
+        setOrders([]);
+        return;
       }
+      
+      // Buscar todos os itens de carrinho de uma vez (otimização)
+      const cartIds = data.filter(o => o.cart_id).map(o => o.cart_id);
+      let allCartItems: any[] = [];
+      
+      if (cartIds.length > 0) {
+        const { data: cartItemsData } = await supabaseTenant
+          .from('cart_items')
+          .select(`
+            id,
+            cart_id,
+            qty,
+            unit_price,
+            product_name,
+            product_code,
+            product:products(name, code, image_url)
+          `)
+          .in('cart_id', cartIds);
+        
+        allCartItems = cartItemsData || [];
+      }
+      
+      // Buscar dados de clientes faltantes de uma vez
+      const phonesNeedingCustomerData = data
+        .filter(o => !o.customer_name || !o.customer_cep)
+        .map(o => o.customer_phone);
+      
+      let customersMap: Record<string, any> = {};
+      
+      if (phonesNeedingCustomerData.length > 0) {
+        const { data: customersData } = await supabaseTenant
+          .from('customers')
+          .select('phone, name, cpf, cep, street, number, complement, neighborhood, city, state')
+          .in('phone', phonesNeedingCustomerData);
+        
+        if (customersData) {
+          customersMap = customersData.reduce((acc, c) => {
+            acc[c.phone] = c;
+            return acc;
+          }, {} as Record<string, any>);
+        }
+      }
+      
+      // Montar os pedidos com itens e dados de clientes
+      const ordersWithItems = data.map(order => {
+        const items = allCartItems.filter(item => item.cart_id === order.cart_id);
+        const customer = customersMap[order.customer_phone];
+        
+        return {
+          ...order,
+          items,
+          customer_name: order.customer_name || customer?.name,
+          customer_cep: order.customer_cep || customer?.cep,
+          customer_street: order.customer_street || customer?.street,
+          customer_number: order.customer_number || customer?.number,
+          customer_complement: order.customer_complement || customer?.complement,
+          customer_city: order.customer_city || customer?.city,
+          customer_state: order.customer_state || customer?.state,
+        };
+      });
 
       console.log('✅ Pedidos com itens carregados:', ordersWithItems.length);
       setOrders(ordersWithItems);
