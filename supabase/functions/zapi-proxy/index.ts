@@ -163,12 +163,57 @@ serve(async (req) => {
         };
         break;
 
-      case "list-groups":
-        // Use /groups endpoint to list all groups directly (more reliable than filtering /chats)
-        // Z-API /groups returns only groups, solving pagination issues with mixed contacts
-        endpoint = "/groups";
-        method = "GET";
-        break;
+      case "list-groups": {
+        // Fetch ALL groups using pagination - Z-API requires iterating through pages
+        const allGroups: any[] = [];
+        let currentPage = 1;
+        const pageSize = 100; // Max groups per page
+        let hasMore = true;
+        
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (clientToken) headers["Client-Token"] = clientToken;
+        
+        console.log(`[zapi-proxy] Fetching all groups with pagination...`);
+        
+        while (hasMore) {
+          const pageUrl = `${baseUrl}/groups?page=${currentPage}&pageSize=${pageSize}`;
+          console.log(`[zapi-proxy] Fetching page ${currentPage}: ${pageUrl}`);
+          
+          try {
+            const pageResponse = await fetch(pageUrl, { method: "GET", headers });
+            const pageData = await pageResponse.json();
+            
+            if (Array.isArray(pageData) && pageData.length > 0) {
+              allGroups.push(...pageData);
+              console.log(`[zapi-proxy] Page ${currentPage}: ${pageData.length} groups (total: ${allGroups.length})`);
+              currentPage++;
+              
+              // If we got less than pageSize, we've reached the end
+              if (pageData.length < pageSize) {
+                hasMore = false;
+              }
+            } else {
+              hasMore = false;
+            }
+          } catch (err) {
+            console.error(`[zapi-proxy] Error fetching page ${currentPage}:`, err);
+            hasMore = false;
+          }
+          
+          // Safety limit to prevent infinite loops
+          if (currentPage > 50) {
+            console.warn("[zapi-proxy] Reached page limit (50), stopping pagination");
+            hasMore = false;
+          }
+        }
+        
+        console.log(`[zapi-proxy] Total groups fetched: ${allGroups.length}`);
+        
+        return new Response(
+          JSON.stringify(allGroups),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       case "group-metadata":
         if (!phone) {
