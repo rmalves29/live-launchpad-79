@@ -861,6 +861,13 @@ const Pedidos = () => {
     setSearchTerm('');
   };
 
+  // Contar pedidos por telefone para identificar clientes com múltiplos pedidos
+  const orderCountByPhone = orders.reduce((acc, order) => {
+    const normalizedPhone = normalizeForStorage(order.customer_phone);
+    acc[normalizedPhone] = (acc[normalizedPhone] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
   // Filtrar pedidos por telefone
   const filteredOrders = orders.filter(order => {
     if (!searchTerm) return true;
@@ -1064,7 +1071,26 @@ const Pedidos = () => {
                       <TableCell>
                         <Badge variant="outline">#{order.id}</Badge>
                       </TableCell>
-                      <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span>{formatPhoneForDisplay(order.customer_phone)}</span>
+                          {(() => {
+                            const normalizedPhone = normalizeForStorage(order.customer_phone);
+                            const count = orderCountByPhone[normalizedPhone] || 1;
+                            if (count > 1) {
+                              return (
+                                <Badge 
+                                  variant="secondary" 
+                                  className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                                >
+                                  {count} pedidos
+                                </Badge>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      </TableCell>
                       <TableCell>{formatCurrency(order.total_amount)}</TableCell>
                       <TableCell>
                         <div className="flex items-center space-x-2">
