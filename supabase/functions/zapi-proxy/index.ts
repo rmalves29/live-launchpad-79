@@ -209,6 +209,15 @@ serve(async (req) => {
         
         console.log(`[zapi-proxy] Total groups fetched: ${allGroups.length}`);
         
+        // Sort by lastMessageTime descending (most recent first)
+        allGroups.sort((a, b) => {
+          const timeA = parseInt(a.lastMessageTime || "0", 10);
+          const timeB = parseInt(b.lastMessageTime || "0", 10);
+          return timeB - timeA; // Descending order
+        });
+        
+        console.log(`[zapi-proxy] Groups sorted by lastMessageTime (most recent first)`);
+        
         return new Response(
           JSON.stringify(allGroups),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
