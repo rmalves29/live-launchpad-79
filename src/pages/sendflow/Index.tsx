@@ -1416,7 +1416,7 @@ export default function SendFlow() {
           </div>
         )}
         <Button
-          onClick={handleSendMessages}
+          onClick={() => handleSendMessages()}
           disabled={
             sending ||
             selectedProducts.size === 0 ||
