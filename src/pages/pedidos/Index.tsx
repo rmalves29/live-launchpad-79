@@ -807,7 +807,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
               <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 10px;">
-                <h1 style="margin: 0; font-size: 18px; font-weight: 700; color: #1a1a2e;">${customerName}</h1>
+                <h1 style="margin: 0; font-size: 18px; font-weight: 700; color: #1a1a2e;">${customerName} - #${order.id}</h1>
                 <span style="background: #fff; padding: 3px 8px; border-radius: 5px; font-size: 11px;"><strong>CPF:</strong> ${customerCPF}</span>
                 <span style="background: #fff; padding: 3px 8px; border-radius: 5px; font-size: 11px;"><strong>Celular:</strong> ${formatPhoneForDisplay(order.customer_phone)}</span>
               </div>
