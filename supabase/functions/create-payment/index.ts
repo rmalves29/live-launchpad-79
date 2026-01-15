@@ -162,6 +162,8 @@ serve(async (req) => {
           tenant_id: payload.tenant_id,
           phone: payload.customerData.phone,
           name: payload.customerData.name,
+          cpf: payload.customerData.cpf ?? null,
+          email: payload.customerData.email ?? null,
           cep: payload.addressData.cep,
           street: payload.addressData.street,
           number: payload.addressData.number,
