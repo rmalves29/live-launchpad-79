@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Radio, Clock, Pause, XCircle } from 'lucide-react';
+import { Loader2, Radio, Clock, Pause, XCircle, Timer } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { useToast } from '@/hooks/use-toast';
@@ -22,6 +22,8 @@ interface SendingJob {
     currentGroupIndex?: number;
     productIds?: number[];
     groupIds?: string[];
+    countdownSeconds?: number;
+    isWaitingForNextProduct?: boolean;
   };
   error_message?: string;
   started_at: string;
@@ -198,6 +200,11 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
   const totalGroups = activeJob.job_data?.groupIds?.length || 0;
   const currentProduct = (activeJob.job_data?.currentProductIndex || 0) + 1;
   const currentGroup = (activeJob.job_data?.currentGroupIndex || 0) + 1;
+  const countdownSeconds = activeJob.job_data?.countdownSeconds || 0;
+  const isWaitingForNextProduct = activeJob.job_data?.isWaitingForNextProduct || false;
+  
+  const countdownMinutes = Math.floor(countdownSeconds / 60);
+  const countdownSecs = countdownSeconds % 60;
 
   const startedAt = new Date(activeJob.started_at);
   const elapsed = Math.floor((Date.now() - startedAt.getTime()) / 1000);
@@ -265,10 +272,22 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Enviando mensagens em outro dispositivo...</span>
-        </div>
+        {isWaitingForNextProduct && countdownSeconds > 0 ? (
+          <div className="flex items-center justify-center gap-2 text-sm">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+              <Timer className="h-4 w-4 animate-pulse" />
+              <span className="font-medium">Próximo produto em:</span>
+              <span className="font-bold text-lg tabular-nums">
+                {countdownMinutes}:{countdownSecs.toString().padStart(2, '0')}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Enviando mensagens em outro dispositivo...</span>
+          </div>
+        )}
 
         <div className="flex items-center justify-center gap-3 pt-2 border-t">
           <Button

@@ -872,12 +872,36 @@ export default function SendFlow() {
         if (!isPausedRef.current) {
           const remainingSeconds = Math.ceil((delayMs - elapsed) / 1000);
           setCountdownSeconds(Math.max(0, remainingSeconds));
+          
+          // Atualizar countdown no banco a cada 5 segundos para sincronização em tempo real
+          if (checkCounter === 0 && currentJobIdRef.current) {
+            await sendingJob.updateProgress(currentJobIdRef.current, sentCount + errorCount, productIdx, {
+              currentProductIndex: productIdx,
+              currentGroupIndex: selectedGroupArray.length,
+              sentMessages: sentCount,
+              errorMessages: errorCount,
+              countdownSeconds: remainingSeconds,
+              isWaitingForNextProduct: true
+            });
+          }
         }
       }
       
       // Limpa o countdown
       setIsWaitingForNextProduct(false);
       setCountdownSeconds(0);
+      
+      // Limpar countdown no banco
+      if (currentJobIdRef.current) {
+        await sendingJob.updateProgress(currentJobIdRef.current, sentCount + errorCount, productIdx, {
+          currentProductIndex: productIdx,
+          currentGroupIndex: 0,
+          sentMessages: sentCount,
+          errorMessages: errorCount,
+          countdownSeconds: 0,
+          isWaitingForNextProduct: false
+        });
+      }
     }
   }
 
