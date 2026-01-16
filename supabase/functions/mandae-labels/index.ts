@@ -1,0 +1,329 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { action, order_id, tenant_id } = await req.json();
+    
+    console.log("[mandae-labels] Request:", { action, order_id, tenant_id });
+
+    if (!tenant_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: "tenant_id é obrigatório" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!order_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: "order_id é obrigatório" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Buscar integração Mandae
+    const { data: integration, error: integrationError } = await supabase
+      .from("shipping_integrations")
+      .select("*")
+      .eq("tenant_id", tenant_id)
+      .eq("provider", "mandae")
+      .eq("is_active", true)
+      .single();
+
+    if (integrationError || !integration) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Integração Mandae não encontrada" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Buscar pedido
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", order_id)
+      .eq("tenant_id", tenant_id)
+      .single();
+
+    if (orderError || !order) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Pedido não encontrado" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Buscar dados do tenant (remetente)
+    const { data: tenant, error: tenantError } = await supabase
+      .from("tenants")
+      .select("*")
+      .eq("id", tenant_id)
+      .single();
+
+    if (tenantError || !tenant) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Dados do remetente não encontrados" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const baseUrl = integration.sandbox 
+      ? "https://sandbox.api.mandae.com.br/v2" 
+      : "https://api.mandae.com.br/v2";
+
+    switch (action) {
+      case "create_order":
+        return await createMandaeOrder(supabase, integration, order, tenant, baseUrl);
+      
+      case "get_tracking":
+        return await getTracking(supabase, integration, order, baseUrl);
+      
+      case "cancel_order":
+        return await cancelOrder(supabase, integration, order, baseUrl);
+      
+      default:
+        return new Response(
+          JSON.stringify({ success: false, error: `Ação desconhecida: ${action}` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+    }
+
+  } catch (error) {
+    console.error("[mandae-labels] Error:", error);
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
+
+async function createMandaeOrder(supabase: any, integration: any, order: any, tenant: any, baseUrl: string) {
+  console.log("[mandae-labels] Creating order for:", order.id);
+
+  // Buscar itens do pedido
+  const { data: items } = await supabase
+    .from("cart_items")
+    .select("*")
+    .eq("cart_id", order.cart_id);
+
+  // Calcular peso e valor
+  let totalWeight = 0.3;
+  let totalValue = order.total_amount / 100; // Converter centavos para reais
+
+  if (items && items.length > 0) {
+    totalWeight = items.reduce((sum: number, item: any) => sum + (0.3 * item.qty), 0);
+  }
+
+  // Limpar dados
+  const cleanPhone = (phone: string) => phone?.replace(/\D/g, '') || '';
+  const cleanCep = (cep: string) => cep?.replace(/\D/g, '') || '';
+
+  const orderPayload = {
+    customerId: integration.client_id || tenant.id,
+    scheduling: new Date().toISOString().split('T')[0],
+    items: [{
+      skus: [{
+        skuId: `order-${order.id}`,
+        description: `Pedido #${order.id}`,
+        quantity: 1,
+        price: totalValue
+      }],
+      invoice: {
+        id: String(order.id),
+        key: String(order.id)
+      },
+      recipient: {
+        fullName: order.customer_name || "Cliente",
+        phone: cleanPhone(order.customer_phone),
+        email: tenant.email || "",
+        address: {
+          postalCode: cleanCep(order.customer_cep),
+          street: order.customer_street || "",
+          number: order.customer_number || "S/N",
+          neighborhood: "", // Mandae preenche automaticamente
+          city: order.customer_city || "",
+          state: order.customer_state || "",
+          country: "BR"
+        }
+      },
+      dimensions: {
+        height: 2,
+        width: 16,
+        length: 20,
+        weight: totalWeight
+      },
+      channel: "ECOMMERCE"
+    }],
+    sender: {
+      fullName: tenant.company_name || tenant.name,
+      phone: cleanPhone(tenant.company_phone || tenant.phone),
+      address: {
+        postalCode: cleanCep(integration.from_cep),
+        street: tenant.company_address || "",
+        number: tenant.company_number || "S/N",
+        neighborhood: tenant.company_district || "",
+        city: tenant.company_city || "",
+        state: tenant.company_state || "",
+        country: "BR"
+      }
+    }
+  };
+
+  console.log("[mandae-labels] Order payload:", JSON.stringify(orderPayload, null, 2));
+
+  const response = await fetch(`${baseUrl}/orders`, {
+    method: "POST",
+    headers: {
+      "Authorization": integration.access_token,
+      "Accept": "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(orderPayload)
+  });
+
+  const responseText = await response.text();
+  console.log("[mandae-labels] Create response:", response.status, responseText.substring(0, 500));
+
+  if (!response.ok) {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: "Erro ao criar pedido no Mandae",
+        details: responseText
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const result = JSON.parse(responseText);
+
+  // Salvar ID do Mandae no pedido
+  // Mandae retorna o ID do pedido criado
+  const mandaeOrderId = result.id || result.orderId || result.trackingCode;
+  const trackingCode = result.trackingCode || result.tracking || null;
+
+  await supabase
+    .from("orders")
+    .update({
+      melhor_envio_shipment_id: `mandae_${mandaeOrderId}`,
+      melhor_envio_tracking_code: trackingCode,
+      observation: `${order.observation || ''}\n[Mandae: ${mandaeOrderId}]`.trim()
+    })
+    .eq("id", order.id);
+
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      mandae_order_id: mandaeOrderId,
+      tracking_code: trackingCode,
+      message: "Pedido criado no Mandae com sucesso"
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+async function getTracking(supabase: any, integration: any, order: any, baseUrl: string) {
+  const shipmentId = order.melhor_envio_shipment_id;
+  
+  if (!shipmentId || !shipmentId.startsWith('mandae_')) {
+    return new Response(
+      JSON.stringify({ success: false, error: "Pedido não possui ID Mandae" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const mandaeId = shipmentId.replace('mandae_', '');
+
+  const response = await fetch(`${baseUrl}/trackings/${mandaeId}`, {
+    method: "GET",
+    headers: {
+      "Authorization": integration.access_token,
+      "Accept": "application/json"
+    }
+  });
+
+  const responseText = await response.text();
+  console.log("[mandae-labels] Tracking response:", response.status, responseText.substring(0, 500));
+
+  if (!response.ok) {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: "Erro ao buscar rastreamento",
+        details: responseText
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const result = JSON.parse(responseText);
+
+  // Atualizar tracking code se disponível
+  if (result.trackingCode && result.trackingCode !== order.melhor_envio_tracking_code) {
+    await supabase
+      .from("orders")
+      .update({ melhor_envio_tracking_code: result.trackingCode })
+      .eq("id", order.id);
+  }
+
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      tracking: result
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+async function cancelOrder(supabase: any, integration: any, order: any, baseUrl: string) {
+  const shipmentId = order.melhor_envio_shipment_id;
+  
+  if (!shipmentId || !shipmentId.startsWith('mandae_')) {
+    return new Response(
+      JSON.stringify({ success: false, error: "Pedido não possui ID Mandae" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const mandaeId = shipmentId.replace('mandae_', '');
+
+  // Mandae usa DELETE para cancelar
+  const response = await fetch(`${baseUrl}/orders/${mandaeId}`, {
+    method: "DELETE",
+    headers: {
+      "Authorization": integration.access_token,
+      "Accept": "application/json"
+    }
+  });
+
+  console.log("[mandae-labels] Cancel response:", response.status);
+
+  // Limpar dados do pedido independente do resultado
+  await supabase
+    .from("orders")
+    .update({
+      melhor_envio_shipment_id: null,
+      melhor_envio_tracking_code: null
+    })
+    .eq("id", order.id);
+
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      message: "Pedido cancelado no Mandae"
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
