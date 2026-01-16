@@ -174,35 +174,108 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
     totalWeight = items.reduce((sum: number, item: any) => sum + (0.3 * item.qty), 0);
   }
 
-  // Detectar serviço Mandae pelo campo observation do pedido
-  // Formato esperado: "[FRETE] Mandae - Econômico | R$ 7.93 | Prazo: 4 dias úteis"
-  // IMPORTANTE: A API pode exigir um identificador numérico do serviço (catálogo) em vez de string.
-  // Tentativa: usar order.shipping_service_id quando existir; senão, mapear por texto.
-  let shippingServiceId: number = Number(order.shipping_service_id) || 0;
+  // Buscar ID dinâmico do serviço de frete via Rates API
+  // A API Mandae exige o ID exato retornado pela cotação, não valores hardcoded
+  const destinoCep = cleanCep(order.customer_cep);
+  
+  console.log("[mandae-labels] Fetching rates for CEP:", destinoCep);
+  
+  const ratesResponse = await fetch(`${baseUrl}/postalcodes/${destinoCep}/rates`, {
+    method: "POST",
+    headers: {
+      "Authorization": integration.access_token,
+      "Accept": "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      postalCode: destinoCep,
+      declaredValue: totalValue,
+      weight: totalWeight,
+      height: 2,
+      width: 16,
+      length: 20
+    })
+  });
 
-  if (!shippingServiceId) {
-    const obs = (order.observation || "").toLowerCase();
-    if (obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso")) {
-      shippingServiceId = 102; // Expresso/Rápido (padrão no app)
-    } else {
-      shippingServiceId = 101; // Econômico (padrão no app)
+  const ratesText = await ratesResponse.text();
+  console.log("[mandae-labels] Rates API response:", ratesText.substring(0, 500));
+
+  let shippingServiceValue: number | string | null = null;
+  
+  if (ratesResponse.ok) {
+    try {
+      const ratesData = JSON.parse(ratesText);
+      const services = ratesData.shippingServices || ratesData || [];
+      
+      // Detectar se o pedido é Econômico ou Rápido pela observation
+      const obs = (order.observation || "").toLowerCase();
+      const isRapido = obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso");
+      
+      // Procurar o serviço correspondente
+      const matchingService = (Array.isArray(services) ? services : []).find((s: any) => {
+        const serviceName = (s.name || "").toLowerCase();
+        if (isRapido) {
+          return serviceName.includes("rápido") || serviceName.includes("rapido") || serviceName.includes("expresso");
+        } else {
+          return serviceName.includes("econômico") || serviceName.includes("economico");
+        }
+      });
+
+      if (matchingService) {
+        // Usar ID numérico se disponível, senão usar o nome do serviço exatamente como retornado
+        if (matchingService.id !== null && matchingService.id !== undefined) {
+          shippingServiceValue = Number(matchingService.id);
+          console.log("[mandae-labels] Found service with ID:", matchingService.name, "ID:", shippingServiceValue);
+        } else {
+          // API retornou id:null - tentar usar o nome exato como identificador
+          shippingServiceValue = matchingService.name;
+          console.log("[mandae-labels] Using service name (id was null):", shippingServiceValue);
+        }
+      } else if (services.length > 0) {
+        // Fallback: usar o primeiro serviço disponível
+        if (services[0].id !== null && services[0].id !== undefined) {
+          shippingServiceValue = Number(services[0].id);
+        } else {
+          shippingServiceValue = services[0].name;
+        }
+        console.log("[mandae-labels] Using first available service:", services[0].name, "Value:", shippingServiceValue);
+      }
+    } catch (parseError) {
+      console.error("[mandae-labels] Error parsing rates:", parseError);
     }
+  } else {
+    console.error("[mandae-labels] Rates API error:", ratesText);
   }
 
-  console.log(
-    "[mandae-labels] Using shippingServiceId:",
-    shippingServiceId,
-    "order.shipping_service_id:",
-    order.shipping_service_id,
-    "observation:",
-    order.observation
-  );
+  // Se não conseguiu obter ID/nome dinâmico, tentar usar o shipping_service_id do pedido
+  if (!shippingServiceValue && order.shipping_service_id) {
+    shippingServiceValue = Number(order.shipping_service_id);
+    console.log("[mandae-labels] Using order's shipping_service_id:", shippingServiceValue);
+  }
+
+  if (!shippingServiceValue) {
+    await saveIntegrationLog(
+      supabase, tenant.id, order.id, "create_order", 422,
+      { error: "Não foi possível determinar o serviço de frete" },
+      "Sem serviço válido",
+      "Não foi possível determinar o serviço de frete via Rates API"
+    );
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: "Não foi possível determinar o serviço de frete. Verifique se a integração Mandae está configurada corretamente." 
+      }),
+      { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  console.log("[mandae-labels] Final shippingService value:", shippingServiceValue);
 
   const orderPayload = {
     customerId: integration.client_id || tenant.id,
     scheduling: new Date().toISOString().split('T')[0],
     items: [{
-      shippingService: shippingServiceId,
+      shippingService: shippingServiceValue,
       skus: [{
         id: `order-${order.id}`,
         skuId: `order-${order.id}`,
