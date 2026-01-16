@@ -102,6 +102,30 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
     }
   };
 
+  // Verificar se job está "stale" (sem atualização há mais de 5 minutos)
+  const isJobStale = (job: SendingJob): boolean => {
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutos
+    const lastUpdate = new Date(job.updated_at).getTime();
+    return Date.now() - lastUpdate > STALE_THRESHOLD_MS;
+  };
+
+  // Marcar job stale como abandonado
+  const markJobAsAbandoned = async (jobId: string) => {
+    try {
+      await supabase
+        .from('sending_jobs')
+        .update({
+          status: 'paused',
+          error_message: 'Envio abandonado - sem atividade por mais de 5 minutos',
+          paused_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+    } catch (error) {
+      console.error('Erro ao marcar job como abandonado:', error);
+    }
+  };
+
   // Buscar job ativo inicial
   useEffect(() => {
     if (!tenant?.id) return;
@@ -124,7 +148,19 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
         const { data, error } = await query.maybeSingle();
 
         if (error) throw error;
-        setActiveJob(data as SendingJob | null);
+        
+        if (data) {
+          const job = data as SendingJob;
+          // Se o job está stale, marcar como abandonado e não mostrar
+          if (isJobStale(job)) {
+            await markJobAsAbandoned(job.id);
+            setActiveJob(null);
+          } else {
+            setActiveJob(job);
+          }
+        } else {
+          setActiveJob(null);
+        }
       } catch (error) {
         console.error('Erro ao buscar job ativo:', error);
       } finally {
@@ -149,15 +185,23 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
           table: 'sending_jobs',
           filter: `tenant_id=eq.${tenant.id}`,
         },
-        (payload) => {
+        async (payload) => {
           const job = payload.new as SendingJob;
 
           // Se é uma atualização ou inserção
           if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-            // Se o job está rodando, mostrar
+            // Se o job está rodando, verificar se não está stale
             if (job.status === 'running') {
               if (!jobType || job.job_type === jobType) {
-                setActiveJob(job);
+                // Verificar se está stale
+                if (isJobStale(job)) {
+                  await markJobAsAbandoned(job.id);
+                  if (activeJob?.id === job.id) {
+                    setActiveJob(null);
+                  }
+                } else {
+                  setActiveJob(job);
+                }
               }
             } else if (activeJob?.id === job.id) {
               // Se o job que estava ativo mudou de status, remover
