@@ -168,11 +168,23 @@ useEffect(() => {
 
     setLoading(true);
     try {
+      // STOCK VALIDATION: Check if product has enough stock
+      const existingItem = cartItems.find(item => item.product_id === selectedProduct.id);
+      const currentQtyInCart = existingItem ? existingItem.qty : 0;
+      const totalRequestedQty = currentQtyInCart + quantity;
+      
+      if (totalRequestedQty > selectedProduct.stock) {
+        toast({
+          title: 'Estoque insuficiente',
+          description: `Estoque disponível: ${selectedProduct.stock}. Já no carrinho: ${currentQtyInCart}. Não é possível adicionar ${quantity} unidade(s).`,
+          variant: 'destructive'
+        });
+        setLoading(false);
+        return;
+      }
+
       const targetCartId = await createCartIfNeeded();
       if (!targetCartId) throw new Error('Não foi possível criar/obter carrinho');
-
-      // Check if product already exists in cart
-      const existingItem = cartItems.find(item => item.product_id === selectedProduct.id);
 
       if (existingItem) {
         // Update existing item
@@ -200,6 +212,16 @@ useEffect(() => {
           });
 
         if (error) throw error;
+      }
+
+      // DECREMENT STOCK after successful cart operation
+      const { error: stockError } = await supabaseTenant
+        .from('products')
+        .update({ stock: selectedProduct.stock - quantity })
+        .eq('id', selectedProduct.id);
+      
+      if (stockError) {
+        console.error('Error updating stock:', stockError);
       }
 
       // Mensagem enviada automaticamente via trigger do banco
