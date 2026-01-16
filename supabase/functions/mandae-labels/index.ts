@@ -150,7 +150,8 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
         skuId: `order-${order.id}`,
         description: `Pedido #${order.id}`,
         quantity: 1,
-        price: totalValue
+        price: totalValue,
+        freight: 0
       }],
       invoice: {
         id: String(order.id),
