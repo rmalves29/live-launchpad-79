@@ -171,22 +171,34 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
 
   // Detectar serviço Mandae pelo campo observation do pedido
   // Formato esperado: "[FRETE] Mandae - Econômico | R$ 7.93 | Prazo: 4 dias úteis"
-  let shippingService = "ECONOMICO"; // default
-  const obs = (order.observation || "").toLowerCase();
-  if (obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso")) {
-    shippingService = "RAPIDO";
-  } else if (obs.includes("econômico") || obs.includes("economico")) {
-    shippingService = "ECONOMICO";
+  // IMPORTANTE: A API pode exigir um identificador numérico do serviço (catálogo) em vez de string.
+  // Tentativa: usar order.shipping_service_id quando existir; senão, mapear por texto.
+  let shippingServiceId: number = Number(order.shipping_service_id) || 0;
+
+  if (!shippingServiceId) {
+    const obs = (order.observation || "").toLowerCase();
+    if (obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso")) {
+      shippingServiceId = 102; // Expresso/Rápido (padrão no app)
+    } else {
+      shippingServiceId = 101; // Econômico (padrão no app)
+    }
   }
-  console.log("[mandae-labels] Detected shippingService:", shippingService, "from observation:", order.observation);
+
+  console.log(
+    "[mandae-labels] Using shippingServiceId:",
+    shippingServiceId,
+    "order.shipping_service_id:",
+    order.shipping_service_id,
+    "observation:",
+    order.observation
+  );
 
   const orderPayload = {
     customerId: integration.client_id || tenant.id,
     scheduling: new Date().toISOString().split('T')[0],
     items: [{
-      shippingService: shippingService,
+      shippingService: shippingServiceId,
       skus: [{
-        skuId: `order-${order.id}`,
         description: `Pedido #${order.id}`,
         quantity: 1,
         price: totalValue,
