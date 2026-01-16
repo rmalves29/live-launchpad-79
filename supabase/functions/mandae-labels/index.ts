@@ -145,17 +145,22 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
     .select("*")
     .eq("cart_id", order.cart_id);
 
-  // Buscar dados do cliente para obter o bairro
+  // Buscar dados do cliente para obter o bairro e e-mail (obrigatório no Mandae)
   const cleanPhoneForQuery = order.customer_phone?.replace(/\D/g, '') || '';
   const { data: customer } = await supabase
     .from("customers")
-    .select("neighborhood")
+    .select("neighborhood, email, name")
     .eq("phone", cleanPhoneForQuery)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
 
   const customerNeighborhood = customer?.neighborhood || "";
+  const recipientEmail = customer?.email || tenant.email || "no-reply@orderzap.app";
+  const recipientName = order.customer_name || customer?.name || "Cliente";
+  const recipientPhone = cleanPhone(order.customer_phone);
+
   console.log("[mandae-labels] Customer neighborhood:", customerNeighborhood);
+  console.log("[mandae-labels] Recipient contact:", { recipientEmail, recipientName, recipientPhone });
 
   // Calcular peso e valor
   let totalWeight = 0.3;
@@ -207,6 +212,11 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
         freight: 0
       }],
       recipient: {
+        fullName: recipientName,
+        phone: recipientPhone,
+        email: recipientEmail,
+        // Alguns cenários da Mandae validam especificamente "receipt email"
+        receiptEmail: recipientEmail,
         address: {
           postalCode: cleanCep(order.customer_cep),
           street: order.customer_street || "",
@@ -217,7 +227,6 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
           country: "BR"
         }
       },
-      dimensions: {
         height: 2,
         width: 16,
         length: 20,
