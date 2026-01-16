@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { getActiveShippingIntegration, type ShippingProvider } from '@/lib/shipping-utils';
 
 interface Order {
   id: number;
@@ -111,10 +113,21 @@ const Etiquetas = () => {
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [selectedLog, setSelectedLog] = useState<IntegrationLog | null>(null);
+  
+  // Estado para integração de frete ativa
+  const [activeShippingProvider, setActiveShippingProvider] = useState<ShippingProvider>(null);
 
   useEffect(() => {
     if (!isSearchMode) {
       loadPaidOrders();
+    }
+    // Carregar integração ativa
+    const tenantId = supabaseTenant.getTenantId();
+    if (tenantId) {
+      getActiveShippingIntegration(tenantId).then(({ provider }) => {
+        console.log('📦 [ETIQUETAS] Integração de frete ativa:', provider);
+        setActiveShippingProvider(provider);
+      });
     }
   }, [dateFilter, isSearchMode]);
 
@@ -343,21 +356,31 @@ const Etiquetas = () => {
     }
   };
 
-  const sendToMelhorEnvio = async (orderId: number) => {
-    console.log('🚀 [ETIQUETAS] Iniciando envio para Melhor Envio:', { orderId, timestamp: new Date().toISOString() });
+  const sendToShippingProvider = async (orderId: number) => {
+    const providerName = activeShippingProvider === 'mandae' ? 'Mandae' : 'Melhor Envio';
+    console.log(`🚀 [ETIQUETAS] Iniciando envio para ${providerName}:`, { orderId, provider: activeShippingProvider, timestamp: new Date().toISOString() });
+    
+    if (!activeShippingProvider) {
+      toast.error('Nenhuma integração de frete ativa. Configure Melhor Envio ou Mandae.');
+      return;
+    }
     
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
+      // Determinar função e action baseado na integração ativa
+      const functionName = activeShippingProvider === 'mandae' ? 'mandae-labels' : 'melhor-envio-labels';
+      const action = activeShippingProvider === 'mandae' ? 'create_order' : 'create_shipment';
+      
       const requestPayload = {
-        action: 'create_shipment',
+        action,
         order_id: orderId,
         tenant_id: supabaseTenant.getTenantId()
       };
 
-      console.log('📦 [ETIQUETAS] Payload da requisição:', requestPayload);
+      console.log(`📦 [ETIQUETAS] Chamando ${functionName}:`, requestPayload);
       
-      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+      const { data, error } = await supabaseTenant.functions.invoke(functionName, {
         body: requestPayload
       });
 
@@ -372,7 +395,6 @@ const Etiquetas = () => {
 
       if (error) {
         console.error('❌ [ETIQUETAS] Erro da edge function:', error, 'Data:', data);
-        // Extrair mensagem de erro: priorizar data.error, depois context do FunctionsHttpError
         let errorMessage = data?.error || data?.message;
         if (!errorMessage && error.context) {
           try {
@@ -390,17 +412,17 @@ const Etiquetas = () => {
 
       if (data.success === false) {
         console.error('❌ [ETIQUETAS] Erro na resposta:', data);
-        throw new Error(data.error || 'Erro desconhecido na operação');
+        throw new Error(data.error || data.details || 'Erro desconhecido na operação');
       }
 
       if (data.success === true) {
         console.log('✅ [ETIQUETAS] Remessa criada com sucesso:', data);
-        toast.success('Remessa criada no Melhor Envio com sucesso!');
+        toast.success(`Remessa criada no ${providerName} com sucesso!`);
         loadPaidOrders();
       } else {
-        if (data.shipment) {
+        if (data.shipment || data.mandae_order_id) {
           console.log('✅ [ETIQUETAS] Remessa criada (sem flag success):', data);
-          toast.success('Remessa criada no Melhor Envio com sucesso!');
+          toast.success(`Remessa criada no ${providerName} com sucesso!`);
           loadPaidOrders();
         } else {
           throw new Error(data.error || 'Resposta inesperada da API');
@@ -412,10 +434,11 @@ const Etiquetas = () => {
         message: error.message,
         stack: error.stack,
         orderId: orderId,
+        provider: activeShippingProvider,
         timestamp: new Date().toISOString()
       });
       
-      let userMessage = 'Erro ao enviar para Melhor Envio';
+      let userMessage = `Erro ao enviar para ${providerName}`;
       
       if (error.message) {
         if (error.message.includes('Dados da empresa incompletos')) {
@@ -423,7 +446,7 @@ const Etiquetas = () => {
         } else if (error.message.includes('Integração')) {
           userMessage = `Erro de integração: ${error.message}`;
         } else if (error.message.includes('token')) {
-          userMessage = 'Erro de autorização: Refaça a configuração do Melhor Envio';
+          userMessage = `Erro de autorização: Refaça a configuração do ${providerName}`;
         } else {
           userMessage = `Erro: ${error.message}`;
         }
@@ -439,16 +462,23 @@ const Etiquetas = () => {
     }
   };
 
-  // Cancelar remessa no Melhor Envio para recriar com transportadora correta
+  // Cancelar remessa (detecta automaticamente se é Mandae ou Melhor Envio pelo prefixo)
   const cancelShipment = async (orderId: number) => {
     console.log('🗑️ [ETIQUETAS] Cancelando remessa:', { orderId });
     
     setCancellingOrders(prev => new Set(prev).add(orderId));
     
     try {
-      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+      // Buscar pedido para verificar se é Mandae ou Melhor Envio
+      const order = orders.find(o => o.id === orderId);
+      const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
+      
+      const functionName = isMandae ? 'mandae-labels' : 'melhor-envio-labels';
+      const action = isMandae ? 'cancel_order' : 'cancel_shipment';
+      
+      const { data, error } = await supabaseTenant.functions.invoke(functionName, {
         body: {
-          action: 'cancel_shipment',
+          action,
           order_id: orderId,
           tenant_id: supabaseTenant.getTenantId()
         }
@@ -468,7 +498,7 @@ const Etiquetas = () => {
       }
 
       if (data?.success) {
-        toast.success('Remessa cancelada! Agora você pode criar uma nova com a transportadora correta.');
+        toast.success('Remessa cancelada! Agora você pode criar uma nova.');
         loadPaidOrders();
       } else {
         throw new Error(data?.error || 'Erro desconhecido ao cancelar remessa');
@@ -486,7 +516,16 @@ const Etiquetas = () => {
   };
 
 
+  // Comprar frete (apenas Melhor Envio - Mandae não tem essa etapa)
   const buyShipment = async (orderId: number) => {
+    const order = orders.find(o => o.id === orderId);
+    const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
+    
+    if (isMandae) {
+      toast.info('A Mandae gera a etiqueta automaticamente ao criar o pedido.');
+      return;
+    }
+    
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
@@ -534,36 +573,48 @@ const Etiquetas = () => {
     }
   };
 
+  // Imprimir etiqueta (suporta Melhor Envio e Mandae)
   const printLabel = async (orderId: number) => {
+    const order = orders.find(o => o.id === orderId);
+    const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
+    
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
-      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
-        body: {
-          action: 'get_label',
-          order_id: orderId,
-          tenant_id: supabaseTenant.getTenantId()
-        }
-      });
-
-      if (error) {
-        console.error('❌ [ETIQUETAS] Erro ao gerar etiqueta:', error, 'Data:', data);
-        let errorMessage = data?.error || data?.message;
-        if (!errorMessage && error.context) {
-          try {
-            const contextBody = await error.context.json();
-            errorMessage = contextBody?.error || contextBody?.message;
-          } catch { }
-        }
-        errorMessage = errorMessage || error.message || 'Erro ao gerar etiqueta';
-        throw new Error(errorMessage);
-      }
-
-      if (data.success && data.data.url) {
-        window.open(data.data.url, '_blank');
-        toast.success('Etiqueta gerada com sucesso!');
+      if (isMandae) {
+        // Mandae - abrir página de rastreamento que tem a etiqueta
+        const mandaeId = order.melhor_envio_shipment_id?.replace('mandae_', '');
+        window.open(`https://rastreae.com.br/${mandaeId}`, '_blank');
+        toast.success('Abrindo página de rastreamento da Mandae');
       } else {
-        throw new Error(data.error || 'Erro ao gerar etiqueta');
+        // Melhor Envio
+        const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+          body: {
+            action: 'get_label',
+            order_id: orderId,
+            tenant_id: supabaseTenant.getTenantId()
+          }
+        });
+
+        if (error) {
+          console.error('❌ [ETIQUETAS] Erro ao gerar etiqueta:', error, 'Data:', data);
+          let errorMessage = data?.error || data?.message;
+          if (!errorMessage && error.context) {
+            try {
+              const contextBody = await error.context.json();
+              errorMessage = contextBody?.error || contextBody?.message;
+            } catch { }
+          }
+          errorMessage = errorMessage || error.message || 'Erro ao gerar etiqueta';
+          throw new Error(errorMessage);
+        }
+
+        if (data.success && data.data.url) {
+          window.open(data.data.url, '_blank');
+          toast.success('Etiqueta gerada com sucesso!');
+        } else {
+          throw new Error(data.error || 'Erro ao gerar etiqueta');
+        }
       }
     } catch (error: any) {
       console.error('Erro ao imprimir etiqueta:', error);
@@ -582,14 +633,20 @@ const Etiquetas = () => {
     toast.success('Código de rastreio copiado!');
   };
 
-  // Consultar status de um pedido específico
+  // Consultar status de um pedido específico (suporta Melhor Envio e Mandae)
   const checkOrderStatus = async (orderId: number) => {
+    const order = orders.find(o => o.id === orderId);
+    const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
+    
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
-      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+      const functionName = isMandae ? 'mandae-labels' : 'melhor-envio-labels';
+      const action = isMandae ? 'get_tracking' : 'get_status';
+      
+      const { data, error } = await supabaseTenant.functions.invoke(functionName, {
         body: {
-          action: 'get_status',
+          action,
           order_id: orderId,
           tenant_id: supabaseTenant.getTenantId()
         }
@@ -609,8 +666,9 @@ const Etiquetas = () => {
       }
 
       if (data.success) {
-        if (data.tracking) {
-          toast.success(`Tracking encontrado: ${data.tracking}`);
+        const trackingCode = isMandae ? data.tracking?.trackingCode : data.tracking;
+        if (trackingCode) {
+          toast.success(`Tracking encontrado: ${trackingCode}`);
         } else {
           toast.info(`Status: ${data.status || 'Sem tracking disponível ainda'}`);
         }
@@ -873,9 +931,13 @@ const Etiquetas = () => {
           continue;
         }
         
-        const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+        // Determinar função e action baseado na integração ativa
+        const functionName = activeShippingProvider === 'mandae' ? 'mandae-labels' : 'melhor-envio-labels';
+        const action = activeShippingProvider === 'mandae' ? 'create_order' : 'create_shipment';
+        
+        const { data, error } = await supabaseTenant.functions.invoke(functionName, {
           body: {
-            action: 'create_shipment',
+            action,
             order_id: orderId,
             tenant_id: supabaseTenant.getTenantId()
           }
@@ -1420,7 +1482,7 @@ const Etiquetas = () => {
                         {/* Botão Criar Remessa */}
                         {!order.melhor_envio_shipment_id && (
                           <Button
-                            onClick={() => sendToMelhorEnvio(order.id)}
+                            onClick={() => sendToShippingProvider(order.id)}
                             disabled={processingOrders.has(order.id)}
                             size="sm"
                           >
@@ -1476,19 +1538,22 @@ const Etiquetas = () => {
 
                         {order.melhor_envio_shipment_id && (
                           <>
-                            <Button
-                              onClick={() => buyShipment(order.id)}
-                              disabled={processingOrders.has(order.id)}
-                              variant="outline"
-                              size="sm"
-                            >
-                              {processingOrders.has(order.id) ? (
-                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                              ) : (
-                                <Truck className="h-4 w-4 mr-2" />
-                              )}
-                              Comprar Frete
-                            </Button>
+                            {/* Botão Comprar Frete - apenas Melhor Envio (Mandae não tem essa etapa) */}
+                            {!order.melhor_envio_shipment_id.startsWith('mandae_') && (
+                              <Button
+                                onClick={() => buyShipment(order.id)}
+                                disabled={processingOrders.has(order.id)}
+                                variant="outline"
+                                size="sm"
+                              >
+                                {processingOrders.has(order.id) ? (
+                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                ) : (
+                                  <Truck className="h-4 w-4 mr-2" />
+                                )}
+                                Comprar Frete
+                              </Button>
+                            )}
                             
                             <Button
                               onClick={() => printLabel(order.id)}
@@ -1501,7 +1566,7 @@ const Etiquetas = () => {
                               ) : (
                                 <Printer className="h-4 w-4 mr-2" />
                               )}
-                              Imprimir Etiqueta
+                              {order.melhor_envio_shipment_id.startsWith('mandae_') ? 'Ver Rastreio' : 'Imprimir Etiqueta'}
                             </Button>
                           </>
                         )}
