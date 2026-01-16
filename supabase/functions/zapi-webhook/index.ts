@@ -26,6 +26,55 @@ interface ZAPIWebhookPayload {
   status?: string;
   ids?: string[];
   instanceId?: string;
+  // Message ID for deduplication
+  messageId?: string;
+  zapiMessageId?: string;
+}
+
+// Cache to prevent duplicate message processing (in-memory, per instance)
+const processedMessages = new Map<string, number>();
+const MESSAGE_CACHE_TTL_MS = 60000; // 60 seconds TTL
+
+// Clean old entries from cache periodically
+function cleanMessageCache() {
+  const now = Date.now();
+  for (const [key, timestamp] of processedMessages.entries()) {
+    if (now - timestamp > MESSAGE_CACHE_TTL_MS) {
+      processedMessages.delete(key);
+    }
+  }
+}
+
+// Check if message was already processed (returns true if duplicate)
+function isDuplicateMessage(messageId: string | undefined, phone: string, messageText: string): boolean {
+  // Clean cache first
+  cleanMessageCache();
+  
+  // If we have a messageId, use it (most reliable)
+  if (messageId) {
+    if (processedMessages.has(messageId)) {
+      console.log(`[zapi-webhook] 🔄 DUPLICATE detected by messageId: ${messageId}`);
+      return true;
+    }
+    processedMessages.set(messageId, Date.now());
+    return false;
+  }
+  
+  // Fallback: create a composite key from phone + message content + timestamp window
+  // This handles cases where Z-API sends the same message twice within 10 seconds
+  const compositeKey = `${phone}:${messageText}`;
+  const existingTimestamp = processedMessages.get(compositeKey);
+  
+  if (existingTimestamp) {
+    const timeDiff = Date.now() - existingTimestamp;
+    if (timeDiff < 10000) { // 10 second window
+      console.log(`[zapi-webhook] 🔄 DUPLICATE detected by content (within ${timeDiff}ms): ${compositeKey.substring(0, 50)}...`);
+      return true;
+    }
+  }
+  
+  processedMessages.set(compositeKey, Date.now());
+  return false;
 }
 
 serve(async (req) => {
@@ -66,7 +115,22 @@ serve(async (req) => {
     const groupName = payload.chatName || '';
     const groupId = payload.chatId || '';
 
-    console.log(`[zapi-webhook] Message: "${messageText}", From: ${senderPhone}, Group: ${groupName}, IsGroup: ${isGroup}`);
+    // Get messageId for deduplication (Z-API may send messageId or zapiMessageId)
+    const messageId = payload.messageId || payload.zapiMessageId;
+
+    // Check for duplicate message BEFORE processing
+    if (isDuplicateMessage(messageId, senderPhone, messageText)) {
+      console.log(`[zapi-webhook] ⏭️ Skipping duplicate message from ${senderPhone}`);
+      return new Response(JSON.stringify({ 
+        success: true, 
+        skipped: 'duplicate_message',
+        messageId: messageId || 'no_id'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log(`[zapi-webhook] Message: "${messageText}", From: ${senderPhone}, Group: ${groupName}, IsGroup: ${isGroup}, MessageId: ${messageId || 'N/A'}`);
 
     // Recognize product codes strictly in the format: C + 1-4 digits (e.g., C100)
     // IMPORTANT: We intentionally do NOT accept plain numbers like "100" to avoid false positives.
