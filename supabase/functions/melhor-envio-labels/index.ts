@@ -32,6 +32,63 @@ async function saveIntegrationLog(
   }
 }
 
+// Mapeamento de transportadoras para service IDs do Melhor Envio
+const CARRIER_SERVICE_MAP: Record<string, number> = {
+  // Correios
+  "pac": 1,
+  "sedex": 2,
+  "mini envios": 17,
+  "pac mini": 17,
+  // Jadlog
+  "jadlog": 3,
+  ".package": 3,
+  "package": 3,
+  "jadlog package": 3,
+  ".com": 4,
+  "jadlog .com": 4,
+  "jadlog.com": 4,
+  // Azul Cargo
+  "azul amanhã": 11,
+  "azul e-fácil": 31,
+  // Latam
+  "latam": 12,
+  // Via Brasil
+  "via brasil": 13,
+};
+
+// Extrair service_id da observation do pedido
+function extractServiceIdFromObservation(observation: string | null): number | null {
+  if (!observation) return null;
+  
+  // Formato: [FRETE] Transportadora - Serviço | R$ XX.XX
+  const match = observation.match(/\[FRETE\]\s*([^-]+)\s*-\s*([^|]+)/i);
+  if (!match) return null;
+  
+  const carrier = match[1].trim().toLowerCase();
+  const service = match[2].trim().toLowerCase();
+  
+  // Tentar encontrar por serviço específico primeiro
+  const fullKey = `${carrier} ${service}`.toLowerCase();
+  if (CARRIER_SERVICE_MAP[fullKey]) return CARRIER_SERVICE_MAP[fullKey];
+  if (CARRIER_SERVICE_MAP[service]) return CARRIER_SERVICE_MAP[service];
+  if (CARRIER_SERVICE_MAP[carrier]) return CARRIER_SERVICE_MAP[carrier];
+  
+  // Verificar se é Jadlog
+  if (carrier.includes("jadlog") || service.includes("package") || service.includes(".com")) {
+    if (service.includes(".com") || service.includes("com")) return 4;
+    return 3; // Jadlog Package
+  }
+  
+  // Verificar se é Correios
+  if (carrier.includes("correio") || carrier.includes("pac") || carrier.includes("sedex")) {
+    if (service.includes("sedex")) return 2;
+    if (service.includes("mini")) return 17;
+    return 1; // PAC
+  }
+  
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -42,7 +99,8 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    const { action, order_id, tenant_id } = await req.json();
+    const body = await req.json();
+    const { action, order_id, tenant_id, service_id: overrideServiceId } = body;
     
     console.log(`[melhor-envio-labels] Action: ${action}, Order: ${order_id}, Tenant: ${tenant_id}`);
 
@@ -136,7 +194,7 @@ serve(async (req) => {
     // Processar a ação solicitada
     switch (action) {
       case "create_shipment":
-        return await createShipment(baseUrl, headers, order, tenant, integration, supabase);
+        return await createShipment(baseUrl, headers, order, tenant, integration, supabase, overrideServiceId);
       
       case "buy_shipment":
         return await buyShipment(baseUrl, headers, order, supabase, tenant_id);
@@ -146,6 +204,9 @@ serve(async (req) => {
       
       case "get_status":
         return await getShipmentStatus(baseUrl, headers, order, supabase, tenant_id);
+      
+      case "cancel_shipment":
+        return await cancelShipment(baseUrl, headers, order, supabase, tenant_id);
       
       default:
         const errorMsg = `Ação desconhecida: ${action}`;
@@ -171,7 +232,8 @@ async function createShipment(
   order: any, 
   tenant: any, 
   integration: any,
-  supabase: any
+  supabase: any,
+  overrideServiceId?: number
 ) {
   console.log("[melhor-envio-labels] Criando remessa para pedido:", order.id);
 
@@ -252,9 +314,28 @@ async function createShipment(
   const toDocument = customerCpf.length === 11 ? customerCpf : "";
   const toCompanyDocument = customerCpf.length === 14 ? customerCpf : "";
 
+  // Determinar service_id: prioridade para override > shipping_service_id > extrair da observation > fallback PAC
+  let serviceId = 1; // Fallback: PAC
+  
+  if (overrideServiceId && overrideServiceId > 0) {
+    serviceId = overrideServiceId;
+    console.log("[melhor-envio-labels] Usando service_id override:", serviceId);
+  } else if (order.shipping_service_id && order.shipping_service_id > 0) {
+    serviceId = order.shipping_service_id;
+    console.log("[melhor-envio-labels] Usando service_id do pedido:", serviceId);
+  } else {
+    const extractedServiceId = extractServiceIdFromObservation(order.observation);
+    if (extractedServiceId) {
+      serviceId = extractedServiceId;
+      console.log("[melhor-envio-labels] Service_id extraído da observation:", serviceId, "de:", order.observation);
+    } else {
+      console.log("[melhor-envio-labels] ⚠️ Usando service_id padrão (PAC):", serviceId, "Observation:", order.observation);
+    }
+  }
+
   // Montar payload da remessa
   const shipmentPayload = {
-    service: 1, // PAC (pode ser configurável)
+    service: serviceId,
     agency: null,
     from: {
       name: tenant.company_name,
@@ -714,4 +795,87 @@ function cleanCep(cep: string | null): string {
 function cleanDocument(doc: string | null): string {
   if (!doc) return "";
   return doc.replace(/\D/g, "");
+}
+
+// Cancelar remessa no Melhor Envio
+async function cancelShipment(
+  baseUrl: string,
+  headers: Record<string, string>,
+  order: any,
+  supabase: any,
+  tenant_id: string
+) {
+  const shipmentId = order.melhor_envio_shipment_id;
+  
+  if (!shipmentId) {
+    return new Response(
+      JSON.stringify({ success: false, error: "Pedido não possui remessa no Melhor Envio para cancelar" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  console.log("[melhor-envio-labels] Cancelando remessa:", shipmentId);
+
+  const cancelPayload = {
+    order: {
+      id: shipmentId,
+      reason_id: 2, // Motivo padrão para cancelamento via API
+      description: "Cancelamento solicitado pelo sistema OrderZaps"
+    }
+  };
+
+  const response = await fetch(`${baseUrl}/me/shipment/cancel`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(cancelPayload)
+  });
+
+  const responseText = await response.text();
+  console.log("[melhor-envio-labels] Cancel response status:", response.status);
+  console.log("[melhor-envio-labels] Cancel response:", responseText);
+
+  await saveIntegrationLog(
+    supabase,
+    tenant_id,
+    order.id,
+    "cancel_shipment",
+    response.status,
+    cancelPayload,
+    responseText,
+    !response.ok ? responseText : undefined
+  );
+
+  if (!response.ok) {
+    let errorMessage = "Erro ao cancelar remessa";
+    try {
+      const errorData = JSON.parse(responseText);
+      errorMessage = errorData.message || errorData.error || errorMessage;
+    } catch {
+      errorMessage = responseText || errorMessage;
+    }
+    
+    return new Response(
+      JSON.stringify({ success: false, error: errorMessage }),
+      { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // Limpar o shipment_id do pedido para permitir nova remessa
+  await supabase
+    .from("orders")
+    .update({ 
+      melhor_envio_shipment_id: null,
+      melhor_envio_tracking_code: null 
+    })
+    .eq("id", order.id);
+
+  console.log("[melhor-envio-labels] Remessa cancelada e pedido atualizado");
+
+  return new Response(
+    JSON.stringify({ 
+      success: true, 
+      message: "Remessa cancelada com sucesso. Você pode criar uma nova remessa."
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
 }

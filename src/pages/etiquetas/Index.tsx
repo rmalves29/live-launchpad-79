@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw, Settings, AlertCircle, ExternalLink, Pencil, Save, X, Square, CheckSquare } from 'lucide-react';
+import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw, Settings, AlertCircle, ExternalLink, Pencil, Save, X, Square, CheckSquare, Ban, RotateCcw } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -17,6 +17,16 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+// Mapeamento de transportadoras para seleção
+const CARRIER_OPTIONS = [
+  { id: 1, name: 'Correios PAC', company: 'Correios' },
+  { id: 2, name: 'Correios SEDEX', company: 'Correios' },
+  { id: 17, name: 'Mini Envios', company: 'Correios' },
+  { id: 3, name: 'Jadlog Package', company: 'Jadlog' },
+  { id: 4, name: 'Jadlog .Com', company: 'Jadlog' },
+];
 interface Order {
   id: number;
   unique_order_id: string;
