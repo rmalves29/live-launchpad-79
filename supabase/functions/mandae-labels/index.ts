@@ -145,6 +145,10 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
     .select("*")
     .eq("cart_id", order.cart_id);
 
+  // Funções auxiliares
+  const cleanPhone = (phone: string) => phone?.replace(/\D/g, '') || '';
+  const cleanCep = (cep: string) => cep?.replace(/\D/g, '') || '';
+
   // Buscar dados do cliente para obter o bairro e e-mail (obrigatório no Mandae)
   const cleanPhoneForQuery = order.customer_phone?.replace(/\D/g, '') || '';
   const { data: customer } = await supabase
@@ -169,10 +173,6 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   if (items && items.length > 0) {
     totalWeight = items.reduce((sum: number, item: any) => sum + (0.3 * item.qty), 0);
   }
-
-  // Limpar dados
-  const cleanPhone = (phone: string) => phone?.replace(/\D/g, '') || '';
-  const cleanCep = (cep: string) => cep?.replace(/\D/g, '') || '';
 
   // Detectar serviço Mandae pelo campo observation do pedido
   // Formato esperado: "[FRETE] Mandae - Econômico | R$ 7.93 | Prazo: 4 dias úteis"
