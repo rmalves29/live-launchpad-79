@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Pencil, Trash2, Truck, Package, Info, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useTenantContext } from '@/contexts/TenantContext';
@@ -19,7 +20,30 @@ interface ShippingOption {
   delivery_days: number;
   price: number;
   is_active: boolean;
+  carrier_service_id: number | null;
+  carrier_service_name: string | null;
 }
+
+interface CarrierService {
+  id: number;
+  name: string;
+  company: string;
+}
+
+// Serviços de transportadora do Melhor Envio
+const MELHOR_ENVIO_SERVICES: CarrierService[] = [
+  { id: 1, name: 'PAC', company: 'Correios' },
+  { id: 2, name: 'SEDEX', company: 'Correios' },
+  { id: 3, name: '.Package', company: 'Jadlog' },
+  { id: 4, name: '.Com', company: 'Jadlog' },
+  { id: 17, name: 'Expresso', company: 'AZUL Cargo' },
+];
+
+// Serviços da Mandae
+const MANDAE_SERVICES: CarrierService[] = [
+  { id: 101, name: 'Econômico', company: 'Mandae' },
+  { id: 102, name: 'Expresso', company: 'Mandae' },
+];
 
 export const ShippingOptionsManager = () => {
   const { toast } = useToast();
@@ -30,6 +54,8 @@ export const ShippingOptionsManager = () => {
   const [orderMergeDays, setOrderMergeDays] = useState<number>(3);
   const [savingMergeDays, setSavingMergeDays] = useState(false);
   const [tableExists, setTableExists] = useState(false);
+  const [activeIntegration, setActiveIntegration] = useState<string | null>(null);
+  const [availableCarriers, setAvailableCarriers] = useState<CarrierService[]>([]);
   
   // Form state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -38,7 +64,9 @@ export const ShippingOptionsManager = () => {
     name: '',
     delivery_days: 5,
     price: 0,
-    is_active: true
+    is_active: true,
+    carrier_service_id: null as number | null,
+    carrier_service_name: null as string | null
   });
 
   const loadConfig = async () => {
@@ -46,6 +74,27 @@ export const ShippingOptionsManager = () => {
     
     setLoading(true);
     try {
+      // Buscar integração de frete ativa
+      const { data: integrations, error: intError } = await supabase
+        .from('shipping_integrations')
+        .select('provider, is_active')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+
+      if (!intError && integrations && integrations.length > 0) {
+        // Priorizar Mandae se estiver ativo
+        const mandae = integrations.find(i => i.provider === 'mandae');
+        const melhorEnvio = integrations.find(i => i.provider === 'melhor_envio');
+        
+        if (mandae) {
+          setActiveIntegration('mandae');
+          setAvailableCarriers(MANDAE_SERVICES);
+        } else if (melhorEnvio) {
+          setActiveIntegration('melhor_envio');
+          setAvailableCarriers(MELHOR_ENVIO_SERVICES);
+        }
+      }
+
       // Tentar carregar opções de frete do banco
       const { data: shippingOptions, error: shippingError } = await supabase
         .from('custom_shipping_options' as any)
@@ -60,7 +109,9 @@ export const ShippingOptionsManager = () => {
           name: opt.name,
           delivery_days: opt.delivery_days,
           price: Number(opt.price),
-          is_active: opt.is_active
+          is_active: opt.is_active,
+          carrier_service_id: opt.carrier_service_id || null,
+          carrier_service_name: opt.carrier_service_name || null
         })));
       } else {
         console.log('Tabela custom_shipping_options não existe ou erro:', shippingError);
@@ -98,7 +149,9 @@ export const ShippingOptionsManager = () => {
         name: option.name,
         delivery_days: option.delivery_days,
         price: option.price,
-        is_active: option.is_active
+        is_active: option.is_active,
+        carrier_service_id: option.carrier_service_id,
+        carrier_service_name: option.carrier_service_name
       });
     } else {
       setEditingOption(null);
@@ -106,10 +159,31 @@ export const ShippingOptionsManager = () => {
         name: '',
         delivery_days: 5,
         price: 0,
-        is_active: true
+        is_active: true,
+        carrier_service_id: null,
+        carrier_service_name: null
       });
     }
     setIsDialogOpen(true);
+  };
+
+  const handleCarrierChange = (value: string) => {
+    if (value === 'none') {
+      setFormData(prev => ({ 
+        ...prev, 
+        carrier_service_id: null, 
+        carrier_service_name: null 
+      }));
+    } else {
+      const carrier = availableCarriers.find(c => c.id === parseInt(value));
+      if (carrier) {
+        setFormData(prev => ({ 
+          ...prev, 
+          carrier_service_id: carrier.id, 
+          carrier_service_name: `${carrier.company} - ${carrier.name}` 
+        }));
+      }
+    }
   };
 
   const handleSave = async () => {
@@ -134,6 +208,8 @@ export const ShippingOptionsManager = () => {
             delivery_days: formData.delivery_days,
             price: formData.price,
             is_active: formData.is_active,
+            carrier_service_id: formData.carrier_service_id,
+            carrier_service_name: formData.carrier_service_name,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingOption.id)
@@ -156,7 +232,9 @@ export const ShippingOptionsManager = () => {
             name: formData.name,
             delivery_days: formData.delivery_days,
             price: formData.price,
-            is_active: formData.is_active
+            is_active: formData.is_active,
+            carrier_service_id: formData.carrier_service_id,
+            carrier_service_name: formData.carrier_service_name
           })
           .select()
           .single();
@@ -168,7 +246,9 @@ export const ShippingOptionsManager = () => {
           name: data.name,
           delivery_days: data.delivery_days,
           price: Number(data.price),
-          is_active: data.is_active
+          is_active: data.is_active,
+          carrier_service_id: data.carrier_service_id || null,
+          carrier_service_name: data.carrier_service_name || null
         };
         setOptions(prev => [...prev, newOption]);
         toast({ title: 'Sucesso', description: 'Opção de frete criada' });
@@ -359,6 +439,40 @@ export const ShippingOptionsManager = () => {
                       />
                     </div>
                   </div>
+                  
+                  {/* Carrier selection */}
+                  <div className="space-y-2">
+                    <Label htmlFor="carrier">Transportadora para Etiqueta</Label>
+                    {activeIntegration ? (
+                      <Select 
+                        value={formData.carrier_service_id?.toString() || 'none'} 
+                        onValueChange={handleCarrierChange}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a transportadora" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Nenhuma (retirada local)</SelectItem>
+                          {availableCarriers.map((carrier) => (
+                            <SelectItem key={carrier.id} value={carrier.id.toString()}>
+                              {carrier.company} - {carrier.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Alert>
+                        <Info className="h-4 w-4" />
+                        <AlertDescription className="text-sm">
+                          Configure uma integração de frete (Melhor Envio ou Mandae) para vincular transportadoras.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      A transportadora vinculada será usada automaticamente na geração de etiquetas.
+                    </p>
+                  </div>
+                  
                   <div className="flex items-center gap-2">
                     <Switch
                       id="is_active"
@@ -396,6 +510,7 @@ export const ShippingOptionsManager = () => {
                   <TableHead>Nome</TableHead>
                   <TableHead>Prazo</TableHead>
                   <TableHead>Valor</TableHead>
+                  <TableHead>Transportadora</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
@@ -406,6 +521,13 @@ export const ShippingOptionsManager = () => {
                     <TableCell className="font-medium">{option.name}</TableCell>
                     <TableCell>{option.delivery_days} {option.delivery_days === 1 ? 'dia' : 'dias'}</TableCell>
                     <TableCell>{formatCurrency(option.price)}</TableCell>
+                    <TableCell>
+                      {option.carrier_service_name ? (
+                        <span className="text-sm text-primary">{option.carrier_service_name}</span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Nenhuma</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Switch
                         checked={option.is_active}
