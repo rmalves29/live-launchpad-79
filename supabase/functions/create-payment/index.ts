@@ -214,6 +214,9 @@ serve(async (req) => {
 
         console.log(`[create-payment] Order ${orderId}: current total=${currentTotal}, shipping=${shippingValue}, new total=${newTotal}`);
 
+        // Extrair service_id do shippingData se disponível
+        const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
+
         const { error: updateError } = await sb
           .from("orders")
           .update({
@@ -226,6 +229,7 @@ serve(async (req) => {
             customer_state: payload.addressData.state,
             observation: nextObs,
             total_amount: newTotal,
+            shipping_service_id: shippingServiceId, // Salva a transportadora selecionada
           })
           .eq("id", orderId);
 
