@@ -318,7 +318,27 @@ serve(async (req) => {
 
       let cartItem;
       if (existingItem) {
-        // Update existing item - also refresh product snapshot
+        // DEDUPLICATION: Check if this product was added recently (within 3 minutes)
+        // This prevents duplicate quantities from corrupted/retried messages
+        const itemCreatedAt = new Date(existingItem.created_at).getTime();
+        const threeMinutesAgo = Date.now() - (3 * 60 * 1000); // 3 minutes
+        
+        if (itemCreatedAt > threeMinutesAgo) {
+          // Product was added less than 3 minutes ago - skip to prevent duplicate
+          console.log(`[zapi-webhook] ⏭️ SKIPPING duplicate product ${product.code} - already added ${Math.round((Date.now() - itemCreatedAt) / 1000)}s ago`);
+          results.push({ 
+            code, 
+            success: true, 
+            skipped: 'recent_duplicate',
+            product_name: product.name,
+            cart_id: cart.id,
+            existing_qty: existingItem.qty,
+            seconds_ago: Math.round((Date.now() - itemCreatedAt) / 1000)
+          });
+          continue;
+        }
+        
+        // Product exists but was added more than 3 minutes ago - customer genuinely wants another
         const { data: updatedItem, error: updateError } = await supabase
           .from('cart_items')
           .update({
