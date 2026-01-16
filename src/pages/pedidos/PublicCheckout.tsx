@@ -17,6 +17,7 @@ import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
+import { getActiveShippingIntegration } from '@/lib/shipping-utils';
 
 interface Tenant {
   id: string;
@@ -305,14 +306,25 @@ const PublicCheckout = () => {
         }));
       }
 
-      // Testar token Melhor Envio
-      const tokenTestResponse = await supabase.functions.invoke('melhor-envio-test-token', {
-        body: { tenant_id: tenant.id }
-      });
+      // Detectar qual integração de frete está ativa
+      const activeIntegration = await getActiveShippingIntegration(tenant.id);
+      console.log('[PublicCheckout] Integração de frete ativa:', activeIntegration);
 
-      if (tokenTestResponse.error || !tokenTestResponse.data?.valid) {
-        console.log('Token inválido, apenas retirada disponível');
+      if (!activeIntegration.provider) {
+        console.log('[PublicCheckout] Nenhuma integração de frete ativa, usando apenas opções customizadas');
         return;
+      }
+
+      // Se for Melhor Envio, testar token primeiro
+      if (activeIntegration.testFunctionName) {
+        const tokenTestResponse = await supabase.functions.invoke(activeIntegration.testFunctionName, {
+          body: { tenant_id: tenant.id }
+        });
+
+        if (tokenTestResponse.error || !tokenTestResponse.data?.valid) {
+          console.log('[PublicCheckout] Token inválido, apenas retirada disponível');
+          return;
+        }
       }
 
       // Calcular frete com todos os items dos pedidos selecionados
@@ -327,7 +339,9 @@ const PublicCheckout = () => {
         quantity: Number(item.qty) || 1
       }));
 
-      const shippingResponse = await supabase.functions.invoke('melhor-envio-shipping', {
+      // Chamar a função de frete ativa (mandae-shipping ou melhor-envio-shipping)
+      console.log(`[PublicCheckout] Chamando ${activeIntegration.functionName}...`);
+      const shippingResponse = await supabase.functions.invoke(activeIntegration.functionName, {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
           tenant_id: tenant.id,
@@ -335,7 +349,10 @@ const PublicCheckout = () => {
         }
       });
 
-      if (shippingResponse.error) throw new Error('Erro ao calcular frete');
+      if (shippingResponse.error) {
+        console.error('[PublicCheckout] Erro na função de frete:', shippingResponse.error);
+        throw new Error('Erro ao calcular frete');
+      }
 
       const data = shippingResponse.data;
       if (data?.success && Array.isArray(data.shipping_options)) {
@@ -344,7 +361,7 @@ const PublicCheckout = () => {
           .map((option: any) => ({
             id: String(option.service_id || option.id || Math.random()),
             name: String(option.service_name || option.name || 'Transportadora'),
-            company: String(option.company?.name || option.company || 'Melhor Envio'),
+            company: String(option.company?.name || option.company || activeIntegration.provider === 'mandae' ? 'Mandae' : 'Melhor Envio'),
             price: parseFloat(option.price || 0).toFixed(2),
             delivery_time: String(option.delivery_time || '5-10 dias'),
             custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
@@ -352,7 +369,7 @@ const PublicCheckout = () => {
 
         if (validOptions.length > 0) {
           const filteredOptions = filterShippingOptions(validOptions);
-          // Preservar opção de merge + opções customizadas + opções do Melhor Envio
+          // Preservar opção de merge + opções customizadas + opções da transportadora
           const allOptions = mergeOption 
             ? [mergeOption, ...fallbackShipping, ...filteredOptions]
             : [...fallbackShipping, ...filteredOptions];

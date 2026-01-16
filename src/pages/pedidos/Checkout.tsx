@@ -18,6 +18,7 @@ import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
+import { getActiveShippingIntegration } from '@/lib/shipping-utils';
 
 
 interface OrderItem {
@@ -539,27 +540,42 @@ const Checkout = () => {
         throw new Error('ID do tenant não identificado');
       }
 
-      console.log('🔍 Testando token Melhor Envio...');
-      
-      // Testar token primeiro
-      const tokenTestResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-test-token', {
-        body: { tenant_id: tenantId }
-      });
-      
-      console.log('🧪 Resposta do teste de token:', tokenTestResponse);
-      
-      if (tokenTestResponse.error) {
-        console.error('❌ Erro na função de teste de token:', tokenTestResponse.error);
-        throw new Error('Erro ao verificar token do Melhor Envio');
+      // Detectar qual integração de frete está ativa
+      console.log('🔍 Detectando integração de frete ativa...');
+      const activeIntegration = await getActiveShippingIntegration(tenantId);
+      console.log('🚚 Integração ativa:', activeIntegration);
+
+      if (!activeIntegration.provider) {
+        console.log('⚠️ Nenhuma integração de frete ativa, usando apenas opções customizadas');
+        toast({
+          title: 'Aviso',
+          description: 'Nenhuma integração de frete ativa. Usando opções de frete fixo.',
+        });
+        return;
       }
 
-      const tokenTest = tokenTestResponse.data;
-      if (!tokenTest?.valid) {
-        console.error('❌ Token inválido:', tokenTest);
-        throw new Error(tokenTest?.error || 'Token do Melhor Envio inválido ou expirado');
+      // Se for Melhor Envio, testar token primeiro
+      if (activeIntegration.testFunctionName) {
+        console.log('🔍 Testando token...');
+        const tokenTestResponse = await supabaseTenant.raw.functions.invoke(activeIntegration.testFunctionName, {
+          body: { tenant_id: tenantId }
+        });
+        
+        console.log('🧪 Resposta do teste de token:', tokenTestResponse);
+        
+        if (tokenTestResponse.error) {
+          console.error('❌ Erro na função de teste de token:', tokenTestResponse.error);
+          throw new Error('Erro ao verificar token');
+        }
+
+        const tokenTest = tokenTestResponse.data;
+        if (!tokenTest?.valid) {
+          console.error('❌ Token inválido:', tokenTest);
+          throw new Error(tokenTest?.error || 'Token inválido ou expirado');
+        }
+        
+        console.log('✅ Token válido, calculando frete...');
       }
-      
-      console.log('✅ Token válido, calculando frete...');
 
       // Preparar dados do produto de forma segura
       const products = order.items.map(item => ({
@@ -574,9 +590,9 @@ const Checkout = () => {
       
       console.log('📦 Produtos preparados:', products);
       
-      // Calcular frete
-      console.log('📡 Enviando dados para cálculo de frete...');
-      const shippingResponse = await supabaseTenant.raw.functions.invoke('melhor-envio-shipping', {
+      // Calcular frete usando a integração ativa
+      console.log(`📡 Chamando ${activeIntegration.functionName}...`);
+      const shippingResponse = await supabaseTenant.raw.functions.invoke(activeIntegration.functionName, {
         body: {
           to_postal_code: cep.replace(/[^0-9]/g, ''),
           tenant_id: tenantId,
@@ -613,7 +629,7 @@ const Checkout = () => {
             return {
               id: String(option.service_id || option.id || Math.random()),
               name: String(option.service_name || option.name || 'Transportadora'),
-              company: String(option.company?.name || option.company || 'Melhor Envio'),
+              company: String(option.company?.name || option.company || (activeIntegration.provider === 'mandae' ? 'Mandae' : 'Melhor Envio')),
               price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
               delivery_time: String(option.delivery_time || option.custom_delivery_time || '5-10 dias'),
               custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
