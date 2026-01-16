@@ -9,8 +9,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Send, Users, Calendar, Filter, Tag, RefreshCw } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Loader2, Send, Users, Calendar as CalendarIcon, Filter, Tag, RefreshCw, Clock, Database } from 'lucide-react';
 import { normalizeForSending } from '@/lib/phone-utils';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 interface FilterCriteria {
   isPaid: string;
@@ -21,10 +27,10 @@ interface FilterCriteria {
 interface Customer {
   customer_phone: string;
   customer_name?: string;
-  event_type: string;
-  event_date: string;
-  total_amount: number;
-  is_paid: boolean;
+  event_type?: string;
+  event_date?: string;
+  total_amount?: number;
+  is_paid?: boolean;
 }
 
 interface SendStatus {
@@ -84,6 +90,14 @@ export default function Cobranca() {
   const [delayBetweenMessages, setDelayBetweenMessages] = useState(3); // segundos entre cada mensagem
   const [messagesBeforePause, setMessagesBeforePause] = useState(10); // qtd de mensagens antes da pausa
   const [pauseDuration, setPauseDuration] = useState(30); // segundos de pausa a cada X mensagens
+
+  // Estado para agendamento
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
+  const [scheduledTime, setScheduledTime] = useState('09:00');
+
+  // Estado para filtro de toda base
+  const [useAllCustomers, setUseAllCustomers] = useState(false);
 
   // Carregar template padrão MSG_MASSA e URL do WhatsApp
   useEffect(() => {
@@ -184,6 +198,12 @@ export default function Cobranca() {
   };
 
   const loadCustomers = async () => {
+    // Se estiver usando toda a base, carregar da tabela customers
+    if (useAllCustomers) {
+      await loadAllCustomers();
+      return;
+    }
+
     if (!filters.orderDate) {
       setCustomers([]);
       return;
@@ -247,13 +267,171 @@ export default function Cobranca() {
     }
   };
 
-  useEffect(() => {
-    if (filters.orderDate) {
-      loadCustomers();
+  // Carregar todos os clientes da base (sem filtro de pedidos)
+  const loadAllCustomers = async () => {
+    try {
+      setLoading(true);
+      
+      const { data, error } = await supabaseTenant
+        .from('customers')
+        .select('phone, name')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+
+      // Mapear para o formato esperado
+      const mappedCustomers: Customer[] = data?.map(c => ({
+        customer_phone: c.phone,
+        customer_name: c.name
+      })) || [];
+
+      setCustomers(mappedCustomers);
+      
+      // Inicializar status como pendente para todos
+      const initialStatuses: Record<string, SendStatus> = {};
+      mappedCustomers.forEach(c => {
+        initialStatuses[c.customer_phone] = { phone: c.customer_phone, status: 'pending' };
+      });
+      setSendStatuses(initialStatuses);
+      
+      toast({
+        title: 'Base completa carregada',
+        description: `${mappedCustomers.length} cliente(s) encontrado(s)`,
+      });
+    } catch (error: any) {
+      console.error('Erro ao carregar todos os clientes:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao carregar base de clientes',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
     }
-  }, [filters]);
+  };
+
+  useEffect(() => {
+    if (useAllCustomers) {
+      loadAllCustomers();
+    } else if (filters.orderDate) {
+      loadCustomers();
+    } else {
+      setCustomers([]);
+    }
+  }, [filters, useAllCustomers]);
+
+  // Função para agendar envio
+  const scheduleMessage = async () => {
+    if (!scheduledDate || !scheduledTime) {
+      toast({
+        title: 'Erro',
+        description: 'Selecione a data e hora para o agendamento',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!messageTemplate.trim()) {
+      toast({
+        title: 'Erro',
+        description: 'Digite uma mensagem para enviar',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (customers.length === 0) {
+      toast({
+        title: 'Erro',
+        description: 'Nenhum cliente encontrado com os filtros aplicados',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!tenant?.id) {
+      toast({
+        title: 'Erro',
+        description: 'Tenant não identificado',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Criar data/hora completa
+    const [hours, minutes] = scheduledTime.split(':').map(Number);
+    const scheduledDateTime = new Date(scheduledDate);
+    scheduledDateTime.setHours(hours, minutes, 0, 0);
+
+    // Verificar se a data é no futuro
+    if (scheduledDateTime <= new Date()) {
+      toast({
+        title: 'Erro',
+        description: 'A data e hora de agendamento devem ser no futuro',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      // Criar job agendado na tabela sending_jobs
+      const { error } = await supabaseTenant.from('sending_jobs').insert({
+        tenant_id: tenant.id,
+        job_type: 'scheduled_mass_message',
+        status: 'scheduled',
+        total_items: customers.length,
+        processed_items: 0,
+        current_index: 0,
+        started_at: scheduledDateTime.toISOString(),
+        job_data: {
+          scheduled_at: scheduledDateTime.toISOString(),
+          message_template: messageTemplate,
+          customers: customers.map(c => ({
+            phone: c.customer_phone,
+            name: c.customer_name || ''
+          })),
+          tag_id: selectedTagId && selectedTagId !== 'none' ? selectedTagId : null,
+          delay_between_messages: delayBetweenMessages,
+          messages_before_pause: messagesBeforePause,
+          pause_duration: pauseDuration,
+          filters: {
+            is_paid: filters.isPaid,
+            event_type: filters.eventType,
+            order_date: filters.orderDate,
+            use_all_customers: useAllCustomers
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Envio agendado!',
+        description: `${customers.length} mensagens serão enviadas em ${format(scheduledDateTime, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`,
+      });
+
+      // Resetar campos de agendamento
+      setIsScheduled(false);
+      setScheduledDate(undefined);
+      setScheduledTime('09:00');
+
+    } catch (error: any) {
+      console.error('Erro ao agendar envio:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao agendar envio',
+        variant: 'destructive'
+      });
+    }
+  };
 
   const handleSendMessages = async () => {
+    // Se for agendado, usar a função de agendamento
+    if (isScheduled) {
+      await scheduleMessage();
+      return;
+    }
+
     if (!messageTemplate.trim()) {
       toast({
         title: 'Erro',
@@ -430,13 +608,38 @@ export default function Cobranca() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Toggle para usar toda base */}
+          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
+            <div className="flex items-center gap-3">
+              <Database className="w-5 h-5 text-primary" />
+              <div>
+                <Label htmlFor="useAllCustomers" className="font-medium">
+                  Enviar para toda a base de clientes
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Ignora filtros de pedido e envia para todos os clientes cadastrados
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="useAllCustomers"
+              checked={useAllCustomers}
+              onCheckedChange={setUseAllCustomers}
+            />
+          </div>
+
+          {/* Filtros normais (desabilitados quando usa toda base) */}
+          <div className={cn(
+            "grid grid-cols-1 md:grid-cols-3 gap-4 transition-opacity",
+            useAllCustomers && "opacity-50 pointer-events-none"
+          )}>
             {/* Filtro de Pagamento */}
             <div className="space-y-2">
               <Label htmlFor="isPaid">Status de Pagamento</Label>
               <Select
                 value={filters.isPaid}
                 onValueChange={(value) => setFilters({ ...filters, isPaid: value })}
+                disabled={useAllCustomers}
               >
                 <SelectTrigger id="isPaid">
                   <SelectValue placeholder="Selecione..." />
@@ -455,6 +658,7 @@ export default function Cobranca() {
               <Select
                 value={filters.eventType}
                 onValueChange={(value) => setFilters({ ...filters, eventType: value })}
+                disabled={useAllCustomers}
               >
                 <SelectTrigger id="eventType">
                   <SelectValue placeholder="Selecione..." />
@@ -476,9 +680,102 @@ export default function Cobranca() {
                 type="date"
                 value={filters.orderDate}
                 onChange={(e) => setFilters({ ...filters, orderDate: e.target.value })}
+                disabled={useAllCustomers}
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Card de Agendamento */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="w-5 h-5" />
+            Agendamento de Envio
+          </CardTitle>
+          <CardDescription>
+            Agende o envio para uma data e hora específica
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-primary" />
+              <div>
+                <Label htmlFor="isScheduled" className="font-medium">
+                  Agendar envio
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  As mensagens serão enviadas automaticamente na data e hora selecionadas
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="isScheduled"
+              checked={isScheduled}
+              onCheckedChange={setIsScheduled}
+            />
+          </div>
+
+          {isScheduled && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+              {/* Seletor de Data */}
+              <div className="space-y-2">
+                <Label>Data do envio</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !scheduledDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {scheduledDate ? (
+                        format(scheduledDate, "dd/MM/yyyy", { locale: ptBR })
+                      ) : (
+                        <span>Selecione a data...</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={scheduledDate}
+                      onSelect={setScheduledDate}
+                      disabled={(date) => date < new Date()}
+                      initialFocus
+                      className={cn("p-3 pointer-events-auto")}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Seletor de Hora */}
+              <div className="space-y-2">
+                <Label htmlFor="scheduledTime">Hora do envio</Label>
+                <Input
+                  id="scheduledTime"
+                  type="time"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {isScheduled && scheduledDate && scheduledTime && (
+            <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <Clock className="w-4 h-4 text-primary" />
+                <span>
+                  Envio agendado para: <strong>{format(scheduledDate, "dd/MM/yyyy", { locale: ptBR })}</strong> às <strong>{scheduledTime}</strong>
+                </span>
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -554,6 +851,12 @@ export default function Cobranca() {
           <CardTitle className="flex items-center gap-2">
             <Users className="w-5 h-5" />
             Clientes que Receberão a Mensagem
+            {useAllCustomers && (
+              <Badge variant="outline" className="ml-2">
+                <Database className="w-3 h-3 mr-1" />
+                Base completa
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -568,9 +871,9 @@ export default function Cobranca() {
                   <Users className="w-4 h-4 mr-2" />
                   {customers.length} cliente(s)
                 </Badge>
-                {filters.orderDate && (
+                {!useAllCustomers && filters.orderDate && (
                   <Badge variant="outline" className="text-sm px-3 py-1">
-                    <Calendar className="w-3 h-3 mr-2" />
+                    <CalendarIcon className="w-3 h-3 mr-2" />
                     {filters.orderDate}
                   </Badge>
                 )}
@@ -604,7 +907,7 @@ export default function Cobranca() {
                 </div>
               )}
 
-              {!filters.orderDate ? (
+              {!useAllCustomers && !filters.orderDate ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   Selecione a data do pedido para visualizar os clientes
                 </p>
@@ -706,7 +1009,7 @@ export default function Cobranca() {
 
             <Button
               onClick={handleSendMessages}
-              disabled={sending || customers.length === 0 || !messageTemplate.trim()}
+              disabled={sending || customers.length === 0 || !messageTemplate.trim() || (isScheduled && (!scheduledDate || !scheduledTime))}
               size="lg"
               className="gap-2"
             >
@@ -714,6 +1017,11 @@ export default function Cobranca() {
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Enviando {sendProgress.current}/{sendProgress.total}
+                </>
+              ) : isScheduled ? (
+                <>
+                  <Clock className="w-4 h-4" />
+                  Agendar para {customers.length} Cliente(s)
                 </>
               ) : (
                 <>
