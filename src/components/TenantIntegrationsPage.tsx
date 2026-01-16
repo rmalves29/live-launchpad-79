@@ -1,6 +1,6 @@
 /**
  * Página de Integrações por Tenant
- * Permite configurar Mercado Pago, Melhor Envio e Bling ERP
+ * Permite configurar Mercado Pago, Melhor Envio, Mandae e Bling ERP
  * Usa automaticamente o tenant do usuário logado
  * Bling ERP só visível para super_admin até validação completa
  */
@@ -9,9 +9,10 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
+import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -45,14 +46,28 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
-  const { data: shippingIntegration } = useQuery({
-    queryKey: ['shipping-status', tenantId],
+  const { data: melhorEnvioIntegration } = useQuery({
+    queryKey: ['melhor-envio-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase
         .from('shipping_integrations')
         .select('is_active')
         .eq('tenant_id', tenantId)
         .eq('provider', 'melhor_envio')
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const { data: mandaeIntegration } = useQuery({
+    queryKey: ['mandae-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('shipping_integrations')
+        .select('is_active')
+        .eq('tenant_id', tenantId)
+        .eq('provider', 'mandae')
         .maybeSingle();
       return data;
     },
@@ -71,9 +86,6 @@ export default function TenantIntegrationsPage() {
     },
     enabled: !!tenantId && isSuperAdmin,
   });
-
-  // Determinar número de colunas baseado no acesso
-  const tabColumns = isSuperAdmin ? 3 : 2;
 
   // Verificar se tenant está carregando
   if (tenantLoading) {
@@ -106,7 +118,7 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue={isSuperAdmin ? "bling" : "mercadopago"} className="w-full">
-        <TabsList className={`grid w-full ${isSuperAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <TabsList className={`grid w-full ${isSuperAdmin ? 'grid-cols-4' : 'grid-cols-3'}`}>
           {isSuperAdmin && (
             <TabsTrigger value="bling" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
@@ -126,7 +138,14 @@ export default function TenantIntegrationsPage() {
           <TabsTrigger value="melhorenvio" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
             Melhor Envio
-            {shippingIntegration?.is_active && (
+            {melhorEnvioIntegration?.is_active && (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="mandae" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Mandae
+            {mandaeIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-green-600" />
             )}
           </TabsTrigger>
@@ -144,6 +163,10 @@ export default function TenantIntegrationsPage() {
 
         <TabsContent value="melhorenvio" className="mt-6">
           <ShippingIntegrations tenantId={tenantId} />
+        </TabsContent>
+
+        <TabsContent value="mandae" className="mt-6">
+          <MandaeIntegration tenantId={tenantId} />
         </TabsContent>
       </Tabs>
     </div>
