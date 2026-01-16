@@ -342,9 +342,10 @@ const Etiquetas = () => {
       const { data, error } = await supabaseTenant
         .from('webhook_logs')
         .select('*')
-        .like('webhook_type', 'melhor_envio_%')
+        .or('webhook_type.like.melhor_envio_%,webhook_type.like.mandae_%')
         .order('created_at', { ascending: false })
         .limit(100);
+
 
       if (error) throw error;
       setLogs(data || []);
