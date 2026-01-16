@@ -1108,11 +1108,60 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     });
 
     // Contar pedidos por telefone para identificar clientes com múltiplos pedidos
-    const orderCountByPhone = orders.reduce((acc, order) => {
-      const normalizedPhone = normalizeForStorage(order.customer_phone);
-      acc[normalizedPhone] = (acc[normalizedPhone] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+    // Exclui pedidos cancelados e só conta pedidos com até 3 dias de diferença entre eles
+    const orderCountByPhone = (() => {
+      // Agrupa pedidos não cancelados por telefone
+      const ordersByPhone: Record<string, Order[]> = {};
+      orders.forEach(order => {
+        if (order.is_cancelled) return; // Ignora pedidos cancelados
+        const normalizedPhone = normalizeForStorage(order.customer_phone);
+        if (!ordersByPhone[normalizedPhone]) {
+          ordersByPhone[normalizedPhone] = [];
+        }
+        ordersByPhone[normalizedPhone].push(order);
+      });
+      
+      // Para cada telefone, conta apenas pedidos dentro de 3 dias de diferença
+      const counts: Record<string, number> = {};
+      Object.entries(ordersByPhone).forEach(([phone, phoneOrders]) => {
+        if (phoneOrders.length <= 1) {
+          counts[phone] = phoneOrders.length;
+          return;
+        }
+        
+        // Ordena por data do evento
+        const sorted = [...phoneOrders].sort((a, b) => 
+          new Date(a.event_date).getTime() - new Date(b.event_date).getTime()
+        );
+        
+        // Conta pedidos que estão dentro de 3 dias de diferença de algum outro pedido
+        let validCount = 0;
+        const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+        
+        for (let i = 0; i < sorted.length; i++) {
+          const currentDate = new Date(sorted[i].event_date).getTime();
+          let hasNearbyOrder = false;
+          
+          for (let j = 0; j < sorted.length; j++) {
+            if (i === j) continue;
+            const otherDate = new Date(sorted[j].event_date).getTime();
+            if (Math.abs(currentDate - otherDate) <= THREE_DAYS_MS) {
+              hasNearbyOrder = true;
+              break;
+            }
+          }
+          
+          if (hasNearbyOrder) {
+            validCount++;
+          }
+        }
+        
+        // Se nenhum pedido tem outro próximo, conta como 1 (pedido individual)
+        counts[phone] = validCount > 0 ? validCount : 1;
+      });
+      
+      return counts;
+    })();
 
     // Estatísticas baseadas nos pedidos filtrados (para mostrar resumo do dia ou conforme filtros aplicados)
     const totalOrdersCount = filteredOrders.length;
