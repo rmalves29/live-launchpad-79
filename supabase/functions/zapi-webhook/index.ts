@@ -297,12 +297,62 @@ serve(async (req) => {
       // STOCK VALIDATION: Block if no stock available
       if (product.stock <= 0) {
         console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO para ${product.code}: estoque atual = ${product.stock}`);
+        
+        // Send out of stock message to customer via Z-API
+        try {
+          const { data: whatsappConfig } = await supabase
+            .from('integration_whatsapp')
+            .select('zapi_instance_id, zapi_token, zapi_client_token, is_active')
+            .eq('tenant_id', tenantId)
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
+            const outOfStockMessage = `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.💚`;
+            
+            // Format phone for Z-API (needs 55 prefix)
+            const phoneForZapi = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+            
+            const zapiUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/send-text`;
+            
+            const sendResponse = await fetch(zapiUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Client-Token': whatsappConfig.zapi_client_token || ''
+              },
+              body: JSON.stringify({
+                phone: phoneForZapi,
+                message: outOfStockMessage
+              })
+            });
+            
+            const sendResult = await sendResponse.json();
+            console.log(`[zapi-webhook] 📤 Mensagem de estoque esgotado enviada para ${phoneForZapi}:`, sendResult);
+            
+            // Log the outgoing message
+            await supabase.from('whatsapp_messages').insert({
+              tenant_id: tenantId,
+              phone: normalizedPhone,
+              message: outOfStockMessage,
+              type: 'outgoing',
+              product_name: product.name,
+              sent_at: new Date().toISOString(),
+            });
+          } else {
+            console.log(`[zapi-webhook] WhatsApp não configurado para enviar mensagem de estoque esgotado`);
+          }
+        } catch (msgError) {
+          console.error(`[zapi-webhook] Erro ao enviar mensagem de estoque esgotado:`, msgError);
+        }
+        
         results.push({ 
           code: codeUpper, 
           success: false, 
           error: 'out_of_stock',
           product_name: product.name,
-          current_stock: product.stock
+          current_stock: product.stock,
+          message_sent: true
         });
         continue;
       }
