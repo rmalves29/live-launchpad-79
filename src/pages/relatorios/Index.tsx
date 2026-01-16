@@ -100,10 +100,10 @@ const Relatorios = () => {
   const [topProducts, setTopProducts] = useState<ProductSales[]>([]);
   const [whatsappGroupStats, setWhatsappGroupStats] = useState<WhatsAppGroupStats[]>([]);
   const [topCustomers, setTopCustomers] = useState<CustomerStats[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'month' | 'year' | 'custom'>('today');
+  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'yesterday' | 'month' | 'year' | 'custom'>('today');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [salesFilter, setSalesFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
+  const [salesFilter, setSalesFilter] = useState<'today' | 'yesterday' | 'month' | 'year' | 'custom' | 'all'>('all');
   const [salesStartDate, setSalesStartDate] = useState('');
   const [salesEndDate, setSalesEndDate] = useState('');
   
@@ -111,12 +111,12 @@ const Relatorios = () => {
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'BAZAR' | 'LIVE'>('ALL');
   
   // Filtros específicos para Grupos WhatsApp
-  const [whatsappFilter, setWhatsappFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
+  const [whatsappFilter, setWhatsappFilter] = useState<'today' | 'yesterday' | 'month' | 'year' | 'custom' | 'all'>('all');
   const [whatsappStartDate, setWhatsappStartDate] = useState('');
   const [whatsappEndDate, setWhatsappEndDate] = useState('');
 
   // Filtros específicos para Clientes
-  const [customersFilter, setCustomersFilter] = useState<'today' | 'month' | 'year' | 'custom' | 'all'>('all');
+  const [customersFilter, setCustomersFilter] = useState<'today' | 'yesterday' | 'month' | 'year' | 'custom' | 'all'>('all');
   const [customersStartDate, setCustomersStartDate] = useState('');
   const [customersEndDate, setCustomersEndDate] = useState('');
   
@@ -142,6 +142,12 @@ const Relatorios = () => {
         case 'today':
           dateFilter = new Date().toISOString().split('T')[0];
           break;
+        case 'yesterday':
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          dateFilter = yesterday.toISOString().split('T')[0];
+          endDateFilter = yesterday.toISOString().split('T')[0];
+          break;
         case 'month':
           const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
           dateFilter = startOfMonth.toISOString().split('T')[0];
@@ -164,7 +170,7 @@ const Relatorios = () => {
         .from('orders')
         .select('id, total_amount, is_paid, cart_id');
 
-      if (salesFilter === 'custom' && dateFilter && endDateFilter) {
+      if ((salesFilter === 'custom' || salesFilter === 'yesterday') && dateFilter && endDateFilter) {
         query = query
           .gte('created_at', `${dateFilter}T00:00:00`)
           .lte('created_at', `${endDateFilter}T23:59:59`);
@@ -486,6 +492,12 @@ const Relatorios = () => {
         case 'today':
           dateFilter = today.toISOString().split('T')[0];
           break;
+        case 'yesterday':
+          const yesterdayProd = new Date(today);
+          yesterdayProd.setDate(yesterdayProd.getDate() - 1);
+          dateFilter = yesterdayProd.toISOString().split('T')[0];
+          endDateFilter = yesterdayProd.toISOString().split('T')[0];
+          break;
         case 'month':
           const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
           dateFilter = startOfMonth.toISOString().split('T')[0];
@@ -506,7 +518,7 @@ const Relatorios = () => {
         .from('orders')
         .select('id, cart_id');
 
-      if (selectedPeriod === 'custom' && dateFilter && endDateFilter) {
+      if ((selectedPeriod === 'custom' || selectedPeriod === 'yesterday') && dateFilter && endDateFilter) {
         ordersQuery = ordersQuery
           .gte('created_at', `${dateFilter}T00:00:00`)
           .lte('created_at', `${endDateFilter}T23:59:59`);
@@ -663,6 +675,12 @@ const Relatorios = () => {
         case 'today':
           dateFilter = new Date().toISOString().split('T')[0];
           break;
+        case 'yesterday':
+          const yesterdayWA = new Date();
+          yesterdayWA.setDate(yesterdayWA.getDate() - 1);
+          dateFilter = yesterdayWA.toISOString().split('T')[0];
+          endDateFilter = yesterdayWA.toISOString().split('T')[0];
+          break;
         case 'month':
           const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
           dateFilter = startOfMonth.toISOString().split('T')[0];
@@ -694,7 +712,7 @@ const Relatorios = () => {
           carts(whatsapp_group_name)
         `);
 
-      if (whatsappFilter === 'custom' && dateFilter && endDateFilter) {
+      if ((whatsappFilter === 'custom' || whatsappFilter === 'yesterday') && dateFilter && endDateFilter) {
         query = query
           .gte('created_at', `${dateFilter}T00:00:00`)
           .lte('created_at', `${endDateFilter}T23:59:59`);
@@ -804,6 +822,12 @@ const Relatorios = () => {
         case 'today':
           dateFilter = new Date().toISOString().split('T')[0];
           break;
+        case 'yesterday':
+          const yesterdayCust = new Date();
+          yesterdayCust.setDate(yesterdayCust.getDate() - 1);
+          dateFilter = yesterdayCust.toISOString().split('T')[0];
+          endDateFilter = yesterdayCust.toISOString().split('T')[0];
+          break;
         case 'month':
           const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
           dateFilter = startOfMonth.toISOString().split('T')[0];
@@ -835,7 +859,7 @@ const Relatorios = () => {
           created_at
         `);
 
-      if (customersFilter === 'custom' && dateFilter && endDateFilter) {
+      if ((customersFilter === 'custom' || customersFilter === 'yesterday') && dateFilter && endDateFilter) {
         query = query
           .gte('created_at', `${dateFilter}T00:00:00`)
           .lte('created_at', `${endDateFilter}T23:59:59`);
@@ -1102,6 +1126,7 @@ const Relatorios = () => {
                     <SelectContent>
                       <SelectItem value="all">Geral</SelectItem>
                       <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="yesterday">Ontem</SelectItem>
                       <SelectItem value="month">Este Mês</SelectItem>
                       <SelectItem value="year">Este Ano</SelectItem>
                       <SelectItem value="custom">Personalizado</SelectItem>
@@ -1391,6 +1416,7 @@ const Relatorios = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="yesterday">Ontem</SelectItem>
                       <SelectItem value="month">Este Mês</SelectItem>
                       <SelectItem value="year">Este Ano</SelectItem>
                       <SelectItem value="custom">Personalizado</SelectItem>
@@ -1484,6 +1510,7 @@ const Relatorios = () => {
                     <SelectContent>
                       <SelectItem value="all">Geral</SelectItem>
                       <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="yesterday">Ontem</SelectItem>
                       <SelectItem value="month">Este Mês</SelectItem>
                       <SelectItem value="year">Este Ano</SelectItem>
                       <SelectItem value="custom">Personalizado</SelectItem>
@@ -1622,6 +1649,7 @@ const Relatorios = () => {
                     <SelectContent>
                       <SelectItem value="all">Geral</SelectItem>
                       <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="yesterday">Ontem</SelectItem>
                       <SelectItem value="month">Este Mês</SelectItem>
                       <SelectItem value="year">Este Ano</SelectItem>
                       <SelectItem value="custom">Personalizado</SelectItem>
