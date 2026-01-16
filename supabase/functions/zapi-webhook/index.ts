@@ -292,7 +292,20 @@ serve(async (req) => {
         continue;
       }
 
-      console.log(`[zapi-webhook] Found product: ${product.name} (${product.code}) - R$ ${product.price}`);
+      console.log(`[zapi-webhook] Found product: ${product.name} (${product.code}) - R$ ${product.price} - Estoque: ${product.stock}`);
+
+      // STOCK VALIDATION: Block if no stock available
+      if (product.stock <= 0) {
+        console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO para ${product.code}: estoque atual = ${product.stock}`);
+        results.push({ 
+          code: codeUpper, 
+          success: false, 
+          error: 'out_of_stock',
+          product_name: product.name,
+          current_stock: product.stock
+        });
+        continue;
+      }
 
       // Find or create customer
       let customer = await findOrCreateCustomer(supabase, tenantId, normalizedPhone, payload.senderName || '');
@@ -338,11 +351,26 @@ serve(async (req) => {
           continue;
         }
         
+        // STOCK VALIDATION: Check if adding +1 exceeds available stock
+        const newQty = existingItem.qty + 1;
+        if (newQty > product.stock) {
+          console.log(`[zapi-webhook] ❌ ESTOQUE INSUFICIENTE para +1 ${product.code}: estoque=${product.stock}, qty atual=${existingItem.qty}`);
+          results.push({ 
+            code, 
+            success: false, 
+            error: 'insufficient_stock',
+            product_name: product.name,
+            current_stock: product.stock,
+            requested_qty: newQty
+          });
+          continue;
+        }
+        
         // Product exists but was added more than 3 minutes ago - customer genuinely wants another
         const { data: updatedItem, error: updateError } = await supabase
           .from('cart_items')
           .update({
-            qty: existingItem.qty + 1,
+            qty: newQty,
             unit_price: product.price,
             product_name: product.name,
             product_code: product.code,
@@ -358,6 +386,19 @@ serve(async (req) => {
           continue;
         }
         cartItem = updatedItem;
+        
+        // DECREMENT STOCK after successful cart update
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({ stock: product.stock - 1 })
+          .eq('id', product.id);
+        
+        if (stockError) {
+          console.log(`[zapi-webhook] Error updating stock:`, stockError);
+        } else {
+          console.log(`[zapi-webhook] ✅ Estoque decrementado: ${product.code} agora tem ${product.stock - 1}`);
+        }
+        
         console.log(`[zapi-webhook] Updated existing cart item: ${cartItem.id}, new qty: ${cartItem.qty}`);
       } else {
         // Add new item to cart with product snapshot
@@ -382,6 +423,19 @@ serve(async (req) => {
           continue;
         }
         cartItem = newItem;
+        
+        // DECREMENT STOCK after successful cart insert
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({ stock: product.stock - 1 })
+          .eq('id', product.id);
+        
+        if (stockError) {
+          console.log(`[zapi-webhook] Error updating stock:`, stockError);
+        } else {
+          console.log(`[zapi-webhook] ✅ Estoque decrementado: ${product.code} agora tem ${product.stock - 1}`);
+        }
+        
         console.log(`[zapi-webhook] Added new item to cart: ${cartItem.id}`);
       }
 
