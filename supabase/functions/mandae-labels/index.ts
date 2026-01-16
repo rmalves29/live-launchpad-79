@@ -169,10 +169,22 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   const cleanPhone = (phone: string) => phone?.replace(/\D/g, '') || '';
   const cleanCep = (cep: string) => cep?.replace(/\D/g, '') || '';
 
+  // Detectar serviço Mandae pelo campo observation do pedido
+  // Formato esperado: "[FRETE] Mandae - Econômico | R$ 7.93 | Prazo: 4 dias úteis"
+  let shippingService = "ECONOMICO"; // default
+  const obs = (order.observation || "").toLowerCase();
+  if (obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso")) {
+    shippingService = "RAPIDO";
+  } else if (obs.includes("econômico") || obs.includes("economico")) {
+    shippingService = "ECONOMICO";
+  }
+  console.log("[mandae-labels] Detected shippingService:", shippingService, "from observation:", order.observation);
+
   const orderPayload = {
     customerId: integration.client_id || tenant.id,
     scheduling: new Date().toISOString().split('T')[0],
     items: [{
+      shippingService: shippingService,
       skus: [{
         skuId: `order-${order.id}`,
         description: `Pedido #${order.id}`,
