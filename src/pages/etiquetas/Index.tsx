@@ -18,6 +18,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 
 // Mapeamento de transportadoras para seleção
 const CARRIER_OPTIONS = [
@@ -46,6 +49,14 @@ interface Order {
   melhor_envio_tracking_code?: string;
   items?: any[];
   customer_cpf?: string; // CPF do cliente (buscado da tabela customers)
+  observation?: string; // Campo de observação do pedido
+}
+
+// Estado para modal de seleção de transportadora
+interface CarrierSelectState {
+  orderId: number | null;
+  isOpen: boolean;
+  selectedCarrier: number | null;
 }
 
 // Validar dados obrigatórios para criar remessa (incluindo CPF)
@@ -106,6 +117,16 @@ const Etiquetas = () => {
   // Estado para seleção de pedidos em lote
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
+  
+  // Estado para cancelamento de remessa
+  const [cancellingOrders, setCancellingOrders] = useState<Set<number>>(new Set());
+  
+  // Estado para seleção de transportadora (frete fixo/customizado)
+  const [carrierSelect, setCarrierSelect] = useState<CarrierSelectState>({
+    orderId: null,
+    isOpen: false,
+    selectedCarrier: null
+  });
 
   // Logs state (só usado por super_admin)
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
@@ -222,6 +243,7 @@ const Etiquetas = () => {
           customer_city: order.customer_city || customer?.city,
           customer_state: order.customer_state || customer?.state,
           customer_cpf: customer?.cpf, // Sempre buscar o CPF do cliente
+          observation: order.observation, // Incluir observation para verificar frete
         };
       });
 
@@ -302,6 +324,7 @@ const Etiquetas = () => {
           customer_city: order.customer_city || customer?.city,
           customer_state: order.customer_state || customer?.state,
           customer_cpf: customer?.cpf, // Sempre buscar o CPF do cliente
+          observation: order.observation, // Incluir observation
         };
       });
 
@@ -435,6 +458,121 @@ const Etiquetas = () => {
         return newSet;
       });
     }
+  };
+
+  // Cancelar remessa no Melhor Envio para recriar com transportadora correta
+  const cancelShipment = async (orderId: number) => {
+    console.log('🗑️ [ETIQUETAS] Cancelando remessa:', { orderId });
+    
+    setCancellingOrders(prev => new Set(prev).add(orderId));
+    
+    try {
+      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+        body: {
+          action: 'cancel_shipment',
+          order_id: orderId,
+          tenant_id: supabaseTenant.getTenantId()
+        }
+      });
+
+      if (error) {
+        console.error('❌ [ETIQUETAS] Erro ao cancelar remessa:', error, 'Data:', data);
+        let errorMessage = data?.error || data?.message;
+        if (!errorMessage && error.context) {
+          try {
+            const contextBody = await error.context.json();
+            errorMessage = contextBody?.error || contextBody?.message;
+          } catch { }
+        }
+        errorMessage = errorMessage || error.message || 'Erro ao cancelar remessa';
+        throw new Error(errorMessage);
+      }
+
+      if (data?.success) {
+        toast.success('Remessa cancelada! Agora você pode criar uma nova com a transportadora correta.');
+        loadPaidOrders();
+      } else {
+        throw new Error(data?.error || 'Erro desconhecido ao cancelar remessa');
+      }
+    } catch (error: any) {
+      console.error('❌ [ETIQUETAS] Erro ao cancelar remessa:', error);
+      toast.error(`Erro ao cancelar remessa: ${error.message}`);
+    } finally {
+      setCancellingOrders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
+    }
+  };
+
+  // Criar remessa com transportadora específica
+  const sendToMelhorEnvioWithCarrier = async (orderId: number, serviceId: number) => {
+    console.log('🚀 [ETIQUETAS] Criando remessa com transportadora específica:', { orderId, serviceId });
+    
+    setProcessingOrders(prev => new Set(prev).add(orderId));
+    setCarrierSelect({ orderId: null, isOpen: false, selectedCarrier: null });
+    
+    try {
+      const requestPayload = {
+        action: 'create_shipment',
+        order_id: orderId,
+        tenant_id: supabaseTenant.getTenantId(),
+        service_id: serviceId // Transportadora específica
+      };
+
+      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+        body: requestPayload
+      });
+
+      if (error) {
+        console.error('❌ [ETIQUETAS] Erro ao criar remessa:', error, 'Data:', data);
+        let errorMessage = data?.error || data?.message;
+        if (!errorMessage && error.context) {
+          try {
+            const contextBody = await error.context.json();
+            errorMessage = contextBody?.error || contextBody?.message;
+          } catch { }
+        }
+        errorMessage = errorMessage || error.message || 'Erro ao criar remessa';
+        throw new Error(errorMessage);
+      }
+
+      if (data?.success) {
+        const carrier = CARRIER_OPTIONS.find(c => c.id === serviceId);
+        toast.success(`Remessa criada com ${carrier?.name || 'transportadora selecionada'}!`);
+        loadPaidOrders();
+      } else {
+        throw new Error(data?.error || 'Erro desconhecido');
+      }
+    } catch (error: any) {
+      console.error('❌ [ETIQUETAS] Erro ao criar remessa:', error);
+      toast.error(`Erro ao criar remessa: ${error.message}`);
+    } finally {
+      setProcessingOrders(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderId);
+        return newSet;
+      });
+    }
+  };
+
+  // Verificar se pedido usa frete fixo/customizado (precisa selecionar transportadora)
+  const isCustomShipping = (order: Order): boolean => {
+    if (!order.observation) return false;
+    // Verifica se observation contém indicador de frete fixo
+    const obs = order.observation.toLowerCase();
+    return obs.includes('frete fixo') || obs.includes('frete customizado') || 
+           (obs.includes('[frete]') && !obs.includes('jadlog') && !obs.includes('correio') && !obs.includes('pac') && !obs.includes('sedex'));
+  };
+
+  // Abrir modal de seleção de transportadora
+  const openCarrierSelect = (orderId: number) => {
+    setCarrierSelect({
+      orderId,
+      isOpen: true,
+      selectedCarrier: 1 // PAC como padrão
+    });
   };
 
   const buyShipment = async (orderId: number) => {
@@ -1359,23 +1497,70 @@ const Etiquetas = () => {
                         </div>
                       )}
 
+                      {/* Observação do frete (se existir) */}
+                      {order.observation && (
+                        <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
+                          {order.observation}
+                        </div>
+                      )}
+
                       {/* Botões de Ação */}
                       <div className="flex flex-wrap gap-2 pt-2 border-t">
-                        <Button
-                          onClick={() => sendToMelhorEnvio(order.id)}
-                          disabled={processingOrders.has(order.id) || !!order.melhor_envio_shipment_id}
-                          variant={order.melhor_envio_shipment_id ? "outline" : "default"}
-                          size="sm"
-                        >
-                          {processingOrders.has(order.id) ? (
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          ) : order.melhor_envio_shipment_id ? (
-                            <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                        {/* Botão Criar Remessa - mostra seletor se frete fixo */}
+                        {!order.melhor_envio_shipment_id && (
+                          isCustomShipping(order) ? (
+                            <Button
+                              onClick={() => openCarrierSelect(order.id)}
+                              disabled={processingOrders.has(order.id)}
+                              size="sm"
+                            >
+                              {processingOrders.has(order.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Truck className="h-4 w-4 mr-2" />
+                              )}
+                              Selecionar Transportadora
+                            </Button>
                           ) : (
-                            <Send className="h-4 w-4 mr-2" />
-                          )}
-                          {order.melhor_envio_shipment_id ? 'Remessa Criada' : 'Criar Remessa'}
-                        </Button>
+                            <Button
+                              onClick={() => sendToMelhorEnvio(order.id)}
+                              disabled={processingOrders.has(order.id)}
+                              size="sm"
+                            >
+                              {processingOrders.has(order.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Send className="h-4 w-4 mr-2" />
+                              )}
+                              Criar Remessa
+                            </Button>
+                          )
+                        )}
+
+                        {/* Status de remessa criada */}
+                        {order.melhor_envio_shipment_id && (
+                          <Badge variant="secondary" className="h-8 px-3 flex items-center gap-2">
+                            <CheckCircle className="h-3 w-3 text-green-600" />
+                            Remessa Criada
+                          </Badge>
+                        )}
+
+                        {/* Botão Cancelar Remessa - para recriar com transportadora correta */}
+                        {order.melhor_envio_shipment_id && !order.melhor_envio_tracking_code && (
+                          <Button
+                            onClick={() => cancelShipment(order.id)}
+                            disabled={cancellingOrders.has(order.id) || processingOrders.has(order.id)}
+                            variant="destructive"
+                            size="sm"
+                          >
+                            {cancellingOrders.has(order.id) ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4 mr-2" />
+                            )}
+                            Cancelar Remessa
+                          </Button>
+                        )}
 
                         {order.melhor_envio_shipment_id && !order.melhor_envio_tracking_code && (
                           <Button
@@ -1658,6 +1843,58 @@ const Etiquetas = () => {
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Modal de Seleção de Transportadora */}
+      <Dialog 
+        open={carrierSelect.isOpen} 
+        onOpenChange={(open) => !open && setCarrierSelect({ orderId: null, isOpen: false, selectedCarrier: null })}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5" />
+              Selecionar Transportadora
+            </DialogTitle>
+            <DialogDescription>
+              Este pedido usa frete fixo/customizado. Selecione a transportadora para criar a remessa no Melhor Envio.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <RadioGroup 
+              value={String(carrierSelect.selectedCarrier || 1)}
+              onValueChange={(value) => setCarrierSelect(prev => ({ ...prev, selectedCarrier: Number(value) }))}
+            >
+              {CARRIER_OPTIONS.map((carrier) => (
+                <div key={carrier.id} className="flex items-center space-x-3 py-2 px-3 rounded-lg hover:bg-muted/50">
+                  <RadioGroupItem value={String(carrier.id)} id={`carrier-${carrier.id}`} />
+                  <Label htmlFor={`carrier-${carrier.id}`} className="flex-1 cursor-pointer">
+                    <div className="font-medium">{carrier.name}</div>
+                    <div className="text-xs text-muted-foreground">{carrier.company}</div>
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setCarrierSelect({ orderId: null, isOpen: false, selectedCarrier: null })}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => carrierSelect.orderId && carrierSelect.selectedCarrier && 
+                sendToMelhorEnvioWithCarrier(carrierSelect.orderId, carrierSelect.selectedCarrier)}
+              disabled={!carrierSelect.selectedCarrier}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Criar Remessa
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
