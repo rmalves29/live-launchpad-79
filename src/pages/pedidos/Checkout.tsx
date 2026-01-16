@@ -445,6 +445,11 @@ const Checkout = () => {
       // Allow pickup option
       if (option.id === 'retirada') return true;
       
+      // Allow Mandae services
+      if (companyName.includes('mandae') || serviceName.includes('econômico') || serviceName.includes('rápido')) {
+        return true;
+      }
+      
       // Filter for J&T and Correios services
       return (
         companyName.includes('j&t') ||
