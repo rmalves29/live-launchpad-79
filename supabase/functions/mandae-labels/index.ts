@@ -215,7 +215,6 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
         fullName: recipientName,
         phone: recipientPhone,
         email: recipientEmail,
-        // Alguns cenários da Mandae validam especificamente "receipt email"
         receiptEmail: recipientEmail,
         address: {
           postalCode: cleanCep(order.customer_cep),
@@ -227,6 +226,7 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
           country: "BR"
         }
       },
+      dimensions: {
         height: 2,
         width: 16,
         length: 20,
