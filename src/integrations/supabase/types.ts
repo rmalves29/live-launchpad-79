@@ -253,6 +253,8 @@ export type Database = {
       }
       custom_shipping_options: {
         Row: {
+          carrier_service_id: number | null
+          carrier_service_name: string | null
           created_at: string
           delivery_days: number
           id: string
@@ -263,6 +265,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          carrier_service_id?: number | null
+          carrier_service_name?: string | null
           created_at?: string
           delivery_days?: number
           id?: string
@@ -273,6 +277,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          carrier_service_id?: number | null
+          carrier_service_name?: string | null
           created_at?: string
           delivery_days?: number
           id?: string

@@ -263,7 +263,16 @@ const PublicCheckout = () => {
     return options.filter(option => {
       const companyName = option.company?.toLowerCase() || '';
       const serviceName = option.name?.toLowerCase() || '';
+      
+      // Allow pickup option
       if (option.id === 'retirada') return true;
+      
+      // Allow Mandae services
+      if (companyName.includes('mandae') || serviceName.includes('econômico') || serviceName.includes('rápido')) {
+        return true;
+      }
+      
+      // Filter for J&T and Correios services
       return (
         companyName.includes('j&t') ||
         companyName.includes('correios') ||
