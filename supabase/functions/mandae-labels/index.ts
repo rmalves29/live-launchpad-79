@@ -118,6 +118,18 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
     .select("*")
     .eq("cart_id", order.cart_id);
 
+  // Buscar dados do cliente para obter o bairro
+  const cleanPhoneForQuery = order.customer_phone?.replace(/\D/g, '') || '';
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("neighborhood")
+    .eq("phone", cleanPhoneForQuery)
+    .eq("tenant_id", tenant.id)
+    .maybeSingle();
+
+  const customerNeighborhood = customer?.neighborhood || "";
+  console.log("[mandae-labels] Customer neighborhood:", customerNeighborhood);
+
   // Calcular peso e valor
   let totalWeight = 0.3;
   let totalValue = order.total_amount / 100; // Converter centavos para reais
@@ -152,7 +164,7 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
           postalCode: cleanCep(order.customer_cep),
           street: order.customer_street || "",
           number: order.customer_number || "S/N",
-          neighborhood: "", // Mandae preenche automaticamente
+          neighborhood: customerNeighborhood,
           city: order.customer_city || "",
           state: order.customer_state || "",
           country: "BR"
