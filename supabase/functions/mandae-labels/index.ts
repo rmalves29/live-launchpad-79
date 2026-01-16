@@ -6,6 +6,33 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Salvar logs na tabela webhook_logs (para aparecer em "Logs de Integração")
+async function saveIntegrationLog(
+  supabase: any,
+  tenant_id: string,
+  order_id: number,
+  action: string,
+  status_code: number,
+  request_payload: any,
+  response_body: string,
+  error_message?: string
+) {
+  try {
+    await supabase.from("webhook_logs").insert({
+      tenant_id,
+      webhook_type: `mandae_${action}`,
+      status_code,
+      payload: { order_id, action, request: request_payload },
+      response: response_body?.substring(0, 10000),
+      error_message,
+    });
+    console.log(`[mandae-labels] Log salvo: ${action} - Status ${status_code}`);
+  } catch (logError) {
+    console.error("[mandae-labels] Erro ao salvar log:", logError);
+  }
+}
+
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -153,10 +180,6 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
         price: totalValue,
         freight: 0
       }],
-      invoice: {
-        id: String(order.id),
-        key: String(order.id)
-      },
       recipient: {
         fullName: order.customer_name || "Cliente",
         phone: cleanPhone(order.customer_phone),
@@ -209,12 +232,23 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   const responseText = await response.text();
   console.log("[mandae-labels] Create response:", response.status, responseText.substring(0, 500));
 
+  await saveIntegrationLog(
+    supabase,
+    order.tenant_id,
+    order.id,
+    "create_order",
+    response.status,
+    orderPayload,
+    responseText,
+    response.ok ? undefined : responseText.substring(0, 500)
+  );
+
   if (!response.ok) {
     return new Response(
-      JSON.stringify({ 
-        success: false, 
+      JSON.stringify({
+        success: false,
         error: "Erro ao criar pedido no Mandae",
-        details: responseText
+        details: responseText,
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
