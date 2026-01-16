@@ -199,15 +199,14 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
     items: [{
       shippingService: shippingServiceId,
       skus: [{
+        id: `order-${order.id}`,
+        skuId: `order-${order.id}`,
         description: `Pedido #${order.id}`,
         quantity: 1,
         price: totalValue,
         freight: 0
       }],
       recipient: {
-        fullName: order.customer_name || "Cliente",
-        phone: cleanPhone(order.customer_phone),
-        email: tenant.email || "",
         address: {
           postalCode: cleanCep(order.customer_cep),
           street: order.customer_street || "",
