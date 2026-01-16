@@ -18,18 +18,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/useAuth';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 
-// Mapeamento de transportadoras para seleção
-const CARRIER_OPTIONS = [
-  { id: 1, name: 'Correios PAC', company: 'Correios' },
-  { id: 2, name: 'Correios SEDEX', company: 'Correios' },
-  { id: 17, name: 'Mini Envios', company: 'Correios' },
-  { id: 3, name: 'Jadlog Package', company: 'Jadlog' },
-  { id: 4, name: 'Jadlog .Com', company: 'Jadlog' },
-];
 interface Order {
   id: number;
   unique_order_id: string;
@@ -52,12 +43,6 @@ interface Order {
   observation?: string; // Campo de observação do pedido
 }
 
-// Estado para modal de seleção de transportadora
-interface CarrierSelectState {
-  orderId: number | null;
-  isOpen: boolean;
-  selectedCarrier: number | null;
-}
 
 // Validar dados obrigatórios para criar remessa (incluindo CPF)
 const validateOrderForShipment = (order: Order): { valid: boolean; missingFields: string[] } => {
@@ -121,12 +106,6 @@ const Etiquetas = () => {
   // Estado para cancelamento de remessa
   const [cancellingOrders, setCancellingOrders] = useState<Set<number>>(new Set());
   
-  // Estado para seleção de transportadora (frete fixo/customizado)
-  const [carrierSelect, setCarrierSelect] = useState<CarrierSelectState>({
-    orderId: null,
-    isOpen: false,
-    selectedCarrier: null
-  });
 
   // Logs state (só usado por super_admin)
   const [logs, setLogs] = useState<IntegrationLog[]>([]);
@@ -506,74 +485,6 @@ const Etiquetas = () => {
     }
   };
 
-  // Criar remessa com transportadora específica
-  const sendToMelhorEnvioWithCarrier = async (orderId: number, serviceId: number) => {
-    console.log('🚀 [ETIQUETAS] Criando remessa com transportadora específica:', { orderId, serviceId });
-    
-    setProcessingOrders(prev => new Set(prev).add(orderId));
-    setCarrierSelect({ orderId: null, isOpen: false, selectedCarrier: null });
-    
-    try {
-      const requestPayload = {
-        action: 'create_shipment',
-        order_id: orderId,
-        tenant_id: supabaseTenant.getTenantId(),
-        service_id: serviceId // Transportadora específica
-      };
-
-      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
-        body: requestPayload
-      });
-
-      if (error) {
-        console.error('❌ [ETIQUETAS] Erro ao criar remessa:', error, 'Data:', data);
-        let errorMessage = data?.error || data?.message;
-        if (!errorMessage && error.context) {
-          try {
-            const contextBody = await error.context.json();
-            errorMessage = contextBody?.error || contextBody?.message;
-          } catch { }
-        }
-        errorMessage = errorMessage || error.message || 'Erro ao criar remessa';
-        throw new Error(errorMessage);
-      }
-
-      if (data?.success) {
-        const carrier = CARRIER_OPTIONS.find(c => c.id === serviceId);
-        toast.success(`Remessa criada com ${carrier?.name || 'transportadora selecionada'}!`);
-        loadPaidOrders();
-      } else {
-        throw new Error(data?.error || 'Erro desconhecido');
-      }
-    } catch (error: any) {
-      console.error('❌ [ETIQUETAS] Erro ao criar remessa:', error);
-      toast.error(`Erro ao criar remessa: ${error.message}`);
-    } finally {
-      setProcessingOrders(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(orderId);
-        return newSet;
-      });
-    }
-  };
-
-  // Verificar se pedido usa frete fixo/customizado (precisa selecionar transportadora)
-  const isCustomShipping = (order: Order): boolean => {
-    if (!order.observation) return false;
-    // Verifica se observation contém indicador de frete fixo
-    const obs = order.observation.toLowerCase();
-    return obs.includes('frete fixo') || obs.includes('frete customizado') || 
-           (obs.includes('[frete]') && !obs.includes('jadlog') && !obs.includes('correio') && !obs.includes('pac') && !obs.includes('sedex'));
-  };
-
-  // Abrir modal de seleção de transportadora
-  const openCarrierSelect = (orderId: number) => {
-    setCarrierSelect({
-      orderId,
-      isOpen: true,
-      selectedCarrier: 1 // PAC como padrão
-    });
-  };
 
   const buyShipment = async (orderId: number) => {
     setProcessingOrders(prev => new Set(prev).add(orderId));
@@ -1506,35 +1417,20 @@ const Etiquetas = () => {
 
                       {/* Botões de Ação */}
                       <div className="flex flex-wrap gap-2 pt-2 border-t">
-                        {/* Botão Criar Remessa - mostra seletor se frete fixo */}
+                        {/* Botão Criar Remessa */}
                         {!order.melhor_envio_shipment_id && (
-                          isCustomShipping(order) ? (
-                            <Button
-                              onClick={() => openCarrierSelect(order.id)}
-                              disabled={processingOrders.has(order.id)}
-                              size="sm"
-                            >
-                              {processingOrders.has(order.id) ? (
-                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                              ) : (
-                                <Truck className="h-4 w-4 mr-2" />
-                              )}
-                              Selecionar Transportadora
-                            </Button>
-                          ) : (
-                            <Button
-                              onClick={() => sendToMelhorEnvio(order.id)}
-                              disabled={processingOrders.has(order.id)}
-                              size="sm"
-                            >
-                              {processingOrders.has(order.id) ? (
-                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                              ) : (
-                                <Send className="h-4 w-4 mr-2" />
-                              )}
-                              Criar Remessa
-                            </Button>
-                          )
+                          <Button
+                            onClick={() => sendToMelhorEnvio(order.id)}
+                            disabled={processingOrders.has(order.id)}
+                            size="sm"
+                          >
+                            {processingOrders.has(order.id) ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                              <Send className="h-4 w-4 mr-2" />
+                            )}
+                            Criar Remessa
+                          </Button>
                         )}
 
                         {/* Status de remessa criada */}
@@ -1844,57 +1740,6 @@ const Etiquetas = () => {
         )}
       </Tabs>
 
-      {/* Modal de Seleção de Transportadora */}
-      <Dialog 
-        open={carrierSelect.isOpen} 
-        onOpenChange={(open) => !open && setCarrierSelect({ orderId: null, isOpen: false, selectedCarrier: null })}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Truck className="h-5 w-5" />
-              Selecionar Transportadora
-            </DialogTitle>
-            <DialogDescription>
-              Este pedido usa frete fixo/customizado. Selecione a transportadora para criar a remessa no Melhor Envio.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4">
-            <RadioGroup 
-              value={String(carrierSelect.selectedCarrier || 1)}
-              onValueChange={(value) => setCarrierSelect(prev => ({ ...prev, selectedCarrier: Number(value) }))}
-            >
-              {CARRIER_OPTIONS.map((carrier) => (
-                <div key={carrier.id} className="flex items-center space-x-3 py-2 px-3 rounded-lg hover:bg-muted/50">
-                  <RadioGroupItem value={String(carrier.id)} id={`carrier-${carrier.id}`} />
-                  <Label htmlFor={`carrier-${carrier.id}`} className="flex-1 cursor-pointer">
-                    <div className="font-medium">{carrier.name}</div>
-                    <div className="text-xs text-muted-foreground">{carrier.company}</div>
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </div>
-
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setCarrierSelect({ orderId: null, isOpen: false, selectedCarrier: null })}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              onClick={() => carrierSelect.orderId && carrierSelect.selectedCarrier && 
-                sendToMelhorEnvioWithCarrier(carrierSelect.orderId, carrierSelect.selectedCarrier)}
-              disabled={!carrierSelect.selectedCarrier}
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Criar Remessa
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
