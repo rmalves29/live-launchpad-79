@@ -678,6 +678,7 @@ export type Database = {
           payment_confirmation_sent: boolean | null
           payment_link: string | null
           printed: boolean | null
+          shipping_service_id: number | null
           skip_paid_message: boolean | null
           tenant_id: string
           total_amount: number
@@ -710,6 +711,7 @@ export type Database = {
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
+          shipping_service_id?: number | null
           skip_paid_message?: boolean | null
           tenant_id: string
           total_amount: number
@@ -742,6 +744,7 @@ export type Database = {
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
           printed?: boolean | null
+          shipping_service_id?: number | null
           skip_paid_message?: boolean | null
           tenant_id?: string
           total_amount?: number
