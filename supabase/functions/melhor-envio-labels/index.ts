@@ -215,14 +215,12 @@ async function createShipment(
     customerCpf = cleanDocument(customer.cpf);
   }
 
-  // Validar CPF/CNPJ do destinatário
-  if (!customerCpf || (customerCpf.length !== 11 && customerCpf.length !== 14)) {
-    const errorMsg = "CNPJ ou CPF do destinatário é obrigatório. Cadastre o CPF do cliente.";
-    await saveIntegrationLog(supabase, tenant.id, order.id, "create_shipment", 422, {}, "", errorMsg);
-    return new Response(
-      JSON.stringify({ success: false, error: errorMsg }),
-      { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  // CPF/CNPJ do destinatário é opcional - enviar mesmo sem documento
+  if (!customerCpf) {
+    console.log("[melhor-envio-labels] ⚠️ CPF do cliente não encontrado - tentando enviar sem documento");
+  } else if (customerCpf.length !== 11 && customerCpf.length !== 14) {
+    console.log("[melhor-envio-labels] ⚠️ CPF/CNPJ inválido - tentando enviar sem documento");
+    customerCpf = ""; // Limpar documento inválido
   }
 
   // Buscar itens do pedido para calcular peso/dimensões

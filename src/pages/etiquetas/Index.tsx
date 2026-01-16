@@ -47,7 +47,8 @@ const validateOrderForShipment = (order: Order): { valid: boolean; missingFields
   if (!order.customer_street) missingFields.push('Rua');
   if (!order.customer_city) missingFields.push('Cidade');
   if (!order.customer_state) missingFields.push('Estado');
-  if (!order.customer_cpf) missingFields.push('CPF do cliente');
+  // CPF é opcional - não bloqueia mais o envio
+  // if (!order.customer_cpf) missingFields.push('CPF do cliente');
   
   return {
     valid: missingFields.length === 0,
