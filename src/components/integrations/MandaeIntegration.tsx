@@ -22,6 +22,7 @@ interface IntegrationData {
   refresh_token: string | null;
   client_id: string | null;
   client_secret: string | null;
+  webhook_secret: string | null;
   from_cep: string | null;
   sandbox: boolean;
   is_active: boolean;
@@ -38,6 +39,8 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
     from_cep: '',
     sandbox: true,
     client_id: '',
+    service_id_economico: '',
+    service_id_rapido: '',
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -69,6 +72,8 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
         from_cep: integration.from_cep || '',
         sandbox: integration.sandbox,
         client_id: integration.client_id || '',
+        service_id_economico: integration.client_secret || '',
+        service_id_rapido: integration.webhook_secret || '',
       });
     }
   }, [integration]);
@@ -109,6 +114,8 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
         from_cep: formData.from_cep || null,
         sandbox: formData.sandbox,
         client_id: formData.client_id || null,
+        client_secret: formData.service_id_economico || null,
+        webhook_secret: formData.service_id_rapido || null,
         is_active: true,
         updated_at: new Date().toISOString(),
       };
@@ -275,6 +282,18 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
                   {integration.client_id}
                 </div>
               )}
+              {integration.client_secret && (
+                <div>
+                  <span className="font-medium">ID Serviço Econômico:</span>{' '}
+                  {integration.client_secret}
+                </div>
+              )}
+              {integration.webhook_secret && (
+                <div>
+                  <span className="font-medium">ID Serviço Rápido:</span>{' '}
+                  {integration.webhook_secret}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -361,6 +380,38 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
               <p className="text-xs text-muted-foreground">
                 Necessário para alguns recursos avançados
               </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="mandae_service_economico">ID Serviço Econômico</Label>
+                <Input
+                  id="mandae_service_economico"
+                  value={formData.service_id_economico}
+                  onChange={(e) =>
+                    setFormData({ ...formData, service_id_economico: e.target.value })
+                  }
+                  placeholder="Ex: 101 ou nome do serviço"
+                />
+                <p className="text-xs text-muted-foreground">
+                  ID ou nome do serviço Econômico no catálogo Mandae
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="mandae_service_rapido">ID Serviço Rápido</Label>
+                <Input
+                  id="mandae_service_rapido"
+                  value={formData.service_id_rapido}
+                  onChange={(e) =>
+                    setFormData({ ...formData, service_id_rapido: e.target.value })
+                  }
+                  placeholder="Ex: 102 ou nome do serviço"
+                />
+                <p className="text-xs text-muted-foreground">
+                  ID ou nome do serviço Rápido no catálogo Mandae
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center space-x-2">
