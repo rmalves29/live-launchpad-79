@@ -39,9 +39,9 @@ serve(async (req) => {
   }
 
   try {
-    const { action, order_id, tenant_id, debugShippingService } = await req.json();
+    const { action, order_id, tenant_id, debugShippingService, omitShippingService } = await req.json();
     
-    console.log("[mandae-labels] Request:", { action, order_id, tenant_id, debugShippingService });
+    console.log("[mandae-labels] Request:", { action, order_id, tenant_id, debugShippingService, omitShippingService });
 
     if (!tenant_id) {
       return new Response(
@@ -115,7 +115,7 @@ serve(async (req) => {
 
     switch (action) {
       case "create_order":
-        return await createMandaeOrder(supabase, integration, order, tenant, baseUrl, authHeader, debugShippingService);
+        return await createMandaeOrder(supabase, integration, order, tenant, baseUrl, authHeader, debugShippingService, omitShippingService);
       
       case "get_tracking":
         return await getTracking(supabase, integration, order, baseUrl, authHeader);
@@ -139,8 +139,8 @@ serve(async (req) => {
   }
 });
 
-async function createMandaeOrder(supabase: any, integration: any, order: any, tenant: any, baseUrl: string, authHeader: string, debugShippingService?: string) {
-  console.log("[mandae-labels] Creating order for:", order.id, "| debugShippingService:", debugShippingService);
+async function createMandaeOrder(supabase: any, integration: any, order: any, tenant: any, baseUrl: string, authHeader: string, debugShippingService?: string, omitShippingService?: boolean) {
+  console.log("[mandae-labels] Creating order for:", order.id, "| debugShippingService:", debugShippingService, "| omitShippingService:", omitShippingService);
 
   // Buscar itens do pedido
   const { data: items } = await supabase
@@ -253,42 +253,51 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   
   console.log("[mandae-labels] Final shippingService:", shippingServiceValue, "| isRapido:", isRapido);
 
+  // Construir item do pedido - se omitShippingService=true, não inclui o campo
+  const itemPayload: any = {
+    skus: [{
+      id: `order-${order.id}`,
+      skuId: `order-${order.id}`,
+      description: `Pedido #${order.id}`,
+      quantity: 1,
+      price: totalValue,
+      freight: 0
+    }],
+    recipient: {
+      fullName: recipientName,
+      phone: recipientPhone,
+      email: recipientEmail,
+      receiptEmail: recipientEmail,
+      address: {
+        postalCode: cleanCep(order.customer_cep),
+        street: order.customer_street || "",
+        number: order.customer_number || "S/N",
+        neighborhood: customerNeighborhood,
+        city: order.customer_city || "",
+        state: order.customer_state || "",
+        country: "BR"
+      }
+    },
+    dimensions: {
+      height: 2,
+      width: 16,
+      length: 20,
+      weight: totalWeight
+    },
+    channel: "ECOMMERCE"
+  };
+
+  // Só adiciona shippingService se não for omitido
+  if (!omitShippingService) {
+    itemPayload.shippingService = shippingServiceValue;
+  } else {
+    console.log("[mandae-labels] 🔧 OMITTING shippingService field from payload");
+  }
+
   const orderPayload = {
     customerId: integration.client_id || tenant.id,
     scheduling: new Date().toISOString().split('T')[0],
-    items: [{
-      shippingService: shippingServiceValue,
-      skus: [{
-        id: `order-${order.id}`,
-        skuId: `order-${order.id}`,
-        description: `Pedido #${order.id}`,
-        quantity: 1,
-        price: totalValue,
-        freight: 0
-      }],
-      recipient: {
-        fullName: recipientName,
-        phone: recipientPhone,
-        email: recipientEmail,
-        receiptEmail: recipientEmail,
-        address: {
-          postalCode: cleanCep(order.customer_cep),
-          street: order.customer_street || "",
-          number: order.customer_number || "S/N",
-          neighborhood: customerNeighborhood,
-          city: order.customer_city || "",
-          state: order.customer_state || "",
-          country: "BR"
-        }
-      },
-      dimensions: {
-        height: 2,
-        width: 16,
-        length: 20,
-        weight: totalWeight
-      },
-      channel: "ECOMMERCE"
-    }],
+    items: [itemPayload],
     sender: {
       fullName: tenant.company_name || tenant.name,
       phone: cleanPhone(tenant.company_phone || tenant.phone),
