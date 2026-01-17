@@ -61,7 +61,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.mandae-shipping]
-verify_jwt = true
+verify_jwt = false
 
 [functions.mandae-labels]
 verify_jwt = false
