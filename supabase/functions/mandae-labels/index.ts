@@ -208,10 +208,32 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   const isRapido = obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso");
   
   // A API Mandae exige valores ENUM para shippingService: "ECONOMICO" ou "RAPIDO"
-  // NÃO aceita IDs numéricos para este campo
-  const shippingServiceValue = isRapido ? "RAPIDO" : "ECONOMICO";
+  // Os campos client_secret e webhook_secret podem conter valores customizados
+  // MAS devem ser os ENUMs válidos, não IDs numéricos!
+  const configuredEconomico = integration.client_secret;
+  const configuredRapido = integration.webhook_secret;
   
-  console.log("[mandae-labels] Using shippingService ENUM:", shippingServiceValue);
+  let shippingServiceValue: string;
+  
+  // Verificar se o valor configurado é um ENUM válido (não numérico)
+  const validEnums = ["ECONOMICO", "RAPIDO", "economico", "rapido", "Econômico", "Rápido"];
+  
+  if (isRapido) {
+    // Se configurado e é um ENUM válido, usar; senão usar padrão
+    if (configuredRapido && validEnums.some(e => e.toLowerCase() === configuredRapido.toLowerCase())) {
+      shippingServiceValue = configuredRapido.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    } else {
+      shippingServiceValue = "RAPIDO";
+    }
+  } else {
+    if (configuredEconomico && validEnums.some(e => e.toLowerCase() === configuredEconomico.toLowerCase())) {
+      shippingServiceValue = configuredEconomico.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    } else {
+      shippingServiceValue = "ECONOMICO";
+    }
+  }
+  
+  console.log("[mandae-labels] Using shippingService:", shippingServiceValue, "| isRapido:", isRapido, "| configured:", { eco: configuredEconomico, rap: configuredRapido });
 
   const orderPayload = {
     customerId: integration.client_id || tenant.id,

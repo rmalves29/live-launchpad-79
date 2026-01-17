@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle2, AlertCircle, Package, Truck } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, Package, Truck, Search } from 'lucide-react';
 
 interface MandaeIntegrationProps {
   tenantId: string;
@@ -31,6 +31,13 @@ interface IntegrationData {
   updated_at: string | null;
 }
 
+interface CatalogService {
+  id: string | number | null;
+  name: string;
+  days: number;
+  price: number;
+}
+
 export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -43,6 +50,8 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
     service_id_rapido: '',
   });
   const [isEditing, setIsEditing] = useState(false);
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
 
   // Buscar integração existente
   const { data: integration, isLoading } = useQuery({
@@ -101,6 +110,74 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
       });
     } catch (error) {
       toast({ title: 'Erro ao buscar CEP', variant: 'destructive' });
+    }
+  };
+
+  // Consultar catálogo de serviços Mandae
+  const fetchCatalog = async () => {
+    if (!formData.access_token || !formData.from_cep) {
+      toast({
+        title: 'Preencha os campos obrigatórios',
+        description: 'Token e CEP de origem são necessários para consultar o catálogo',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsLoadingCatalog(true);
+    setCatalogServices([]);
+
+    try {
+      const cleanCep = formData.from_cep.replace(/\D/g, '');
+      const baseUrl = formData.sandbox
+        ? 'https://sandbox.api.mandae.com.br/v2'
+        : 'https://api.mandae.com.br/v2';
+
+      // Usar um CEP de destino padrão para teste (São Paulo)
+      const testDestinoCep = '01310100';
+
+      const response = await fetch(`${baseUrl}/postalcodes/${testDestinoCep}/rates`, {
+        method: 'POST',
+        headers: {
+          'Authorization': formData.access_token,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postalCode: cleanCep,
+          declaredValue: 100,
+          weight: 1,
+          height: 10,
+          width: 10,
+          length: 10,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('[MandaeIntegration] Catalog response:', data);
+
+      if (response.ok && data.shippingServices) {
+        setCatalogServices(data.shippingServices);
+        toast({
+          title: 'Catálogo consultado!',
+          description: `${data.shippingServices.length} serviço(s) encontrado(s)`,
+        });
+      } else {
+        toast({
+          title: 'Erro ao consultar catálogo',
+          description: data.error?.message || 'Verifique seu token e tente novamente',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('[MandaeIntegration] Catalog error:', error);
+      toast({
+        title: 'Erro de conexão',
+        description: 'Não foi possível conectar à API Mandae',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingCatalog(false);
     }
   };
 
@@ -414,7 +491,88 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            {/* Botão Consultar Catálogo */}
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={fetchCatalog}
+                disabled={isLoadingCatalog || !formData.access_token || !formData.from_cep}
+                className="w-full"
+              >
+                {isLoadingCatalog ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="mr-2 h-4 w-4" />
+                )}
+                Consultar Catálogo de Serviços
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Consulta os serviços disponíveis no seu contrato Mandae
+              </p>
+            </div>
+
+            {/* Lista de serviços do catálogo */}
+            {catalogServices.length > 0 && (
+              <div className="space-y-2">
+                <Label>Serviços Disponíveis no Catálogo:</Label>
+                <div className="rounded-md border p-3 space-y-2 bg-muted/50">
+                  {catalogServices.map((service, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-2 rounded bg-background border"
+                    >
+                      <div>
+                        <span className="font-medium">{service.name}</span>
+                        <span className="text-sm text-muted-foreground ml-2">
+                          ({service.days} dias - R$ {service.price?.toFixed(2)})
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <code className="text-xs bg-primary/10 px-2 py-1 rounded">
+                          ID: {service.id !== null ? service.id : 'null'}
+                        </code>
+                        {service.name.toLowerCase().includes('econ') && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const value = service.id !== null ? String(service.id) : service.name;
+                              setFormData({ ...formData, service_id_economico: value });
+                              toast({ title: `Econômico definido: ${value}` });
+                            }}
+                          >
+                            Usar para Econômico
+                          </Button>
+                        )}
+                        {(service.name.toLowerCase().includes('ráp') || service.name.toLowerCase().includes('rap')) && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const value = service.id !== null ? String(service.id) : service.name;
+                              setFormData({ ...formData, service_id_rapido: value });
+                              toast({ title: `Rápido definido: ${value}` });
+                            }}
+                          >
+                            Usar para Rápido
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    A API Mandae retorna <code className="text-xs">id: null</code> na cotação. Para criar pedidos, 
+                    use os valores ENUM em maiúsculas: <strong>ECONOMICO</strong> ou <strong>RAPIDO</strong>.
+                  </AlertDescription>
+                </Alert>
+              </div>
+            )}
               <Switch
                 id="mandae_sandbox"
                 checked={formData.sandbox}
