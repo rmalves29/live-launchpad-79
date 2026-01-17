@@ -204,12 +204,15 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   });
 
   const ratesText = await ratesResponse.text();
-  console.log("[mandae-labels] Rates API response:", ratesText.substring(0, 500));
+  console.log("[mandae-labels] Rates API FULL response:", ratesText);
 
-  // Parsear resposta da cotação para extrair os service_id exatos
+  // Parsear resposta da cotação
+  // IMPORTANTE: A resposta tem formato { postalCode, shippingServices: [...] }
+  // Cada shippingService tem: id (pode ser null), name ("Econômico" ou "Rápido"), days, price
   let ratesData: any = null;
   try {
     ratesData = JSON.parse(ratesText);
+    console.log("[mandae-labels] Parsed rates:", JSON.stringify(ratesData, null, 2));
   } catch (e) {
     console.log("[mandae-labels] Could not parse rates response");
   }
@@ -220,34 +223,40 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   
   // ========== DEBUG OVERRIDE ==========
   // Se debugShippingService for passado no body, usa ele diretamente (para testes)
-  let shippingServiceValue: string;
+  let shippingServiceValue: string | number;
   
   if (debugShippingService) {
-    shippingServiceValue = debugShippingService;
-    console.log("[mandae-labels] 🔧 DEBUG OVERRIDE shippingService:", shippingServiceValue);
+    // Tenta parsear como número se for numérico
+    const numericValue = parseInt(debugShippingService, 10);
+    shippingServiceValue = !isNaN(numericValue) ? numericValue : debugShippingService;
+    console.log("[mandae-labels] 🔧 DEBUG OVERRIDE shippingService:", shippingServiceValue, "| type:", typeof shippingServiceValue);
   } else {
-    // NOVO: Usar service_id exatamente como vem da cotação, SEM normalizar!
-    // A cotação v2 retorna: service_id: "Econômico" ou "Rápido" (com acento)
+    // CORRIGIDO: A API de cotação retorna { shippingServices: [...] }
+    // Cada item tem: id (null ou número), name ("Econômico" ou "Rápido")
     
-    // Tentar extrair da resposta da cotação
-    if (ratesData && Array.isArray(ratesData)) {
-      const targetService = isRapido ? "rápido" : "econômico";
-      const matchedRate = ratesData.find((r: any) => 
-        r.service_id?.toLowerCase().includes(targetService) ||
-        r.name?.toLowerCase().includes(targetService)
-      );
-      if (matchedRate?.service_id) {
-        shippingServiceValue = matchedRate.service_id; // Ex: "Econômico" ou "Rápido" (exato, com acento)
-        console.log("[mandae-labels] Using service_id from rates:", shippingServiceValue);
-      } else {
-        // Fallback: usar valor padrão com acento
-        shippingServiceValue = isRapido ? "Rápido" : "Econômico";
-        console.log("[mandae-labels] Fallback shippingService:", shippingServiceValue);
-      }
+    const shippingServices = ratesData?.shippingServices || [];
+    const targetService = isRapido ? "rápido" : "econômico";
+    
+    const matchedService = shippingServices.find((s: any) => 
+      s.name?.toLowerCase().includes(targetService)
+    );
+    
+    console.log("[mandae-labels] Matched service:", JSON.stringify(matchedService));
+    
+    // IMPORTANTE: Os valores do enum ServicoEnvio são ESPECÍFICOS POR CONTRATO da Mandaê
+    // Não existe documentação pública - o cliente deve obter os IDs do suporte Mandaê
+    // Por enquanto, usamos os IDs configurados na integração ou os retornados pela cotação
+    
+    // Prioridade: 1) ID da cotação, 2) Configuração manual, 3) Nome exato
+    if (matchedService?.id !== null && matchedService?.id !== undefined) {
+      shippingServiceValue = matchedService.id;
+      console.log("[mandae-labels] Using ID from rates:", shippingServiceValue);
     } else {
-      // Se não conseguiu parsear rates, usar fallback com acento
-      shippingServiceValue = isRapido ? "Rápido" : "Econômico";
-      console.log("[mandae-labels] No rates data, fallback shippingService:", shippingServiceValue);
+      // Usar IDs configurados na integração (client_secret=economico, webhook_secret=rapido)
+      const configuredEconomico = integration.client_secret || "Econômico";
+      const configuredRapido = integration.webhook_secret || "Rápido";
+      shippingServiceValue = isRapido ? configuredRapido : configuredEconomico;
+      console.log("[mandae-labels] Using configured ID:", shippingServiceValue, "| isRapido:", isRapido);
     }
   }
   
