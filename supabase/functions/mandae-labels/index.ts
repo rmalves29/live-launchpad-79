@@ -39,9 +39,9 @@ serve(async (req) => {
   }
 
   try {
-    const { action, order_id, tenant_id } = await req.json();
+    const { action, order_id, tenant_id, debugShippingService } = await req.json();
     
-    console.log("[mandae-labels] Request:", { action, order_id, tenant_id });
+    console.log("[mandae-labels] Request:", { action, order_id, tenant_id, debugShippingService });
 
     if (!tenant_id) {
       return new Response(
@@ -115,7 +115,7 @@ serve(async (req) => {
 
     switch (action) {
       case "create_order":
-        return await createMandaeOrder(supabase, integration, order, tenant, baseUrl, authHeader);
+        return await createMandaeOrder(supabase, integration, order, tenant, baseUrl, authHeader, debugShippingService);
       
       case "get_tracking":
         return await getTracking(supabase, integration, order, baseUrl, authHeader);
@@ -139,8 +139,8 @@ serve(async (req) => {
   }
 });
 
-async function createMandaeOrder(supabase: any, integration: any, order: any, tenant: any, baseUrl: string, authHeader: string) {
-  console.log("[mandae-labels] Creating order for:", order.id);
+async function createMandaeOrder(supabase: any, integration: any, order: any, tenant: any, baseUrl: string, authHeader: string, debugShippingService?: string) {
+  console.log("[mandae-labels] Creating order for:", order.id, "| debugShippingService:", debugShippingService);
 
   // Buscar itens do pedido
   const { data: items } = await supabase
@@ -218,29 +218,37 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   const obs = (order.observation || "").toLowerCase();
   const isRapido = obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso");
   
-  // NOVO: Usar service_id exatamente como vem da cotação, SEM normalizar!
-  // A cotação v2 retorna: service_id: "Econômico" ou "Rápido" (com acento)
+  // ========== DEBUG OVERRIDE ==========
+  // Se debugShippingService for passado no body, usa ele diretamente (para testes)
   let shippingServiceValue: string;
   
-  // Tentar extrair da resposta da cotação
-  if (ratesData && Array.isArray(ratesData)) {
-    const targetService = isRapido ? "rápido" : "econômico";
-    const matchedRate = ratesData.find((r: any) => 
-      r.service_id?.toLowerCase().includes(targetService) ||
-      r.name?.toLowerCase().includes(targetService)
-    );
-    if (matchedRate?.service_id) {
-      shippingServiceValue = matchedRate.service_id; // Ex: "Econômico" ou "Rápido" (exato, com acento)
-      console.log("[mandae-labels] Using service_id from rates:", shippingServiceValue);
-    } else {
-      // Fallback: usar valor padrão com acento
-      shippingServiceValue = isRapido ? "Rápido" : "Econômico";
-      console.log("[mandae-labels] Fallback shippingService:", shippingServiceValue);
-    }
+  if (debugShippingService) {
+    shippingServiceValue = debugShippingService;
+    console.log("[mandae-labels] 🔧 DEBUG OVERRIDE shippingService:", shippingServiceValue);
   } else {
-    // Se não conseguiu parsear rates, usar fallback com acento
-    shippingServiceValue = isRapido ? "Rápido" : "Econômico";
-    console.log("[mandae-labels] No rates data, fallback shippingService:", shippingServiceValue);
+    // NOVO: Usar service_id exatamente como vem da cotação, SEM normalizar!
+    // A cotação v2 retorna: service_id: "Econômico" ou "Rápido" (com acento)
+    
+    // Tentar extrair da resposta da cotação
+    if (ratesData && Array.isArray(ratesData)) {
+      const targetService = isRapido ? "rápido" : "econômico";
+      const matchedRate = ratesData.find((r: any) => 
+        r.service_id?.toLowerCase().includes(targetService) ||
+        r.name?.toLowerCase().includes(targetService)
+      );
+      if (matchedRate?.service_id) {
+        shippingServiceValue = matchedRate.service_id; // Ex: "Econômico" ou "Rápido" (exato, com acento)
+        console.log("[mandae-labels] Using service_id from rates:", shippingServiceValue);
+      } else {
+        // Fallback: usar valor padrão com acento
+        shippingServiceValue = isRapido ? "Rápido" : "Econômico";
+        console.log("[mandae-labels] Fallback shippingService:", shippingServiceValue);
+      }
+    } else {
+      // Se não conseguiu parsear rates, usar fallback com acento
+      shippingServiceValue = isRapido ? "Rápido" : "Econômico";
+      console.log("[mandae-labels] No rates data, fallback shippingService:", shippingServiceValue);
+    }
   }
   
   console.log("[mandae-labels] Final shippingService:", shippingServiceValue, "| isRapido:", isRapido);
