@@ -573,6 +573,8 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
                 </Alert>
               </div>
             )}
+
+            <div className="flex items-center space-x-2">
               <Switch
                 id="mandae_sandbox"
                 checked={formData.sandbox}
