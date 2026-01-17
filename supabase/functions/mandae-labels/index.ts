@@ -106,19 +106,22 @@ serve(async (req) => {
       );
     }
 
-    const baseUrl = integration.sandbox 
-      ? "https://sandbox.api.mandae.com.br/v2" 
-      : "https://api.mandae.com.br/v2";
+  const baseUrl = integration.sandbox 
+    ? "https://sandbox.api.mandae.com.br/v2" 
+    : "https://api.mandae.com.br/v2";
+
+  // Mandae API v2: Authorization header usa o token diretamente (sem Bearer)
+  const authHeader = integration.access_token;
 
     switch (action) {
       case "create_order":
-        return await createMandaeOrder(supabase, integration, order, tenant, baseUrl);
+        return await createMandaeOrder(supabase, integration, order, tenant, baseUrl, authHeader);
       
       case "get_tracking":
-        return await getTracking(supabase, integration, order, baseUrl);
+        return await getTracking(supabase, integration, order, baseUrl, authHeader);
       
       case "cancel_order":
-        return await cancelOrder(supabase, integration, order, baseUrl);
+        return await cancelOrder(supabase, integration, order, baseUrl, authHeader);
       
       default:
         return new Response(
@@ -136,7 +139,7 @@ serve(async (req) => {
   }
 });
 
-async function createMandaeOrder(supabase: any, integration: any, order: any, tenant: any, baseUrl: string) {
+async function createMandaeOrder(supabase: any, integration: any, order: any, tenant: any, baseUrl: string, authHeader: string) {
   console.log("[mandae-labels] Creating order for:", order.id);
 
   // Buscar itens do pedido
@@ -186,7 +189,7 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   const ratesResponse = await fetch(`${baseUrl}/postalcodes/${destinoCep}/rates`, {
     method: "POST",
     headers: {
-      "Authorization": integration.access_token,
+      "Authorization": authHeader,
       "Accept": "application/json",
       "Content-Type": "application/json"
     },
@@ -203,37 +206,44 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   const ratesText = await ratesResponse.text();
   console.log("[mandae-labels] Rates API response:", ratesText.substring(0, 500));
 
+  // Parsear resposta da cotação para extrair os service_id exatos
+  let ratesData: any = null;
+  try {
+    ratesData = JSON.parse(ratesText);
+  } catch (e) {
+    console.log("[mandae-labels] Could not parse rates response");
+  }
+
   // Detectar se o pedido é Econômico ou Rápido pela observation
   const obs = (order.observation || "").toLowerCase();
   const isRapido = obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso");
   
-  // A API Mandae exige valores ENUM para shippingService: "ECONOMICO" ou "RAPIDO"
-  // Os campos client_secret e webhook_secret podem conter valores customizados
-  // MAS devem ser os ENUMs válidos, não IDs numéricos!
-  const configuredEconomico = integration.client_secret;
-  const configuredRapido = integration.webhook_secret;
-  
+  // NOVO: Usar service_id exatamente como vem da cotação, SEM normalizar!
+  // A cotação v2 retorna: service_id: "Econômico" ou "Rápido" (com acento)
   let shippingServiceValue: string;
   
-  // Verificar se o valor configurado é um ENUM válido (não numérico)
-  const validEnums = ["ECONOMICO", "RAPIDO", "economico", "rapido", "Econômico", "Rápido"];
-  
-  if (isRapido) {
-    // Se configurado e é um ENUM válido, usar; senão usar padrão
-    if (configuredRapido && validEnums.some(e => e.toLowerCase() === configuredRapido.toLowerCase())) {
-      shippingServiceValue = configuredRapido.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // Tentar extrair da resposta da cotação
+  if (ratesData && Array.isArray(ratesData)) {
+    const targetService = isRapido ? "rápido" : "econômico";
+    const matchedRate = ratesData.find((r: any) => 
+      r.service_id?.toLowerCase().includes(targetService) ||
+      r.name?.toLowerCase().includes(targetService)
+    );
+    if (matchedRate?.service_id) {
+      shippingServiceValue = matchedRate.service_id; // Ex: "Econômico" ou "Rápido" (exato, com acento)
+      console.log("[mandae-labels] Using service_id from rates:", shippingServiceValue);
     } else {
-      shippingServiceValue = "RAPIDO";
+      // Fallback: usar valor padrão com acento
+      shippingServiceValue = isRapido ? "Rápido" : "Econômico";
+      console.log("[mandae-labels] Fallback shippingService:", shippingServiceValue);
     }
   } else {
-    if (configuredEconomico && validEnums.some(e => e.toLowerCase() === configuredEconomico.toLowerCase())) {
-      shippingServiceValue = configuredEconomico.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    } else {
-      shippingServiceValue = "ECONOMICO";
-    }
+    // Se não conseguiu parsear rates, usar fallback com acento
+    shippingServiceValue = isRapido ? "Rápido" : "Econômico";
+    console.log("[mandae-labels] No rates data, fallback shippingService:", shippingServiceValue);
   }
   
-  console.log("[mandae-labels] Using shippingService:", shippingServiceValue, "| isRapido:", isRapido, "| configured:", { eco: configuredEconomico, rap: configuredRapido });
+  console.log("[mandae-labels] Final shippingService:", shippingServiceValue, "| isRapido:", isRapido);
 
   const orderPayload = {
     customerId: integration.client_id || tenant.id,
@@ -291,7 +301,7 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   const response = await fetch(`${baseUrl}/orders`, {
     method: "POST",
     headers: {
-      "Authorization": integration.access_token,
+      "Authorization": authHeader,
       "Accept": "application/json",
       "Content-Type": "application/json"
     },
@@ -350,7 +360,7 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   );
 }
 
-async function getTracking(supabase: any, integration: any, order: any, baseUrl: string) {
+async function getTracking(supabase: any, integration: any, order: any, baseUrl: string, authHeader: string) {
   const shipmentId = order.melhor_envio_shipment_id;
   
   if (!shipmentId || !shipmentId.startsWith('mandae_')) {
@@ -365,7 +375,7 @@ async function getTracking(supabase: any, integration: any, order: any, baseUrl:
   const response = await fetch(`${baseUrl}/trackings/${mandaeId}`, {
     method: "GET",
     headers: {
-      "Authorization": integration.access_token,
+      "Authorization": authHeader,
       "Accept": "application/json"
     }
   });
@@ -403,7 +413,7 @@ async function getTracking(supabase: any, integration: any, order: any, baseUrl:
   );
 }
 
-async function cancelOrder(supabase: any, integration: any, order: any, baseUrl: string) {
+async function cancelOrder(supabase: any, integration: any, order: any, baseUrl: string, authHeader: string) {
   const shipmentId = order.melhor_envio_shipment_id;
   
   if (!shipmentId || !shipmentId.startsWith('mandae_')) {
@@ -419,7 +429,7 @@ async function cancelOrder(supabase: any, integration: any, order: any, baseUrl:
   const response = await fetch(`${baseUrl}/orders/${mandaeId}`, {
     method: "DELETE",
     headers: {
-      "Authorization": integration.access_token,
+      "Authorization": authHeader,
       "Accept": "application/json"
     }
   });
