@@ -89,10 +89,13 @@ const Pedidos = () => {
   const loadOrders = async () => {
     try {
       setLoading(true);
+      
+      // Query 1: Buscar pedidos com limite para paginação inicial
       let query = supabaseTenant
         .from('orders')
         .select('*, tenant_id')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(100); // Limitar para melhor performance
 
       if (filterPaid !== null) {
         query = query.eq('is_paid', filterPaid);
@@ -110,83 +113,65 @@ const Pedidos = () => {
       const { data: orderData, error: orderError } = await query;
 
       if (orderError) throw orderError;
+      
+      if (!orderData || orderData.length === 0) {
+        setOrders([]);
+        return;
+      }
 
-      // Fetch customer and cart items data for each order
-      const ordersWithDetails = await Promise.all((orderData || []).map(async (order) => {
-        // Fetch customer data
-        const { data: customerData } = await supabaseTenant
-          .from('customers')
-          .select('name, cpf, street, number, complement, neighborhood, city, state, cep')
-          .eq('phone', order.customer_phone)
-          .maybeSingle();
+      // OTIMIZAÇÃO: Batch loading em vez de N+1 queries
+      
+      // Coletar todos os telefones únicos e cart_ids únicos
+      const uniquePhones = [...new Set(orderData.map(o => o.customer_phone).filter(Boolean))];
+      const cartIds = orderData.map(o => o.cart_id).filter(Boolean) as number[];
+      const uniqueCartIds = [...new Set(cartIds)];
 
-        // Fetch cart items with products. If cart_id is missing, try to infer the most recent cart for this cliente
-        let cartItemsData: any[] = [];
-        if (order.cart_id) {
-          const { data } = await supabaseTenant
-            .from('cart_items')
-            .select(`
-              id,
-              qty,
-              unit_price,
-              product_name,
-              product_code,
-              product_image_url,
-              product:products!cart_items_product_id_fkey (
-                name,
-                code,
-                image_url
-              )
-            `)
-            .eq('cart_id', order.cart_id);
-          cartItemsData = data || [];
-        } else {
-          // Fallback: buscar um carrinho recente do mesmo telefone (útil para pedidos antigos sem vínculo)
-          const { data: candidateCarts } = await supabaseTenant
-            .from('carts')
-            .select('id, event_date, created_at')
-            .eq('customer_phone', order.customer_phone)
-            .order('created_at', { ascending: false })
-            .limit(5);
+      // Query 2: Buscar todos os clientes de uma vez
+      const { data: allCustomers } = await supabaseTenant
+        .from('customers')
+        .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep')
+        .in('phone', uniquePhones);
 
-          let resolvedCartId: number | null = null;
-          if (candidateCarts && candidateCarts.length > 0) {
-            // tentar casar por proximidade da data do evento (±2 dias)
-            const oEvent = new Date(order.event_date);
-            const byDate = candidateCarts.find((c: any) => {
-              const cEvent = new Date(c.event_date);
-              const diffDays = Math.abs((cEvent.getTime() - oEvent.getTime()) / (1000 * 60 * 60 * 24));
-              return diffDays <= 2;
-            });
-            resolvedCartId = (byDate || candidateCarts[0])?.id ?? null;
-          }
+      // Criar mapa de clientes por telefone
+      const customersByPhone = new Map<string, any>();
+      (allCustomers || []).forEach(c => customersByPhone.set(c.phone, c));
 
-          if (resolvedCartId) {
-            const { data } = await supabaseTenant
-              .from('cart_items')
-              .select(`
-                id,
-                qty,
-                unit_price,
-                product_name,
-                product_code,
-                product_image_url,
-                product:products!cart_items_product_id_fkey (
-                  name,
-                  code,
-                  image_url
-                )
-              `)
-              .eq('cart_id', resolvedCartId);
-            cartItemsData = data || [];
-          }
-        }
+      // Query 3: Buscar todos os cart_items de uma vez (apenas para os que têm cart_id)
+      let allCartItems: any[] = [];
+      if (uniqueCartIds.length > 0) {
+        const { data } = await supabaseTenant
+          .from('cart_items')
+          .select(`
+            id,
+            cart_id,
+            qty,
+            unit_price,
+            product_name,
+            product_code,
+            product_image_url,
+            product:products!cart_items_product_id_fkey (
+              name,
+              code,
+              image_url
+            )
+          `)
+          .in('cart_id', uniqueCartIds);
+        allCartItems = data || [];
+      }
 
-        return {
-          ...order,
-          customer: customerData || undefined,
-          cart_items: cartItemsData
-        };
+      // Criar mapa de cart_items por cart_id
+      const cartItemsByCartId = new Map<number, any[]>();
+      allCartItems.forEach(item => {
+        const existing = cartItemsByCartId.get(item.cart_id) || [];
+        existing.push(item);
+        cartItemsByCartId.set(item.cart_id, existing);
+      });
+
+      // Montar pedidos com detalhes (sem queries adicionais)
+      const ordersWithDetails = orderData.map(order => ({
+        ...order,
+        customer: customersByPhone.get(order.customer_phone) || undefined,
+        cart_items: order.cart_id ? (cartItemsByCartId.get(order.cart_id) || []) : []
       }));
 
       setOrders(ordersWithDetails);
