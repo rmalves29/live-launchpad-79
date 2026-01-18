@@ -278,6 +278,11 @@ const Pedidos = () => {
         title: 'Sucesso',
         description: 'Pedido marcado como pago'
       });
+
+      // Sincronizar com Bling ERP (em background, não bloqueia o fluxo)
+      if (profile?.tenant_id) {
+        syncOrderWithBling(orderId, profile.tenant_id);
+      }
     } catch (error: any) {
       console.error('❌ Erro ao atualizar status:', error);
       toast({
@@ -327,6 +332,52 @@ const Pedidos = () => {
     } catch (error) {
       console.error('Erro ao enviar mensagem de pagamento:', error);
       return false;
+    }
+  };
+
+  // Sincronizar pedido com Bling ERP
+  const syncOrderWithBling = async (orderId: number, tenantId: string) => {
+    try {
+      // Verificar se a integração Bling está ativa
+      const { data: blingIntegration } = await supabase
+        .from('integration_bling')
+        .select('is_active, sync_orders, access_token')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      // Só sincroniza se Bling estiver ativo e configurado
+      if (!blingIntegration?.is_active || !blingIntegration?.sync_orders || !blingIntegration?.access_token) {
+        console.log('📦 Bling ERP não está configurado ou sync_orders está desativado');
+        return;
+      }
+
+      console.log('📦 Sincronizando pedido com Bling ERP...');
+      const res = await supabase.functions.invoke('bling-sync-orders', { 
+        body: {
+          action: 'send_order',
+          order_id: orderId,
+          tenant_id: tenantId
+        }
+      });
+
+      if (res.error) {
+        console.error('❌ Erro ao sincronizar com Bling:', res.error);
+        toast({
+          title: 'Aviso',
+          description: 'Pedido marcado como pago, mas houve erro na sincronização com Bling ERP',
+          variant: 'destructive'
+        });
+      } else if (res.data?.success) {
+        console.log('✅ Pedido sincronizado com Bling ERP:', res.data);
+        toast({
+          title: 'Bling ERP',
+          description: 'Pedido sincronizado com sucesso!'
+        });
+      } else {
+        console.warn('⚠️ Resposta inesperada do Bling:', res.data);
+      }
+    } catch (error) {
+      console.error('❌ Erro ao sincronizar com Bling:', error);
     }
   };
 
