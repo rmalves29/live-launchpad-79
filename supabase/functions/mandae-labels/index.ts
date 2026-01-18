@@ -221,18 +221,23 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
   const obs = (order.observation || "").toLowerCase();
   const isRapido = obs.includes("rápido") || obs.includes("rapido") || obs.includes("expresso");
   
+  // ========== FUNÇÃO PARA CONVERTER shippingService ==========
+  // Baseado no código Magento: usar minúsculo com acento
+  function toMandaeShippingService(raw: string): string {
+    return raw.trim().toLowerCase(); // "econômico" / "rápido"
+  }
+  
   // ========== DEBUG OVERRIDE ==========
   // Se debugShippingService for passado no body, usa ele diretamente (para testes)
-  let shippingServiceValue: string | number;
+  let shippingServiceValue: string;
   
   if (debugShippingService) {
-    // Tenta parsear como número se for numérico
-    const numericValue = parseInt(debugShippingService, 10);
-    shippingServiceValue = !isNaN(numericValue) ? numericValue : debugShippingService;
-    console.log("[mandae-labels] 🔧 DEBUG OVERRIDE shippingService:", shippingServiceValue, "| type:", typeof shippingServiceValue);
+    shippingServiceValue = debugShippingService;
+    console.log("[mandae-labels] 🔧 DEBUG OVERRIDE shippingService:", shippingServiceValue);
   } else {
-    // CORRIGIDO: A API de cotação retorna { shippingServices: [...] }
-    // Cada item tem: id (null ou número), name ("Econômico" ou "Rápido")
+    // A API de cotação retorna { shippingServices: [...] }
+    // Cada item tem: name ("Econômico" ou "Rápido")
+    // Convertemos para minúsculo com acento como o Magento faz
     
     const shippingServices = ratesData?.shippingServices || [];
     const targetService = isRapido ? "rápido" : "econômico";
@@ -243,20 +248,14 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
     
     console.log("[mandae-labels] Matched service:", JSON.stringify(matchedService));
     
-    // IMPORTANTE: Os valores do enum ServicoEnvio são ESPECÍFICOS POR CONTRATO da Mandaê
-    // Não existe documentação pública - o cliente deve obter os IDs do suporte Mandaê
-    // Por enquanto, usamos os IDs configurados na integração ou os retornados pela cotação
-    
-    // Prioridade: 1) ID da cotação, 2) Configuração manual, 3) Nome exato
-    if (matchedService?.id !== null && matchedService?.id !== undefined) {
-      shippingServiceValue = matchedService.id;
-      console.log("[mandae-labels] Using ID from rates:", shippingServiceValue);
+    if (matchedService?.name) {
+      // Converter para formato Magento: minúsculo com acento
+      shippingServiceValue = toMandaeShippingService(matchedService.name);
+      console.log("[mandae-labels] Using service name (lowercase):", shippingServiceValue);
     } else {
-      // Usar IDs configurados na integração (client_secret=economico, webhook_secret=rapido)
-      const configuredEconomico = integration.client_secret || "Econômico";
-      const configuredRapido = integration.webhook_secret || "Rápido";
-      shippingServiceValue = isRapido ? configuredRapido : configuredEconomico;
-      console.log("[mandae-labels] Using configured ID:", shippingServiceValue, "| isRapido:", isRapido);
+      // Fallback: usar valor padrão em minúsculo com acento
+      shippingServiceValue = isRapido ? "rápido" : "econômico";
+      console.log("[mandae-labels] Fallback shippingService:", shippingServiceValue);
     }
   }
   
@@ -324,7 +323,8 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
 
   console.log("[mandae-labels] Order payload:", JSON.stringify(orderPayload, null, 2));
 
-  const response = await fetch(`${baseUrl}/orders`, {
+  // CORRIGIDO: Usar endpoint /orders/add-parcel como o Magento faz
+  const response = await fetch(`${baseUrl}/orders/add-parcel`, {
     method: "POST",
     headers: {
       "Authorization": authHeader,
@@ -333,6 +333,8 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
     },
     body: JSON.stringify(orderPayload)
   });
+
+  console.log("[mandae-labels] Using endpoint: /orders/add-parcel");
 
   const responseText = await response.text();
   console.log("[mandae-labels] Create response:", response.status, responseText.substring(0, 500));
