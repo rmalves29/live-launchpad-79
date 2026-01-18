@@ -114,7 +114,10 @@ async function getOrCreateBlingContactId(order: any, accessToken: string): Promi
   // 2) Create the contact
   const payload = {
     nome: order.customer_name || 'Cliente',
-    tipoPessoa: 'F',
+    // Bling v3 valida "tipo" (F/J) e "situacao" (A/I/E/S)
+    // Alguns exemplos antigos usam "tipoPessoa"; mantemos apenas os campos válidos.
+    tipo: 'F',
+    situacao: 'A',
     telefone: phone || undefined,
     celular: phone || undefined,
     endereco: {
