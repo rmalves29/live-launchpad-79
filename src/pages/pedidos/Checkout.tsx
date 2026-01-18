@@ -1053,10 +1053,12 @@ const Checkout = () => {
       return;
     }
 
-    if (!customerData.cpf) {
+    // Validação específica para CPF (11 dígitos)
+    const cpfDigits = customerData.cpf?.replace(/\D/g, '') || '';
+    if (!cpfDigits || cpfDigits.length !== 11) {
       toast({
         title: 'CPF obrigatório',
-        description: 'Informe seu CPF para finalizar o pedido',
+        description: 'Informe um CPF válido (11 dígitos) para finalizar o pedido',
         variant: 'destructive'
       });
       return;
@@ -1145,7 +1147,9 @@ const Checkout = () => {
         })),
         customerData: {
           name: customerData.name,
-          phone: order.customer_phone
+          phone: order.customer_phone,
+          cpf: customerData.cpf,
+          email: customerData.email
         },
         addressData: {
           cep: customerData.cep,
