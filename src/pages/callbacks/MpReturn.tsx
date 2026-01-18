@@ -121,6 +121,34 @@ const MpReturn = () => {
               variant: 'destructive'
             });
           }
+
+          // Sync with Bling ERP (in background)
+          try {
+            const { data: blingIntegration } = await supabase
+              .from('integration_bling')
+              .select('is_active, sync_orders, access_token')
+              .eq('tenant_id', order.tenant_id)
+              .maybeSingle();
+
+            if (blingIntegration?.is_active && blingIntegration?.sync_orders && blingIntegration?.access_token) {
+              console.log('📦 Sincronizando pedido com Bling ERP...');
+              const blingRes = await supabase.functions.invoke('bling-sync-orders', { 
+                body: {
+                  action: 'send_order',
+                  order_id: order.id,
+                  tenant_id: order.tenant_id
+                }
+              });
+
+              if (blingRes.error) {
+                console.error('❌ Erro ao sincronizar com Bling:', blingRes.error);
+              } else if (blingRes.data?.success) {
+                console.log('✅ Pedido sincronizado com Bling ERP:', blingRes.data);
+              }
+            }
+          } catch (blingErr) {
+            console.error('Erro ao sincronizar com Bling:', blingErr);
+          }
         }
       } else {
         console.log(`Nenhum pedido encontrado para preference_id: ${preferenceId}`);

@@ -215,6 +215,8 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
     return;
   }
 
+  const orderTenantId = existingOrder.tenant_id || tenantId;
+
   // Update order to paid
   const { error: updateError } = await sb
     .from("orders")
@@ -232,12 +234,65 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
   await sb.from("webhook_logs").insert({
     webhook_type: "mercadopago_payment_success",
     status_code: 200,
-    tenant_id: existingOrder.tenant_id || tenantId,
+    tenant_id: orderTenantId,
     payload: { order_id: orderId, payment_id: paymentId },
     response: `Order ${orderId} marked as paid`,
   });
 
   // Note: WhatsApp notification is sent by the database trigger (process_paid_order)
+
+  // Sync with Bling ERP if configured
+  await syncOrderWithBling(sb, orderId, orderTenantId);
+}
+
+async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | null) {
+  if (!tenantId) {
+    console.log(`[mp-webhook] Cannot sync with Bling: no tenant_id`);
+    return;
+  }
+
+  try {
+    // Check if Bling integration is active
+    const { data: blingIntegration } = await sb
+      .from("integration_bling")
+      .select("is_active, sync_orders, access_token")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (!blingIntegration?.is_active || !blingIntegration?.sync_orders || !blingIntegration?.access_token) {
+      console.log(`[mp-webhook] Bling ERP not configured or sync_orders disabled for tenant ${tenantId}`);
+      return;
+    }
+
+    console.log(`[mp-webhook] Syncing order ${orderId} with Bling ERP...`);
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    // Call Bling sync edge function
+    const response = await fetch(`${supabaseUrl}/functions/v1/bling-sync-orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({
+        action: "send_order",
+        order_id: orderId,
+        tenant_id: tenantId,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (response.ok && result.success) {
+      console.log(`[mp-webhook] Order ${orderId} synced with Bling ERP successfully`);
+    } else {
+      console.error(`[mp-webhook] Bling sync failed for order ${orderId}:`, result);
+    }
+  } catch (error) {
+    console.error(`[mp-webhook] Error syncing order ${orderId} with Bling:`, error);
+  }
 }
 
 function parseOrderIds(externalRef: string): number[] {
