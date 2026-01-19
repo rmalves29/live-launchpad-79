@@ -57,8 +57,16 @@ interface BlingIntegrationData {
   environment: string;
   is_active: boolean;
   last_sync_at: string | null;
+  bling_store_id: number | null;
+  bling_store_name: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface BlingStore {
+  id: number;
+  descricao: string;
+  tipo: string;
 }
 
 interface OAuthStatus {
@@ -120,6 +128,8 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
   const [clientSecret, setClientSecret] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [scopeError, setScopeError] = useState<string | null>(null);
+  const [storeId, setStoreId] = useState<number | null>(null);
+  const [storeName, setStoreName] = useState<string | null>(null);
   const [modules, setModules] = useState<Record<string, boolean>>({
     sync_orders: false,
     sync_products: false,
@@ -162,6 +172,8 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
       if (data) {
         setClientId(data.client_id || '');
         setClientSecret(data.client_secret || '');
+        setStoreId(data.bling_store_id);
+        setStoreName(data.bling_store_name);
         setModules({
           sync_orders: data.sync_orders,
           sync_products: data.sync_products,
@@ -207,6 +219,32 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
     refetchInterval: 30000, // Verificar a cada 30 segundos
   });
 
+  // Query para buscar lojas do Bling
+  const { data: blingStores, isLoading: storesLoading, refetch: refetchStores } = useQuery({
+    queryKey: ['bling-stores', tenantId],
+    queryFn: async () => {
+      const response = await fetch(
+        `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-list-stores`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ tenant_id: tenantId }),
+        }
+      );
+
+      if (!response.ok) {
+        console.error('Erro ao buscar lojas Bling');
+        return [];
+      }
+
+      const data = await response.json();
+      return (data.canais || []) as BlingStore[];
+    },
+    enabled: !!tenantId && !!integration?.access_token,
+  });
+
   // Mutation para salvar/atualizar credenciais
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -221,6 +259,8 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         sync_marketplaces: modules.sync_marketplaces,
         sync_ecommerce: modules.sync_ecommerce,
         sync_logistics: modules.sync_logistics,
+        bling_store_id: storeId,
+        bling_store_name: storeName,
         updated_at: new Date().toISOString(),
       };
 
@@ -629,6 +669,70 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                 Fechar
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Configuração da Loja Bling */}
+      {isAuthorized && !isExpired && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Store className="h-5 w-5" />
+              Canal de Venda (Loja)
+            </CardTitle>
+            <CardDescription>
+              Vincule os pedidos a um canal de venda específico no Bling para facilitar a filtragem
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Canal de Venda</Label>
+              <div className="flex gap-2">
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={storeId || ''}
+                  onChange={(e) => {
+                    const selectedId = e.target.value ? Number(e.target.value) : null;
+                    setStoreId(selectedId);
+                    const selectedStore = blingStores?.find(s => s.id === selectedId);
+                    setStoreName(selectedStore?.descricao || null);
+                  }}
+                >
+                  <option value="">Nenhum (não vincular)</option>
+                  {blingStores?.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.descricao} ({store.tipo})
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => refetchStores()}
+                  disabled={storesLoading}
+                >
+                  {storesLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {storeName && storeId && (
+                <p className="text-sm text-muted-foreground">
+                  Loja selecionada: <strong>{storeName}</strong> (ID: {storeId})
+                </p>
+              )}
+            </div>
+
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                Quando configurado, todos os pedidos sincronizados serão vinculados a este canal de venda.
+                Você poderá filtrar no Bling por "N° do pedido na loja virtual".
+              </AlertDescription>
+            </Alert>
           </CardContent>
         </Card>
       )}
