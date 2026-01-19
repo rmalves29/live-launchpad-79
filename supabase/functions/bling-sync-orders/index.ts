@@ -331,6 +331,16 @@ serve(async (req) => {
 
         result = await sendOrderToBling(order, cartItems, accessToken);
         
+        // Salvar o bling_order_id no pedido
+        const blingOrderId = result?.data?.id;
+        if (blingOrderId) {
+          await supabase
+            .from('orders')
+            .update({ bling_order_id: blingOrderId })
+            .eq('id', order_id)
+            .eq('tenant_id', tenant_id);
+        }
+        
         await supabase
           .from('integration_bling')
           .update({ last_sync_at: new Date().toISOString() })
@@ -345,11 +355,13 @@ serve(async (req) => {
       }
 
       case 'sync_all': {
+        // Buscar apenas pedidos pagos que ainda NÃO foram sincronizados (bling_order_id IS NULL)
         const { data: orders, error: ordersError } = await supabase
           .from('orders')
           .select('*')
           .eq('tenant_id', tenant_id)
           .eq('is_paid', true)
+          .is('bling_order_id', null)
           .order('created_at', { ascending: false })
           .limit(50);
 
@@ -384,6 +396,17 @@ serve(async (req) => {
             }
 
             const blingResult = await sendOrderToBling(order, cartItems, accessToken);
+            
+            // Salvar o bling_order_id no pedido
+            const blingOrderId = blingResult?.data?.id;
+            if (blingOrderId) {
+              await supabase
+                .from('orders')
+                .update({ bling_order_id: blingOrderId })
+                .eq('id', order.id)
+                .eq('tenant_id', tenant_id);
+            }
+            
             results.push({ order_id: order.id, success: true, bling_response: blingResult });
           } catch (error) {
             console.error(`[bling-sync-orders] Error syncing order ${order.id}:`, error);
