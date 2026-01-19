@@ -201,7 +201,7 @@ type SendOrderResult =
   | { kind: 'created'; blingOrderId: number; raw: any }
   | { kind: 'already_exists'; blingOrderId: number; raw: any };
 
-async function sendOrderToBling(order: any, cartItems: any[], accessToken: string): Promise<SendOrderResult> {
+async function sendOrderToBling(order: any, cartItems: any[], accessToken: string, storeId?: number): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
   }
@@ -210,7 +210,8 @@ async function sendOrderToBling(order: any, cartItems: any[], accessToken: strin
 
   // Bling v3: situacao do pedido (0=Em aberto, 6=Em andamento, 9=Atendido, 12=Cancelado)
   // numeroLoja é o número visível para busca no painel
-  const blingOrder = {
+  // loja vincula o pedido a um canal de venda específico
+  const blingOrder: any = {
     numero: order.id,
     numeroLoja: String(order.id),
     data: new Date(order.created_at).toISOString().split('T')[0],
@@ -227,6 +228,12 @@ async function sendOrderToBling(order: any, cartItems: any[], accessToken: strin
     observacoes: order.observation || '',
     observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
   };
+
+  // Vincular à loja OrderZap se configurado
+  if (storeId) {
+    blingOrder.loja = { id: storeId };
+    console.log(`[bling-sync-orders] Vinculando pedido à loja ID: ${storeId}`);
+  }
 
   console.log('[bling-sync-orders] Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
 
@@ -396,7 +403,9 @@ serve(async (req) => {
           }
         }
 
-        const blingResult = await sendOrderToBling(order, cartItems, accessToken);
+        // Loja OrderZap configurada no Bling
+        const BLING_STORE_ID = 205905895;
+        const blingResult = await sendOrderToBling(order, cartItems, accessToken, BLING_STORE_ID);
 
         // Persistir o ID do pedido no Bling (inclui caso "já existe")
         await supabase
@@ -465,7 +474,9 @@ serve(async (req) => {
               continue;
             }
 
-            const blingResult = await sendOrderToBling(order, cartItems, accessToken);
+            // Loja OrderZap configurada no Bling
+            const BLING_STORE_ID = 205905895;
+            const blingResult = await sendOrderToBling(order, cartItems, accessToken, BLING_STORE_ID);
 
             await supabase
               .from('orders')
