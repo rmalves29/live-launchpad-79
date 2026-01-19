@@ -26,13 +26,13 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
   const [isFetching, setIsFetching] = useState(false);
 
   // Buscar contagem de pedidos pendentes de sincronização
-  const { data: pendingCount, refetch: refetchPending, isError: pendingError } = useQuery({
+  const { data: pendingCount = 0, refetch: refetchPending, isLoading: isLoadingCount } = useQuery({
     queryKey: ['bling-pending-orders', tenantId],
     queryFn: async () => {
-      // Conta todos os pedidos pagos (sem filtro de bling_order_id por enquanto)
-      const { count, error } = await supabase
+      // Busca os pedidos pagos para contar
+      const { data, error } = await supabase
         .from('orders')
-        .select('*', { count: 'exact', head: true })
+        .select('id')
         .eq('tenant_id', tenantId)
         .eq('is_paid', true);
       
@@ -41,7 +41,7 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
         throw error;
       }
       
-      return count || 0;
+      return data?.length || 0;
     },
     enabled: !!tenantId,
     refetchInterval: 30000,
