@@ -437,6 +437,8 @@ export type Database = {
       integration_bling: {
         Row: {
           access_token: string | null
+          bling_store_id: number | null
+          bling_store_name: string | null
           client_id: string | null
           client_secret: string | null
           created_at: string
@@ -459,6 +461,8 @@ export type Database = {
         }
         Insert: {
           access_token?: string | null
+          bling_store_id?: number | null
+          bling_store_name?: string | null
           client_id?: string | null
           client_secret?: string | null
           created_at?: string
@@ -481,6 +485,8 @@ export type Database = {
         }
         Update: {
           access_token?: string | null
+          bling_store_id?: number | null
+          bling_store_name?: string | null
           client_id?: string | null
           client_secret?: string | null
           created_at?: string

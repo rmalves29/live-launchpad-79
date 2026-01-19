@@ -110,14 +110,25 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
   return integration.access_token;
 }
 
-async function getOrCreateBlingContactId(order: any, accessToken: string): Promise<number> {
+async function getOrCreateBlingContactId(order: any, customer: any, accessToken: string): Promise<number> {
   const phone = (order.customer_phone || '').replace(/\D/g, '');
-  const cep = (order.customer_cep || '').replace(/\D/g, '');
+  
+  // Priorizar dados do customer, fallback para dados do order
+  const customerName = customer?.name || order.customer_name || 'Cliente';
+  const customerCpf = (customer?.cpf || '').replace(/\D/g, '');
+  const customerCep = (customer?.cep || order.customer_cep || '').replace(/\D/g, '');
+  const customerStreet = customer?.street || order.customer_street || '';
+  const customerNumber = customer?.number || order.customer_number || 'S/N';
+  const customerComplement = customer?.complement || order.customer_complement || '';
+  const customerNeighborhood = customer?.neighborhood || '';
+  const customerCity = customer?.city || order.customer_city || '';
+  const customerState = customer?.state || order.customer_state || '';
+  const customerEmail = customer?.email || '';
 
   // 1) Try to find an existing contact (best-effort; API may vary by account)
   try {
     const searchRes = await fetch(
-      `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(phone || (order.customer_name || ''))}`,
+      `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(phone || customerName)}`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -146,25 +157,31 @@ async function getOrCreateBlingContactId(order: any, accessToken: string): Promi
     console.log('[bling-sync-orders] Contact search failed (will try create):', String(e?.message || e));
   }
 
-  // 2) Create the contact
-  const payload = {
-    nome: order.customer_name || 'Cliente',
-    // Bling v3 valida "tipo" (F/J) e "situacao" (A/I/E/S)
-    // Alguns exemplos antigos usam "tipoPessoa"; mantemos apenas os campos válidos.
-    tipo: 'F',
-    situacao: 'A',
+  // 2) Create the contact with full data
+  const payload: any = {
+    nome: customerName,
+    tipo: 'F', // Pessoa Física
+    situacao: 'A', // Ativo
     telefone: phone || undefined,
     celular: phone || undefined,
+    email: customerEmail || undefined,
     endereco: {
-      endereco: order.customer_street || '',
-      numero: order.customer_number || '',
-      complemento: order.customer_complement || '',
-      bairro: '',
-      cep,
-      municipio: order.customer_city || '',
-      uf: order.customer_state || '',
+      endereco: customerStreet,
+      numero: customerNumber,
+      complemento: customerComplement,
+      bairro: customerNeighborhood,
+      cep: customerCep,
+      municipio: customerCity,
+      uf: customerState,
     },
   };
+
+  // Adicionar CPF/CNPJ se disponível
+  if (customerCpf) {
+    payload.numeroDocumento = customerCpf;
+  }
+
+  console.log('[bling-sync-orders] Creating contact with payload:', JSON.stringify(payload, null, 2));
 
   const createRes = await fetch(`${BLING_API_URL}/contatos`, {
     method: 'POST',
@@ -201,12 +218,22 @@ type SendOrderResult =
   | { kind: 'created'; blingOrderId: number; raw: any }
   | { kind: 'already_exists'; blingOrderId: number; raw: any };
 
-async function sendOrderToBling(order: any, cartItems: any[], accessToken: string, storeId?: number): Promise<SendOrderResult> {
+async function sendOrderToBling(order: any, cartItems: any[], customer: any, accessToken: string, storeId?: number): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
   }
 
-  const contactId = await getOrCreateBlingContactId(order, accessToken);
+  const contactId = await getOrCreateBlingContactId(order, customer, accessToken);
+
+  // Priorizar dados do customer, fallback para dados do order
+  const customerCep = (customer?.cep || order.customer_cep || '').replace(/\D/g, '');
+  const customerStreet = customer?.street || order.customer_street || '';
+  const customerNumber = customer?.number || order.customer_number || 'S/N';
+  const customerComplement = customer?.complement || order.customer_complement || '';
+  const customerNeighborhood = customer?.neighborhood || '';
+  const customerCity = customer?.city || order.customer_city || '';
+  const customerState = customer?.state || order.customer_state || '';
+  const customerName = customer?.name || order.customer_name || 'Cliente';
 
   // Bling v3: situacao do pedido (0=Em aberto, 6=Em andamento, 9=Atendido, 12=Cancelado)
   // numeroLoja é o número visível para busca no painel
@@ -228,6 +255,23 @@ async function sendOrderToBling(order: any, cartItems: any[], accessToken: strin
     observacoes: order.observation || '',
     observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
   };
+
+  // Adicionar dados de transporte/entrega se tiver endereço
+  if (customerCep && customerStreet) {
+    blingOrder.transporte = {
+      contato: {
+        nome: customerName,
+        endereco: customerStreet,
+        numero: customerNumber,
+        complemento: customerComplement,
+        bairro: customerNeighborhood,
+        cep: customerCep,
+        municipio: customerCity,
+        uf: customerState,
+      },
+    };
+    console.log('[bling-sync-orders] Adicionando dados de transporte ao pedido');
+  }
 
   // Vincular à loja OrderZap se configurado
   if (storeId) {
@@ -403,9 +447,25 @@ serve(async (req) => {
           }
         }
 
+        // Buscar dados do cliente pelo telefone
+        const normalizedPhone = (order.customer_phone || '').replace(/\D/g, '');
+        let customer = null;
+        if (normalizedPhone) {
+          const { data: customerData } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('tenant_id', tenant_id)
+            .or(`phone.eq.${normalizedPhone},phone.like.%${normalizedPhone.slice(-9)}%`)
+            .limit(1)
+            .single();
+          customer = customerData;
+        }
+
+        console.log('[bling-sync-orders] Customer found:', customer ? customer.name : 'NOT FOUND');
+
         // Usar loja configurada no banco (se houver)
         const blingStoreId = integration.bling_store_id || null;
-        const blingResult = await sendOrderToBling(order, cartItems, accessToken, blingStoreId);
+        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, blingStoreId);
 
         // Persistir o ID do pedido no Bling (inclui caso "já existe")
         await supabase
@@ -474,9 +534,25 @@ serve(async (req) => {
               continue;
             }
 
+            // Buscar dados do cliente pelo telefone
+            const normalizedPhone = (order.customer_phone || '').replace(/\D/g, '');
+            let customer = null;
+            if (normalizedPhone) {
+              const { data: customerData } = await supabase
+                .from('customers')
+                .select('*')
+                .eq('tenant_id', tenant_id)
+                .or(`phone.eq.${normalizedPhone},phone.like.%${normalizedPhone.slice(-9)}%`)
+                .limit(1)
+                .single();
+              customer = customerData;
+            }
+
+            console.log(`[bling-sync-orders] Order ${order.id} - Customer found:`, customer ? customer.name : 'NOT FOUND');
+
             // Usar loja configurada no banco (se houver)
             const blingStoreId = integration.bling_store_id || null;
-            const blingResult = await sendOrderToBling(order, cartItems, accessToken, blingStoreId);
+            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, blingStoreId);
 
             await supabase
               .from('orders')
