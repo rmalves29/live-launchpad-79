@@ -52,7 +52,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.bling-sync-orders]
-verify_jwt = true
+verify_jwt = false
+
+[functions.bling-test-order]
+verify_jwt = false
+
+[functions.bling-list-stores]
+verify_jwt = false
 
 [functions.bling-oauth]
 verify_jwt = true
