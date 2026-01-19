@@ -26,26 +26,19 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
   const [isFetching, setIsFetching] = useState(false);
 
   // Buscar contagem de pedidos pendentes de sincronização
-  const { data: pendingCount, refetch: refetchPending } = useQuery({
+  const { data: pendingCount, refetch: refetchPending, isError: pendingError } = useQuery({
     queryKey: ['bling-pending-orders', tenantId],
     queryFn: async () => {
-      // Primeiro tenta com bling_order_id (se a coluna existir)
+      // Conta todos os pedidos pagos (sem filtro de bling_order_id por enquanto)
       const { count, error } = await supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .eq('tenant_id', tenantId)
-        .eq('is_paid', true)
-        .is('bling_order_id', null);
+        .eq('is_paid', true);
       
       if (error) {
-        // Se a coluna não existe, retorna contagem de todos os pagos
-        console.log('bling_order_id column may not exist, counting all paid orders');
-        const { count: totalPaid } = await supabase
-          .from('orders')
-          .select('*', { count: 'exact', head: true })
-          .eq('tenant_id', tenantId)
-          .eq('is_paid', true);
-        return totalPaid || 0;
+        console.error('Erro ao buscar pedidos:', error);
+        throw error;
       }
       
       return count || 0;
@@ -54,26 +47,8 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
     refetchInterval: 30000,
   });
 
-  // Buscar contagem de pedidos já sincronizados
-  const { data: syncedCount } = useQuery({
-    queryKey: ['bling-synced-orders', tenantId],
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId)
-        .eq('is_paid', true)
-        .not('bling_order_id', 'is', null);
-      
-      if (error) {
-        return 0;
-      }
-      
-      return count || 0;
-    },
-    enabled: !!tenantId,
-    refetchInterval: 30000,
-  });
+  // Por enquanto, não temos contagem de sincronizados (coluna não existe)
+  const syncedCount = 0;
 
   const handleSyncAll = async () => {
     setIsSyncing(true);
