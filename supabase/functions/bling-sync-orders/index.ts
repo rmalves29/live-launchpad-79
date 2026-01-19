@@ -586,6 +586,159 @@ serve(async (req) => {
         break;
       }
 
+      case 'test_payload': {
+        // Ação de teste: gera o payload que seria enviado ao Bling sem criar o pedido
+        // Útil para verificar se os dados do cliente estão sendo carregados corretamente
+        const { customer_phone } = await req.json().catch(() => ({}));
+        
+        // Buscar um cliente com dados completos
+        const { data: testCustomer, error: customerError } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('tenant_id', tenant_id)
+          .not('cpf', 'is', null)
+          .not('cep', 'is', null)
+          .not('neighborhood', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (customerError || !testCustomer) {
+          return new Response(
+            JSON.stringify({ 
+              error: 'Nenhum cliente com dados completos encontrado',
+              hint: 'Cadastre um cliente com CPF, CEP, bairro, rua, número, cidade e estado'
+            }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Simular um pedido de teste
+        const testOrder = {
+          id: 99999,
+          customer_phone: testCustomer.phone,
+          customer_name: testCustomer.name,
+          customer_cep: testCustomer.cep,
+          customer_street: testCustomer.street,
+          customer_number: testCustomer.number,
+          customer_complement: testCustomer.complement,
+          customer_city: testCustomer.city,
+          customer_state: testCustomer.state,
+          created_at: new Date().toISOString(),
+          event_date: new Date().toISOString().split('T')[0],
+          event_type: 'TESTE',
+          observation: 'Pedido de teste para validação da integração Bling',
+        };
+
+        const testCartItems = [
+          {
+            id: 1,
+            product_code: 'TESTE-001',
+            product_name: 'Produto de Teste',
+            qty: 1,
+            unit_price: 99.90,
+          }
+        ];
+
+        // Montar o payload exatamente como seria enviado
+        const customerCpf = (testCustomer.cpf || '').replace(/\D/g, '');
+        const customerCep = (testCustomer.cep || '').replace(/\D/g, '');
+
+        const contactPayload = {
+          nome: testCustomer.name,
+          tipo: 'F',
+          situacao: 'A',
+          telefone: testCustomer.phone?.replace(/\D/g, ''),
+          celular: testCustomer.phone?.replace(/\D/g, ''),
+          email: testCustomer.email || undefined,
+          numeroDocumento: customerCpf || undefined,
+          endereco: {
+            endereco: testCustomer.street || '',
+            numero: testCustomer.number || 'S/N',
+            complemento: testCustomer.complement || '',
+            bairro: testCustomer.neighborhood || '',
+            cep: customerCep,
+            municipio: testCustomer.city || '',
+            uf: testCustomer.state || '',
+          },
+        };
+
+        const orderPayload: any = {
+          numero: testOrder.id,
+          numeroLoja: String(testOrder.id),
+          data: new Date().toISOString().split('T')[0],
+          dataPrevista: testOrder.event_date,
+          situacao: { id: 6 },
+          contato: { id: '<<SERIA_CRIADO_OU_BUSCADO>>' },
+          itens: testCartItems.map((item) => ({
+            codigo: item.product_code,
+            descricao: item.product_name,
+            quantidade: item.qty,
+            valor: item.unit_price,
+            unidade: 'UN',
+          })),
+          observacoes: testOrder.observation,
+          observacoesInternas: `Pedido ID: ${testOrder.id} | Evento: ${testOrder.event_type}`,
+        };
+
+        // Adicionar transporte
+        if (customerCep && testCustomer.street) {
+          orderPayload.transporte = {
+            contato: {
+              nome: testCustomer.name,
+              endereco: testCustomer.street,
+              numero: testCustomer.number || 'S/N',
+              complemento: testCustomer.complement || '',
+              bairro: testCustomer.neighborhood || '',
+              cep: customerCep,
+              municipio: testCustomer.city || '',
+              uf: testCustomer.state || '',
+            },
+          };
+        }
+
+        // Adicionar loja se configurada
+        const blingStoreId = integration.bling_store_id;
+        if (blingStoreId) {
+          orderPayload.loja = { id: blingStoreId };
+        }
+
+        result = {
+          message: 'Payload de teste gerado com sucesso (NÃO foi enviado ao Bling)',
+          customer: {
+            id: testCustomer.id,
+            name: testCustomer.name,
+            phone: testCustomer.phone,
+            cpf: testCustomer.cpf,
+            email: testCustomer.email,
+            address: {
+              cep: testCustomer.cep,
+              street: testCustomer.street,
+              number: testCustomer.number,
+              complement: testCustomer.complement,
+              neighborhood: testCustomer.neighborhood,
+              city: testCustomer.city,
+              state: testCustomer.state,
+            }
+          },
+          bling_payloads: {
+            contato: contactPayload,
+            pedido: orderPayload,
+          },
+          validation: {
+            has_cpf: !!customerCpf,
+            has_cep: !!customerCep,
+            has_neighborhood: !!testCustomer.neighborhood,
+            has_street: !!testCustomer.street,
+            has_city: !!testCustomer.city,
+            has_state: !!testCustomer.state,
+            has_transport_data: !!(customerCep && testCustomer.street),
+            has_store_linked: !!blingStoreId,
+          }
+        };
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: `Unknown action: ${action}` }),
