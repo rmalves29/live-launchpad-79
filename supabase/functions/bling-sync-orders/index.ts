@@ -169,10 +169,14 @@ async function sendOrderToBling(order: any, cartItems: any[], accessToken: strin
 
   const contactId = await getOrCreateBlingContactId(order, accessToken);
 
+  // Bling v3: situacao do pedido (0=Em aberto, 6=Em andamento, 9=Atendido, 12=Cancelado)
+  // numeroLoja é o número visível para busca no painel
   const blingOrder = {
     numero: order.id,
+    numeroLoja: String(order.id),
     data: new Date(order.created_at).toISOString().split('T')[0],
     dataPrevista: order.event_date,
+    situacao: { id: 6 }, // 6 = Em andamento (aparece na listagem padrão)
     contato: { id: contactId },
     itens: cartItems.map((item) => ({
       codigo: item.product_code || `PROD-${item.id}`,
