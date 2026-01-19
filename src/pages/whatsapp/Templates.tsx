@@ -71,8 +71,92 @@ export default function WhatsappTemplates() {
   });
 
   useEffect(() => {
-    loadTemplates();
+    initializeTemplates();
   }, []);
+
+  // Templates padrão que serão criados automaticamente
+  const DEFAULT_TEMPLATES = [
+    {
+      type: 'PAID_ORDER',
+      title: 'Confirmação de Pagamento',
+      content: `🎉 *Pagamento Confirmado - Pedido #{{order_id}}*
+
+✅ Recebemos seu pagamento!
+💰 Valor: *R$ {{total}}*
+
+Seu pedido está sendo preparado para envio.
+
+Obrigado pela preferência! 💚`
+    },
+    {
+      type: 'TRACKING',
+      title: 'Código de Rastreio',
+      content: `📦 *Pedido Enviado!*
+
+Olá{{customer_name}}! 🎉
+
+Seu pedido *#{{order_id}}* foi enviado!
+
+🚚 *Código de Rastreio:* {{tracking_code}}
+📅 *Data de Envio:* {{shipped_at}}
+
+🔗 *Rastreie seu pedido:*
+https://www.melhorrastreio.com.br/rastreio/{{tracking_code}}
+
+⏳ _O rastreio pode demorar até 2 dias úteis para aparecer no sistema._
+
+Obrigado pela preferência! 💚`
+    }
+  ];
+
+  const initializeTemplates = async () => {
+    try {
+      setLoading(true);
+      
+      // Buscar templates existentes
+      const { data: existingTemplates, error } = await supabaseTenant
+        .from('whatsapp_templates')
+        .select('*')
+        .order('type', { ascending: true });
+
+      if (error) throw error;
+
+      const templates = existingTemplates || [];
+      const existingTypes = templates.map(t => t.type);
+
+      // Criar templates padrão que não existem
+      const templatesToCreate = DEFAULT_TEMPLATES.filter(
+        dt => !existingTypes.includes(dt.type)
+      );
+
+      if (templatesToCreate.length > 0) {
+        const { error: insertError } = await supabaseTenant
+          .from('whatsapp_templates')
+          .insert(templatesToCreate);
+
+        if (insertError) {
+          console.error('Erro ao criar templates padrão:', insertError);
+        } else {
+          console.log(`Criados ${templatesToCreate.length} templates padrão`);
+          // Recarregar para incluir os novos
+          const { data: updatedTemplates } = await supabaseTenant
+            .from('whatsapp_templates')
+            .select('*')
+            .order('type', { ascending: true });
+          
+          setTemplates(updatedTemplates || []);
+          return;
+        }
+      }
+
+      setTemplates(templates);
+    } catch (error: any) {
+      console.error('Erro ao carregar templates:', error);
+      toast.error(error?.message || 'Erro ao carregar templates');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadTemplates = async () => {
     try {
