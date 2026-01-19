@@ -130,6 +130,8 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
   const [scopeError, setScopeError] = useState<string | null>(null);
   const [storeId, setStoreId] = useState<number | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
+  const [manualStoreId, setManualStoreId] = useState('');
+  const [manualStoreName, setManualStoreName] = useState('');
   const [modules, setModules] = useState<Record<string, boolean>>({
     sync_orders: false,
     sync_products: false,
@@ -174,6 +176,8 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         setClientSecret(data.client_secret || '');
         setStoreId(data.bling_store_id);
         setStoreName(data.bling_store_name);
+        setManualStoreId(data.bling_store_id?.toString() || '');
+        setManualStoreName(data.bling_store_name || '');
         setModules({
           sync_orders: data.sync_orders,
           sync_products: data.sync_products,
@@ -685,9 +689,60 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
               Vincule os pedidos a um canal de venda específico no Bling para facilitar a filtragem
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
+            {/* Entrada manual do ID */}
+            <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+              <div className="flex items-center gap-2">
+                <Store className="h-4 w-4 text-primary" />
+                <Label className="font-medium">Configuração Manual</Label>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Insira o ID e nome da loja diretamente (encontrado em Preferências → Integrações → Lojas Virtuais no Bling)
+              </p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="manual_store_id">ID da Loja</Label>
+                  <Input
+                    id="manual_store_id"
+                    type="text"
+                    placeholder="Ex: 205905895"
+                    value={manualStoreId}
+                    onChange={(e) => setManualStoreId(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="manual_store_name">Nome da Loja</Label>
+                  <Input
+                    id="manual_store_name"
+                    type="text"
+                    placeholder="Ex: OrderZap"
+                    value={manualStoreName}
+                    onChange={(e) => setManualStoreName(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button
+                onClick={() => {
+                  const id = manualStoreId ? Number(manualStoreId) : null;
+                  const name = manualStoreName || null;
+                  setStoreId(id);
+                  setStoreName(name);
+                  toast.success(`Loja "${name}" (ID: ${id}) será salva ao clicar em "Salvar Configuração"`);
+                }}
+                disabled={!manualStoreId}
+                variant="outline"
+                size="sm"
+              >
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Aplicar ID Manual
+              </Button>
+            </div>
+
+            <Separator />
+
+            {/* Seleção via API */}
             <div className="space-y-2">
-              <Label>Canal de Venda</Label>
+              <Label>Ou selecione da lista de canais (via API)</Label>
               <div className="flex gap-2">
                 <select
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -697,6 +752,8 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                     setStoreId(selectedId);
                     const selectedStore = blingStores?.find(s => s.id === selectedId);
                     setStoreName(selectedStore?.descricao || null);
+                    setManualStoreId(selectedId?.toString() || '');
+                    setManualStoreName(selectedStore?.descricao || '');
                   }}
                 >
                   <option value="">Nenhum (não vincular)</option>
@@ -719,12 +776,16 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                   )}
                 </Button>
               </div>
-              {storeName && storeId && (
-                <p className="text-sm text-muted-foreground">
-                  Loja selecionada: <strong>{storeName}</strong> (ID: {storeId})
-                </p>
-              )}
             </div>
+
+            {storeName && storeId && (
+              <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800 dark:text-green-200">
+                  Loja configurada: <strong>{storeName}</strong> (ID: {storeId})
+                </AlertDescription>
+              </Alert>
+            )}
 
             <Alert>
               <Info className="h-4 w-4" />
