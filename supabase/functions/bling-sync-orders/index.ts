@@ -403,9 +403,9 @@ serve(async (req) => {
           }
         }
 
-        // Loja OrderZap configurada no Bling
-        const BLING_STORE_ID = 205905895;
-        const blingResult = await sendOrderToBling(order, cartItems, accessToken, BLING_STORE_ID);
+        // Usar loja configurada no banco (se houver)
+        const blingStoreId = integration.bling_store_id || null;
+        const blingResult = await sendOrderToBling(order, cartItems, accessToken, blingStoreId);
 
         // Persistir o ID do pedido no Bling (inclui caso "já existe")
         await supabase
@@ -474,9 +474,9 @@ serve(async (req) => {
               continue;
             }
 
-            // Loja OrderZap configurada no Bling
-            const BLING_STORE_ID = 205905895;
-            const blingResult = await sendOrderToBling(order, cartItems, accessToken, BLING_STORE_ID);
+            // Usar loja configurada no banco (se houver)
+            const blingStoreId = integration.bling_store_id || null;
+            const blingResult = await sendOrderToBling(order, cartItems, accessToken, blingStoreId);
 
             await supabase
               .from('orders')
