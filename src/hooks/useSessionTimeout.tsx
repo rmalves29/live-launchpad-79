@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { isSendingActive } from '@/hooks/useSendingActivity';
 
-const TIMEOUT_DURATION = 8 * 60 * 60 * 1000; // 8 horas
+const TIMEOUT_DURATION = 365 * 24 * 60 * 60 * 1000; // 365 dias
 
 export const useSessionTimeout = () => {
   const navigate = useNavigate();
