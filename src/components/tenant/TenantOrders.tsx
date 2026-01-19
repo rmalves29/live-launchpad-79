@@ -172,6 +172,23 @@ export default function TenantOrders() {
         description: 'Pedido marcado como pago'
       });
 
+      // Sincronizar com Bling ERP em background
+      if (orderData?.tenant_id) {
+        supabase.functions.invoke('bling-sync-orders', {
+          body: {
+            action: 'send_order',
+            order_id: orderId,
+            tenant_id: orderData.tenant_id
+          }
+        }).then(res => {
+          if (res.error) {
+            console.log('Bling sync skipped or failed:', res.error);
+          } else {
+            console.log('✅ Pedido sincronizado com Bling');
+          }
+        }).catch(err => console.log('Bling sync error:', err));
+      }
+
       loadOrders();
       if (selectedOrder && selectedOrder.id === orderId) {
         setSelectedOrder({ ...selectedOrder, is_paid: true, payment_confirmation_sent: !!updateData.payment_confirmation_sent });

@@ -289,6 +289,13 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       setProcessingIds(prev => new Set(prev).add(orderId));
       
       try {
+        // Buscar tenant_id do pedido
+        const { data: orderData } = await supabaseTenant
+          .from('orders')
+          .select('tenant_id')
+          .eq('id', orderId)
+          .single();
+
         const { error } = await supabaseTenant
           .from('orders')
           .update({ is_paid: true, skip_paid_message: false })
@@ -306,6 +313,23 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
           title: 'Sucesso',
           description: 'Pedido marcado como pago'
         });
+
+        // Sincronizar com Bling ERP em background
+        if (orderData?.tenant_id) {
+          supabase.functions.invoke('bling-sync-orders', {
+            body: {
+              action: 'send_order',
+              order_id: orderId,
+              tenant_id: orderData.tenant_id
+            }
+          }).then(res => {
+            if (res.error) {
+              console.log('Bling sync skipped or failed:', res.error);
+            } else {
+              console.log('✅ Pedido sincronizado com Bling');
+            }
+          }).catch(err => console.log('Bling sync error:', err));
+        }
       } catch (error) {
         console.error('❌ Erro ao atualizar status:', error);
         toast({
