@@ -18,7 +18,40 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { tenant_id } = await req.json();
+    const body = await req.json();
+    const { tenant_id, action, store_id, store_name } = body;
+
+    // Ação para salvar loja diretamente
+    if (action === 'save_store') {
+      console.log('[bling-list-stores] Salvando loja:', store_id, store_name);
+      
+      const { data, error } = await supabase
+        .from('integration_bling')
+        .update({
+          bling_store_id: store_id,
+          bling_store_name: store_name,
+          updated_at: new Date().toISOString()
+        })
+        .eq('tenant_id', tenant_id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[bling-list-stores] Erro ao salvar loja:', error);
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Loja "${store_name}" (ID: ${store_id}) configurada com sucesso`,
+        data
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     // Buscar token do tenant
     const { data: integration, error: intError } = await supabase
