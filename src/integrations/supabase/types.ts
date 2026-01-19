@@ -659,6 +659,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          bling_order_id: number | null
           cart_id: number | null
           created_at: string | null
           customer_cep: string | null
@@ -692,6 +693,7 @@ export type Database = {
           whatsapp_group_name: string | null
         }
         Insert: {
+          bling_order_id?: number | null
           cart_id?: number | null
           created_at?: string | null
           customer_cep?: string | null
@@ -725,6 +727,7 @@ export type Database = {
           whatsapp_group_name?: string | null
         }
         Update: {
+          bling_order_id?: number | null
           cart_id?: number | null
           created_at?: string | null
           customer_cep?: string | null
