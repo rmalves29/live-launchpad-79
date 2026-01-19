@@ -11,6 +11,41 @@ const BLING_API_URL = 'https://www.bling.com.br/Api/v3';
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+function isDuplicateNumeroError(payloadText: string): boolean {
+  // Bling validation error: code 36 -> duplicate "numero" for sales order
+  return (
+    payloadText.includes('"code":36') &&
+    payloadText.includes('"element":"numero"') &&
+    payloadText.includes('VENDAS')
+  );
+}
+
+async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero: number | string): Promise<number | null> {
+  const res = await fetch(`${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}`, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Accept': 'application/json',
+    },
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    console.log('[bling-sync-orders] Could not search existing order in Bling:', res.status, text);
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    const first = parsed?.data?.[0] || parsed?.data?.pedidos?.[0] || parsed?.[0];
+    const id = first?.id;
+    if (typeof id === 'number') return id;
+    if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function refreshBlingToken(supabase: any, integration: any): Promise<string | null> {
   if (!integration.refresh_token || !integration.client_id || !integration.client_secret) {
     console.error('[bling-sync-orders] Missing credentials for token refresh');
@@ -19,7 +54,7 @@ async function refreshBlingToken(supabase: any, integration: any): Promise<strin
 
   try {
     const credentials = btoa(`${integration.client_id}:${integration.client_secret}`);
-    
+
     const response = await fetch('https://www.bling.com.br/Api/v3/oauth/token', {
       method: 'POST',
       headers: {
@@ -39,9 +74,9 @@ async function refreshBlingToken(supabase: any, integration: any): Promise<strin
     }
 
     const tokenData = await response.json();
-    
+
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
-    
+
     await supabase
       .from('integration_bling')
       .update({
@@ -65,13 +100,13 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
     const expiresAt = new Date(integration.token_expires_at);
     const now = new Date();
     const bufferMs = 5 * 60 * 1000;
-    
+
     if (expiresAt.getTime() - now.getTime() < bufferMs) {
       console.log('[bling-sync-orders] Token expired or expiring soon, refreshing...');
       return await refreshBlingToken(supabase, integration);
     }
   }
-  
+
   return integration.access_token;
 }
 
@@ -162,7 +197,11 @@ async function getOrCreateBlingContactId(order: any, accessToken: string): Promi
   throw new Error('Contato criado no Bling, mas não foi possível obter o ID do contato na resposta.');
 }
 
-async function sendOrderToBling(order: any, cartItems: any[], accessToken: string): Promise<any> {
+type SendOrderResult =
+  | { kind: 'created'; blingOrderId: number; raw: any }
+  | { kind: 'already_exists'; blingOrderId: number; raw: any };
+
+async function sendOrderToBling(order: any, cartItems: any[], accessToken: string): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
   }
@@ -210,10 +249,27 @@ async function sendOrderToBling(order: any, cartItems: any[], accessToken: strin
         'Token do Bling sem permissão para VENDAS/PEDIDOS. No Bling, adicione os escopos de Vendas/Pedidos (leitura/escrita) ao seu aplicativo e autorize novamente.'
       );
     }
+
+    // Se já existir no Bling, buscamos o ID e marcamos como sincronizado no nosso lado.
+    if (response.status === 400 && isDuplicateNumeroError(responseText)) {
+      const existingId = await findExistingBlingSaleOrderIdByNumero(accessToken, order.id);
+      if (existingId) {
+        return { kind: 'already_exists', blingOrderId: existingId, raw: { error: responseText } };
+      }
+    }
+
     throw new Error(`Bling API error: ${response.status} - ${responseText}`);
   }
 
-  return JSON.parse(responseText);
+  const parsed = JSON.parse(responseText);
+  const createdId = parsed?.data?.id ?? parsed?.id;
+  const numericId = typeof createdId === 'number' ? createdId : (typeof createdId === 'string' && /^\d+$/.test(createdId) ? Number(createdId) : null);
+
+  if (!numericId) {
+    throw new Error('Pedido criado no Bling, mas não foi possível obter o ID na resposta.');
+  }
+
+  return { kind: 'created', blingOrderId: numericId, raw: parsed };
 }
 
 async function fetchOrdersFromBling(accessToken: string, page = 1, limit = 100): Promise<any> {
@@ -317,7 +373,18 @@ serve(async (req) => {
           );
         }
 
-        let cartItems = [];
+        // Se já temos o ID do Bling salvo, consideramos sincronizado.
+        if (order.bling_order_id) {
+          result = {
+            skipped: true,
+            reason: 'order_already_synced',
+            order_id: order.id,
+            bling_order_id: order.bling_order_id,
+          };
+          break;
+        }
+
+        let cartItems: any[] = [];
         if (order.cart_id) {
           const { data: items, error: itemsError } = await supabase
             .from('cart_items')
@@ -329,16 +396,25 @@ serve(async (req) => {
           }
         }
 
-        result = await sendOrderToBling(order, cartItems, accessToken);
-        
-        // Nota: bling_order_id será salvo quando a coluna for adicionada
-        // const blingOrderId = result?.data?.id;
-        
-        
+        const blingResult = await sendOrderToBling(order, cartItems, accessToken);
+
+        // Persistir o ID do pedido no Bling (inclui caso "já existe")
+        await supabase
+          .from('orders')
+          .update({ bling_order_id: blingResult.blingOrderId })
+          .eq('id', order.id)
+          .eq('tenant_id', tenant_id);
+
         await supabase
           .from('integration_bling')
           .update({ last_sync_at: new Date().toISOString() })
           .eq('tenant_id', tenant_id);
+
+        result = {
+          order_id: order.id,
+          bling_order_id: blingResult.blingOrderId,
+          status: blingResult.kind,
+        };
 
         break;
       }
@@ -349,12 +425,13 @@ serve(async (req) => {
       }
 
       case 'sync_all': {
-        // Buscar pedidos pagos (sem filtro por bling_order_id por enquanto - coluna ainda não existe)
+        // Buscar pedidos pagos que ainda não foram sincronizados
         const { data: orders, error: ordersError } = await supabase
           .from('orders')
           .select('*')
           .eq('tenant_id', tenant_id)
           .eq('is_paid', true)
+          .is('bling_order_id', null)
           .order('created_at', { ascending: false })
           .limit(50);
 
@@ -362,17 +439,17 @@ serve(async (req) => {
           throw new Error(`Failed to fetch orders: ${ordersError.message}`);
         }
 
-        const results = [];
+        const results: any[] = [];
         for (let i = 0; i < (orders || []).length; i++) {
           const order = orders![i];
-          
+
           // Add delay between requests to respect Bling rate limit (3 req/sec)
           if (i > 0) {
             await delay(400); // 400ms delay = ~2.5 req/sec (safe margin)
           }
 
           try {
-            let cartItems = [];
+            let cartItems: any[] = [];
             if (order.cart_id) {
               const { data: items } = await supabase
                 .from('cart_items')
@@ -389,12 +466,19 @@ serve(async (req) => {
             }
 
             const blingResult = await sendOrderToBling(order, cartItems, accessToken);
-            
-            // Nota: bling_order_id será salvo quando a coluna for adicionada
-            // const blingOrderId = blingResult?.data?.id;
-            
-            
-            results.push({ order_id: order.id, success: true, bling_response: blingResult });
+
+            await supabase
+              .from('orders')
+              .update({ bling_order_id: blingResult.blingOrderId })
+              .eq('id', order.id)
+              .eq('tenant_id', tenant_id);
+
+            results.push({
+              order_id: order.id,
+              success: true,
+              bling_order_id: blingResult.blingOrderId,
+              status: blingResult.kind,
+            });
           } catch (error) {
             console.error(`[bling-sync-orders] Error syncing order ${order.id}:`, error);
             results.push({ order_id: order.id, success: false, error: error.message });
@@ -406,11 +490,11 @@ serve(async (req) => {
           .update({ last_sync_at: new Date().toISOString() })
           .eq('tenant_id', tenant_id);
 
-        result = { 
-          synced: results.filter(r => r.success).length, 
-          failed: results.filter(r => !r.success).length, 
+        result = {
+          synced: results.filter(r => r.success).length,
+          failed: results.filter(r => !r.success).length,
           skipped: results.filter(r => r.error === 'Pedido sem itens').length,
-          details: results 
+          details: results,
         };
         break;
       }
