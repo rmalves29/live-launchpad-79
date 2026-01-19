@@ -439,6 +439,20 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
             </AlertDescription>
           </Alert>
 
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Webhook (opcional):</strong> Para receber atualizações do Bling automaticamente, configure no Bling esta URL de Webhook:<br />
+              <code className="bg-muted px-2 py-1 rounded text-sm">
+                https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-webhook
+              </code>
+              <br />
+              <span className="text-sm text-muted-foreground mt-1 block">
+                Eventos recomendados: pedido.atualizado, pedido.criado
+              </span>
+            </AlertDescription>
+          </Alert>
+
           <div className="flex gap-2">
             <Button
               onClick={() => saveMutation.mutate()}

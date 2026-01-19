@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.mandae-webhook]
 verify_jwt = false
+
+[functions.bling-webhook]
+verify_jwt = false
