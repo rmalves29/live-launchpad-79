@@ -256,9 +256,38 @@ async function sendOrderToBling(order: any, cartItems: any[], customer: any, acc
     observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
   };
 
+  // Extrair valor do frete da observação (formato: "Frete: R$ XX,XX" ou "frete de R$ XX,XX")
+  let freteValor = 0;
+  let freteNome = '';
+  const observacao = order.observation || '';
+  
+  // Tentar extrair nome do frete (ex: "PAC", "SEDEX", etc.)
+  const freteNomeMatch = observacao.match(/(?:frete|envio|transporte)[:\s]*([A-Za-zÀ-ú\s]+?)(?:\s*[-–]\s*|\s+R\$|\s*:)/i);
+  if (freteNomeMatch) {
+    freteNome = freteNomeMatch[1].trim();
+  }
+  
+  // Tentar extrair valor do frete
+  const freteMatch = observacao.match(/(?:frete|envio|transporte)[^R$]*R\$\s*([\d.,]+)/i);
+  if (freteMatch) {
+    freteValor = parseFloat(freteMatch[1].replace('.', '').replace(',', '.')) || 0;
+  }
+  
+  // Fallback: buscar qualquer padrão "R$ XX,XX" relacionado a frete
+  if (freteValor === 0) {
+    const valorMatch = observacao.match(/R\$\s*([\d.,]+)/);
+    if (valorMatch && observacao.toLowerCase().includes('frete')) {
+      freteValor = parseFloat(valorMatch[1].replace('.', '').replace(',', '.')) || 0;
+    }
+  }
+  
+  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, observacao });
+
   // Adicionar dados de transporte/entrega se tiver endereço
   if (customerCep && customerStreet) {
     blingOrder.transporte = {
+      frete: freteValor,
+      fretePorConta: 0, // 0 = Remetente, 1 = Destinatário
       contato: {
         nome: customerName,
         endereco: customerStreet,
@@ -270,7 +299,23 @@ async function sendOrderToBling(order: any, cartItems: any[], customer: any, acc
         uf: customerState,
       },
     };
-    console.log('[bling-sync-orders] Adicionando dados de transporte ao pedido');
+    
+    // Adicionar transportadora se identificada
+    if (freteNome) {
+      blingOrder.transporte.transportador = freteNome;
+    }
+    
+    console.log('[bling-sync-orders] Adicionando dados de transporte ao pedido:', JSON.stringify(blingOrder.transporte, null, 2));
+  } else if (freteValor > 0) {
+    // Se não tem endereço mas tem frete, adicionar só o valor
+    blingOrder.transporte = {
+      frete: freteValor,
+      fretePorConta: 0,
+    };
+    if (freteNome) {
+      blingOrder.transporte.transportador = freteNome;
+    }
+    console.log('[bling-sync-orders] Adicionando apenas valor de frete:', freteValor);
   }
 
   // Vincular à loja OrderZap se configurado
