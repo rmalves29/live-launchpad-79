@@ -514,23 +514,24 @@ export default function SendFlow() {
   const personalizeMessage = (product: Product) => {
     let message = messageTemplate;
     
-    // Replace basic variables
+    // Replace basic variables - trim para evitar espaços que quebram formatação do WhatsApp
+    // O WhatsApp exige que asteriscos de negrito estejam colados ao texto (*texto* funciona, * texto * não funciona)
     message = message
-      .replace(/\{\{?codigo\}?\}/gi, product.code)
-      .replace(/\{\{?nome\}?\}/gi, product.name)
+      .replace(/\{\{?codigo\}?\}/gi, product.code.trim())
+      .replace(/\{\{?nome\}?\}/gi, product.name.trim())
       .replace(/\{\{?valor\}?\}/gi, formatPrice(product.price));
     
-    // Handle color - remove entire line if empty
+    // Handle color - remove entire line if empty, trim para evitar quebra de formatação
     if (product.color && product.color.trim()) {
-      message = message.replace(/\{\{?cor\}?\}/gi, product.color);
+      message = message.replace(/\{\{?cor\}?\}/gi, product.color.trim());
     } else {
       // Remove lines containing color placeholder
       message = message.replace(/.*\{\{?cor\}?\}.*\n?/gi, '');
     }
     
-    // Handle size - remove entire line if empty
+    // Handle size - remove entire line if empty, trim para evitar quebra de formatação
     if (product.size && product.size.trim()) {
-      message = message.replace(/\{\{?tamanho\}?\}/gi, product.size);
+      message = message.replace(/\{\{?tamanho\}?\}/gi, product.size.trim());
     } else {
       // Remove lines containing size placeholder
       message = message.replace(/.*\{\{?tamanho\}?\}.*\n?/gi, '');
