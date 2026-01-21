@@ -14,10 +14,16 @@ export interface ActiveShippingIntegration {
  */
 export async function getActiveShippingIntegration(tenantId: string): Promise<ActiveShippingIntegration> {
   try {
-    // Buscar todas as integrações ativas do tenant
+    if (!tenantId) {
+      console.log("[shipping-utils] tenant_id não fornecido");
+      return { provider: null, functionName: '', testFunctionName: null };
+    }
+
+    // Buscar integrações ativas do tenant específico
+    // IMPORTANTE: Filtra explicitamente por tenant_id para garantir isolamento
     const { data: integrations, error } = await supabase
       .from("shipping_integrations")
-      .select("provider, is_active, access_token")
+      .select("provider, is_active")
       .eq("tenant_id", tenantId)
       .eq("is_active", true);
 
@@ -27,14 +33,16 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
     }
 
     if (!integrations || integrations.length === 0) {
-      console.log("[shipping-utils] Nenhuma integração ativa encontrada");
+      console.log("[shipping-utils] Nenhuma integração ativa encontrada para tenant:", tenantId);
       return { provider: null, functionName: '', testFunctionName: null };
     }
 
+    console.log("[shipping-utils] Integrações encontradas para tenant", tenantId, ":", integrations);
+
     // Verificar se Mandae está ativa (prioridade)
-    const mandaeIntegration = integrations.find(i => i.provider === 'mandae' && i.access_token);
+    const mandaeIntegration = integrations.find(i => i.provider === 'mandae');
     if (mandaeIntegration) {
-      console.log("[shipping-utils] Integração Mandae ativa");
+      console.log("[shipping-utils] Integração Mandae ativa para tenant:", tenantId);
       return {
         provider: 'mandae',
         functionName: 'mandae-shipping',
@@ -43,9 +51,9 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
     }
 
     // Verificar se Melhor Envio está ativo
-    const melhorEnvioIntegration = integrations.find(i => i.provider === 'melhor_envio' && i.access_token);
+    const melhorEnvioIntegration = integrations.find(i => i.provider === 'melhor_envio');
     if (melhorEnvioIntegration) {
-      console.log("[shipping-utils] Integração Melhor Envio ativa");
+      console.log("[shipping-utils] Integração Melhor Envio ativa para tenant:", tenantId);
       return {
         provider: 'melhor_envio',
         functionName: 'melhor-envio-shipping',
@@ -53,7 +61,7 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
       };
     }
 
-    console.log("[shipping-utils] Nenhuma integração com token válido");
+    console.log("[shipping-utils] Nenhuma integração válida para tenant:", tenantId);
     return { provider: null, functionName: '', testFunctionName: null };
   } catch (err) {
     console.error("[shipping-utils] Erro ao determinar integração ativa:", err);
