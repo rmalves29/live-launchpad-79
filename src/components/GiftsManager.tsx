@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
+import { useTenantContext } from '@/contexts/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,23 +8,28 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Trash2, Plus, Edit, Gift } from 'lucide-react';
+import { Trash2, Plus, Edit, Gift, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
-interface Gift {
+interface GiftItem {
   id: number;
   name: string;
   description?: string;
   minimum_purchase_amount: number;
   is_active: boolean;
+  tenant_id?: string;
 }
 
 export const GiftsManager = () => {
-  const [gifts, setGifts] = useState<Gift[]>([]);
+  const { tenant } = useTenantContext();
+  const tenantId = tenant?.id;
+  const [gifts, setGifts] = useState<GiftItem[]>([]);
   const [isAddingGift, setIsAddingGift] = useState(false);
-  const [editingGift, setEditingGift] = useState<Gift | null>(null);
+  const [editingGift, setEditingGift] = useState<GiftItem | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hasTenantColumn, setHasTenantColumn] = useState(true);
   const { toast } = useToast();
 
   const [newGift, setNewGift] = useState({
@@ -34,19 +40,39 @@ export const GiftsManager = () => {
   });
 
   useEffect(() => {
-    loadGifts();
-  }, []);
+    if (tenantId) {
+      loadGifts();
+    }
+  }, [tenantId]);
 
   const loadGifts = async () => {
+    if (!tenantId) return;
+    
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Tentar buscar com filtro de tenant_id
+      const { data, error } = await supabaseTenant
         .from('gifts')
         .select('*')
         .order('minimum_purchase_amount', { ascending: true });
 
-      if (error) throw error;
-      setGifts((data || []) as Gift[]);
+      if (error) {
+        // Se erro for sobre tenant_id não existir, buscar sem filtro
+        if (error.message?.includes('tenant_id')) {
+          setHasTenantColumn(false);
+          const { data: allData, error: allError } = await supabaseTenant.raw
+            .from('gifts')
+            .select('*')
+            .order('minimum_purchase_amount', { ascending: true });
+          
+          if (allError) throw allError;
+          setGifts((allData || []) as GiftItem[]);
+        } else {
+          throw error;
+        }
+      } else {
+        setGifts((data || []) as GiftItem[]);
+      }
     } catch (error: any) {
       console.error('Erro ao carregar brindes:', error);
       toast({
@@ -60,6 +86,15 @@ export const GiftsManager = () => {
   };
 
   const saveGift = async () => {
+    if (!tenantId) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Tenant não identificado"
+      });
+      return;
+    }
+
     if (!newGift.name || !newGift.minimum_purchase_amount) {
       toast({
         variant: "destructive",
@@ -70,15 +105,20 @@ export const GiftsManager = () => {
     }
 
     try {
-      const giftData = {
+      const giftData: any = {
         name: newGift.name,
         description: newGift.description || null,
         minimum_purchase_amount: newGift.minimum_purchase_amount,
         is_active: newGift.is_active
       };
 
+      // Adicionar tenant_id se a coluna existir
+      if (hasTenantColumn) {
+        giftData.tenant_id = tenantId;
+      }
+
       if (editingGift) {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('gifts')
           .update(giftData)
           .eq('id', editingGift.id);
@@ -89,7 +129,7 @@ export const GiftsManager = () => {
           description: "Brinde atualizado com sucesso"
         });
       } else {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('gifts')
           .insert(giftData);
 
@@ -114,7 +154,7 @@ export const GiftsManager = () => {
 
   const deleteGift = async (id: number) => {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('gifts')
         .delete()
         .eq('id', id);
@@ -147,7 +187,7 @@ export const GiftsManager = () => {
     setEditingGift(null);
   };
 
-  const startEditing = (gift: Gift) => {
+  const startEditing = (gift: GiftItem) => {
     setEditingGift(gift);
     setNewGift({
       name: gift.name,
@@ -157,6 +197,21 @@ export const GiftsManager = () => {
     });
     setIsAddingGift(true);
   };
+
+  if (!tenantId) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Selecione uma empresa para gerenciar brindes
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -173,6 +228,15 @@ export const GiftsManager = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!hasTenantColumn && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              A coluna tenant_id não existe na tabela gifts. Execute a migração SQL para corrigir o isolamento por tenant.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {isAddingGift && (
           <Card className="p-4 border-2 border-dashed">
             <div className="space-y-4">
