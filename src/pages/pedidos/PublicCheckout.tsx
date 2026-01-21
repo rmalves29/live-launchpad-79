@@ -373,7 +373,13 @@ const PublicCheckout = () => {
           .map((option: any) => ({
             id: String(option.service_id || option.id || Math.random()),
             name: String(option.service_name || option.name || 'Transportadora'),
-            company: String(option.company?.name || option.company || activeIntegration.provider === 'mandae' ? 'Mandae' : 'Melhor Envio'),
+            // ATENÇÃO: manter parênteses para não cair em precedência errada do operador ternário
+            // (sem parênteses, qualquer company truthy faria aparecer "Mandae")
+            company: String(
+              option.company?.name ||
+                option.company ||
+                (activeIntegration.provider === 'mandae' ? 'Mandae' : 'Melhor Envio')
+            ),
             price: parseFloat(option.price || 0).toFixed(2),
             delivery_time: String(option.delivery_time || '5-10 dias'),
             custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
