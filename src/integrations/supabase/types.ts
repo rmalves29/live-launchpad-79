@@ -219,6 +219,7 @@ export type Database = {
           id: number
           is_active: boolean
           progressive_tiers: Json | null
+          tenant_id: string | null
           updated_at: string
           usage_limit: number | null
           used_count: number
@@ -232,6 +233,7 @@ export type Database = {
           id?: number
           is_active?: boolean
           progressive_tiers?: Json | null
+          tenant_id?: string | null
           updated_at?: string
           usage_limit?: number | null
           used_count?: number
@@ -245,11 +247,20 @@ export type Database = {
           id?: number
           is_active?: boolean
           progressive_tiers?: Json | null
+          tenant_id?: string | null
           updated_at?: string
           usage_limit?: number | null
           used_count?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "coupons_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       custom_shipping_options: {
         Row: {
@@ -412,6 +423,7 @@ export type Database = {
           is_active: boolean
           minimum_purchase_amount: number
           name: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -421,6 +433,7 @@ export type Database = {
           is_active?: boolean
           minimum_purchase_amount: number
           name: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -430,9 +443,18 @@ export type Database = {
           is_active?: boolean
           minimum_purchase_amount?: number
           name?: string
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "gifts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       integration_bling: {
         Row: {
