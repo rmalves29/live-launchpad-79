@@ -439,7 +439,7 @@ const Checkout = () => {
     return `${handlingDays} dias para postagem + ${originalTime}`;
   };
 
-  const filterShippingOptions = (options: any[]) => {
+  const filterShippingOptions = (options: any[], activeProvider: 'melhor_envio' | 'mandae' | null) => {
     return options.filter(option => {
       const companyName = option.company?.toLowerCase() || '';
       const serviceName = option.name?.toLowerCase() || '';
@@ -447,10 +447,12 @@ const Checkout = () => {
       // Allow pickup option
       if (option.id === 'retirada') return true;
       
-      // Allow Mandae services
-      if (companyName.includes('mandae') || serviceName.includes('econômico') || serviceName.includes('rápido')) {
-        return true;
-      }
+      // IMPORTANTE: só permitir serviços "Mandae" quando a integração ativa do tenant for Mandae.
+      const isMandaeService =
+        companyName.includes('mandae') ||
+        serviceName.includes('econômico') ||
+        serviceName.includes('rápido');
+      if (isMandaeService) return activeProvider === 'mandae';
       
       // Filter for J&T and Correios services
       return (
@@ -636,7 +638,12 @@ const Checkout = () => {
             return {
               id: String(option.service_id || option.id || Math.random()),
               name: String(option.service_name || option.name || 'Transportadora'),
-              company: String(option.company?.name || option.company || (activeIntegration.provider === 'mandae' ? 'Mandae' : 'Melhor Envio')),
+              // ATENÇÃO: manter parênteses para não cair em precedência errada do operador ternário
+              company: String(
+                option.company?.name ||
+                  option.company ||
+                  (activeIntegration.provider === 'mandae' ? 'Mandae' : 'Melhor Envio')
+              ),
               price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
               delivery_time: String(option.delivery_time || option.custom_delivery_time || '5-10 dias'),
               custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
@@ -645,7 +652,7 @@ const Checkout = () => {
 
         if (validOptions.length > 0) {
           // Filter shipping options to show only desired services
-          const filteredOptions = filterShippingOptions(validOptions);
+          const filteredOptions = filterShippingOptions(validOptions, activeIntegration.provider);
           // Preservar opção de merge + opções customizadas + opções do Melhor Envio
           const allOptions = mergeOption 
             ? [mergeOption, ...fallbackShipping, ...filteredOptions]
