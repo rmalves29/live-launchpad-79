@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
 
@@ -24,7 +24,7 @@ interface AppliedGift {
 
 export type AppliedCodeType = AppliedCoupon | AppliedGift | null;
 
-export const useCouponOrGift = () => {
+export const useCouponOrGift = (tenantId?: string) => {
   const { toast } = useToast();
   const [couponCode, setCouponCode] = useState('');
   const [appliedCode, setAppliedCode] = useState<AppliedCodeType>(null);
@@ -45,15 +45,17 @@ export const useCouponOrGift = () => {
     try {
       const codeToSearch = couponCode.toUpperCase().trim();
 
-      // Primeiro, tentar buscar como cupom de desconto
-      const { data: coupon, error: couponError } = await supabase
+      // Primeiro, tentar buscar como cupom de desconto (filtrado por tenant se houver)
+      const { data: coupon, error: couponError } = await supabaseTenant
         .from('coupons')
         .select('*')
         .eq('code', codeToSearch)
         .eq('is_active', true)
         .maybeSingle();
 
-      if (couponError) throw couponError;
+      if (couponError && !couponError.message?.includes('tenant_id')) {
+        throw couponError;
+      }
 
       if (coupon) {
         // Verificar expiração
@@ -104,14 +106,15 @@ export const useCouponOrGift = () => {
         return;
       }
 
-      // Se não encontrou cupom, tentar buscar como brinde pelo nome/código
-      // Brindes podem ser buscados pelo nome (case insensitive)
-      const { data: gifts, error: giftError } = await supabase
+      // Se não encontrou cupom, tentar buscar como brinde pelo nome/código (filtrado por tenant)
+      const { data: gifts, error: giftError } = await supabaseTenant
         .from('gifts')
         .select('*')
         .eq('is_active', true);
 
-      if (giftError) throw giftError;
+      if (giftError && !giftError.message?.includes('tenant_id')) {
+        throw giftError;
+      }
 
       // Buscar brinde pelo nome (comparação case insensitive)
       const gift = gifts?.find(g => 
@@ -176,7 +179,7 @@ export const useCouponOrGift = () => {
   const updateCouponUsage = async () => {
     if (appliedCode?.type === 'coupon') {
       const coupon = appliedCode as AppliedCoupon;
-      await supabase
+      await supabaseTenant
         .from('coupons')
         .update({ used_count: coupon.used_count + 1 })
         .eq('id', coupon.id);

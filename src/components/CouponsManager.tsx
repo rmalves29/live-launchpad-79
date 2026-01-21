@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseTenant } from '@/lib/supabase-tenant';
+import { useTenantContext } from '@/contexts/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,9 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Trash2, Plus, Edit } from 'lucide-react';
+import { Trash2, Plus, Edit, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Coupon {
   id: number;
@@ -20,6 +22,7 @@ interface Coupon {
   is_active: boolean;
   usage_limit?: number;
   used_count: number;
+  tenant_id?: string;
   progressive_tiers?: Array<{
     min_value: number;
     max_value: number | null;
@@ -28,10 +31,13 @@ interface Coupon {
 }
 
 export const CouponsManager = () => {
+  const { tenant } = useTenantContext();
+  const tenantId = tenant?.id;
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [isAddingCoupon, setIsAddingCoupon] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hasTenantColumn, setHasTenantColumn] = useState(true);
   const { toast } = useToast();
 
   const [newCoupon, setNewCoupon] = useState({
@@ -45,22 +51,43 @@ export const CouponsManager = () => {
   });
 
   useEffect(() => {
-    loadCoupons();
-  }, []);
+    if (tenantId) {
+      loadCoupons();
+    }
+  }, [tenantId]);
 
   const loadCoupons = async () => {
+    if (!tenantId) return;
+    
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from('coupons')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setCoupons((data || []).map(coupon => ({
-        ...coupon,
-        progressive_tiers: coupon.progressive_tiers as any || undefined
-      })) as Coupon[]);
+      if (error) {
+        if (error.message?.includes('tenant_id')) {
+          setHasTenantColumn(false);
+          const { data: allData, error: allError } = await supabaseTenant.raw
+            .from('coupons')
+            .select('*')
+            .order('created_at', { ascending: false });
+          
+          if (allError) throw allError;
+          setCoupons((allData || []).map(coupon => ({
+            ...coupon,
+            progressive_tiers: coupon.progressive_tiers as any || undefined
+          })) as Coupon[]);
+        } else {
+          throw error;
+        }
+      } else {
+        setCoupons((data || []).map(coupon => ({
+          ...coupon,
+          progressive_tiers: coupon.progressive_tiers as any || undefined
+        })) as Coupon[]);
+      }
     } catch (error: any) {
       console.error('Erro ao carregar cupons:', error);
       toast({
@@ -74,6 +101,15 @@ export const CouponsManager = () => {
   };
 
   const saveCoupon = async () => {
+    if (!tenantId) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Tenant não identificado"
+      });
+      return;
+    }
+
     if (!newCoupon.code) {
       toast({
         variant: "destructive",
@@ -83,7 +119,6 @@ export const CouponsManager = () => {
       return;
     }
 
-    // Validação específica para cada tipo
     if (newCoupon.discount_type === 'progressive') {
       if (!newCoupon.progressive_tiers || newCoupon.progressive_tiers.length === 0) {
         toast({
@@ -113,8 +148,12 @@ export const CouponsManager = () => {
         progressive_tiers: newCoupon.discount_type === 'progressive' ? newCoupon.progressive_tiers : null
       };
 
+      if (hasTenantColumn) {
+        couponData.tenant_id = tenantId;
+      }
+
       if (editingCoupon) {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('coupons')
           .update(couponData)
           .eq('id', editingCoupon.id);
@@ -125,7 +164,7 @@ export const CouponsManager = () => {
           description: "Cupom atualizado com sucesso"
         });
       } else {
-        const { error } = await supabase
+        const { error } = await supabaseTenant
           .from('coupons')
           .insert(couponData);
 
@@ -150,7 +189,7 @@ export const CouponsManager = () => {
 
   const deleteCoupon = async (id: number) => {
     try {
-      const { error } = await supabase
+      const { error } = await supabaseTenant
         .from('coupons')
         .delete()
         .eq('id', id);
@@ -225,6 +264,21 @@ export const CouponsManager = () => {
     setNewCoupon({ ...newCoupon, progressive_tiers: newTiers });
   };
 
+  if (!tenantId) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Selecione uma empresa para gerenciar cupons
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -237,6 +291,15 @@ export const CouponsManager = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!hasTenantColumn && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              A coluna tenant_id não existe na tabela coupons. Execute a migração SQL para corrigir o isolamento por tenant.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {isAddingCoupon && (
           <Card className="p-4 border-2 border-dashed">
             <div className="grid grid-cols-2 gap-4">
@@ -311,7 +374,6 @@ export const CouponsManager = () => {
               </div>
             </div>
 
-            {/* Faixas de Desconto Progressivo */}
             {newCoupon.discount_type === 'progressive' && (
               <div className="mt-4 space-y-3">
                 <div className="flex items-center justify-between">
