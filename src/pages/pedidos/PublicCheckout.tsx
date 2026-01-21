@@ -262,7 +262,7 @@ const PublicCheckout = () => {
     return `${handlingDays} dias para postagem + ${originalTime}`;
   };
 
-  const filterShippingOptions = (options: any[]) => {
+  const filterShippingOptions = (options: any[], activeProvider: 'melhor_envio' | 'mandae' | null) => {
     return options.filter(option => {
       const companyName = option.company?.toLowerCase() || '';
       const serviceName = option.name?.toLowerCase() || '';
@@ -270,10 +270,13 @@ const PublicCheckout = () => {
       // Allow pickup option
       if (option.id === 'retirada') return true;
       
-      // Allow Mandae services
-      if (companyName.includes('mandae') || serviceName.includes('econômico') || serviceName.includes('rápido')) {
-        return true;
-      }
+      // IMPORTANTE: só permitir serviços "Mandae" quando a integração ativa do tenant for Mandae.
+      // (No Melhor Envio pode aparecer a transportadora Mandaê, mas isso NÃO significa integração Mandae ativa.)
+      const isMandaeService =
+        companyName.includes('mandae') ||
+        serviceName.includes('econômico') ||
+        serviceName.includes('rápido');
+      if (isMandaeService) return activeProvider === 'mandae';
       
       // Filter for J&T and Correios services
       return (
@@ -386,7 +389,7 @@ const PublicCheckout = () => {
           }));
 
         if (validOptions.length > 0) {
-          const filteredOptions = filterShippingOptions(validOptions);
+          const filteredOptions = filterShippingOptions(validOptions, activeIntegration.provider);
           // Preservar opção de merge + opções customizadas + opções da transportadora
           const allOptions = mergeOption 
             ? [mergeOption, ...fallbackShipping, ...filteredOptions]
