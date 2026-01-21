@@ -648,11 +648,22 @@ export default function SendFlow() {
           await sendingJob.resumeJob(resumeJobId);
         }
       } else {
-        const uniqueProductIds = [...new Set(prioritizedProductIds)];
-        selectedProductArray = uniqueProductIds
-          .map(id => products.find(p => p.id === id))
-          .filter((p): p is Product => p !== undefined && selectedProducts.has(p.id));
+        // CRÍTICO: Manter ordem estrita de priorização
+        // 1. Usar snapshot do prioritizedProductIds no momento do envio
+        // 2. Filtrar apenas produtos selecionados MANTENDO a ordem original
+        const orderedProductIds = prioritizedProductIds.filter(id => selectedProducts.has(id));
+        
+        // Criar um Map para acesso O(1) aos produtos por ID
+        const productsMap = new Map(products.map(p => [p.id, p]));
+        
+        selectedProductArray = orderedProductIds
+          .map(id => productsMap.get(id))
+          .filter((p): p is Product => p !== undefined);
+        
         selectedGroupArray = [...new Set(Array.from(selectedGroups))];
+        
+        // Log para debug - ordem exata de envio
+        console.log('📋 Ordem de envio determinada:', selectedProductArray.map((p, idx) => `${idx + 1}º: ${p.code} - ${p.name}`));
       }
 
       const total = selectedProductArray.length * selectedGroupArray.length;
