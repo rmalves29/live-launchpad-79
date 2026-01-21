@@ -159,13 +159,16 @@ const PublicCheckout = () => {
     loadTenant();
   }, [slug]);
 
-  // Carregar brindes ativos
+  // Carregar brindes ativos filtrados pelo tenant
   useEffect(() => {
     const loadActiveGifts = async () => {
+      if (!tenant?.id) return;
+      
       try {
         const { data, error } = await supabase
           .from("gifts")
           .select("*")
+          .eq("tenant_id", tenant.id)
           .eq("is_active", true)
           .order("minimum_purchase_amount", { ascending: true });
 
@@ -176,7 +179,7 @@ const PublicCheckout = () => {
       }
     };
     loadActiveGifts();
-  }, []);
+  }, [tenant?.id]);
 
   // Carregar handling days
   useEffect(() => {
@@ -421,10 +424,11 @@ const PublicCheckout = () => {
     try {
       const codeToSearch = couponCode.toUpperCase().trim();
 
-      // Primeiro, tentar buscar como cupom de desconto
+      // Primeiro, tentar buscar como cupom de desconto (filtrado por tenant)
       const { data: coupon, error } = await supabase
         .from('coupons')
         .select('*')
+        .eq('tenant_id', tenant.id)
         .eq('code', codeToSearch)
         .eq('is_active', true)
         .maybeSingle();
@@ -466,10 +470,11 @@ const PublicCheckout = () => {
         return;
       }
 
-      // Se não encontrou cupom, tentar buscar como brinde pelo nome
+      // Se não encontrou cupom, tentar buscar como brinde pelo nome (filtrado por tenant)
       const { data: gifts, error: giftError } = await supabase
         .from('gifts')
         .select('*')
+        .eq('tenant_id', tenant.id)
         .eq('is_active', true);
 
       if (giftError) throw giftError;

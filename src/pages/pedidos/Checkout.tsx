@@ -144,8 +144,10 @@ const Checkout = () => {
   }, [tenantId]);
 
   const loadActiveGifts = async () => {
+    if (!tenantId) return;
+    
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseTenant
         .from("gifts")
         .select("*")
         .eq("is_active", true)
@@ -159,8 +161,8 @@ const Checkout = () => {
   };
 
   useEffect(() => {
-    loadActiveGifts();
-  }, []);
+    if (tenantId) loadActiveGifts();
+  }, [tenantId]);
 
   // Carregar slug do tenant e URL base para gerar link do checkout público
   useEffect(() => {
@@ -896,8 +898,8 @@ const Checkout = () => {
     try {
       const codeToSearch = couponCode.toUpperCase().trim();
 
-      // Primeiro, tentar buscar como cupom de desconto
-      const { data: coupon, error } = await supabase
+      // Primeiro, tentar buscar como cupom de desconto (filtrado por tenant)
+      const { data: coupon, error } = await supabaseTenant
         .from('coupons')
         .select('*')
         .eq('code', codeToSearch)
@@ -958,8 +960,8 @@ const Checkout = () => {
         return;
       }
 
-      // Se não encontrou cupom, tentar buscar como brinde pelo nome
-      const { data: gifts, error: giftError } = await supabase
+      // Se não encontrou cupom, tentar buscar como brinde pelo nome (filtrado por tenant)
+      const { data: gifts, error: giftError } = await supabaseTenant
         .from('gifts')
         .select('*')
         .eq('is_active', true);
