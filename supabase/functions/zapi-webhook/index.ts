@@ -782,7 +782,7 @@ async function findOrCreateOrder(
   // First, check ALL orders for this customer to debug
   const { data: allOrders, error: allOrdersError } = await supabase
     .from('orders')
-    .select('id, is_paid, event_type, event_date, cart_id, created_at')
+    .select('id, is_paid, is_cancelled, event_type, event_date, cart_id, created_at')
     .eq('tenant_id', tenantId)
     .eq('customer_phone', phone)
     .order('created_at', { ascending: false })
@@ -793,11 +793,41 @@ async function findOrCreateOrder(
   } else {
     console.log(`[zapi-webhook] 📋 Found ${allOrders?.length || 0} total orders for this phone:`);
     for (const o of allOrders || []) {
-      console.log(`[zapi-webhook]   - Order ID: ${o.id}, Paid: ${o.is_paid}, Type: ${o.event_type}, Date: ${o.event_date}, CartID: ${o.cart_id}, Created: ${o.created_at}`);
+      console.log(`[zapi-webhook]   - Order ID: ${o.id}, Paid: ${o.is_paid}, Cancelled: ${o.is_cancelled}, Type: ${o.event_type}, Date: ${o.event_date}, CartID: ${o.cart_id}, Created: ${o.created_at}`);
     }
   }
 
-  // Try to find existing unpaid order for today with same event type
+  // PRIORITY 1: Find existing order that uses this cart_id (prevents duplicates across days)
+  // This handles the case where customer adds items on different days - same cart = same order
+  const { data: orderByCart, error: cartOrderError } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('cart_id', cartId)
+    .eq('is_paid', false)
+    .eq('is_cancelled', false)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (cartOrderError) {
+    console.log(`[zapi-webhook] ❌ Error finding order by cart_id: ${cartOrderError.message}`);
+  }
+
+  if (orderByCart) {
+    console.log(`[zapi-webhook] ✅ Found existing unpaid order by cart_id: ${orderByCart.id} (cart_id: ${cartId})`);
+    // Update event_date to today so order appears in today's list
+    if (orderByCart.event_date !== today) {
+      console.log(`[zapi-webhook] 📅 Updating order ${orderByCart.id} event_date from ${orderByCart.event_date} to ${today}`);
+      await supabase
+        .from('orders')
+        .update({ event_date: today })
+        .eq('id', orderByCart.id);
+    }
+    return orderByCart;
+  }
+
+  // PRIORITY 2: Find existing unpaid order for today with same event type
   const { data: existingOrder, error: findError } = await supabase
     .from('orders')
     .select('*')
@@ -806,6 +836,7 @@ async function findOrCreateOrder(
     .eq('event_type', eventType)
     .eq('event_date', today)
     .eq('is_paid', false)
+    .eq('is_cancelled', false)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -815,7 +846,7 @@ async function findOrCreateOrder(
   }
 
   if (existingOrder) {
-    console.log(`[zapi-webhook] ✅ Found existing unpaid order: ${existingOrder.id} (${eventType}), cart_id: ${existingOrder.cart_id}`);
+    console.log(`[zapi-webhook] ✅ Found existing unpaid order for today: ${existingOrder.id} (${eventType}), cart_id: ${existingOrder.cart_id}`);
     // Update cart_id if needed
     if (existingOrder.cart_id !== cartId) {
       console.log(`[zapi-webhook] ⚠️ Updating order ${existingOrder.id} cart_id from ${existingOrder.cart_id} to ${cartId}`);
@@ -837,7 +868,7 @@ async function findOrCreateOrder(
   if (paidOrder) {
     console.log(`[zapi-webhook] ℹ️ Found PAID order for today: ID=${paidOrder.id} - Will create a NEW order`);
   } else {
-    console.log(`[zapi-webhook] ℹ️ No existing unpaid order found - Will create a NEW order`);
+    console.log(`[zapi-webhook] ℹ️ No existing unpaid order found for cart_id=${cartId} or today's date - Will create a NEW order`);
   }
 
   // Create new order with correct event type
