@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { getActiveShippingIntegration, type ShippingProvider } from '@/lib/shipping-utils';
+import { getBrasiliaDate, getBrasiliaDateISO, getBrasiliaDayBoundsISO, toBrasiliaDateISO, formatBrasiliaDate, formatBrasiliaDateTime } from '@/lib/date-utils';
 
 interface Order {
   id: number;
@@ -148,21 +149,20 @@ const Etiquetas = () => {
 
       // Aplicar filtro de data se selecionada, senão usar últimos 10 dias
       if (dateFilter) {
-        const startOfDay = new Date(dateFilter);
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(dateFilter);
-        endOfDay.setHours(23, 59, 59, 999);
-        
+        const dateISO = toBrasiliaDateISO(dateFilter);
+        const { start, end } = getBrasiliaDayBoundsISO(dateISO);
+
         query = query
-          .gte('created_at', startOfDay.toISOString())
-          .lte('created_at', endOfDay.toISOString());
+          .gte('created_at', start)
+          .lte('created_at', end);
       } else {
         // Padrão: últimos 10 dias
-        const tenDaysAgo = new Date();
-        tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
-        tenDaysAgo.setHours(0, 0, 0, 0);
-        
-        query = query.gte('created_at', tenDaysAgo.toISOString());
+        const base = getBrasiliaDate();
+        base.setDate(base.getDate() - 10);
+        const tenDaysAgoISO = toBrasiliaDateISO(base);
+        const { start } = getBrasiliaDayBoundsISO(tenDaysAgoISO);
+
+        query = query.gte('created_at', start);
       }
 
       const { data, error } = await query.order('created_at', { ascending: false });

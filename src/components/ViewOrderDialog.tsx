@@ -1,11 +1,10 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
+import { formatBrasiliaDate, formatBrasiliaDateTime } from '@/lib/date-utils';
 
 interface Order {
   id: number;
@@ -132,7 +131,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                   </Badge>
                 </div>
                 <div>
-                  <strong>Data:</strong> {format(new Date(order.created_at), 'dd/MM/yyyy')}
+                  <strong>Data:</strong> {formatBrasiliaDate(order.created_at)}
                 </div>
               </div>
             </CardContent>
@@ -229,7 +228,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
               <h3 className="text-lg font-semibold mb-3">Informações Adicionais</h3>
               <div className="space-y-2 text-sm">
                 <div>
-                  <strong>Pedido criado em:</strong> {format(new Date(order.created_at), 'dd/MM/yyyy \'às\' HH:mm', { locale: ptBR })}
+                  <strong>Pedido criado em:</strong> {formatBrasiliaDateTime(order.created_at)}
                 </div>
                 {order.observation && (
                   <div>

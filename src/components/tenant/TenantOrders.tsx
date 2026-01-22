@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { ShoppingCart, Eye, CreditCard, Calendar, Phone, Package } from 'lucide-react';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
+import { formatBrasiliaDate } from '@/lib/date-utils';
 
 interface Order {
   id: number;
@@ -207,7 +208,7 @@ export default function TenantOrders() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    return formatBrasiliaDate(dateString);
   };
 
   const filteredOrders = orders.filter(order => {
