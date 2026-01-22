@@ -12,6 +12,7 @@ import { Trash2, Plus, Edit, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { formatBrasiliaDate } from '@/lib/date-utils';
 
 interface Coupon {
   id: number;
@@ -480,7 +481,7 @@ export const CouponsManager = () => {
                     )}
                     {coupon.expires_at && (
                       <p className="text-sm text-muted-foreground">
-                        Expira em: {new Date(coupon.expires_at).toLocaleDateString('pt-BR')}
+                        Expira em: {formatBrasiliaDate(coupon.expires_at)}
                       </p>
                     )}
                     {coupon.usage_limit && (

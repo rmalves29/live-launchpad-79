@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useTenantContext } from '@/contexts/TenantContext';
+import { formatBrasiliaDate } from '@/lib/date-utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1551,7 +1552,7 @@ const Checkout = () => {
                         )}
                       </CardTitle>
                       <CardDescription>
-                        Data: {new Date(order.event_date).toLocaleDateString('pt-BR')} • {order.event_type}
+                        Data: {formatBrasiliaDate(order.event_date)} • {order.event_type}
                       </CardDescription>
                       <div className="mt-2">
                         <p className="text-sm font-medium">Produtos do Pedido:</p>

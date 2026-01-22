@@ -7,6 +7,7 @@ import { Play, Square, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTenant } from '@/hooks/useTenant';
+import { formatBrasiliaDateTime } from '@/lib/date-utils';
 
 interface SendingJob {
   id: string;
@@ -138,7 +139,7 @@ export default function SendingControl({ jobType, onResume }: SendingControlProp
           <p>Você tem um envio pausado. Deseja continuar de onde parou ou cancelar?</p>
           {pendingJob.paused_at && (
             <p className="mt-1 text-xs">
-              Pausado em: {new Date(pendingJob.paused_at).toLocaleString('pt-BR')}
+              Pausado em: {formatBrasiliaDateTime(pendingJob.paused_at)}
             </p>
           )}
         </div>

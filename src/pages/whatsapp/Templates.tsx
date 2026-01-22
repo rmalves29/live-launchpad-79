@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { supabaseTenant } from "@/lib/supabase-tenant";
 import { Plus, Edit2, Trash2, Save, X } from "lucide-react";
+import { formatBrasiliaDateTime, getBrasiliaDateTimeISO } from '@/lib/date-utils';
 
 interface Template {
   id: number;
@@ -191,7 +192,7 @@ Obrigado pela preferência! 💚`
             type: formData.type,
             title: formData.title,
             content: formData.content,
-            updated_at: new Date().toISOString()
+            updated_at: getBrasiliaDateTimeISO()
           })
           .eq('id', editingId);
 
@@ -394,7 +395,7 @@ Obrigado pela preferência! 💚`
                     {template.content}
                   </p>
                   <p className="text-xs text-muted-foreground mt-3">
-                    Atualizado em: {new Date(template.updated_at).toLocaleString('pt-BR')}
+                    Atualizado em: {formatBrasiliaDateTime(template.updated_at)}
                   </p>
                 </div>
                 <div className="flex gap-2">

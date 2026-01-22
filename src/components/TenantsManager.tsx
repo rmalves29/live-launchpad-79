@@ -13,6 +13,7 @@ import { useToast } from "./ui/use-toast";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Edit, Users, Mail, Trash2, UserCheck, Eye, EyeOff } from "lucide-react";
+import { formatBrasiliaDate } from '@/lib/date-utils';
 
 interface Tenant {
   id: string;
@@ -703,7 +704,7 @@ export default function TenantsManager() {
                   <div>
                     <p className="font-medium">{profile.email}</p>
                     <p className="text-sm text-muted-foreground">
-                      Criado em: {new Date(profile.created_at).toLocaleDateString()}
+                      Criado em: {formatBrasiliaDate(profile.created_at)}
                     </p>
                   </div>
                 </div>

@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { formatBrasiliaDateTime, getBrasiliaDateTimeISO } from '@/lib/date-utils';
 import { useSearchParams } from 'react-router-dom';
 import BlingOrdersSyncPanel from './BlingOrdersSyncPanel';
 import { 
@@ -265,7 +266,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         sync_logistics: modules.sync_logistics,
         bling_store_id: storeId,
         bling_store_name: storeName,
-        updated_at: new Date().toISOString(),
+        updated_at: getBrasiliaDateTimeISO(),
       };
 
       if (integration?.id) {
@@ -532,7 +533,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                     <strong>Conectado!</strong> A integração com o Bling está ativa.
                     {oauthStatus?.expires_at && (
                       <span className="block text-sm mt-1">
-                        Token expira em: {new Date(oauthStatus.expires_at).toLocaleString('pt-BR')}
+                        Token expira em: {formatBrasiliaDateTime(oauthStatus.expires_at)}
                       </span>
                     )}
                   </AlertDescription>

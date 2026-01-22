@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { formatBrasiliaDate, formatBrasiliaDateTime, getBrasiliaDateTimeISO } from '@/lib/date-utils';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -655,7 +656,7 @@ const Pedidos = () => {
                   <div style="font-size: 10px; line-height: 1.5;">
                     <div style="margin-bottom: 4px;"><strong>Pix - mercado pago</strong></div>
                     <div>R$ ${order.total_amount.toFixed(2)}</div>
-                    <div style="color: #666; margin-top: 4px;">Data: ${format(new Date(order.created_at), 'dd/MM/yy')}</div>
+                    <div style="color: #666; margin-top: 4px;">Data: ${formatBrasiliaDate(order.created_at)}</div>
                   </div>
                 </div>
               </div>
@@ -678,7 +679,7 @@ const Pedidos = () => {
           <div style="margin-top: 20px; text-align: center; font-size: 9px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
             <div><strong>Total do pedido: R$ ${order.total_amount.toFixed(2)}</strong></div>
             <div style="margin-top: 3px;">Status: ${order.is_paid ? 'Pago' : 'Pendente'}</div>
-            <div style="margin-top: 3px;">Pedido #${order.id} - ${format(new Date(order.created_at), 'dd/MM/yyyy \'às\' HH:mm')}</div>
+            <div style="margin-top: 3px;">Pedido #${order.id} - ${formatBrasiliaDateTime(order.created_at)}</div>
           </div>
         </div>
       `;
@@ -836,7 +837,7 @@ const Pedidos = () => {
           phone,
           message,
           type: 'broadcast',
-          sent_at: new Date().toISOString(),
+          sent_at: getBrasiliaDateTimeISO(),
           tenant_id: profile?.tenant_id
         });
       }
@@ -870,7 +871,7 @@ const Pedidos = () => {
         order.is_paid ? 'Sim' : 'Não',
         order.event_type,
         order.event_date,
-        format(new Date(order.created_at), 'dd/MM/yyyy HH:mm')
+        formatBrasiliaDateTime(order.created_at)
       ].join(','))
     ].join('\n');
 
@@ -1167,7 +1168,7 @@ const Pedidos = () => {
                         <Badge variant="outline">{order.event_type}</Badge>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(order.event_date + 'T00:00:00'), 'dd/MM/yyyy')}
+                        {formatBrasiliaDate(order.event_date)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
