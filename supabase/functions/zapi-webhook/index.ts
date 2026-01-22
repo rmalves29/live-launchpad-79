@@ -147,6 +147,19 @@ serve(async (req) => {
 
     console.log(`[zapi-webhook] Message: "${messageText}", From: ${senderPhone}, Group: ${groupName}, IsGroup: ${isGroup}, MessageId: ${messageId || 'N/A'}`);
 
+    // CRITICAL: Only process messages from WhatsApp GROUPS - ignore direct/private messages
+    // This prevents creating orders from direct messages to the business number
+    if (!isGroup) {
+      console.log('[zapi-webhook] ⏭️ Ignoring message from direct/private chat - only group messages create orders');
+      return new Response(JSON.stringify({ 
+        success: true, 
+        skipped: 'not_a_group_message',
+        reason: 'Orders are only created from WhatsApp group messages'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Recognize product codes strictly in the format: C + 1-4 digits (e.g., C100)
     // IMPORTANT: We intentionally do NOT accept plain numbers like "100" to avoid false positives.
     const productCodes: string[] = [];
