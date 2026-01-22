@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
+import { formatBrasiliaDate } from '@/lib/date-utils';
 
 interface Winner {
   order_id: number;
@@ -295,7 +296,7 @@ const Sorteio = () => {
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground mb-1">Data do Evento</div>
-                      <div className="font-medium">{format(new Date(winner.event_date), 'dd/MM/yyyy')}</div>
+                      <div className="font-medium">{formatBrasiliaDate(winner.event_date)}</div>
                     </div>
                   </div>
 

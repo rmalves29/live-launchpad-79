@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { MessageCircle, Send, Phone } from 'lucide-react';
+import { formatPhoneForDisplay } from '@/lib/phone-utils';
+import { formatBrasiliaDateTime, getBrasiliaDateTimeISO } from '@/lib/date-utils';
 
 interface WhatsAppMessage {
   id: number;
@@ -87,7 +89,7 @@ export const TenantMessages = () => {
           message: messageText,
           type: 'outgoing',
           tenant_id: profile.tenant_id,
-          sent_at: new Date().toISOString()
+          sent_at: getBrasiliaDateTimeISO()
         });
 
       if (dbError) throw dbError;
@@ -138,7 +140,7 @@ export const TenantMessages = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-BR');
+    return formatBrasiliaDateTime(dateString);
   };
 
   const formatPhone = (phone: string) => {

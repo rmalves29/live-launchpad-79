@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp, FileText, X, Download } from 'lucide-react';
+import { formatBrasiliaDate, formatBrasiliaDateTime, getBrasiliaDateISO } from '@/lib/date-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
@@ -524,12 +525,11 @@ const Clientes = () => {
   });
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    return formatBrasiliaDate(dateString);
   };
 
   const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return `${date.toLocaleDateString('pt-BR')} às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    return formatBrasiliaDateTime(dateString);
   };
 
   const formatCurrency = (value: number) => {
@@ -599,7 +599,7 @@ const Clientes = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `clientes_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `clientes_${getBrasiliaDateISO()}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

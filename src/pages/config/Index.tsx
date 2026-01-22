@@ -17,6 +17,7 @@ import { TenantSimulator } from '@/components/TenantSimulator';
 import IntegrationsChecklist from '@/components/IntegrationsChecklist';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import { useToast } from '@/hooks/use-toast';
+import { formatBrasiliaDate } from '@/lib/date-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -187,7 +188,7 @@ const Config = () => {
 
     switch (type) {
       case 'date':
-        return new Date(value).toLocaleDateString('pt-BR');
+        return formatBrasiliaDate(value);
       case 'badge':
         return <Badge variant="outline">{value}</Badge>;
       case 'url':

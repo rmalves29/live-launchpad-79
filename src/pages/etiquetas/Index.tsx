@@ -974,11 +974,11 @@ const Etiquetas = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    return formatBrasiliaDate(dateString);
   };
 
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-BR');
+    return formatBrasiliaDateTime(dateString);
   };
 
   const formatPhone = (phone: string) => {

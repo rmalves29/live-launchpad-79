@@ -24,6 +24,7 @@ import {
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
+import { formatBrasiliaDate, getBrasiliaDateISO, getBrasiliaDate, toBrasiliaDateISO, getBrasiliaDayBoundsISO } from '@/lib/date-utils';
 
 interface DailySales {
   date: string;
@@ -130,7 +131,7 @@ const Relatorios = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    return formatBrasiliaDate(dateString);
   };
 
   const loadTodaySales = async () => {
@@ -140,21 +141,23 @@ const Relatorios = () => {
       
       switch (salesFilter) {
         case 'today':
-          dateFilter = new Date().toISOString().split('T')[0];
+          dateFilter = getBrasiliaDateISO();
           break;
         case 'yesterday':
-          const yesterday = new Date();
-          yesterday.setDate(yesterday.getDate() - 1);
-          dateFilter = yesterday.toISOString().split('T')[0];
-          endDateFilter = yesterday.toISOString().split('T')[0];
+          const yesterdayDate = getBrasiliaDate();
+          yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+          dateFilter = toBrasiliaDateISO(yesterdayDate);
+          endDateFilter = dateFilter;
           break;
         case 'month':
-          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-          dateFilter = startOfMonth.toISOString().split('T')[0];
+          const now = getBrasiliaDate();
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          dateFilter = toBrasiliaDateISO(startOfMonth);
           break;
         case 'year':
-          const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-          dateFilter = startOfYear.toISOString().split('T')[0];
+          const nowYear = getBrasiliaDate();
+          const startOfYear = new Date(nowYear.getFullYear(), 0, 1);
+          dateFilter = toBrasiliaDateISO(startOfYear);
           break;
         case 'custom':
           if (!salesStartDate || !salesEndDate) return;
@@ -171,11 +174,14 @@ const Relatorios = () => {
         .select('id, total_amount, is_paid, cart_id');
 
       if ((salesFilter === 'custom' || salesFilter === 'yesterday') && dateFilter && endDateFilter) {
+        const { start } = getBrasiliaDayBoundsISO(dateFilter);
+        const { end } = getBrasiliaDayBoundsISO(endDateFilter);
         query = query
-          .gte('created_at', `${dateFilter}T00:00:00`)
-          .lte('created_at', `${endDateFilter}T23:59:59`);
+          .gte('created_at', start)
+          .lte('created_at', end);
       } else if (dateFilter) {
-        query = query.gte('created_at', `${dateFilter}T00:00:00`);
+        const { start } = getBrasiliaDayBoundsISO(dateFilter);
+        query = query.gte('created_at', start);
       }
 
       const { data: orders, error } = await query;
@@ -289,39 +295,48 @@ const Relatorios = () => {
 
   const loadPeriodStats = async () => {
     try {
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
-      const tomorrowDate = new Date(today);
+      const todayBrasilia = getBrasiliaDate();
+      const todayStr = getBrasiliaDateISO();
+      const tomorrowDate = new Date(todayBrasilia);
       tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-      const tomorrowStr = tomorrowDate.toISOString().split('T')[0];
+      const tomorrowStr = toBrasiliaDateISO(tomorrowDate);
       
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const startOfYear = new Date(today.getFullYear(), 0, 1);
+      const startOfMonth = new Date(todayBrasilia.getFullYear(), todayBrasilia.getMonth(), 1);
+      const startOfYear = new Date(todayBrasilia.getFullYear(), 0, 1);
+
+      const startOfMonthStr = toBrasiliaDateISO(startOfMonth);
+      const startOfYearStr = toBrasiliaDateISO(startOfYear);
 
       console.log('📊 Loading period stats:', {
         today: todayStr,
         tomorrow: tomorrowStr,
-        startOfMonth: startOfMonth.toISOString().split('T')[0],
-        startOfYear: startOfYear.toISOString().split('T')[0]
+        startOfMonth: startOfMonthStr,
+        startOfYear: startOfYearStr
       });
+
+      const { start: todayStart } = getBrasiliaDayBoundsISO(todayStr);
+      const { start: tomorrowStart } = getBrasiliaDayBoundsISO(tomorrowStr);
+      const { start: monthStart } = getBrasiliaDayBoundsISO(startOfMonthStr);
+      const { start: yearStart } = getBrasiliaDayBoundsISO(startOfYearStr);
 
       // Vendas do dia - apenas hoje
       const dailyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id, is_paid')
-        .gte('created_at', `${todayStr}T00:00:00`)
-        .lt('created_at', `${tomorrowStr}T00:00:00`);
+        .gte('created_at', todayStart)
+        .lt('created_at', tomorrowStart);
 
       // Vendas do mês - do início do mês até agora
       const monthlyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id, is_paid')
-        .gte('created_at', `${startOfMonth.toISOString().split('T')[0]}T00:00:00`);
+        .gte('created_at', monthStart);
 
       // Vendas do ano - do início do ano até agora
       const yearlyOrders = await supabaseTenant
         .from('orders')
         .select('total_amount, cart_id, is_paid')
+        .gte('created_at', yearStart);
         .gte('created_at', `${startOfYear.toISOString().split('T')[0]}T00:00:00`);
 
       console.log('📊 Orders loaded:', {
@@ -486,25 +501,25 @@ const Relatorios = () => {
     try {
       let dateFilter = '';
       let endDateFilter = '';
-      const today = new Date();
+      const todayBras = getBrasiliaDate();
       
       switch (selectedPeriod) {
         case 'today':
-          dateFilter = today.toISOString().split('T')[0];
+          dateFilter = getBrasiliaDateISO();
           break;
         case 'yesterday':
-          const yesterdayProd = new Date(today);
+          const yesterdayProd = new Date(todayBras);
           yesterdayProd.setDate(yesterdayProd.getDate() - 1);
-          dateFilter = yesterdayProd.toISOString().split('T')[0];
-          endDateFilter = yesterdayProd.toISOString().split('T')[0];
+          dateFilter = toBrasiliaDateISO(yesterdayProd);
+          endDateFilter = dateFilter;
           break;
         case 'month':
-          const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-          dateFilter = startOfMonth.toISOString().split('T')[0];
+          const startOfMonth = new Date(todayBras.getFullYear(), todayBras.getMonth(), 1);
+          dateFilter = toBrasiliaDateISO(startOfMonth);
           break;
         case 'year':
-          const startOfYear = new Date(today.getFullYear(), 0, 1);
-          dateFilter = startOfYear.toISOString().split('T')[0];
+          const startOfYear = new Date(todayBras.getFullYear(), 0, 1);
+          dateFilter = toBrasiliaDateISO(startOfYear);
           break;
         case 'custom':
           if (!startDate || !endDate) return;
@@ -519,11 +534,14 @@ const Relatorios = () => {
         .select('id, cart_id');
 
       if ((selectedPeriod === 'custom' || selectedPeriod === 'yesterday') && dateFilter && endDateFilter) {
+        const { start } = getBrasiliaDayBoundsISO(dateFilter);
+        const { end } = getBrasiliaDayBoundsISO(endDateFilter);
         ordersQuery = ordersQuery
-          .gte('created_at', `${dateFilter}T00:00:00`)
-          .lte('created_at', `${endDateFilter}T23:59:59`);
+          .gte('created_at', start)
+          .lte('created_at', end);
       } else if (dateFilter) {
-        ordersQuery = ordersQuery.gte('created_at', `${dateFilter}T00:00:00`);
+        const { start } = getBrasiliaDayBoundsISO(dateFilter);
+        ordersQuery = ordersQuery.gte('created_at', start);
       }
 
       const { data: ordersData, error: ordersError } = await ordersQuery;

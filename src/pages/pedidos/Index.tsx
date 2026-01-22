@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatCurrency } from '@/lib/utils';
+import { formatBrasiliaDate, formatBrasiliaDateTime, getBrasiliaDateTimeISO, getBrasiliaDateISO } from '@/lib/date-utils';
 import { formatBrasiliaDate } from '@/lib/date-utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
@@ -444,7 +445,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
             order_id: orderId,
             tenant_id: order.tenant_id,
             tracking_code: trackingText.trim(),
-            shipped_at: new Date().toISOString()
+            shipped_at: getBrasiliaDateTimeISO()
           }
         });
 
@@ -1091,7 +1092,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
           order.is_paid ? 'Sim' : 'Não',
           order.event_type,
           order.event_date,
-          format(new Date(order.created_at), 'dd/MM/yyyy HH:mm')
+          formatBrasiliaDateTime(order.created_at)
         ].join(','))
       ].join('\n');
 
@@ -1099,7 +1100,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.setAttribute('href', url);
-      link.setAttribute('download', `pedidos_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+      link.setAttribute('download', `pedidos_${getBrasiliaDateISO()}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -1512,7 +1513,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                       
                       {/* Data Evento */}
                       <TableCell className="px-1 py-1 text-center">
-                        <span className="text-[10px]">{format(new Date(order.event_date + 'T00:00:00'), 'dd/MM')}</span>
+                        <span className="text-[10px]">{formatBrasiliaDate(order.event_date).split('/').slice(0, 2).join('/')}</span>
                       </TableCell>
                       
                       {/* Rastreio */}
