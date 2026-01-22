@@ -337,7 +337,6 @@ const Relatorios = () => {
         .from('orders')
         .select('total_amount, cart_id, is_paid')
         .gte('created_at', yearStart);
-        .gte('created_at', `${startOfYear.toISOString().split('T')[0]}T00:00:00`);
 
       console.log('📊 Orders loaded:', {
         daily: dailyOrders.data?.length || 0,
