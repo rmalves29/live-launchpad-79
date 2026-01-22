@@ -12,6 +12,7 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2, Plus, Trash2, Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { getBrasiliaDateISO } from '@/lib/date-utils';
 
 interface Product {
   id: number;
@@ -136,7 +137,7 @@ useEffect(() => {
         .insert({
           customer_phone: order?.customer_phone || '',
           event_type: order?.event_type || 'BAZAR',
-          event_date: order?.event_date || new Date().toISOString().split('T')[0],
+          event_date: order?.event_date || getBrasiliaDateISO(),
           status: 'OPEN'
         })
         .select()

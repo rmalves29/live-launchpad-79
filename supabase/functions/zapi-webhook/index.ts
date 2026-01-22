@@ -6,6 +6,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Função para obter a data atual no timezone de Brasília (America/Sao_Paulo)
+function getBrasiliaDateISO(): string {
+  const now = new Date();
+  // Brasília é UTC-3, então subtraímos 3 horas do UTC
+  const brasiliaOffset = -3 * 60; // -180 minutos
+  const utcOffset = now.getTimezoneOffset(); // minutos de diferença do UTC
+  const brasiliaTime = new Date(now.getTime() + (utcOffset + brasiliaOffset) * 60 * 1000);
+  
+  const year = brasiliaTime.getFullYear();
+  const month = String(brasiliaTime.getMonth() + 1).padStart(2, '0');
+  const day = String(brasiliaTime.getDate()).padStart(2, '0');
+  
+  return `${year}-${month}-${day}`;
+}
+
 interface ZAPIWebhookPayload {
   phone?: string;
   chatId?: string;
@@ -670,7 +685,7 @@ async function findOrCreateCart(
   groupName: string,
   eventType: string
 ) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getBrasiliaDateISO();
   
   console.log(`[zapi-webhook] 🔍 findOrCreateCart - tenant: ${tenantId}, phone: ${phone}, eventType: ${eventType}, date: ${today}`);
 
@@ -760,7 +775,7 @@ async function findOrCreateOrder(
   groupName: string,
   eventType: string
 ) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getBrasiliaDateISO();
 
   console.log(`[zapi-webhook] 🔍 findOrCreateOrder - tenant: ${tenantId}, phone: ${phone}, cartId: ${cartId}, eventType: ${eventType}, date: ${today}`);
 
