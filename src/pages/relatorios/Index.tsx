@@ -640,7 +640,28 @@ const Relatorios = () => {
 
   const loadWhatsAppGroupStats = async () => {
     try {
-      // Buscar lista de grupos via Z-API para obter os nomes reais
+      // Buscar grupos permitidos configurados para este tenant
+      let allowedGroupNames = new Set<string>();
+      
+      if (tenantId) {
+        try {
+          const { data: allowedGroups } = await supabaseTenant
+            .from('whatsapp_allowed_groups')
+            .select('group_name')
+            .eq('is_active', true);
+          
+          if (allowedGroups && allowedGroups.length > 0) {
+            allowedGroups.forEach(g => allowedGroupNames.add(g.group_name));
+            console.log('✅ Grupos permitidos carregados:', allowedGroupNames.size, Array.from(allowedGroupNames));
+          } else {
+            console.log('⚠️ Nenhum grupo configurado para este tenant');
+          }
+        } catch (groupsError) {
+          console.warn('⚠️ Erro ao carregar grupos permitidos:', groupsError);
+        }
+      }
+      
+      // Buscar lista de grupos via Z-API para obter os nomes reais (mapeamento JID -> Nome)
       let zapiGroupNames = new Map<string, string>();
       
       if (tenantId) {
@@ -765,49 +786,56 @@ const Relatorios = () => {
         // Determinar código do grupo
         let groupCode = order.whatsapp_group_name || order.carts?.whatsapp_group_name || 'Pedido Manual';
 
-        // Verificar se é um grupo real do WhatsApp
-        // Critérios para identificar grupos legítimos:
-        // 1. É 'Pedido Manual' (sempre incluir)
-        // 2. Contém @g.us (JID de grupo)
-        // 3. Contém padrões típicos de nomes de grupos: #, VIP, GRUPO, Bazar, Festival, etc.
-        // 4. Está no mapa de grupos conhecidos da Z-API
-        const groupPatterns = [
-          '#',           // Grupos numerados como #01, #02, #4
-          'GRUPO',       // GRUPO VIP, etc.
-          'VIP',         // VIP da Mania, etc.
-          'Bazar',       // Bazar Secreto
-          'Festival',    // Festival dos Fracionados
-          '@g.us',       // JID de grupo WhatsApp
-        ];
+        // Verificar se é um grupo permitido para este tenant
+        // NOVA LÓGICA: Usar grupos configurados pelo tenant OU Pedido Manual
+        let isAllowedGroup = groupCode === 'Pedido Manual';
+        let resolvedGroupName = groupCode;
         
-        const isRealGroup = groupCode === 'Pedido Manual' || 
-                           zapiGroupNames.has(groupCode) ||
-                           groupPatterns.some(pattern => 
-                             groupCode.toLowerCase().includes(pattern.toLowerCase())
-                           );
-
-        // FILTRAR: Ignorar entradas que não são grupos reais (como nomes de clientes individuais)
-        if (!isRealGroup) {
-          console.log(`⏭️ Ignorando pedido ${order.id} - "${groupCode}" não é um grupo de WhatsApp válido`);
-          return; // Skip this order - it's not from a real group
-        }
-
-        // Obter nome amigável do grupo: preferir Z-API, caso contrário fallback
-        let groupName = 'Pedido Manual';
-        if (groupCode && groupCode !== 'Pedido Manual') {
+        // Resolver nome do grupo via Z-API se for JID
+        if (groupCode !== 'Pedido Manual') {
           if (zapiGroupNames.has(groupCode)) {
-            // Nome obtido via Z-API
-            groupName = zapiGroupNames.get(groupCode)!;
+            resolvedGroupName = zapiGroupNames.get(groupCode)!;
           } else if (groupCode.includes('@g.us')) {
             // Fallback: usar últimos 8 dígitos do JID
-            groupName = `Grupo ${groupCode.split('@')[0].slice(-8)}`;
+            resolvedGroupName = `Grupo ${groupCode.split('@')[0].slice(-8)}`;
           } else if (groupCode.includes('-')) {
-            groupName = `Grupo ${groupCode.slice(-8)}`;
+            resolvedGroupName = `Grupo ${groupCode.slice(-8)}`;
+          } else {
+            // Usar o próprio groupCode como nome
+            resolvedGroupName = groupCode;
           }
         }
         
-        console.log(`📞 Pedido ${order.id} - Grupo Code: ${groupCode} - Nome: ${groupName}`);
+        // Verificar se o grupo (ou seu nome resolvido) está na lista de permitidos
+        if (allowedGroupNames.size > 0) {
+          // Se há grupos configurados, usar apenas eles
+          isAllowedGroup = groupCode === 'Pedido Manual' || 
+                          allowedGroupNames.has(groupCode) || 
+                          allowedGroupNames.has(resolvedGroupName);
+        } else {
+          // Fallback: se não há grupos configurados, usar padrões antigos (para retrocompatibilidade)
+          const groupPatterns = ['#', 'GRUPO', 'VIP', 'Bazar', 'Festival', '@g.us'];
+          isAllowedGroup = groupCode === 'Pedido Manual' || 
+                          zapiGroupNames.has(groupCode) ||
+                          groupPatterns.some(pattern => 
+                            groupCode.toLowerCase().includes(pattern.toLowerCase())
+                          ) ||
+                          groupPatterns.some(pattern => 
+                            resolvedGroupName.toLowerCase().includes(pattern.toLowerCase())
+                          );
+        }
+
+        // FILTRAR: Ignorar entradas que não são grupos permitidos
+        if (!isAllowedGroup) {
+          console.log(`⏭️ Ignorando pedido ${order.id} - "${groupCode}" (${resolvedGroupName}) não é um grupo permitido`);
+          return; // Skip this order
+        }
+
+        // Usar o nome resolvido para exibição
+        let groupName = groupCode === 'Pedido Manual' ? 'Pedido Manual' : resolvedGroupName;
         
+        console.log(`📞 Pedido ${order.id} - Grupo Code: ${groupCode} - Nome: ${groupName}`);
+
         const amount = Number(order.total_amount);
         const items = cartItemsMap.get(order.cart_id) || [];
         const productsCount = items.reduce((sum, it) => sum + it.qty, 0);
