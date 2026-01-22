@@ -765,6 +765,19 @@ const Relatorios = () => {
         // Determinar código do grupo
         let groupCode = order.whatsapp_group_name || order.carts?.whatsapp_group_name || 'Pedido Manual';
 
+        // Verificar se é um grupo real do WhatsApp (contém @g.us ou - que indica ID de grupo)
+        // ou se está no mapa de grupos conhecidos da Z-API, ou se é 'Pedido Manual'
+        const isRealGroup = groupCode === 'Pedido Manual' || 
+                           groupCode.includes('@g.us') || 
+                           groupCode.includes('-') ||
+                           zapiGroupNames.has(groupCode);
+
+        // FILTRAR: Ignorar entradas que não são grupos reais (como nomes de clientes)
+        if (!isRealGroup) {
+          console.log(`⏭️ Ignorando pedido ${order.id} - "${groupCode}" não é um grupo de WhatsApp válido`);
+          return; // Skip this order - it's not from a real group
+        }
+
         // Obter nome amigável do grupo: preferir Z-API, caso contrário fallback
         let groupName = 'Pedido Manual';
         if (groupCode && groupCode !== 'Pedido Manual') {
@@ -776,8 +789,6 @@ const Relatorios = () => {
             groupName = `Grupo ${groupCode.split('@')[0].slice(-8)}`;
           } else if (groupCode.includes('-')) {
             groupName = `Grupo ${groupCode.slice(-8)}`;
-          } else {
-            groupName = groupCode;
           }
         }
         
