@@ -5,12 +5,13 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, ArrowLeft, BarChart3, TrendingUp, Building2 } from 'lucide-react';
+import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, ArrowLeft, BarChart3, TrendingUp, Building2, Users } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { CompanySettings } from '@/components/CompanySettings';
 import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
 import { WhatsAppSettings } from '@/components/WhatsAppSettings';
+import { WhatsAppGroupsManager } from '@/components/WhatsAppGroupsManager';
 import TenantsManager from '@/components/TenantsManager';
 import { AvailabilitySettings } from '@/components/AvailabilitySettings';
 import { TenantSimulator } from '@/components/TenantSimulator';
@@ -230,7 +231,7 @@ const Config = () => {
 
           <div className="space-y-6">
             <Tabs defaultValue={searchParams.get('tab') || (isMaster ? 'config' : 'company')} className="w-full">
-              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-6' : 'grid-cols-4'}`}>
+              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-7' : 'grid-cols-5'}`}>
                 {isMaster && (
                   <TabsTrigger value="config" className="flex items-center text-xs sm:text-sm">
                     <Settings className="h-4 w-4 mr-1 sm:mr-2" />
@@ -245,6 +246,11 @@ const Config = () => {
                 <TabsTrigger value="shipping" className="flex items-center text-xs sm:text-sm">
                   <Truck className="h-4 w-4 mr-1 sm:mr-2" />
                   Frete
+                </TabsTrigger>
+                <TabsTrigger value="groups" className="flex items-center text-xs sm:text-sm">
+                  <Users className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Grupos</span>
+                  <span className="sm:hidden">Grupos</span>
                 </TabsTrigger>
                 <TabsTrigger value="coupons" className="flex items-center text-xs sm:text-sm">
                   <Percent className="h-4 w-4 mr-1 sm:mr-2" />
@@ -352,6 +358,10 @@ const Config = () => {
 
               <TabsContent value="shipping" className="space-y-6 mt-6">
                 <ShippingOptionsManager />
+              </TabsContent>
+
+              <TabsContent value="groups" className="space-y-6 mt-6">
+                <WhatsAppGroupsManager />
               </TabsContent>
 
               <TabsContent value="coupons" className="space-y-6 mt-6">
