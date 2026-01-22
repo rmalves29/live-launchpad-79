@@ -5,6 +5,24 @@ import { ptBR } from 'date-fns/locale';
 const BRASILIA_TZ = 'America/Sao_Paulo';
 
 /**
+ * Converte uma Date qualquer para uma string ISO de data (YYYY-MM-DD) no timezone de Brasília.
+ */
+export const toBrasiliaDateISO = (date: Date): string => {
+  return formatInTimeZone(date, BRASILIA_TZ, 'yyyy-MM-dd');
+};
+
+/**
+ * Retorna bounds (início/fim) do dia em Brasília com offset, ideais para filtros em timestamptz.
+ * Ex: 2026-01-21 => { start: 2026-01-21T00:00:00-03:00, end: 2026-01-21T23:59:59.999-03:00 }
+ */
+export const getBrasiliaDayBoundsISO = (dateISO: string): { start: string; end: string } => {
+  return {
+    start: `${dateISO}T00:00:00-03:00`,
+    end: `${dateISO}T23:59:59.999-03:00`,
+  };
+};
+
+/**
  * Retorna a data/hora atual no timezone de Brasília
  */
 export const getBrasiliaDate = (): Date => {

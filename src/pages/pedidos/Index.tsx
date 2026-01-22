@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatCurrency } from '@/lib/utils';
+import { formatBrasiliaDate } from '@/lib/date-utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -851,7 +852,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
               <div style="margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; border-left: 4px solid #3b82f6;">
                 <div style="font-size: 11px; line-height: 1.5;">
                   <strong style="display: block; margin-bottom: 4px; font-size: 11px; color: #374151;">🚚 Informações de envio:</strong>
-                  <span style="color: #4b5563;">${order.event_type || 'Não especificado'} - ${format(new Date(order.event_date), 'dd/MM/yyyy')}</span>
+                  <span style="color: #4b5563;">${order.event_type || 'Não especificado'} - ${formatBrasiliaDate(order.event_date)}</span>
                 </div>
               </div>
             </div>
@@ -884,7 +885,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
                   <div style="font-size: 13px; font-weight: 600; color: #166534;">Pix - Mercado Pago</div>
                   <div style="font-size: 16px; font-weight: 700; color: #16a34a;">R$ ${order.total_amount.toFixed(2)}</div>
-                  <div style="color: #4b5563; font-size: 12px; display: flex; align-items: center; gap: 4px;">📅 ${format(new Date(order.created_at), 'dd/MM/yyyy')}</div>
+                  <div style="color: #4b5563; font-size: 12px; display: flex; align-items: center; gap: 4px;">📅 ${formatBrasiliaDate(order.created_at)}</div>
                 </div>
               </div>
             </div>
