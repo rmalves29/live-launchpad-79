@@ -12,7 +12,8 @@ import {
   Upload,
   Download,
   Info,
-  CheckCircle2
+  CheckCircle2,
+  Wrench
 } from 'lucide-react';
 
 interface BlingOrdersSyncPanelProps {
@@ -24,6 +25,7 @@ interface BlingOrdersSyncPanelProps {
 export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeError }: BlingOrdersSyncPanelProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const [isFixingFreight, setIsFixingFreight] = useState(false);
 
   // Buscar contagem de pedidos pendentes de sincronização
   const { data: pendingCount = 0, refetch: refetchPending, isLoading: isLoadingCount } = useQuery({
@@ -150,6 +152,80 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
     }
   };
 
+  const handleFixFreight = async () => {
+    setIsFixingFreight(true);
+    try {
+      // Primeiro, fazer dry run para ver quantos pedidos serão afetados
+      toast.info('Verificando pedidos para correção...');
+      const session = await supabase.auth.getSession();
+      
+      const dryRunResponse = await fetch(
+        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-fix-freight',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            dry_run: true,
+          }),
+        }
+      );
+      
+      const dryRunResult = await dryRunResponse.json();
+      
+      if (!dryRunResponse.ok) {
+        throw new Error(dryRunResult.error || 'Erro ao verificar pedidos');
+      }
+      
+      if (dryRunResult.total_orders === 0) {
+        toast.info('Nenhum pedido encontrado para corrigir');
+        return;
+      }
+      
+      // Confirmar com o usuário
+      const confirmMessage = `Foram encontrados ${dryRunResult.total_orders} pedido(s) com frete para corrigir. Deseja continuar?`;
+      if (!confirm(confirmMessage)) {
+        toast.info('Correção cancelada');
+        return;
+      }
+      
+      // Executar correção real
+      toast.info('Corrigindo fretes no Bling...');
+      const response = await fetch(
+        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-fix-freight',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            dry_run: false,
+          }),
+        }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao corrigir fretes');
+      }
+      
+      toast.success(`Correção concluída! ${result.corrected} corrigido(s), ${result.errors} erro(s).`);
+      console.log('Resultado da correção:', result);
+      
+    } catch (error: any) {
+      console.error('Erro ao corrigir fretes:', error);
+      toast.error(error.message || 'Erro ao corrigir fretes');
+    } finally {
+      setIsFixingFreight(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -232,6 +308,30 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
               Buscar Pedidos do Bling
             </Button>
           </div>
+        </div>
+
+        {/* Corrigir fretes */}
+        <div className="border rounded-lg p-4 space-y-3 border-dashed border-orange-400">
+          <div className="flex items-center gap-2">
+            <Wrench className="h-5 w-5 text-orange-500" />
+            <h4 className="font-medium">Corrigir Fretes no Bling</h4>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Corrige pedidos já enviados ao Bling que tiveram o valor do frete enviado incorretamente.
+          </p>
+          <Button
+            variant="outline"
+            onClick={handleFixFreight}
+            disabled={isFixingFreight}
+            className="w-full border-orange-400 text-orange-600 hover:bg-orange-50"
+          >
+            {isFixingFreight ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Wrench className="h-4 w-4 mr-2" />
+            )}
+            Corrigir Fretes
+          </Button>
         </div>
 
         <Alert>
