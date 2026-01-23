@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { formatBrasiliaDateTime, getBrasiliaDateTimeISO } from '@/lib/date-utils';
 import { useSearchParams } from 'react-router-dom';
 import BlingOrdersSyncPanel from './BlingOrdersSyncPanel';
+import BlingProductsSyncPanel from './BlingProductsSyncPanel';
 import { 
   Loader2, 
   Save, 
@@ -848,10 +849,15 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         </CardContent>
       </Card>
 
+      {/* Painel de sincronização de produtos */}
+      {modules.sync_products && isAuthorized && !isExpired && (
+        <BlingProductsSyncPanel tenantId={tenantId} />
+      )}
+
       {/* Última sincronização */}
       {integration?.last_sync_at && (
         <Alert>
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <CheckCircle2 className="h-4 w-4 text-primary" />
           <AlertDescription>
             Última sincronização: {new Date(integration.last_sync_at).toLocaleString('pt-BR')}
           </AlertDescription>
