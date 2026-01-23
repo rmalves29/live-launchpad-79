@@ -573,13 +573,19 @@ serve(async (req) => {
 
         let cartItems: any[] = [];
         if (order.cart_id) {
+          // Buscar cart_items com JOIN em products para pegar código atualizado
           const { data: items, error: itemsError } = await supabase
             .from('cart_items')
-            .select('*')
+            .select('*, products:product_id(code, name)')
             .eq('cart_id', order.cart_id);
 
           if (!itemsError && items) {
-            cartItems = items;
+            // Mapear para usar código/nome atualizado do produto quando disponível
+            cartItems = items.map((item: any) => ({
+              ...item,
+              product_code: item.products?.code || item.product_code,
+              product_name: item.products?.name || item.product_name,
+            }));
           }
         }
 
@@ -669,11 +675,18 @@ serve(async (req) => {
           try {
             let cartItems: any[] = [];
             if (order.cart_id) {
+              // Buscar cart_items com JOIN em products para pegar código atualizado
               const { data: items } = await supabase
                 .from('cart_items')
-                .select('*')
+                .select('*, products:product_id(code, name)')
                 .eq('cart_id', order.cart_id);
-              cartItems = items || [];
+              
+              // Mapear para usar código/nome atualizado do produto quando disponível
+              cartItems = (items || []).map((item: any) => ({
+                ...item,
+                product_code: item.products?.code || item.product_code,
+                product_name: item.products?.name || item.product_name,
+              }));
             }
 
             // Skip orders without items
