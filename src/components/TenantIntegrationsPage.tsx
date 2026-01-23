@@ -1,16 +1,18 @@
 /**
  * Página de Integrações por Tenant
- * Permite configurar Mercado Pago, Melhor Envio, Mandae e Bling ERP
+ * Permite configurar Mercado Pago, Pagar.me, Melhor Envio, Mandae e Bling ERP
  * Usa automaticamente o tenant do usuário logado
  * Bling ERP só visível para super_admin até validação completa
+ * IMPORTANTE: Apenas UMA integração de pagamento pode estar ativa por vez
  */
 
 import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
+import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
@@ -87,6 +89,20 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId && isSuperAdmin,
   });
 
+  // Pagar.me Status
+  const { data: pagarmeIntegration } = useQuery({
+    queryKey: ['pagarme-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_pagarme')
+        .select('is_active')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
   // Verificar se tenant está carregando
   if (tenantLoading) {
     return (
@@ -118,7 +134,7 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue={isSuperAdmin ? "bling" : "mercadopago"} className="w-full">
-        <TabsList className={`grid w-full ${isSuperAdmin ? 'grid-cols-4' : 'grid-cols-3'}`}>
+        <TabsList className={`grid w-full ${isSuperAdmin ? 'grid-cols-5' : 'grid-cols-4'}`}>
           {isSuperAdmin && (
             <TabsTrigger value="bling" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
@@ -132,6 +148,13 @@ export default function TenantIntegrationsPage() {
             <CreditCard className="h-4 w-4" />
             Mercado Pago
             {mpIntegration?.is_active && (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="pagarme" className="flex items-center gap-2">
+            <Wallet className="h-4 w-4" />
+            Pagar.me
+            {pagarmeIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-green-600" />
             )}
           </TabsTrigger>
@@ -159,6 +182,10 @@ export default function TenantIntegrationsPage() {
 
         <TabsContent value="mercadopago" className="mt-6">
           <PaymentIntegrations tenantId={tenantId} />
+        </TabsContent>
+
+        <TabsContent value="pagarme" className="mt-6">
+          <PagarMeIntegration tenantId={tenantId} />
         </TabsContent>
 
         <TabsContent value="melhorenvio" className="mt-6">

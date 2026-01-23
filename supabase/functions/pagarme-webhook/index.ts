@@ -1,0 +1,194 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-hub-signature",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!supabaseUrl || !serviceKey) {
+    return new Response(JSON.stringify({ error: "Server config missing" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const sb = createClient(supabaseUrl, serviceKey);
+
+  try {
+    const url = new URL(req.url);
+    const tenantId = url.searchParams.get("tenant_id");
+    const body = await req.json();
+
+    console.log("[pagarme-webhook] Received webhook:", JSON.stringify(body, null, 2));
+    console.log("[pagarme-webhook] Tenant ID from query:", tenantId);
+
+    // Log webhook recebido
+    await sb.from("webhook_logs").insert({
+      webhook_type: "pagarme_webhook",
+      status_code: 200,
+      payload: body,
+      tenant_id: tenantId,
+    });
+
+    // Pagar.me envia webhooks no formato:
+    // { id, type, data: { ... } }
+    const eventType = body.type;
+    const eventData = body.data;
+
+    if (!eventType || !eventData) {
+      console.log("[pagarme-webhook] Invalid webhook format");
+      return new Response(JSON.stringify({ error: "Invalid webhook format" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Processar eventos de pagamento
+    if (eventType === "charge.paid" || eventType === "order.paid") {
+      console.log("[pagarme-webhook] Processing payment event:", eventType);
+
+      // Extrair external_reference do metadata
+      const metadata = eventData.metadata || eventData.charge?.metadata || {};
+      const externalReference = metadata.external_reference || "";
+
+      console.log("[pagarme-webhook] External reference:", externalReference);
+
+      // Parse external_reference: "tenant:UUID;orders:1,2,3"
+      const orderIds = parseOrderIds(externalReference);
+      const parsedTenantId = parseTenantId(externalReference) || tenantId;
+
+      if (orderIds.length === 0) {
+        console.log("[pagarme-webhook] No order IDs found in external_reference");
+        return new Response(JSON.stringify({ status: "ok", message: "No orders to update" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log("[pagarme-webhook] Updating orders:", orderIds);
+
+      // Marcar pedidos como pagos
+      for (const orderId of orderIds) {
+        await markOrderAsPaid(sb, orderId, parsedTenantId, body.id);
+      }
+
+      return new Response(
+        JSON.stringify({ status: "ok", orders_updated: orderIds }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Outros eventos (refund, failed, etc)
+    console.log("[pagarme-webhook] Event not processed:", eventType);
+    return new Response(
+      JSON.stringify({ status: "ok", message: "Event logged but not processed" }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (e) {
+    console.error("[pagarme-webhook] Error:", e);
+
+    await sb.from("webhook_logs").insert({
+      webhook_type: "pagarme_webhook_error",
+      status_code: 500,
+      error_message: e instanceof Error ? e.message : String(e),
+    });
+
+    return new Response(JSON.stringify({ error: "Internal error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
+function parseOrderIds(externalRef: string): number[] {
+  // Format: "tenant:UUID;orders:1,2,3"
+  const match = externalRef.match(/orders:([0-9,]+)/);
+  if (!match) return [];
+  return match[1].split(",").map(Number).filter((n) => !isNaN(n) && n > 0);
+}
+
+function parseTenantId(externalRef: string): string | null {
+  // Format: "tenant:UUID;orders:1,2,3"
+  const match = externalRef.match(/tenant:([a-f0-9-]+)/i);
+  return match ? match[1] : null;
+}
+
+async function markOrderAsPaid(
+  sb: ReturnType<typeof createClient>,
+  orderId: number,
+  tenantId: string | null,
+  webhookEventId: string
+) {
+  try {
+    const { error } = await sb
+      .from("orders")
+      .update({
+        is_paid: true,
+        payment_confirmation_sent: false,
+        payment_confirmation_delivered: false,
+      })
+      .eq("id", orderId);
+
+    if (error) {
+      console.error(`[pagarme-webhook] Error updating order ${orderId}:`, error);
+      return;
+    }
+
+    console.log(`[pagarme-webhook] Order ${orderId} marked as paid`);
+
+    // Log sucesso
+    await sb.from("webhook_logs").insert({
+      webhook_type: "pagarme_order_paid",
+      status_code: 200,
+      payload: { order_id: orderId, webhook_event_id: webhookEventId },
+      tenant_id: tenantId,
+    });
+
+    // Sync com Bling se configurado
+    await syncOrderWithBling(sb, orderId, tenantId);
+  } catch (e) {
+    console.error(`[pagarme-webhook] Exception updating order ${orderId}:`, e);
+  }
+}
+
+async function syncOrderWithBling(
+  sb: ReturnType<typeof createClient>,
+  orderId: number,
+  tenantId: string | null
+) {
+  if (!tenantId) return;
+
+  try {
+    const { data: blingIntegration } = await sb
+      .from("integration_bling")
+      .select("is_active, sync_orders")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (blingIntegration?.is_active && blingIntegration?.sync_orders) {
+      console.log(`[pagarme-webhook] Triggering Bling sync for order ${orderId}`);
+
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+      await fetch(`${supabaseUrl}/functions/v1/bling-sync-orders`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ order_id: orderId, tenant_id: tenantId }),
+      });
+    }
+  } catch (e) {
+    console.error(`[pagarme-webhook] Error syncing with Bling:`, e);
+  }
+}

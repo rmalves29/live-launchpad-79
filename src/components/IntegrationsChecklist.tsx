@@ -1,6 +1,6 @@
 import { useTenantContext } from '@/contexts/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2, Wallet } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -9,6 +9,7 @@ interface IntegrationStatus {
   icon: React.ReactNode;
   isActive: boolean;
   details?: string;
+  provider?: string;
 }
 
 export default function IntegrationsChecklist() {
@@ -36,6 +37,20 @@ export default function IntegrationsChecklist() {
     queryFn: async () => {
       const { data } = await supabase
         .from('integration_mp')
+        .select('is_active, environment')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  // Pagar.me Status
+  const { data: pagarmeIntegration, isLoading: pagarmeLoading } = useQuery({
+    queryKey: ['pagarme-checklist-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_pagarme')
         .select('is_active, environment')
         .eq('tenant_id', tenantId)
         .maybeSingle();
@@ -73,7 +88,7 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
-  const isLoading = zapiLoading || mpLoading || shippingLoading || blingLoading;
+  const isLoading = zapiLoading || mpLoading || pagarmeLoading || shippingLoading || blingLoading;
 
   // Contagem de módulos ativos do Bling
   const blingActiveModules = blingIntegration ? [
@@ -85,6 +100,13 @@ export default function IntegrationsChecklist() {
     blingIntegration.sync_ecommerce,
     blingIntegration.sync_logistics,
   ].filter(Boolean).length : 0;
+
+  // Determinar qual integração de pagamento está ativa
+  const activePaymentProvider = mpIntegration?.is_active 
+    ? 'mercado_pago' 
+    : pagarmeIntegration?.is_active 
+      ? 'pagarme' 
+      : null;
 
   const integrations: IntegrationStatus[] = [
     {
@@ -104,12 +126,15 @@ export default function IntegrationsChecklist() {
         : 'Não conectado',
     },
     {
-      name: 'Mercado Pago',
-      icon: <CreditCard className="h-5 w-5" />,
-      isActive: mpIntegration?.is_active || false,
-      details: mpIntegration?.is_active 
-        ? `Ambiente: ${mpIntegration.environment === 'production' ? 'Produção' : 'Sandbox'}` 
-        : 'Não configurado',
+      name: 'Pagamento',
+      icon: activePaymentProvider === 'pagarme' ? <Wallet className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />,
+      isActive: !!activePaymentProvider,
+      details: activePaymentProvider === 'mercado_pago' 
+        ? `Mercado Pago (${mpIntegration?.environment === 'production' ? 'Produção' : 'Sandbox'})`
+        : activePaymentProvider === 'pagarme'
+          ? `Pagar.me (${pagarmeIntegration?.environment === 'production' ? 'Produção' : 'Sandbox'})`
+          : 'Nenhum configurado',
+      provider: activePaymentProvider || undefined,
     },
     {
       name: 'Melhor Envio',
