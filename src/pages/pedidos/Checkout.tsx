@@ -46,20 +46,58 @@ interface CustomerData {
   cpf: string;
 }
 
-function getEdgeFunctionErrorMessage(err: any): string {
+async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
   try {
     const body = err?.context?.body;
-    if (typeof body === 'string' && body.trim()) {
-      const parsed = JSON.parse(body);
+
+    const tryParseJsonString = (s: string) => {
+      const parsed = JSON.parse(s);
       if (typeof parsed?.error === 'string' && parsed.error.trim()) return parsed.error;
       if (typeof parsed?.message === 'string' && parsed.message.trim()) return parsed.message;
       if (typeof parsed?.details?.message === 'string' && parsed.details.message.trim()) return parsed.details.message;
+      return null;
+    };
+
+    if (typeof body === 'string' && body.trim()) {
+      const msg = tryParseJsonString(body);
+      if (msg) return msg;
+    }
+
+    if (body && typeof body?.getReader === 'function') {
+      const reader = body.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) chunks.push(value);
+      }
+      const text = new TextDecoder().decode(concatUint8(chunks));
+      if (text.trim()) {
+        try {
+          const msg = tryParseJsonString(text);
+          if (msg) return msg;
+        } catch {
+          // ignore
+        }
+        return text;
+      }
     }
   } catch {
     // ignore
   }
 
   return err?.message || 'Não foi possível processar o pagamento. Tente novamente.';
+}
+
+function concatUint8(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, c) => sum + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
 }
 
 const Checkout = () => {
@@ -1252,9 +1290,10 @@ const Checkout = () => {
 
     } catch (error: any) {
       console.error('Error processing payment:', error);
+      const msg = await getEdgeFunctionErrorMessage(error);
       toast({
         title: 'Erro no pagamento',
-        description: getEdgeFunctionErrorMessage(error),
+        description: msg,
         variant: 'destructive'
       });
     } finally {

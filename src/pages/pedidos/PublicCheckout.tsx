@@ -53,21 +53,61 @@ interface Order {
   items: OrderItem[];
 }
 
-function getEdgeFunctionErrorMessage(err: any): string {
-  // Supabase FunctionsError geralmente vem com `context` contendo o body da Response
+async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
+  // Supabase FunctionsError geralmente vem com `context` contendo status + body.
+  // Em alguns ambientes o `body` pode vir como ReadableStream, então precisamos consumi-lo.
   try {
     const body = err?.context?.body;
-    if (typeof body === 'string' && body.trim()) {
-      const parsed = JSON.parse(body);
+
+    const tryParseJsonString = (s: string) => {
+      const parsed = JSON.parse(s);
       if (typeof parsed?.error === 'string' && parsed.error.trim()) return parsed.error;
       if (typeof parsed?.message === 'string' && parsed.message.trim()) return parsed.message;
       if (typeof parsed?.details?.message === 'string' && parsed.details.message.trim()) return parsed.details.message;
+      return null;
+    };
+
+    if (typeof body === 'string' && body.trim()) {
+      const msg = tryParseJsonString(body);
+      if (msg) return msg;
+    }
+
+    // ReadableStream
+    if (body && typeof body?.getReader === 'function') {
+      const reader = body.getReader();
+      const chunks: Uint8Array[] = [];
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) chunks.push(value);
+      }
+      const text = new TextDecoder().decode(concatUint8(chunks));
+      if (text.trim()) {
+        try {
+          const msg = tryParseJsonString(text);
+          if (msg) return msg;
+        } catch {
+          // ignore
+        }
+        return text;
+      }
     }
   } catch {
     // ignore
   }
 
   return err?.message || 'Não foi possível processar o pagamento.';
+}
+
+function concatUint8(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, c) => sum + c.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
 }
 
 const PublicCheckout = () => {
@@ -688,9 +728,10 @@ const PublicCheckout = () => {
       }
     } catch (error: any) {
       console.error('Error processing payment:', error);
+      const msg = await getEdgeFunctionErrorMessage(error);
       toast({
         title: 'Erro no pagamento',
-        description: getEdgeFunctionErrorMessage(error),
+        description: msg,
         variant: 'destructive'
       });
     } finally {
