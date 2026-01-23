@@ -127,7 +127,7 @@ type SendProductResult =
 /**
  * Send a single product to Bling API v3
  */
-async function sendProductToBling(product: any, accessToken: string): Promise<SendProductResult> {
+async function sendProductToBling(product: any, accessToken: string, blingStoreId?: number | null): Promise<SendProductResult> {
   // Map local product to Bling API v3 format
   // Required fields: nome, tipo, situacao, formato
   const blingProduct: any = {
@@ -138,6 +138,14 @@ async function sendProductToBling(product: any, accessToken: string): Promise<Se
     formato: 'S', // S = Simples, V = Com variação, E = Com composição
     preco: Number(product.price) || 0,
   };
+
+  // Add store (loja) if configured - this links the product to the virtual store in Bling
+  if (blingStoreId) {
+    blingProduct.loja = {
+      id: blingStoreId
+    };
+    console.log(`[bling-sync-products] Linking product to store ID: ${blingStoreId}`);
+  }
 
   // Add optional fields if available
   if (product.description) {
@@ -330,7 +338,7 @@ serve(async (req) => {
           break;
         }
 
-        const sendResult = await sendProductToBling(product, accessToken);
+        const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id);
 
         // Update product with Bling ID
         await supabase
@@ -389,7 +397,7 @@ serve(async (req) => {
           try {
             await delay(350); // Rate limiting: 3 req/sec
 
-            const sendResult = await sendProductToBling(product, accessToken);
+            const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id);
 
             // Update product with Bling ID
             await supabase
