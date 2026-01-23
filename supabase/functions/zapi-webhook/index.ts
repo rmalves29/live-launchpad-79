@@ -394,9 +394,9 @@ serve(async (req) => {
       const eventType = product.sale_type === 'LIVE' ? 'LIVE' : 'BAZAR';
 
       // Find or create cart for this customer
-      const cart = await findOrCreateCart(supabase, tenantId, normalizedPhone, groupName, eventType);
+      let cart = await findOrCreateCart(supabase, tenantId, normalizedPhone, groupName, eventType);
 
-      // VALIDATION: Check if this cart belongs to a CANCELLED order - block item addition
+      // Check if this cart belongs to a CANCELLED order - if so, create a NEW cart/order
       const { data: cancelledOrder } = await supabase
         .from('orders')
         .select('id, is_cancelled')
@@ -406,51 +406,36 @@ serve(async (req) => {
         .maybeSingle();
 
       if (cancelledOrder) {
-        console.log(`[zapi-webhook] ❌ PEDIDO CANCELADO - Cart ${cart.id} pertence ao pedido cancelado #${cancelledOrder.id}. Itens não podem ser adicionados.`);
+        console.log(`[zapi-webhook] ⚠️ Cart ${cart.id} pertence ao pedido cancelado #${cancelledOrder.id}. Criando NOVO carrinho e pedido...`);
         
-        // Send cancellation message to customer
-        try {
-          const { data: whatsappConfig } = await supabase
-            .from('integration_whatsapp')
-            .select('zapi_instance_id, zapi_token, zapi_client_token, is_active')
-            .eq('tenant_id', tenantId)
-            .eq('is_active', true)
-            .maybeSingle();
-          
-          if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
-            const cancelledMessage = `❌ *Pedido Cancelado*\n\nSeu pedido #${cancelledOrder.id} foi cancelado e não pode receber novos itens.\n\nPor favor, entre em contato para criar um novo pedido.`;
-            
-            const phoneForZapi = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-            
-            const zapiUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/send-text`;
-            
-            await fetch(zapiUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Client-Token': whatsappConfig.zapi_client_token || ''
-              },
-              body: JSON.stringify({
-                phone: phoneForZapi,
-                message: cancelledMessage
-              })
-            });
-            
-            console.log(`[zapi-webhook] 📤 Mensagem de pedido cancelado enviada para ${phoneForZapi}`);
-          }
-        } catch (msgError) {
-          console.error(`[zapi-webhook] Erro ao enviar mensagem de pedido cancelado:`, msgError);
+        // Force create a new cart (bypass the existing one)
+        const today = getBrasiliaDateISO();
+        const { data: newCart, error: newCartError } = await supabase
+          .from('carts')
+          .insert({
+            tenant_id: tenantId,
+            customer_phone: normalizedPhone,
+            event_date: today,
+            event_type: eventType,
+            status: 'OPEN',
+            whatsapp_group_name: groupName || null,
+          })
+          .select()
+          .single();
+
+        if (newCartError || !newCart) {
+          console.log(`[zapi-webhook] ❌ Erro ao criar novo carrinho: ${newCartError?.message}`);
+          results.push({ 
+            code: codeUpper, 
+            success: false, 
+            error: 'cart_creation_error',
+            product_name: product.name
+          });
+          continue;
         }
-        
-        results.push({ 
-          code: codeUpper, 
-          success: false, 
-          error: 'order_cancelled',
-          order_id: cancelledOrder.id,
-          product_name: product.name,
-          message_sent: true
-        });
-        continue;
+
+        console.log(`[zapi-webhook] ✅ Novo carrinho criado: ${newCart.id} (substituindo cart ${cart.id} do pedido cancelado)`);
+        cart = newCart;
       }
 
       // Find or create order for this cart
