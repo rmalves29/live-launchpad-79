@@ -1529,6 +1529,41 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_allowed_groups: {
+        Row: {
+          created_at: string
+          group_name: string
+          id: string
+          is_active: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          group_name: string
+          id?: string
+          is_active?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          group_name?: string
+          id?: string
+          is_active?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_allowed_groups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whatsapp_connection_logs: {
         Row: {
           created_at: string | null

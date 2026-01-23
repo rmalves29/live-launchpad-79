@@ -27,17 +27,39 @@ export default function Auth() {
 
   const checkTenantAccess = async (userId: string): Promise<{ allowed: boolean; reason?: string }> => {
     try {
+      // Pequeno delay para garantir que a sessão está estabelecida
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Buscar o perfil do usuário para saber o tenant_id e role
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('tenant_id, role')
-        .eq('id', userId)
-        .maybeSingle();
+      // Tentar até 3 vezes com pequenos intervalos
+      let profile = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+      
+      while (!profile && attempts < maxAttempts) {
+        const { data, error: profileError } = await supabase
+          .from('profiles')
+          .select('tenant_id, role')
+          .eq('id', userId)
+          .maybeSingle();
+        
+        if (profileError) {
+          console.error('Erro ao buscar profile (tentativa ' + (attempts + 1) + '):', profileError);
+        }
+        
+        profile = data;
+        attempts++;
+        
+        if (!profile && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
 
-      if (profileError) throw profileError;
+      console.log('Profile encontrado:', profile);
 
-      // Super admin sempre tem acesso
+      // Super admin sempre tem acesso total
       if (profile?.role === 'super_admin') {
+        console.log('Usuário é super_admin - acesso liberado');
         return { allowed: true };
       }
 
