@@ -47,6 +47,22 @@ interface CustomerData {
   cpf: string;
 }
 
+function getEdgeFunctionErrorMessage(err: any): string {
+  try {
+    const body = err?.context?.body;
+    if (typeof body === 'string' && body.trim()) {
+      const parsed = JSON.parse(body);
+      if (typeof parsed?.error === 'string' && parsed.error.trim()) return parsed.error;
+      if (typeof parsed?.message === 'string' && parsed.message.trim()) return parsed.message;
+      if (typeof parsed?.details?.message === 'string' && parsed.details.message.trim()) return parsed.details.message;
+    }
+  } catch {
+    // ignore
+  }
+
+  return err?.message || 'Não foi possível processar o pagamento. Tente novamente.';
+}
+
 const Checkout = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -1239,7 +1255,7 @@ const Checkout = () => {
       console.error('Error processing payment:', error);
       toast({
         title: 'Erro no pagamento',
-        description: error.message || 'Não foi possível processar o pagamento. Tente novamente.',
+        description: getEdgeFunctionErrorMessage(error),
         variant: 'destructive'
       });
     } finally {

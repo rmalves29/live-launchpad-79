@@ -354,8 +354,13 @@ serve(async (req) => {
       
       if (!pagarmeRes.ok) {
         console.log("[create-payment] Pagar.me error", pagarmeJson);
-        return new Response(JSON.stringify({ error: "Erro ao criar pagamento Pagar.me", details: pagarmeJson }), {
-          status: 502,
+        const rawMsg = (pagarmeJson?.message || pagarmeJson?.error || "").toString();
+        const friendly = rawMsg.includes("Authorization has been denied")
+          ? "Credenciais do Pagar.me inválidas (API Key sem permissão). Atualize a chave e tente novamente."
+          : "Erro ao criar pagamento Pagar.me";
+
+        return new Response(JSON.stringify({ error: friendly, details: pagarmeJson }), {
+          status: pagarmeRes.status || 502,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }

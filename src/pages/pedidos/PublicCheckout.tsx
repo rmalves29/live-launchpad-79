@@ -53,6 +53,23 @@ interface Order {
   items: OrderItem[];
 }
 
+function getEdgeFunctionErrorMessage(err: any): string {
+  // Supabase FunctionsError geralmente vem com `context` contendo o body da Response
+  try {
+    const body = err?.context?.body;
+    if (typeof body === 'string' && body.trim()) {
+      const parsed = JSON.parse(body);
+      if (typeof parsed?.error === 'string' && parsed.error.trim()) return parsed.error;
+      if (typeof parsed?.message === 'string' && parsed.message.trim()) return parsed.message;
+      if (typeof parsed?.details?.message === 'string' && parsed.details.message.trim()) return parsed.details.message;
+    }
+  } catch {
+    // ignore
+  }
+
+  return err?.message || 'Não foi possível processar o pagamento.';
+}
+
 const PublicCheckout = () => {
   const { slug } = useParams<{ slug: string }>();
   const { toast } = useToast();
@@ -671,7 +688,11 @@ const PublicCheckout = () => {
       }
     } catch (error: any) {
       console.error('Error processing payment:', error);
-      toast({ title: 'Erro no pagamento', description: error.message || 'Não foi possível processar o pagamento.', variant: 'destructive' });
+      toast({
+        title: 'Erro no pagamento',
+        description: getEdgeFunctionErrorMessage(error),
+        variant: 'destructive'
+      });
     } finally {
       setLoadingPayment(false);
     }
