@@ -985,6 +985,7 @@ export type Database = {
       }
       products: {
         Row: {
+          bling_product_id: number | null
           code: string
           color: string | null
           created_at: string | null
@@ -1000,6 +1001,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          bling_product_id?: number | null
           code: string
           color?: string | null
           created_at?: string | null
@@ -1015,6 +1017,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          bling_product_id?: number | null
           code?: string
           color?: string | null
           created_at?: string | null
