@@ -695,12 +695,14 @@ const PublicCheckout = () => {
     setShowCheckout(false);
 
     try {
+      // Buscar apenas pedidos não pagos E não cancelados para seleção
       const { data: customerOrders, error: ordersError } = await supabase
         .from('orders')
         .select('*')
         .eq('tenant_id', tenant.id)
         .eq('customer_phone', normalizedPhone)
         .eq('is_paid', false)
+        .or('is_cancelled.is.null,is_cancelled.eq.false')
         .order('created_at', { ascending: false });
 
       if (ordersError) throw ordersError;
@@ -829,12 +831,13 @@ const PublicCheckout = () => {
 
     setLoadingHistory(true);
     try {
+      // Buscar pedidos pagos OU cancelados para o histórico
       const { data: paidOrdersData, error: ordersError } = await supabase
         .from('orders')
         .select('*')
         .eq('tenant_id', tenant.id)
         .eq('customer_phone', normalizedPhone)
-        .eq('is_paid', true)
+        .or('is_paid.eq.true,is_cancelled.eq.true')
         .order('created_at', { ascending: false });
 
       if (ordersError) throw ordersError;
