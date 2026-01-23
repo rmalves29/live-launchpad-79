@@ -291,9 +291,14 @@ serve(async (req) => {
 
       const totalAmount = items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
 
+      const now = new Date();
+      const boletoDueAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString();
+
       const pagarmeBody = {
         items,
         customer: {
+          // Obrigatório no Core v5
+          type: "individual",
           name: payload.customerData.name,
           email: payload.customerData.email || `${payload.customerData.phone}@checkout.local`,
           document: payload.customerData.cpf || "00000000000",
@@ -328,6 +333,18 @@ serve(async (req) => {
               customer_editable: false,
               accepted_payment_methods: ["credit_card", "boleto", "pix"],
               success_url: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=success`,
+
+              // Pagar.me exige estes objetos quando boleto/pix estão em accepted_payment_methods
+              boleto: {
+                due_at: boletoDueAt,
+                instructions: "Pague até o vencimento para evitar cancelamento automático.",
+              },
+              pix: {
+                expires_in: 3600,
+                additional_information: [
+                  { name: "Pedido(s)", value: orderIds.join(",") },
+                ],
+              },
             },
             amount: totalAmount,
           },
