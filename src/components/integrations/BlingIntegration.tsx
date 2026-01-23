@@ -19,6 +19,7 @@ import { formatBrasiliaDateTime, getBrasiliaDateTimeISO } from '@/lib/date-utils
 import { useSearchParams } from 'react-router-dom';
 import BlingOrdersSyncPanel from './BlingOrdersSyncPanel';
 import BlingProductsSyncPanel from './BlingProductsSyncPanel';
+import BlingFiscalSettings from './BlingFiscalSettings';
 import { 
   Loader2, 
   Save, 
@@ -852,6 +853,11 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
       {/* Painel de sincronização de produtos */}
       {modules.sync_products && isAuthorized && !isExpired && (
         <BlingProductsSyncPanel tenantId={tenantId} />
+      )}
+
+      {/* Dados Fiscais */}
+      {isAuthorized && !isExpired && (
+        <BlingFiscalSettings tenantId={tenantId} />
       )}
 
       {/* Última sincronização */}
