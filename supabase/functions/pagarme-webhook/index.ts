@@ -128,13 +128,32 @@ async function markOrderAsPaid(
   webhookEventId: string
 ) {
   try {
+    console.log(`[pagarme-webhook] Marking order ${orderId} as paid`);
+
+    // Verificar se o pedido existe e buscar informações
+    const { data: existingOrder } = await sb
+      .from("orders")
+      .select("id, is_paid, tenant_id, customer_phone, total_amount")
+      .eq("id", orderId)
+      .single();
+
+    if (!existingOrder) {
+      console.log(`[pagarme-webhook] Order ${orderId} not found`);
+      return;
+    }
+
+    if (existingOrder.is_paid) {
+      console.log(`[pagarme-webhook] Order ${orderId} already marked as paid`);
+      return;
+    }
+
+    // Usar tenant do pedido se não vier no webhook
+    const orderTenantId = existingOrder.tenant_id || tenantId;
+
+    // Marcar como pago - o TRIGGER do banco de dados vai disparar zapi-send-paid-order automaticamente
     const { error } = await sb
       .from("orders")
-      .update({
-        is_paid: true,
-        payment_confirmation_sent: false,
-        payment_confirmation_delivered: false,
-      })
+      .update({ is_paid: true })
       .eq("id", orderId);
 
     if (error) {
@@ -142,18 +161,21 @@ async function markOrderAsPaid(
       return;
     }
 
-    console.log(`[pagarme-webhook] Order ${orderId} marked as paid`);
+    console.log(`[pagarme-webhook] Order ${orderId} marked as paid successfully`);
 
     // Log sucesso
     await sb.from("webhook_logs").insert({
-      webhook_type: "pagarme_order_paid",
+      webhook_type: "pagarme_payment_success",
       status_code: 200,
-      payload: { order_id: orderId, webhook_event_id: webhookEventId },
-      tenant_id: tenantId,
+      payload: { order_id: orderId, payment_id: webhookEventId },
+      tenant_id: orderTenantId,
+      response: `Order ${orderId} marked as paid`,
     });
 
+    // Nota: A notificação WhatsApp é enviada pelo trigger do banco de dados (process_paid_order)
+
     // Sync com Bling se configurado
-    await syncOrderWithBling(sb, orderId, tenantId);
+    await syncOrderWithBling(sb, orderId, orderTenantId);
   } catch (e) {
     console.error(`[pagarme-webhook] Exception updating order ${orderId}:`, e);
   }
@@ -164,31 +186,49 @@ async function syncOrderWithBling(
   orderId: number,
   tenantId: string | null
 ) {
-  if (!tenantId) return;
+  if (!tenantId) {
+    console.log(`[pagarme-webhook] Cannot sync with Bling: no tenant_id`);
+    return;
+  }
 
   try {
     const { data: blingIntegration } = await sb
       .from("integration_bling")
-      .select("is_active, sync_orders")
+      .select("is_active, sync_orders, access_token")
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
-    if (blingIntegration?.is_active && blingIntegration?.sync_orders) {
-      console.log(`[pagarme-webhook] Triggering Bling sync for order ${orderId}`);
+    if (!blingIntegration?.is_active || !blingIntegration?.sync_orders || !blingIntegration?.access_token) {
+      console.log(`[pagarme-webhook] Bling ERP not configured or sync_orders disabled for tenant ${tenantId}`);
+      return;
+    }
 
-      const supabaseUrl = Deno.env.get("SUPABASE_URL");
-      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    console.log(`[pagarme-webhook] Syncing order ${orderId} with Bling ERP...`);
 
-      await fetch(`${supabaseUrl}/functions/v1/bling-sync-orders`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${serviceKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ order_id: orderId, tenant_id: tenantId }),
-      });
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/bling-sync-orders`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "send_order",
+        order_id: orderId,
+        tenant_id: tenantId,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (response.ok && result.success) {
+      console.log(`[pagarme-webhook] Order ${orderId} synced with Bling ERP successfully`);
+    } else {
+      console.error(`[pagarme-webhook] Bling sync failed for order ${orderId}:`, result);
     }
   } catch (e) {
-    console.error(`[pagarme-webhook] Error syncing with Bling:`, e);
+    console.error(`[pagarme-webhook] Error syncing order ${orderId} with Bling:`, e);
   }
 }
