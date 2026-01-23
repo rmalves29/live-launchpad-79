@@ -464,11 +464,19 @@ export type Database = {
           client_id: string | null
           client_secret: string | null
           created_at: string
+          default_cfop_other_state: string | null
+          default_cfop_same_state: string | null
+          default_icms_origem: string | null
+          default_icms_situacao: string | null
+          default_ipi: number | null
+          default_ncm: string | null
+          default_pis_cofins: string | null
           environment: string
           id: string
           is_active: boolean
           last_sync_at: string | null
           refresh_token: string | null
+          store_state: string | null
           sync_ecommerce: boolean
           sync_invoices: boolean
           sync_logistics: boolean
@@ -488,11 +496,19 @@ export type Database = {
           client_id?: string | null
           client_secret?: string | null
           created_at?: string
+          default_cfop_other_state?: string | null
+          default_cfop_same_state?: string | null
+          default_icms_origem?: string | null
+          default_icms_situacao?: string | null
+          default_ipi?: number | null
+          default_ncm?: string | null
+          default_pis_cofins?: string | null
           environment?: string
           id?: string
           is_active?: boolean
           last_sync_at?: string | null
           refresh_token?: string | null
+          store_state?: string | null
           sync_ecommerce?: boolean
           sync_invoices?: boolean
           sync_logistics?: boolean
@@ -512,11 +528,19 @@ export type Database = {
           client_id?: string | null
           client_secret?: string | null
           created_at?: string
+          default_cfop_other_state?: string | null
+          default_cfop_same_state?: string | null
+          default_icms_origem?: string | null
+          default_icms_situacao?: string | null
+          default_ipi?: number | null
+          default_ncm?: string | null
+          default_pis_cofins?: string | null
           environment?: string
           id?: string
           is_active?: boolean
           last_sync_at?: string | null
           refresh_token?: string | null
+          store_state?: string | null
           sync_ecommerce?: boolean
           sync_invoices?: boolean
           sync_logistics?: boolean

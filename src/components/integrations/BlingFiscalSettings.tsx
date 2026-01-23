@@ -24,7 +24,7 @@ interface FiscalData {
   default_ncm: string | null;
   default_cfop_same_state: string | null;
   default_cfop_other_state: string | null;
-  default_ipi: number | null;
+  default_ipi: string | null;
   default_icms_situacao: string | null;
   default_icms_origem: string | null;
   default_pis_cofins: string | null;
@@ -65,6 +65,23 @@ const PIS_COFINS_SITUACOES = [
   { value: '08', label: '08 - Sem Incidência da Contribuição' },
   { value: '49', label: '49 - Outras Operações de Saída' },
   { value: '99', label: '99 - Outras Operações' },
+];
+
+const IPI_SITUACOES = [
+  { value: '00', label: '00 - Entrada com recuperação de crédito' },
+  { value: '01', label: '01 - Entrada tributada com alíquota zero' },
+  { value: '02', label: '02 - Entrada isenta' },
+  { value: '03', label: '03 - Entrada não-tributada' },
+  { value: '04', label: '04 - Entrada imune' },
+  { value: '05', label: '05 - Entrada com suspensão' },
+  { value: '49', label: '49 - Outras entradas' },
+  { value: '50', label: '50 - Saída tributada' },
+  { value: '51', label: '51 - Saída tributada com alíquota zero' },
+  { value: '52', label: '52 - Saída isenta' },
+  { value: '53', label: '53 - Saída não-tributada' },
+  { value: '54', label: '54 - Saída imune' },
+  { value: '55', label: '55 - Saída com suspensão' },
+  { value: '99', label: '99 - Outras saídas' },
 ];
 
 export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsProps) {
@@ -250,20 +267,21 @@ export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsPro
         </div>
 
         {/* IPI */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="default_ipi">Alíquota IPI (%)</Label>
-            <Input
-              id="default_ipi"
-              type="number"
-              step="0.01"
-              min="0"
-              max="100"
-              placeholder="Ex: 0.00"
-              value={fiscalData.default_ipi ?? ''}
-              onChange={(e) => updateField('default_ipi', e.target.value ? parseFloat(e.target.value) : null)}
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="default_ipi">Situação Tributária IPI</Label>
+          <Select
+            value={fiscalData.default_ipi || ''}
+            onValueChange={(value) => updateField('default_ipi', value)}
+          >
+            <SelectTrigger id="default_ipi" className="w-full md:w-[400px]">
+              <SelectValue placeholder="Selecione..." />
+            </SelectTrigger>
+            <SelectContent>
+              {IPI_SITUACOES.map(item => (
+                <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* ICMS */}
