@@ -218,7 +218,23 @@ type SendOrderResult =
   | { kind: 'created'; blingOrderId: number; raw: any }
   | { kind: 'already_exists'; blingOrderId: number; raw: any };
 
-async function sendOrderToBling(order: any, cartItems: any[], customer: any, accessToken: string, storeId?: number): Promise<SendOrderResult> {
+async function sendOrderToBling(
+  order: any, 
+  cartItems: any[], 
+  customer: any, 
+  accessToken: string, 
+  storeId?: number,
+  fiscalData?: {
+    store_state: string | null;
+    default_ncm: string | null;
+    default_cfop_same_state: string | null;
+    default_cfop_other_state: string | null;
+    default_ipi: number | null;
+    default_icms_situacao: string | null;
+    default_icms_origem: string | null;
+    default_pis_cofins: string | null;
+  }
+): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
   }
@@ -235,6 +251,14 @@ async function sendOrderToBling(order: any, cartItems: any[], customer: any, acc
   const customerState = customer?.state || order.customer_state || '';
   const customerName = customer?.name || order.customer_name || 'Cliente';
 
+  // Determinar CFOP com base no estado do cliente vs estado da loja
+  let cfop: string | null = null;
+  if (fiscalData?.store_state && customerState) {
+    const isSameState = customerState.toUpperCase() === fiscalData.store_state.toUpperCase();
+    cfop = isSameState ? fiscalData.default_cfop_same_state : fiscalData.default_cfop_other_state;
+    console.log(`[bling-sync-orders] CFOP: cliente=${customerState}, loja=${fiscalData.store_state}, mesmo estado=${isSameState}, cfop=${cfop}`);
+  }
+
   // Bling v3: situacao do pedido (0=Em aberto, 6=Em andamento, 9=Atendido, 12=Cancelado)
   // numeroLoja é o número visível para busca no painel
   // loja vincula o pedido a um canal de venda específico
@@ -245,16 +269,54 @@ async function sendOrderToBling(order: any, cartItems: any[], customer: any, acc
     dataPrevista: order.event_date,
     situacao: { id: 6 }, // 6 = Em andamento (aparece na listagem padrão)
     contato: { id: contactId },
-    itens: cartItems.map((item) => ({
-      codigo: item.product_code || `PROD-${item.id}`,
-      descricao: item.product_name || 'Produto',
-      quantidade: item.qty || 1,
-      valor: Number(item.unit_price) || 0,
-      unidade: 'UN',
-    })),
+    itens: cartItems.map((item) => {
+      const itemData: any = {
+        codigo: item.product_code || `PROD-${item.id}`,
+        descricao: item.product_name || 'Produto',
+        quantidade: item.qty || 1,
+        valor: Number(item.unit_price) || 0,
+        unidade: 'UN',
+      };
+
+      // Adicionar dados fiscais ao item se configurados
+      if (fiscalData?.default_ncm) {
+        itemData.ncm = fiscalData.default_ncm;
+      }
+      if (cfop) {
+        itemData.cfop = cfop;
+      }
+      if (fiscalData?.default_icms_origem) {
+        itemData.origem = fiscalData.default_icms_origem;
+      }
+
+      return itemData;
+    }),
     observacoes: order.observation || '',
     observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
   };
+
+  // Adicionar tributos do pedido se configurados
+  if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins || fiscalData.default_ipi !== null)) {
+    blingOrder.tributos = {};
+    
+    if (fiscalData.default_icms_situacao) {
+      blingOrder.tributos.icms = {
+        situacao: fiscalData.default_icms_situacao,
+        origem: fiscalData.default_icms_origem || '0',
+      };
+    }
+    
+    if (fiscalData.default_pis_cofins) {
+      blingOrder.tributos.pis = { situacao: fiscalData.default_pis_cofins };
+      blingOrder.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
+    }
+    
+    if (fiscalData.default_ipi !== null && fiscalData.default_ipi !== undefined) {
+      blingOrder.tributos.ipi = { aliquota: fiscalData.default_ipi };
+    }
+
+    console.log('[bling-sync-orders] Tributos adicionados:', JSON.stringify(blingOrder.tributos, null, 2));
+  }
 
   // Extrair valor do frete da observação (formato: "Frete: R$ XX,XX" ou "frete de R$ XX,XX")
   let freteValor = 0;
@@ -510,7 +572,20 @@ serve(async (req) => {
 
         // Usar loja configurada no banco (se houver)
         const blingStoreId = integration.bling_store_id || null;
-        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, blingStoreId);
+        
+        // Extrair dados fiscais da integração
+        const fiscalData = {
+          store_state: integration.store_state || null,
+          default_ncm: integration.default_ncm || null,
+          default_cfop_same_state: integration.default_cfop_same_state || null,
+          default_cfop_other_state: integration.default_cfop_other_state || null,
+          default_ipi: integration.default_ipi || null,
+          default_icms_situacao: integration.default_icms_situacao || null,
+          default_icms_origem: integration.default_icms_origem || null,
+          default_pis_cofins: integration.default_pis_cofins || null,
+        };
+        
+        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, blingStoreId, fiscalData);
 
         // Persistir o ID do pedido no Bling (inclui caso "já existe")
         await supabase
@@ -597,7 +672,20 @@ serve(async (req) => {
 
             // Usar loja configurada no banco (se houver)
             const blingStoreId = integration.bling_store_id || null;
-            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, blingStoreId);
+            
+            // Extrair dados fiscais da integração
+            const fiscalData = {
+              store_state: integration.store_state || null,
+              default_ncm: integration.default_ncm || null,
+              default_cfop_same_state: integration.default_cfop_same_state || null,
+              default_cfop_other_state: integration.default_cfop_other_state || null,
+              default_ipi: integration.default_ipi || null,
+              default_icms_situacao: integration.default_icms_situacao || null,
+              default_icms_origem: integration.default_icms_origem || null,
+              default_pis_cofins: integration.default_pis_cofins || null,
+            };
+            
+            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, blingStoreId, fiscalData);
 
             await supabase
               .from('orders')
