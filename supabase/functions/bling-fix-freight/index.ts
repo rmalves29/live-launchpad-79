@@ -8,6 +8,8 @@ const corsHeaders = {
 
 const BLING_API_URL = 'https://api.bling.com.br/Api/v3';
 
+type BlingOrderPayload = Record<string, any>;
+
 // Função para converter valor monetário brasileiro para número
 // Suporta formatos: "30,41" | "30.41" | "1.234,56" | "1234.56"
 function parseMonetaryValue(value: string): number {
@@ -113,25 +115,55 @@ async function updateBlingOrderFreight(
   newFreightValue: number
 ): Promise<{ success: boolean; error?: string }> {
   console.log(`[bling-fix-freight] Atualizando pedido ${blingOrderId} com frete ${newFreightValue}`);
-  
-  const response = await fetch(`${BLING_API_URL}/pedidos/vendas/${blingOrderId}`, {
+
+  // IMPORTANTE: o Bling v3 costuma rejeitar PUT parcial (validação exige contato/itens/data etc.).
+  // Então: buscar o pedido atual e reenviar o payload completo com o frete ajustado.
+  const getResponse = await fetch(`${BLING_API_URL}/pedidos/vendas/${blingOrderId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+
+  const getText = await getResponse.text();
+  if (!getResponse.ok) {
+    console.log(`[bling-fix-freight] Falha ao buscar pedido no Bling: ${getResponse.status} - ${getText}`);
+    return { success: false, error: `${getResponse.status} - ${getText}` };
+  }
+
+  let current: BlingOrderPayload | null = null;
+  try {
+    const parsed = JSON.parse(getText);
+    current = (parsed?.data ?? parsed) as BlingOrderPayload;
+  } catch {
+    return { success: false, error: `Falha ao parsear resposta do GET: ${getText?.slice?.(0, 200) ?? 'N/A'}` };
+  }
+
+  if (!current || typeof current !== 'object') {
+    return { success: false, error: 'Resposta do Bling inválida (pedido vazio)' };
+  }
+
+  const payload: BlingOrderPayload = { ...current };
+  payload.transporte = {
+    ...(payload.transporte ?? {}),
+    frete: newFreightValue,
+  };
+
+  const putResponse = await fetch(`${BLING_API_URL}/pedidos/vendas/${blingOrderId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({
-      transporte: {
-        frete: newFreightValue,
-      },
-    }),
+    body: JSON.stringify(payload),
   });
 
-  const responseText = await response.text();
-  console.log(`[bling-fix-freight] Resposta Bling: ${response.status} - ${responseText}`);
+  const putText = await putResponse.text();
+  console.log(`[bling-fix-freight] Resposta Bling: ${putResponse.status} - ${putText}`);
 
-  if (!response.ok) {
-    return { success: false, error: `${response.status} - ${responseText}` };
+  if (!putResponse.ok) {
+    return { success: false, error: `${putResponse.status} - ${putText}` };
   }
 
   return { success: true };
