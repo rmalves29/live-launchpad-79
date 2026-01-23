@@ -258,6 +258,7 @@ useEffect(() => {
 
     const productName = item.product?.name || item.product_name || 'produto';
     const productCode = item.product?.code || item.product_code || '';
+    const qtyToReturn = item.qty || 1;
     
     if (!confirm(`Tem certeza que deseja cancelar ${productName}? Uma mensagem será enviada ao cliente.`)) {
       return;
@@ -279,6 +280,30 @@ useEffect(() => {
         console.error('Erro ao enviar mensagem Z-API:', zapiError);
       }
 
+      // DEVOLVER ESTOQUE: Incrementar estoque do produto antes de remover o item
+      if (item.product_id) {
+        // Buscar estoque atual do produto
+        const { data: productData, error: fetchError } = await supabaseTenant
+          .from('products')
+          .select('stock')
+          .eq('id', item.product_id)
+          .maybeSingle();
+
+        if (!fetchError && productData) {
+          const newStock = (productData.stock || 0) + qtyToReturn;
+          const { error: stockError } = await supabaseTenant
+            .from('products')
+            .update({ stock: newStock })
+            .eq('id', item.product_id);
+
+          if (stockError) {
+            console.error('Erro ao devolver estoque:', stockError);
+          } else {
+            console.log(`Estoque devolvido: +${qtyToReturn} para produto ${item.product_id}, novo estoque: ${newStock}`);
+          }
+        }
+      }
+
       // Remover item do carrinho
       const { error } = await supabaseTenant
         .from('cart_items')
@@ -293,8 +318,8 @@ useEffect(() => {
       toast({
         title: 'Produto Cancelado',
         description: zapiError 
-          ? 'Produto removido (erro ao enviar mensagem)' 
-          : 'Produto removido e mensagem de cancelamento enviada'
+          ? 'Produto removido e estoque devolvido (erro ao enviar mensagem)' 
+          : 'Produto removido, estoque devolvido e mensagem de cancelamento enviada'
       });
     } catch (error: any) {
       console.error('Error removing item:', error);

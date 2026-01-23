@@ -588,6 +588,39 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       setProcessingIds(prev => new Set(prev).add(orderId));
       
       try {
+        // Se estamos CANCELANDO o pedido, devolver o estoque
+        if (!currentStatus && order?.cart_id) {
+          // Buscar itens do carrinho
+          const { data: cartItems, error: cartError } = await supabaseTenant
+            .from('cart_items')
+            .select('product_id, qty')
+            .eq('cart_id', order.cart_id);
+
+          if (!cartError && cartItems && cartItems.length > 0) {
+            // Devolver estoque de cada produto
+            for (const item of cartItems) {
+              if (item.product_id) {
+                // Buscar estoque atual
+                const { data: product } = await supabaseTenant
+                  .from('products')
+                  .select('stock')
+                  .eq('id', item.product_id)
+                  .maybeSingle();
+
+                if (product) {
+                  const newStock = (product.stock || 0) + (item.qty || 1);
+                  await supabaseTenant
+                    .from('products')
+                    .update({ stock: newStock })
+                    .eq('id', item.product_id);
+                  
+                  console.log(`Estoque devolvido: +${item.qty} para produto ${item.product_id}, novo estoque: ${newStock}`);
+                }
+              }
+            }
+          }
+        }
+
         const { error } = await supabaseTenant
           .from('orders')
           .update({ is_cancelled: !currentStatus })
@@ -603,7 +636,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
 
         toast({
           title: 'Sucesso',
-          description: currentStatus ? 'Cancelamento revertido' : 'Pedido cancelado'
+          description: currentStatus ? 'Cancelamento revertido' : 'Pedido cancelado e estoque devolvido'
         });
       } catch (error) {
         console.error('Erro ao alterar status de cancelamento:', error);
@@ -656,7 +689,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       }
 
       const confirmed = await confirm({
-        description: `Deseja cancelar ${cancelableOrders.length} pedido(s)?`,
+        description: `Deseja cancelar ${cancelableOrders.length} pedido(s)? O estoque dos produtos será devolvido.`,
         confirmText: 'Cancelar Pedidos',
         variant: 'destructive',
       });
@@ -664,6 +697,36 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       if (!confirmed) return;
 
       try {
+        // Devolver estoque de cada pedido antes de cancelar
+        for (const orderToCancel of cancelableOrders) {
+          if (orderToCancel.cart_id) {
+            const { data: cartItems } = await supabaseTenant
+              .from('cart_items')
+              .select('product_id, qty')
+              .eq('cart_id', orderToCancel.cart_id);
+
+            if (cartItems && cartItems.length > 0) {
+              for (const item of cartItems) {
+                if (item.product_id) {
+                  const { data: product } = await supabaseTenant
+                    .from('products')
+                    .select('stock')
+                    .eq('id', item.product_id)
+                    .maybeSingle();
+
+                  if (product) {
+                    const newStock = (product.stock || 0) + (item.qty || 1);
+                    await supabaseTenant
+                      .from('products')
+                      .update({ stock: newStock })
+                      .eq('id', item.product_id);
+                  }
+                }
+              }
+            }
+          }
+        }
+
         const { error } = await supabaseTenant
           .from('orders')
           .update({ is_cancelled: true })
@@ -681,7 +744,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
 
         toast({
           title: 'Sucesso',
-          description: `${cancelableOrders.length} pedido(s) cancelado(s)`
+          description: `${cancelableOrders.length} pedido(s) cancelado(s) e estoque devolvido`
         });
       } catch (error) {
         console.error('Erro ao cancelar pedidos:', error);
