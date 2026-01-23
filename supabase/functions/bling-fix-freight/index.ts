@@ -145,10 +145,40 @@ async function updateBlingOrderFreight(
   }
 
   const payload: BlingOrderPayload = { ...current };
+  
+  // Atualizar o frete no transporte
+  const oldFrete = payload.transporte?.frete ?? 0;
   payload.transporte = {
     ...(payload.transporte ?? {}),
     frete: newFreightValue,
   };
+  
+  // Calcular a diferença do frete para ajustar o total
+  const freteDiff = newFreightValue - oldFrete;
+  
+  // Recalcular o total da venda
+  const oldTotal = payload.total ?? payload.totalVenda ?? 0;
+  const newTotal = oldTotal + freteDiff;
+  payload.total = newTotal;
+  payload.totalVenda = newTotal;
+  
+  // IMPORTANTE: Recalcular as parcelas para que o somatório bata com o novo total
+  // Se há parcelas, ajustar a primeira (ou única) para absorver a diferença do frete
+  if (payload.parcelas && Array.isArray(payload.parcelas) && payload.parcelas.length > 0) {
+    // Calcular soma atual das parcelas
+    const somaParcelas = payload.parcelas.reduce((sum: number, p: any) => sum + (p.valor ?? 0), 0);
+    
+    // Se a soma é diferente do novo total, ajustar a primeira parcela
+    if (Math.abs(somaParcelas - newTotal) > 0.01) {
+      const diffParcela = newTotal - somaParcelas;
+      payload.parcelas[0].valor = (payload.parcelas[0].valor ?? 0) + diffParcela;
+      
+      // Garantir que o valor não fique negativo
+      if (payload.parcelas[0].valor < 0) {
+        payload.parcelas[0].valor = 0;
+      }
+    }
+  }
 
   const putResponse = await fetch(`${BLING_API_URL}/pedidos/vendas/${blingOrderId}`, {
     method: 'PUT',
