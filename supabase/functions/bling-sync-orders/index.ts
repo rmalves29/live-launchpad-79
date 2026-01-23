@@ -323,6 +323,35 @@ async function sendOrderToBling(
   let freteNome = '';
   const observacao = order.observation || '';
   
+  // Função para converter valor monetário brasileiro para número
+  // Suporta formatos: "30,41" | "30.41" | "1.234,56" | "1234.56"
+  const parseMonetaryValue = (value: string): number => {
+    if (!value) return 0;
+    const cleaned = value.trim();
+    
+    // Se tem vírgula como decimal (formato BR: "30,41" ou "1.234,56")
+    if (cleaned.includes(',')) {
+      // Remove pontos de milhar e troca vírgula por ponto
+      return parseFloat(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+    }
+    
+    // Formato com ponto como decimal ("30.41")
+    // Verificar se é milhar ou decimal baseado na posição
+    const dotCount = (cleaned.match(/\./g) || []).length;
+    if (dotCount === 1) {
+      const parts = cleaned.split('.');
+      // Se tem 2 casas decimais após o ponto, é decimal
+      if (parts[1] && parts[1].length <= 2) {
+        return parseFloat(cleaned) || 0;
+      }
+      // Senão, pode ser milhar (ex: "1.234" = 1234)
+      return parseFloat(cleaned.replace('.', '')) || 0;
+    }
+    
+    // Múltiplos pontos = formato milhar (ex: "1.234.567")
+    return parseFloat(cleaned.replace(/\./g, '')) || 0;
+  };
+  
   // Tentar extrair nome do frete (ex: "PAC", "SEDEX", etc.)
   const freteNomeMatch = observacao.match(/(?:frete|envio|transporte)[:\s]*([A-Za-zÀ-ú\s]+?)(?:\s*[-–]\s*|\s+R\$|\s*:)/i);
   if (freteNomeMatch) {
@@ -332,14 +361,14 @@ async function sendOrderToBling(
   // Tentar extrair valor do frete
   const freteMatch = observacao.match(/(?:frete|envio|transporte)[^R$]*R\$\s*([\d.,]+)/i);
   if (freteMatch) {
-    freteValor = parseFloat(freteMatch[1].replace('.', '').replace(',', '.')) || 0;
+    freteValor = parseMonetaryValue(freteMatch[1]);
   }
   
   // Fallback: buscar qualquer padrão "R$ XX,XX" relacionado a frete
   if (freteValor === 0) {
     const valorMatch = observacao.match(/R\$\s*([\d.,]+)/);
     if (valorMatch && observacao.toLowerCase().includes('frete')) {
-      freteValor = parseFloat(valorMatch[1].replace('.', '').replace(',', '.')) || 0;
+      freteValor = parseMonetaryValue(valorMatch[1]);
     }
   }
   
