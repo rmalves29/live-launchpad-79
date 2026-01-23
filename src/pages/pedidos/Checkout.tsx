@@ -2011,7 +2011,7 @@ const Checkout = () => {
                       ) : (
                         <CreditCard className="h-4 w-4 mr-2" />
                       )}
-                      Finalizar Pedido - Mercado Pago
+                      Fazer Pagamento Agora
                     </Button>
                   </div>
                 </CardContent>
