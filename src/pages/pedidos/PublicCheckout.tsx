@@ -1499,7 +1499,7 @@ const PublicCheckout = () => {
                     ) : (
                       <CreditCard className="h-4 w-4 mr-2" />
                     )}
-                    Finalizar {selectedOrders.length > 1 ? `${selectedOrders.length} Pedidos` : 'Pedido'} - Mercado Pago
+                    Fazer Pagamento Agora
                   </Button>
                 </CardContent>
               </Card>

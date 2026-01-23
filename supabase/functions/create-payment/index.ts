@@ -267,7 +267,7 @@ serve(async (req) => {
       });
     }
 
-    const orderIds = (payload.order_ids && payload.order_ids.length > 0 ? payload.order_ids : [payload.order_id]).filter(Boolean);
+    // Reutilizar orderIds já declarado na linha 185
     const externalReference = `tenant:${payload.tenant_id};orders:${orderIds.join(",")}`;
 
     // ==== PAGAR.ME ====
