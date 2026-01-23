@@ -241,24 +241,145 @@ serve(async (req) => {
       }
     }
 
-    // 3) Criar preferência no Mercado Pago (por tenant)
-    // Preferência: token da tabela integration_mp; fallback: secret global MP_ACCESS_TOKEN
+    // 3) Determinar qual integração de pagamento usar
+    // Verificar primeiro Mercado Pago, depois Pagar.me
     const { data: mpIntegration } = await sb
       .from("integration_mp")
       .select("access_token, environment, is_active")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
-    const mpAccessToken = mpIntegration?.is_active ? mpIntegration?.access_token : null;
+    const { data: pagarmeIntegration } = await sb
+      .from("integration_pagarme")
+      .select("api_key, public_key, environment, is_active")
+      .eq("tenant_id", payload.tenant_id)
+      .maybeSingle();
+
+    // Determinar qual provedor usar
+    const usePagarme = pagarmeIntegration?.is_active && pagarmeIntegration?.api_key;
+    const useMercadoPago = mpIntegration?.is_active && mpIntegration?.access_token;
     const fallbackMpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
 
-    const effectiveMpAccessToken = mpAccessToken || fallbackMpAccessToken;
-    if (!effectiveMpAccessToken) {
-      return new Response(JSON.stringify({ error: "Integração Mercado Pago não configurada para este tenant" }), {
+    if (!usePagarme && !useMercadoPago && !fallbackMpAccessToken) {
+      return new Response(JSON.stringify({ error: "Nenhuma integração de pagamento configurada para este tenant" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const orderIds = (payload.order_ids && payload.order_ids.length > 0 ? payload.order_ids : [payload.order_id]).filter(Boolean);
+    const externalReference = `tenant:${payload.tenant_id};orders:${orderIds.join(",")}`;
+
+    // ==== PAGAR.ME ====
+    if (usePagarme) {
+      console.log("[create-payment] Using Pagar.me for tenant:", payload.tenant_id);
+      
+      const items = payload.cartItems.map((it) => ({
+        description: it.product_name || it.product_code || "Produto",
+        quantity: it.qty,
+        amount: Math.round(Number(it.unit_price) * 100), // Pagar.me usa centavos
+      }));
+
+      // Adicionar frete como item
+      if (payload.shippingCost && payload.shippingCost > 0) {
+        items.push({
+          description: "Frete",
+          quantity: 1,
+          amount: Math.round(Number(payload.shippingCost) * 100),
+        });
+      }
+
+      const totalAmount = items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
+
+      const pagarmeBody = {
+        items,
+        customer: {
+          name: payload.customerData.name,
+          email: payload.customerData.email || `${payload.customerData.phone}@checkout.local`,
+          document: payload.customerData.cpf || "00000000000",
+          phones: {
+            mobile_phone: {
+              country_code: "55",
+              area_code: payload.customerData.phone.slice(0, 2),
+              number: payload.customerData.phone.slice(2),
+            },
+          },
+        },
+        shipping: {
+          address: {
+            country: "BR",
+            state: payload.addressData.state,
+            city: payload.addressData.city,
+            neighborhood: payload.addressData.neighborhood,
+            street: payload.addressData.street,
+            street_number: payload.addressData.number,
+            complement: payload.addressData.complement || "",
+            zip_code: payload.addressData.cep.replace(/\D/g, ""),
+          },
+          amount: Math.round(Number(payload.shippingCost) * 100),
+          description: "Envio padrão",
+        },
+        payments: [
+          {
+            payment_method: "checkout",
+            checkout: {
+              expires_in: 7200, // 2 horas
+              billing_address_editable: false,
+              customer_editable: false,
+              accepted_payment_methods: ["credit_card", "boleto", "pix"],
+              success_url: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=success`,
+            },
+            amount: totalAmount,
+          },
+        ],
+        metadata: {
+          external_reference: externalReference,
+        },
+      };
+
+      const baseUrl = pagarmeIntegration.environment === 'sandbox' 
+        ? "https://api.pagar.me/core/v5" 
+        : "https://api.pagar.me/core/v5";
+
+      const pagarmeRes = await fetch(`${baseUrl}/orders`, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${btoa(pagarmeIntegration.api_key + ":")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(pagarmeBody),
+      });
+
+      const pagarmeJson = await pagarmeRes.json();
+      
+      if (!pagarmeRes.ok) {
+        console.log("[create-payment] Pagar.me error", pagarmeJson);
+        return new Response(JSON.stringify({ error: "Erro ao criar pagamento Pagar.me", details: pagarmeJson }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Pegar URL do checkout
+      const checkoutUrl = pagarmeJson?.checkouts?.[0]?.payment_url || pagarmeJson?.checkouts?.[0]?.url;
+      
+      if (checkoutUrl) {
+        await sb
+          .from("orders")
+          .update({ payment_link: checkoutUrl })
+          .in("id", orderIds);
+      }
+
+      return new Response(
+        JSON.stringify({ init_point: checkoutUrl, provider: "pagarme" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ==== MERCADO PAGO ====
+    console.log("[create-payment] Using Mercado Pago for tenant:", payload.tenant_id);
+    
+    const effectiveMpAccessToken = mpIntegration?.access_token || fallbackMpAccessToken;
 
     const items = payload.cartItems.map((it) => ({
       title: it.product_name || it.product_code || "Produto",
@@ -282,7 +403,7 @@ serve(async (req) => {
 
     const preferenceBody = {
       items,
-      external_reference: `tenant:${payload.tenant_id};orders:${orderIds.join(",")}`,
+      external_reference: externalReference,
       payer: {
         name: payload.customerData.name,
         phone: {
@@ -329,7 +450,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ init_point: initPoint, sandbox_init_point: sandboxInitPoint }),
+      JSON.stringify({ init_point: initPoint, sandbox_init_point: sandboxInitPoint, provider: "mercado_pago" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
