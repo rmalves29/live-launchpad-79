@@ -285,7 +285,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="public_key">Public Key</Label>
+              <Label htmlFor="public_key">Public Key (Chave Pública)</Label>
               <Input
                 id="public_key"
                 type="text"
@@ -294,21 +294,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
                 placeholder="pk_..."
               />
               <p className="text-xs text-muted-foreground">
-                Chave pública para uso no frontend
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="encryption_key">Encryption Key</Label>
-              <Input
-                id="encryption_key"
-                type="password"
-                value={formData.encryption_key || ''}
-                onChange={(e) => setFormData({ ...formData, encryption_key: e.target.value })}
-                placeholder="ek_..."
-              />
-              <p className="text-xs text-muted-foreground">
-                Chave de criptografia para dados sensíveis
+                Chave pública encontrada em Configurações → Chaves no painel Pagar.me
               </p>
             </div>
 
