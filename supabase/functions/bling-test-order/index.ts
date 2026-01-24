@@ -47,10 +47,27 @@ serve(async (req) => {
           'Accept': 'application/json',
         },
       });
+      const orderData = await res.json();
       results.byId = {
         status: res.status,
-        data: await res.json()
+        data: orderData
       };
+      
+      // Se o pedido tem uma NF-e vinculada, buscar dados fiscais
+      const nfId = orderData?.data?.notaFiscal?.id;
+      if (nfId) {
+        console.log(`[bling-test] Pedido tem NF-e vinculada: ${nfId}, buscando detalhes...`);
+        const nfRes = await fetch(`${BLING_API_URL}/nfe/${nfId}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+          },
+        });
+        results.notaFiscal = {
+          status: nfRes.status,
+          data: await nfRes.json()
+        };
+      }
     }
 
     // 2) Buscar por número (se fornecido)
