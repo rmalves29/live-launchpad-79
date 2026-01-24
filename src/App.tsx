@@ -189,11 +189,14 @@ const AppContent = () => {
         } />
         
         {/* Rota para Agente de IA */}
-        <Route path="/agente-ia" element={
-          <RequireTenantAuth>
-            <AgenteIA />
-          </RequireTenantAuth>
-        } />
+        <Route
+          path="/agente-ia"
+          element={
+            <RequireTenantAuth>
+              <AgenteIA />
+            </RequireTenantAuth>
+          }
+        />
         
         {/* Rota de debug */}
         <Route path="/debug" element={<Debug />} />
