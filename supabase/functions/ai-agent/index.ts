@@ -9,7 +9,9 @@ const corsHeaders = {
 interface AgentRequest {
   message: string;
   tenant_id: string;
-  conversation_history?: Array<{ role: string; content: string }>;
+  conversation_history?: Array<{ role: string; content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }>;
+  image_url?: string; // URL da imagem enviada pelo usuário
+  analyze_product_images?: boolean; // Se true, inclui imagens dos produtos na análise
 }
 
 serve(async (req) => {
@@ -26,7 +28,13 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const { message, tenant_id, conversation_history = [] } = await req.json() as AgentRequest;
+    const { 
+      message, 
+      tenant_id, 
+      conversation_history = [],
+      image_url,
+      analyze_product_images = false
+    } = await req.json() as AgentRequest;
 
     if (!message || !tenant_id) {
       return new Response(
@@ -47,7 +55,7 @@ serve(async (req) => {
         .limit(50),
       supabase
         .from("products")
-        .select("id, name, code, price, stock, is_active")
+        .select("id, name, code, price, stock, is_active, image_url, color, size")
         .eq("tenant_id", tenant_id)
         .eq("is_active", true)
         .limit(100),
@@ -79,9 +87,11 @@ serve(async (req) => {
     const lowStockProducts = products.filter(p => p.stock <= 5);
     const totalCustomers = customers.length;
     const totalMessages = messages.length;
+    const productsWithImages = products.filter(p => p.image_url);
 
     const systemPrompt = `Você é um assistente de IA especializado em análise de negócios para e-commerce e vendas via WhatsApp.
 Você tem acesso aos dados do sistema e pode responder perguntas sobre pedidos, clientes, produtos e mensagens.
+Você também pode ANALISAR IMAGENS quando enviadas pelo usuário.
 
 ## DADOS ATUAIS DO SISTEMA (últimos 50 registros de cada):
 
@@ -95,11 +105,12 @@ Você tem acesso aos dados do sistema e pode responder perguntas sobre pedidos, 
 - Total de clientes: ${totalCustomers}
 - Total de mensagens WhatsApp: ${totalMessages}
 - Produtos com estoque baixo (≤5): ${lowStockProducts.length}
+- Produtos com imagem cadastrada: ${productsWithImages.length}
 
 ### PEDIDOS RECENTES:
 ${JSON.stringify(orders.slice(0, 20), null, 2)}
 
-### PRODUTOS ATIVOS:
+### PRODUTOS ATIVOS (incluindo URLs de imagens):
 ${JSON.stringify(products.slice(0, 30), null, 2)}
 
 ### CLIENTES:
@@ -114,6 +125,7 @@ ${JSON.stringify(messages.slice(0, 20), null, 2)}
 3. **Análise de Produtos**: Estoque baixo, produtos mais vendidos, sugestões de reposição
 4. **Análise de WhatsApp**: Taxa de mensagens, horários de pico, engajamento
 5. **Criação de Mensagens**: Criar textos para campanhas, promoções, cobrança, follow-up
+6. **Análise de Imagens**: Analisar imagens enviadas (produtos, comprovantes, etc.)
 
 ## INSTRUÇÕES:
 - Responda sempre em português brasileiro
@@ -122,12 +134,36 @@ ${JSON.stringify(messages.slice(0, 20), null, 2)}
 - Seja conciso mas completo
 - Se o usuário pedir para criar uma mensagem, forneça o texto pronto para copiar
 - Use markdown para formatar a resposta (negrito, listas, etc.)
-- Quando criar mensagens para WhatsApp, use formatação compatível (*negrito*, _itálico_)`;
+- Quando criar mensagens para WhatsApp, use formatação compatível (*negrito*, _itálico_)
+- Se uma imagem for enviada, analise-a detalhadamente e relacione com os dados do sistema quando relevante`;
+
+    // Construir a mensagem do usuário (pode incluir imagem)
+    let userContent: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+    
+    if (image_url) {
+      // Mensagem com imagem
+      userContent = [
+        { type: "text", text: message },
+        { type: "image_url", image_url: { url: image_url } }
+      ];
+    } else if (analyze_product_images && productsWithImages.length > 0) {
+      // Incluir imagens de produtos para análise
+      const productImages = productsWithImages.slice(0, 5).map(p => ({
+        type: "image_url" as const,
+        image_url: { url: p.image_url! }
+      }));
+      userContent = [
+        { type: "text", text: `${message}\n\n(Analisando imagens dos produtos: ${productsWithImages.slice(0, 5).map(p => p.name).join(", ")})` },
+        ...productImages
+      ];
+    } else {
+      userContent = message;
+    }
 
     const aiMessages = [
       { role: "system", content: systemPrompt },
       ...conversation_history.slice(-10), // Últimas 10 mensagens para contexto
-      { role: "user", content: message }
+      { role: "user", content: userContent }
     ];
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
