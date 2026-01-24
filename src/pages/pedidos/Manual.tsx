@@ -149,6 +149,8 @@ const PedidosManual = () => {
           .eq('customer_phone', normalizedPhone)
           .eq('event_date', today)
           .eq('is_paid', false)
+          // IMPORTANT: never reuse cancelled orders
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
           .in('event_type', ['BAZAR', 'MANUAL'])
           .order('created_at', { ascending: false });
 
@@ -203,6 +205,8 @@ const PedidosManual = () => {
                 .eq('customer_phone', normalizedPhone)
                 .eq('event_date', today)
                 .eq('is_paid', false)
+                // IMPORTANT: never reuse cancelled orders
+                .or('is_cancelled.is.null,is_cancelled.eq.false')
                 .in('event_type', ['BAZAR', 'MANUAL'])
                 .order('created_at', { ascending: false })
                 .limit(1);
