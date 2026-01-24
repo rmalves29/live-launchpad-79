@@ -39,6 +39,31 @@ serve(async (req) => {
     const blingStoreId = integration.bling_store_id;
     const results: any = { timestamp: new Date().toISOString() };
 
+    // TEST: Search product by code
+    if (action === 'search_product' && product_code) {
+      console.log(`[bling-test] Searching product by code: ${product_code}`);
+      
+      const searchRes = await fetch(`${BLING_API_URL}/produtos?pagina=1&limite=10&codigo=${encodeURIComponent(product_code)}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+      });
+      
+      const searchText = await searchRes.text();
+      console.log(`[bling-test] Search response: ${searchRes.status} - ${searchText}`);
+      
+      results.searchProduct = {
+        status: searchRes.status,
+        code: product_code,
+        response: JSON.parse(searchText)
+      };
+      
+      return new Response(JSON.stringify(results, null, 2), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     // TEST: Link product to store
     if (action === 'test_link_store' && bling_product_id && blingStoreId) {
       console.log(`[bling-test] Testing link product ${bling_product_id} to store ${blingStoreId}`);
