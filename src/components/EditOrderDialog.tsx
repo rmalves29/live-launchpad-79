@@ -32,6 +32,7 @@ interface CartItem {
 
 interface Order {
   id: number;
+  tenant_order_number?: number;
   customer_phone: string;
   customer_name?: string;
   event_type: string;
@@ -435,7 +436,7 @@ useEffect(() => {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Editar Pedido #{order?.id}</DialogTitle>
+          <DialogTitle>Editar Pedido #{order?.tenant_order_number || order?.id}</DialogTitle>
           <DialogDescription>Gerencie itens, quantidades e valores do pedido.</DialogDescription>
         </DialogHeader>
 

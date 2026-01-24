@@ -25,6 +25,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
 
 interface Order {
   id: number;
+  tenant_order_number?: number;
   customer_phone: string;
   event_type: string;
   event_date: string;
@@ -679,7 +680,7 @@ const Pedidos = () => {
           <div style="margin-top: 20px; text-align: center; font-size: 9px; color: #666; border-top: 1px solid #ddd; padding-top: 10px;">
             <div><strong>Total do pedido: R$ ${order.total_amount.toFixed(2)}</strong></div>
             <div style="margin-top: 3px;">Status: ${order.is_paid ? 'Pago' : 'Pendente'}</div>
-            <div style="margin-top: 3px;">Pedido #${order.id} - ${formatBrasiliaDateTime(order.created_at)}</div>
+            <div style="margin-top: 3px;">Pedido #${order.tenant_order_number || order.id} - ${formatBrasiliaDateTime(order.created_at)}</div>
           </div>
         </div>
       `;

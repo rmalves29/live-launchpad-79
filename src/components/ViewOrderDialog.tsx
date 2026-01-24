@@ -8,6 +8,7 @@ import { formatBrasiliaDate, formatBrasiliaDateTime } from '@/lib/date-utils';
 
 interface Order {
   id: number;
+  tenant_order_number?: number;
   customer_phone: string;
   event_type: string;
   event_date: string;
@@ -88,7 +89,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Detalhes do Pedido #{order.id}</DialogTitle>
+          <DialogTitle>Detalhes do Pedido #{order.tenant_order_number || order.id}</DialogTitle>
           <DialogDescription>Visualize todos os produtos e informações do pedido.</DialogDescription>
         </DialogHeader>
 

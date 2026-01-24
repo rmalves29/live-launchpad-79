@@ -27,6 +27,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
 
   interface Order {
     id: number;
+    tenant_order_number?: number;
     customer_phone: string;
     event_type: string;
     event_date: string;
@@ -577,8 +578,9 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       }
 
       const actionText = currentStatus ? 'reverter o cancelamento' : 'cancelar';
+      const orderNumber = order?.tenant_order_number || orderId;
       const confirmed = await confirm({
-        description: `Deseja ${actionText} do pedido #${orderId}?`,
+        description: `Deseja ${actionText} do pedido #${orderNumber}?`,
         confirmText: currentStatus ? 'Reverter' : 'Cancelar Pedido',
         variant: currentStatus ? 'default' : 'destructive',
       });
@@ -896,7 +898,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
               <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 10px;">
-                <h1 style="margin: 0; font-size: 18px; font-weight: 700; color: #1a1a2e;">${customerName} - #${order.id}</h1>
+                <h1 style="margin: 0; font-size: 18px; font-weight: 700; color: #1a1a2e;">${customerName} - #${order.tenant_order_number || order.id}</h1>
                 <span style="background: #fff; padding: 3px 8px; border-radius: 5px; font-size: 11px;"><strong>CPF:</strong> ${customerCPF}</span>
                 <span style="background: #fff; padding: 3px 8px; border-radius: 5px; font-size: 11px;"><strong>Celular:</strong> ${formatPhoneForDisplay(order.customer_phone)}</span>
               </div>
@@ -1149,7 +1151,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       const csvContent = [
         headers.join(','),
         ...orders.map(order => [
-          order.id,
+          order.tenant_order_number || order.id,
           order.customer_phone,
           order.total_amount,
           order.is_paid ? 'Sim' : 'Não',
@@ -1499,9 +1501,9 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                         />
                       </TableCell>
                       
-                      {/* Número do Pedido */}
+                      {/* Número do Pedido (por tenant) */}
                       <TableCell className="px-1 py-1 text-center">
-                        <span className="text-[10px] font-mono font-semibold text-muted-foreground">#{order.id}</span>
+                        <span className="text-[10px] font-mono font-semibold text-muted-foreground">#{order.tenant_order_number || order.id}</span>
                       </TableCell>
                       
                       {/* Telefone + Instagram + Badge múltiplos pedidos */}
