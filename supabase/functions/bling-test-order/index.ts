@@ -18,7 +18,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { tenant_id, bling_order_id, numero } = await req.json();
+    const { tenant_id, bling_order_id, numero, action, bling_product_id, product_code, product_price } = await req.json();
 
     // Buscar token do tenant
     const { data: integration, error: intError } = await supabase
@@ -36,7 +36,45 @@ serve(async (req) => {
     }
 
     const accessToken = integration.access_token;
+    const blingStoreId = integration.bling_store_id;
     const results: any = { timestamp: new Date().toISOString() };
+
+    // TEST: Link product to store
+    if (action === 'test_link_store' && bling_product_id && blingStoreId) {
+      console.log(`[bling-test] Testing link product ${bling_product_id} to store ${blingStoreId}`);
+      
+      const payload = {
+        idProduto: bling_product_id,
+        loja: { id: blingStoreId },
+        preco: product_price || 0,
+        codigo: product_code || `PROD-${bling_product_id}`
+      };
+      
+      console.log('[bling-test] Link payload:', JSON.stringify(payload, null, 2));
+      
+      const linkRes = await fetch(`${BLING_API_URL}/produtos/lojas`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      
+      const linkText = await linkRes.text();
+      console.log(`[bling-test] Link response: ${linkRes.status} - ${linkText}`);
+      
+      results.linkTest = {
+        status: linkRes.status,
+        payload,
+        response: linkText
+      };
+      
+      return new Response(JSON.stringify(results, null, 2), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     // 1) Buscar por ID do Bling (se fornecido)
     if (bling_order_id) {
