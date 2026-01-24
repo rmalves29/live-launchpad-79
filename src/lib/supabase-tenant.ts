@@ -111,24 +111,34 @@ class TenantSupabaseClient {
       },
       delete: () => {
         const query = (base as any).delete();
-        return {
-          ...query,
-          eq: (column: string, value: any) => {
-            if (column === 'tenant_id') {
-              return query.eq(column, value);
+        
+        const createChainableDelete = (currentQuery: any): any => {
+          return {
+            eq: (column: string, value: any) => {
+              const newQuery = currentQuery.eq(column, value);
+              // Always add tenant filter if not already filtering by tenant_id
+              if (column === 'tenant_id') {
+                return createChainableDelete(newQuery);
+              }
+              return createChainableDelete(newQuery.eq('tenant_id', tenantId));
+            },
+            in: (column: string, values: any[]) => {
+              return createChainableDelete(currentQuery.in(column, values).eq('tenant_id', tenantId));
+            },
+            neq: (column: string, value: any) => {
+              return createChainableDelete(currentQuery.neq(column, value).eq('tenant_id', tenantId));
+            },
+            select: (cols?: string) => currentQuery.eq('tenant_id', tenantId).select(cols),
+            then: (resolve?: any, reject?: any) => {
+              return currentQuery.then(resolve, reject);
+            },
+            catch: (reject: any) => {
+              return currentQuery.catch(reject);
             }
-            return query.eq(column, value).eq('tenant_id', tenantId);
-          },
-          in: (column: string, values: any[]) => {
-            return query.in(column, values).eq('tenant_id', tenantId);
-          },
-          then: (resolve?: any, reject?: any) => {
-            return query.eq('tenant_id', tenantId).then(resolve, reject);
-          },
-          catch: (reject: any) => {
-            return query.eq('tenant_id', tenantId).catch(reject);
-          }
+          };
         };
+        
+        return createChainableDelete(query);
       },
       upsert: (values: any) => {
         const arr = Array.isArray(values) ? values : [values];
