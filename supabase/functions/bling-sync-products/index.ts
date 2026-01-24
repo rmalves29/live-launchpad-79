@@ -190,9 +190,25 @@ async function linkProductToStore(
 }
 
 /**
+ * Fiscal data interface
+ */
+interface FiscalData {
+  default_ncm?: string | null;
+  default_icms_situacao?: string | null;
+  default_icms_origem?: string | null;
+  default_ipi?: number | null;
+  default_pis_cofins?: string | null;
+}
+
+/**
  * Send a single product to Bling API v3
  */
-async function sendProductToBling(product: any, accessToken: string, blingStoreId?: number | null): Promise<SendProductResult> {
+async function sendProductToBling(
+  product: any, 
+  accessToken: string, 
+  blingStoreId?: number | null,
+  fiscalData?: FiscalData | null
+): Promise<SendProductResult> {
   // Map local product to Bling API v3 format
   // Required fields: nome, tipo, situacao, formato
   const blingProduct: any = {
@@ -232,6 +248,46 @@ async function sendProductToBling(product: any, accessToken: string, blingStoreI
   if (product.weight_kg) {
     blingProduct.pesoBruto = Number(product.weight_kg);
     blingProduct.pesoLiquido = Number(product.weight_kg);
+  }
+
+  // Add fiscal data (tributos) if available
+  if (fiscalData) {
+    // NCM is added directly to product
+    if (fiscalData.default_ncm) {
+      blingProduct.tributacao = blingProduct.tributacao || {};
+      blingProduct.tributacao.ncm = fiscalData.default_ncm;
+    }
+
+    // Build tributos object for ICMS, IPI, PIS/COFINS
+    const tributos: any = {};
+
+    if (fiscalData.default_icms_situacao || fiscalData.default_icms_origem) {
+      tributos.icms = {};
+      if (fiscalData.default_icms_situacao) {
+        tributos.icms.situacao = fiscalData.default_icms_situacao;
+      }
+      if (fiscalData.default_icms_origem) {
+        tributos.icms.origem = fiscalData.default_icms_origem;
+      }
+    }
+
+    if (fiscalData.default_ipi !== null && fiscalData.default_ipi !== undefined) {
+      // IPI for products uses situacao as string (like "99" = isento)
+      tributos.ipi = {
+        situacao: String(Math.round(fiscalData.default_ipi))
+      };
+    }
+
+    if (fiscalData.default_pis_cofins) {
+      tributos.pis = { situacao: fiscalData.default_pis_cofins };
+      tributos.cofins = { situacao: fiscalData.default_pis_cofins };
+    }
+
+    if (Object.keys(tributos).length > 0) {
+      blingProduct.tributacao = blingProduct.tributacao || {};
+      blingProduct.tributacao.tributos = tributos;
+      console.log('[bling-sync-products] Fiscal data added:', JSON.stringify(blingProduct.tributacao, null, 2));
+    }
   }
 
   console.log('[bling-sync-products] Sending product to Bling:', JSON.stringify(blingProduct, null, 2));
@@ -384,6 +440,16 @@ serve(async (req) => {
       );
     }
 
+    // Extract fiscal data from integration
+    const fiscalData: FiscalData = {
+      default_ncm: integration.default_ncm,
+      default_icms_situacao: integration.default_icms_situacao,
+      default_icms_origem: integration.default_icms_origem,
+      default_ipi: integration.default_ipi,
+      default_pis_cofins: integration.default_pis_cofins,
+    };
+    console.log('[bling-sync-products] Fiscal data from integration:', JSON.stringify(fiscalData, null, 2));
+
     let result;
 
     switch (action) {
@@ -420,7 +486,7 @@ serve(async (req) => {
           break;
         }
 
-        const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id);
+        const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData);
 
         // Update product with Bling ID
         await supabase
@@ -480,7 +546,7 @@ serve(async (req) => {
           try {
             await delay(350); // Rate limiting: 3 req/sec
 
-            const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id);
+            const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData);
 
             // Update product with Bling ID
             await supabase
