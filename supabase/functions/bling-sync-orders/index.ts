@@ -535,23 +535,46 @@ async function sendOrderToBling(
     return parseFloat(cleaned.replace(/\./g, '')) || 0;
   };
   
-  // Tentar extrair nome do frete (ex: "PAC", "SEDEX", etc.)
-  const freteNomeMatch = observacao.match(/(?:frete|envio|transporte)[:\s]*([A-Za-zÀ-ú\s]+?)(?:\s*[-–]\s*|\s+R\$|\s*:)/i);
-  if (freteNomeMatch) {
-    freteNome = freteNomeMatch[1].trim();
+  // Padrões comuns de frete na observação:
+  // "Frete: PAC R$ 30,41 (6 dias úteis)"
+  // "Frete: SEDEX - R$ 45,00"
+  // "Frete: Mini Envios R$ 15,99"
+  // "Frete: Mandae Econômico R$ 22,50 (5 dias úteis)"
+  // "Frete: Melhor Envio - PAC R$ 30,00"
+  // "Frete: Correios PAC R$ 28,00"
+  
+  // Regex melhorado para capturar nome do serviço de frete
+  // Captura tudo entre "Frete:" e "R$" ou entre "Frete:" e um valor numérico
+  const freteLinhaMatch = observacao.match(/[Ff]rete[:\s]+([^R$\n]+?)(?:\s*[-–]?\s*R\$\s*([\d.,]+))/);
+  if (freteLinhaMatch) {
+    freteNome = freteLinhaMatch[1].trim().replace(/[-–]\s*$/, '').trim();
+    freteValor = parseMonetaryValue(freteLinhaMatch[2]);
   }
   
-  // Tentar extrair valor do frete
-  const freteMatch = observacao.match(/(?:frete|envio|transporte)[^R$]*R\$\s*([\d.,]+)/i);
-  if (freteMatch) {
-    freteValor = parseMonetaryValue(freteMatch[1]);
+  // Se não encontrou com o padrão principal, tentar outros formatos
+  if (!freteNome && !freteValor) {
+    // Padrão alternativo: "Transporte: XXX R$ YY,ZZ"
+    const altMatch = observacao.match(/(?:transporte|envio)[:\s]+([^R$\n]+?)(?:\s*[-–]?\s*R\$\s*([\d.,]+))/i);
+    if (altMatch) {
+      freteNome = altMatch[1].trim().replace(/[-–]\s*$/, '').trim();
+      freteValor = parseMonetaryValue(altMatch[2]);
+    }
   }
   
-  // Fallback: buscar qualquer padrão "R$ XX,XX" relacionado a frete
-  if (freteValor === 0) {
+  // Fallback: buscar qualquer padrão "R$ XX,XX" se houver palavra "frete"
+  if (freteValor === 0 && observacao.toLowerCase().includes('frete')) {
     const valorMatch = observacao.match(/R\$\s*([\d.,]+)/);
-    if (valorMatch && observacao.toLowerCase().includes('frete')) {
+    if (valorMatch) {
       freteValor = parseMonetaryValue(valorMatch[1]);
+    }
+  }
+  
+  // Limpar nome do frete - remover textos extras como "(X dias úteis)"
+  if (freteNome) {
+    freteNome = freteNome.replace(/\s*\([^)]*\)\s*/g, '').trim();
+    // Limitar tamanho para o Bling aceitar
+    if (freteNome.length > 50) {
+      freteNome = freteNome.substring(0, 50);
     }
   }
   
