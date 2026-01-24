@@ -46,6 +46,34 @@ async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero:
   }
 }
 
+// Buscar produto existente no Bling pelo código
+async function findBlingProductByCode(accessToken: string, codigo: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${BLING_API_URL}/produtos?pagina=1&limite=1&codigo=${encodeURIComponent(codigo)}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    const text = await res.text();
+    if (!res.ok) {
+      console.log(`[bling-sync-orders] Could not search product by code "${codigo}":`, res.status, text);
+      return null;
+    }
+
+    const parsed = JSON.parse(text);
+    const first = parsed?.data?.[0] || parsed?.data?.produtos?.[0] || parsed?.[0];
+    const id = first?.id;
+    if (typeof id === 'number') return id;
+    if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+    return null;
+  } catch (e) {
+    console.log(`[bling-sync-orders] Error searching product by code "${codigo}":`, e);
+    return null;
+  }
+}
+
 async function refreshBlingToken(supabase: any, integration: any): Promise<string | null> {
   if (!integration.refresh_token || !integration.client_id || !integration.client_secret) {
     console.error('[bling-sync-orders] Missing credentials for token refresh');
@@ -110,7 +138,13 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
   return integration.access_token;
 }
 
-async function getOrCreateBlingContactId(order: any, customer: any, accessToken: string): Promise<number> {
+async function getOrCreateBlingContactId(
+  order: any, 
+  customer: any, 
+  accessToken: string,
+  supabase: any,
+  tenantId: string
+): Promise<number> {
   const phone = (order.customer_phone || '').replace(/\D/g, '');
   
   // Priorizar dados do customer, fallback para dados do order
@@ -125,7 +159,14 @@ async function getOrCreateBlingContactId(order: any, customer: any, accessToken:
   const customerState = customer?.state || order.customer_state || '';
   const customerEmail = customer?.email || '';
 
+  // 0) Se o customer já tem bling_contact_id salvo, usar diretamente
+  if (customer?.bling_contact_id) {
+    console.log(`[bling-sync-orders] Using cached bling_contact_id: ${customer.bling_contact_id}`);
+    return customer.bling_contact_id;
+  }
+
   // 1) Try to find an existing contact (best-effort; API may vary by account)
+  let foundContactId: number | null = null;
   try {
     const searchRes = await fetch(
       `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(phone || customerName)}`,
@@ -142,8 +183,8 @@ async function getOrCreateBlingContactId(order: any, customer: any, accessToken:
       const parsed = JSON.parse(searchText);
       const first = parsed?.data?.[0] || parsed?.data?.contatos?.[0] || parsed?.[0];
       const id = first?.id;
-      if (typeof id === 'number') return id;
-      if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+      if (typeof id === 'number') foundContactId = id;
+      else if (typeof id === 'string' && /^\d+$/.test(id)) foundContactId = Number(id);
     } else {
       // If scope is missing, Bling returns 403 with insufficient_scope
       if (searchText.includes('insufficient_scope')) {
@@ -152,9 +193,23 @@ async function getOrCreateBlingContactId(order: any, customer: any, accessToken:
         );
       }
     }
-  } catch (e) {
+  } catch (e: any) {
     // Ignore parse/search errors and try to create the contact below.
     console.log('[bling-sync-orders] Contact search failed (will try create):', String(e?.message || e));
+  }
+
+  // Se encontrou, salvar no customer e retornar
+  if (foundContactId) {
+    console.log(`[bling-sync-orders] Found existing Bling contact: ${foundContactId}`);
+    if (customer?.id) {
+      await supabase
+        .from('customers')
+        .update({ bling_contact_id: foundContactId })
+        .eq('id', customer.id)
+        .eq('tenant_id', tenantId);
+      console.log(`[bling-sync-orders] Saved bling_contact_id to customer ${customer.id}`);
+    }
+    return foundContactId;
   }
 
   // 2) Create the contact with full data
@@ -208,10 +263,25 @@ async function getOrCreateBlingContactId(order: any, customer: any, accessToken:
 
   const created = JSON.parse(createText);
   const id = created?.data?.id ?? created?.id;
-  if (typeof id === 'number') return id;
-  if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+  let numericId: number | null = null;
+  if (typeof id === 'number') numericId = id;
+  else if (typeof id === 'string' && /^\d+$/.test(id)) numericId = Number(id);
 
-  throw new Error('Contato criado no Bling, mas não foi possível obter o ID do contato na resposta.');
+  if (!numericId) {
+    throw new Error('Contato criado no Bling, mas não foi possível obter o ID do contato na resposta.');
+  }
+
+  // Salvar o bling_contact_id no customer para uso futuro
+  if (customer?.id) {
+    await supabase
+      .from('customers')
+      .update({ bling_contact_id: numericId })
+      .eq('id', customer.id)
+      .eq('tenant_id', tenantId);
+    console.log(`[bling-sync-orders] Created and saved bling_contact_id ${numericId} to customer ${customer.id}`);
+  }
+
+  return numericId;
 }
 
 type SendOrderResult =
@@ -223,6 +293,8 @@ async function sendOrderToBling(
   cartItems: any[], 
   customer: any, 
   accessToken: string, 
+  supabase: any,
+  tenantId: string,
   storeId?: number,
   fiscalData?: {
     store_state: string | null;
@@ -239,7 +311,7 @@ async function sendOrderToBling(
     throw new Error('O pedido não possui itens para enviar ao Bling');
   }
 
-  const contactId = await getOrCreateBlingContactId(order, customer, accessToken);
+  const contactId = await getOrCreateBlingContactId(order, customer, accessToken, supabase, tenantId);
 
   // Priorizar dados do customer, fallback para dados do order
   const customerCep = (customer?.cep || order.customer_cep || '').replace(/\D/g, '');
@@ -259,6 +331,59 @@ async function sendOrderToBling(
     console.log(`[bling-sync-orders] CFOP: cliente=${customerState}, loja=${fiscalData.store_state}, mesmo estado=${isSameState}, cfop=${cfop}`);
   }
 
+  // Processar itens - buscar bling_product_id quando necessário
+  const processedItems: any[] = [];
+  for (const item of cartItems) {
+    const itemData: any = {
+      quantidade: item.qty || 1,
+      valor: Number(item.unit_price) || 0,
+      unidade: 'UN',
+    };
+
+    let blingProductId = item.bling_product_id;
+    const productCode = item.product_code || `PROD-${item.id}`;
+
+    // Se não tem bling_product_id, tentar buscar no Bling pelo código
+    if (!blingProductId && item.product_id) {
+      console.log(`[bling-sync-orders] Item "${item.product_name}" sem bling_product_id, buscando no Bling pelo código: ${productCode}`);
+      const foundId = await findBlingProductByCode(accessToken, productCode);
+      if (foundId) {
+        blingProductId = foundId;
+        // Salvar no banco para uso futuro
+        await supabase
+          .from('products')
+          .update({ bling_product_id: foundId })
+          .eq('id', item.product_id)
+          .eq('tenant_id', tenantId);
+        console.log(`[bling-sync-orders] Encontrado e salvo bling_product_id ${foundId} para produto ${item.product_id}`);
+      }
+    }
+
+    // Se o produto tem bling_product_id (original ou encontrado), referenciar por ID
+    if (blingProductId) {
+      itemData.produto = { id: blingProductId };
+      console.log(`[bling-sync-orders] Item "${item.product_name}" usando bling_product_id: ${blingProductId}`);
+    } else {
+      // Fallback: enviar código e descrição (para produtos que realmente não existem no Bling)
+      itemData.codigo = productCode;
+      itemData.descricao = item.product_name || 'Produto';
+      console.log(`[bling-sync-orders] Item "${item.product_name}" não encontrado no Bling, criando com código: ${productCode}`);
+    }
+
+    // Adicionar dados fiscais ao item se configurados
+    if (fiscalData?.default_ncm) {
+      itemData.ncm = fiscalData.default_ncm;
+    }
+    if (cfop) {
+      itemData.cfop = cfop;
+    }
+    if (fiscalData?.default_icms_origem) {
+      itemData.origem = fiscalData.default_icms_origem;
+    }
+
+    processedItems.push(itemData);
+  }
+
   // Bling v3: situacao do pedido (0=Em aberto, 6=Em andamento, 9=Atendido, 12=Cancelado)
   // numeroLoja é o número visível para busca no painel
   // loja vincula o pedido a um canal de venda específico
@@ -269,28 +394,7 @@ async function sendOrderToBling(
     dataPrevista: order.event_date,
     situacao: { id: 6 }, // 6 = Em andamento (aparece na listagem padrão)
     contato: { id: contactId },
-    itens: cartItems.map((item) => {
-      const itemData: any = {
-        codigo: item.product_code || `PROD-${item.id}`,
-        descricao: item.product_name || 'Produto',
-        quantidade: item.qty || 1,
-        valor: Number(item.unit_price) || 0,
-        unidade: 'UN',
-      };
-
-      // Adicionar dados fiscais ao item se configurados
-      if (fiscalData?.default_ncm) {
-        itemData.ncm = fiscalData.default_ncm;
-      }
-      if (cfop) {
-        itemData.cfop = cfop;
-      }
-      if (fiscalData?.default_icms_origem) {
-        itemData.origem = fiscalData.default_icms_origem;
-      }
-
-      return itemData;
-    }),
+    itens: processedItems,
     observacoes: order.observation || '',
     observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
   };
@@ -573,18 +677,19 @@ serve(async (req) => {
 
         let cartItems: any[] = [];
         if (order.cart_id) {
-          // Buscar cart_items com JOIN em products para pegar código atualizado
+          // Buscar cart_items com JOIN em products para pegar código atualizado e bling_product_id
           const { data: items, error: itemsError } = await supabase
             .from('cart_items')
-            .select('*, products:product_id(code, name)')
+            .select('*, products:product_id(code, name, bling_product_id)')
             .eq('cart_id', order.cart_id);
 
           if (!itemsError && items) {
-            // Mapear para usar código/nome atualizado do produto quando disponível
+            // Mapear para usar código/nome atualizado do produto e bling_product_id quando disponível
             cartItems = items.map((item: any) => ({
               ...item,
               product_code: item.products?.code || item.product_code,
               product_name: item.products?.name || item.product_name,
+              bling_product_id: item.products?.bling_product_id || null,
             }));
           }
         }
@@ -620,7 +725,7 @@ serve(async (req) => {
           default_pis_cofins: integration.default_pis_cofins || null,
         };
         
-        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, blingStoreId, fiscalData);
+        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData);
 
         // Persistir o ID do pedido no Bling (inclui caso "já existe")
         await supabase
@@ -675,17 +780,18 @@ serve(async (req) => {
           try {
             let cartItems: any[] = [];
             if (order.cart_id) {
-              // Buscar cart_items com JOIN em products para pegar código atualizado
+              // Buscar cart_items com JOIN em products para pegar código atualizado e bling_product_id
               const { data: items } = await supabase
                 .from('cart_items')
-                .select('*, products:product_id(code, name)')
+                .select('*, products:product_id(code, name, bling_product_id)')
                 .eq('cart_id', order.cart_id);
               
-              // Mapear para usar código/nome atualizado do produto quando disponível
+              // Mapear para usar código/nome atualizado do produto e bling_product_id quando disponível
               cartItems = (items || []).map((item: any) => ({
                 ...item,
                 product_code: item.products?.code || item.product_code,
                 product_name: item.products?.name || item.product_name,
+                bling_product_id: item.products?.bling_product_id || null,
               }));
             }
 
@@ -727,7 +833,7 @@ serve(async (req) => {
               default_pis_cofins: integration.default_pis_cofins || null,
             };
             
-            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, blingStoreId, fiscalData);
+            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData);
 
             await supabase
               .from('orders')
