@@ -314,17 +314,20 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
           </div>
           {integration && !isEditing && (
             <div className="flex items-center gap-2">
-              {integration.is_active ? (
-                <span className="flex items-center gap-1 text-sm text-green-600">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Ativo
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                  <AlertCircle className="h-4 w-4" />
-                  Inativo
-                </span>
-              )}
+              <span className="text-sm text-muted-foreground">
+                {integration.is_active ? 'Ativo' : 'Inativo'}
+              </span>
+              <Switch
+                checked={integration.is_active}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    activateMutation.mutate();
+                  } else {
+                    deactivateMutation.mutate();
+                  }
+                }}
+                disabled={activateMutation.isPending || deactivateMutation.isPending}
+              />
             </div>
           )}
         </div>
@@ -375,23 +378,6 @@ export default function MandaeIntegration({ tenantId }: MandaeIntegrationProps) 
 
             <div className="flex gap-2">
               <Button onClick={() => setIsEditing(true)}>Editar Configurações</Button>
-              {integration.is_active ? (
-                <Button
-                  variant="outline"
-                  onClick={() => deactivateMutation.mutate()}
-                  disabled={deactivateMutation.isPending}
-                >
-                  Desativar
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  onClick={() => activateMutation.mutate()}
-                  disabled={activateMutation.isPending}
-                >
-                  Ativar
-                </Button>
-              )}
             </div>
           </div>
         ) : (
