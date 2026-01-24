@@ -141,21 +141,37 @@ async function calcularPreco(
     valorTotal += valor;
   }
 
-  // Peso mínimo 0.3kg
-  pesoTotal = Math.max(pesoTotal, 0.3);
+  // Peso mínimo 0.3kg para PAC/SEDEX, 0.01kg para Mini Envios
+  const isMiniEnvios = codigoServico === CORREIOS_SERVICES.MINI_ENVIOS;
+  pesoTotal = Math.max(pesoTotal, isMiniEnvios ? 0.01 : 0.3);
 
   const url = `https://api.correios.com.br/preco/v1/nacional/${codigoServico}`;
+  
+  // Dimensões diferentes para Mini Envios (máx 24x16x4cm, máx 300g)
+  const comprimento = isMiniEnvios ? "16" : "20";
+  const largura = isMiniEnvios ? "11" : "16";
+  const altura = isMiniEnvios ? "3" : "10";
+  const pesoEnvio = isMiniEnvios ? Math.min(Math.round(pesoTotal * 1000), 300) : Math.round(pesoTotal * 1000);
   
   const params = new URLSearchParams({
     cepOrigem: cepOrigem.replace(/\D/g, ''),
     cepDestino: cepDestino.replace(/\D/g, ''),
-    psObjeto: String(Math.round(pesoTotal * 1000)), // converter para gramas
+    psObjeto: String(pesoEnvio),
     tpObjeto: "2", // Pacote
-    comprimento: "20",
-    largura: "16",
-    altura: "10",
-    vlDeclarado: String(Math.max(valorTotal, 50)), // Mínimo R$50 para valor declarado
+    comprimento,
+    largura,
+    altura,
   });
+
+  // Adicionar serviços adicionais para PAC/SEDEX com contrato
+  // 019 = Valor Declarado para PAC, 064 = Valor Declarado para SEDEX
+  if (codigoServico === CORREIOS_SERVICES.PAC_CONTRATO) {
+    params.set("servicosAdicionais", "019");
+    params.set("vlDeclarado", String(Math.max(valorTotal, 23.5))); // Mínimo R$23,50 para VD
+  } else if (codigoServico === CORREIOS_SERVICES.SEDEX_CONTRATO) {
+    params.set("servicosAdicionais", "064");
+    params.set("vlDeclarado", String(Math.max(valorTotal, 23.5)));
+  }
 
   console.log("[correios] Calculating price for service:", codigoServico, params.toString());
 
