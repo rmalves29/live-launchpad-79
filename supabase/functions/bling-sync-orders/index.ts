@@ -332,7 +332,10 @@ async function sendOrderToBling(
   }
 
   // Processar itens - buscar bling_product_id quando necessário
+  // Cache local para evitar enviar códigos duplicados no mesmo pedido
+  const productCodesSeen = new Map<string, { hasBlindId: boolean; blingProductId?: number }>();
   const processedItems: any[] = [];
+  
   for (const item of cartItems) {
     const itemData: any = {
       quantidade: item.qty || 1,
@@ -343,19 +346,33 @@ async function sendOrderToBling(
     let blingProductId = item.bling_product_id;
     const productCode = item.product_code || `PROD-${item.id}`;
 
+    // Verificar se já processamos este código neste pedido
+    const seenProduct = productCodesSeen.get(productCode);
+
     // Se não tem bling_product_id, tentar buscar no Bling pelo código
     if (!blingProductId && item.product_id) {
-      console.log(`[bling-sync-orders] Item "${item.product_name}" sem bling_product_id, buscando no Bling pelo código: ${productCode}`);
-      const foundId = await findBlingProductByCode(accessToken, productCode);
-      if (foundId) {
-        blingProductId = foundId;
-        // Salvar no banco para uso futuro
-        await supabase
-          .from('products')
-          .update({ bling_product_id: foundId })
-          .eq('id', item.product_id)
-          .eq('tenant_id', tenantId);
-        console.log(`[bling-sync-orders] Encontrado e salvo bling_product_id ${foundId} para produto ${item.product_id}`);
+      // Se já vimos este código e encontramos um ID, usar o mesmo
+      if (seenProduct?.blingProductId) {
+        blingProductId = seenProduct.blingProductId;
+        console.log(`[bling-sync-orders] Item "${item.product_name}" usando bling_product_id cacheado: ${blingProductId}`);
+      } else if (!seenProduct) {
+        // Primeira vez vendo este código - buscar no Bling
+        console.log(`[bling-sync-orders] Item "${item.product_name}" sem bling_product_id, buscando no Bling pelo código: ${productCode}`);
+        const foundId = await findBlingProductByCode(accessToken, productCode);
+        if (foundId) {
+          blingProductId = foundId;
+          // Salvar no banco para uso futuro
+          await supabase
+            .from('products')
+            .update({ bling_product_id: foundId })
+            .eq('id', item.product_id)
+            .eq('tenant_id', tenantId);
+          console.log(`[bling-sync-orders] Encontrado e salvo bling_product_id ${foundId} para produto ${item.product_id}`);
+          productCodesSeen.set(productCode, { hasBlindId: true, blingProductId: foundId });
+        } else {
+          // Marcar que já vimos mas não encontramos - NÃO enviar duplicado
+          productCodesSeen.set(productCode, { hasBlindId: false });
+        }
       }
     }
 
@@ -364,10 +381,20 @@ async function sendOrderToBling(
       itemData.produto = { id: blingProductId };
       console.log(`[bling-sync-orders] Item "${item.product_name}" usando bling_product_id: ${blingProductId}`);
     } else {
-      // Fallback: enviar código e descrição (para produtos que realmente não existem no Bling)
-      itemData.codigo = productCode;
-      itemData.descricao = item.product_name || 'Produto';
-      console.log(`[bling-sync-orders] Item "${item.product_name}" não encontrado no Bling, criando com código: ${productCode}`);
+      // Fallback: enviar código e descrição apenas se for a PRIMEIRA vez vendo este código
+      // Para itens duplicados sem ID, usar referência ao primeiro item
+      if (!seenProduct) {
+        itemData.codigo = productCode;
+        itemData.descricao = item.product_name || 'Produto';
+        console.log(`[bling-sync-orders] Item "${item.product_name}" não encontrado no Bling, criando com código: ${productCode}`);
+      } else {
+        // Item duplicado que não tem ID no Bling - não podemos enviar código duplicado
+        // Usar uma referência genérica com sufixo único para evitar conflito
+        const uniqueSuffix = `-${processedItems.length + 1}`;
+        itemData.codigo = `${productCode}${uniqueSuffix}`;
+        itemData.descricao = item.product_name || 'Produto';
+        console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando código único: ${itemData.codigo}`);
+      }
     }
 
     // Adicionar dados fiscais ao item se configurados
