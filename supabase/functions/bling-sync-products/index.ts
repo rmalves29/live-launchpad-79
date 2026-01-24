@@ -121,8 +121,53 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
 }
 
 type SendProductResult =
-  | { kind: 'created'; blingProductId: number; raw: any }
-  | { kind: 'already_exists'; blingProductId: number; raw: any };
+  | { kind: 'created'; blingProductId: number; linkedToStore: boolean; raw: any }
+  | { kind: 'already_exists'; blingProductId: number; linkedToStore: boolean; raw: any };
+
+/**
+ * Link product to store via POST /produtos/lojas
+ * This is required because Bling API v3 doesn't accept store in POST /produtos
+ */
+async function linkProductToStore(blingProductId: number, blingStoreId: number, accessToken: string): Promise<boolean> {
+  try {
+    console.log(`[bling-sync-products] Linking product ${blingProductId} to store ${blingStoreId}...`);
+    
+    const payload = {
+      idProduto: blingProductId,
+      loja: {
+        id: blingStoreId
+      }
+    };
+
+    const response = await fetch(`${BLING_API_URL}/produtos/lojas`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseText = await response.text();
+    console.log(`[bling-sync-products] Link to store response: ${response.status} - ${responseText}`);
+
+    if (!response.ok) {
+      // Check if already linked (409 conflict or similar)
+      if (response.status === 409 || responseText.includes('já existe') || responseText.includes('already exists')) {
+        console.log(`[bling-sync-products] Product already linked to store`);
+        return true;
+      }
+      console.error(`[bling-sync-products] Failed to link product to store: ${responseText}`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`[bling-sync-products] Error linking product to store:`, error);
+    return false;
+  }
+}
 
 /**
  * Send a single product to Bling API v3
@@ -139,13 +184,8 @@ async function sendProductToBling(product: any, accessToken: string, blingStoreI
     preco: Number(product.price) || 0,
   };
 
-  // Add store (loja) if configured - this links the product to the virtual store in Bling
-  if (blingStoreId) {
-    blingProduct.loja = {
-      id: blingStoreId
-    };
-    console.log(`[bling-sync-products] Linking product to store ID: ${blingStoreId}`);
-  }
+  // NOTE: Bling API v3 does NOT accept "loja" field in POST /produtos
+  // We need to link product to store via separate POST /produtos/lojas endpoint
 
   // Add optional fields if available
   if (product.description) {
@@ -190,6 +230,9 @@ async function sendProductToBling(product: any, accessToken: string, blingStoreI
   console.log('[bling-sync-products] Bling API response status:', response.status);
   console.log('[bling-sync-products] Bling API response:', responseText);
 
+  let blingProductId: number;
+  let kind: 'created' | 'already_exists';
+
   if (!response.ok) {
     if (responseText.includes('insufficient_scope')) {
       throw new Error(
@@ -201,24 +244,37 @@ async function sendProductToBling(product: any, accessToken: string, blingStoreI
     if (response.status === 400 && isDuplicateCodigoError(responseText)) {
       const existingId = await findExistingBlingProductByCodigo(accessToken, blingProduct.codigo);
       if (existingId) {
-        return { kind: 'already_exists', blingProductId: existingId, raw: { error: responseText } };
+        blingProductId = existingId;
+        kind = 'already_exists';
+      } else {
+        throw new Error(`Bling API error: ${response.status} - ${responseText}`);
       }
+    } else {
+      throw new Error(`Bling API error: ${response.status} - ${responseText}`);
     }
+  } else {
+    const parsed = JSON.parse(responseText);
+    const createdId = parsed?.data?.id ?? parsed?.id;
+    const numericId = typeof createdId === 'number' 
+      ? createdId 
+      : (typeof createdId === 'string' && /^\d+$/.test(createdId) ? Number(createdId) : null);
 
-    throw new Error(`Bling API error: ${response.status} - ${responseText}`);
+    if (!numericId) {
+      throw new Error('Produto criado no Bling, mas não foi possível obter o ID na resposta.');
+    }
+    
+    blingProductId = numericId;
+    kind = 'created';
   }
 
-  const parsed = JSON.parse(responseText);
-  const createdId = parsed?.data?.id ?? parsed?.id;
-  const numericId = typeof createdId === 'number' 
-    ? createdId 
-    : (typeof createdId === 'string' && /^\d+$/.test(createdId) ? Number(createdId) : null);
-
-  if (!numericId) {
-    throw new Error('Produto criado no Bling, mas não foi possível obter o ID na resposta.');
+  // Link product to store if configured
+  let linkedToStore = false;
+  if (blingStoreId) {
+    await delay(350); // Rate limiting
+    linkedToStore = await linkProductToStore(blingProductId, blingStoreId, accessToken);
   }
 
-  return { kind: 'created', blingProductId: numericId, raw: parsed };
+  return { kind, blingProductId, linkedToStore, raw: { responseText } };
 }
 
 /**
@@ -353,6 +409,7 @@ serve(async (req) => {
           success: true,
           kind: sendResult.kind,
           bling_product_id: sendResult.blingProductId,
+          linked_to_store: sendResult.linkedToStore,
           product_name: product.name,
         };
         break;
@@ -414,6 +471,7 @@ serve(async (req) => {
               success: true,
               kind: sendResult.kind,
               bling_product_id: sendResult.blingProductId,
+              linked_to_store: sendResult.linkedToStore,
             });
             synced++;
           } catch (error: any) {
