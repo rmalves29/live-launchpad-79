@@ -11,6 +11,38 @@ const BLING_API_URL = 'https://www.bling.com.br/Api/v3';
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+/**
+ * Validate CPF using checksum algorithm
+ */
+function isValidCPF(cpf: string): boolean {
+  const cleanCpf = cpf.replace(/\D/g, '');
+  
+  if (cleanCpf.length !== 11) return false;
+  
+  // Check for known invalid patterns
+  if (/^(\d)\1{10}$/.test(cleanCpf)) return false;
+  
+  // Validate first check digit
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(cleanCpf.charAt(i)) * (10 - i);
+  }
+  let digit = 11 - (sum % 11);
+  if (digit >= 10) digit = 0;
+  if (digit !== parseInt(cleanCpf.charAt(9))) return false;
+  
+  // Validate second check digit
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(cleanCpf.charAt(i)) * (11 - i);
+  }
+  digit = 11 - (sum % 11);
+  if (digit >= 10) digit = 0;
+  if (digit !== parseInt(cleanCpf.charAt(10))) return false;
+  
+  return true;
+}
+
 function isDuplicateNumeroError(payloadText: string): boolean {
   // Bling validation error: code 36 -> duplicate "numero" for sales order
   return (
@@ -231,9 +263,12 @@ async function getOrCreateBlingContactId(
     },
   };
 
-  // Adicionar CPF/CNPJ se disponível
-  if (customerCpf) {
+  // Validar e adicionar CPF/CNPJ se disponível e válido
+  if (customerCpf && isValidCPF(customerCpf)) {
     payload.numeroDocumento = customerCpf;
+    console.log(`[bling-sync-orders] CPF válido: ${customerCpf}`);
+  } else if (customerCpf) {
+    console.log(`[bling-sync-orders] CPF inválido ignorado: ${customerCpf}`);
   }
 
   console.log('[bling-sync-orders] Creating contact with payload:', JSON.stringify(payload, null, 2));
