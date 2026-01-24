@@ -48,6 +48,7 @@ interface Customer {
 
 interface Order {
   id: number;
+  tenant_order_number?: number;
   event_type: string;
   event_date: string;
   total_amount: number;
@@ -958,7 +959,7 @@ const Clientes = () => {
                                                       <div className="flex justify-between items-start">
                                                         <div>
                                                           <CardTitle className="text-lg">
-                                                            Pedido #{order.id}
+                                                            Pedido #{order.tenant_order_number || order.id}
                                                           </CardTitle>
                                                           <p className="text-sm text-muted-foreground">
                                                             {order.event_type} - {formatDate(order.event_date)}
@@ -1311,7 +1312,7 @@ const Clientes = () => {
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-xl">
-                Detalhes do Pedido #{selectedOrderForDetails?.id}
+                Detalhes do Pedido #{selectedOrderForDetails?.tenant_order_number || selectedOrderForDetails?.id}
               </DialogTitle>
               <p className="text-sm text-muted-foreground">
                 Visualize todos os produtos e informações do pedido.

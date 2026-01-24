@@ -13,6 +13,7 @@ import { formatBrasiliaDate } from '@/lib/date-utils';
 
 interface Order {
   id: number;
+  tenant_order_number?: number;
   tenant_id: string;
   cart_id?: number;
   customer_phone: string;
@@ -277,7 +278,7 @@ export default function TenantOrders() {
                   </div>
                   <div>
                     <div className="flex items-center space-x-2 mb-1">
-                      <h4 className="font-semibold">Pedido #{order.id}</h4>
+                      <h4 className="font-semibold">Pedido #{order.tenant_order_number || order.id}</h4>
                       <Badge variant={order.is_paid ? 'default' : 'secondary'}>
                         {order.is_paid ? 'Pago' : 'Pendente'}
                       </Badge>
@@ -336,7 +337,7 @@ export default function TenantOrders() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <ShoppingCart className="h-5 w-5" />
-                Detalhes do Pedido #{selectedOrder?.id}
+                Detalhes do Pedido #{selectedOrder?.tenant_order_number || selectedOrder?.id}
               </DialogTitle>
               <DialogDescription>
                 Informações completas do pedido
