@@ -18,7 +18,6 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatCurrency } from '@/lib/utils';
 import { formatBrasiliaDate, formatBrasiliaDateTime, getBrasiliaDateTimeISO, getBrasiliaDateISO } from '@/lib/date-utils';
-import { formatBrasiliaDate } from '@/lib/date-utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
