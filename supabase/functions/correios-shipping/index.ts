@@ -24,55 +24,58 @@ interface CorreiosToken {
   expiraEm: string;
 }
 
-// Cache do token OAuth
-let tokenCache: { token: string; expiresAt: Date } | null = null;
+// Cache do token OAuth por tenant
+const tokenCacheMap: Map<string, { token: string; expiresAt: Date }> = new Map();
 
-async function getCorreiosToken(): Promise<string> {
+interface CorreiosCredentials {
+  clientId: string;
+  clientSecret: string;
+  cartaoPostagem: string;
+  contrato?: string;
+}
+
+async function getCorreiosToken(credentials: CorreiosCredentials, tenantId: string): Promise<string> {
   // Verificar se token em cache ainda é válido (com margem de 5 min)
-  if (tokenCache && new Date(tokenCache.expiresAt) > new Date(Date.now() + 5 * 60 * 1000)) {
-    console.log("[correios] Using cached token");
-    return tokenCache.token;
+  const cached = tokenCacheMap.get(tenantId);
+  if (cached && new Date(cached.expiresAt) > new Date(Date.now() + 5 * 60 * 1000)) {
+    console.log("[correios] Using cached token for tenant:", tenantId);
+    return cached.token;
   }
 
-  const clientId = Deno.env.get("CORREIOS_CLIENT_ID");
-  const clientSecret = Deno.env.get("CORREIOS_CLIENT_SECRET");
-  const contrato = Deno.env.get("CORREIOS_CONTRATO");
-  const cartaoPostagem = Deno.env.get("CORREIOS_CARTAO_POSTAGEM");
+  const { clientId, clientSecret, cartaoPostagem } = credentials;
 
-  console.log("[correios] Credentials check:", {
+  console.log("[correios] Credentials check for tenant:", tenantId, {
     hasClientId: !!clientId,
     hasClientSecret: !!clientSecret,
-    hasContrato: !!contrato,
     hasCartao: !!cartaoPostagem,
   });
 
   if (!clientId || !clientSecret) {
-    throw new Error("Credenciais dos Correios não configuradas. Configure CORREIOS_CLIENT_ID e CORREIOS_CLIENT_SECRET nos segredos do Supabase.");
+    throw new Error("Credenciais dos Correios não configuradas. Preencha Client ID e Client Secret na integração.");
   }
 
   if (!cartaoPostagem) {
-    throw new Error("Cartão de Postagem não configurado. Configure CORREIOS_CARTAO_POSTAGEM nos segredos do Supabase.");
+    throw new Error("Cartão de Postagem não configurado. Preencha o campo na integração.");
   }
 
   console.log("[correios] Fetching new OAuth token...");
 
-  // Autenticação OAuth2 dos Correios CWS - Endpoint correto
+  // Autenticação OAuth2 dos Correios CWS
   const authUrl = "https://api.correios.com.br/token/v1/autentica/cartaopostagem";
   
-  const credentials = btoa(`${clientId}:${clientSecret}`);
+  const basicAuth = btoa(`${clientId}:${clientSecret}`);
   
   const authBody = {
     numero: cartaoPostagem,
   };
 
   console.log("[correios] Auth request to:", authUrl);
-  console.log("[correios] Auth body:", JSON.stringify(authBody));
 
   const authResponse = await fetch(authUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Basic ${credentials}`,
+      "Authorization": `Basic ${basicAuth}`,
     },
     body: JSON.stringify(authBody),
   });
@@ -82,7 +85,6 @@ async function getCorreiosToken(): Promise<string> {
   console.log("[correios] Auth response:", responseText.substring(0, 500));
 
   if (!authResponse.ok) {
-    // Tentar parsear erro
     let errorMessage = `Falha na autenticação Correios (${authResponse.status})`;
     try {
       const errorData = JSON.parse(responseText);
@@ -101,10 +103,10 @@ async function getCorreiosToken(): Promise<string> {
   
   // Cachear o token (expira em ~1 hora)
   const expiresAt = tokenData.expiraEm ? new Date(tokenData.expiraEm) : new Date(Date.now() + 55 * 60 * 1000);
-  tokenCache = {
+  tokenCacheMap.set(tenantId, {
     token: tokenData.token,
     expiresAt,
-  };
+  });
 
   console.log("[correios] Token obtained successfully, expires at:", expiresAt.toISOString());
   return tokenData.token;
@@ -241,8 +243,15 @@ serve(async (req) => {
       .eq("is_active", true)
       .maybeSingle();
 
-    // Usar CEP de origem da integração ou do env
-    const cepOrigem = integration?.from_cep || Deno.env.get("CORREIOS_ORIGIN_CEP") || "";
+    if (!integration) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Integração Correios não configurada ou inativa" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Usar CEP de origem da integração
+    const cepOrigem = integration.from_cep;
     
     if (!cepOrigem) {
       return new Response(
@@ -251,8 +260,18 @@ serve(async (req) => {
       );
     }
 
+    // Buscar credenciais da integração (armazenadas nos campos reutilizados)
+    // client_id e client_secret estão nos campos nativos
+    // contrato está em scope, cartao_postagem está em refresh_token
+    const credentials: CorreiosCredentials = {
+      clientId: integration.client_id || "",
+      clientSecret: integration.client_secret || "",
+      cartaoPostagem: integration.refresh_token || "", // Cartão de postagem
+      contrato: integration.scope || "", // Contrato (opcional)
+    };
+
     // Obter token OAuth dos Correios
-    const token = await getCorreiosToken();
+    const token = await getCorreiosToken(credentials, tenant_id);
 
     // Preparar lista de produtos
     const productsList = (products || []).map((p: any) => ({

@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Package, CheckCircle2, XCircle, Truck, AlertTriangle, TestTube } from 'lucide-react';
+import { Loader2, Package, CheckCircle2, XCircle, Truck, TestTube, Eye, EyeOff } from 'lucide-react';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
@@ -18,6 +18,10 @@ interface CorreiosIntegrationProps {
 interface CorreiosIntegrationData {
   id?: string;
   from_cep: string;
+  client_id: string;
+  client_secret: string;
+  contrato: string;
+  cartao_postagem: string;
   is_active: boolean;
 }
 
@@ -26,10 +30,15 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<CorreiosIntegrationData>({
     from_cep: '',
+    client_id: '',
+    client_secret: '',
+    contrato: '',
+    cartao_postagem: '',
     is_active: false,
   });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showSecrets, setShowSecrets] = useState(false);
 
   // Buscar integração existente
   const { data: integration, isLoading } = useQuery({
@@ -48,6 +57,10 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         setFormData({
           id: data.id,
           from_cep: data.from_cep || '',
+          client_id: data.client_id || '',
+          client_secret: data.client_secret || '',
+          contrato: data.scope || '', // Usando scope para contrato
+          cartao_postagem: data.refresh_token || '', // Usando refresh_token para cartão
           is_active: data.is_active,
         });
       }
@@ -63,8 +76,12 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
       const payload = {
         tenant_id: tenantId,
         provider: 'correios',
-        access_token: 'contract', // Token é gerenciado via secrets
+        access_token: 'contract', // Placeholder
         from_cep: data.from_cep.replace(/\D/g, ''),
+        client_id: data.client_id,
+        client_secret: data.client_secret,
+        scope: data.contrato, // Armazenando contrato em scope
+        refresh_token: data.cartao_postagem, // Armazenando cartão em refresh_token
         is_active: data.is_active,
         sandbox: false,
       };
@@ -98,6 +115,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
       });
       queryClient.invalidateQueries({ queryKey: ['correios-integration', tenantId] });
       queryClient.invalidateQueries({ queryKey: ['shipping-checklist-status', tenantId] });
+      queryClient.invalidateQueries({ queryKey: ['correios-status', tenantId] });
     },
     onError: (error: any) => {
       toast({
@@ -151,6 +169,8 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
     return `${numbers.slice(0, 5)}-${numbers.slice(5, 8)}`;
   };
 
+  const isFormValid = formData.from_cep && formData.client_id && formData.client_secret && formData.cartao_postagem;
+
   if (isLoading) {
     return (
       <Card>
@@ -167,7 +187,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Package className="h-6 w-6 text-yellow-600" />
+              <Package className="h-6 w-6 text-amber-600" />
               <div>
                 <CardTitle>Correios - Contrato Próprio</CardTitle>
                 <CardDescription>
@@ -181,47 +201,116 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <Alert>
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              As credenciais do contrato (Client ID, Client Secret, Contrato e Cartão de Postagem) 
-              são configuradas via segredos do Supabase. Entre em contato com o administrador para configurar.
-            </AlertDescription>
-          </Alert>
-
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="from_cep">CEP de Origem</Label>
-              <Input
-                id="from_cep"
-                value={formData.from_cep}
-                onChange={(e) => setFormData({ ...formData, from_cep: formatCEP(e.target.value) })}
-                placeholder="00000-000"
-                maxLength={9}
-              />
-              <p className="text-xs text-muted-foreground">
-                CEP do seu centro de distribuição para cálculo do frete
-              </p>
+          {/* Credenciais da API */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-medium">Credenciais do Contrato</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSecrets(!showSecrets)}
+              >
+                {showSecrets ? (
+                  <>
+                    <EyeOff className="h-4 w-4 mr-2" />
+                    Ocultar
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-4 w-4 mr-2" />
+                    Mostrar
+                  </>
+                )}
+              </Button>
             </div>
 
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <Label>Ativar Integração</Label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="client_id">Client ID</Label>
+                <Input
+                  id="client_id"
+                  type={showSecrets ? 'text' : 'password'}
+                  value={formData.client_id}
+                  onChange={(e) => setFormData({ ...formData, client_id: e.target.value })}
+                  placeholder="Seu Client ID dos Correios"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="client_secret">Client Secret</Label>
+                <Input
+                  id="client_secret"
+                  type={showSecrets ? 'text' : 'password'}
+                  value={formData.client_secret}
+                  onChange={(e) => setFormData({ ...formData, client_secret: e.target.value })}
+                  placeholder="Seu Client Secret"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="contrato">Número do Contrato</Label>
+                <Input
+                  id="contrato"
+                  type={showSecrets ? 'text' : 'password'}
+                  value={formData.contrato}
+                  onChange={(e) => setFormData({ ...formData, contrato: e.target.value })}
+                  placeholder="Número do contrato (opcional)"
+                />
                 <p className="text-xs text-muted-foreground">
-                  Ao ativar, outras integrações de frete serão desativadas
+                  Opcional - usado para algumas consultas
                 </p>
               </div>
-              <Switch
-                checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-              />
+
+              <div className="space-y-2">
+                <Label htmlFor="cartao_postagem">Cartão de Postagem</Label>
+                <Input
+                  id="cartao_postagem"
+                  type={showSecrets ? 'text' : 'password'}
+                  value={formData.cartao_postagem}
+                  onChange={(e) => setFormData({ ...formData, cartao_postagem: e.target.value })}
+                  placeholder="Número do cartão de postagem"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Obrigatório para autenticação
+                </p>
+              </div>
             </div>
           </div>
 
+          {/* CEP de Origem */}
+          <div className="space-y-2">
+            <Label htmlFor="from_cep">CEP de Origem</Label>
+            <Input
+              id="from_cep"
+              value={formData.from_cep}
+              onChange={(e) => setFormData({ ...formData, from_cep: formatCEP(e.target.value) })}
+              placeholder="00000-000"
+              maxLength={9}
+            />
+            <p className="text-xs text-muted-foreground">
+              CEP do seu centro de distribuição para cálculo do frete
+            </p>
+          </div>
+
+          {/* Toggle Ativar */}
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label>Ativar Integração</Label>
+              <p className="text-xs text-muted-foreground">
+                Ao ativar, outras integrações de frete serão desativadas
+              </p>
+            </div>
+            <Switch
+              checked={formData.is_active}
+              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+            />
+          </div>
+
+          {/* Botões de Ação */}
           <div className="flex gap-2">
             <Button
               onClick={() => saveMutation.mutate(formData)}
-              disabled={saveMutation.isPending || !formData.from_cep}
+              disabled={saveMutation.isPending || !isFormValid}
             >
               {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar Configuração
@@ -230,7 +319,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
             <Button
               variant="outline"
               onClick={handleTest}
-              disabled={isTesting || !formData.from_cep}
+              disabled={isTesting || !isFormValid}
             >
               {isTesting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -241,6 +330,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
             </Button>
           </div>
 
+          {/* Resultado do Teste */}
           {testResult && (
             <Alert variant={testResult.success ? 'default' : 'destructive'}>
               {testResult.success ? (
@@ -265,21 +355,21 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="flex items-center gap-3 rounded-lg border p-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <CheckCircle2 className="h-5 w-5 text-primary" />
               <div>
                 <p className="font-medium">PAC</p>
                 <p className="text-xs text-muted-foreground">Econômico</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg border p-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <CheckCircle2 className="h-5 w-5 text-primary" />
               <div>
                 <p className="font-medium">SEDEX</p>
                 <p className="text-xs text-muted-foreground">Expresso</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg border p-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <CheckCircle2 className="h-5 w-5 text-primary" />
               <div>
                 <p className="font-medium">Mini Envios</p>
                 <p className="text-xs text-muted-foreground">Pequenos objetos</p>
