@@ -127,17 +127,29 @@ type SendProductResult =
 /**
  * Link product to store via POST /produtos/lojas
  * This is required because Bling API v3 doesn't accept store in POST /produtos
+ * Required fields: idProduto, loja.id, preco, codigo
  */
-async function linkProductToStore(blingProductId: number, blingStoreId: number, accessToken: string): Promise<boolean> {
+async function linkProductToStore(
+  blingProductId: number, 
+  blingStoreId: number, 
+  accessToken: string,
+  productCode: string,
+  productPrice: number
+): Promise<boolean> {
   try {
     console.log(`[bling-sync-products] Linking product ${blingProductId} to store ${blingStoreId}...`);
     
+    // Bling API v3 requires preco and codigo for /produtos/lojas
     const payload = {
       idProduto: blingProductId,
       loja: {
         id: blingStoreId
-      }
+      },
+      preco: productPrice,
+      codigo: productCode
     };
+
+    console.log(`[bling-sync-products] Link payload:`, JSON.stringify(payload, null, 2));
 
     const response = await fetch(`${BLING_API_URL}/produtos/lojas`, {
       method: 'POST',
@@ -154,14 +166,22 @@ async function linkProductToStore(blingProductId: number, blingStoreId: number, 
 
     if (!response.ok) {
       // Check if already linked (409 conflict or similar)
-      if (response.status === 409 || responseText.includes('já existe') || responseText.includes('already exists')) {
+      if (response.status === 409 || responseText.includes('já existe') || responseText.includes('already exists') || responseText.includes('duplicado')) {
         console.log(`[bling-sync-products] Product already linked to store`);
         return true;
       }
+      
+      // Check for scope error
+      if (responseText.includes('insufficient_scope')) {
+        console.error(`[bling-sync-products] Missing scope for produtos/lojas - need Lojas Virtuais scope`);
+        return false;
+      }
+      
       console.error(`[bling-sync-products] Failed to link product to store: ${responseText}`);
       return false;
     }
 
+    console.log(`[bling-sync-products] Successfully linked product ${blingProductId} to store ${blingStoreId}`);
     return true;
   } catch (error) {
     console.error(`[bling-sync-products] Error linking product to store:`, error);
@@ -271,7 +291,13 @@ async function sendProductToBling(product: any, accessToken: string, blingStoreI
   let linkedToStore = false;
   if (blingStoreId) {
     await delay(350); // Rate limiting
-    linkedToStore = await linkProductToStore(blingProductId, blingStoreId, accessToken);
+    linkedToStore = await linkProductToStore(
+      blingProductId, 
+      blingStoreId, 
+      accessToken,
+      blingProduct.codigo,
+      blingProduct.preco
+    );
   }
 
   return { kind, blingProductId, linkedToStore, raw: { responseText } };
