@@ -18,12 +18,15 @@ import {
   Loader2,
   Copy,
   RefreshCw,
-  Lightbulb
+  Lightbulb,
+  Image as ImageIcon,
+  X
 } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
+  image_url?: string;
 }
 
 const suggestedQuestions = [
@@ -33,6 +36,7 @@ const suggestedQuestions = [
   { icon: MessageSquare, label: "Criar Promoção", question: "Crie uma mensagem de promoção para enviar no WhatsApp oferecendo 15% de desconto" },
   { icon: Lightbulb, label: "Pedidos Pendentes", question: "Quantos pedidos estão pendentes de pagamento? Liste os mais antigos." },
   { icon: Sparkles, label: "Msg Cobrança", question: "Crie uma mensagem educada de cobrança para clientes com pedidos não pagos" },
+  { icon: ImageIcon, label: "Analisar Produtos", question: "Analise as imagens dos meus produtos e sugira melhorias nas fotos", analyzeImages: true },
 ];
 
 export default function AgenteIA() {
@@ -40,8 +44,11 @@ export default function AgenteIA() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -49,15 +56,51 @@ export default function AgenteIA() {
     }
   }, [messages]);
 
-  const streamChat = async (userMessage: string) => {
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Por favor, selecione apenas arquivos de imagem");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 5MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      setSelectedImage(base64);
+      setImagePreview(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const streamChat = async (userMessage: string, imageUrl?: string, analyzeProductImages?: boolean) => {
     if (!tenantId) {
       toast.error("Tenant não identificado");
       return;
     }
 
-    const userMsg: Message = { role: "user", content: userMessage };
+    const userMsg: Message = { 
+      role: "user", 
+      content: userMessage,
+      image_url: imageUrl
+    };
     setMessages(prev => [...prev, userMsg]);
     setInput("");
+    removeImage();
     setIsLoading(true);
 
     let assistantContent = "";
@@ -74,7 +117,12 @@ export default function AgenteIA() {
           body: JSON.stringify({
             message: userMessage,
             tenant_id: tenantId,
-            conversation_history: messages,
+            conversation_history: messages.map(m => ({
+              role: m.role,
+              content: m.content
+            })),
+            image_url: imageUrl,
+            analyze_product_images: analyzeProductImages,
           }),
         }
       );
@@ -165,7 +213,7 @@ export default function AgenteIA() {
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
-    streamChat(input.trim());
+    streamChat(input.trim(), selectedImage || undefined);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -175,8 +223,8 @@ export default function AgenteIA() {
     }
   };
 
-  const handleSuggestionClick = (question: string) => {
-    streamChat(question);
+  const handleSuggestionClick = (question: string, analyzeImages?: boolean) => {
+    streamChat(question, undefined, analyzeImages);
   };
 
   const copyToClipboard = (text: string) => {
@@ -200,7 +248,7 @@ export default function AgenteIA() {
               <div>
                 <CardTitle className="text-xl">Agente de IA</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Análise de dados e criação de mensagens
+                  Análise de dados, imagens e criação de mensagens
                 </p>
               </div>
             </div>
@@ -226,7 +274,7 @@ export default function AgenteIA() {
                     key={i}
                     variant="outline"
                     className="h-auto py-3 px-4 justify-start text-left"
-                    onClick={() => handleSuggestionClick(item.question)}
+                    onClick={() => handleSuggestionClick(item.question, (item as any).analyzeImages)}
                   >
                     <item.icon className="h-4 w-4 mr-2 shrink-0 text-primary" />
                     <span className="text-sm">{item.label}</span>
@@ -268,6 +316,15 @@ export default function AgenteIA() {
                           </Button>
                         </div>
                       )}
+                      {msg.image_url && (
+                        <div className="mb-2">
+                          <img 
+                            src={msg.image_url} 
+                            alt="Imagem enviada" 
+                            className="max-w-[200px] rounded-lg"
+                          />
+                        </div>
+                      )}
                       <div className="text-sm whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none">
                         {msg.content}
                       </div>
@@ -281,7 +338,7 @@ export default function AgenteIA() {
                       <div className="flex items-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin text-primary" />
                         <span className="text-sm text-muted-foreground">
-                          Analisando dados...
+                          Analisando...
                         </span>
                       </div>
                     </div>
@@ -291,11 +348,46 @@ export default function AgenteIA() {
             </ScrollArea>
           )}
 
+          {/* Preview da imagem selecionada */}
+          {imagePreview && (
+            <div className="relative inline-block">
+              <img 
+                src={imagePreview} 
+                alt="Preview" 
+                className="max-w-[150px] max-h-[150px] rounded-lg border"
+              />
+              <Button
+                variant="destructive"
+                size="icon"
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                onClick={removeImage}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+
           {/* Input */}
           <div className="flex gap-2">
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="image/*"
+              onChange={handleImageSelect}
+              className="hidden"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading}
+              title="Enviar imagem"
+            >
+              <ImageIcon className="h-5 w-5" />
+            </Button>
             <Textarea
               ref={textareaRef}
-              placeholder="Pergunte sobre vendas, clientes, produtos ou peça para criar mensagens..."
+              placeholder="Pergunte sobre vendas, clientes, produtos ou envie uma imagem para análise..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -316,7 +408,7 @@ export default function AgenteIA() {
           </div>
 
           <p className="text-xs text-muted-foreground text-center">
-            Powered by Lovable AI • Os dados são analisados em tempo real
+            📷 Suporta análise de imagens • Powered by Lovable AI
           </p>
         </CardContent>
       </Card>
