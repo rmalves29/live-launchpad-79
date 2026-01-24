@@ -536,24 +536,42 @@ async function sendOrderToBling(
   };
   
   // Padrões comuns de frete na observação:
+  // "[FRETE] Melhor Envio - SEDEX | R$ 12.03 | Prazo: 2 dias úteis"
+  // "[FRETE] Correios - PAC | R$ 30,41 | Prazo: 6 dias úteis"
+  // "[FRETE] Mandae Econômico | R$ 22,50 | Prazo: 5 dias úteis"
+  // "[FRETE] Retirada"
   // "Frete: PAC R$ 30,41 (6 dias úteis)"
-  // "Frete: SEDEX - R$ 45,00"
-  // "Frete: Mini Envios R$ 15,99"
-  // "Frete: Mandae Econômico R$ 22,50 (5 dias úteis)"
-  // "Frete: Melhor Envio - PAC R$ 30,00"
-  // "Frete: Correios PAC R$ 28,00"
   
-  // Regex melhorado para capturar nome do serviço de frete
-  // Captura tudo entre "Frete:" e "R$" ou entre "Frete:" e um valor numérico
-  const freteLinhaMatch = observacao.match(/[Ff]rete[:\s]+([^R$\n]+?)(?:\s*[-–]?\s*R\$\s*([\d.,]+))/);
-  if (freteLinhaMatch) {
-    freteNome = freteLinhaMatch[1].trim().replace(/[-–]\s*$/, '').trim();
-    freteValor = parseMonetaryValue(freteLinhaMatch[2]);
+  // Primeiro padrão: [FRETE] Nome - Serviço | R$ XX,XX | Prazo: X dias
+  const freteNovoFormatoMatch = observacao.match(/\[FRETE\]\s*([^|]+?)\s*\|\s*R\$\s*([\d.,]+)/i);
+  if (freteNovoFormatoMatch) {
+    freteNome = freteNovoFormatoMatch[1].trim();
+    freteValor = parseMonetaryValue(freteNovoFormatoMatch[2]);
   }
   
-  // Se não encontrou com o padrão principal, tentar outros formatos
+  // Segundo padrão: [FRETE] Retirada (sem valor)
+  if (!freteNome && observacao.match(/\[FRETE\]\s*Retirada/i)) {
+    freteNome = 'Retirada';
+    freteValor = 0;
+  }
+  
+  // Terceiro padrão: [FRETE] Frete Grátis (sem valor ou R$ 0,00)
+  if (!freteNome && observacao.match(/\[FRETE\]\s*Frete\s*Gr[áa]tis/i)) {
+    freteNome = 'Frete Grátis';
+    freteValor = 0;
+  }
+  
+  // Padrão legado: "Frete: XXX R$ YY,ZZ"
   if (!freteNome && !freteValor) {
-    // Padrão alternativo: "Transporte: XXX R$ YY,ZZ"
+    const freteLinhaMatch = observacao.match(/[Ff]rete[:\s]+([^R$\n]+?)(?:\s*[-–]?\s*R\$\s*([\d.,]+))/);
+    if (freteLinhaMatch) {
+      freteNome = freteLinhaMatch[1].trim().replace(/[-–]\s*$/, '').trim();
+      freteValor = parseMonetaryValue(freteLinhaMatch[2]);
+    }
+  }
+  
+  // Padrão alternativo: "Transporte: XXX R$ YY,ZZ"
+  if (!freteNome && !freteValor) {
     const altMatch = observacao.match(/(?:transporte|envio)[:\s]+([^R$\n]+?)(?:\s*[-–]?\s*R\$\s*([\d.,]+))/i);
     if (altMatch) {
       freteNome = altMatch[1].trim().replace(/[-–]\s*$/, '').trim();
@@ -562,16 +580,21 @@ async function sendOrderToBling(
   }
   
   // Fallback: buscar qualquer padrão "R$ XX,XX" se houver palavra "frete"
-  if (freteValor === 0 && observacao.toLowerCase().includes('frete')) {
+  if (freteValor === 0 && observacao.toLowerCase().includes('frete') && !observacao.toLowerCase().includes('grátis') && !observacao.toLowerCase().includes('retirada')) {
     const valorMatch = observacao.match(/R\$\s*([\d.,]+)/);
     if (valorMatch) {
       freteValor = parseMonetaryValue(valorMatch[1]);
     }
   }
   
-  // Limpar nome do frete - remover textos extras como "(X dias úteis)"
+  // Limpar nome do frete - remover caracteres extras como "|", "-" no início/fim, prazos, etc.
   if (freteNome) {
+    // Remover prazos entre parênteses
     freteNome = freteNome.replace(/\s*\([^)]*\)\s*/g, '').trim();
+    // Remover | e - no início e fim
+    freteNome = freteNome.replace(/^[\s|\-–]+|[\s|\-–]+$/g, '').trim();
+    // Remover "Melhor Envio - " ou "Correios - " do início para deixar só o serviço
+    freteNome = freteNome.replace(/^(Melhor\s*Envio|Correios)\s*[-–]\s*/i, '').trim();
     // Limitar tamanho para o Bling aceitar
     if (freteNome.length > 50) {
       freteNome = freteNome.substring(0, 50);
