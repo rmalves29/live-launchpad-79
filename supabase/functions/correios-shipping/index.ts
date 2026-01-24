@@ -163,15 +163,8 @@ async function calcularPreco(
     altura,
   });
 
-  // Adicionar serviços adicionais para PAC/SEDEX com contrato
-  // 019 = Valor Declarado para PAC, 064 = Valor Declarado para SEDEX
-  if (codigoServico === CORREIOS_SERVICES.PAC_CONTRATO) {
-    params.set("servicosAdicionais", "019");
-    params.set("vlDeclarado", String(Math.max(valorTotal, 23.5))); // Mínimo R$23,50 para VD
-  } else if (codigoServico === CORREIOS_SERVICES.SEDEX_CONTRATO) {
-    params.set("servicosAdicionais", "064");
-    params.set("vlDeclarado", String(Math.max(valorTotal, 23.5)));
-  }
+  // Valor declarado é opcional - tentar adicionar apenas se não causar erro
+  // Alguns contratos não suportam serviços adicionais de valor declarado
 
   console.log("[correios] Calculating price for service:", codigoServico, params.toString());
 

@@ -37,7 +37,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
     is_active: false,
   });
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; services?: string[] } | null>(null);
   const [showSecrets, setShowSecrets] = useState(false);
 
   // Buscar integração existente
@@ -143,20 +143,25 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
       if (error) throw error;
 
       if (data?.success && data?.shipping_options?.length > 0) {
+        // Extrair nomes dos serviços encontrados
+        const foundServices = data.shipping_options.map((opt: any) => opt.name);
         setTestResult({
           success: true,
-          message: `Conexão OK! ${data.shipping_options.length} serviços disponíveis.`,
+          message: `Conexão OK! ${data.shipping_options.length} serviço(s) disponível(is).`,
+          services: foundServices,
         });
       } else {
         setTestResult({
           success: false,
           message: data?.error || 'Nenhum serviço retornado',
+          services: [],
         });
       }
     } catch (error: any) {
       setTestResult({
         success: false,
         message: error.message || 'Erro ao testar conexão',
+        services: [],
       });
     } finally {
       setIsTesting(false);
@@ -321,28 +326,6 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
               Testar Conexão
             </Button>
           </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => saveMutation.mutate(formData)}
-              disabled={saveMutation.isPending || !isFormValid}
-            >
-              {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Salvar Configuração
-            </Button>
-            
-            <Button
-              variant="outline"
-              onClick={handleTest}
-              disabled={isTesting || !isFormValid}
-            >
-              {isTesting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <TestTube className="mr-2 h-4 w-4" />
-              )}
-              Testar Conexão
-            </Button>
-          </div>
 
           {/* Resultado do Teste */}
           {testResult && (
@@ -368,28 +351,43 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="flex items-center gap-3 rounded-lg border p-3">
-              <CheckCircle2 className="h-5 w-5 text-primary" />
-              <div>
-                <p className="font-medium">PAC</p>
-                <p className="text-xs text-muted-foreground">Econômico</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 rounded-lg border p-3">
-              <CheckCircle2 className="h-5 w-5 text-primary" />
-              <div>
-                <p className="font-medium">SEDEX</p>
-                <p className="text-xs text-muted-foreground">Expresso</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 rounded-lg border p-3">
-              <CheckCircle2 className="h-5 w-5 text-primary" />
-              <div>
-                <p className="font-medium">Mini Envios</p>
-                <p className="text-xs text-muted-foreground">Pequenos objetos</p>
-              </div>
-            </div>
+            {[
+              { name: 'PAC', description: 'Econômico' },
+              { name: 'SEDEX', description: 'Expresso' },
+              { name: 'Mini Envios', description: 'Pequenos objetos' },
+            ].map((service) => {
+              const isAvailable = testResult?.services?.includes(service.name);
+              const hasTestedSuccessfully = testResult?.success;
+              
+              return (
+                <div 
+                  key={service.name}
+                  className={`flex items-center gap-3 rounded-lg border p-3 ${
+                    hasTestedSuccessfully && !isAvailable ? 'opacity-50' : ''
+                  }`}
+                >
+                  {hasTestedSuccessfully ? (
+                    isAvailable ? (
+                      <CheckCircle2 className="h-5 w-5 text-primary" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-muted-foreground" />
+                    )
+                  ) : (
+                    <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
+                  )}
+                  <div>
+                    <p className="font-medium">{service.name}</p>
+                    <p className="text-xs text-muted-foreground">{service.description}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+          {!testResult && (
+            <p className="text-sm text-muted-foreground mt-3">
+              Clique em "Testar Conexão" para verificar quais serviços estão disponíveis no seu contrato.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
