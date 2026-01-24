@@ -87,7 +87,7 @@ export default function TenantIntegrationsPage() {
         .maybeSingle();
       return data;
     },
-    enabled: !!tenantId && isSuperAdmin,
+    enabled: !!tenantId,
   });
 
   // Pagar.me Status
@@ -149,17 +149,15 @@ export default function TenantIntegrationsPage() {
         Configure suas integrações de pagamento, envio e ERP para a empresa <strong>{tenant.name}</strong>
       </p>
 
-      <Tabs defaultValue={isSuperAdmin ? "bling" : "mercadopago"} className="w-full">
-        <TabsList className={`grid w-full ${isSuperAdmin ? 'grid-cols-6' : 'grid-cols-5'}`}>
-          {isSuperAdmin && (
-            <TabsTrigger value="bling" className="flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
-              Bling ERP
-              {blingIntegration?.is_active && (
-                <CheckCircle2 className="h-4 w-4 text-primary" />
-              )}
-            </TabsTrigger>
-          )}
+      <Tabs defaultValue="bling" className="w-full">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="bling" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            Bling ERP
+            {blingIntegration?.is_active && (
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+            )}
+          </TabsTrigger>
           <TabsTrigger value="mercadopago" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
             Mercado Pago
@@ -197,11 +195,9 @@ export default function TenantIntegrationsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {isSuperAdmin && (
-          <TabsContent value="bling" className="mt-6">
-            <BlingIntegration tenantId={tenantId} />
-          </TabsContent>
-        )}
+        <TabsContent value="bling" className="mt-6">
+          <BlingIntegration tenantId={tenantId} />
+        </TabsContent>
 
         <TabsContent value="mercadopago" className="mt-6">
           <PaymentIntegrations tenantId={tenantId} />
