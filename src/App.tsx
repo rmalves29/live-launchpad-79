@@ -42,6 +42,7 @@ import LandingPage from "./pages/LandingPage";
 import WhatsappTemplates from "./pages/whatsapp/Templates";
 import Cobranca from "./pages/whatsapp/Cobranca";
 import ConexaoZAPI from "./pages/whatsapp/ConexaoZAPI";
+import AgenteIA from "./pages/agente-ia/Index";
 import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
@@ -185,6 +186,15 @@ const AppContent = () => {
           <RequireTenantAuth>
             <TenantIntegrationsPage />
           </RequireTenantAuth>
+        } />
+        
+        {/* Rota para Agente de IA */}
+        <Route path="/agente-ia" element={
+          <RequireTenantAuth>
+            <AgenteIA />
+          </RequireTenantAuth>
+        } />
+        
         } />
         
         {/* Rota de debug */}

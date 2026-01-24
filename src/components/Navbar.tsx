@@ -30,6 +30,7 @@ const Navbar = () => {
     { path: '/clientes', label: 'Clientes' },
     { path: '/pedidos', label: 'Pedidos' },
     ...(enableSendflow ? [{ path: '/sendflow', label: 'SendFlow' }] : []),
+    { path: '/agente-ia', label: '🤖 Agente IA' },
     { path: '/relatorios', label: 'Relatórios' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/etiquetas', label: 'Etiquetas' },
