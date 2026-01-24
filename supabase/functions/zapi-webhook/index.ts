@@ -762,13 +762,15 @@ async function findOrCreateCart(
     }
   }
 
-  // Try to find an open cart for this customer with same event type
+  // Try to find an open cart for this customer with same event type AND today's date
+  // IMPORTANT: We only reuse carts from TODAY to prevent adding items to old carts
   const { data: existingCart, error: openCartError } = await supabase
     .from('carts')
     .select('*')
     .eq('tenant_id', tenantId)
     .eq('customer_phone', phone)
     .eq('event_type', eventType)
+    .eq('event_date', today) // CRITICAL: Only match today's date!
     .eq('status', 'OPEN')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -779,8 +781,25 @@ async function findOrCreateCart(
   }
 
   if (existingCart) {
-    console.log(`[zapi-webhook] ✅ Found existing OPEN cart: ${existingCart.id} (${eventType})`);
-    return existingCart;
+    // Double-check: ensure this cart is NOT linked to a cancelled order
+    const { data: linkedOrder } = await supabase
+      .from('orders')
+      .select('id, is_cancelled, is_paid')
+      .eq('cart_id', existingCart.id)
+      .maybeSingle();
+
+    if (linkedOrder?.is_cancelled === true) {
+      console.log(`[zapi-webhook] ⚠️ Found OPEN cart ${existingCart.id} but it's linked to CANCELLED order #${linkedOrder.id} - will create NEW cart`);
+      // Don't return this cart - fall through to create a new one
+    } else if (linkedOrder?.is_paid === true) {
+      console.log(`[zapi-webhook] ⚠️ Found OPEN cart ${existingCart.id} but it's linked to PAID order #${linkedOrder.id} - will create NEW cart`);
+      // Don't return this cart - fall through to create a new one
+    } else {
+      console.log(`[zapi-webhook] ✅ Found existing OPEN cart: ${existingCart.id} (${eventType}, date: ${today})`);
+      return existingCart;
+    }
+  } else {
+    console.log(`[zapi-webhook] ℹ️ No OPEN cart found for today (${today}) - will check for other conditions`);
   }
 
   // Check if there's a CLOSED cart for today - this is the case we want to debug
