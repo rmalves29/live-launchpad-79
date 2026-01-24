@@ -195,8 +195,6 @@ const AppContent = () => {
           </RequireTenantAuth>
         } />
         
-        } />
-        
         {/* Rota de debug */}
         <Route path="/debug" element={<Debug />} />
         
