@@ -39,43 +39,74 @@ async function getCorreiosToken(): Promise<string> {
   const contrato = Deno.env.get("CORREIOS_CONTRATO");
   const cartaoPostagem = Deno.env.get("CORREIOS_CARTAO_POSTAGEM");
 
+  console.log("[correios] Credentials check:", {
+    hasClientId: !!clientId,
+    hasClientSecret: !!clientSecret,
+    hasContrato: !!contrato,
+    hasCartao: !!cartaoPostagem,
+  });
+
   if (!clientId || !clientSecret) {
-    throw new Error("Credenciais dos Correios não configuradas (CORREIOS_CLIENT_ID, CORREIOS_CLIENT_SECRET)");
+    throw new Error("Credenciais dos Correios não configuradas. Configure CORREIOS_CLIENT_ID e CORREIOS_CLIENT_SECRET nos segredos do Supabase.");
+  }
+
+  if (!cartaoPostagem) {
+    throw new Error("Cartão de Postagem não configurado. Configure CORREIOS_CARTAO_POSTAGEM nos segredos do Supabase.");
   }
 
   console.log("[correios] Fetching new OAuth token...");
 
-  // Autenticação OAuth2 dos Correios CWS
+  // Autenticação OAuth2 dos Correios CWS - Endpoint correto
   const authUrl = "https://api.correios.com.br/token/v1/autentica/cartaopostagem";
   
+  const credentials = btoa(`${clientId}:${clientSecret}`);
+  
   const authBody = {
-    numero: cartaoPostagem || contrato,
+    numero: cartaoPostagem,
   };
+
+  console.log("[correios] Auth request to:", authUrl);
+  console.log("[correios] Auth body:", JSON.stringify(authBody));
 
   const authResponse = await fetch(authUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+      "Authorization": `Basic ${credentials}`,
     },
     body: JSON.stringify(authBody),
   });
 
+  const responseText = await authResponse.text();
+  console.log("[correios] Auth response status:", authResponse.status);
+  console.log("[correios] Auth response:", responseText.substring(0, 500));
+
   if (!authResponse.ok) {
-    const errorText = await authResponse.text();
-    console.error("[correios] Auth error:", authResponse.status, errorText);
-    throw new Error(`Falha na autenticação Correios: ${authResponse.status} - ${errorText}`);
+    // Tentar parsear erro
+    let errorMessage = `Falha na autenticação Correios (${authResponse.status})`;
+    try {
+      const errorData = JSON.parse(responseText);
+      errorMessage = errorData.msgs?.[0]?.texto || errorData.message || errorMessage;
+    } catch {
+      // Manter mensagem genérica
+    }
+    throw new Error(errorMessage);
   }
 
-  const tokenData: CorreiosToken = await authResponse.json();
+  const tokenData = JSON.parse(responseText);
   
-  // Cachear o token
+  if (!tokenData.token) {
+    throw new Error("Token não retornado pela API dos Correios");
+  }
+  
+  // Cachear o token (expira em ~1 hora)
+  const expiresAt = tokenData.expiraEm ? new Date(tokenData.expiraEm) : new Date(Date.now() + 55 * 60 * 1000);
   tokenCache = {
     token: tokenData.token,
-    expiresAt: new Date(tokenData.expiraEm),
+    expiresAt,
   };
 
-  console.log("[correios] Token obtained, expires at:", tokenData.expiraEm);
+  console.log("[correios] Token obtained successfully, expires at:", expiresAt.toISOString());
   return tokenData.token;
 }
 
