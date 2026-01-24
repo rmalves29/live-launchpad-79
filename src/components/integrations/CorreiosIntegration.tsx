@@ -195,9 +195,15 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
                 </CardDescription>
               </div>
             </div>
-            <Badge variant={formData.is_active ? 'default' : 'secondary'}>
-              {formData.is_active ? 'Ativo' : 'Inativo'}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {formData.is_active ? 'Ativo' : 'Inativo'}
+              </span>
+              <Switch
+                checked={formData.is_active}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -292,21 +298,29 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
             </p>
           </div>
 
-          {/* Toggle Ativar */}
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label>Ativar Integração</Label>
-              <p className="text-xs text-muted-foreground">
-                Ao ativar, outras integrações de frete serão desativadas
-              </p>
-            </div>
-            <Switch
-              checked={formData.is_active}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-            />
-          </div>
-
           {/* Botões de Ação */}
+          <div className="flex gap-2">
+            <Button
+              onClick={() => saveMutation.mutate(formData)}
+              disabled={saveMutation.isPending || !isFormValid}
+            >
+              {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar Configuração
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={handleTest}
+              disabled={isTesting || !isFormValid}
+            >
+              {isTesting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <TestTube className="mr-2 h-4 w-4" />
+              )}
+              Testar Conexão
+            </Button>
+          </div>
           <div className="flex gap-2">
             <Button
               onClick={() => saveMutation.mutate(formData)}

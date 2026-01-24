@@ -384,6 +384,28 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
     );
   }
 
+  // Mutation para ativar/desativar integração
+  const toggleActiveMutation = useMutation({
+    mutationFn: async (newActive: boolean) => {
+      if (!integration?.id) return;
+      
+      const { error } = await supabase
+        .from('integration_bling')
+        .update({ is_active: newActive, updated_at: getBrasiliaDateTimeISO() })
+        .eq('id', integration.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: (_, newActive) => {
+      queryClient.invalidateQueries({ queryKey: ['bling-integration', tenantId] });
+      toast.success(newActive ? 'Bling ERP ativado!' : 'Bling ERP desativado');
+    },
+    onError: (error) => {
+      console.error('Erro ao alterar status:', error);
+      toast.error('Erro ao alterar status da integração');
+    },
+  });
+
   return (
     <div className="space-y-6">
       {/* Header com status */}
@@ -424,14 +446,28 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                 </CardDescription>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.open('https://developer.bling.com.br/aplicativos', '_blank')}
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Portal Bling
-            </Button>
+            <div className="flex items-center gap-3">
+              {integration && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    {integration.is_active ? 'Ativo' : 'Inativo'}
+                  </span>
+                  <Switch
+                    checked={integration.is_active}
+                    onCheckedChange={(checked) => toggleActiveMutation.mutate(checked)}
+                    disabled={toggleActiveMutation.isPending}
+                  />
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('https://developer.bling.com.br/aplicativos', '_blank')}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Portal Bling
+              </Button>
+            </div>
           </div>
         </CardHeader>
       </Card>

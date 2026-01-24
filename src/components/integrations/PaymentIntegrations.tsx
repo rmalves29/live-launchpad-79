@@ -174,6 +174,34 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
     );
   }
 
+  // Ativar integração
+  const activateMutation = useMutation({
+    mutationFn: async () => {
+      if (!integration) return;
+
+      const { error } = await supabase
+        .from('integration_mp')
+        .update({ is_active: true })
+        .eq('id', integration.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-integration', tenantId] });
+      toast({
+        title: 'Integração ativada',
+        description: 'A integração foi ativada com sucesso.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Erro ao ativar',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
   return (
     <Card>
       <CardHeader>
@@ -189,17 +217,20 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
           </div>
           {integration && !isEditing && (
             <div className="flex items-center gap-2">
-              {integration.is_active ? (
-                <span className="flex items-center gap-1 text-sm text-green-600">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Ativo
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                  <AlertCircle className="h-4 w-4" />
-                  Inativo
-                </span>
-              )}
+              <span className="text-sm text-muted-foreground">
+                {integration.is_active ? 'Ativo' : 'Inativo'}
+              </span>
+              <Switch
+                checked={integration.is_active}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    activateMutation.mutate();
+                  } else {
+                    deactivateMutation.mutate();
+                  }
+                }}
+                disabled={activateMutation.isPending || deactivateMutation.isPending}
+              />
             </div>
           )}
         </div>
@@ -232,15 +263,6 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
 
             <div className="flex gap-2">
               <Button onClick={() => setIsEditing(true)}>Editar Configurações</Button>
-              {integration.is_active && (
-                <Button
-                  variant="outline"
-                  onClick={() => deactivateMutation.mutate()}
-                  disabled={deactivateMutation.isPending}
-                >
-                  Desativar
-                </Button>
-              )}
             </div>
           </div>
         ) : (
