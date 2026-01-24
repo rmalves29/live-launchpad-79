@@ -52,7 +52,32 @@ function isDuplicateNumeroError(payloadText: string): boolean {
   );
 }
 
-async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero: number | string): Promise<number | null> {
+async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero: number | string, storeId?: number): Promise<number | null> {
+  // Primeira busca: tentar com a loja específica se configurada
+  if (storeId) {
+    const resWithStore = await fetch(`${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}&idLoja=${storeId}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    const textWithStore = await resWithStore.text();
+    if (resWithStore.ok) {
+      try {
+        const parsed = JSON.parse(textWithStore);
+        const first = parsed?.data?.[0] || parsed?.data?.pedidos?.[0] || parsed?.[0];
+        const id = first?.id;
+        if (typeof id === 'number') return id;
+        if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+      } catch {
+        // Continuar para busca geral
+      }
+    }
+    console.log('[bling-sync-orders] Order not found in store, trying general search...');
+  }
+
+  // Busca geral (sem filtro de loja)
   const res = await fetch(`${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
@@ -668,7 +693,7 @@ async function sendOrderToBling(
 
     // Se já existir no Bling, buscamos o ID e marcamos como sincronizado no nosso lado.
     if (response.status === 400 && isDuplicateNumeroError(responseText)) {
-      const existingId = await findExistingBlingSaleOrderIdByNumero(accessToken, order.id);
+      const existingId = await findExistingBlingSaleOrderIdByNumero(accessToken, order.id, storeId);
       if (existingId) {
         return { kind: 'already_exists', blingOrderId: existingId, raw: { error: responseText } };
       }
