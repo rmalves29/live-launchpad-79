@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.bling-refresh-tokens]
 verify_jwt = false
+
+[functions.correios-shipping]
+verify_jwt = false

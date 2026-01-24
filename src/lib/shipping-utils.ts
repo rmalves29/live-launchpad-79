@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type ShippingProvider = 'melhor_envio' | 'mandae' | null;
+export type ShippingProvider = 'melhor_envio' | 'mandae' | 'correios' | null;
 
 export interface ActiveShippingIntegration {
   provider: ShippingProvider;
@@ -58,6 +58,17 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
         provider: 'melhor_envio',
         functionName: 'melhor-envio-shipping',
         testFunctionName: 'melhor-envio-test-token'
+      };
+    }
+
+    // Verificar se Correios está ativo
+    const correiosIntegration = integrations.find(i => i.provider === 'correios');
+    if (correiosIntegration) {
+      console.log("[shipping-utils] Integração Correios ativa para tenant:", tenantId);
+      return {
+        provider: 'correios',
+        functionName: 'correios-shipping',
+        testFunctionName: null
       };
     }
 
