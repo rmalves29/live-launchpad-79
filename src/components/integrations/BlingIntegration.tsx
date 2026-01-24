@@ -363,28 +363,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
     },
   });
 
-  // Toggle módulo
-  const toggleModule = (key: string) => {
-    setModules(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  // Contagem de módulos ativos
-  const activeModulesCount = Object.values(modules).filter(Boolean).length;
-
-  // Verificar se as credenciais estão preenchidas
-  const hasCredentials = !!(clientId && clientSecret);
-  const isAuthorized = oauthStatus?.authorized;
-  const isExpired = oauthStatus?.is_expired;
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-32">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    );
-  }
-
-  // Mutation para ativar/desativar integração
+  // Mutation para ativar/desativar integração (DEVE estar antes de qualquer return condicional)
   const toggleActiveMutation = useMutation({
     mutationFn: async (newActive: boolean) => {
       if (!integration?.id) return;
@@ -405,6 +384,27 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
       toast.error('Erro ao alterar status da integração');
     },
   });
+
+  // Toggle módulo
+  const toggleModule = (key: string) => {
+    setModules(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Contagem de módulos ativos
+  const activeModulesCount = Object.values(modules).filter(Boolean).length;
+
+  // Verificar se as credenciais estão preenchidas
+  const hasCredentials = !!(clientId && clientSecret);
+  const isAuthorized = oauthStatus?.authorized;
+  const isExpired = oauthStatus?.is_expired;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-32">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
