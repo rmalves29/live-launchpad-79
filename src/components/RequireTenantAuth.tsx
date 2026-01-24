@@ -11,10 +11,22 @@ interface RequireTenantAuthProps {
 
 export default function RequireTenantAuth({ children }: RequireTenantAuthProps) {
   const { user, profile, isLoading: authLoading } = useAuth();
-  const { tenant, loading: tenantLoading, tenantId } = useTenantContext();
+  const { tenant, loading: tenantLoading, tenantId, error: tenantError } = useTenantContext();
   
   // Ativar timeout de sessão apenas quando logado
   useSessionTimeout();
+
+  // Debug logs para diagnóstico
+  console.log('[RequireTenantAuth] Estado:', {
+    authLoading,
+    tenantLoading,
+    hasUser: !!user,
+    hasProfile: !!profile,
+    profileRole: profile?.role,
+    hasTenant: !!tenant,
+    tenantId,
+    tenantError
+  });
 
   // Se ainda está carregando auth ou tenant, mostrar loading
   if (authLoading || tenantLoading) {

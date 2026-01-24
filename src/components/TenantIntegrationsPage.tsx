@@ -21,17 +21,19 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function TenantIntegrationsPage() {
-  const { tenant, loading: tenantLoading } = useTenantContext();
-  const { profile } = useAuth();
+  const { tenant, loading: tenantLoading, error: tenantError } = useTenantContext();
+  const { profile, isLoading: authLoading } = useAuth();
   const tenantId = tenant?.id || '';
-  const isSuperAdmin = profile?.role === 'super_admin';
 
   // Debug: mostrar qual tenant está sendo usado
-  console.log('[TenantIntegrationsPage] Tenant carregado:', {
+  console.log('[TenantIntegrationsPage] Estado atual:', {
     tenantId,
     tenantName: tenant?.name,
     tenantSlug: tenant?.slug,
-    isSuperAdmin,
+    tenantLoading,
+    authLoading,
+    tenantError,
+    profileRole: profile?.role,
     previewTenantId: localStorage.getItem('previewTenantId')
   });
 
@@ -119,11 +121,28 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
-  // Verificar se tenant está carregando
-  if (tenantLoading) {
+  // Verificar se auth ou tenant está carregando
+  if (authLoading || tenantLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="container mx-auto p-6 flex items-center justify-center h-64">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Carregando integrações...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Mostrar erro se houver
+  if (tenantError) {
+    return (
+      <div className="container mx-auto p-6 max-w-2xl">
+        <Alert variant="destructive">
+          <XCircle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Erro:</strong> {tenantError}
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
