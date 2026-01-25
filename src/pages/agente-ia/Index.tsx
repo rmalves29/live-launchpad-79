@@ -31,9 +31,8 @@ interface Message {
 
 const suggestedQuestions = [
   { icon: TrendingUp, label: "Análise de Vendas", question: "Qual foi o faturamento total e o ticket médio dos pedidos pagos?" },
-  { icon: Users, label: "Top Clientes", question: "Quais são os 5 clientes que mais compraram?" },
+  { icon: Users, label: "Top Clientes", question: "Liste os top 10 clientes em duas visões: 1) Clientes com maior NÚMERO de pedidos (ranking por quantidade de compras) e 2) Clientes com maior VALOR GASTO (ranking por total financeiro). Mostre nome, telefone e os valores de cada ranking." },
   { icon: Package, label: "Estoque Baixo", question: "Quais produtos estão com estoque baixo e precisam de reposição?" },
-  { icon: MessageSquare, label: "Criar Promoção", question: "Crie uma mensagem de promoção para enviar no WhatsApp oferecendo 15% de desconto" },
   { icon: Lightbulb, label: "Pedidos Pendentes", question: "Quantos pedidos estão pendentes de pagamento? Liste os mais antigos." },
   { icon: Sparkles, label: "Msg Cobrança", question: "Crie uma mensagem educada de cobrança para clientes com pedidos não pagos" },
   { icon: ImageIcon, label: "Analisar Produtos", question: "Analise as imagens dos meus produtos e sugira melhorias nas fotos", analyzeImages: true },
