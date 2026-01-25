@@ -45,25 +45,22 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // Buscar TODOS os dados relevantes do tenant para contexto preciso
+    // Buscar TODOS os dados do tenant sem limite artificial
     const [ordersRes, productsRes, customersRes, messagesRes] = await Promise.all([
       supabase
         .from("orders")
         .select("id, customer_name, customer_phone, total_amount, is_paid, is_cancelled, created_at, event_date")
         .eq("tenant_id", tenant_id)
-        .order("created_at", { ascending: false })
-        .limit(500), // Aumentado para cobrir mais dados históricos
+        .order("created_at", { ascending: false }), // SEM LIMITE - busca todos
       supabase
         .from("products")
         .select("id, name, code, price, stock, is_active, image_url, color, size")
         .eq("tenant_id", tenant_id)
-        .eq("is_active", true)
-        .limit(200),
+        .eq("is_active", true),
       supabase
         .from("customers")
         .select("id, name, phone, created_at")
-        .eq("tenant_id", tenant_id)
-        .limit(500),
+        .eq("tenant_id", tenant_id),
       supabase
         .from("whatsapp_messages")
         .select("id, phone, message, type, created_at, delivery_status")
@@ -126,13 +123,13 @@ serve(async (req) => {
     const topByPaidRevenue = [...clientArray].sort((a, b) => b.paidRevenue - a.paidRevenue).slice(0, 15);
 
     const systemPrompt = `Você é um assistente de IA especializado em análise de negócios para e-commerce e vendas via WhatsApp.
-Você tem acesso aos dados do sistema e pode responder perguntas sobre pedidos, clientes, produtos e mensagens.
+Você tem acesso aos dados COMPLETOS do sistema e pode responder perguntas sobre pedidos, clientes, produtos e mensagens.
 Você também pode ANALISAR IMAGENS quando enviadas pelo usuário.
 
-## DADOS ATUAIS DO SISTEMA (até 500 pedidos históricos):
+## DADOS COMPLETOS DO SISTEMA (TODOS OS REGISTROS):
 
 ### MÉTRICAS RESUMIDAS:
-- Total de pedidos analisados: ${totalOrders}
+- Total de pedidos (TODOS): ${totalOrders}
 - Pedidos pagos: ${paidOrders}
 - Pedidos pendentes: ${unpaidOrders}
 - Pedidos cancelados: ${cancelledOrders}
@@ -143,7 +140,7 @@ Você também pode ANALISAR IMAGENS quando enviadas pelo usuário.
 - Produtos com estoque baixo (≤5): ${lowStockProducts.length}
 - Produtos com imagem cadastrada: ${productsWithImages.length}
 
-### TOP 15 CLIENTES POR NÚMERO DE PEDIDOS:
+### TOP 15 CLIENTES POR NÚMERO DE PEDIDOS (calculado de TODOS os pedidos):
 ${JSON.stringify(topByOrderCount.map((c, i) => ({
   posicao: i + 1,
   nome: c.name,
@@ -154,7 +151,7 @@ ${JSON.stringify(topByOrderCount.map((c, i) => ({
   receita_paga: c.paidRevenue.toFixed(2)
 })), null, 2)}
 
-### TOP 15 CLIENTES POR VALOR GASTO (PAGOS):
+### TOP 15 CLIENTES POR VALOR GASTO (PAGOS) (calculado de TODOS os pedidos):
 ${JSON.stringify(topByPaidRevenue.map((c, i) => ({
   posicao: i + 1,
   nome: c.name,
@@ -165,14 +162,14 @@ ${JSON.stringify(topByPaidRevenue.map((c, i) => ({
   receita_paga: c.paidRevenue.toFixed(2)
 })), null, 2)}
 
-### PEDIDOS RECENTES (últimos 30):
-${JSON.stringify(orders.slice(0, 30), null, 2)}
+### TODOS OS PEDIDOS (${orders.length} registros):
+${JSON.stringify(orders, null, 2)}
 
 ### PRODUTOS ATIVOS (incluindo URLs de imagens):
-${JSON.stringify(products.slice(0, 40), null, 2)}
+${JSON.stringify(products.slice(0, 50), null, 2)}
 
 ### CLIENTES CADASTRADOS:
-${JSON.stringify(customers.slice(0, 50), null, 2)}
+${JSON.stringify(customers.slice(0, 100), null, 2)}
 
 ### MENSAGENS WHATSAPP RECENTES:
 ${JSON.stringify(messages.slice(0, 30), null, 2)}
@@ -186,8 +183,11 @@ ${JSON.stringify(messages.slice(0, 30), null, 2)}
 6. **Análise de Imagens**: Analisar imagens enviadas (produtos, comprovantes, etc.)
 
 ## INSTRUÇÕES CRÍTICAS:
+- VOCÊ TEM ACESSO A TODOS OS PEDIDOS DO SISTEMA - use todos para suas análises
 - USE OS DADOS PRÉ-CALCULADOS de "TOP CLIENTES" acima para responder sobre rankings de clientes
+- Os rankings de TOP CLIENTES já foram calculados considerando TODOS os pedidos
 - NÃO invente dados - use APENAS os dados fornecidos acima
+- Se o usuário pedir análise de um período específico (ex: "esse ano", "janeiro"), filtre os pedidos pelo campo created_at
 - Responda sempre em português brasileiro
 - Use emojis quando apropriado para deixar a resposta mais amigável
 - Formate números como moeda brasileira (R$)
