@@ -626,7 +626,27 @@ async function sendOrderToBling(
     }
   }
   
-  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, observacao });
+  // Identificar qual integração de logística usar baseado no nome do frete
+  // Padrões comuns: "Melhor Envio - SEDEX", "Correios - PAC", "Mandae Econômico"
+  let logisticaIntegracao = '';
+  const observacaoLower = observacao.toLowerCase();
+  
+  if (observacaoLower.includes('melhor envio') || observacaoLower.includes('melhorenvio')) {
+    logisticaIntegracao = 'Melhor Envio';
+  } else if (observacaoLower.includes('correios') || observacaoLower.includes('sedex') || observacaoLower.includes('pac')) {
+    logisticaIntegracao = 'Correios';
+  } else if (observacaoLower.includes('mandae') || observacaoLower.includes('mandaê')) {
+    logisticaIntegracao = 'Mandae';
+  }
+  
+  // Extrair o serviço específico (SEDEX, PAC, Econômico, etc.)
+  let servicoFrete = '';
+  const servicoMatch = freteNome.match(/(?:[-–]\s*)?(SEDEX|PAC|Mini\s*Envios?|Pac\s*Mini|Econômico|Express|Standard)/i);
+  if (servicoMatch) {
+    servicoFrete = servicoMatch[1].toUpperCase().replace('ECONOMICO', 'Econômico').replace('MINIENVIO', 'Mini Envios');
+  }
+  
+  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, logisticaIntegracao, servicoFrete, observacao });
 
   // Adicionar dados de transporte/entrega se tiver endereço
   if (customerCep && customerStreet) {
@@ -650,6 +670,21 @@ async function sendOrderToBling(
       blingOrder.transporte.transportador = freteNome;
     }
     
+    // Adicionar integração de logística se identificada
+    // O Bling espera o nome da integração, não o ID
+    if (logisticaIntegracao) {
+      blingOrder.transporte.logistica = logisticaIntegracao;
+      console.log(`[bling-sync-orders] Logística identificada: ${logisticaIntegracao}`);
+    }
+    
+    // Adicionar serviço de frete nos volumes se identificado
+    if (servicoFrete) {
+      blingOrder.transporte.volumes = [{
+        servico: servicoFrete,
+      }];
+      console.log(`[bling-sync-orders] Serviço de frete: ${servicoFrete}`);
+    }
+    
     console.log('[bling-sync-orders] Adicionando dados de transporte ao pedido:', JSON.stringify(blingOrder.transporte, null, 2));
   } else if (freteValor > 0) {
     // Se não tem endereço mas tem frete, adicionar só o valor
@@ -659,6 +694,14 @@ async function sendOrderToBling(
     };
     if (freteNome) {
       blingOrder.transporte.transportador = freteNome;
+    }
+    if (logisticaIntegracao) {
+      blingOrder.transporte.logistica = logisticaIntegracao;
+    }
+    if (servicoFrete) {
+      blingOrder.transporte.volumes = [{
+        servico: servicoFrete,
+      }];
     }
     console.log('[bling-sync-orders] Adicionando apenas valor de frete:', freteValor);
   }
