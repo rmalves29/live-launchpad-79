@@ -765,6 +765,7 @@ export type Database = {
           customer_city: string | null
           customer_complement: string | null
           customer_name: string | null
+          customer_neighborhood: string | null
           customer_number: string | null
           customer_phone: string
           customer_state: string | null
@@ -799,6 +800,7 @@ export type Database = {
           customer_city?: string | null
           customer_complement?: string | null
           customer_name?: string | null
+          customer_neighborhood?: string | null
           customer_number?: string | null
           customer_phone: string
           customer_state?: string | null
@@ -833,6 +835,7 @@ export type Database = {
           customer_city?: string | null
           customer_complement?: string | null
           customer_name?: string | null
+          customer_neighborhood?: string | null
           customer_number?: string | null
           customer_phone?: string
           customer_state?: string | null
