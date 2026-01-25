@@ -211,7 +211,7 @@ async function getOrCreateBlingContactId(
   const customerStreet = customer?.street || order.customer_street || '';
   const customerNumber = customer?.number || order.customer_number || 'S/N';
   const customerComplement = customer?.complement || order.customer_complement || '';
-  const customerNeighborhood = customer?.neighborhood || '';
+  const customerNeighborhood = customer?.neighborhood || order.customer_neighborhood || '';
   const customerCity = customer?.city || order.customer_city || '';
   const customerState = customer?.state || order.customer_state || '';
   const customerEmail = customer?.email || '';
@@ -379,7 +379,7 @@ async function sendOrderToBling(
   const customerStreet = customer?.street || order.customer_street || '';
   const customerNumber = customer?.number || order.customer_number || 'S/N';
   const customerComplement = customer?.complement || order.customer_complement || '';
-  const customerNeighborhood = customer?.neighborhood || '';
+  const customerNeighborhood = customer?.neighborhood || order.customer_neighborhood || '';
   const customerCity = customer?.city || order.customer_city || '';
   const customerState = customer?.state || order.customer_state || '';
   const customerName = customer?.name || order.customer_name || 'Cliente';
