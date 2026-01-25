@@ -45,31 +45,31 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    // Buscar dados relevantes do tenant para contexto
+    // Buscar TODOS os dados relevantes do tenant para contexto preciso
     const [ordersRes, productsRes, customersRes, messagesRes] = await Promise.all([
       supabase
         .from("orders")
         .select("id, customer_name, customer_phone, total_amount, is_paid, is_cancelled, created_at, event_date")
         .eq("tenant_id", tenant_id)
         .order("created_at", { ascending: false })
-        .limit(50),
+        .limit(500), // Aumentado para cobrir mais dados históricos
       supabase
         .from("products")
         .select("id, name, code, price, stock, is_active, image_url, color, size")
         .eq("tenant_id", tenant_id)
         .eq("is_active", true)
-        .limit(100),
+        .limit(200),
       supabase
         .from("customers")
         .select("id, name, phone, created_at")
         .eq("tenant_id", tenant_id)
-        .limit(100),
+        .limit(500),
       supabase
         .from("whatsapp_messages")
         .select("id, phone, message, type, created_at, delivery_status")
         .eq("tenant_id", tenant_id)
         .order("created_at", { ascending: false })
-        .limit(50),
+        .limit(100),
     ]);
 
     const orders = ordersRes.data || [];
@@ -89,51 +89,110 @@ serve(async (req) => {
     const totalMessages = messages.length;
     const productsWithImages = products.filter(p => p.image_url);
 
+    // PRÉ-CALCULAR TOP CLIENTES para dados precisos
+    const clientStats: Record<string, { name: string; phone: string; totalOrders: number; paidOrders: number; totalRevenue: number; paidRevenue: number }> = {};
+    
+    for (const order of orders) {
+      const phone = order.customer_phone;
+      if (!phone) continue;
+      
+      if (!clientStats[phone]) {
+        clientStats[phone] = {
+          name: order.customer_name || "Sem nome",
+          phone,
+          totalOrders: 0,
+          paidOrders: 0,
+          totalRevenue: 0,
+          paidRevenue: 0
+        };
+      }
+      
+      clientStats[phone].totalOrders++;
+      clientStats[phone].totalRevenue += order.total_amount || 0;
+      
+      if (order.is_paid && !order.is_cancelled) {
+        clientStats[phone].paidOrders++;
+        clientStats[phone].paidRevenue += order.total_amount || 0;
+      }
+      
+      // Atualizar nome se disponível
+      if (order.customer_name && clientStats[phone].name === "Sem nome") {
+        clientStats[phone].name = order.customer_name;
+      }
+    }
+
+    const clientArray = Object.values(clientStats);
+    const topByOrderCount = [...clientArray].sort((a, b) => b.totalOrders - a.totalOrders).slice(0, 15);
+    const topByPaidRevenue = [...clientArray].sort((a, b) => b.paidRevenue - a.paidRevenue).slice(0, 15);
+
     const systemPrompt = `Você é um assistente de IA especializado em análise de negócios para e-commerce e vendas via WhatsApp.
 Você tem acesso aos dados do sistema e pode responder perguntas sobre pedidos, clientes, produtos e mensagens.
 Você também pode ANALISAR IMAGENS quando enviadas pelo usuário.
 
-## DADOS ATUAIS DO SISTEMA (últimos 50 registros de cada):
+## DADOS ATUAIS DO SISTEMA (até 500 pedidos históricos):
 
 ### MÉTRICAS RESUMIDAS:
-- Total de pedidos: ${totalOrders}
+- Total de pedidos analisados: ${totalOrders}
 - Pedidos pagos: ${paidOrders}
 - Pedidos pendentes: ${unpaidOrders}
 - Pedidos cancelados: ${cancelledOrders}
-- Faturamento total: R$ ${totalRevenue.toFixed(2)}
+- Faturamento total (pagos): R$ ${totalRevenue.toFixed(2)}
 - Ticket médio: R$ ${averageTicket.toFixed(2)}
-- Total de clientes: ${totalCustomers}
+- Total de clientes únicos: ${clientArray.length}
 - Total de mensagens WhatsApp: ${totalMessages}
 - Produtos com estoque baixo (≤5): ${lowStockProducts.length}
 - Produtos com imagem cadastrada: ${productsWithImages.length}
 
-### PEDIDOS RECENTES:
-${JSON.stringify(orders.slice(0, 20), null, 2)}
+### TOP 15 CLIENTES POR NÚMERO DE PEDIDOS:
+${JSON.stringify(topByOrderCount.map((c, i) => ({
+  posicao: i + 1,
+  nome: c.name,
+  telefone: c.phone,
+  total_pedidos: c.totalOrders,
+  pedidos_pagos: c.paidOrders,
+  receita_total: c.totalRevenue.toFixed(2),
+  receita_paga: c.paidRevenue.toFixed(2)
+})), null, 2)}
+
+### TOP 15 CLIENTES POR VALOR GASTO (PAGOS):
+${JSON.stringify(topByPaidRevenue.map((c, i) => ({
+  posicao: i + 1,
+  nome: c.name,
+  telefone: c.phone,
+  total_pedidos: c.totalOrders,
+  pedidos_pagos: c.paidOrders,
+  receita_total: c.totalRevenue.toFixed(2),
+  receita_paga: c.paidRevenue.toFixed(2)
+})), null, 2)}
+
+### PEDIDOS RECENTES (últimos 30):
+${JSON.stringify(orders.slice(0, 30), null, 2)}
 
 ### PRODUTOS ATIVOS (incluindo URLs de imagens):
-${JSON.stringify(products.slice(0, 30), null, 2)}
+${JSON.stringify(products.slice(0, 40), null, 2)}
 
-### CLIENTES:
-${JSON.stringify(customers.slice(0, 30), null, 2)}
+### CLIENTES CADASTRADOS:
+${JSON.stringify(customers.slice(0, 50), null, 2)}
 
 ### MENSAGENS WHATSAPP RECENTES:
-${JSON.stringify(messages.slice(0, 20), null, 2)}
+${JSON.stringify(messages.slice(0, 30), null, 2)}
 
 ## SUAS CAPACIDADES:
 1. **Análise de Pedidos**: Responder sobre vendas, faturamento, ticket médio, pedidos pendentes
-2. **Análise de Clientes**: Identificar top compradores, clientes inativos, frequência de compra
+2. **Análise de Clientes**: Identificar top compradores (por volume e valor), clientes inativos, frequência de compra
 3. **Análise de Produtos**: Estoque baixo, produtos mais vendidos, sugestões de reposição
 4. **Análise de WhatsApp**: Taxa de mensagens, horários de pico, engajamento
-5. **Criação de Mensagens**: Criar textos para campanhas, promoções, cobrança, follow-up
+5. **Criação de Mensagens**: Criar textos para cobrança, follow-up, agradecimento
 6. **Análise de Imagens**: Analisar imagens enviadas (produtos, comprovantes, etc.)
 
-## INSTRUÇÕES:
+## INSTRUÇÕES CRÍTICAS:
+- USE OS DADOS PRÉ-CALCULADOS de "TOP CLIENTES" acima para responder sobre rankings de clientes
+- NÃO invente dados - use APENAS os dados fornecidos acima
 - Responda sempre em português brasileiro
 - Use emojis quando apropriado para deixar a resposta mais amigável
 - Formate números como moeda brasileira (R$)
 - Seja conciso mas completo
-- Se o usuário pedir para criar uma mensagem, forneça o texto pronto para copiar
-- Use markdown para formatar a resposta (negrito, listas, etc.)
+- Use markdown para formatar a resposta (negrito, listas, tabelas)
 - Quando criar mensagens para WhatsApp, use formatação compatível (*negrito*, _itálico_)
 - Se uma imagem for enviada, analise-a detalhadamente e relacione com os dados do sistema quando relevante`;
 
