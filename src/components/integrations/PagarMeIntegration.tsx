@@ -171,17 +171,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
     },
   });
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Ativar integração
+  // Ativar integração - DEVE estar antes de qualquer return condicional
   const activateMutation = useMutation({
     mutationFn: async () => {
       if (!integration) return;
@@ -209,6 +199,16 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
       });
     },
   });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
