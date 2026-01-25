@@ -56,9 +56,8 @@ serve(async (req) => {
       }
 
       // Gerar state para segurança (inclui tenant_id codificado)
-      // Usar encodeURIComponent para evitar problemas com caracteres especiais
+      // NÃO usar encodeURIComponent aqui pois URLSearchParams já faz o encoding
       const statePayload = JSON.stringify({ tenant_id, timestamp: Date.now() });
-      const state = encodeURIComponent(statePayload);
 
       // Callback URL - aponta para a edge function de callback
       const callbackUrl = `${supabaseUrl}/functions/v1/bling-oauth-callback`;
@@ -68,7 +67,7 @@ serve(async (req) => {
         response_type: "code",
         client_id: integration.client_id,
         redirect_uri: callbackUrl,
-        state: state,
+        state: statePayload, // State SEM encode extra - URLSearchParams já encoda
       });
 
       const authorizationUrl = `${BLING_AUTH_URL}?${authParams.toString()}`;
@@ -79,7 +78,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           authorization_url: authorizationUrl,
-          state: state 
+          state: statePayload 
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
