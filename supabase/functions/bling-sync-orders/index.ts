@@ -365,7 +365,8 @@ async function sendOrderToBling(
     default_icms_situacao: string | null;
     default_icms_origem: string | null;
     default_pis_cofins: string | null;
-  }
+  },
+  activeShippingProvider?: string | null
 ): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
@@ -626,27 +627,32 @@ async function sendOrderToBling(
     }
   }
   
-  // Identificar qual integração de logística usar baseado no nome do frete
-  // Padrões comuns: "Melhor Envio - SEDEX", "Correios - PAC", "Mandae Econômico"
+  // Identificar qual integração de logística usar baseado na integração de frete ATIVA do tenant
+  // Mapeamento: provider do banco -> nome esperado pelo Bling
   let logisticaIntegracao = '';
-  const observacaoLower = observacao.toLowerCase();
   
-  if (observacaoLower.includes('melhor envio') || observacaoLower.includes('melhorenvio')) {
-    logisticaIntegracao = 'Melhor Envio';
-  } else if (observacaoLower.includes('correios') || observacaoLower.includes('sedex') || observacaoLower.includes('pac')) {
-    logisticaIntegracao = 'Correios';
-  } else if (observacaoLower.includes('mandae') || observacaoLower.includes('mandaê')) {
-    logisticaIntegracao = 'Mandae';
+  if (activeShippingProvider) {
+    // Mapear provider do banco para nome do Bling
+    const providerMapping: Record<string, string> = {
+      'melhor_envio': 'Melhor Envio',
+      'mandae': 'Mandae',
+      'correios': 'Correios',
+    };
+    
+    logisticaIntegracao = providerMapping[activeShippingProvider] || '';
+    console.log(`[bling-sync-orders] Logística definida pela integração ativa: ${activeShippingProvider} -> ${logisticaIntegracao}`);
+  } else {
+    console.log('[bling-sync-orders] Nenhuma integração de frete ativa encontrada para o tenant');
   }
   
-  // Extrair o serviço específico (SEDEX, PAC, Econômico, etc.)
+  // Extrair o serviço específico (SEDEX, PAC, Econômico, etc.) do nome do frete
   let servicoFrete = '';
-  const servicoMatch = freteNome.match(/(?:[-–]\s*)?(SEDEX|PAC|Mini\s*Envios?|Pac\s*Mini|Econômico|Express|Standard)/i);
+  const servicoMatch = freteNome.match(/(?:[-–]\s*)?(SEDEX|PAC|Mini\s*Envios?|Pac\s*Mini|Econômico|Express|Standard|Rápido)/i);
   if (servicoMatch) {
-    servicoFrete = servicoMatch[1].toUpperCase().replace('ECONOMICO', 'Econômico').replace('MINIENVIO', 'Mini Envios');
+    servicoFrete = servicoMatch[1].toUpperCase().replace('ECONOMICO', 'Econômico').replace('MINIENVIO', 'Mini Envios').replace('RAPIDO', 'Rápido');
   }
   
-  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, logisticaIntegracao, servicoFrete, observacao });
+  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, logisticaIntegracao, servicoFrete, activeShippingProvider });
 
   // Adicionar dados de transporte/entrega se tiver endereço
   if (customerCep && customerStreet) {
@@ -903,6 +909,18 @@ serve(async (req) => {
 
         console.log('[bling-sync-orders] Customer found:', customer ? customer.name : 'NOT FOUND');
 
+        // Buscar integração de frete ativa do tenant para definir a logística
+        const { data: shippingIntegration } = await supabase
+          .from('shipping_integrations')
+          .select('provider')
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+        
+        const activeShippingProvider = shippingIntegration?.provider || null;
+        console.log('[bling-sync-orders] Active shipping provider:', activeShippingProvider);
+
         // Usar loja configurada no banco (se houver)
         const blingStoreId = integration.bling_store_id || null;
         
@@ -918,7 +936,7 @@ serve(async (req) => {
           default_pis_cofins: integration.default_pis_cofins || null,
         };
         
-        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData);
+        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider);
 
         // Persistir o ID do pedido no Bling (inclui caso "já existe")
         await supabase
@@ -960,6 +978,18 @@ serve(async (req) => {
         if (ordersError) {
           throw new Error(`Failed to fetch orders: ${ordersError.message}`);
         }
+
+        // Buscar integração de frete ativa do tenant UMA VEZ antes do loop
+        const { data: shippingIntegrationBulk } = await supabase
+          .from('shipping_integrations')
+          .select('provider')
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+        
+        const activeShippingProviderBulk = shippingIntegrationBulk?.provider || null;
+        console.log('[bling-sync-orders] Bulk sync - Active shipping provider:', activeShippingProviderBulk);
 
         const results: any[] = [];
         for (let i = 0; i < (orders || []).length; i++) {
@@ -1011,6 +1041,9 @@ serve(async (req) => {
 
             console.log(`[bling-sync-orders] Order ${order.id} - Customer found:`, customer ? customer.name : 'NOT FOUND');
 
+            // Buscar integração de frete ativa do tenant para definir a logística (apenas uma vez no início do loop)
+            // Movido para fora do loop para melhor performance
+            
             // Usar loja configurada no banco (se houver)
             const blingStoreId = integration.bling_store_id || null;
             
@@ -1026,7 +1059,7 @@ serve(async (req) => {
               default_pis_cofins: integration.default_pis_cofins || null,
             };
             
-            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData);
+            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk);
 
             await supabase
               .from('orders')
