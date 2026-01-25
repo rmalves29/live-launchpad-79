@@ -225,6 +225,7 @@ serve(async (req) => {
             customer_street: payload.addressData.street,
             customer_number: payload.addressData.number,
             customer_complement: payload.addressData.complement ?? null,
+            customer_neighborhood: payload.addressData.neighborhood ?? null,
             customer_city: payload.addressData.city,
             customer_state: payload.addressData.state,
             observation: nextObs,
