@@ -563,6 +563,56 @@ export type Database = {
           },
         ]
       }
+      integration_instagram: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          environment: string
+          id: string
+          instagram_account_id: string | null
+          is_active: boolean
+          page_access_token: string | null
+          page_id: string | null
+          tenant_id: string
+          updated_at: string
+          webhook_verify_token: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          instagram_account_id?: string | null
+          is_active?: boolean
+          page_access_token?: string | null
+          page_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          webhook_verify_token?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          instagram_account_id?: string | null
+          is_active?: boolean
+          page_access_token?: string | null
+          page_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          webhook_verify_token?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_instagram_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_mp: {
         Row: {
           access_token: string | null
