@@ -114,10 +114,13 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     const loadOrders = async () => {
       try {
         setLoading(true);
+        
+        // 1. Buscar pedidos com filtros aplicados (query otimizada)
         let query = supabaseTenant
           .from('orders')
-          .select('*, tenant_id')
-          .order('created_at', { ascending: false });
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(500); // Limitar para performance
 
         if (filterPaid === 'paid') {
           query = query.eq('is_paid', true).eq('is_cancelled', false);
@@ -139,87 +142,67 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
         const { data: orderData, error: orderError } = await query;
 
         if (orderError) throw orderError;
+        
+        if (!orderData || orderData.length === 0) {
+          setOrders([]);
+          return;
+        }
 
-        // Fetch customer and cart items data for each order
-        const ordersWithDetails = await Promise.all((orderData || []).map(async (order) => {
-          // Fetch customer data
-          const { data: customerData } = await supabaseTenant
-            .from('customers')
-            .select('name, cpf, street, number, complement, neighborhood, city, state, cep, instagram')
-            .eq('phone', order.customer_phone)
-            .maybeSingle();
+        // 2. BATCH LOADING: Buscar todos os dados relacionados de uma vez
+        
+        // Extrair IDs únicos para batch queries
+        const uniquePhones = [...new Set(orderData.map(o => o.customer_phone))];
+        const cartIds = orderData.filter(o => o.cart_id).map(o => o.cart_id!);
+        const uniqueCartIds = [...new Set(cartIds)];
 
-          // Fetch cart items with products. If cart_id is missing, try to infer the most recent cart for this cliente
-          let cartItemsData: any[] = [];
-          if (order.cart_id) {
-            const { data } = await supabaseTenant
-              .from('cart_items')
-              .select(`
-                id,
-                qty,
-                unit_price,
-                product_name,
-                product_code,
-                product_image_url,
-                product:products!cart_items_product_id_fkey (
-                  name,
-                  code,
-                  image_url,
-                  color,
-                  size
-                )
-              `)
-              .eq('cart_id', order.cart_id);
-            cartItemsData = data || [];
-          } else {
-            // Fallback: buscar um carrinho recente do mesmo telefone (útil para pedidos antigos sem vínculo)
-            const { data: candidateCarts } = await supabaseTenant
-              .from('carts')
-              .select('id, event_date, created_at')
-              .eq('customer_phone', order.customer_phone)
-              .order('created_at', { ascending: false })
-              .limit(5);
+        // Batch query para clientes (uma única query para todos os telefones)
+        const { data: allCustomers } = await supabaseTenant
+          .from('customers')
+          .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram')
+          .in('phone', uniquePhones);
 
-            let resolvedCartId: number | null = null;
-            if (candidateCarts && candidateCarts.length > 0) {
-              // tentar casar por proximidade da data do evento (±2 dias)
-              const oEvent = new Date(order.event_date);
-              const byDate = candidateCarts.find((c: any) => {
-                const cEvent = new Date(c.event_date);
-                const diffDays = Math.abs((cEvent.getTime() - oEvent.getTime()) / (1000 * 60 * 60 * 24));
-                return diffDays <= 2;
-              });
-              resolvedCartId = (byDate || candidateCarts[0])?.id ?? null;
-            }
+        // Criar mapa de clientes por telefone para lookup O(1)
+        const customerMap = new Map<string, any>();
+        (allCustomers || []).forEach(c => customerMap.set(c.phone, c));
 
-            if (resolvedCartId) {
-              const { data } = await supabaseTenant
-                .from('cart_items')
-                .select(`
-                  id,
-                  qty,
-                  unit_price,
-                  product_name,
-                  product_code,
-                  product_image_url,
-                  product:products!cart_items_product_id_fkey (
-                    name,
-                    code,
-                    image_url,
-                    color,
-                    size
-                  )
-                `)
-                .eq('cart_id', resolvedCartId);
-              cartItemsData = data || [];
-            }
-          }
+        // Batch query para cart_items (uma única query para todos os cart_ids)
+        let allCartItems: any[] = [];
+        if (uniqueCartIds.length > 0) {
+          const { data: cartItemsData } = await supabaseTenant
+            .from('cart_items')
+            .select(`
+              id,
+              cart_id,
+              qty,
+              unit_price,
+              product_name,
+              product_code,
+              product_image_url,
+              product:products!cart_items_product_id_fkey (
+                name,
+                code,
+                image_url,
+                color,
+                size
+              )
+            `)
+            .in('cart_id', uniqueCartIds);
+          allCartItems = cartItemsData || [];
+        }
 
-          return {
-            ...order,
-            customer: customerData || undefined,
-            cart_items: cartItemsData
-          };
+        // Criar mapa de cart_items por cart_id para lookup O(1)
+        const cartItemsMap = new Map<number, any[]>();
+        allCartItems.forEach(item => {
+          const existing = cartItemsMap.get(item.cart_id) || [];
+          existing.push(item);
+          cartItemsMap.set(item.cart_id, existing);
+        });
+
+        // 3. Montar resultado final com lookups O(1)
+        const ordersWithDetails = orderData.map(order => ({
+          ...order,
+          customer: customerMap.get(order.customer_phone) || undefined,
+          cart_items: order.cart_id ? (cartItemsMap.get(order.cart_id) || []) : []
         }));
 
         setOrders(ordersWithDetails);
