@@ -86,3 +86,9 @@ verify_jwt = false
 
 [functions.correios-shipping]
 verify_jwt = false
+
+[functions.instagram-webhook]
+verify_jwt = false
+
+[functions.instagram-send-dm]
+verify_jwt = false
