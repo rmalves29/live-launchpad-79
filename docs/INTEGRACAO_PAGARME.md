@@ -1,229 +1,368 @@
-# Integração Pagar.me - Guia Completo
+# 💳 Como Configurar o Pagar.me no OrderZap
 
-Este guia detalha como configurar a integração de pagamentos via **Pagar.me** no OrderZap.
-
----
-
-## 📋 Índice
-
-1. [Pré-requisitos](#pré-requisitos)
-2. [Criar Conta no Pagar.me](#criar-conta-no-pagarme)
-3. [Obter Credenciais](#obter-credenciais)
-4. [Configurar no OrderZap](#configurar-no-orderzap)
-5. [Configurar Webhook](#configurar-webhook)
-6. [Testar a Integração](#testar-a-integração)
-7. [Troubleshooting](#troubleshooting)
+**Guia passo a passo para receber pagamentos via Pagar.me**
 
 ---
 
-## 1. Pré-requisitos
+## 📖 O que é o Pagar.me?
 
-Antes de iniciar, certifique-se de ter:
+O **Pagar.me** é uma plataforma de pagamentos brasileira que permite receber pagamentos por:
+- ✅ Cartão de crédito
+- ✅ Cartão de débito
+- ✅ Pix
+- ✅ Boleto bancário
 
-- ✅ Conta ativa no [Pagar.me](https://pagar.me)
-- ✅ Documentação da empresa aprovada no Pagar.me
-- ✅ Acesso administrativo ao OrderZap
-
----
-
-## 2. Criar Conta no Pagar.me
-
-### Passo 2.1: Acesse o site
-
-1. Acesse [https://pagar.me](https://pagar.me)
-2. Clique em **"Criar conta"** ou **"Começar agora"**
-
-### Passo 2.2: Preencha os dados
-
-1. Informe seus dados pessoais e da empresa
-2. Complete o cadastro com CNPJ e dados bancários
-3. Aguarde a aprovação (geralmente 1-3 dias úteis)
-
-### Passo 2.3: Ative sua conta
-
-1. Após aprovação, você receberá um email de confirmação
-2. Acesse o **Dashboard** do Pagar.me
+Ao integrar o Pagar.me ao OrderZap, seus clientes poderão pagar diretamente pelo link de checkout, e o sistema **marcará automaticamente o pedido como pago** assim que o pagamento for confirmado.
 
 ---
 
-## 3. Obter Credenciais
+## 📋 O que você vai precisar
 
-### Passo 3.1: Acesse o Dashboard
+Antes de começar, tenha em mãos:
 
-1. Faça login em [https://dashboard.pagar.me](https://dashboard.pagar.me)
-2. No menu lateral, clique em **"Configurações"**
+| Item | Descrição |
+|------|-----------|
+| 📧 Email | Um email válido para criar a conta |
+| 📄 CNPJ | CNPJ da sua empresa (obrigatório) |
+| 🏦 Conta bancária | Dados da conta para receber os pagamentos |
+| 📱 Telefone | Para verificação de segurança |
 
-### Passo 3.2: Localize as Chaves de API
-
-1. Vá em **Configurações → Chaves de API** (ou **API Keys**)
-2. Você verá duas chaves principais:
-
-| Chave | Formato | Uso |
-|-------|---------|-----|
-| **API Key (Secret Key)** | `sk_live_...` ou `sk_test_...` | Backend - NÃO expor no frontend |
-| **Public Key** | `pk_live_...` ou `pk_test_...` | Frontend - pode ser exposta |
-
-### Passo 3.3: Copie as Chaves
-
-1. **Para Produção**: Use as chaves que começam com `_live_`
-2. **Para Testes**: Use as chaves que começam com `_test_`
-
-> ⚠️ **IMPORTANTE**: Nunca compartilhe sua Secret Key (sk_) publicamente!
+> ⏱️ **Tempo estimado**: 30-45 minutos para configuração completa
 
 ---
 
-## 4. Configurar no OrderZap
+## 🚀 PARTE 1: Criar sua conta no Pagar.me
 
-### Passo 4.1: Acesse as Integrações
+### Passo 1.1 - Acessar o site
 
-1. No OrderZap, vá em **Configurações → Integrações**
-2. Localize a seção **"Pagar.me"**
+1. Abra seu navegador (Chrome, Firefox, Edge, etc.)
+2. Digite na barra de endereço: **pagar.me**
+3. Pressione **Enter**
 
-### Passo 4.2: Preencha as Credenciais
+Você verá a página inicial do Pagar.me.
 
-| Campo | O que preencher |
-|-------|-----------------|
-| **API Key (Secret Key)** | Cole a chave `sk_live_...` ou `sk_test_...` |
-| **Public Key** | Cole a chave `pk_live_...` ou `pk_test_...` |
-| **Webhook Secret** | (Opcional) Token para validar webhooks |
-| **Modo Sandbox** | Ative para usar ambiente de testes |
+### Passo 1.2 - Iniciar o cadastro
 
-### Passo 4.3: Salvar e Ativar
+1. Procure o botão **"Criar conta"** ou **"Começar agora"** (geralmente no canto superior direito)
+2. Clique nele
 
-1. Clique em **"Salvar e Ativar"**
-2. O Pagar.me será ativado automaticamente
-3. **Importante**: O Mercado Pago será desativado (apenas uma integração de pagamento pode estar ativa)
+### Passo 1.3 - Preencher seus dados
 
----
+Você passará por algumas etapas de cadastro:
 
-## 5. Configurar Webhook
+**📝 Etapa 1 - Dados pessoais:**
+- Nome completo
+- CPF
+- Email
+- Telefone celular
+- Crie uma senha forte
 
-O webhook é **essencial** para que o OrderZap receba notificações de pagamentos confirmados automaticamente.
+**📝 Etapa 2 - Dados da empresa:**
+- CNPJ
+- Razão social
+- Nome fantasia
+- Endereço comercial
 
-### Passo 5.1: Acesse Webhooks no Pagar.me
+**📝 Etapa 3 - Dados bancários:**
+- Banco (ex: Itaú, Bradesco, Nubank, etc.)
+- Agência (sem dígito)
+- Conta corrente (com dígito)
+- Tipo de conta (Corrente ou Poupança)
 
-1. No Dashboard do Pagar.me, vá em **Configurações → Webhooks**
-2. Clique em **"Adicionar Webhook"** ou **"Criar Webhook"**
+> ⚠️ **IMPORTANTE**: A conta bancária deve estar no nome da empresa (mesmo CNPJ) para evitar problemas na transferência.
 
-### Passo 5.2: Configure a URL
+### Passo 1.4 - Aguardar aprovação
 
-Preencha os campos:
+Após enviar o cadastro:
 
-| Campo | Valor |
-|-------|-------|
-| **URL** | `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/pagarme-webhook` |
-| **Eventos** | Selecione os eventos abaixo |
+1. O Pagar.me vai analisar sua documentação
+2. Você receberá um email quando for aprovado
+3. Geralmente leva de **1 a 3 dias úteis**
 
-### Passo 5.3: Selecione os Eventos Obrigatórios
-
-Marque os seguintes eventos:
-
-- ✅ `charge.paid` - Quando uma cobrança é paga
-- ✅ `order.paid` - Quando um pedido é pago
-- ✅ `charge.payment_failed` - (Opcional) Para notificar falhas
-
-### Passo 5.4: Copie o Webhook Secret
-
-1. Após criar, o Pagar.me exibirá um **Webhook Secret**
-2. Copie esse token
-3. Cole no campo **"Webhook Secret"** no OrderZap (opcional, mas recomendado para segurança)
-
-### Passo 5.5: Salve o Webhook
-
-1. Clique em **"Salvar"**
-2. O webhook está configurado!
+> 📧 Fique de olho no seu email (inclusive na pasta de spam)!
 
 ---
 
-## 6. Testar a Integração
+## 🔑 PARTE 2: Obter suas chaves de API
 
-### Passo 6.1: Use o Modo Sandbox
+Depois que sua conta for aprovada, você precisa pegar as **chaves de API** para conectar ao OrderZap.
 
-1. No OrderZap, ative **"Modo Sandbox"** na integração Pagar.me
-2. Use cartões de teste do Pagar.me
+### Passo 2.1 - Acessar o Dashboard
 
-### Passo 6.2: Cartões de Teste
+1. Acesse: **dashboard.pagar.me**
+2. Faça login com seu email e senha
 
-O Pagar.me fornece cartões para teste:
+### Passo 2.2 - Ir para Configurações
+
+1. No menu lateral esquerdo, procure por **"Configurações"** (ícone de engrenagem ⚙️)
+2. Clique em **"Configurações"**
+
+### Passo 2.3 - Encontrar as Chaves de API
+
+1. Dentro de Configurações, procure por **"Chaves de API"** ou **"API Keys"**
+2. Clique nessa opção
+
+Você verá uma tela com suas chaves:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  🔐 Chaves de API                                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  API Key (Secret Key):                                      │
+│  ┌─────────────────────────────────────────────┐            │
+│  │ sk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx    │  [Copiar]  │
+│  └─────────────────────────────────────────────┘            │
+│                                                             │
+│  Public Key (Chave Pública):                                │
+│  ┌─────────────────────────────────────────────┐            │
+│  │ pk_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx    │  [Copiar]  │
+│  └─────────────────────────────────────────────┘            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Passo 2.4 - Copiar as chaves
+
+1. **API Key (Secret Key)**: Clique no botão **[Copiar]** ao lado
+   - Essa chave começa com `sk_live_` (produção) ou `sk_test_` (testes)
+   - **Cole em um bloco de notas** para não perder
+
+2. **Public Key**: Clique no botão **[Copiar]** ao lado
+   - Essa chave começa com `pk_live_` (produção) ou `pk_test_` (testes)
+   - **Cole também no bloco de notas**
+
+> 🔒 **SEGURANÇA**: A Secret Key (sk_) é como a senha do seu banco. **NUNCA** compartilhe com ninguém!
+
+---
+
+## ⚙️ PARTE 3: Configurar no OrderZap
+
+Agora vamos colocar as chaves no OrderZap.
+
+### Passo 3.1 - Acessar as Integrações
+
+1. No OrderZap, clique em **"Configurações"** no menu superior
+2. Clique na aba **"Integrações"**
+3. Role a página até encontrar **"Pagar.me"**
+
+### Passo 3.2 - Preencher os campos
+
+Você verá um formulário assim:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  💳 Integração de Pagamento - Pagar.me                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  API Key (Secret Key) *                                     │
+│  ┌─────────────────────────────────────────────┐            │
+│  │                                             │            │
+│  └─────────────────────────────────────────────┘            │
+│  Chave secreta obtida no painel do Pagar.me                 │
+│                                                             │
+│  Public Key (Chave Pública)                                 │
+│  ┌─────────────────────────────────────────────┐            │
+│  └─────────────────────────────────────────────┘            │
+│  Chave pública do Pagar.me                                  │
+│                                                             │
+│  Webhook Secret                                             │
+│  ┌─────────────────────────────────────────────┐            │
+│  └─────────────────────────────────────────────┘            │
+│  (Será configurado depois)                                  │
+│                                                             │
+│  ○ Modo Sandbox (Testes)                                    │
+│                                                             │
+│  [    Salvar e Ativar    ]                                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Preencha assim:**
+
+| Campo | O que fazer |
+|-------|-------------|
+| **API Key** | Cole a chave que começa com `sk_live_` |
+| **Public Key** | Cole a chave que começa com `pk_live_` |
+| **Webhook Secret** | Deixe vazio por enquanto |
+| **Modo Sandbox** | Deixe **desmarcado** para produção |
+
+### Passo 3.3 - Salvar
+
+1. Clique no botão **"Salvar e Ativar"**
+2. Aguarde a mensagem de confirmação
+
+> ✅ Se tudo estiver correto, você verá: **"Integração salva com sucesso!"**
+
+> ⚠️ **ATENÇÃO**: Se você tinha o Mercado Pago ativo, ele será desativado automaticamente. Apenas **uma integração de pagamento** pode estar ativa por vez.
+
+---
+
+## 🔔 PARTE 4: Configurar o Webhook (Notificações Automáticas)
+
+O **webhook** é o que permite o OrderZap saber quando um pagamento foi confirmado. **Esta etapa é muito importante!**
+
+### Passo 4.1 - Voltar ao Dashboard do Pagar.me
+
+1. Acesse novamente: **dashboard.pagar.me**
+2. Faça login se necessário
+
+### Passo 4.2 - Acessar Webhooks
+
+1. No menu lateral, clique em **"Configurações"** (⚙️)
+2. Procure por **"Webhooks"** ou **"Notificações"**
+3. Clique nessa opção
+
+### Passo 4.3 - Criar novo Webhook
+
+1. Clique no botão **"Adicionar Webhook"** ou **"+ Novo Webhook"**
+
+Você verá um formulário para preencher:
+
+### Passo 4.4 - Preencher os dados do Webhook
+
+**Campo: URL de destino**
+```
+https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/pagarme-webhook
+```
+
+> 📋 **Copie exatamente** esta URL. Qualquer letra errada e não vai funcionar!
+
+**Campo: Eventos (selecione os seguintes):**
+
+Marque as caixinhas:
+- ✅ `charge.paid` - Cobrança paga
+- ✅ `order.paid` - Pedido pago
+
+Opcionalmente, você também pode marcar:
+- ☐ `charge.payment_failed` - Pagamento falhou (para receber notificação de falhas)
+
+### Passo 4.5 - Salvar o Webhook
+
+1. Clique em **"Salvar"** ou **"Criar Webhook"**
+2. O Pagar.me vai exibir um **Webhook Secret** (uma sequência de letras e números)
+
+### Passo 4.6 - Copiar o Webhook Secret (Opcional mas recomendado)
+
+1. Copie o **Webhook Secret** que apareceu
+2. Volte ao OrderZap → Configurações → Integrações → Pagar.me
+3. Clique em **"Editar Configurações"**
+4. Cole no campo **"Webhook Secret"**
+5. Clique em **"Salvar"**
+
+> 🔐 O Webhook Secret adiciona uma camada extra de segurança, garantindo que apenas o Pagar.me pode enviar notificações.
+
+---
+
+## 🧪 PARTE 5: Testar a Integração
+
+Antes de usar com clientes reais, faça um teste!
+
+### Opção A: Teste com valor real (recomendado)
+
+1. Crie um pedido de teste no OrderZap (pode ser R$ 1,00)
+2. Acesse o link de checkout
+3. Pague com seu próprio cartão
+4. Verifique se o pedido foi marcado como **"Pago"** automaticamente
+5. Depois, você pode estornar o pagamento no Dashboard do Pagar.me
+
+### Opção B: Modo Sandbox (ambiente de testes)
+
+Se preferir testar sem dinheiro real:
+
+1. No OrderZap, edite a integração Pagar.me
+2. Ative a opção **"Modo Sandbox"**
+3. Troque as chaves pelas versões de teste:
+   - Use `sk_test_...` em vez de `sk_live_...`
+   - Use `pk_test_...` em vez de `pk_live_...`
+
+**Cartões de teste do Pagar.me:**
 
 | Resultado | Número do Cartão | CVV | Validade |
 |-----------|------------------|-----|----------|
-| ✅ Aprovado | `4000000000000010` | `123` | Qualquer futura |
-| ❌ Recusado | `4000000000000028` | `123` | Qualquer futura |
-| ⏳ Pendente | `4000000000000036` | `123` | Qualquer futura |
+| ✅ Aprovado | `4000 0000 0000 0010` | `123` | Qualquer data futura |
+| ❌ Recusado | `4000 0000 0000 0028` | `123` | Qualquer data futura |
 
-### Passo 6.3: Faça um Pedido de Teste
-
-1. Crie um pedido no OrderZap
-2. Acesse o link de checkout
-3. Pague com um cartão de teste
-4. Verifique se o pedido foi marcado como **"Pago"** automaticamente
+> ⚠️ **LEMBRE-SE**: Após os testes, volte para as chaves de **produção** (`_live_`) para receber pagamentos reais!
 
 ---
 
-## 7. Troubleshooting
+## ❓ Problemas Comuns e Soluções
 
-### ❌ Erro: "Credenciais inválidas"
+### ❌ "Credenciais inválidas" ou "Chave incorreta"
 
-**Causas possíveis:**
-- Chave copiada incorretamente (espaços extras, caracteres faltando)
-- Usando chave de sandbox em produção (ou vice-versa)
+**Possíveis causas:**
+- Você copiou a chave com espaços extras no início ou fim
+- Está usando chave de sandbox (`_test_`) no modo produção (ou vice-versa)
 
-**Solução:**
-1. Copie a chave novamente do Dashboard do Pagar.me
-2. Certifique-se de que o modo sandbox corresponde à chave
-
-### ❌ Erro: "Pagamento não está atualizando automaticamente"
-
-**Causas possíveis:**
-- Webhook não configurado
-- URL do webhook incorreta
-- Eventos não selecionados
-
-**Solução:**
-1. Verifique se o webhook está ativo no Dashboard do Pagar.me
-2. Confira se a URL é exatamente: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/pagarme-webhook`
-3. Certifique-se de que `charge.paid` e `order.paid` estão selecionados
-
-### ❌ Erro: "Webhook retornando 500"
-
-**Solução:**
-1. Verifique os logs da Edge Function no Supabase
-2. Acesse: [Logs do Webhook Pagar.me](https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/functions/pagarme-webhook/logs)
-
-### ❌ Pedido não encontrado no webhook
-
-**Causa:**
-O `external_reference` não está sendo enviado corretamente.
-
-**Formato esperado:**
-```
-tenant:{TENANT_ID};orders:{ORDER_IDS}
-```
-
-Exemplo:
-```
-tenant:08f2b1b9-3988-489e-8186-c60f0c0b0622;orders:123,124
-```
+**Como resolver:**
+1. Volte ao Dashboard do Pagar.me
+2. Copie a chave novamente com cuidado
+3. Cole diretamente no campo, sem adicionar nada
 
 ---
 
-## 📞 Suporte
+### ❌ Pagamento confirmado, mas pedido não foi marcado como pago
 
-### Pagar.me
-- Central de Ajuda: [https://docs.pagar.me](https://docs.pagar.me)
-- Suporte: suporte@pagar.me
+**Possíveis causas:**
+- O webhook não está configurado
+- A URL do webhook está errada
+- Os eventos não estão selecionados
 
-### OrderZap
-- Contate o administrador do sistema
+**Como resolver:**
+1. Acesse Pagar.me → Configurações → Webhooks
+2. Verifique se o webhook existe
+3. Confirme se a URL é exatamente:
+   ```
+   https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/pagarme-webhook
+   ```
+4. Confirme se `charge.paid` e `order.paid` estão marcados
 
 ---
 
-## 🔗 Links Úteis
+### ❌ Erro ao processar pagamento
 
-- [Dashboard Pagar.me](https://dashboard.pagar.me)
-- [Documentação API Pagar.me](https://docs.pagar.me)
-- [Logs do Webhook](https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/functions/pagarme-webhook/logs)
+**Possíveis causas:**
+- API Key incorreta
+- Conta ainda não aprovada
+- Problema temporário no Pagar.me
+
+**Como resolver:**
+1. Verifique se recebeu o email de aprovação da conta
+2. Acesse o Dashboard e veja se há algum aviso
+3. Tente novamente em alguns minutos
+
+---
+
+## 📞 Precisa de Ajuda?
+
+### Suporte Pagar.me
+- 📧 Email: suporte@pagar.me
+- 📚 Documentação: [docs.pagar.me](https://docs.pagar.me)
+- 💬 Chat: Disponível no Dashboard
+
+### Suporte OrderZap
+- Entre em contato com o administrador do sistema
+
+---
+
+## ✅ Checklist Final
+
+Antes de começar a vender, confirme:
+
+- [ ] Conta no Pagar.me aprovada
+- [ ] API Key configurada no OrderZap
+- [ ] Public Key configurada no OrderZap
+- [ ] Webhook criado no Pagar.me com a URL correta
+- [ ] Eventos `charge.paid` e `order.paid` selecionados
+- [ ] Teste de pagamento realizado com sucesso
+- [ ] Modo Sandbox **desativado** (para receber pagamentos reais)
+
+---
+
+**🎉 Parabéns! Sua integração está configurada!**
+
+Agora seus clientes podem pagar pelo checkout e os pedidos serão marcados como pagos automaticamente.
 
 ---
 
