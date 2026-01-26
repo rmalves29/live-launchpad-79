@@ -1,8 +1,9 @@
 /**
  * Página de Integrações por Tenant
- * Permite configurar Mercado Pago, Pagar.me, Melhor Envio, Mandae, Correios e Bling ERP
+ * Permite configurar Mercado Pago, Pagar.me, Melhor Envio, Mandae, Correios, Bling ERP e Instagram
  * Usa automaticamente o tenant do usuário logado
  * Bling ERP só visível para super_admin até validação completa
+ * Instagram Live: visível apenas para tenant orderzap ou super_admin até validação
  * IMPORTANTE: Apenas UMA integração de pagamento pode estar ativa por vez
  */
 
@@ -10,13 +11,14 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Instagram } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
+import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -121,6 +123,24 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
+  // Instagram Status (apenas para orderzap ou super_admin)
+  const isOrderZap = tenant?.slug === 'orderzap';
+  const isSuperAdmin = profile?.role === 'super_admin';
+  const showInstagram = isOrderZap || isSuperAdmin;
+
+  const { data: instagramIntegration } = useQuery({
+    queryKey: ['instagram-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_instagram')
+        .select('is_active')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId && showInstagram,
+  });
+
   // Verificar se auth ou tenant está carregando
   if (authLoading || tenantLoading) {
     return (
@@ -169,49 +189,65 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue="bling" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className={`grid w-full ${showInstagram ? 'grid-cols-7' : 'grid-cols-6'}`}>
           <TabsTrigger value="bling" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
-            Bling ERP
+            <span className="hidden sm:inline">Bling ERP</span>
+            <span className="sm:hidden">Bling</span>
             {blingIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-primary" />
             )}
           </TabsTrigger>
           <TabsTrigger value="mercadopago" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
-            Mercado Pago
+            <span className="hidden sm:inline">Mercado Pago</span>
+            <span className="sm:hidden">MP</span>
             {mpIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-primary" />
             )}
           </TabsTrigger>
           <TabsTrigger value="pagarme" className="flex items-center gap-2">
             <Wallet className="h-4 w-4" />
-            Pagar.me
+            <span className="hidden sm:inline">Pagar.me</span>
+            <span className="sm:hidden">PG</span>
             {pagarmeIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-primary" />
             )}
           </TabsTrigger>
           <TabsTrigger value="melhorenvio" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
-            Melhor Envio
+            <span className="hidden sm:inline">Melhor Envio</span>
+            <span className="sm:hidden">ME</span>
             {melhorEnvioIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-primary" />
             )}
           </TabsTrigger>
           <TabsTrigger value="mandae" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
-            Mandae
+            <span className="hidden sm:inline">Mandae</span>
+            <span className="sm:hidden">MD</span>
             {mandaeIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-primary" />
             )}
           </TabsTrigger>
           <TabsTrigger value="correios" className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
-            Correios
+            <span className="hidden sm:inline">Correios</span>
+            <span className="sm:hidden">CR</span>
             {correiosIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-primary" />
             )}
           </TabsTrigger>
+          {showInstagram && (
+            <TabsTrigger value="instagram" className="flex items-center gap-2">
+              <Instagram className="h-4 w-4" />
+              <span className="hidden sm:inline">Instagram</span>
+              <span className="sm:hidden">IG</span>
+              {instagramIntegration?.is_active && (
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+              )}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="bling" className="mt-6">
@@ -237,6 +273,12 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="correios" className="mt-6">
           <CorreiosIntegration tenantId={tenantId} />
         </TabsContent>
+
+        {showInstagram && (
+          <TabsContent value="instagram" className="mt-6">
+            <InstagramIntegration tenantId={tenantId} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
