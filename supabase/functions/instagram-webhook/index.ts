@@ -39,26 +39,43 @@ Deno.serve(async (req) => {
 
     console.log('[Instagram Webhook] Verification request:', { mode, token });
 
-    // Verificar token - buscar de qualquer integração ativa
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Token padrão de verificação - sempre aceito
+    const DEFAULT_VERIFY_TOKEN = 'orderzap_instagram_verify';
     
-    const { data: integrations } = await supabase
-      .from('integration_instagram')
-      .select('webhook_verify_token')
-      .eq('is_active', true);
+    // Verificar token - primeiro tenta buscar da tabela, se falhar usa o default
+    let validTokens: string[] = [DEFAULT_VERIFY_TOKEN];
+    
+    try {
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const { data: integrations, error } = await supabase
+        .from('integration_instagram')
+        .select('webhook_verify_token')
+        .eq('is_active', true);
 
-    const validTokens = integrations?.map(i => i.webhook_verify_token) || ['orderzap_instagram_verify'];
+      if (!error && integrations?.length) {
+        const dbTokens = integrations
+          .map(i => i.webhook_verify_token)
+          .filter(Boolean);
+        if (dbTokens.length) {
+          validTokens = [...validTokens, ...dbTokens];
+        }
+      }
+    } catch (e) {
+      console.log('[Instagram Webhook] Could not fetch tokens from DB, using default');
+    }
 
-    if (mode === 'subscribe' && validTokens.includes(token)) {
-      console.log('[Instagram Webhook] Verification successful');
+    console.log('[Instagram Webhook] Valid tokens:', validTokens.length);
+
+    if (mode === 'subscribe' && token && validTokens.includes(token)) {
+      console.log('[Instagram Webhook] Verification successful!');
       return new Response(challenge, {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'text/plain' },
+        headers: { 'Content-Type': 'text/plain' },
       });
     }
 
-    console.log('[Instagram Webhook] Verification failed');
-    return new Response('Forbidden', { status: 403, headers: corsHeaders });
+    console.log('[Instagram Webhook] Verification failed - token mismatch');
+    return new Response('Forbidden', { status: 403 });
   }
 
   // Process webhook events (POST request)
