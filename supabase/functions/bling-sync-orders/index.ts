@@ -492,9 +492,11 @@ async function sendOrderToBling(
   // Bling v3: situacao do pedido (0=Em aberto, 6=Em andamento, 9=Atendido, 12=Cancelado)
   // numeroLoja é o número visível para busca no painel
   // loja vincula o pedido a um canal de venda específico
+  // IMPORTANTE: Usamos prefixo "OZ-" para evitar conflito com pedidos de outros canais (Shopee, ML, etc)
+  const orderNumber = `OZ-${order.id}`;
   const blingOrder: any = {
-    numero: order.id,
-    numeroLoja: String(order.id),
+    numero: orderNumber,
+    numeroLoja: orderNumber,
     data: new Date(order.created_at).toISOString().split('T')[0],
     dataPrevista: order.event_date,
     situacao: { id: 6 }, // 6 = Em andamento (aparece na listagem padrão)
