@@ -390,10 +390,7 @@ async function createShipment(
       receipt: false,
       own_hand: false,
       reverse: false,
-      non_commercial: false,
-      invoice: {
-        key: ""
-      },
+      non_commercial: true,
       platform: "OrderZaps",
       tags: [
         {
