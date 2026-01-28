@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { 
   Loader2, 
@@ -13,7 +15,8 @@ import {
   Download,
   Info,
   CheckCircle2,
-  Wrench
+  Wrench,
+  Calendar
 } from 'lucide-react';
 
 interface BlingOrdersSyncPanelProps {
@@ -26,6 +29,8 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
   const [isSyncing, setIsSyncing] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [isFixingFreight, setIsFixingFreight] = useState(false);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Buscar contagem de pedidos pendentes de sincronização
   const { data: pendingCount = 0, refetch: refetchPending, isLoading: isLoadingCount } = useQuery({
@@ -56,7 +61,12 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
     setIsSyncing(true);
     try {
       setScopeError(null);
-      toast.info('Iniciando sincronização...');
+      
+      const dateInfo = startDate || endDate 
+        ? ` (${startDate || 'início'} até ${endDate || 'hoje'})` 
+        : '';
+      toast.info(`Iniciando sincronização${dateInfo}...`);
+      
       const session = await supabase.auth.getSession();
       const response = await fetch(
         'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-sync-orders',
@@ -69,6 +79,8 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
           body: JSON.stringify({
             action: 'sync_all',
             tenant_id: tenantId,
+            start_date: startDate || undefined,
+            end_date: endDate || undefined,
           }),
         }
       );
@@ -261,6 +273,43 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Filtro por data */}
+        <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-primary" />
+            <h4 className="font-medium">Filtrar por Data</h4>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="start-date">Data Inicial</Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                placeholder="dd/mm/aaaa"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="end-date">Data Final</Label>
+              <Input
+                id="end-date"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                placeholder="dd/mm/aaaa"
+              />
+            </div>
+          </div>
+          {(startDate || endDate) && (
+            <p className="text-xs text-muted-foreground">
+              📅 Filtrando pedidos {startDate ? `de ${new Date(startDate + 'T00:00:00').toLocaleDateString('pt-BR')}` : ''} 
+              {startDate && endDate ? ' ' : ''}
+              {endDate ? `até ${new Date(endDate + 'T00:00:00').toLocaleDateString('pt-BR')}` : ''}
+            </p>
+          )}
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2">
           {/* Enviar todos os pedidos pagos */}
           <div className="border rounded-lg p-4 space-y-3">
@@ -270,6 +319,7 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
             </div>
             <p className="text-sm text-muted-foreground">
               Envia pedidos pagos <strong>ainda não sincronizados</strong> para o Bling ERP.
+              {(startDate || endDate) && <span className="block mt-1 text-primary font-medium">Usando filtro de data selecionado</span>}
             </p>
             <Button
               onClick={handleSyncAll}

@@ -883,9 +883,9 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, tenant_id, order_id } = await req.json();
+    const { action, tenant_id, order_id, start_date, end_date } = await req.json();
 
-    console.log(`[bling-sync-orders] Action: ${action}, Tenant: ${tenant_id}, Order: ${order_id}`);
+    console.log(`[bling-sync-orders] Action: ${action}, Tenant: ${tenant_id}, Order: ${order_id}, Date range: ${start_date} to ${end_date}`);
 
     if (!tenant_id) {
       return new Response(
@@ -1059,12 +1059,27 @@ serve(async (req) => {
 
       case 'sync_all': {
         // Buscar pedidos pagos que ainda não foram sincronizados
-        const { data: orders, error: ordersError } = await supabase
+        let ordersQuery = supabase
           .from('orders')
           .select('*')
           .eq('tenant_id', tenant_id)
           .eq('is_paid', true)
-          .is('bling_order_id', null)
+          .is('bling_order_id', null);
+        
+        // Aplicar filtro de data se fornecido
+        if (start_date) {
+          ordersQuery = ordersQuery.gte('created_at', start_date);
+          console.log(`[bling-sync-orders] Filtering orders from: ${start_date}`);
+        }
+        if (end_date) {
+          // Adicionar 1 dia para incluir o dia final completo
+          const endDateObj = new Date(end_date);
+          endDateObj.setDate(endDateObj.getDate() + 1);
+          ordersQuery = ordersQuery.lt('created_at', endDateObj.toISOString().split('T')[0]);
+          console.log(`[bling-sync-orders] Filtering orders until: ${end_date}`);
+        }
+        
+        const { data: orders, error: ordersError } = await ordersQuery
           .order('created_at', { ascending: false })
           .limit(50);
 
