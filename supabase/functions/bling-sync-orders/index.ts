@@ -318,6 +318,97 @@ async function getOrCreateBlingContactId(
         'Token do Bling sem permissão para criar CONTATOS. No Bling, adicione os escopos de Contatos (leitura/escrita) ao seu aplicativo e autorize novamente.'
       );
     }
+    
+    // Se o erro é CPF já cadastrado, tentar buscar o contato existente pelo nome no erro
+    if (createText.includes('já está cadastrado no contato')) {
+      console.log('[bling-sync-orders] CPF already registered, trying to find existing contact...');
+      
+      // Extrair o nome do contato existente da mensagem de erro
+      const nameMatch = createText.match(/cadastrado no contato ([^"]+)"/);
+      const existingName = nameMatch ? nameMatch[1].trim() : null;
+      
+      if (existingName) {
+        console.log(`[bling-sync-orders] Searching for existing contact: ${existingName}`);
+        try {
+          const searchByNameRes = await fetch(
+            `${BLING_API_URL}/contatos?pagina=1&limite=5&pesquisa=${encodeURIComponent(existingName)}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json',
+              },
+            }
+          );
+          
+          if (searchByNameRes.ok) {
+            const searchData = JSON.parse(await searchByNameRes.text());
+            const contacts = searchData?.data || [];
+            console.log(`[bling-sync-orders] Found ${contacts.length} contacts matching "${existingName}"`);
+            
+            // Procurar contato com nome exato ou muito similar
+            for (const contact of contacts) {
+              const contactName = (contact.nome || '').toUpperCase().trim();
+              const searchName = existingName.toUpperCase().trim();
+              
+              if (contactName === searchName || contactName.includes(searchName) || searchName.includes(contactName)) {
+                console.log(`[bling-sync-orders] Found matching contact: ${contact.id} - ${contact.nome}`);
+                
+                // Salvar o bling_contact_id no customer
+                if (customer?.id) {
+                  await supabase
+                    .from('customers')
+                    .update({ bling_contact_id: contact.id })
+                    .eq('id', customer.id)
+                    .eq('tenant_id', tenantId);
+                  console.log(`[bling-sync-orders] Saved existing bling_contact_id ${contact.id} to customer ${customer.id}`);
+                }
+                
+                return contact.id;
+              }
+            }
+          }
+        } catch (searchError) {
+          console.log('[bling-sync-orders] Error searching for existing contact:', searchError);
+        }
+      }
+      
+      // Se não encontrou, tentar buscar pelo CPF diretamente
+      if (customerCpf) {
+        console.log(`[bling-sync-orders] Trying to search by CPF: ${customerCpf}`);
+        try {
+          const searchByCpfRes = await fetch(
+            `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(customerCpf)}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json',
+              },
+            }
+          );
+          
+          if (searchByCpfRes.ok) {
+            const cpfData = JSON.parse(await searchByCpfRes.text());
+            const contact = cpfData?.data?.[0];
+            if (contact?.id) {
+              console.log(`[bling-sync-orders] Found contact by CPF: ${contact.id} - ${contact.nome}`);
+              
+              if (customer?.id) {
+                await supabase
+                  .from('customers')
+                  .update({ bling_contact_id: contact.id })
+                  .eq('id', customer.id)
+                  .eq('tenant_id', tenantId);
+              }
+              
+              return contact.id;
+            }
+          }
+        } catch (cpfSearchError) {
+          console.log('[bling-sync-orders] Error searching by CPF:', cpfSearchError);
+        }
+      }
+    }
+    
     throw new Error(`Bling API error creating contact: ${createRes.status} - ${createText}`);
   }
 
