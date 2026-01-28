@@ -717,7 +717,7 @@ export default function SendFlow() {
       const checkJobStatusRemotely = async (): Promise<boolean> => {
         if (!currentJobIdRef.current) return true; // continua se não há job
         try {
-          const { data } = await supabase
+          const { data } = await supabaseTenant
             .from('sending_jobs')
             .select('status')
             .eq('id', currentJobIdRef.current)
