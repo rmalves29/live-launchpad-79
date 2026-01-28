@@ -541,6 +541,16 @@ type SendOrderResult =
   | { kind: 'created'; blingOrderId: number; raw: any }
   | { kind: 'already_exists'; blingOrderId: number; raw: any };
 
+// Interface for custom shipping option with carrier mapping
+interface CustomShippingOption {
+  id: string;
+  name: string;
+  carrier_service_id: number | null;
+  carrier_service_name: string | null;
+  price: number;
+  delivery_days: number;
+}
+
 async function sendOrderToBling(
   order: any, 
   cartItems: any[], 
@@ -559,7 +569,8 @@ async function sendOrderToBling(
     default_icms_origem: string | null;
     default_pis_cofins: string | null;
   },
-  activeShippingProvider?: string | null
+  activeShippingProvider?: string | null,
+  customShippingOptions?: CustomShippingOption[]
 ): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
@@ -822,11 +833,50 @@ async function sendOrderToBling(
     }
   }
   
-  // Identificar qual integração de logística usar baseado na integração de frete ATIVA do tenant
-  // Mapeamento: provider do banco -> nome esperado pelo Bling
+  // Identificar qual integração de logística usar
+  // PRIORIDADE 1: Verificar se o frete é uma opção customizada com carrier_service_name mapeado
+  // PRIORIDADE 2: Usar a integração de frete ativa do tenant
   let logisticaIntegracao = '';
+  let servicoFrete = '';
+  let customShippingMatch: CustomShippingOption | undefined;
   
-  if (activeShippingProvider) {
+  // Buscar opção customizada pelo nome do frete (ex: "Frete Fixo - Envio" na observação)
+  if (customShippingOptions && customShippingOptions.length > 0) {
+    // Extrair nome da opção customizada da observação
+    // Formato: "[FRETE] Envio - Frete Fixo - Envio | R$ 15.90 | Prazo: ..."
+    // Queremos encontrar "Frete Fixo - Envio" 
+    const observacaoLower = observacao.toLowerCase();
+    
+    for (const option of customShippingOptions) {
+      const optionNameLower = option.name.toLowerCase();
+      // Verificar se o nome da opção está na observação
+      if (observacaoLower.includes(optionNameLower)) {
+        customShippingMatch = option;
+        console.log(`[bling-sync-orders] Custom shipping option matched: "${option.name}" -> carrier: ${option.carrier_service_name || 'none'}`);
+        break;
+      }
+    }
+    
+    // Se encontrou opção customizada com carrier mapeado
+    if (customShippingMatch?.carrier_service_name) {
+      // Extrair provider e serviço do carrier_service_name (ex: "Mandae - Econômico")
+      const carrierParts = customShippingMatch.carrier_service_name.split(' - ');
+      if (carrierParts.length >= 2) {
+        // Primeira parte é o provider (Mandae, Melhor Envio, Correios)
+        logisticaIntegracao = carrierParts[0].trim();
+        // Segunda parte é o serviço (Econômico, SEDEX, PAC, etc)
+        servicoFrete = carrierParts.slice(1).join(' - ').trim();
+        console.log(`[bling-sync-orders] Custom shipping carrier mapped: logistica="${logisticaIntegracao}", servico="${servicoFrete}"`);
+      } else {
+        // Se não tem separador, usar o nome completo como logística
+        logisticaIntegracao = customShippingMatch.carrier_service_name.trim();
+        console.log(`[bling-sync-orders] Custom shipping carrier (single part): logistica="${logisticaIntegracao}"`);
+      }
+    }
+  }
+  
+  // FALLBACK: Se não encontrou opção customizada, usar provider ativo
+  if (!logisticaIntegracao && activeShippingProvider) {
     // Mapear provider do banco para nome do Bling
     const providerMapping: Record<string, string> = {
       'melhor_envio': 'Melhor Envio',
@@ -836,18 +886,21 @@ async function sendOrderToBling(
     
     logisticaIntegracao = providerMapping[activeShippingProvider] || '';
     console.log(`[bling-sync-orders] Logística definida pela integração ativa: ${activeShippingProvider} -> ${logisticaIntegracao}`);
-  } else {
+  }
+  
+  if (!logisticaIntegracao && !activeShippingProvider) {
     console.log('[bling-sync-orders] Nenhuma integração de frete ativa encontrada para o tenant');
   }
   
-  // Extrair o serviço específico (SEDEX, PAC, Econômico, etc.) do nome do frete
-  let servicoFrete = '';
-  const servicoMatch = freteNome.match(/(?:[-–]\s*)?(SEDEX|PAC|Mini\s*Envios?|Pac\s*Mini|Econômico|Express|Standard|Rápido)/i);
-  if (servicoMatch) {
-    servicoFrete = servicoMatch[1].toUpperCase().replace('ECONOMICO', 'Econômico').replace('MINIENVIO', 'Mini Envios').replace('RAPIDO', 'Rápido');
+  // Se ainda não tem serviço definido, extrair do nome do frete
+  if (!servicoFrete) {
+    const servicoMatch = freteNome.match(/(?:[-–]\s*)?(SEDEX|PAC|Mini\s*Envios?|Pac\s*Mini|Econômico|Express|Standard|Rápido)/i);
+    if (servicoMatch) {
+      servicoFrete = servicoMatch[1].toUpperCase().replace('ECONOMICO', 'Econômico').replace('MINIENVIO', 'Mini Envios').replace('RAPIDO', 'Rápido');
+    }
   }
   
-  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, logisticaIntegracao, servicoFrete, activeShippingProvider });
+  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, logisticaIntegracao, servicoFrete, activeShippingProvider, customShippingMatch: customShippingMatch?.name || null });
 
   // Adicionar dados de transporte/entrega se tiver endereço
   if (customerCep && customerStreet) {
@@ -1133,6 +1186,16 @@ serve(async (req) => {
         const activeShippingProvider = shippingIntegration?.provider || null;
         console.log('[bling-sync-orders] Active shipping provider:', activeShippingProvider);
 
+        // Buscar opções de frete customizadas do tenant para mapeamento de carrier
+        const { data: customShippingOptionsData } = await supabase
+          .from('custom_shipping_options')
+          .select('id, name, carrier_service_id, carrier_service_name, price, delivery_days')
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true);
+        
+        const customShippingOptions: CustomShippingOption[] = customShippingOptionsData || [];
+        console.log('[bling-sync-orders] Custom shipping options loaded:', customShippingOptions.length);
+
         // Usar loja configurada no banco (se houver)
         const blingStoreId = integration.bling_store_id || null;
         
@@ -1150,7 +1213,7 @@ serve(async (req) => {
         
         console.log(`[bling-sync-orders] FISCAL DATA FOR TENANT ${tenant_id}:`, JSON.stringify(fiscalData, null, 2));
         
-        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider);
+        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider, customShippingOptions);
 
         // Persistir o ID do pedido no Bling (inclui caso "já existe")
         await supabase
@@ -1219,6 +1282,16 @@ serve(async (req) => {
         
         const activeShippingProviderBulk = shippingIntegrationBulk?.provider || null;
         console.log('[bling-sync-orders] Bulk sync - Active shipping provider:', activeShippingProviderBulk);
+
+        // Buscar opções de frete customizadas do tenant UMA VEZ antes do loop
+        const { data: customShippingOptionsDataBulk } = await supabase
+          .from('custom_shipping_options')
+          .select('id, name, carrier_service_id, carrier_service_name, price, delivery_days')
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true);
+        
+        const customShippingOptionsBulk: CustomShippingOption[] = customShippingOptionsDataBulk || [];
+        console.log('[bling-sync-orders] Bulk sync - Custom shipping options loaded:', customShippingOptionsBulk.length);
 
         const results: any[] = [];
         for (let i = 0; i < (orders || []).length; i++) {
@@ -1290,7 +1363,7 @@ serve(async (req) => {
             
             console.log(`[bling-sync-orders] SYNC_ALL - FISCAL DATA FOR ORDER ${order.id}:`, JSON.stringify(fiscalData, null, 2));
             
-            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk);
+            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk, customShippingOptionsBulk);
 
             await supabase
               .from('orders')
