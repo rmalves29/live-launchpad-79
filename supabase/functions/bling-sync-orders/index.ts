@@ -11,6 +11,61 @@ const BLING_API_URL = 'https://www.bling.com.br/Api/v3';
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+type BlingFetchResult = {
+  response: Response;
+  text: string;
+};
+
+/**
+ * Bling has a strict rate limit (commonly 3 req/sec) and may return 429.
+ * This helper retries with exponential backoff (and honors Retry-After when present).
+ */
+async function blingFetchWithRetry(
+  url: string,
+  options: RequestInit,
+  cfg: { maxAttempts?: number; baseDelayMs?: number; label?: string } = {}
+): Promise<BlingFetchResult> {
+  const maxAttempts = cfg.maxAttempts ?? 5;
+  const baseDelayMs = cfg.baseDelayMs ?? 700;
+  const label = cfg.label ?? url;
+
+  let lastResponse: Response | null = null;
+  let lastText = '';
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    lastResponse = res;
+    lastText = text;
+
+    if (res.status !== 429 && res.status !== 502 && res.status !== 503) {
+      return { response: res, text };
+    }
+
+    // Retry
+    if (attempt < maxAttempts) {
+      const retryAfterHeader = res.headers.get('retry-after');
+      const retryAfterMs = retryAfterHeader && !Number.isNaN(Number(retryAfterHeader))
+        ? Number(retryAfterHeader) * 1000
+        : null;
+
+      const backoffMs = Math.round(baseDelayMs * Math.pow(1.8, attempt - 1));
+      const waitMs = retryAfterMs ?? backoffMs;
+      console.log(`[bling-sync-orders] Rate/Transient error (${res.status}) on ${label}. Attempt ${attempt}/${maxAttempts}. Waiting ${waitMs}ms...`);
+      await delay(waitMs);
+      continue;
+    }
+
+    return { response: res, text };
+  }
+
+  // Shouldn't reach here, but keep types happy
+  if (!lastResponse) {
+    throw new Error('Failed to call Bling API (no response)');
+  }
+  return { response: lastResponse, text: lastText };
+}
+
 /**
  * Validate CPF using checksum algorithm
  */
@@ -55,14 +110,17 @@ function isDuplicateNumeroError(payloadText: string): boolean {
 async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero: number | string, storeId?: number): Promise<number | null> {
   // Primeira busca: tentar com a loja específica se configurada
   if (storeId) {
-    const resWithStore = await fetch(`${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}&idLoja=${storeId}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json',
+    const { response: resWithStore, text: textWithStore } = await blingFetchWithRetry(
+      `${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}&idLoja=${storeId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
       },
-    });
+      { label: 'search-order-by-numero(store)' }
+    );
 
-    const textWithStore = await resWithStore.text();
     if (resWithStore.ok) {
       try {
         const parsed = JSON.parse(textWithStore);
@@ -78,14 +136,16 @@ async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero:
   }
 
   // Busca geral (sem filtro de loja)
-  const res = await fetch(`${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Accept': 'application/json',
+  const { response: res, text } = await blingFetchWithRetry(
+    `${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}`,
+    {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
     },
-  });
-
-  const text = await res.text();
+    { label: 'search-order-by-numero' }
+  );
   if (!res.ok) {
     console.log('[bling-sync-orders] Could not search existing order in Bling:', res.status, text);
     return null;
@@ -106,14 +166,16 @@ async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero:
 // Buscar produto existente no Bling pelo código
 async function findBlingProductByCode(accessToken: string, codigo: string): Promise<number | null> {
   try {
-    const res = await fetch(`${BLING_API_URL}/produtos?pagina=1&limite=1&codigo=${encodeURIComponent(codigo)}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json',
+    const { response: res, text } = await blingFetchWithRetry(
+      `${BLING_API_URL}/produtos?pagina=1&limite=1&codigo=${encodeURIComponent(codigo)}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
       },
-    });
-
-    const text = await res.text();
+      { label: 'search-product-by-code' }
+    );
     if (!res.ok) {
       console.log(`[bling-sync-orders] Could not search product by code "${codigo}":`, res.status, text);
       return null;
@@ -229,17 +291,16 @@ async function getOrCreateBlingContactId(
   if (customerCpf && isValidCPF(customerCpf)) {
     try {
       console.log(`[bling-sync-orders] Searching contact by CPF: ${customerCpf}`);
-      const cpfSearchRes = await fetch(
+      const { response: cpfSearchRes, text: cpfSearchText } = await blingFetchWithRetry(
         `${BLING_API_URL}/contatos?pagina=1&limite=5&numeroDocumento=${encodeURIComponent(customerCpf)}`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Accept': 'application/json',
           },
-        }
+        },
+        { label: 'search-contact-by-cpf' }
       );
-
-      const cpfSearchText = await cpfSearchRes.text();
       if (cpfSearchRes.ok) {
         const parsed = JSON.parse(cpfSearchText);
         const contacts = parsed?.data || [];
@@ -262,17 +323,16 @@ async function getOrCreateBlingContactId(
   // 1.2) Se não encontrou por CPF, buscar por telefone ou nome
   if (!foundContactId) {
     try {
-      const searchRes = await fetch(
+      const { response: searchRes, text: searchText } = await blingFetchWithRetry(
         `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(phone || customerName)}`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Accept': 'application/json',
           },
-        }
+        },
+        { label: 'search-contact-by-pesquisa' }
       );
-
-      const searchText = await searchRes.text();
       if (searchRes.ok) {
         const parsed = JSON.parse(searchText);
         const first = parsed?.data?.[0] || parsed?.data?.contatos?.[0] || parsed?.[0];
@@ -336,17 +396,19 @@ async function getOrCreateBlingContactId(
 
   console.log('[bling-sync-orders] Creating contact with payload:', JSON.stringify(payload, null, 2));
 
-  const createRes = await fetch(`${BLING_API_URL}/contatos`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-      'Accept': 'application/json',
+  const { response: createRes, text: createText } = await blingFetchWithRetry(
+    `${BLING_API_URL}/contatos`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
-
-  const createText = await createRes.text();
+    { label: 'create-contact' }
+  );
   console.log('[bling-sync-orders] Bling create contact status:', createRes.status);
   console.log('[bling-sync-orders] Bling create contact response:', createText);
 
@@ -368,18 +430,19 @@ async function getOrCreateBlingContactId(
       if (existingName) {
         console.log(`[bling-sync-orders] Searching for existing contact: ${existingName}`);
         try {
-          const searchByNameRes = await fetch(
-            `${BLING_API_URL}/contatos?pagina=1&limite=5&pesquisa=${encodeURIComponent(existingName)}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Accept': 'application/json',
+            const { response: searchByNameRes, text: searchByNameText } = await blingFetchWithRetry(
+              `${BLING_API_URL}/contatos?pagina=1&limite=5&pesquisa=${encodeURIComponent(existingName)}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Accept': 'application/json',
+                },
               },
-            }
-          );
+              { label: 'search-contact-by-name-after-duplicate-cpf' }
+            );
           
           if (searchByNameRes.ok) {
-            const searchData = JSON.parse(await searchByNameRes.text());
+              const searchData = JSON.parse(searchByNameText);
             const contacts = searchData?.data || [];
             console.log(`[bling-sync-orders] Found ${contacts.length} contacts matching "${existingName}"`);
             
@@ -414,18 +477,19 @@ async function getOrCreateBlingContactId(
       if (customerCpf) {
         console.log(`[bling-sync-orders] Trying to search by CPF: ${customerCpf}`);
         try {
-          const searchByCpfRes = await fetch(
+          const { response: searchByCpfRes, text: searchByCpfText } = await blingFetchWithRetry(
             `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(customerCpf)}`,
             {
               headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Accept': 'application/json',
               },
-            }
+            },
+            { label: 'search-contact-by-cpf-after-duplicate' }
           );
           
           if (searchByCpfRes.ok) {
-            const cpfData = JSON.parse(await searchByCpfRes.text());
+            const cpfData = JSON.parse(searchByCpfText);
             const contact = cpfData?.data?.[0];
             if (contact?.id) {
               console.log(`[bling-sync-orders] Found contact by CPF: ${contact.id} - ${contact.nome}`);
@@ -851,16 +915,18 @@ async function sendOrderToBling(
 
   console.log('[bling-sync-orders] Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
 
-  const response = await fetch(`${BLING_API_URL}/pedidos/vendas`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
+  const { response, text: responseText } = await blingFetchWithRetry(
+    `${BLING_API_URL}/pedidos/vendas`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(blingOrder),
     },
-    body: JSON.stringify(blingOrder),
-  });
-
-  const responseText = await response.text();
+    { label: 'create-sale-order' }
+  );
   console.log('[bling-sync-orders] Bling API response status:', response.status);
   console.log('[bling-sync-orders] Bling API response:', responseText);
 
@@ -873,6 +939,19 @@ async function sendOrderToBling(
 
     // Se já existir no Bling, buscamos o ID e marcamos como sincronizado no nosso lado.
     if (response.status === 400 && isDuplicateNumeroError(responseText)) {
+      const existingId = await findExistingBlingSaleOrderIdByNumero(accessToken, order.id, storeId);
+      if (existingId) {
+        return { kind: 'already_exists', blingOrderId: existingId, raw: { error: responseText } };
+      }
+    }
+
+    // Alguns casos o Bling devolve erro de validação "A venda possui a mesma situação".
+    // Isso costuma ocorrer quando o número já existe e a API não aceita reprocessar.
+    // Tratamos como "já existe" para não bloquear o batch.
+    if (
+      response.status === 400 &&
+      (responseText.includes('A venda possui a mesma situa') || responseText.includes('"code":50'))
+    ) {
       const existingId = await findExistingBlingSaleOrderIdByNumero(accessToken, order.id, storeId);
       if (existingId) {
         return { kind: 'already_exists', blingOrderId: existingId, raw: { error: responseText } };
@@ -894,21 +973,21 @@ async function sendOrderToBling(
 }
 
 async function fetchOrdersFromBling(accessToken: string, page = 1, limit = 100): Promise<any> {
-  const response = await fetch(
+  const { response, text } = await blingFetchWithRetry(
     `${BLING_API_URL}/pedidos/vendas?pagina=${page}&limite=${limit}`,
     {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },
-    }
+    },
+    { label: 'fetch-orders' }
   );
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Bling API error: ${response.status} - ${errorText}`);
+    throw new Error(`Bling API error: ${response.status} - ${text}`);
   }
 
-  return await response.json();
+  return JSON.parse(text);
 }
 
 serve(async (req) => {
