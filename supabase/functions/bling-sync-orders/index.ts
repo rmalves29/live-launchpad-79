@@ -222,37 +222,75 @@ async function getOrCreateBlingContactId(
     return customer.bling_contact_id;
   }
 
-  // 1) Try to find an existing contact (best-effort; API may vary by account)
+  // 1) Try to find an existing contact by CPF/CNPJ FIRST (most reliable)
   let foundContactId: number | null = null;
-  try {
-    const searchRes = await fetch(
-      `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(phone || customerName)}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-        },
-      }
-    );
+  
+  // 1.1) Buscar por numeroDocumento (CPF/CNPJ) - mais confiável
+  if (customerCpf && isValidCPF(customerCpf)) {
+    try {
+      console.log(`[bling-sync-orders] Searching contact by CPF: ${customerCpf}`);
+      const cpfSearchRes = await fetch(
+        `${BLING_API_URL}/contatos?pagina=1&limite=5&numeroDocumento=${encodeURIComponent(customerCpf)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+          },
+        }
+      );
 
-    const searchText = await searchRes.text();
-    if (searchRes.ok) {
-      const parsed = JSON.parse(searchText);
-      const first = parsed?.data?.[0] || parsed?.data?.contatos?.[0] || parsed?.[0];
-      const id = first?.id;
-      if (typeof id === 'number') foundContactId = id;
-      else if (typeof id === 'string' && /^\d+$/.test(id)) foundContactId = Number(id);
-    } else {
-      // If scope is missing, Bling returns 403 with insufficient_scope
-      if (searchText.includes('insufficient_scope')) {
-        throw new Error(
-          'Token do Bling sem permissão para CONTATOS. No Bling, adicione os escopos de Contatos (leitura/escrita) ao seu aplicativo e autorize novamente.'
-        );
+      const cpfSearchText = await cpfSearchRes.text();
+      if (cpfSearchRes.ok) {
+        const parsed = JSON.parse(cpfSearchText);
+        const contacts = parsed?.data || [];
+        console.log(`[bling-sync-orders] Found ${contacts.length} contacts by CPF`);
+        
+        if (contacts.length > 0) {
+          const contact = contacts[0];
+          foundContactId = typeof contact.id === 'number' ? contact.id : 
+                          (typeof contact.id === 'string' && /^\d+$/.test(contact.id)) ? Number(contact.id) : null;
+          console.log(`[bling-sync-orders] Found contact by CPF: ${foundContactId} - ${contact.nome}`);
+        }
+      } else {
+        console.log(`[bling-sync-orders] CPF search failed: ${cpfSearchRes.status} - ${cpfSearchText}`);
       }
+    } catch (e: any) {
+      console.log('[bling-sync-orders] Error searching by CPF:', String(e?.message || e));
     }
-  } catch (e: any) {
-    // Ignore parse/search errors and try to create the contact below.
-    console.log('[bling-sync-orders] Contact search failed (will try create):', String(e?.message || e));
+  }
+  
+  // 1.2) Se não encontrou por CPF, buscar por telefone ou nome
+  if (!foundContactId) {
+    try {
+      const searchRes = await fetch(
+        `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(phone || customerName)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+          },
+        }
+      );
+
+      const searchText = await searchRes.text();
+      if (searchRes.ok) {
+        const parsed = JSON.parse(searchText);
+        const first = parsed?.data?.[0] || parsed?.data?.contatos?.[0] || parsed?.[0];
+        const id = first?.id;
+        if (typeof id === 'number') foundContactId = id;
+        else if (typeof id === 'string' && /^\d+$/.test(id)) foundContactId = Number(id);
+      } else {
+        // If scope is missing, Bling returns 403 with insufficient_scope
+        if (searchText.includes('insufficient_scope')) {
+          throw new Error(
+            'Token do Bling sem permissão para CONTATOS. No Bling, adicione os escopos de Contatos (leitura/escrita) ao seu aplicativo e autorize novamente.'
+          );
+        }
+      }
+    } catch (e: any) {
+      // Ignore parse/search errors and try to create the contact below.
+      console.log('[bling-sync-orders] Contact search failed (will try create):', String(e?.message || e));
+    }
   }
 
   // Se encontrou, salvar no customer e retornar
