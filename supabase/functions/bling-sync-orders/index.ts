@@ -923,7 +923,9 @@ serve(async (req) => {
 
     const { action, tenant_id, order_id, start_date, end_date } = await req.json();
 
-    console.log(`[bling-sync-orders] Action: ${action}, Tenant: ${tenant_id}, Order: ${order_id}, Date range: ${start_date} to ${end_date}`);
+    console.log(`[bling-sync-orders] ========================================`);
+    console.log(`[bling-sync-orders] Action: ${action}, Tenant: ${tenant_id}, Order: ${order_id}`);
+    console.log(`[bling-sync-orders] Date range: ${start_date} to ${end_date}`);
 
     if (!tenant_id) {
       return new Response(
@@ -1067,6 +1069,8 @@ serve(async (req) => {
           default_pis_cofins: integration.default_pis_cofins || null,
         };
         
+        console.log(`[bling-sync-orders] FISCAL DATA FOR TENANT ${tenant_id}:`, JSON.stringify(fiscalData, null, 2));
+        
         const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider);
 
         // Persistir o ID do pedido no Bling (inclui caso "já existe")
@@ -1204,6 +1208,8 @@ serve(async (req) => {
               default_icms_origem: integration.default_icms_origem || null,
               default_pis_cofins: integration.default_pis_cofins || null,
             };
+            
+            console.log(`[bling-sync-orders] SYNC_ALL - FISCAL DATA FOR ORDER ${order.id}:`, JSON.stringify(fiscalData, null, 2));
             
             const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk);
 
