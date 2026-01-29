@@ -8,10 +8,18 @@ export interface SendingJobData {
   messageTemplate: string;
   perGroupDelaySeconds: number;
   perProductDelayMinutes: number;
+  // Campos para delay randomizado (anti-bloqueio)
+  useRandomDelay?: boolean;
+  minGroupDelaySeconds?: number;
+  maxGroupDelaySeconds?: number;
+  // Campos de progresso
   currentProductIndex: number;
   currentGroupIndex: number;
   sentMessages: number;
   errorMessages: number;
+  // Campos opcionais para countdown
+  countdownSeconds?: number;
+  isWaitingForNextProduct?: boolean;
 }
 
 export interface SendingJob {
