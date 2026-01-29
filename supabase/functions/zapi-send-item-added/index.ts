@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { antiBlockDelay, logAntiBlockDelay } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -183,6 +184,10 @@ serve(async (req) => {
 
     const { instanceId, token, clientToken } = credentials;
     const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
+
+    // Apply anti-block delay before sending
+    const delayMs = await antiBlockDelay(2000, 8000);
+    logAntiBlockDelay('zapi-send-item-added', delayMs);
 
     console.log(`[zapi-send-item-added] Sending to ${formattedPhone}`);
 
