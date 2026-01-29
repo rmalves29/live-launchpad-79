@@ -39,36 +39,89 @@ serve(async (req) => {
       tenant_id: tenantId,
     });
 
-    // Pagar.me envia webhooks no formato:
-    // { id, type, data: { ... } }
-    const eventType = body.type;
-    const eventData = body.data;
+    // Pagar.me envia webhooks em diferentes formatos dependendo do evento
+    // Formato padrão: { id, type, data: { ... } }
+    // Formato alternativo: { event, ... } ou diretamente os dados do charge/order
+    const eventType = body.type || body.event || 
+      (body.current_status === 'paid' ? 'charge.paid' : null) ||
+      (body.status === 'paid' ? 'charge.paid' : null);
+    const eventData = body.data || body;
 
-    if (!eventType || !eventData) {
-      console.log("[pagarme-webhook] Invalid webhook format");
-      return new Response(JSON.stringify({ error: "Invalid webhook format" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    console.log("[pagarme-webhook] Detected event type:", eventType);
+    console.log("[pagarme-webhook] Event data keys:", Object.keys(eventData));
+
+    if (!eventType) {
+      console.log("[pagarme-webhook] Could not determine event type, checking for paid status directly");
+      
+      // Tentar identificar pagamento pelo status diretamente
+      const isPaid = body.status === 'paid' || 
+                     body.current_status === 'paid' ||
+                     eventData?.status === 'paid' ||
+                     eventData?.current_status === 'paid';
+      
+      if (!isPaid) {
+        console.log("[pagarme-webhook] Not a payment confirmation event");
+        return new Response(JSON.stringify({ status: "ok", message: "Event logged but not a payment" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
-    // Processar eventos de pagamento
-    if (eventType === "charge.paid" || eventType === "order.paid") {
+    // Processar eventos de pagamento - aceitar múltiplos formatos
+    const isPaymentEvent = eventType === "charge.paid" || 
+                           eventType === "order.paid" ||
+                           eventType === "transaction.paid" ||
+                           eventType === "payment.paid" ||
+                           body.status === 'paid' ||
+                           body.current_status === 'paid';
+
+    if (isPaymentEvent) {
       console.log("[pagarme-webhook] Processing payment event:", eventType);
 
-      // Extrair external_reference do metadata
-      const metadata = eventData.metadata || eventData.charge?.metadata || {};
-      const externalReference = metadata.external_reference || "";
+      // Extrair external_reference de múltiplos locais possíveis
+      const metadata = eventData.metadata || 
+                       eventData.charge?.metadata || 
+                       body.metadata ||
+                       body.charge?.metadata ||
+                       body.order?.metadata ||
+                       {};
+      
+      // external_reference pode vir em diferentes campos
+      const externalReference = metadata.external_reference || 
+                                 metadata.externalReference ||
+                                 eventData.external_reference ||
+                                 eventData.code ||
+                                 body.external_reference ||
+                                 body.code ||
+                                 "";
 
-      console.log("[pagarme-webhook] External reference:", externalReference);
+      console.log("[pagarme-webhook] External reference found:", externalReference);
+      console.log("[pagarme-webhook] Metadata:", JSON.stringify(metadata));
 
       // Parse external_reference: "tenant:UUID;orders:1,2,3"
       const orderIds = parseOrderIds(externalReference);
       const parsedTenantId = parseTenantId(externalReference) || tenantId;
 
+      console.log("[pagarme-webhook] Parsed tenant_id:", parsedTenantId);
+      console.log("[pagarme-webhook] Parsed order_ids:", orderIds);
+
       if (orderIds.length === 0) {
-        console.log("[pagarme-webhook] No order IDs found in external_reference");
-        return new Response(JSON.stringify({ status: "ok", message: "No orders to update" }), {
+        console.log("[pagarme-webhook] No order IDs found in external_reference, trying to find by metadata");
+        
+        // Log mais detalhado para debug
+        await sb.from("webhook_logs").insert({
+          webhook_type: "pagarme_no_orders_found",
+          status_code: 200,
+          payload: { 
+            external_reference: externalReference, 
+            metadata,
+            full_body_keys: Object.keys(body),
+            event_data_keys: Object.keys(eventData)
+          },
+          tenant_id: parsedTenantId,
+        });
+        
+        return new Response(JSON.stringify({ status: "ok", message: "No orders to update - check external_reference format" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
