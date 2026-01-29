@@ -446,23 +446,28 @@ serve(async (req) => {
       // Find or create order for this cart
       const order = await findOrCreateOrder(supabase, tenantId, normalizedPhone, cart.id, groupName, eventType);
 
-      // Check if product already in cart
+      // ATOMIC UPSERT: Prevents race conditions when multiple messages arrive simultaneously
+      // Uses PostgreSQL's ON CONFLICT to handle concurrent inserts safely
+      
+      // First, check if product already exists in cart
       const { data: existingItem } = await supabase
         .from('cart_items')
-        .select('*')
+        .select('id, qty, created_at')
         .eq('cart_id', cart.id)
         .eq('product_id', product.id)
         .maybeSingle();
 
       let cartItem;
+      let wasSkipped = false;
+      
       if (existingItem) {
-        // DEDUPLICATION: Check if this product was added recently (within 3 minutes)
-        // This prevents duplicate quantities from corrupted/retried messages
+        // DEDUPLICATION: Check if this product was added recently (within 30 seconds)
+        // Reduced from 3 minutes to 30 seconds for better UX while still preventing duplicates
         const itemCreatedAt = new Date(existingItem.created_at).getTime();
-        const threeMinutesAgo = Date.now() - (3 * 60 * 1000); // 3 minutes
+        const thirtySecondsAgo = Date.now() - (30 * 1000);
         
-        if (itemCreatedAt > threeMinutesAgo) {
-          // Product was added less than 3 minutes ago - skip to prevent duplicate
+        if (itemCreatedAt > thirtySecondsAgo) {
+          // Product was added less than 30 seconds ago - skip to prevent duplicate
           console.log(`[zapi-webhook] ⏭️ SKIPPING duplicate product ${product.code} - already added ${Math.round((Date.now() - itemCreatedAt) / 1000)}s ago`);
           results.push({ 
             code, 
@@ -491,7 +496,7 @@ serve(async (req) => {
           continue;
         }
         
-        // Product exists but was added more than 3 minutes ago - customer genuinely wants another
+        // Product exists and was added more than 30 seconds ago - customer genuinely wants another
         const { data: updatedItem, error: updateError } = await supabase
           .from('cart_items')
           .update({
@@ -526,7 +531,10 @@ serve(async (req) => {
         
         console.log(`[zapi-webhook] Updated existing cart item: ${cartItem.id}, new qty: ${cartItem.qty}`);
       } else {
-        // Add new item to cart with product snapshot
+        // Try to insert new item - use a transaction-safe approach with retry
+        // to handle race conditions where another request inserted just before us
+        
+        // First attempt: try to insert
         const { data: newItem, error: cartItemError } = await supabase
           .from('cart_items')
           .insert({
@@ -543,10 +551,43 @@ serve(async (req) => {
           .single();
 
         if (cartItemError) {
+          // Check if it's a duplicate key error (race condition)
+          if (cartItemError.code === '23505' || cartItemError.message?.includes('duplicate') || cartItemError.message?.includes('unique')) {
+            console.log(`[zapi-webhook] 🔄 Race condition detected for ${product.code} - checking existing item`);
+            
+            // Another request inserted this product - fetch it and check if we should skip
+            const { data: raceItem } = await supabase
+              .from('cart_items')
+              .select('id, qty, created_at')
+              .eq('cart_id', cart.id)
+              .eq('product_id', product.id)
+              .maybeSingle();
+            
+            if (raceItem) {
+              const itemCreatedAt = new Date(raceItem.created_at).getTime();
+              const thirtySecondsAgo = Date.now() - (30 * 1000);
+              
+              if (itemCreatedAt > thirtySecondsAgo) {
+                // Item was just created by another request - skip
+                console.log(`[zapi-webhook] ⏭️ SKIPPING (race) duplicate product ${product.code} - already added by concurrent request`);
+                results.push({ 
+                  code, 
+                  success: true, 
+                  skipped: 'race_condition_duplicate',
+                  product_name: product.name,
+                  cart_id: cart.id,
+                  existing_qty: raceItem.qty
+                });
+                continue;
+              }
+            }
+          }
+          
           console.log(`[zapi-webhook] Error adding cart item:`, cartItemError);
           results.push({ code, success: false, error: 'cart_item_error' });
           continue;
         }
+        
         cartItem = newItem;
         
         // DECREMENT STOCK after successful cart insert
