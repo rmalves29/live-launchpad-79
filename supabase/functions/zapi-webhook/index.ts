@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { antiBlockDelay, logAntiBlockDelay } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -340,6 +341,10 @@ serve(async (req) => {
             
             // Format phone for Z-API (needs 55 prefix)
             const phoneForZapi = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+            
+            // Apply anti-block delay before sending
+            const delayMs = await antiBlockDelay(2000, 8000);
+            logAntiBlockDelay('zapi-webhook (out-of-stock)', delayMs);
             
             const zapiUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/send-text`;
             
