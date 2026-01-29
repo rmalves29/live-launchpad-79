@@ -280,6 +280,26 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
               </div>
             </div>
 
+            {/* Seção de Webhook obrigatória */}
+            <Alert className="border-destructive/50 bg-destructive/10">
+              <AlertCircle className="h-4 w-4 text-destructive" />
+              <AlertDescription className="text-foreground">
+                <strong>⚠️ Configuração obrigatória do Webhook:</strong>
+                <p className="mt-2 mb-1">Para que os pagamentos sejam confirmados automaticamente, configure o webhook no painel da Pagar.me:</p>
+                <ol className="list-decimal ml-4 space-y-1 text-xs">
+                  <li>Acesse <a href="https://dash.pagar.me" target="_blank" rel="noopener noreferrer" className="underline font-medium">dash.pagar.me</a> → Configurações → Webhooks</li>
+                  <li>Clique em "Adicionar Webhook"</li>
+                  <li>Cole a URL abaixo:</li>
+                </ol>
+                <div className="mt-2 p-2 bg-background rounded border font-mono text-xs break-all select-all">
+                  https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/pagarme-webhook?tenant_id={tenantId}
+                </div>
+                <p className="mt-2 text-xs">
+                  <strong>Eventos obrigatórios:</strong> charge.paid, order.paid
+                </p>
+              </AlertDescription>
+            </Alert>
+
             <div className="flex gap-2">
               <Button onClick={() => setIsEditing(true)}>Editar Configurações</Button>
             </div>
