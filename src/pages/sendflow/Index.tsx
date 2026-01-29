@@ -177,6 +177,11 @@ export default function SendFlow() {
   const [perGroupDelaySeconds, setPerGroupDelaySeconds] = useState(10);
   const [perProductDelayMinutes, setPerProductDelayMinutes] = useState(1);
   
+  // Estados para delays randomizados (anti-bloqueio)
+  const [useRandomDelay, setUseRandomDelay] = useState(true); // Ativado por padrão
+  const [minGroupDelaySeconds, setMinGroupDelaySeconds] = useState(3);
+  const [maxGroupDelaySeconds, setMaxGroupDelaySeconds] = useState(15);
+  
   // Estados de controle
   const [loading, setLoading] = useState(false);
   const [loadingGroups, setLoadingGroups] = useState(false);
@@ -511,6 +516,19 @@ export default function SendFlow() {
     return `R$ ${price.toFixed(2).replace('.', ',')}`;
   };
 
+  // Gera um delay aleatório entre min e max segundos (para simular comportamento humano)
+  const getRandomDelay = (minSeconds: number, maxSeconds: number): number => {
+    return Math.floor(Math.random() * (maxSeconds - minSeconds + 1) + minSeconds) * 1000;
+  };
+
+  // Retorna o delay a ser usado entre grupos (fixo ou aleatório)
+  const getGroupDelay = (): number => {
+    if (useRandomDelay) {
+      return getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds);
+    }
+    return perGroupDelaySeconds * 1000;
+  };
+
   const personalizeMessage = (product: Product) => {
     let message = messageTemplate;
     
@@ -639,6 +657,16 @@ export default function SendFlow() {
         initialErrorCount = resumeData.errorMessages || 0;
         setPerGroupDelaySeconds(resumeData.perGroupDelaySeconds || 5);
         setPerProductDelayMinutes(resumeData.perProductDelayMinutes || 1);
+        // Restaurar configurações de delay randomizado
+        if (resumeData.useRandomDelay !== undefined) {
+          setUseRandomDelay(resumeData.useRandomDelay);
+        }
+        if (resumeData.minGroupDelaySeconds !== undefined) {
+          setMinGroupDelaySeconds(resumeData.minGroupDelaySeconds);
+        }
+        if (resumeData.maxGroupDelaySeconds !== undefined) {
+          setMaxGroupDelaySeconds(resumeData.maxGroupDelaySeconds);
+        }
         if (resumeData.messageTemplate) {
           setMessageTemplate(resumeData.messageTemplate);
         }
@@ -692,6 +720,9 @@ export default function SendFlow() {
           messageTemplate,
           perGroupDelaySeconds,
           perProductDelayMinutes,
+          useRandomDelay,
+          minGroupDelaySeconds,
+          maxGroupDelaySeconds,
           currentProductIndex: 0,
           currentGroupIndex: 0,
           sentMessages: 0,
@@ -829,18 +860,21 @@ export default function SendFlow() {
             // Atualizar progresso no banco a cada mensagem enviada
             await updateJobProgress(productIdx, groupIndex + 1);
 
-            // Delay entre grupos - NÃO espera após o último grupo (zera o delay)
-            if (perGroupDelaySeconds > 0 && !isLastGroup && !isCancelledRef.current) {
-              const delayMs = perGroupDelaySeconds * 1000;
-              const delayStep = 500;
-              let elapsed = 0;
-              while (elapsed < delayMs && !isCancelledRef.current) {
-            await waitWhilePaused();
-            if (isCancelledRef.current) break;
-            await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
-            elapsed += delayStep;
-          }
-        }
+            // Delay entre grupos - NÃO espera após o último grupo
+            // Usa delay aleatório se ativado para simular comportamento humano
+            if (!isLastGroup && !isCancelledRef.current) {
+              const delayMs = getGroupDelay();
+              if (delayMs > 0) {
+                const delayStep = 500;
+                let elapsed = 0;
+                while (elapsed < delayMs && !isCancelledRef.current) {
+                  await waitWhilePaused();
+                  if (isCancelledRef.current) break;
+                  await new Promise(resolve => setTimeout(resolve, Math.min(delayStep, delayMs - elapsed)));
+                  elapsed += delayStep;
+                }
+              }
+            }
       } catch (err) {
         console.error(`Erro ao enviar para grupo ${groupId}:`, err);
         errorCount++;
@@ -1314,9 +1348,70 @@ export default function SendFlow() {
       <Card>
         <CardHeader>
           <CardTitle>Configurações de Envio</CardTitle>
+          <CardDescription>
+            Configure os intervalos entre mensagens para evitar bloqueios do WhatsApp
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="space-y-6">
+          {/* Modo Anti-Bloqueio */}
+          <div className="p-4 rounded-lg border-2 border-primary/20 bg-primary/5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary/10">
+                  <RefreshCw className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <Label className="text-base font-semibold">Modo Anti-Bloqueio</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Usa intervalos aleatórios para simular comportamento humano
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-sm font-medium ${useRandomDelay ? 'text-primary' : 'text-muted-foreground'}`}>
+                  {useRandomDelay ? 'Ativado' : 'Desativado'}
+                </span>
+                <Checkbox
+                  checked={useRandomDelay}
+                  onCheckedChange={(checked) => setUseRandomDelay(checked === true)}
+                  className="h-5 w-5"
+                />
+              </div>
+            </div>
+
+            {useRandomDelay && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-3 bg-background rounded-lg">
+                <div>
+                  <Label className="text-sm">Intervalo mínimo (segundos)</Label>
+                  <Input
+                    type="number"
+                    value={minGroupDelaySeconds}
+                    onChange={(e) => setMinGroupDelaySeconds(Math.max(1, Number(e.target.value)))}
+                    min={1}
+                    max={maxGroupDelaySeconds}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Intervalo máximo (segundos)</Label>
+                  <Input
+                    type="number"
+                    value={maxGroupDelaySeconds}
+                    onChange={(e) => setMaxGroupDelaySeconds(Math.max(minGroupDelaySeconds, Number(e.target.value)))}
+                    min={minGroupDelaySeconds}
+                    max={120}
+                    className="mt-1"
+                  />
+                </div>
+                <p className="col-span-full text-xs text-muted-foreground">
+                  ⚡ Cada mensagem terá um delay aleatório entre {minGroupDelaySeconds}s e {maxGroupDelaySeconds}s
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Configuração de delay fixo (quando randomização está desativada) */}
+          {!useRandomDelay && (
             <div>
               <Label>Delay entre grupos (segundos)</Label>
               <Input
@@ -1325,25 +1420,29 @@ export default function SendFlow() {
                 onChange={(e) => setPerGroupDelaySeconds(Number(e.target.value))}
                 min={1}
                 max={3600}
+                className="mt-1"
               />
               <p className="text-sm text-muted-foreground mt-1">
-                Tempo de espera entre envios para grupos consecutivos (por produto)
+                Tempo fixo de espera entre envios para grupos consecutivos
               </p>
             </div>
+          )}
 
-            <div>
-              <Label>Delay entre produtos (minutos)</Label>
-              <Input
-                type="number"
-                value={perProductDelayMinutes}
-                onChange={(e) => setPerProductDelayMinutes(Number(e.target.value))}
-                min={0}
-                max={1440}
-              />
-              <p className="text-sm text-muted-foreground mt-1">
-                Após finalizar o envio do produto A para todos os grupos, aguardar X minutos antes de enviar o próximo produto
-              </p>
-            </div>
+          <Separator />
+
+          <div>
+            <Label>Delay entre produtos (minutos)</Label>
+            <Input
+              type="number"
+              value={perProductDelayMinutes}
+              onChange={(e) => setPerProductDelayMinutes(Number(e.target.value))}
+              min={0}
+              max={1440}
+              className="mt-1"
+            />
+            <p className="text-sm text-muted-foreground mt-1">
+              Após enviar um produto para todos os grupos, aguardar X minutos antes do próximo produto
+            </p>
           </div>
         </CardContent>
       </Card>
