@@ -760,10 +760,39 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       }
 
       try {
-        // Delete cart items first if they exist
+        // Restaurar estoque e deletar cart items
         for (const orderId of selectedOrders) {
           const order = orders.find(o => o.id === orderId);
           if (order?.cart_id) {
+            // Buscar itens do carrinho para restaurar estoque (apenas se pedido não foi pago)
+            if (!order.is_paid && !order.is_cancelled) {
+              const { data: cartItems } = await supabaseTenant
+                .from('cart_items')
+                .select('product_id, qty')
+                .eq('cart_id', order.cart_id);
+
+              if (cartItems && cartItems.length > 0) {
+                for (const item of cartItems) {
+                  if (item.product_id) {
+                    const { data: product } = await supabaseTenant
+                      .from('products')
+                      .select('stock')
+                      .eq('id', item.product_id)
+                      .maybeSingle();
+
+                    if (product) {
+                      const newStock = (product.stock || 0) + (item.qty || 1);
+                      await supabaseTenant
+                        .from('products')
+                        .update({ stock: newStock })
+                        .eq('id', item.product_id);
+                    }
+                  }
+                }
+              }
+            }
+
+            // Deletar cart items e cart
             await supabaseTenant
               .from('cart_items')
               .delete()
@@ -790,7 +819,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
 
         toast({
           title: 'Sucesso',
-          description: `${selectedOrders.size} pedido(s) deletado(s) com sucesso`
+          description: `${selectedOrders.size} pedido(s) deletado(s) e estoque devolvido`
         });
       } catch (error) {
         console.error('Error deleting orders:', error);
