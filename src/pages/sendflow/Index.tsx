@@ -800,6 +800,10 @@ export default function SendFlow() {
         
         const product = selectedProductArray[productIdx];
         const message = personalizeMessage(product);
+        
+        // Log detalhado para rastreamento de timing
+        const productStartTime = new Date();
+        console.log(`[SendFlow] 🚀 INICIANDO produto ${productIdx + 1}/${selectedProductArray.length}: ${product.code} - ${product.name} às ${productStartTime.toLocaleTimeString('pt-BR')}`);
 
         // Determinar índice inicial do grupo (se estiver retomando no meio de um produto)
         const groupStartIdx = (productIdx === startProductIndex) ? startGroupIndex : 0;
@@ -882,6 +886,11 @@ export default function SendFlow() {
       }
     }
 
+    // Log de conclusão do produto
+    const productEndTime = new Date();
+    const productDurationMs = productEndTime.getTime() - productStartTime.getTime();
+    console.log(`[SendFlow] ✅ CONCLUÍDO produto ${productIdx + 1}/${selectedProductArray.length}: ${product.code} em ${(productDurationMs / 1000).toFixed(1)}s às ${productEndTime.toLocaleTimeString('pt-BR')}`);
+
     // Delay entre produtos - começa a contar APÓS terminar de enviar para todos os grupos
     // NÃO espera após o último produto
     const isLastProduct = productIdx === selectedProductArray.length - 1;
@@ -890,6 +899,7 @@ export default function SendFlow() {
     setCurrentProductIndex(productIdx + 1);
     
     if (perProductDelayMinutes > 0 && !isLastProduct && !isCancelledRef.current) {
+      console.log(`[SendFlow] ⏳ Aguardando ${perProductDelayMinutes} min antes do próximo produto...`);
       const delayMs = perProductDelayMinutes * 60 * 1000;
       const delayStep = 1000; // 1 segundo para atualizar o countdown
       let elapsed = 0;
