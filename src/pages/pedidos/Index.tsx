@@ -764,14 +764,16 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
         for (const orderId of selectedOrders) {
           const order = orders.find(o => o.id === orderId);
           if (order?.cart_id) {
-            // Buscar itens do carrinho para restaurar estoque (apenas se pedido não foi pago)
-            if (!order.is_paid && !order.is_cancelled) {
+            // SEMPRE restaurar estoque se o pedido não foi PAGO
+            // (pedidos cancelados também precisam ter o estoque restaurado se ainda não foi feito)
+            if (!order.is_paid) {
               const { data: cartItems } = await supabaseTenant
                 .from('cart_items')
                 .select('product_id, qty')
                 .eq('cart_id', order.cart_id);
 
               if (cartItems && cartItems.length > 0) {
+                console.log(`[deleteOrders] Restaurando estoque para pedido #${orderId} (is_cancelled: ${order.is_cancelled})`);
                 for (const item of cartItems) {
                   if (item.product_id) {
                     const { data: product } = await supabaseTenant
@@ -786,6 +788,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                         .from('products')
                         .update({ stock: newStock })
                         .eq('id', item.product_id);
+                      console.log(`[deleteOrders] Estoque restaurado: +${item.qty || 1} para produto ${item.product_id}, novo estoque: ${newStock}`);
                     }
                   }
                 }
