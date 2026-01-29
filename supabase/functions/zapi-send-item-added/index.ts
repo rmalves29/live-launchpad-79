@@ -185,8 +185,8 @@ serve(async (req) => {
     const { instanceId, token, clientToken } = credentials;
     const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
 
-    // Apply anti-block delay before sending
-    const delayMs = await antiBlockDelay(2000, 8000);
+    // Apply anti-block delay before sending (1-4 seconds)
+    const delayMs = await antiBlockDelay(1000, 4000);
     logAntiBlockDelay('zapi-send-item-added', delayMs);
 
     console.log(`[zapi-send-item-added] Sending to ${formattedPhone}`);

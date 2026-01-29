@@ -5,8 +5,8 @@
  */
 
 // Default delay range in milliseconds
-const DEFAULT_MIN_DELAY_MS = 2000; // 2 seconds
-const DEFAULT_MAX_DELAY_MS = 8000; // 8 seconds
+const DEFAULT_MIN_DELAY_MS = 1000; // 1 second
+const DEFAULT_MAX_DELAY_MS = 4000; // 4 seconds
 
 /**
  * Generates a random delay between min and max milliseconds
