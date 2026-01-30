@@ -95,3 +95,9 @@ verify_jwt = false
 
 [functions.run-migration-whatsapp-flags]
 verify_jwt = false
+
+[functions.run-migration-shipping-coverage]
+verify_jwt = false
+
+[functions.recalculate-order-total]
+verify_jwt = false
