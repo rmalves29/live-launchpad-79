@@ -720,6 +720,10 @@ export type Database = {
           is_active: boolean
           last_status_check: string | null
           provider: string | null
+          send_item_added_msg: boolean
+          send_out_of_stock_msg: boolean
+          send_paid_order_msg: boolean
+          send_product_canceled_msg: boolean
           tenant_id: string
           updated_at: string | null
           webhook_secret: string
@@ -736,6 +740,10 @@ export type Database = {
           is_active?: boolean
           last_status_check?: string | null
           provider?: string | null
+          send_item_added_msg?: boolean
+          send_out_of_stock_msg?: boolean
+          send_paid_order_msg?: boolean
+          send_product_canceled_msg?: boolean
           tenant_id: string
           updated_at?: string | null
           webhook_secret: string
@@ -752,6 +760,10 @@ export type Database = {
           is_active?: boolean
           last_status_check?: string | null
           provider?: string | null
+          send_item_added_msg?: boolean
+          send_out_of_stock_msg?: boolean
+          send_paid_order_msg?: boolean
+          send_product_canceled_msg?: boolean
           tenant_id?: string
           updated_at?: string | null
           webhook_secret?: string
