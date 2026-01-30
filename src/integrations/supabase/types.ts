@@ -266,6 +266,10 @@ export type Database = {
         Row: {
           carrier_service_id: number | null
           carrier_service_name: string | null
+          coverage_city: string | null
+          coverage_state: string | null
+          coverage_states: string[] | null
+          coverage_type: string | null
           created_at: string
           delivery_days: number
           id: string
@@ -278,6 +282,10 @@ export type Database = {
         Insert: {
           carrier_service_id?: number | null
           carrier_service_name?: string | null
+          coverage_city?: string | null
+          coverage_state?: string | null
+          coverage_states?: string[] | null
+          coverage_type?: string | null
           created_at?: string
           delivery_days?: number
           id?: string
@@ -290,6 +298,10 @@ export type Database = {
         Update: {
           carrier_service_id?: number | null
           carrier_service_name?: string | null
+          coverage_city?: string | null
+          coverage_state?: string | null
+          coverage_states?: string[] | null
+          coverage_type?: string | null
           created_at?: string
           delivery_days?: number
           id?: string
