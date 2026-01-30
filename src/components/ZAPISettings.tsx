@@ -205,11 +205,55 @@ export function ZAPISettings() {
     }
   };
 
-  const handleToggleFlag = (flag: keyof MessageFlags) => {
+  const handleToggleFlag = async (flag: keyof MessageFlags) => {
+    if (!tenant?.id || !integration?.id) return;
+
+    const newValue = !messageFlags[flag];
+    
+    // Update local state immediately for responsive UI
     setMessageFlags(prev => ({
       ...prev,
-      [flag]: !prev[flag]
+      [flag]: newValue
     }));
+
+    // Save to database immediately
+    try {
+      const { error } = await supabase
+        .from('integration_whatsapp')
+        .update({ 
+          [flag]: newValue,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', integration.id);
+
+      if (error) throw error;
+
+      toast({
+        title: newValue ? 'Ativado' : 'Desativado',
+        description: `Mensagem "${getFlagLabel(flag)}" ${newValue ? 'ativada' : 'desativada'}`,
+      });
+    } catch (error: any) {
+      // Revert on error
+      setMessageFlags(prev => ({
+        ...prev,
+        [flag]: !newValue
+      }));
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível salvar a configuração',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const getFlagLabel = (flag: keyof MessageFlags): string => {
+    const labels: Record<keyof MessageFlags, string> = {
+      send_item_added_msg: 'Item Adicionado',
+      send_paid_order_msg: 'Pagamento Confirmado',
+      send_product_canceled_msg: 'Produto Cancelado',
+      send_out_of_stock_msg: 'Produto Esgotado',
+    };
+    return labels[flag];
   };
 
   if (loading) {
