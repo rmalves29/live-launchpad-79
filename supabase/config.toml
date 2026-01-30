@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.instagram-send-dm]
 verify_jwt = false
+
+[functions.run-migration-whatsapp-flags]
+verify_jwt = false
