@@ -162,6 +162,39 @@ const Checkout = () => {
   // Tenant específico OF Beauty - definição global
   const OF_BEAUTY_TENANT_ID = '4247aa21-4a46-4988-8845-fa15aa202310';
 
+  // Redirecionar automaticamente para o checkout público do tenant logado
+  useEffect(() => {
+    const redirectToPublicCheckout = async () => {
+      if (!tenantId) return;
+      
+      try {
+        // Carregar slug do tenant
+        const { data: tenantData } = await supabase
+          .rpc('get_tenant_by_id', { tenant_id_param: tenantId });
+        
+        if (tenantData && tenantData.length > 0 && tenantData[0].slug) {
+          const slug = tenantData[0].slug;
+          
+          // Carregar URL base das configurações
+          const { data: settingsData } = await supabase
+            .from('app_settings')
+            .select('public_base_url')
+            .single();
+          
+          const baseUrl = settingsData?.public_base_url || 'https://app.orderzaps.com';
+          const publicCheckoutUrl = `${baseUrl}/t/${slug}/checkout`;
+          
+          // Redirecionar para o checkout público
+          window.location.href = publicCheckoutUrl;
+        }
+      } catch (error) {
+        console.error('Erro ao redirecionar para checkout público:', error);
+      }
+    };
+    
+    redirectToPublicCheckout();
+  }, [tenantId]);
+
   // Detectar retorno da página de pagamento e limpar dados duplicados  
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
