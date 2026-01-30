@@ -41,7 +41,7 @@ function validateInternalRequest(req: Request): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider, send_paid_order_msg")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -51,10 +51,16 @@ async function getZAPICredentials(supabase: any, tenantId: string) {
     return null;
   }
 
+  // Check if this message type is enabled
+  if (integration.send_paid_order_msg === false) {
+    return { disabled: true };
+  }
+
   return {
     instanceId: integration.zapi_instance_id,
     token: integration.zapi_token,
-    clientToken: integration.zapi_client_token || ''
+    clientToken: integration.zapi_client_token || '',
+    disabled: false
   };
 }
 
@@ -157,6 +163,15 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: "Z-API não configurado", sent: false }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if message type is disabled
+    if (credentials.disabled) {
+      console.log("[zapi-send-paid-order] Message type disabled for this tenant");
+      return new Response(
+        JSON.stringify({ sent: false, disabled: true, message: "Envio de mensagem 'Pagamento Confirmado' desativado" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

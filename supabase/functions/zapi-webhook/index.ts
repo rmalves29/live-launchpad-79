@@ -412,12 +412,15 @@ serve(async (req) => {
         try {
           const { data: whatsappConfig } = await supabase
             .from('integration_whatsapp')
-            .select('zapi_instance_id, zapi_token, zapi_client_token, is_active')
+            .select('zapi_instance_id, zapi_token, zapi_client_token, is_active, send_out_of_stock_msg')
             .eq('tenant_id', tenantId)
             .eq('is_active', true)
             .maybeSingle();
           
-          if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
+          // Check if out of stock messages are enabled
+          if (whatsappConfig?.send_out_of_stock_msg === false) {
+            console.log(`[zapi-webhook] ⏭️ Mensagem de estoque esgotado desativada para este tenant`);
+          } else if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
             const outOfStockMessage = `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.💚`;
             
             // Format phone for Z-API (needs 55 prefix)
