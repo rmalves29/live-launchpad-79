@@ -23,9 +23,16 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function TenantIntegrationsPage() {
+  // Todos os hooks devem estar no topo, antes de qualquer return condicional
   const { tenant, loading: tenantLoading, error: tenantError } = useTenantContext();
   const { profile, isLoading: authLoading } = useAuth();
   const tenantId = tenant?.id || '';
+
+  // MANIA DE MULHER ID - definido aqui para usar nas queries
+  const MANIA_DE_MULHER_TENANT_ID = '08f2b1b9-3988-489e-8186-c60f0c0b0622';
+  const isManiaDeMulher = tenantId === MANIA_DE_MULHER_TENANT_ID;
+  const isSuperAdmin = profile?.role === 'super_admin';
+  const showManychat = isManiaDeMulher || isSuperAdmin;
 
   // Debug: mostrar qual tenant está sendo usado
   console.log('[TenantIntegrationsPage] Estado atual:', {
@@ -36,6 +43,7 @@ export default function TenantIntegrationsPage() {
     authLoading,
     tenantError,
     profileRole: profile?.role,
+    showManychat,
     previewTenantId: localStorage.getItem('previewTenantId')
   });
 
@@ -124,19 +132,19 @@ export default function TenantIntegrationsPage() {
   });
 
   // Manychat Status (apenas para Mania de Mulher ou super_admin)
-  const MANIA_DE_MULHER_TENANT_ID = '08f2b1b9-3988-489e-8186-c60f0c0b0622';
-  const isManiaDeMulher = tenantId === MANIA_DE_MULHER_TENANT_ID;
-  const isSuperAdmin = profile?.role === 'super_admin';
-  const showManychat = isManiaDeMulher || isSuperAdmin;
+  // MANIA_DE_MULHER_TENANT_ID já definido acima
 
   const { data: manychatIntegration } = useQuery({
     queryKey: ['manychat-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('integration_manychat')
         .select('is_active')
         .eq('tenant_id', tenantId)
         .maybeSingle();
+      if (error) {
+        console.error('[TenantIntegrationsPage] Erro ao buscar Manychat:', error);
+      }
       return data;
     },
     enabled: !!tenantId && showManychat,
