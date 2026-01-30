@@ -51,6 +51,11 @@ interface ZAPIWebhookPayload {
 const processedMessages = new Map<string, number>();
 const MESSAGE_CACHE_TTL_MS = 60000; // 60 seconds TTL
 
+// Cache to track which products were processed for each message (prevents duplicates within same message)
+// Key format: "messageId:productCode" or "phone:messageHash:productCode"
+const processedProductsInMessage = new Map<string, number>();
+const PRODUCT_CACHE_TTL_MS = 30000; // 30 seconds TTL
+
 // Clean old entries from cache periodically
 function cleanMessageCache() {
   const now = Date.now();
@@ -59,6 +64,43 @@ function cleanMessageCache() {
       processedMessages.delete(key);
     }
   }
+  // Also clean product cache
+  for (const [key, timestamp] of processedProductsInMessage.entries()) {
+    if (now - timestamp > PRODUCT_CACHE_TTL_MS) {
+      processedProductsInMessage.delete(key);
+    }
+  }
+}
+
+// Check if a specific product was already processed for a given message context
+// This prevents duplicates when Z-API sends the same webhook multiple times
+function isProductAlreadyProcessedForMessage(
+  messageId: string | undefined, 
+  phone: string, 
+  messageText: string,
+  productCode: string
+): boolean {
+  const messageKey = messageId || `${phone}:${hashMessage(messageText)}`;
+  const productKey = `${messageKey}:${productCode}`;
+  
+  if (processedProductsInMessage.has(productKey)) {
+    console.log(`[zapi-webhook] 🔄 DUPLICATE product ${productCode} for message already processed`);
+    return true;
+  }
+  
+  processedProductsInMessage.set(productKey, Date.now());
+  return false;
+}
+
+// Simple hash function for message deduplication when no messageId is available
+function hashMessage(text: string): string {
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(36);
 }
 
 // Check if message was already processed (returns true if duplicate)
@@ -263,6 +305,18 @@ serve(async (req) => {
     const results = [];
     for (const code of productCodes) {
       const codeUpper = code.toUpperCase();
+      
+      // DEDUPLICATION: Check if this product was already processed for THIS message
+      // This prevents duplicates when Z-API sends the same webhook multiple times
+      if (isProductAlreadyProcessedForMessage(messageId, senderPhone, messageText, codeUpper)) {
+        console.log(`[zapi-webhook] ⏭️ SKIPPING product ${codeUpper} - already processed for this message`);
+        results.push({ 
+          code: codeUpper, 
+          success: true, 
+          skipped: 'already_processed_for_message'
+        });
+        continue;
+      }
       
       // Try to find product by exact code first
       let product = null;
