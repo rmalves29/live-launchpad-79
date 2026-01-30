@@ -8,11 +8,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Pencil, Trash2, Truck, Package, Info, Loader2 } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { Plus, Pencil, Trash2, Truck, Package, Info, Loader2, MapPin } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/utils';
+
+// Tipos de cobertura geográfica
+type CoverageType = 'national' | 'states' | 'city' | 'capital' | 'interior';
 
 interface ShippingOption {
   id: string;
@@ -22,6 +26,10 @@ interface ShippingOption {
   is_active: boolean;
   carrier_service_id: number | null;
   carrier_service_name: string | null;
+  coverage_type: CoverageType;
+  coverage_states: string[] | null;
+  coverage_city: string | null;
+  coverage_state: string | null;
 }
 
 interface CarrierService {
@@ -29,6 +37,46 @@ interface CarrierService {
   name: string;
   company: string;
 }
+
+// Lista de estados brasileiros
+const BRAZILIAN_STATES = [
+  { uf: 'AC', name: 'Acre' },
+  { uf: 'AL', name: 'Alagoas' },
+  { uf: 'AP', name: 'Amapá' },
+  { uf: 'AM', name: 'Amazonas' },
+  { uf: 'BA', name: 'Bahia' },
+  { uf: 'CE', name: 'Ceará' },
+  { uf: 'DF', name: 'Distrito Federal' },
+  { uf: 'ES', name: 'Espírito Santo' },
+  { uf: 'GO', name: 'Goiás' },
+  { uf: 'MA', name: 'Maranhão' },
+  { uf: 'MT', name: 'Mato Grosso' },
+  { uf: 'MS', name: 'Mato Grosso do Sul' },
+  { uf: 'MG', name: 'Minas Gerais' },
+  { uf: 'PA', name: 'Pará' },
+  { uf: 'PB', name: 'Paraíba' },
+  { uf: 'PR', name: 'Paraná' },
+  { uf: 'PE', name: 'Pernambuco' },
+  { uf: 'PI', name: 'Piauí' },
+  { uf: 'RJ', name: 'Rio de Janeiro' },
+  { uf: 'RN', name: 'Rio Grande do Norte' },
+  { uf: 'RS', name: 'Rio Grande do Sul' },
+  { uf: 'RO', name: 'Rondônia' },
+  { uf: 'RR', name: 'Roraima' },
+  { uf: 'SC', name: 'Santa Catarina' },
+  { uf: 'SP', name: 'São Paulo' },
+  { uf: 'SE', name: 'Sergipe' },
+  { uf: 'TO', name: 'Tocantins' },
+];
+
+// Descrição dos tipos de cobertura
+const COVERAGE_LABELS: Record<CoverageType, string> = {
+  national: 'Nacional (Brasil)',
+  states: 'Estados específicos',
+  city: 'Cidade específica',
+  capital: 'Capital do estado',
+  interior: 'Interior do estado',
+};
 
 // Serviços de transportadora do Melhor Envio
 const MELHOR_ENVIO_SERVICES: CarrierService[] = [
@@ -66,7 +114,11 @@ export const ShippingOptionsManager = () => {
     price: 0,
     is_active: true,
     carrier_service_id: null as number | null,
-    carrier_service_name: null as string | null
+    carrier_service_name: null as string | null,
+    coverage_type: 'national' as CoverageType,
+    coverage_states: [] as string[],
+    coverage_city: '',
+    coverage_state: ''
   });
 
   const loadConfig = async () => {
@@ -111,7 +163,11 @@ export const ShippingOptionsManager = () => {
           price: Number(opt.price),
           is_active: opt.is_active,
           carrier_service_id: opt.carrier_service_id || null,
-          carrier_service_name: opt.carrier_service_name || null
+          carrier_service_name: opt.carrier_service_name || null,
+          coverage_type: opt.coverage_type || 'national',
+          coverage_states: opt.coverage_states || null,
+          coverage_city: opt.coverage_city || null,
+          coverage_state: opt.coverage_state || null
         })));
       } else {
         console.log('Tabela custom_shipping_options não existe ou erro:', shippingError);
@@ -151,7 +207,11 @@ export const ShippingOptionsManager = () => {
         price: option.price,
         is_active: option.is_active,
         carrier_service_id: option.carrier_service_id,
-        carrier_service_name: option.carrier_service_name
+        carrier_service_name: option.carrier_service_name,
+        coverage_type: option.coverage_type || 'national',
+        coverage_states: option.coverage_states || [],
+        coverage_city: option.coverage_city || '',
+        coverage_state: option.coverage_state || ''
       });
     } else {
       setEditingOption(null);
@@ -161,7 +221,11 @@ export const ShippingOptionsManager = () => {
         price: 0,
         is_active: true,
         carrier_service_id: null,
-        carrier_service_name: null
+        carrier_service_name: null,
+        coverage_type: 'national',
+        coverage_states: [],
+        coverage_city: '',
+        coverage_state: ''
       });
     }
     setIsDialogOpen(true);
@@ -210,6 +274,10 @@ export const ShippingOptionsManager = () => {
             is_active: formData.is_active,
             carrier_service_id: formData.carrier_service_id,
             carrier_service_name: formData.carrier_service_name,
+            coverage_type: formData.coverage_type,
+            coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null,
+            coverage_city: formData.coverage_city || null,
+            coverage_state: formData.coverage_state || null,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingOption.id)
@@ -219,7 +287,7 @@ export const ShippingOptionsManager = () => {
         
         setOptions(prev => prev.map(opt => 
           opt.id === editingOption.id 
-            ? { ...opt, ...formData }
+            ? { ...opt, ...formData, coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null }
             : opt
         ));
         toast({ title: 'Sucesso', description: 'Opção de frete atualizada' });
@@ -234,7 +302,11 @@ export const ShippingOptionsManager = () => {
             price: formData.price,
             is_active: formData.is_active,
             carrier_service_id: formData.carrier_service_id,
-            carrier_service_name: formData.carrier_service_name
+            carrier_service_name: formData.carrier_service_name,
+            coverage_type: formData.coverage_type,
+            coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null,
+            coverage_city: formData.coverage_city || null,
+            coverage_state: formData.coverage_state || null
           })
           .select()
           .single();
@@ -248,7 +320,11 @@ export const ShippingOptionsManager = () => {
           price: Number(data.price),
           is_active: data.is_active,
           carrier_service_id: data.carrier_service_id || null,
-          carrier_service_name: data.carrier_service_name || null
+          carrier_service_name: data.carrier_service_name || null,
+          coverage_type: data.coverage_type || 'national',
+          coverage_states: data.coverage_states || null,
+          coverage_city: data.coverage_city || null,
+          coverage_state: data.coverage_state || null
         };
         setOptions(prev => [...prev, newOption]);
         toast({ title: 'Sucesso', description: 'Opção de frete criada' });
@@ -472,6 +548,120 @@ export const ShippingOptionsManager = () => {
                       A transportadora vinculada será usada automaticamente na geração de etiquetas.
                     </p>
                   </div>
+
+                  {/* Cobertura geográfica */}
+                  <Separator />
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      Cobertura Geográfica
+                    </Label>
+                    <Select 
+                      value={formData.coverage_type} 
+                      onValueChange={(value: CoverageType) => setFormData(prev => ({ 
+                        ...prev, 
+                        coverage_type: value,
+                        coverage_states: value === 'states' ? prev.coverage_states : [],
+                        coverage_city: value === 'city' ? prev.coverage_city : '',
+                        coverage_state: ['city', 'capital', 'interior'].includes(value) ? prev.coverage_state : ''
+                      }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a cobertura" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="national">🇧🇷 Nacional (Brasil)</SelectItem>
+                        <SelectItem value="states">📍 Estados específicos</SelectItem>
+                        <SelectItem value="city">🏙️ Cidade específica</SelectItem>
+                        <SelectItem value="capital">🏛️ Capital do estado</SelectItem>
+                        <SelectItem value="interior">🌾 Interior do estado</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Seleção de estados */}
+                    {formData.coverage_type === 'states' && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Selecione os estados:</Label>
+                        <div className="grid grid-cols-4 gap-1 max-h-40 overflow-y-auto border rounded p-2">
+                          {BRAZILIAN_STATES.map((state) => (
+                            <label key={state.uf} className="flex items-center gap-1 text-xs cursor-pointer hover:bg-muted p-1 rounded">
+                              <input
+                                type="checkbox"
+                                checked={formData.coverage_states.includes(state.uf)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFormData(prev => ({ ...prev, coverage_states: [...prev.coverage_states, state.uf] }));
+                                  } else {
+                                    setFormData(prev => ({ ...prev, coverage_states: prev.coverage_states.filter(s => s !== state.uf) }));
+                                  }
+                                }}
+                                className="w-3 h-3"
+                              />
+                              {state.uf}
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {formData.coverage_states.length} estado(s) selecionado(s)
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Cidade específica */}
+                    {formData.coverage_type === 'city' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Estado:</Label>
+                          <Select 
+                            value={formData.coverage_state} 
+                            onValueChange={(value) => setFormData(prev => ({ ...prev, coverage_state: value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="UF" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {BRAZILIAN_STATES.map((state) => (
+                                <SelectItem key={state.uf} value={state.uf}>{state.uf}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Cidade:</Label>
+                          <Input
+                            value={formData.coverage_city}
+                            onChange={(e) => setFormData(prev => ({ ...prev, coverage_city: e.target.value }))}
+                            placeholder="Nome da cidade"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Capital ou Interior */}
+                    {(formData.coverage_type === 'capital' || formData.coverage_type === 'interior') && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Estado:</Label>
+                        <Select 
+                          value={formData.coverage_state} 
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, coverage_state: value }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione o estado" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {BRAZILIAN_STATES.map((state) => (
+                              <SelectItem key={state.uf} value={state.uf}>{state.name} ({state.uf})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          {formData.coverage_type === 'capital' 
+                            ? 'Apenas clientes da capital serão elegíveis' 
+                            : 'Apenas clientes de cidades do interior serão elegíveis'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                   
                   <div className="flex items-center gap-2">
                     <Switch
@@ -510,6 +700,7 @@ export const ShippingOptionsManager = () => {
                   <TableHead>Nome</TableHead>
                   <TableHead>Prazo</TableHead>
                   <TableHead>Valor</TableHead>
+                  <TableHead>Cobertura</TableHead>
                   <TableHead>Transportadora</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -521,6 +712,15 @@ export const ShippingOptionsManager = () => {
                     <TableCell className="font-medium">{option.name}</TableCell>
                     <TableCell>{option.delivery_days} {option.delivery_days === 1 ? 'dia' : 'dias'}</TableCell>
                     <TableCell>{formatCurrency(option.price)}</TableCell>
+                    <TableCell>
+                      <span className="text-xs">
+                        {option.coverage_type === 'national' && '🇧🇷 Nacional'}
+                        {option.coverage_type === 'states' && `📍 ${option.coverage_states?.join(', ') || 'Estados'}`}
+                        {option.coverage_type === 'city' && `🏙️ ${option.coverage_city || 'Cidade'}-${option.coverage_state || ''}`}
+                        {option.coverage_type === 'capital' && `🏛️ Capital ${option.coverage_state || ''}`}
+                        {option.coverage_type === 'interior' && `🌾 Interior ${option.coverage_state || ''}`}
+                      </span>
+                    </TableCell>
                     <TableCell>
                       {option.carrier_service_name ? (
                         <span className="text-sm text-primary">{option.carrier_service_name}</span>
