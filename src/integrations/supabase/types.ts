@@ -625,6 +625,50 @@ export type Database = {
           },
         ]
       }
+      integration_manychat: {
+        Row: {
+          api_key: string | null
+          bot_id: string | null
+          created_at: string
+          environment: string
+          id: string
+          is_active: boolean
+          tenant_id: string
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          api_key?: string | null
+          bot_id?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          tenant_id: string
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          api_key?: string | null
+          bot_id?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          tenant_id?: string
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_manychat_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_mp: {
         Row: {
           access_token: string | null
