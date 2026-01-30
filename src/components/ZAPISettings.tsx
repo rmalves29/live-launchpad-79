@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { MessageSquare, Save, CheckCircle2, AlertCircle, ExternalLink, Eye, EyeOff, Loader2, QrCode, RefreshCw } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
+import { MessageSquare, Save, CheckCircle2, AlertCircle, ExternalLink, Eye, EyeOff, Loader2, QrCode, RefreshCw, Bell, BellOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
@@ -17,6 +19,17 @@ interface ZAPIIntegration {
   provider: string;
   is_active: boolean;
   connected_phone: string | null;
+  send_item_added_msg: boolean;
+  send_paid_order_msg: boolean;
+  send_product_canceled_msg: boolean;
+  send_out_of_stock_msg: boolean;
+}
+
+interface MessageFlags {
+  send_item_added_msg: boolean;
+  send_paid_order_msg: boolean;
+  send_product_canceled_msg: boolean;
+  send_out_of_stock_msg: boolean;
 }
 
 export function ZAPISettings() {
@@ -32,6 +45,14 @@ export function ZAPISettings() {
   const [showClientToken, setShowClientToken] = useState(false);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loadingQR, setLoadingQR] = useState(false);
+  
+  // Message flags state
+  const [messageFlags, setMessageFlags] = useState<MessageFlags>({
+    send_item_added_msg: true,
+    send_paid_order_msg: true,
+    send_product_canceled_msg: true,
+    send_out_of_stock_msg: true,
+  });
 
   useEffect(() => {
     loadIntegration();
@@ -44,7 +65,7 @@ export function ZAPISettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone')
+        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
@@ -53,10 +74,17 @@ export function ZAPISettings() {
       }
 
       if (data) {
-        setIntegration(data as ZAPIIntegration);
-        setInstanceId(data.zapi_instance_id || '');
-        setToken(data.zapi_token || '');
-        setClientToken(data.zapi_client_token || '');
+        const typedData = data as ZAPIIntegration;
+        setIntegration(typedData);
+        setInstanceId(typedData.zapi_instance_id || '');
+        setToken(typedData.zapi_token || '');
+        setClientToken(typedData.zapi_client_token || '');
+        setMessageFlags({
+          send_item_added_msg: typedData.send_item_added_msg ?? true,
+          send_paid_order_msg: typedData.send_paid_order_msg ?? true,
+          send_product_canceled_msg: typedData.send_product_canceled_msg ?? true,
+          send_out_of_stock_msg: typedData.send_out_of_stock_msg ?? true,
+        });
       }
     } catch (error: any) {
       console.error('Error loading Z-API integration:', error);
@@ -84,16 +112,19 @@ export function ZAPISettings() {
 
     setSaving(true);
     try {
+      const updateData = {
+        zapi_instance_id: instanceId,
+        zapi_token: token,
+        zapi_client_token: clientToken || null,
+        provider: 'zapi',
+        updated_at: new Date().toISOString(),
+        ...messageFlags,
+      };
+
       if (integration?.id) {
         const { error } = await supabase
           .from('integration_whatsapp')
-          .update({
-            zapi_instance_id: instanceId,
-            zapi_token: token,
-            zapi_client_token: clientToken || null,
-            provider: 'zapi',
-            updated_at: new Date().toISOString()
-          })
+          .update(updateData)
           .eq('id', integration.id);
 
         if (error) throw error;
@@ -102,10 +133,7 @@ export function ZAPISettings() {
           .from('integration_whatsapp')
           .insert({
             tenant_id: tenant.id,
-            zapi_instance_id: instanceId,
-            zapi_token: token,
-            zapi_client_token: clientToken || null,
-            provider: 'zapi',
+            ...updateData,
             instance_name: tenant.name || 'default',
             webhook_secret: crypto.randomUUID(),
             is_active: true
@@ -175,6 +203,13 @@ export function ZAPISettings() {
     } finally {
       setLoadingQR(false);
     }
+  };
+
+  const handleToggleFlag = (flag: keyof MessageFlags) => {
+    setMessageFlags(prev => ({
+      ...prev,
+      [flag]: !prev[flag]
+    }));
   };
 
   if (loading) {
@@ -338,6 +373,83 @@ export function ZAPISettings() {
             )}
           </div>
         )}
+
+        {/* Message Flags Section */}
+        <div className="pt-4 border-t space-y-4">
+          <div className="flex items-center gap-2">
+            <Bell className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Mensagens Automáticas</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Controle quais mensagens automáticas serão enviadas via WhatsApp
+          </p>
+          
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="space-y-0.5">
+                <Label htmlFor="send_item_added_msg" className="text-sm font-medium cursor-pointer">
+                  Item Adicionado
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Enviar quando um item for adicionado ao carrinho
+                </p>
+              </div>
+              <Switch
+                id="send_item_added_msg"
+                checked={messageFlags.send_item_added_msg}
+                onCheckedChange={() => handleToggleFlag('send_item_added_msg')}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="space-y-0.5">
+                <Label htmlFor="send_paid_order_msg" className="text-sm font-medium cursor-pointer">
+                  Pagamento Confirmado
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Enviar quando o pagamento for confirmado
+                </p>
+              </div>
+              <Switch
+                id="send_paid_order_msg"
+                checked={messageFlags.send_paid_order_msg}
+                onCheckedChange={() => handleToggleFlag('send_paid_order_msg')}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="space-y-0.5">
+                <Label htmlFor="send_product_canceled_msg" className="text-sm font-medium cursor-pointer">
+                  Produto Cancelado
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Enviar quando um produto for cancelado do pedido
+                </p>
+              </div>
+              <Switch
+                id="send_product_canceled_msg"
+                checked={messageFlags.send_product_canceled_msg}
+                onCheckedChange={() => handleToggleFlag('send_product_canceled_msg')}
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+              <div className="space-y-0.5">
+                <Label htmlFor="send_out_of_stock_msg" className="text-sm font-medium cursor-pointer">
+                  Produto Esgotado
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Enviar quando um produto estiver sem estoque
+                </p>
+              </div>
+              <Switch
+                id="send_out_of_stock_msg"
+                checked={messageFlags.send_out_of_stock_msg}
+                onCheckedChange={() => handleToggleFlag('send_out_of_stock_msg')}
+              />
+            </div>
+          </div>
+        </div>
 
         <div className="flex items-center justify-between pt-4">
           <a 
