@@ -267,11 +267,11 @@ export default function ManychatIntegration({ tenantId }: ManychatIntegrationPro
             <Label className="text-base font-medium">Campos para enviar no Body (JSON)</Label>
             <div className="bg-muted/50 p-4 rounded-lg font-mono text-sm space-y-1">
               <p className="text-green-600 dark:text-green-400">{"{"}</p>
-              <p className="pl-4">"product_code": "{{last_input_text}}",</p>
-              <p className="pl-4">"instagram_username": "{{ig_username}}",</p>
-              <p className="pl-4">"subscriber_id": "{{user_id}}",</p>
-              <p className="pl-4">"first_name": "{{first_name}}",</p>
-              <p className="pl-4">"phone": "{{phone}}"</p>
+              <p className="pl-4">{`"product_code": "{{last_input_text}}",`}</p>
+              <p className="pl-4">{`"instagram_username": "{{ig_username}}",`}</p>
+              <p className="pl-4">{`"subscriber_id": "{{user_id}}",`}</p>
+              <p className="pl-4">{`"first_name": "{{first_name}}",`}</p>
+              <p className="pl-4">{`"phone": "{{phone}}"`}</p>
               <p className="text-green-600 dark:text-green-400">{"}"}</p>
             </div>
             <p className="text-xs text-muted-foreground">
