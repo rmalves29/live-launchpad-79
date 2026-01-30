@@ -186,10 +186,10 @@ serve(async (req) => {
 
     // Atualizar cada pedido individualmente com os dados de endereço, frete e total atualizado
     for (const orderId of orderIds) {
-      // Buscar pedido atual
+      // Buscar pedido atual com os itens do carrinho para recalcular corretamente
       const { data: existingOrder } = await sb
         .from("orders")
-        .select("id, observation, total_amount")
+        .select("id, observation, total_amount, cart_id")
         .eq("id", orderId)
         .single();
 
@@ -207,12 +207,31 @@ serve(async (req) => {
         const parts = [cleaned, freightNote, mergeNote].filter(Boolean);
         const nextObs = parts.join("\n");
 
-        // Calcular novo total (produtos + frete)
-        const currentTotal = Number(existingOrder.total_amount || 0);
+        // CORREÇÃO: Calcular total a partir dos PRODUTOS (cart_items) + frete
+        // Isso evita somar o frete múltiplas vezes se o cliente tentar pagar novamente
+        let productsTotal = 0;
+        
+        if (existingOrder.cart_id) {
+          // Buscar subtotal real dos itens do carrinho
+          const { data: cartItems } = await sb
+            .from("cart_items")
+            .select("unit_price, qty")
+            .eq("cart_id", existingOrder.cart_id);
+          
+          if (cartItems && cartItems.length > 0) {
+            productsTotal = cartItems.reduce((sum, item) => sum + (Number(item.unit_price) * Number(item.qty)), 0);
+          }
+        }
+        
+        // Se não conseguiu calcular do carrinho, usa o que foi enviado no payload
+        if (productsTotal === 0) {
+          productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
+        }
+        
         const shippingValue = toNumber(payload.shippingCost, 0);
-        const newTotal = currentTotal + shippingValue;
+        const newTotal = productsTotal + shippingValue;
 
-        console.log(`[create-payment] Order ${orderId}: current total=${currentTotal}, shipping=${shippingValue}, new total=${newTotal}`);
+        console.log(`[create-payment] Order ${orderId}: products=${productsTotal.toFixed(2)}, shipping=${shippingValue.toFixed(2)}, new total=${newTotal.toFixed(2)}`);
 
         // Extrair service_id do shippingData se disponível
         const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
@@ -237,7 +256,7 @@ serve(async (req) => {
         if (updateError) {
           console.log(`[create-payment] Error updating order ${orderId}:`, updateError);
         } else {
-          console.log(`[create-payment] Order ${orderId} updated - observation: ${nextObs}, total: ${newTotal}`);
+          console.log(`[create-payment] Order ${orderId} updated - products: ${productsTotal.toFixed(2)}, shipping: ${shippingValue.toFixed(2)}, total: ${newTotal.toFixed(2)}`);
         }
       }
     }
