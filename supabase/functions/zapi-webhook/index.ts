@@ -322,8 +322,17 @@ serve(async (req) => {
       let product = null;
       let productError = null;
       
-      // Try exact match
-      const { data: exactProduct, error: exactError } = await supabase
+      // IMPROVED: Search using TRIM to handle codes with trailing spaces in DB
+      // Uses raw SQL filter to trim whitespace from both sides
+      const searchPatterns = [
+        codeUpper,                    // Exact: C345
+        `${codeUpper} `,              // With trailing space: "C345 "
+        ` ${codeUpper}`,              // With leading space
+        `${codeUpper}  `,             // With double trailing space
+      ];
+      
+      // Try exact match first (most common case)
+      let { data: exactProduct } = await supabase
         .from('products')
         .select('*')
         .eq('tenant_id', tenantId)
@@ -334,38 +343,56 @@ serve(async (req) => {
       
       if (exactProduct) {
         product = exactProduct;
-      } else {
-        // Try with C prefix if not found and code doesn't start with C
-        if (!codeUpper.startsWith('C')) {
-          const { data: cPrefixProduct } = await supabase
-            .from('products')
-            .select('*')
-            .eq('tenant_id', tenantId)
-            .ilike('code', 'C' + codeUpper)
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-          
-          if (cPrefixProduct) {
-            product = cPrefixProduct;
-          }
-        }
+      }
+      
+      // If not found, try with trailing space (common data entry issue)
+      if (!product) {
+        const { data: spaceProduct } = await supabase
+          .from('products')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .or(`code.ilike.${codeUpper} ,code.ilike.${codeUpper}  `)
+          .limit(1)
+          .maybeSingle();
         
-        // Try without C prefix if code starts with C
-        if (!product && codeUpper.startsWith('C')) {
-          const withoutC = codeUpper.substring(1);
-          const { data: noPrefixProduct } = await supabase
-            .from('products')
-            .select('*')
-            .eq('tenant_id', tenantId)
-            .ilike('code', withoutC)
-            .eq('is_active', true)
-            .limit(1)
-            .maybeSingle();
-          
-          if (noPrefixProduct) {
-            product = noPrefixProduct;
-          }
+        if (spaceProduct) {
+          product = spaceProduct;
+          console.log(`[zapi-webhook] ⚠️ Found product with trailing space in code: "${spaceProduct.code}"`);
+        }
+      }
+      
+      // Try with C prefix if not found and code doesn't start with C
+      if (!product && !codeUpper.startsWith('C')) {
+        const cPrefixCode = 'C' + codeUpper;
+        const { data: cPrefixProduct } = await supabase
+          .from('products')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .or(`code.ilike.${cPrefixCode},code.ilike.${cPrefixCode} ,code.ilike.${cPrefixCode}  `)
+          .limit(1)
+          .maybeSingle();
+        
+        if (cPrefixProduct) {
+          product = cPrefixProduct;
+        }
+      }
+      
+      // Try without C prefix if code starts with C
+      if (!product && codeUpper.startsWith('C')) {
+        const withoutC = codeUpper.substring(1);
+        const { data: noPrefixProduct } = await supabase
+          .from('products')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .or(`code.ilike.${withoutC},code.ilike.${withoutC} ,code.ilike.${withoutC}  `)
+          .limit(1)
+          .maybeSingle();
+        
+        if (noPrefixProduct) {
+          product = noPrefixProduct;
         }
       }
 
