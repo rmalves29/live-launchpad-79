@@ -257,6 +257,72 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
   return integration.access_token;
 }
 
+/**
+ * Update an existing Bling contact's address data
+ */
+async function updateBlingContactAddress(
+  contactId: number,
+  accessToken: string,
+  addressData: {
+    nome: string;
+    telefone: string;
+    celular: string;
+    email?: string;
+    endereco: string;
+    numero: string;
+    complemento: string;
+    bairro: string;
+    cep: string;
+    municipio: string;
+    uf: string;
+  }
+): Promise<boolean> {
+  try {
+    const payload = {
+      nome: addressData.nome,
+      telefone: addressData.telefone || undefined,
+      celular: addressData.celular || undefined,
+      email: addressData.email || undefined,
+      endereco: {
+        endereco: addressData.endereco,
+        numero: addressData.numero,
+        complemento: addressData.complemento,
+        bairro: addressData.bairro,
+        cep: addressData.cep,
+        municipio: addressData.municipio,
+        uf: addressData.uf,
+      },
+    };
+
+    console.log(`[bling-sync-orders] Updating contact ${contactId} address:`, JSON.stringify(payload, null, 2));
+
+    const { response: updateRes, text: updateText } = await blingFetchWithRetry(
+      `${BLING_API_URL}/contatos/${contactId}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+      { label: 'update-contact-address' }
+    );
+
+    if (!updateRes.ok) {
+      console.log(`[bling-sync-orders] Failed to update contact ${contactId}: ${updateRes.status} - ${updateText}`);
+      return false;
+    }
+
+    console.log(`[bling-sync-orders] Contact ${contactId} address updated successfully`);
+    return true;
+  } catch (e: any) {
+    console.log(`[bling-sync-orders] Error updating contact ${contactId}:`, String(e?.message || e));
+    return false;
+  }
+}
+
 async function getOrCreateBlingContactId(
   order: any, 
   customer: any, 
@@ -278,9 +344,28 @@ async function getOrCreateBlingContactId(
   const customerState = customer?.state || order.customer_state || '';
   const customerEmail = customer?.email || '';
 
-  // 0) Se o customer já tem bling_contact_id salvo, usar diretamente
+  // Helper to build address data for updates
+  const buildAddressData = () => ({
+    nome: customerName,
+    telefone: phone,
+    celular: phone,
+    email: customerEmail,
+    endereco: customerStreet,
+    numero: customerNumber,
+    complemento: customerComplement,
+    bairro: customerNeighborhood,
+    cep: customerCep,
+    municipio: customerCity,
+    uf: customerState,
+  });
+
+  // 0) Se o customer já tem bling_contact_id salvo, usar E ATUALIZAR o endereço
   if (customer?.bling_contact_id) {
     console.log(`[bling-sync-orders] Using cached bling_contact_id: ${customer.bling_contact_id}`);
+    
+    // Atualizar o endereço no Bling para garantir dados atualizados
+    await updateBlingContactAddress(customer.bling_contact_id, accessToken, buildAddressData());
+    
     return customer.bling_contact_id;
   }
 
@@ -353,9 +438,13 @@ async function getOrCreateBlingContactId(
     }
   }
 
-  // Se encontrou, salvar no customer e retornar
+  // Se encontrou, ATUALIZAR endereço, salvar no customer e retornar
   if (foundContactId) {
     console.log(`[bling-sync-orders] Found existing Bling contact: ${foundContactId}`);
+    
+    // Atualizar o endereço no Bling para garantir dados atualizados
+    await updateBlingContactAddress(foundContactId, accessToken, buildAddressData());
+    
     if (customer?.id) {
       await supabase
         .from('customers')

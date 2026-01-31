@@ -364,6 +364,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          bling_contact_id: number | null
           cep: string | null
           city: string | null
           complement: string | null
@@ -382,6 +383,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          bling_contact_id?: number | null
           cep?: string | null
           city?: string | null
           complement?: string | null
@@ -400,6 +402,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          bling_contact_id?: number | null
           cep?: string | null
           city?: string | null
           complement?: string | null
