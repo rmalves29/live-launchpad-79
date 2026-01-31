@@ -27,8 +27,10 @@ import {
   Video,
   Bot,
   Zap,
-  Info
+  Info,
+  ImageIcon
 } from 'lucide-react';
+import manychatGuideImage from '@/assets/manychat-variables-guide.png';
 
 interface ManychatIntegrationProps {
   tenantId: string;
@@ -294,6 +296,33 @@ export default function ManychatIntegration({ tenantId }: ManychatIntegrationPro
               <div className="bg-muted/30 p-2 rounded"><code>cart_total_formatted</code> - Total do carrinho</div>
               <div className="bg-muted/30 p-2 rounded"><code>message</code> - Mensagem de confirmação</div>
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Guia Visual */}
+          <div className="space-y-3">
+            <Label className="text-base font-medium flex items-center gap-2">
+              <ImageIcon className="h-4 w-4" />
+              Guia Visual: Como Inserir Variáveis
+            </Label>
+            <Alert className="border-yellow-500/50 bg-yellow-500/10">
+              <Info className="h-4 w-4 text-yellow-600" />
+              <AlertDescription className="text-yellow-700 dark:text-yellow-300">
+                <strong>Importante:</strong> Não digite as variáveis manualmente! Use o botão <code className="bg-muted px-1 rounded">{`{ }`}</code> do Manychat para selecionar as variáveis do sistema.
+              </AlertDescription>
+            </Alert>
+            <div className="rounded-lg overflow-hidden border">
+              <img 
+                src={manychatGuideImage} 
+                alt="Guia visual de como inserir variáveis no Manychat" 
+                className="w-full h-auto"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              ❌ <strong>Errado:</strong> Digitar {"{{last_input_text}}"} como texto | 
+              ✅ <strong>Correto:</strong> Clicar em {`{ }`} e selecionar "Last Input Text"
+            </p>
           </div>
 
           <div className="pt-2">
