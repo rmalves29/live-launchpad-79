@@ -31,6 +31,7 @@ import {
   ImageIcon
 } from 'lucide-react';
 import manychatGuideImage from '@/assets/manychat-variables-guide.png';
+import manychatTriggerGuideImage from '@/assets/manychat-trigger-data-guide.png';
 
 interface ManychatIntegrationProps {
   tenantId: string;
@@ -267,17 +268,38 @@ export default function ManychatIntegration({ tenantId }: ManychatIntegrationPro
 
           <div className="space-y-3">
             <Label className="text-base font-medium">Campos para enviar no Body (JSON)</Label>
+            <Alert className="border-orange-500/50 bg-orange-500/10 mb-3">
+              <Info className="h-4 w-4 text-orange-600" />
+              <AlertDescription className="text-orange-700 dark:text-orange-300">
+                <strong>Para Lives do Instagram:</strong> Use a variável <code className="bg-muted px-1 rounded">Trigger Comment Text</code> (em "Trigger Data") para capturar o código do produto comentado na live.
+              </AlertDescription>
+            </Alert>
             <div className="bg-muted/50 p-4 rounded-lg font-mono text-sm space-y-1">
               <p className="text-green-600 dark:text-green-400">{"{"}</p>
-              <p className="pl-4">{`"product_code": "{{last_input_text}}",`}</p>
-              <p className="pl-4">{`"instagram_username": "{{ig_username}}",`}</p>
-              <p className="pl-4">{`"subscriber_id": "{{user_id}}",`}</p>
-              <p className="pl-4">{`"first_name": "{{first_name}}",`}</p>
-              <p className="pl-4">{`"phone": "{{phone}}"`}</p>
+              <p className="pl-4">
+                <span className="text-muted-foreground">"product_code":</span> 
+                <span className="text-yellow-600 dark:text-yellow-400"> [Selecionar: Trigger Data → Comment Text]</span>
+              </p>
+              <p className="pl-4">
+                <span className="text-muted-foreground">"instagram_username":</span> 
+                <span className="text-yellow-600 dark:text-yellow-400"> [Selecionar: System → IG Username]</span>
+              </p>
+              <p className="pl-4">
+                <span className="text-muted-foreground">"subscriber_id":</span> 
+                <span className="text-yellow-600 dark:text-yellow-400"> [Selecionar: System → User ID]</span>
+              </p>
+              <p className="pl-4">
+                <span className="text-muted-foreground">"first_name":</span> 
+                <span className="text-yellow-600 dark:text-yellow-400"> [Selecionar: System → First Name]</span>
+              </p>
+              <p className="pl-4">
+                <span className="text-muted-foreground">"phone":</span> 
+                <span className="text-yellow-600 dark:text-yellow-400"> [Selecionar: System → Phone]</span>
+              </p>
               <p className="text-green-600 dark:text-green-400">{"}"}</p>
             </div>
             <p className="text-xs text-muted-foreground">
-              Substitua os campos entre {"{{ }}"} pelas variáveis do Manychat
+              ⚠️ <strong>Não digite as variáveis!</strong> Use o botão {`{ }`} e selecione cada variável na lista.
             </p>
           </div>
 
@@ -304,25 +326,50 @@ export default function ManychatIntegration({ tenantId }: ManychatIntegrationPro
           <div className="space-y-3">
             <Label className="text-base font-medium flex items-center gap-2">
               <ImageIcon className="h-4 w-4" />
-              Guia Visual: Como Inserir Variáveis
+              Guia Visual: Como Inserir Variáveis para Lives
             </Label>
-            <Alert className="border-yellow-500/50 bg-yellow-500/10">
-              <Info className="h-4 w-4 text-yellow-600" />
-              <AlertDescription className="text-yellow-700 dark:text-yellow-300">
-                <strong>Importante:</strong> Não digite as variáveis manualmente! Use o botão <code className="bg-muted px-1 rounded">{`{ }`}</code> do Manychat para selecionar as variáveis do sistema.
+            <Alert className="border-red-500/50 bg-red-500/10">
+              <Info className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-700 dark:text-red-300">
+                <strong>Erro Comum:</strong> Se as mensagens chegam vazias (sem nome do produto ou total), significa que as variáveis não foram selecionadas corretamente. <strong>Nunca digite o texto das variáveis!</strong>
               </AlertDescription>
             </Alert>
-            <div className="rounded-lg overflow-hidden border">
-              <img 
-                src={manychatGuideImage} 
-                alt="Guia visual de como inserir variáveis no Manychat" 
-                className="w-full h-auto"
-              />
+            
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">1. Como selecionar "Trigger Data" (para lives):</p>
+                <div className="rounded-lg overflow-hidden border">
+                  <img 
+                    src={manychatTriggerGuideImage} 
+                    alt="Guia de como selecionar Trigger Data no Manychat" 
+                    className="w-full h-auto"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  No campo <code>product_code</code>, clique em {`{ }`} → Trigger Data → Comment Text
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">2. Como selecionar variáveis do sistema:</p>
+                <div className="rounded-lg overflow-hidden border">
+                  <img 
+                    src={manychatGuideImage} 
+                    alt="Guia visual de como inserir variáveis no Manychat" 
+                    className="w-full h-auto"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Nos outros campos, clique em {`{ }`} → System → selecione a variável
+                </p>
+              </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              ❌ <strong>Errado:</strong> Digitar {"{{last_input_text}}"} como texto | 
-              ✅ <strong>Correto:</strong> Clicar em {`{ }`} e selecionar "Last Input Text"
-            </p>
+            
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg p-3 mt-2">
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">❌ Errado:</p>
+              <p className="text-xs text-red-700 dark:text-red-300 font-mono">Digitar: {"{{last_input_text}}"} ou {"{{comment_text}}"}</p>
+              <p className="text-sm font-medium text-green-800 dark:text-green-200 mt-2">✅ Correto:</p>
+              <p className="text-xs text-green-700 dark:text-green-300">Clicar em {`{ }`} → Trigger Data → selecionar "Comment Text"</p>
+            </div>
           </div>
 
           <div className="pt-2">
