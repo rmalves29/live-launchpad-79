@@ -32,16 +32,18 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  // Buscar contagem de pedidos pendentes de sincronização
+  // Buscar contagem de pedidos pendentes de sincronização (pagos E sem bling_order_id)
   const { data: pendingCount = 0, refetch: refetchPending, isLoading: isLoadingCount } = useQuery({
     queryKey: ['bling-pending-orders', tenantId],
     queryFn: async () => {
-      // Busca os pedidos pagos para contar
+      // Busca pedidos pagos que AINDA NÃO foram sincronizados com Bling
       const { data, error } = await supabase
         .from('orders')
         .select('id')
         .eq('tenant_id', tenantId)
-        .eq('is_paid', true);
+        .eq('is_paid', true)
+        .is('bling_order_id', null)
+        .or('is_cancelled.is.null,is_cancelled.eq.false');
       
       if (error) {
         console.error('Erro ao buscar pedidos:', error);
