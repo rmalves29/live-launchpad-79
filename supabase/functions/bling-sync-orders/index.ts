@@ -278,19 +278,22 @@ async function updateBlingContactAddress(
   }
 ): Promise<boolean> {
   try {
+    // Bling API V3 requires "geral" wrapper for address data
     const payload = {
       nome: addressData.nome,
       telefone: addressData.telefone || undefined,
       celular: addressData.celular || undefined,
       email: addressData.email || undefined,
       endereco: {
-        endereco: addressData.endereco,
-        numero: addressData.numero,
-        complemento: addressData.complemento,
-        bairro: addressData.bairro,
-        cep: addressData.cep,
-        municipio: addressData.municipio,
-        uf: addressData.uf,
+        geral: {
+          endereco: addressData.endereco,
+          numero: addressData.numero,
+          complemento: addressData.complemento,
+          bairro: addressData.bairro,
+          cep: addressData.cep,
+          municipio: addressData.municipio,
+          uf: addressData.uf,
+        },
       },
     };
 
@@ -457,6 +460,7 @@ async function getOrCreateBlingContactId(
   }
 
   // 2) Create the contact with full data
+  // Bling API V3 requires "geral" wrapper for address data
   const payload: any = {
     nome: customerName,
     tipo: 'F', // Pessoa Física
@@ -465,13 +469,15 @@ async function getOrCreateBlingContactId(
     celular: phone || undefined,
     email: customerEmail || undefined,
     endereco: {
-      endereco: customerStreet,
-      numero: customerNumber,
-      complemento: customerComplement,
-      bairro: customerNeighborhood,
-      cep: customerCep,
-      municipio: customerCity,
-      uf: customerState,
+      geral: {
+        endereco: customerStreet,
+        numero: customerNumber,
+        complemento: customerComplement,
+        bairro: customerNeighborhood,
+        cep: customerCep,
+        municipio: customerCity,
+        uf: customerState,
+      },
     },
   };
 
