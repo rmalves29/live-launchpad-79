@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useTenantContext } from "@/contexts/TenantContext";
-import { Building2, Shield } from "lucide-react";
+import { Building2, Shield, AlertTriangle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function TenantAuth() {
   const { toast } = useToast();
@@ -17,6 +18,7 @@ export default function TenantAuth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = tenant ? `Login - ${tenant.name}` : "Login - Sistema";
@@ -64,12 +66,37 @@ export default function TenantAuth() {
       // Verificar se o usuário pertence a este tenant
       if (profile.tenant_id !== tenant.id) {
         await supabase.auth.signOut();
-        toast({ 
-          title: "Acesso negado", 
-          description: "Este usuário não tem permissão para acessar esta empresa.", 
-          variant: "destructive" 
-        });
+        setAccessError("Este usuário não tem permissão para acessar esta empresa.");
         return;
+      }
+
+      // Verificar se a assinatura está expirada
+      const { data: tenantData } = await supabase
+        .from("tenants")
+        .select("is_active, is_blocked, subscription_ends_at")
+        .eq("id", tenant.id)
+        .single();
+
+      if (tenantData) {
+        // Verificar se está bloqueado
+        if (!tenantData.is_active || tenantData.is_blocked) {
+          await supabase.auth.signOut();
+          setAccessError("Esta empresa está com o acesso bloqueado. Entre em contato com o suporte.");
+          return;
+        }
+
+        // Verificar se assinatura expirou - redirecionar para renovação
+        if (tenantData.subscription_ends_at) {
+          const expirationDate = new Date(tenantData.subscription_ends_at);
+          if (expirationDate < new Date()) {
+            toast({ 
+              title: "Assinatura Expirada", 
+              description: "Você será redirecionado para renovar seu plano." 
+            });
+            navigate("/renovar-assinatura", { replace: true });
+            return;
+          }
+        }
       }
 
       // Salvar timestamp do último acesso para controle de timeout
@@ -124,6 +151,15 @@ export default function TenantAuth() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
       <main className="w-full max-w-md p-4">
+        {/* Mensagem de erro de acesso */}
+        {accessError && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Acesso Bloqueado</AlertTitle>
+            <AlertDescription>{accessError}</AlertDescription>
+          </Alert>
+        )}
+        
         {/* Logo removida conforme solicitado */}
         <Card>
           <CardHeader className="text-center">
