@@ -37,6 +37,7 @@ import TenantStorefront from "./pages/TenantStorefront";
 import EmpresasIndex from "./pages/empresas/Index";
 import Debug from "./pages/Debug";
 import LandingPage from "./pages/LandingPage";
+import RenovarAssinatura from "./pages/RenovarAssinatura";
 
 // WhatsApp
 import WhatsappTemplates from "./pages/whatsapp/Templates";
@@ -192,6 +193,16 @@ const AppContent = () => {
         <Route
           path="/agente-ia"
           element={
+            <RequireTenantAuth>
+              <AgenteIA />
+            </RequireTenantAuth>
+          }
+        />
+        
+        {/* Rota para renovação de assinatura */}
+        <Route path="/renovar-assinatura" element={
+          <RequireAuth><RenovarAssinatura /></RequireAuth>
+        } />
             <RequireTenantAuth>
               <AgenteIA />
             </RequireTenantAuth>

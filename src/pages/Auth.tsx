@@ -25,7 +25,7 @@ export default function Auth() {
     document.title = mode === "login" ? "Entrar - Sistema" : "Criar conta - Sistema";
   }, [mode]);
 
-  const checkTenantAccess = async (userId: string): Promise<{ allowed: boolean; reason?: string }> => {
+  const checkTenantAccess = async (userId: string): Promise<{ allowed: boolean; reason?: string; tenantName?: string }> => {
     try {
       // Pequeno delay para garantir que a sessão está estabelecida
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -97,7 +97,7 @@ export default function Auth() {
         };
       }
 
-      // Verificar se a assinatura expirou
+      // Verificar se a assinatura expirou - redirecionar para renovação ao invés de bloquear
       if (tenant.subscription_ends_at) {
         const expirationDate = new Date(tenant.subscription_ends_at);
         const now = new Date();
@@ -105,7 +105,8 @@ export default function Auth() {
         if (expirationDate < now) {
           return { 
             allowed: false, 
-            reason: `O prazo de acesso da empresa "${tenant.name}" expirou. Entre em contato com o suporte para renovar sua assinatura.` 
+            reason: 'subscription_expired',
+            tenantName: tenant.name
           };
         }
       }
@@ -130,7 +131,17 @@ export default function Auth() {
         const accessCheck = await checkTenantAccess(data.user.id);
         
         if (!accessCheck.allowed) {
-          // Fazer logout imediatamente
+          // Se assinatura expirou, redirecionar para página de renovação
+          if (accessCheck.reason === 'subscription_expired') {
+            toast({ 
+              title: "Assinatura Expirada", 
+              description: "Você será redirecionado para renovar seu plano." 
+            });
+            navigate("/renovar-assinatura", { replace: true });
+            return;
+          }
+          
+          // Outros casos: fazer logout
           await supabase.auth.signOut();
           setAccessError(accessCheck.reason || 'Acesso negado.');
           return;

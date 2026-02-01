@@ -98,3 +98,9 @@ verify_jwt = false
 
 [functions.recalculate-order-total]
 verify_jwt = false
+
+[functions.create-subscription-payment]
+verify_jwt = false
+
+[functions.subscription-webhook]
+verify_jwt = false
