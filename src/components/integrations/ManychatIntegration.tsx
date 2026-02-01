@@ -435,6 +435,70 @@ export default function ManychatIntegration({ tenantId }: ManychatIntegrationPro
         </CardContent>
       </Card>
 
+      {/* Configuração CRÍTICA: Permitir múltiplos acionamentos */}
+      <Card className="border-red-500/50">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2 text-red-600">
+            ⚠️ Configuração CRÍTICA: Permitir Múltiplos Pedidos
+          </CardTitle>
+          <CardDescription>
+            Por padrão, o Manychat só dispara uma vez por pessoa. Siga os passos abaixo para permitir múltiplos pedidos.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert className="border-red-500/50 bg-red-500/10">
+            <Info className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-700 dark:text-red-300">
+              <strong>Problema:</strong> Se a integração só funciona uma vez por cliente, é porque o gatilho está configurado para "Acionar apenas uma vez".
+            </AlertDescription>
+          </Alert>
+
+          <div className="space-y-4">
+            <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+              <p className="font-medium text-base">📍 Onde encontrar a opção:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm">
+                <li>No Manychat, abra seu <strong>Fluxo (Flow)</strong></li>
+                <li>Clique no <strong>gatilho/trigger</strong> "Instagram Live Comment Reply"</li>
+                <li>No painel que abre à direita, procure a aba <strong>"Settings"</strong> ou <strong>"Configurações"</strong></li>
+                <li>Dentro das configurações do gatilho, procure por uma dessas opções:
+                  <ul className="list-disc list-inside ml-4 mt-2 space-y-1 text-muted-foreground">
+                    <li><strong>"Run only once per subscriber"</strong> → <span className="text-red-600">DESMARCAR</span></li>
+                    <li><strong>"Trigger subscriber once"</strong> → <span className="text-red-600">DESMARCAR</span></li>
+                    <li><strong>"Limit execution"</strong> → Escolher <span className="text-green-600">"No limit"</span></li>
+                    <li><strong>"Frequency"</strong> → Escolher <span className="text-green-600">"Every time"</span></li>
+                  </ul>
+                </li>
+              </ol>
+            </div>
+
+            <div className="bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-900 rounded-lg p-4 space-y-2">
+              <p className="font-medium text-yellow-800 dark:text-yellow-200">💡 Dica: Se não encontrar nas configurações do trigger</p>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                A opção pode estar em <strong>Automation → Settings</strong> do fluxo (ícone de engrenagem), 
+                ou pode precisar clicar em <strong>"Advanced Settings"</strong> ou <strong>"More Options"</strong> dentro do trigger.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg p-3">
+                <p className="text-sm font-medium text-red-800 dark:text-red-200">❌ Configuração Errada:</p>
+                <p className="text-xs text-red-700 dark:text-red-300 mt-1">
+                  ☑️ "Run only once per subscriber" marcado<br/>
+                  → Cliente só pode pedir 1 produto
+                </p>
+              </div>
+              <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-lg p-3">
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">✅ Configuração Correta:</p>
+                <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                  ☐ "Run only once per subscriber" desmarcado<br/>
+                  → Cliente pode pedir quantos produtos quiser
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Passo a Passo */}
       <Card>
         <CardHeader>
@@ -452,18 +516,22 @@ export default function ManychatIntegration({ tenantId }: ManychatIntegrationPro
             </li>
             <li className="flex items-start gap-2">
               <span className="font-medium min-w-[24px]">3.</span>
-              <span>Configure um filtro para capturar códigos de produtos (ex: padrão alfanumérico)</span>
+              <span><strong className="text-red-600">IMPORTANTE:</strong> Nas configurações do trigger, desmarque "Run only once per subscriber"</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="font-medium min-w-[24px]">4.</span>
-              <span>Adicione uma ação "External Request" (POST) com a URL do webhook</span>
+              <span>Configure um filtro para capturar códigos de produtos (ex: padrão alfanumérico)</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="font-medium min-w-[24px]">5.</span>
-              <span>Configure o Body com os campos JSON mostrados acima</span>
+              <span>Adicione uma ação "External Request" (POST) com a URL do webhook</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="font-medium min-w-[24px]">6.</span>
+              <span>Configure o Body com os campos JSON mostrados acima</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="font-medium min-w-[24px]">7.</span>
               <span>Use a resposta do webhook para enviar uma DM de confirmação ao cliente</span>
             </li>
           </ol>
