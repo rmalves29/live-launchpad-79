@@ -102,7 +102,15 @@ export default function Auth() {
         const expirationDate = new Date(tenant.subscription_ends_at);
         const now = new Date();
         
+        console.log('[Auth] Verificando assinatura:', {
+          tenant: tenant.name,
+          expirationDate: expirationDate.toISOString(),
+          now: now.toISOString(),
+          expired: expirationDate < now
+        });
+        
         if (expirationDate < now) {
+          console.log('[Auth] ASSINATURA EXPIRADA - retornando subscription_expired');
           return { 
             allowed: false, 
             reason: 'subscription_expired',
@@ -129,14 +137,17 @@ export default function Auth() {
       // Verificar se a tenant do usuário tem acesso
       if (data.user) {
         const accessCheck = await checkTenantAccess(data.user.id);
+        console.log('[Auth] Resultado da verificação:', accessCheck);
         
         if (!accessCheck.allowed) {
           // Se assinatura expirou, redirecionar para página de renovação
           if (accessCheck.reason === 'subscription_expired') {
+            console.log('[Auth] Redirecionando para /renovar-assinatura');
             toast({ 
               title: "Assinatura Expirada", 
               description: "Você será redirecionado para renovar seu plano." 
             });
+            // NÃO fazer logout - manter o usuário logado para a página de renovação
             navigate("/renovar-assinatura", { replace: true });
             return;
           }

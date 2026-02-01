@@ -78,27 +78,68 @@ export default function RenovarAssinatura() {
 
   useEffect(() => {
     const fetchTenantInfo = async () => {
-      if (!profile?.tenant_id) return;
+      // Tentar buscar pelo profile.tenant_id primeiro
+      let tenantId = profile?.tenant_id;
+      
+      // Se não tiver, buscar direto do usuário logado
+      if (!tenantId && user) {
+        const { data: userProfile } = await supabase
+          .from("profiles")
+          .select("tenant_id")
+          .eq("id", user.id)
+          .maybeSingle();
+        
+        tenantId = userProfile?.tenant_id;
+      }
+      
+      if (!tenantId) {
+        console.log('[RenovarAssinatura] Nenhum tenant_id encontrado');
+        return;
+      }
 
+      console.log('[RenovarAssinatura] Buscando info do tenant:', tenantId);
+      
       const { data } = await supabase
         .from("tenants")
         .select("name, subscription_ends_at")
-        .eq("id", profile.tenant_id)
-        .single();
+        .eq("id", tenantId)
+        .maybeSingle();
 
       if (data) {
+        console.log('[RenovarAssinatura] Tenant info:', data);
         setTenantInfo(data);
       }
     };
 
     fetchTenantInfo();
-  }, [profile?.tenant_id]);
+  }, [profile?.tenant_id, user]);
 
   const handleSelectPlan = async (plan: Plan) => {
-    if (!user || !profile?.tenant_id) {
+    if (!user) {
       toast({
         title: "Erro",
         description: "Usuário não autenticado",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Buscar tenant_id direto se não tiver no profile
+    let tenantId = profile?.tenant_id;
+    if (!tenantId) {
+      const { data: userProfile } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .maybeSingle();
+      
+      tenantId = userProfile?.tenant_id;
+    }
+    
+    if (!tenantId) {
+      toast({
+        title: "Erro",
+        description: "Empresa não identificada",
         variant: "destructive",
       });
       return;
@@ -107,9 +148,11 @@ export default function RenovarAssinatura() {
     setLoading(plan.id);
 
     try {
+      console.log('[RenovarAssinatura] Criando pagamento:', { tenantId, plan });
+      
       const { data, error } = await supabase.functions.invoke("create-subscription-payment", {
         body: {
-          tenant_id: profile.tenant_id,
+          tenant_id: tenantId,
           plan_id: plan.id,
           plan_name: plan.name,
           plan_days: plan.days,
