@@ -203,11 +203,6 @@ const AppContent = () => {
         <Route path="/renovar-assinatura" element={
           <RequireAuth><RenovarAssinatura /></RequireAuth>
         } />
-            <RequireTenantAuth>
-              <AgenteIA />
-            </RequireTenantAuth>
-          }
-        />
         
         {/* Rota de debug */}
         <Route path="/debug" element={<Debug />} />
