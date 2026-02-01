@@ -39,43 +39,78 @@ async function resetManychatSubscriber(subscriberId: string): Promise<void> {
   }
 
   try {
+    const callManychat = async (path: string, payload: Record<string, unknown>) => {
+      const res = await fetch(`https://api.manychat.com${path}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${manychatApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        },
+      );
+
+      const text = await res.text().catch(() => '');
+      return { status: res.status, body: text };
+    };
+
     // Técnica: Adicionar uma tag temporária e remover imediatamente
     // Isso "atualiza" o subscriber e pode resetar o estado do trigger
     const resetTagName = 'RESET_TRIGGER_TEMP';
-    
-    // Primeiro, tenta adicionar a tag
-    const addTagResponse = await fetch(`https://api.manychat.com/fb/subscriber/addTagByName`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${manychatApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+
+    // Observação importante:
+    // - Para Instagram, a Manychat usa endpoints /ig/...
+    // - Em alguns casos (Facebook), é /fb/...
+    // Para maximizar compatibilidade, tentamos /ig primeiro e caímos para /fb.
+
+    const providers: Array<'ig' | 'fb'> = ['ig', 'fb'];
+    let addOk = false;
+    let lastAdd: { status: number; body: string } | null = null;
+    let lastRemove: { status: number; body: string } | null = null;
+
+    for (const provider of providers) {
+      const add = await callManychat(`/${provider}/subscriber/addTagByName`, {
         subscriber_id: subscriberId,
         tag_name: resetTagName,
-      }),
-    });
+      });
+      lastAdd = add;
 
-    console.log('[Manychat Webhook] Add tag response:', addTagResponse.status);
+      console.log(`[Manychat Webhook] Add tag (${provider}) status:`, add.status);
+      if (add.status !== 200) {
+        console.log(`[Manychat Webhook] Add tag (${provider}) body:`, add.body?.slice(0, 500));
+        continue;
+      }
+      addOk = true;
 
-    // Aguardar um momento
-    await new Promise(resolve => setTimeout(resolve, 100));
+      // Aguardar um momento
+      await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Depois remove a tag
-    const removeTagResponse = await fetch(`https://api.manychat.com/fb/subscriber/removeTagByName`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${manychatApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      const remove = await callManychat(`/${provider}/subscriber/removeTagByName`, {
         subscriber_id: subscriberId,
         tag_name: resetTagName,
-      }),
-    });
+      });
+      lastRemove = remove;
 
-    console.log('[Manychat Webhook] Remove tag response:', removeTagResponse.status);
-    console.log('[Manychat Webhook] Subscriber resetado com sucesso:', subscriberId);
+      console.log(`[Manychat Webhook] Remove tag (${provider}) status:`, remove.status);
+      if (remove.status !== 200) {
+        console.log(`[Manychat Webhook] Remove tag (${provider}) body:`, remove.body?.slice(0, 500));
+        // Mesmo se remover falhar, já conseguimos “tocar” o subscriber com a tag.
+      }
+
+      console.log('[Manychat Webhook] Subscriber resetado com sucesso:', subscriberId);
+      return;
+    }
+
+    // Se chegou aqui, não conseguimos resetar em nenhum provider
+    console.log('[Manychat Webhook] Falha ao resetar subscriber em /ig e /fb:', {
+      subscriberId,
+      addStatus: lastAdd?.status,
+      removeStatus: lastRemove?.status,
+    });
+    if (!addOk && lastAdd?.body) {
+      console.log('[Manychat Webhook] Último body (add):', lastAdd.body?.slice(0, 500));
+    }
 
   } catch (error) {
     console.error('[Manychat Webhook] Erro ao resetar subscriber:', error);
