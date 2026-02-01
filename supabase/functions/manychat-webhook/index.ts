@@ -9,6 +9,7 @@
  * 3. Sistema identifica o produto no catálogo
  * 4. Cria/atualiza carrinho do cliente
  * 5. Retorna dados para Manychat continuar o fluxo de DM
+ * 6. **NOVO**: Reseta o subscriber via API para permitir múltiplos comentários
  * 
  * VISIBILIDADE: Inicialmente apenas para tenant "mania-de-mulher"
  */
@@ -22,9 +23,65 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const manychatApiKey = Deno.env.get('MANYCHAT_API_KEY');
 
 // Tenant autorizado (Mania de Mulher)
 const MANIA_DE_MULHER_TENANT_ID = '08f2b1b9-3988-489e-8186-c60f0c0b0622';
+
+/**
+ * Reseta o subscriber no Manychat para permitir que o trigger funcione novamente
+ * Isso é feito via API do Manychat, removendo e re-adicionando uma tag
+ */
+async function resetManychatSubscriber(subscriberId: string): Promise<void> {
+  if (!manychatApiKey || !subscriberId) {
+    console.log('[Manychat Webhook] Não foi possível resetar subscriber - API key ou ID ausente');
+    return;
+  }
+
+  try {
+    // Técnica: Adicionar uma tag temporária e remover imediatamente
+    // Isso "atualiza" o subscriber e pode resetar o estado do trigger
+    const resetTagName = 'RESET_TRIGGER_TEMP';
+    
+    // Primeiro, tenta adicionar a tag
+    const addTagResponse = await fetch(`https://api.manychat.com/fb/subscriber/addTagByName`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${manychatApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        subscriber_id: subscriberId,
+        tag_name: resetTagName,
+      }),
+    });
+
+    console.log('[Manychat Webhook] Add tag response:', addTagResponse.status);
+
+    // Aguardar um momento
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Depois remove a tag
+    const removeTagResponse = await fetch(`https://api.manychat.com/fb/subscriber/removeTagByName`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${manychatApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        subscriber_id: subscriberId,
+        tag_name: resetTagName,
+      }),
+    });
+
+    console.log('[Manychat Webhook] Remove tag response:', removeTagResponse.status);
+    console.log('[Manychat Webhook] Subscriber resetado com sucesso:', subscriberId);
+
+  } catch (error) {
+    console.error('[Manychat Webhook] Erro ao resetar subscriber:', error);
+    // Não propagamos o erro - o reset é best-effort
+  }
+}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -52,26 +109,24 @@ Deno.serve(async (req) => {
     });
 
     // Extrair dados do Manychat
-    // Formato esperado do Manychat External Request:
-    // {
-    //   "product_code": "ABC123",
-    //   "instagram_username": "@usuario",
-    //   "subscriber_id": "12345",
-    //   "first_name": "Nome",
-    //   "phone": "5511999999999" (opcional)
-    // }
     const {
       product_code,
       instagram_username,
       subscriber_id,
       first_name,
       phone,
-      comment_text, // Texto do comentário original (opcional)
+      comment_text,
     } = body;
 
     // Validação básica
     if (!product_code) {
       console.log('[Manychat Webhook] Código do produto não fornecido');
+      
+      // Mesmo sem produto, resetar subscriber para próximo comentário
+      if (subscriber_id) {
+        resetManychatSubscriber(subscriber_id).catch(console.error);
+      }
+      
       return new Response(JSON.stringify({
         success: false,
         message: 'Código do produto não fornecido',
@@ -102,6 +157,12 @@ Deno.serve(async (req) => {
 
     if (!product) {
       console.log('[Manychat Webhook] Produto não encontrado:', normalizedCode);
+      
+      // Resetar subscriber para próximo comentário
+      if (subscriber_id) {
+        resetManychatSubscriber(subscriber_id).catch(console.error);
+      }
+      
       return new Response(JSON.stringify({
         success: false,
         message: `Produto "${product_code}" não encontrado`,
@@ -118,6 +179,12 @@ Deno.serve(async (req) => {
     // Verificar estoque
     if (product.stock <= 0) {
       console.log('[Manychat Webhook] Produto sem estoque:', product.code);
+      
+      // Resetar subscriber para próximo comentário
+      if (subscriber_id) {
+        resetManychatSubscriber(subscriber_id).catch(console.error);
+      }
+      
       return new Response(JSON.stringify({
         success: false,
         message: `Produto "${product.name}" está esgotado`,
@@ -131,7 +198,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Identificador do cliente (Instagram username ou subscriber_id)
+    // Identificador do cliente
     const customerIdentifier = instagram_username 
       ? (instagram_username.startsWith('@') ? instagram_username : `@${instagram_username}`)
       : `manychat_${subscriber_id}`;
@@ -148,7 +215,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!cart) {
-      // Criar novo carrinho
       const { data: newCart, error: cartError } = await supabase
         .from('carts')
         .insert({
@@ -180,7 +246,6 @@ Deno.serve(async (req) => {
 
     let itemQty = 1;
     if (existingItem) {
-      // Incrementar quantidade
       itemQty = existingItem.qty + 1;
       await supabase
         .from('cart_items')
@@ -188,7 +253,6 @@ Deno.serve(async (req) => {
         .eq('id', existingItem.id);
       console.log('[Manychat Webhook] Item incrementado:', product.code, 'qty:', itemQty);
     } else {
-      // Adicionar novo item
       await supabase
         .from('cart_items')
         .insert({
@@ -218,6 +282,13 @@ Deno.serve(async (req) => {
     ).join(', ') || '';
 
     console.log('[Manychat Webhook] Carrinho atualizado - Total:', total);
+
+    // **IMPORTANTE**: Resetar subscriber para permitir próximo comentário
+    if (subscriber_id) {
+      console.log('[Manychat Webhook] Iniciando reset do subscriber:', subscriber_id);
+      // Executar em background para não atrasar a resposta
+      resetManychatSubscriber(subscriber_id).catch(console.error);
+    }
 
     // Retornar dados para o Manychat usar no fluxo
     return new Response(JSON.stringify({
