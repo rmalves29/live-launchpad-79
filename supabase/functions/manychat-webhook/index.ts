@@ -142,17 +142,45 @@ Deno.serve(async (req) => {
     console.log('[Manychat Webhook] Buscando produto:', normalizedCode);
 
     // Buscar produto pelo código
-    const { data: product, error: productError } = await supabase
+    // IMPORTANTE: evitar PGRST116 ("JSON object requested, multiple rows") quando o código não é único.
+    // Estratégia:
+    // 1) tentar match exato (normalmente é o esperado)
+    // 2) fallback para match parcial com LIMIT 1 (best-effort)
+
+    let product: any = null;
+
+    const { data: exactProduct, error: exactProductError } = await supabase
       .from('products')
       .select('*')
       .eq('tenant_id', MANIA_DE_MULHER_TENANT_ID)
-      .ilike('code', `%${normalizedCode}%`)
+      .eq('code', normalizedCode)
       .eq('is_active', true)
       .maybeSingle();
 
-    if (productError) {
-      console.error('[Manychat Webhook] Erro ao buscar produto:', productError);
-      throw productError;
+    if (exactProductError) {
+      console.error('[Manychat Webhook] Erro ao buscar produto (match exato):', exactProductError);
+      throw exactProductError;
+    }
+
+    product = exactProduct;
+
+    if (!product) {
+      const { data: fuzzyProduct, error: fuzzyProductError } = await supabase
+        .from('products')
+        .select('*')
+        .eq('tenant_id', MANIA_DE_MULHER_TENANT_ID)
+        .ilike('code', `%${normalizedCode}%`)
+        .eq('is_active', true)
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fuzzyProductError) {
+        console.error('[Manychat Webhook] Erro ao buscar produto (match parcial):', fuzzyProductError);
+        throw fuzzyProductError;
+      }
+
+      product = fuzzyProduct;
     }
 
     if (!product) {
