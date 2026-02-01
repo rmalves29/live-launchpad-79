@@ -311,6 +311,64 @@ Deno.serve(async (req) => {
 
     console.log('[Manychat Webhook] Carrinho atualizado - Total:', total);
 
+    // =====================================================
+    // CRIAR OU ATUALIZAR PEDIDO (orders) AUTOMATICAMENTE
+    // Similar ao fluxo de grupos WhatsApp - usa @instagram como chave
+    // =====================================================
+    let order: any = null;
+
+    // Buscar pedido existente para esse carrinho
+    const { data: existingOrder } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('tenant_id', MANIA_DE_MULHER_TENANT_ID)
+      .eq('cart_id', cart.id)
+      .maybeSingle();
+
+    if (existingOrder) {
+      // Atualizar total do pedido existente
+      const { data: updatedOrder, error: updateOrderError } = await supabase
+        .from('orders')
+        .update({ total_amount: total })
+        .eq('id', existingOrder.id)
+        .select()
+        .single();
+
+      if (updateOrderError) {
+        console.error('[Manychat Webhook] Erro ao atualizar pedido:', updateOrderError);
+      } else {
+        order = updatedOrder;
+        console.log('[Manychat Webhook] Pedido atualizado:', order.id, 'Total:', total);
+      }
+    } else {
+      // Criar novo pedido
+      const { data: newOrder, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          tenant_id: MANIA_DE_MULHER_TENANT_ID,
+          cart_id: cart.id,
+          customer_phone: customerIdentifier, // @instagram
+          customer_name: first_name || instagram_username || 'Instagram',
+          event_date: today,
+          event_type: 'INSTAGRAM_LIVE_MANYCHAT',
+          total_amount: total,
+          is_paid: false,
+          printed: false,
+          item_added_message_sent: false,
+          payment_confirmation_sent: false,
+          is_cancelled: false,
+        })
+        .select()
+        .single();
+
+      if (orderError) {
+        console.error('[Manychat Webhook] Erro ao criar pedido:', orderError);
+      } else {
+        order = newOrder;
+        console.log('[Manychat Webhook] Novo pedido criado:', order.id, 'Total:', total);
+      }
+    }
+
     // **IMPORTANTE**: Resetar subscriber para permitir próximo comentário
     if (subscriber_id) {
       console.log('[Manychat Webhook] Iniciando reset do subscriber:', subscriber_id);
