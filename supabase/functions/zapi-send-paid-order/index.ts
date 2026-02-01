@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { antiBlockDelay, logAntiBlockDelay } from "../_shared/anti-block-delay.ts";
+import { 
+  antiBlockDelayLive, 
+  logAntiBlockDelay, 
+  addMessageVariation,
+  getThrottleDelay 
+} from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -178,20 +183,29 @@ serve(async (req) => {
     const template = await getTemplate(supabase, tenant_id);
     const totalFormatted = order.total_amount?.toFixed(2).replace('.', ',') || '0,00';
     
-    const message = template
+    const baseMessage = template
       .replace(/\{\{order_id\}\}/g, String(order_id))
       .replace(/\{\{total\}\}/g, totalFormatted)
       .replace(/\{\{total_amount\}\}/g, totalFormatted)
       .replace(/\{\{valor\}\}/g, totalFormatted)
       .replace(/\{\{customer_name\}\}/g, order.customer_name || 'Cliente')
       .replace(/\{\{nome\}\}/g, order.customer_name || 'Cliente');
+    
+    // Add subtle variations to avoid identical messages being flagged
+    const message = addMessageVariation(baseMessage);
 
     const formattedPhone = formatPhoneNumber(order.customer_phone);
     const { instanceId, token, clientToken } = credentials;
     const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
 
-    // Apply anti-block delay before sending (1-4 seconds)
-    const delayMs = await antiBlockDelay(1000, 4000);
+    // Check if we should add extra delay for this phone (throttling)
+    const throttleDelay = await getThrottleDelay(formattedPhone);
+    if (throttleDelay > 0) {
+      console.log(`[zapi-send-paid-order] 🛡️ Throttle delay for ${formattedPhone}: ${(throttleDelay / 1000).toFixed(1)}s`);
+    }
+
+    // Apply extended anti-block delay for live scenarios (5-15 seconds)
+    const delayMs = await antiBlockDelayLive();
     logAntiBlockDelay('zapi-send-paid-order', delayMs);
 
     console.log(`[zapi-send-paid-order] Sending to ${formattedPhone}`);
