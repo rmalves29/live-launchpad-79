@@ -27,7 +27,7 @@ const PLANS: Plan[] = [
     price: 0.01, // Valor de teste - substituir depois
     features: [
       "Acesso completo ao sistema",
-      "Suporte por WhatsApp",
+      "Suporte por WhatsApp Horário Comercial",
       "1 mês de acesso",
     ],
     icon: <Rocket className="h-6 w-6" />,
@@ -56,7 +56,6 @@ const PLANS: Plan[] = [
       "Suporte VIP 24/7",
       "12 meses de acesso",
       "Relatórios avançados",
-      "Integrações exclusivas",
     ],
     icon: <Building2 className="h-6 w-6" />,
   },
