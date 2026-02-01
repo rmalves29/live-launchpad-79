@@ -1,9 +1,10 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenantContext } from "@/contexts/TenantContext";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RequireTenantAuthProps {
   children: ReactNode;
@@ -12,9 +13,53 @@ interface RequireTenantAuthProps {
 export default function RequireTenantAuth({ children }: RequireTenantAuthProps) {
   const { user, profile, isLoading: authLoading } = useAuth();
   const { tenant, loading: tenantLoading, tenantId, error: tenantError } = useTenantContext();
+  const [subscriptionExpired, setSubscriptionExpired] = useState<boolean | null>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
   
   // Ativar timeout de sessão apenas quando logado
   useSessionTimeout();
+
+  // Verificar status da assinatura quando o tenant carregar
+  useEffect(() => {
+    const checkSubscription = async () => {
+      if (!tenant?.id || !profile || profile.role === 'super_admin') {
+        setSubscriptionExpired(false);
+        return;
+      }
+
+      setCheckingSubscription(true);
+      try {
+        const { data: tenantData } = await supabase
+          .from("tenants")
+          .select("is_active, is_blocked, subscription_ends_at")
+          .eq("id", tenant.id)
+          .single();
+
+        if (tenantData) {
+          // Verificar se assinatura expirou
+          if (tenantData.subscription_ends_at) {
+            const expirationDate = new Date(tenantData.subscription_ends_at);
+            const now = new Date();
+            console.log('[RequireTenantAuth] Verificando assinatura:', {
+              expirationDate: expirationDate.toISOString(),
+              now: now.toISOString(),
+              expired: expirationDate < now
+            });
+            setSubscriptionExpired(expirationDate < now);
+          } else {
+            setSubscriptionExpired(false);
+          }
+        }
+      } catch (error) {
+        console.error('[RequireTenantAuth] Erro ao verificar assinatura:', error);
+        setSubscriptionExpired(false);
+      } finally {
+        setCheckingSubscription(false);
+      }
+    };
+
+    checkSubscription();
+  }, [tenant?.id, profile]);
 
   // Debug logs para diagnóstico
   console.log('[RequireTenantAuth] Estado:', {
@@ -25,11 +70,13 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     profileRole: profile?.role,
     hasTenant: !!tenant,
     tenantId,
-    tenantError
+    tenantError,
+    subscriptionExpired,
+    checkingSubscription
   });
 
   // Se ainda está carregando auth ou tenant, mostrar loading
-  if (authLoading || tenantLoading) {
+  if (authLoading || tenantLoading || checkingSubscription) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -93,6 +140,12 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     // Limpar localStorage e redirecionar
     localStorage.removeItem('previewTenantId');
     return <Navigate to="/auth" replace />;
+  }
+
+  // VERIFICAÇÃO DE ASSINATURA: Se expirada, redirecionar para renovação
+  if (subscriptionExpired) {
+    console.log('[RequireTenantAuth] Assinatura expirada, redirecionando para renovação');
+    return <Navigate to="/renovar-assinatura" replace />;
   }
 
   return <>{children}</>;
