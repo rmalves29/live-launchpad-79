@@ -61,12 +61,15 @@ serve(async (req) => {
     let failedAttempts = 0;
 
     if (!currentConversationId) {
+      // customer_phone é obrigatório na tabela, usar placeholder se não fornecido
+      const phoneToUse = customer_phone || "chat-widget";
+      
       const { data: newConversation, error: convError } = await supabase
         .from("support_conversations")
         .insert({
           tenant_id,
-          customer_phone,
-          customer_name,
+          customer_phone: phoneToUse,
+          customer_name: customer_name || "Usuário do Chat",
           status: "open",
           failed_attempts: 0
         })
