@@ -93,6 +93,51 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     const [viewOrderOpen, setViewOrderOpen] = useState(false);
     const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
+
+    const ensureOrderCartItems = async (order: Order): Promise<Order> => {
+      if (!order?.cart_id) return order;
+      if (order.cart_items && order.cart_items.length > 0) return order;
+
+      try {
+        // Para super_admin (ou cenários multi-tenant), buscamos os itens do carrinho
+        // usando o client raw, mas filtrando explicitamente pelo tenant do pedido.
+        const { data, error } = await supabaseTenant.raw
+          .from('cart_items')
+          .select(`
+            id,
+            cart_id,
+            qty,
+            unit_price,
+            product_name,
+            product_code,
+            product_image_url,
+            product:products!cart_items_product_id_fkey (
+              name,
+              code,
+              image_url,
+              color,
+              size
+            )
+          `)
+          .eq('cart_id', order.cart_id)
+          .eq('tenant_id', order.tenant_id);
+
+        if (error) throw error;
+
+        return {
+          ...order,
+          cart_items: (data as any[]) || [],
+        };
+      } catch (e) {
+        console.warn('Falha ao carregar itens do pedido para visualização:', {
+          orderId: order.id,
+          cartId: order.cart_id,
+          tenantId: order.tenant_id,
+          error: e,
+        });
+        return order;
+      }
+    };
     
     // Estado para edição de rastreio
     const [editingTracking, setEditingTracking] = useState<number | null>(null);
@@ -1677,7 +1722,17 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                           <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => { setEditingOrder(order); setEditOrderOpen(true); }} title="Editar">
                             <Edit className="h-2.5 w-2.5" />
                           </Button>
-                          <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => { setViewingOrder(order); setViewOrderOpen(true); }} title="Visualizar">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-5 w-5 p-0"
+                            onClick={async () => {
+                              const withItems = await ensureOrderCartItems(order);
+                              setViewingOrder(withItems);
+                              setViewOrderOpen(true);
+                            }}
+                            title="Visualizar"
+                          >
                             <Eye className="h-2.5 w-2.5" />
                           </Button>
                           <Button 
