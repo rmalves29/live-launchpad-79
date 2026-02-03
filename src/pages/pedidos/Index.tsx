@@ -1201,9 +1201,21 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       setSearchTerm('');
     };
 
-    // Filtrar pedidos por telefone
+    // Filtrar pedidos por telefone ou número do pedido
     const filteredOrders = orders.filter(order => {
       if (!searchTerm) return true;
+      
+      const search = searchTerm.trim().toLowerCase();
+      
+      // Buscar por número do pedido (com ou sem #)
+      const orderNumber = search.replace('#', '');
+      if (orderNumber && !isNaN(Number(orderNumber))) {
+        const tenantOrderNum = String(order.tenant_order_number || '');
+        const orderId = String(order.id);
+        if (tenantOrderNum === orderNumber || orderId === orderNumber) {
+          return true;
+        }
+      }
       
       // Normalizar o termo de busca e o telefone do pedido
       const normalizedSearch = normalizeForStorage(searchTerm);
@@ -1360,7 +1372,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
               <div className="flex items-center space-x-2">
                 <Search className="h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por telefone..."
+                  placeholder="Buscar por telefone ou nº do pedido..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="max-w-sm"
@@ -1503,7 +1515,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                 ) : paginatedOrders.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                      {searchTerm ? 'Nenhum pedido encontrado com este telefone' : 'Nenhum pedido encontrado'}
+                      {searchTerm ? 'Nenhum pedido encontrado para esta busca' : 'Nenhum pedido encontrado'}
                     </TableCell>
                   </TableRow>
                 ) : (
