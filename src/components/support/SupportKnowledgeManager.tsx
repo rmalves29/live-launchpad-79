@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Edit, Save, X, BookOpen, Settings } from 'lucide-react';
+import { Plus, Trash2, Edit, Save, BookOpen, Settings, FileText, Image, Video, FileAudio, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { toast } from 'sonner';
+import { KnowledgeFileUpload } from './KnowledgeFileUpload';
+import { cn } from '@/lib/utils';
 
 interface KnowledgeItem {
   id: string;
@@ -22,6 +24,10 @@ interface KnowledgeItem {
   tags: string[];
   is_active: boolean;
   created_at: string;
+  file_type?: 'text' | 'document' | 'image' | 'video' | 'audio';
+  file_url?: string;
+  file_name?: string;
+  file_size?: number;
 }
 
 interface SupportSettings {
@@ -33,12 +39,44 @@ interface SupportSettings {
   is_active: boolean;
 }
 
+interface FileData {
+  file_url: string;
+  file_name: string;
+  file_type: 'document' | 'image' | 'video' | 'audio';
+  file_size: number;
+}
+
+const FILE_TYPE_ICONS = {
+  text: FileText,
+  document: FileText,
+  image: Image,
+  video: Video,
+  audio: FileAudio,
+};
+
+const FILE_TYPE_COLORS = {
+  text: 'text-gray-500',
+  document: 'text-blue-500',
+  image: 'text-green-500',
+  video: 'text-purple-500',
+  audio: 'text-orange-500',
+};
+
 export function SupportKnowledgeManager() {
   const { tenant } = useTenant();
   const queryClient = useQueryClient();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<KnowledgeItem | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    title: string;
+    content: string;
+    category: string;
+    tags: string;
+    file_url?: string;
+    file_name?: string;
+    file_type?: 'document' | 'image' | 'video' | 'audio';
+    file_size?: number;
+  }>({
     title: '',
     content: '',
     category: 'geral',
@@ -153,7 +191,36 @@ export function SupportKnowledgeManager() {
   });
 
   const resetForm = () => {
-    setFormData({ title: '', content: '', category: 'geral', tags: '' });
+    setFormData({ 
+      title: '', 
+      content: '', 
+      category: 'geral', 
+      tags: '',
+      file_url: undefined,
+      file_name: undefined,
+      file_type: undefined,
+      file_size: undefined
+    });
+  };
+
+  const handleFileUpload = (fileData: FileData) => {
+    setFormData(prev => ({
+      ...prev,
+      file_url: fileData.file_url,
+      file_name: fileData.file_name,
+      file_type: fileData.file_type,
+      file_size: fileData.file_size
+    }));
+  };
+
+  const handleRemoveFile = () => {
+    setFormData(prev => ({
+      ...prev,
+      file_url: undefined,
+      file_name: undefined,
+      file_type: undefined,
+      file_size: undefined
+    }));
   };
 
   const handleSubmit = () => {
@@ -165,7 +232,11 @@ export function SupportKnowledgeManager() {
         title: formData.title,
         content: formData.content,
         category: formData.category,
-        tags
+        tags,
+        file_url: formData.file_url,
+        file_name: formData.file_name,
+        file_type: formData.file_type,
+        file_size: formData.file_size
       });
     } else {
       addMutation.mutate({
@@ -173,7 +244,11 @@ export function SupportKnowledgeManager() {
         content: formData.content,
         category: formData.category,
         tags,
-        is_active: true
+        is_active: true,
+        file_url: formData.file_url,
+        file_name: formData.file_name,
+        file_type: formData.file_type,
+        file_size: formData.file_size
       });
     }
   };
@@ -182,9 +257,13 @@ export function SupportKnowledgeManager() {
     setEditingItem(item);
     setFormData({
       title: item.title,
-      content: item.content,
+      content: item.content || '',
       category: item.category,
-      tags: item.tags?.join(', ') || ''
+      tags: item.tags?.join(', ') || '',
+      file_url: item.file_url,
+      file_name: item.file_name,
+      file_type: item.file_type as 'document' | 'image' | 'video' | 'audio' | undefined,
+      file_size: item.file_size
     });
     setIsAddDialogOpen(true);
   };
@@ -282,11 +361,31 @@ export function SupportKnowledgeManager() {
                       placeholder="pedido, criar, novo"
                     />
                   </div>
-                  <div className="flex justify-end gap-2">
+                  
+                  <div>
+                    <Label>Arquivo (opcional)</Label>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Anexe documentos, imagens, vídeos ou áudios para enriquecer a base de conhecimento
+                    </p>
+                    {tenant?.id && (
+                      <KnowledgeFileUpload
+                        tenantId={tenant.id}
+                        onUploadComplete={handleFileUpload}
+                        currentFile={formData.file_url ? {
+                          file_url: formData.file_url,
+                          file_name: formData.file_name,
+                          file_type: formData.file_type
+                        } : undefined}
+                        onRemove={handleRemoveFile}
+                      />
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-4">
                     <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                       Cancelar
                     </Button>
-                    <Button onClick={handleSubmit} disabled={!formData.title || !formData.content}>
+                    <Button onClick={handleSubmit} disabled={!formData.title || (!formData.content && !formData.file_url)}>
                       <Save className="w-4 h-4 mr-2" />
                       Salvar
                     </Button>
@@ -310,44 +409,102 @@ export function SupportKnowledgeManager() {
             </Card>
           ) : (
             <div className="grid gap-4">
-              {knowledgeBase?.map((item) => (
-                <Card key={item.id}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          {item.title}
-                          {!item.is_active && <Badge variant="secondary">Inativo</Badge>}
-                        </CardTitle>
-                        <CardDescription>
-                          Categoria: {item.category}
-                          {item.tags?.length > 0 && (
-                            <span className="ml-2">
-                              • Tags: {item.tags.join(', ')}
-                            </span>
+              {knowledgeBase?.map((item) => {
+                const FileIcon = item.file_type ? FILE_TYPE_ICONS[item.file_type] : FileText;
+                const fileColor = item.file_type ? FILE_TYPE_COLORS[item.file_type] : 'text-gray-500';
+                
+                return (
+                  <Card key={item.id}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex gap-3">
+                          {item.file_type && (
+                            <div className={cn("p-2 rounded-lg bg-muted shrink-0", fileColor)}>
+                              <FileIcon className="w-5 h-5" />
+                            </div>
                           )}
-                        </CardDescription>
+                          <div>
+                            <CardTitle className="text-lg flex items-center gap-2">
+                              {item.title}
+                              {!item.is_active && <Badge variant="secondary">Inativo</Badge>}
+                              {item.file_type && (
+                                <Badge variant="outline" className="capitalize">
+                                  {item.file_type}
+                                </Badge>
+                              )}
+                            </CardTitle>
+                            <CardDescription>
+                              Categoria: {item.category}
+                              {item.tags?.length > 0 && (
+                                <span className="ml-2">
+                                  • Tags: {item.tags.join(', ')}
+                                </span>
+                              )}
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          {item.file_url && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              asChild
+                            >
+                              <a href={item.file_url} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" onClick={() => startEditing(item)}>
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-destructive"
+                            onClick={() => deleteMutation.mutate(item.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => startEditing(item)}>
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="text-destructive"
-                          onClick={() => deleteMutation.mutate(item.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground line-clamp-3">{item.content}</p>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardHeader>
+                    <CardContent>
+                      {item.content && (
+                        <p className="text-sm text-muted-foreground line-clamp-3">{item.content}</p>
+                      )}
+                      
+                      {/* File preview */}
+                      {item.file_type === 'image' && item.file_url && (
+                        <img 
+                          src={item.file_url} 
+                          alt={item.title} 
+                          className="mt-3 rounded-lg max-h-32 object-cover"
+                        />
+                      )}
+                      {item.file_type === 'video' && item.file_url && (
+                        <video 
+                          src={item.file_url} 
+                          controls 
+                          className="mt-3 rounded-lg max-h-32 w-full"
+                        />
+                      )}
+                      {item.file_type === 'audio' && item.file_url && (
+                        <audio 
+                          src={item.file_url} 
+                          controls 
+                          className="mt-3 w-full"
+                        />
+                      )}
+                      {item.file_name && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          📎 {item.file_name}
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
