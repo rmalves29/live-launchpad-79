@@ -322,12 +322,13 @@ export function WhatsAppSupportButton() {
     </>
   );
 
+  // Sempre renderizar o botão, independente de estar logado ou não
   return (
     <>
-      {/* Floating Button */}
+      {/* Floating Button - Sempre visível */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 left-6 z-50 w-14 h-14 bg-primary hover:bg-primary/90 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110"
+        className="fixed bottom-6 left-6 z-[9999] w-14 h-14 bg-primary hover:bg-primary/90 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110"
         aria-label="Suporte"
       >
         {isOpen ? (
@@ -339,7 +340,7 @@ export function WhatsAppSupportButton() {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className={`fixed z-50 bg-card border border-border shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col ${
+        <div className={`fixed z-[9999] bg-card border border-border shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col ${
           isMobile 
             ? 'inset-0 rounded-none' 
             : 'bottom-24 left-6 w-96 max-w-[calc(100vw-3rem)] h-[500px] max-h-[calc(100vh-8rem)] rounded-2xl'
