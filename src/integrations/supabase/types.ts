@@ -832,6 +832,62 @@ export type Database = {
         }
         Relationships: []
       }
+      knowledge_base: {
+        Row: {
+          category: string | null
+          content: string | null
+          created_at: string | null
+          file_name: string | null
+          file_size: number | null
+          file_type: string | null
+          file_url: string | null
+          id: string
+          is_active: boolean | null
+          tags: string[] | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          content?: string | null
+          created_at?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          tags?: string[] | null
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          content?: string | null
+          created_at?: string | null
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          tags?: string[] | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "knowledge_base_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mkt_mm: {
         Row: {
           created_at: string | null
@@ -1459,6 +1515,132 @@ export type Database = {
           webhook_secret?: string | null
         }
         Relationships: []
+      }
+      support_conversations: {
+        Row: {
+          created_at: string | null
+          customer_name: string | null
+          customer_phone: string
+          escalated_at: string | null
+          escalated_to_phone: string | null
+          escalation_summary: string | null
+          failed_attempts: number | null
+          id: string
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          customer_name?: string | null
+          customer_phone: string
+          escalated_at?: string | null
+          escalated_to_phone?: string | null
+          escalation_summary?: string | null
+          failed_attempts?: number | null
+          id?: string
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          customer_name?: string | null
+          customer_phone?: string
+          escalated_at?: string | null
+          escalated_to_phone?: string | null
+          escalation_summary?: string | null
+          failed_attempts?: number | null
+          id?: string
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string | null
+          id?: string
+          role: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "support_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_settings: {
+        Row: {
+          created_at: string | null
+          escalation_message: string | null
+          human_support_phone: string
+          id: string
+          is_active: boolean | null
+          max_attempts_before_escalation: number | null
+          tenant_id: string
+          updated_at: string | null
+          welcome_message: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          escalation_message?: string | null
+          human_support_phone: string
+          id?: string
+          is_active?: boolean | null
+          max_attempts_before_escalation?: number | null
+          tenant_id: string
+          updated_at?: string | null
+          welcome_message?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          escalation_message?: string | null
+          human_support_phone?: string
+          id?: string
+          is_active?: boolean | null
+          max_attempts_before_escalation?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+          welcome_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tenant_credentials: {
         Row: {
