@@ -61,13 +61,16 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       id: number;
       qty: number;
       unit_price: number;
+      product_name?: string;
+      product_code?: string;
+      product_image_url?: string;
       product: {
         name: string;
         code: string;
         image_url?: string;
         color?: string;
         size?: string;
-      };
+      } | null;
     }[];
   }
 
