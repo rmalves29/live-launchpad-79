@@ -169,9 +169,11 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
         (allCustomers || []).forEach(c => customerMap.set(c.phone, c));
 
         // Batch query para cart_items (uma única query para todos os cart_ids)
+        // NOTA: Usamos fromGlobal porque super_admins podem visualizar pedidos de outros tenants
+        // e os cart_ids já garantem a segurança dos dados
         let allCartItems: any[] = [];
         if (uniqueCartIds.length > 0) {
-          const { data: cartItemsData } = await supabaseTenant
+          const { data: cartItemsData } = await supabaseTenant.raw
             .from('cart_items')
             .select(`
               id,
