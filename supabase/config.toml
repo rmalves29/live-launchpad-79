@@ -108,5 +108,8 @@ verify_jwt = false
 [functions.support-chat]
 verify_jwt = false
 
+[functions.run-migration-support-system]
+verify_jwt = false
+
 [functions.ai-agent]
 verify_jwt = false
