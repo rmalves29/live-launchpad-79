@@ -5,7 +5,7 @@ export default function SuporteIAPage() {
   usePageTitle();
   
   return (
-    <div className="container mx-auto px-4 py-6 max-w-6xl">
+    <div className="container mx-auto px-3 md:px-4 py-4 md:py-6 max-w-6xl">
       <SupportKnowledgeManager />
     </div>
   );
