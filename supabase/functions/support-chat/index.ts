@@ -110,12 +110,25 @@ serve(async (req) => {
       .order("created_at", { ascending: true })
       .limit(20);
 
-    // Buscar base de conhecimento do tenant
-    const { data: knowledgeBase } = await supabase
+    // ID do tenant global para base de conhecimento compartilhada
+    const GLOBAL_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+
+    // Buscar base de conhecimento GLOBAL (compartilhada entre todas as empresas)
+    const { data: globalKnowledge } = await supabase
+      .from("knowledge_base")
+      .select("title, content, category")
+      .eq("tenant_id", GLOBAL_TENANT_ID)
+      .eq("is_active", true);
+
+    // Buscar base de conhecimento específica do tenant (opcional, para personalizações)
+    const { data: tenantKnowledge } = await supabase
       .from("knowledge_base")
       .select("title, content, category")
       .eq("tenant_id", tenant_id)
       .eq("is_active", true);
+
+    // Combinar ambas as bases (global primeiro, depois específica do tenant)
+    const knowledgeBase = [...(globalKnowledge || []), ...(tenantKnowledge || [])];
 
     // Buscar dados do tenant para contexto
     const { data: tenant } = await supabase

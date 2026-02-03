@@ -15,20 +15,35 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    const { tenant_id } = await req.json();
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
 
-    if (!tenant_id) {
-      return new Response(
-        JSON.stringify({ error: "tenant_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // ID fixo para tenant global (base de conhecimento compartilhada)
+    const GLOBAL_TENANT_ID = "00000000-0000-0000-0000-000000000000";
+
+    // Primeiro, criar o tenant global se não existir
+    const { error: tenantError } = await supabase
+      .from("tenants")
+      .upsert({
+        id: GLOBAL_TENANT_ID,
+        name: "OrderZap - Base Global",
+        slug: "global-knowledge",
+        is_active: true
+      }, { onConflict: "id" });
+
+    if (tenantError) {
+      console.error("Error creating global tenant:", tenantError);
+      throw new Error(`Failed to create global tenant: ${tenantError.message}`);
     }
 
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    // Limpar documentos globais antigos
+    await supabase
+      .from("knowledge_base")
+      .delete()
+      .eq("tenant_id", GLOBAL_TENANT_ID);
 
     const documents = [
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "OrderZap - Visão Geral do Sistema",
         category: "Geral",
         content: `# OrderZap - Sistema de Gestão de Pedidos via WhatsApp
@@ -64,7 +79,7 @@ O sistema é acessado pelo navegador web. Cada empresa tem seu próprio subdomí
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "Módulo de Produtos",
         category: "Funcionalidades",
         content: `# Módulo de Produtos
@@ -108,7 +123,7 @@ Use a barra de busca para encontrar por código ou nome.
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "Módulo de Pedidos",
         category: "Funcionalidades",
         content: `# Módulo de Pedidos
@@ -167,7 +182,7 @@ Clique no ícone de olho para ver:
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "Módulo Live - Vendas ao Vivo",
         category: "Funcionalidades",
         content: `# Módulo Live - Vendas ao Vivo
@@ -214,7 +229,7 @@ Módulo especial para gerenciar vendas durante transmissões ao vivo no Instagra
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "Integração WhatsApp (Z-API)",
         category: "Integrações",
         content: `# Integração WhatsApp via Z-API
@@ -269,7 +284,7 @@ Vá em WhatsApp → Templates para personalizar as mensagens.
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "Integração Bling ERP",
         category: "Integrações",
         content: `# Integração Bling ERP
@@ -328,7 +343,7 @@ Ative a opção para sincronizar automaticamente quando:
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "Integração Melhor Envio",
         category: "Integrações",
         content: `# Integração Melhor Envio
@@ -384,7 +399,7 @@ Crie opções de frete fixo:
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "Módulo de Clientes",
         category: "Funcionalidades",
         content: `# Módulo de Clientes
@@ -439,7 +454,7 @@ Se um cliente tem múltiplos cadastros:
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "FAQ - Perguntas Frequentes",
         category: "Suporte",
         content: `# Perguntas Frequentes (FAQ)
@@ -501,7 +516,7 @@ Sim! Configure nas opções de frete personalizado.
         is_active: true
       },
       {
-        tenant_id,
+        tenant_id: GLOBAL_TENANT_ID,
         title: "Configurações do Sistema",
         category: "Configuração",
         content: `# Configurações do Sistema
