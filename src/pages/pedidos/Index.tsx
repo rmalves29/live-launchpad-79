@@ -884,7 +884,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       }
     };
 
-    const exportSelectedOrders = () => {
+    const exportSelectedOrders = async () => {
       if (selectedOrders.size === 0) {
         toast({
           title: 'Aviso',
@@ -895,10 +895,60 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       }
 
       const selectedOrdersData = orders.filter(order => selectedOrders.has(order.id));
-      generateOrderReport(selectedOrdersData);
+      await generateOrderReport(selectedOrdersData);
     };
 
-    const generateOrderReport = (ordersToExport: Order[]) => {
+    const generateOrderReport = async (ordersToExport: Order[]) => {
+      // Garantir que os pedidos têm cart_items antes de imprimir.
+      // Importante para super_admin/multi-tenant: não podemos depender do filtro automático do supabaseTenant.
+      try {
+        const ordersNeedingItems = ordersToExport.filter(o => o.cart_id && (!o.cart_items || o.cart_items.length === 0));
+        const cartIds = [...new Set(ordersNeedingItems.map(o => o.cart_id!).filter(Boolean))];
+
+        if (cartIds.length > 0) {
+          const { data: cartItemsData, error: cartItemsError } = await supabaseTenant.raw
+            .from('cart_items')
+            .select(`
+              id,
+              cart_id,
+              qty,
+              unit_price,
+              product_name,
+              product_code,
+              product_image_url,
+              product:products!cart_items_product_id_fkey (
+                name,
+                code,
+                image_url,
+                color,
+                size
+              )
+            `)
+            .in('cart_id', cartIds);
+
+          if (cartItemsError) throw cartItemsError;
+
+          const cartItemsMap = new Map<number, any[]>();
+          (cartItemsData || []).forEach((item: any) => {
+            const existing = cartItemsMap.get(item.cart_id) || [];
+            existing.push(item);
+            cartItemsMap.set(item.cart_id, existing);
+          });
+
+          ordersToExport = ordersToExport.map((o) => ({
+            ...o,
+            cart_items: o.cart_id ? (cartItemsMap.get(o.cart_id) || o.cart_items || []) : (o.cart_items || []),
+          }));
+        }
+      } catch (e) {
+        console.warn('Falha ao pré-carregar itens para impressão:', e);
+        toast({
+          title: 'Aviso',
+          description: 'Não foi possível carregar os produtos para impressão de alguns pedidos.',
+          variant: 'destructive',
+        });
+      }
+
       const reportContent = ordersToExport.map(order => {
         const customerName = order.customer?.name || 'Cliente';
         const customerCPF = order.customer?.cpf || 'Não informado';
@@ -918,9 +968,15 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
 
         const cartItemsRows = order.cart_items && order.cart_items.length > 0 
           ? order.cart_items.map(item => {
+              const productName = item.product?.name || item.product_name || 'Produto removido';
+              const productCode = item.product?.code || item.product_code || '-';
+              const productImage = item.product?.image_url || item.product_image_url;
+              const productColor = item.product?.color;
+              const productSize = item.product?.size;
+
               const variations = [];
-              if (item.product.color) variations.push(`Cor: ${item.product.color}`);
-              if (item.product.size) variations.push(`Tam: ${item.product.size}`);
+              if (productColor) variations.push(`Cor: ${productColor}`);
+              if (productSize) variations.push(`Tam: ${productSize}`);
               const variationsHtml = variations.length > 0 
                 ? `<div style="font-size: 9px; color: #888; margin-top: 2px;">${variations.join(' | ')}</div>` 
                 : '';
@@ -929,13 +985,13 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
               <tr>
                 <td style="border: 1px solid #ddd; padding: 8px; vertical-align: middle;">
                   <div style="display: flex; align-items: center; gap: 10px;">
-                    ${item.product.image_url ? 
-                      `<img src="${item.product.image_url}" alt="${item.product.name}" style="width: 70px; height: 70px; object-fit: cover; border: 1px solid #ddd; border-radius: 6px; flex-shrink: 0;" />` :
+                    ${productImage ? 
+                      `<img src="${productImage}" alt="${productName}" style="width: 70px; height: 70px; object-fit: cover; border: 1px solid #ddd; border-radius: 6px; flex-shrink: 0;" />` :
                       `<div style="width: 70px; height: 70px; border: 1px solid #ddd; background-color: #f9f9f9; display: flex; align-items: center; justify-content: center; font-size: 9px; border-radius: 6px; flex-shrink: 0; color: #999;">Sem foto</div>`
                     }
                     <div style="flex: 1;">
-                      <div style="font-weight: 600; margin-bottom: 3px; font-size: 11px; color: #333;">${item.product.name}</div>
-                      <div style="font-size: 10px; color: #666; background: #f5f5f5; padding: 2px 6px; border-radius: 4px; display: inline-block;">Código: ${item.product.code}</div>
+                      <div style="font-weight: 600; margin-bottom: 3px; font-size: 11px; color: #333;">${productName}</div>
+                      <div style="font-size: 10px; color: #666; background: #f5f5f5; padding: 2px 6px; border-radius: 4px; display: inline-block;">Código: ${productCode}</div>
                       ${variationsHtml}
                     </div>
                   </div>
