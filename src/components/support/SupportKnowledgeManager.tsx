@@ -10,12 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { toast } from 'sonner';
 import { KnowledgeFileUpload } from './KnowledgeFileUpload';
 import { cn } from '@/lib/utils';
-
+import { useIsMobile } from '@/hooks/use-mobile';
 interface KnowledgeItem {
   id: string;
   title: string;
@@ -65,6 +66,7 @@ const FILE_TYPE_COLORS = {
 export function SupportKnowledgeManager() {
   const { tenant } = useTenant();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<KnowledgeItem | null>(null);
   const [formData, setFormData] = useState<{
@@ -288,27 +290,27 @@ export function SupportKnowledgeManager() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Suporte IA</h2>
-          <p className="text-muted-foreground">Gerencie a base de conhecimento e configurações do assistente virtual</p>
+          <h2 className="text-xl md:text-2xl font-bold">Suporte IA</h2>
+          <p className="text-sm md:text-base text-muted-foreground">Gerencie a base de conhecimento e configurações</p>
         </div>
       </div>
 
       <Tabs defaultValue="knowledge" className="w-full">
-        <TabsList>
-          <TabsTrigger value="knowledge" className="gap-2">
+        <TabsList className="w-full grid grid-cols-2 h-auto">
+          <TabsTrigger value="knowledge" className="gap-1.5 py-2.5 text-xs sm:text-sm">
             <BookOpen className="w-4 h-4" />
-            Base de Conhecimento
+            <span className="hidden xs:inline">Base de</span> Conhecimento
           </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-2">
+          <TabsTrigger value="settings" className="gap-1.5 py-2.5 text-xs sm:text-sm">
             <Settings className="w-4 h-4" />
             Configurações
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="knowledge" className="space-y-4">
+        <TabsContent value="knowledge" className="space-y-4 mt-4">
           <div className="flex justify-end">
             <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
               setIsAddDialogOpen(open);
@@ -318,16 +320,20 @@ export function SupportKnowledgeManager() {
               }
             }}>
               <DialogTrigger asChild>
-                <Button>
+                <Button size={isMobile ? "default" : "default"} className="w-full sm:w-auto">
                   <Plus className="w-4 h-4 mr-2" />
-                  Adicionar FAQ/Documento
+                  <span className="sm:inline">Adicionar FAQ/Documento</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>{editingItem ? 'Editar Item' : 'Adicionar à Base de Conhecimento'}</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
+              <DialogContent className={cn(
+                "max-w-2xl",
+                isMobile && "h-[100dvh] max-h-[100dvh] w-full rounded-none border-0 p-0"
+              )}>
+                <ScrollArea className={cn(isMobile && "h-full")}>
+                  <div className={cn("space-y-4", isMobile ? "p-4" : "p-0")}>
+                    <DialogHeader className={cn(isMobile && "sticky top-0 bg-background pb-4 border-b")}>
+                      <DialogTitle>{editingItem ? 'Editar Item' : 'Adicionar à Base de Conhecimento'}</DialogTitle>
+                    </DialogHeader>
                   <div>
                     <Label>Título</Label>
                     <Input
@@ -381,16 +387,28 @@ export function SupportKnowledgeManager() {
                     )}
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                      Cancelar
-                    </Button>
-                    <Button onClick={handleSubmit} disabled={!formData.title || (!formData.content && !formData.file_url)}>
-                      <Save className="w-4 h-4 mr-2" />
-                      Salvar
-                    </Button>
+                    <div className={cn(
+                      "flex gap-2 pt-4",
+                      isMobile ? "flex-col sticky bottom-0 bg-background pb-4 border-t mt-4" : "justify-end"
+                    )}>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setIsAddDialogOpen(false)}
+                        className={cn(isMobile && "order-2")}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button 
+                        onClick={handleSubmit} 
+                        disabled={!formData.title || (!formData.content && !formData.file_url)}
+                        className={cn(isMobile && "order-1")}
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        Salvar
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                </ScrollArea>
               </DialogContent>
             </Dialog>
           </div>
@@ -408,46 +426,47 @@ export function SupportKnowledgeManager() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4">
+            <div className="grid gap-3 md:gap-4">
               {knowledgeBase?.map((item) => {
                 const FileIcon = item.file_type ? FILE_TYPE_ICONS[item.file_type] : FileText;
                 const fileColor = item.file_type ? FILE_TYPE_COLORS[item.file_type] : 'text-gray-500';
                 
                 return (
                   <Card key={item.id}>
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <div className="flex gap-3">
+                    <CardHeader className="pb-2 p-3 md:p-6 md:pb-2">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                        <div className="flex gap-3 min-w-0">
                           {item.file_type && (
                             <div className={cn("p-2 rounded-lg bg-muted shrink-0", fileColor)}>
-                              <FileIcon className="w-5 h-5" />
+                              <FileIcon className="w-4 h-4 md:w-5 md:h-5" />
                             </div>
                           )}
-                          <div>
-                            <CardTitle className="text-lg flex items-center gap-2">
-                              {item.title}
-                              {!item.is_active && <Badge variant="secondary">Inativo</Badge>}
+                          <div className="min-w-0 flex-1">
+                            <CardTitle className="text-base md:text-lg flex flex-wrap items-center gap-2">
+                              <span className="truncate">{item.title}</span>
+                              {!item.is_active && <Badge variant="secondary" className="text-xs">Inativo</Badge>}
                               {item.file_type && (
-                                <Badge variant="outline" className="capitalize">
+                                <Badge variant="outline" className="capitalize text-xs">
                                   {item.file_type}
                                 </Badge>
                               )}
                             </CardTitle>
-                            <CardDescription>
-                              Categoria: {item.category}
+                            <CardDescription className="text-xs md:text-sm mt-1">
+                              <span>Categoria: {item.category}</span>
                               {item.tags?.length > 0 && (
-                                <span className="ml-2">
+                                <span className="block sm:inline sm:ml-2">
                                   • Tags: {item.tags.join(', ')}
                                 </span>
                               )}
                             </CardDescription>
                           </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1 shrink-0 self-end sm:self-start">
                           {item.file_url && (
                             <Button 
                               variant="ghost" 
                               size="icon"
+                              className="h-9 w-9 md:h-10 md:w-10"
                               asChild
                             >
                               <a href={item.file_url} target="_blank" rel="noopener noreferrer">
@@ -455,13 +474,13 @@ export function SupportKnowledgeManager() {
                               </a>
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" onClick={() => startEditing(item)}>
+                          <Button variant="ghost" size="icon" onClick={() => startEditing(item)} className="h-9 w-9 md:h-10 md:w-10">
                             <Edit className="w-4 h-4" />
                           </Button>
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            className="text-destructive"
+                            className="text-destructive h-9 w-9 md:h-10 md:w-10"
                             onClick={() => deleteMutation.mutate(item.id)}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -469,9 +488,9 @@ export function SupportKnowledgeManager() {
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
                       {item.content && (
-                        <p className="text-sm text-muted-foreground line-clamp-3">{item.content}</p>
+                        <p className="text-xs md:text-sm text-muted-foreground line-clamp-2 md:line-clamp-3">{item.content}</p>
                       )}
                       
                       {/* File preview */}
@@ -479,14 +498,14 @@ export function SupportKnowledgeManager() {
                         <img 
                           src={item.file_url} 
                           alt={item.title} 
-                          className="mt-3 rounded-lg max-h-32 object-cover"
+                          className="mt-3 rounded-lg max-h-24 md:max-h-32 object-cover"
                         />
                       )}
                       {item.file_type === 'video' && item.file_url && (
                         <video 
                           src={item.file_url} 
                           controls 
-                          className="mt-3 rounded-lg max-h-32 w-full"
+                          className="mt-3 rounded-lg max-h-24 md:max-h-32 w-full"
                         />
                       )}
                       {item.file_type === 'audio' && item.file_url && (
@@ -497,7 +516,7 @@ export function SupportKnowledgeManager() {
                         />
                       )}
                       {item.file_name && (
-                        <p className="text-xs text-muted-foreground mt-2">
+                        <p className="text-xs text-muted-foreground mt-2 truncate">
                           📎 {item.file_name}
                         </p>
                       )}
@@ -509,17 +528,17 @@ export function SupportKnowledgeManager() {
           )}
         </TabsContent>
 
-        <TabsContent value="settings" className="space-y-4">
+        <TabsContent value="settings" className="space-y-4 mt-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Configurações do Suporte IA</CardTitle>
-              <CardDescription>Configure o comportamento do assistente virtual e escalação</CardDescription>
+            <CardHeader className="p-4 md:p-6">
+              <CardTitle className="text-base md:text-lg">Configurações do Suporte IA</CardTitle>
+              <CardDescription className="text-xs md:text-sm">Configure o comportamento do assistente virtual e escalação</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Suporte IA Ativo</Label>
-                  <p className="text-sm text-muted-foreground">Ativar/desativar o assistente virtual</p>
+            <CardContent className="space-y-5 md:space-y-6 p-4 pt-0 md:p-6 md:pt-0">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <Label className="text-sm md:text-base">Suporte IA Ativo</Label>
+                  <p className="text-xs md:text-sm text-muted-foreground">Ativar/desativar o assistente</p>
                 </div>
                 <Switch
                   checked={settingsForm.is_active}
@@ -528,50 +547,58 @@ export function SupportKnowledgeManager() {
               </div>
 
               <div>
-                <Label>Telefone do Suporte Humano *</Label>
+                <Label className="text-sm md:text-base">Telefone do Suporte Humano *</Label>
                 <Input
                   value={settingsForm.human_support_phone}
                   onChange={(e) => setSettingsForm(prev => ({ ...prev, human_support_phone: e.target.value }))}
                   placeholder="5531999999999"
+                  className="mt-1.5"
                 />
-                <p className="text-sm text-muted-foreground mt-1">
-                  WhatsApp que receberá as escalações (com código do país)
+                <p className="text-xs md:text-sm text-muted-foreground mt-1">
+                  WhatsApp que receberá as escalações
                 </p>
               </div>
 
               <div>
-                <Label>Tentativas antes de escalar</Label>
+                <Label className="text-sm md:text-base">Tentativas antes de escalar</Label>
                 <Input
                   type="number"
                   min={1}
                   max={10}
                   value={settingsForm.max_attempts_before_escalation}
                   onChange={(e) => setSettingsForm(prev => ({ ...prev, max_attempts_before_escalation: parseInt(e.target.value) || 3 }))}
+                  className="mt-1.5"
                 />
-                <p className="text-sm text-muted-foreground mt-1">
-                  Após quantas respostas insatisfatórias escalar para humano
+                <p className="text-xs md:text-sm text-muted-foreground mt-1">
+                  Após quantas respostas insatisfatórias escalar
                 </p>
               </div>
 
               <div>
-                <Label>Mensagem de Boas-vindas</Label>
+                <Label className="text-sm md:text-base">Mensagem de Boas-vindas</Label>
                 <Textarea
                   value={settingsForm.welcome_message}
                   onChange={(e) => setSettingsForm(prev => ({ ...prev, welcome_message: e.target.value }))}
                   placeholder="Olá! Sou o assistente virtual..."
+                  className="mt-1.5 min-h-[80px]"
                 />
               </div>
 
               <div>
-                <Label>Mensagem de Escalação</Label>
+                <Label className="text-sm md:text-base">Mensagem de Escalação</Label>
                 <Textarea
                   value={settingsForm.escalation_message}
                   onChange={(e) => setSettingsForm(prev => ({ ...prev, escalation_message: e.target.value }))}
                   placeholder="Estou transferindo para um atendente humano..."
+                  className="mt-1.5 min-h-[80px]"
                 />
               </div>
 
-              <Button onClick={() => settingsMutation.mutate(settingsForm)} disabled={!settingsForm.human_support_phone}>
+              <Button 
+                onClick={() => settingsMutation.mutate(settingsForm)} 
+                disabled={!settingsForm.human_support_phone}
+                className="w-full sm:w-auto"
+              >
                 <Save className="w-4 h-4 mr-2" />
                 Salvar Configurações
               </Button>

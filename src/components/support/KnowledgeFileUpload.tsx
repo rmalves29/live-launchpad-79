@@ -222,7 +222,7 @@ export function KnowledgeFileUpload({
   return (
     <div
       className={cn(
-        "border-2 border-dashed rounded-lg p-6 transition-colors cursor-pointer",
+        "border-2 border-dashed rounded-lg p-4 md:p-6 transition-colors cursor-pointer active:scale-[0.99]",
         dragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50",
         uploading && "pointer-events-none opacity-50"
       )}
@@ -240,29 +240,29 @@ export function KnowledgeFileUpload({
         className="hidden"
       />
       
-      <div className="flex flex-col items-center gap-3 text-center">
+      <div className="flex flex-col items-center gap-2 md:gap-3 text-center">
         {uploading ? (
-          <Loader2 className="w-10 h-10 text-primary animate-spin" />
+          <Loader2 className="w-8 h-8 md:w-10 md:h-10 text-primary animate-spin" />
         ) : (
-          <Upload className="w-10 h-10 text-muted-foreground" />
+          <Upload className="w-8 h-8 md:w-10 md:h-10 text-muted-foreground" />
         )}
         
         <div>
-          <p className="font-medium">
-            {uploading ? 'Enviando...' : 'Arraste um arquivo ou clique para selecionar'}
+          <p className="font-medium text-sm md:text-base">
+            {uploading ? 'Enviando...' : 'Toque para selecionar um arquivo'}
           </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Documentos, imagens, vídeos ou áudios (máx. 50MB)
+          <p className="text-xs md:text-sm text-muted-foreground mt-1">
+            Docs, imagens, vídeos ou áudios (máx. 50MB)
           </p>
         </div>
 
-        <div className="flex gap-4 mt-2">
+        <div className="flex flex-wrap justify-center gap-2 md:gap-4 mt-1 md:mt-2">
           {Object.entries(FILE_TYPE_CONFIG).map(([key, config]) => {
             const Icon = config.icon;
             return (
               <div key={key} className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Icon className={cn("w-4 h-4", config.color)} />
-                <span>{config.label}</span>
+                <Icon className={cn("w-3.5 h-3.5 md:w-4 md:h-4", config.color)} />
+                <span className="hidden xs:inline">{config.label}</span>
               </div>
             );
           })}
