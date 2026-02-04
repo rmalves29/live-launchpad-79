@@ -11,7 +11,7 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Bot, Zap } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Bot, Zap, Instagram } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
@@ -20,6 +20,7 @@ import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
 import ManychatIntegration from '@/components/integrations/ManychatIntegration';
+import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -165,6 +166,20 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
+  // Instagram Live Status
+  const { data: instagramIntegration } = useQuery({
+    queryKey: ['instagram-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_instagram')
+        .select('is_active')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
   // Verificar se auth ou tenant está carregando
   if (authLoading || tenantLoading) {
     return (
@@ -213,7 +228,15 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue="bling" className="w-full">
-        <TabsList className={`grid w-full ${showManychat ? 'grid-cols-8' : 'grid-cols-7'}`}>
+        <TabsList className={`grid w-full ${showManychat ? 'grid-cols-9' : 'grid-cols-8'}`}>
+          <TabsTrigger value="instagram" className="flex items-center gap-2">
+            <Instagram className="h-4 w-4" />
+            <span className="hidden sm:inline">Instagram</span>
+            <span className="sm:hidden">IG</span>
+            {instagramIntegration?.is_active && (
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+            )}
+          </TabsTrigger>
           <TabsTrigger value="bling" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Bling ERP</span>
@@ -281,6 +304,10 @@ export default function TenantIntegrationsPage() {
             </TabsTrigger>
           )}
         </TabsList>
+
+        <TabsContent value="instagram" className="mt-6">
+          <InstagramIntegration tenantId={tenantId} />
+        </TabsContent>
 
         <TabsContent value="bling" className="mt-6">
           <BlingIntegration tenantId={tenantId} />
