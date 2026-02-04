@@ -203,11 +203,11 @@ serve(async (req) => {
       });
     }
 
-    // Recognize product codes strictly in the format: C + 1-4 digits (e.g., C100)
+    // Recognize product codes strictly in the format: C + 1-6 digits (e.g., C100, C40895)
     // IMPORTANT: We intentionally do NOT accept plain numbers like "100" to avoid false positives.
     const productCodes: string[] = [];
 
-    const codeWithCRegex = /\b[Cc](\d{1,4})\b/g;
+    const codeWithCRegex = /\b[Cc](\d{1,6})\b/g;
     let match;
     while ((match = codeWithCRegex.exec(messageText)) !== null) {
       const normalized = `C${match[1]}`;
