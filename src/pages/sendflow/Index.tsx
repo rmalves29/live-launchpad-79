@@ -272,7 +272,8 @@ export default function SendFlow() {
         query = query.in('sale_type', ['LIVE', 'AMBOS']);
       }
 
-      const { data, error } = await query.order('code');
+      // Usar range(0, 9999) para buscar até 10000 produtos (sem limite padrão de 1000)
+      const { data, error } = await query.order('code').range(0, 9999);
 
       if (error) throw error;
       setProducts(data || []);
