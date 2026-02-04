@@ -262,7 +262,7 @@ export default function SendFlow() {
       setLoading(true);
       let query = supabaseTenant
         .from('products')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('is_active', true);
 
       // Aplicar filtro de tipo de venda
@@ -273,7 +273,17 @@ export default function SendFlow() {
       }
 
       // Usar range(0, 9999) para buscar até 10000 produtos (sem limite padrão de 1000)
-      const { data, error } = await query.order('code').range(0, 9999);
+      // e count exato para diagnosticar limite/paginação.
+      const { data, error, count } = await query.order('code').range(0, 9999);
+
+      console.log(
+        '📦 [SendFlow] Produtos carregados:',
+        data?.length || 0,
+        '| count(exact):',
+        count ?? null,
+        '| erro:',
+        error?.message || 'nenhum'
+      );
 
       if (error) throw error;
       setProducts(data || []);
