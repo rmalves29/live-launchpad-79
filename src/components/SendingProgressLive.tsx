@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Radio, Clock, Pause, XCircle, Timer } from 'lucide-react';
+import { Loader2, Radio, Clock, Pause, XCircle, Timer, Play, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +24,12 @@ interface SendingJob {
     groupIds?: string[];
     countdownSeconds?: number;
     isWaitingForNextProduct?: boolean;
+    messageTemplate?: string;
+    perGroupDelaySeconds?: number;
+    perProductDelayMinutes?: number;
+    useRandomDelay?: boolean;
+    minGroupDelaySeconds?: number;
+    maxGroupDelaySeconds?: number;
   };
   error_message?: string;
   started_at: string;
@@ -32,18 +38,22 @@ interface SendingJob {
 
 interface SendingProgressLiveProps {
   jobType?: 'sendflow' | 'mass_message';
+  onResumeJob?: (job: SendingJob) => void;
 }
 
-export default function SendingProgressLive({ jobType }: SendingProgressLiveProps) {
+export default function SendingProgressLive({ jobType, onResumeJob }: SendingProgressLiveProps) {
   const { tenant } = useTenant();
   const { toast } = useToast();
   const [activeJob, setActiveJob] = useState<SendingJob | null>(null);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<'pause' | 'cancel' | null>(null);
+  const [actionLoading, setActionLoading] = useState<'pause' | 'cancel' | 'resume' | null>(null);
   
   // Estado local para countdown em tempo real
   const [localCountdown, setLocalCountdown] = useState(0);
   const [isWaiting, setIsWaiting] = useState(false);
+  
+  // Detectar se o job está "travado" (sem atualização há mais de 30 segundos)
+  const [isJobStuck, setIsJobStuck] = useState(false);
 
   // Efeito para decrementar o countdown localmente a cada segundo
   useEffect(() => {
@@ -76,6 +86,26 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
       }
     }
   }, [activeJob?.job_data?.countdownSeconds, activeJob?.job_data?.isWaitingForNextProduct]);
+
+  // Verificar periodicamente se o job está travado (sem atualização)
+  useEffect(() => {
+    if (!activeJob) {
+      setIsJobStuck(false);
+      return;
+    }
+
+    const checkIfStuck = () => {
+      const lastUpdate = new Date(activeJob.updated_at).getTime();
+      const timeSinceUpdate = Date.now() - lastUpdate;
+      // Se não houve atualização há mais de 30 segundos, considerar travado
+      const STUCK_THRESHOLD_MS = 30 * 1000;
+      setIsJobStuck(timeSinceUpdate > STUCK_THRESHOLD_MS);
+    };
+
+    checkIfStuck();
+    const interval = setInterval(checkIfStuck, 5000);
+    return () => clearInterval(interval);
+  }, [activeJob?.updated_at]);
 
   const handlePauseJob = async () => {
     if (!activeJob) return;
@@ -138,6 +168,41 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
     }
   };
 
+  // Retomar job travado neste dispositivo
+  const handleResumeStuckJob = useCallback(async () => {
+    if (!activeJob || !onResumeJob) return;
+    
+    setActionLoading('resume');
+    try {
+      // Marcar o job como ativo novamente antes de retomar
+      const { error } = await supabase
+        .from('sending_jobs')
+        .update({
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', activeJob.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Retomando envio...',
+        description: 'O envio será continuado de onde parou.',
+      });
+      
+      // Chamar callback para retomar no componente pai
+      onResumeJob(activeJob);
+      setActiveJob(null);
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao retomar',
+        description: error?.message || 'Não foi possível retomar o envio.',
+        variant: 'destructive'
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  }, [activeJob, onResumeJob, toast]);
+
   // Verificar se job está "stale" (sem atualização há mais de 5 minutos)
   const isJobStale = (job: SendingJob): boolean => {
     const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutos
@@ -187,7 +252,7 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
         
         if (data) {
           const job = data as SendingJob;
-          // Se o job está stale, marcar como abandonado e não mostrar
+          // Se o job está stale (>5 min), marcar como abandonado e não mostrar
           if (isJobStale(job)) {
             await markJobAsAbandoned(job.id);
             setActiveJob(null);
@@ -237,6 +302,8 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
                   }
                 } else {
                   setActiveJob(job);
+                  // Reset do estado de travado quando receber atualização
+                  setIsJobStuck(false);
                 }
               }
             } else if (activeJob?.id === job.id) {
@@ -316,22 +383,34 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
     }
   };
 
+  // Se o job está travado e temos callback de retomada, mostrar UI diferente
+  const showStuckWarning = isJobStuck && onResumeJob;
+
   return (
-    <Card className="border-green-500 bg-green-50 dark:bg-green-950/20 animate-pulse-subtle">
+    <Card className={`animate-pulse-subtle ${showStuckWarning ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20' : 'border-green-500 bg-green-50 dark:bg-green-950/20'}`}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <Radio className="h-5 w-5 text-green-600" />
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-              </span>
-            </div>
-            <CardTitle className="text-lg">Envio em Andamento</CardTitle>
+            {showStuckWarning ? (
+              <>
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <CardTitle className="text-lg">Envio Interrompido</CardTitle>
+              </>
+            ) : (
+              <>
+                <div className="relative">
+                  <Radio className="h-5 w-5 text-green-600" />
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                  </span>
+                </div>
+                <CardTitle className="text-lg">Envio em Andamento</CardTitle>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-green-100 dark:bg-green-900/50">
+            <Badge variant="outline" className={showStuckWarning ? 'bg-amber-100 dark:bg-amber-900/50' : 'bg-green-100 dark:bg-green-900/50'}>
               {jobTypeLabel}
             </Badge>
             <Badge variant="secondary" className="flex items-center gap-1">
@@ -342,6 +421,23 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Aviso de job travado */}
+        {showStuckWarning && (
+          <div className="p-3 rounded-lg bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  O envio foi interrompido
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  A página foi recarregada ou o navegador perdeu conexão. Clique em "Retomar Envio" para continuar de onde parou.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div>
           <div className="flex justify-between text-sm mb-2">
             <span>Progresso Total</span>
@@ -378,7 +474,7 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
         </div>
 
         {/* Tempo estimado restante */}
-        {remainingMessages > 0 && (
+        {remainingMessages > 0 && !showStuckWarning && (
           <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
@@ -398,52 +494,89 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
           </div>
         )}
 
-        {isWaiting && localCountdown > 0 ? (
-          <div className="flex items-center justify-center gap-2 text-sm">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-              <Timer className="h-4 w-4 animate-pulse" />
-              <span className="font-medium">Próximo produto em:</span>
-              <span className="font-bold text-lg tabular-nums">
-                {countdownMinutes}:{countdownSecs.toString().padStart(2, '0')}
-              </span>
+        {!showStuckWarning && (
+          isWaiting && localCountdown > 0 ? (
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                <Timer className="h-4 w-4 animate-pulse" />
+                <span className="font-medium">Próximo produto em:</span>
+                <span className="font-bold text-lg tabular-nums">
+                  {countdownMinutes}:{countdownSecs.toString().padStart(2, '0')}
+                </span>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Enviando mensagens em outro dispositivo...</span>
-          </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Enviando mensagens em outro dispositivo...</span>
+            </div>
+          )
         )}
 
         <div className="flex items-center justify-center gap-3 pt-2 border-t">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePauseJob}
-            disabled={actionLoading !== null}
-            className="gap-2"
-          >
-            {actionLoading === 'pause' ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Pause className="h-4 w-4" />
-            )}
-            Pausar Envio
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleCancelJob}
-            disabled={actionLoading !== null}
-            className="gap-2"
-          >
-            {actionLoading === 'cancel' ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <XCircle className="h-4 w-4" />
-            )}
-            Cancelar Envio
-          </Button>
+          {showStuckWarning ? (
+            <>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleResumeStuckJob}
+                disabled={actionLoading !== null}
+                className="gap-2 bg-amber-600 hover:bg-amber-700"
+              >
+                {actionLoading === 'resume' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                Retomar Envio
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleCancelJob}
+                disabled={actionLoading !== null}
+                className="gap-2"
+              >
+                {actionLoading === 'cancel' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                Cancelar Envio
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePauseJob}
+                disabled={actionLoading !== null}
+                className="gap-2"
+              >
+                {actionLoading === 'pause' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Pause className="h-4 w-4" />
+                )}
+                Pausar Envio
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleCancelJob}
+                disabled={actionLoading !== null}
+                className="gap-2"
+              >
+                {actionLoading === 'cancel' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                Cancelar Envio
+              </Button>
+            </>
+          )}
         </div>
       </CardContent>
     </Card>
