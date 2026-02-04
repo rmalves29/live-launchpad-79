@@ -1602,6 +1602,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                   <TableHead className="w-[80px] min-w-[80px] px-2 text-center">Impresso?</TableHead>
                   <TableHead className="w-[100px] min-w-[100px] px-2 text-center">Tipo Evento</TableHead>
                   <TableHead className="w-[100px] min-w-[100px] px-2 text-center">Data Evento</TableHead>
+                  <TableHead className="w-[120px] min-w-[120px] px-2 text-center">Rastreio</TableHead>
                   <TableHead className="w-[60px] min-w-[60px] px-2 text-center">Disparo</TableHead>
                   <TableHead className="flex-1 min-w-[120px] px-2">Observação</TableHead>
                   <TableHead className="w-[60px] min-w-[60px] px-2 text-center">Ações</TableHead>
@@ -1610,13 +1611,13 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8">
+                    <TableCell colSpan={12} className="text-center py-8">
                       <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     </TableCell>
                   </TableRow>
                 ) : paginatedOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                       {searchTerm ? 'Nenhum pedido encontrado para esta busca' : 'Nenhum pedido encontrado'}
                     </TableCell>
                   </TableRow>
@@ -1710,6 +1711,56 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                       {/* Data Evento */}
                       <TableCell className="px-2 py-2 text-center">
                         <span className="text-xs">{formatBrasiliaDate(order.event_date)}</span>
+                      </TableCell>
+                      
+                      {/* Rastreio */}
+                      <TableCell className="px-2 py-2">
+                        {editingTracking === order.id ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={trackingText}
+                              onChange={(e) => setTrackingText(e.target.value)}
+                              placeholder="Código de rastreio"
+                              className="h-7 text-xs flex-1"
+                              disabled={savingTracking === order.id}
+                            />
+                            <Button 
+                              size="sm" 
+                              className="h-7 w-7 p-0" 
+                              onClick={() => saveTrackingCode(order.id)}
+                              disabled={savingTracking === order.id}
+                            >
+                              {savingTracking === order.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Check className="h-3 w-3" />
+                              )}
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            {order.melhor_envio_tracking_code ? (
+                              <Badge 
+                                variant="outline" 
+                                className="text-[10px] font-mono cursor-pointer hover:bg-accent"
+                                onClick={() => { setEditingTracking(order.id); setTrackingText(order.melhor_envio_tracking_code || ''); }}
+                                title="Clique para editar"
+                              >
+                                {order.melhor_envio_tracking_code}
+                              </Badge>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                onClick={() => { setEditingTracking(order.id); setTrackingText(''); }}
+                                title="Adicionar código de rastreio"
+                              >
+                                <Truck className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </TableCell>
                       
                       {/* Disparo (Mensagens) */}
