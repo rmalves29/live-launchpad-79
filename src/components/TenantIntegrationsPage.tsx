@@ -1,9 +1,7 @@
 /**
  * Página de Integrações por Tenant
- * Permite configurar Mercado Pago, Pagar.me, App Max, Melhor Envio, Mandae, Correios, Bling ERP e Manychat
+ * Permite configurar Mercado Pago, Pagar.me, App Max, Melhor Envio, Mandae, Correios, Bling ERP e Instagram Live
  * Usa automaticamente o tenant do usuário logado
- * Bling ERP só visível para super_admin até validação completa
- * Manychat: visível apenas para tenant "Mania de Mulher" ou super_admin
  * IMPORTANTE: Apenas UMA integração de pagamento pode estar ativa por vez
  */
 
@@ -11,7 +9,7 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Bot, Zap, Instagram } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
@@ -19,7 +17,6 @@ import ShippingIntegrations from '@/components/integrations/ShippingIntegrations
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
-import ManychatIntegration from '@/components/integrations/ManychatIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -30,12 +27,6 @@ export default function TenantIntegrationsPage() {
   const { profile, isLoading: authLoading } = useAuth();
   const tenantId = tenant?.id || '';
 
-  // MANIA DE MULHER ID - definido aqui para usar nas queries
-  const MANIA_DE_MULHER_TENANT_ID = '08f2b1b9-3988-489e-8186-c60f0c0b0622';
-  const isManiaDeMulher = tenantId === MANIA_DE_MULHER_TENANT_ID;
-  const isSuperAdmin = profile?.role === 'super_admin';
-  const showManychat = isManiaDeMulher || isSuperAdmin;
-
   // Debug: mostrar qual tenant está sendo usado
   console.log('[TenantIntegrationsPage] Estado atual:', {
     tenantId,
@@ -45,7 +36,6 @@ export default function TenantIntegrationsPage() {
     authLoading,
     tenantError,
     profileRole: profile?.role,
-    showManychat,
     previewTenantId: localStorage.getItem('previewTenantId')
   });
 
@@ -133,25 +123,6 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
-  // Manychat Status (apenas para Mania de Mulher ou super_admin)
-  // MANIA_DE_MULHER_TENANT_ID já definido acima
-
-  const { data: manychatIntegration } = useQuery({
-    queryKey: ['manychat-status', tenantId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('integration_manychat')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
-      if (error) {
-        console.error('[TenantIntegrationsPage] Erro ao buscar Manychat:', error);
-      }
-      return data;
-    },
-    enabled: !!tenantId && showManychat,
-  });
-
   // App Max Status
   const { data: appmaxIntegration } = useQuery({
     queryKey: ['appmax-status', tenantId],
@@ -228,7 +199,7 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue="bling" className="w-full">
-        <TabsList className={`grid w-full ${showManychat ? 'grid-cols-9' : 'grid-cols-8'}`}>
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
@@ -293,16 +264,6 @@ export default function TenantIntegrationsPage() {
               <CheckCircle2 className="h-4 w-4 text-primary" />
             )}
           </TabsTrigger>
-          {showManychat && (
-            <TabsTrigger value="manychat" className="flex items-center gap-2">
-              <Bot className="h-4 w-4" />
-              <span className="hidden sm:inline">Manychat</span>
-              <span className="sm:hidden">MC</span>
-              {manychatIntegration?.is_active && (
-                <CheckCircle2 className="h-4 w-4 text-primary" />
-              )}
-            </TabsTrigger>
-          )}
         </TabsList>
 
         <TabsContent value="instagram" className="mt-6">
@@ -336,12 +297,6 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="correios" className="mt-6">
           <CorreiosIntegration tenantId={tenantId} />
         </TabsContent>
-
-        {showManychat && (
-          <TabsContent value="manychat" className="mt-6">
-            <ManychatIntegration tenantId={tenantId} />
-          </TabsContent>
-        )}
       </Tabs>
     </div>
   );
