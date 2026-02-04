@@ -74,8 +74,29 @@ const Produtos = () => {
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  // Aguarda o tenant estar definido antes de carregar produtos
   useEffect(() => {
-    loadProducts();
+    const currentTenantId = (supabaseTenant as any).getTenantId?.();
+    if (currentTenantId) {
+      loadProducts();
+    } else {
+      // Verificar novamente após um breve delay (tenant pode estar carregando)
+      const checkTenant = setInterval(() => {
+        const tenantId = (supabaseTenant as any).getTenantId?.();
+        if (tenantId) {
+          clearInterval(checkTenant);
+          loadProducts();
+        }
+      }, 100);
+      
+      // Limpar intervalo após 5 segundos se tenant não carregar
+      setTimeout(() => {
+        clearInterval(checkTenant);
+        setLoading(false);
+      }, 5000);
+      
+      return () => clearInterval(checkTenant);
+    }
   }, []);
 
   const loadProducts = async () => {
