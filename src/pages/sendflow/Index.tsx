@@ -272,21 +272,30 @@ export default function SendFlow() {
         query = query.in('sale_type', ['LIVE', 'AMBOS']);
       }
 
-      // Usar range(0, 9999) para buscar até 10000 produtos (sem limite padrão de 1000)
-      // e count exato para diagnosticar limite/paginação.
-      const { data, error, count } = await query.order('code').range(0, 9999);
+      // Mesma regra do /produtos: PostgREST pode impor max-rows (1000).
+      // Pagina em lotes e concatena até 9999.
+      const pageSize = 1000;
+      const maxTotal = 9999;
 
-      console.log(
-        '📦 [SendFlow] Produtos carregados:',
-        data?.length || 0,
-        '| count(exact):',
-        count ?? null,
-        '| erro:',
-        error?.message || 'nenhum'
-      );
+      let all: Product[] = [];
+      let from = 0;
+      let totalCount: number | null = null;
 
-      if (error) throw error;
-      setProducts(data || []);
+      while (all.length < maxTotal) {
+        const to = Math.min(from + pageSize - 1, maxTotal - 1);
+        const { data, error, count } = await query.order('code').range(from, to);
+        if (error) throw error;
+        if (from === 0) totalCount = count ?? null;
+
+        const chunk = (data ?? []) as Product[];
+        all = all.concat(chunk);
+        if (chunk.length < pageSize) break;
+        from += pageSize;
+      }
+
+      console.log('📦 [SendFlow] Produtos carregados:', all.length, '| count(exact):', totalCount, '| pagesize:', pageSize);
+
+      setProducts(all);
       setSelectedProducts(new Set()); // Limpar seleção ao mudar filtro
       setPrioritizedProductIds([]); // Limpar priorização ao mudar filtro
     } catch (error) {

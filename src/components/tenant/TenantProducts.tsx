@@ -57,15 +57,27 @@ export default function TenantProducts() {
     if (!profile?.tenant_id) return;
 
     try {
-      // Usar range(0, 9999) para buscar até 10000 produtos (sem limite padrão de 1000)
-      const { data, error } = await supabaseTenant
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(0, 9999);
-      
-      if (error) throw error;
-      setProducts(data || []);
+      // Paginar para contornar max-rows (comum: 1000)
+      const pageSize = 1000;
+      const maxTotal = 9999;
+
+      let all: any[] = [];
+      let from = 0;
+      while (all.length < maxTotal) {
+        const to = Math.min(from + pageSize - 1, maxTotal - 1);
+        const { data, error } = await supabaseTenant
+          .from('products')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, to);
+
+        if (error) throw error;
+        const chunk = data ?? [];
+        all = all.concat(chunk);
+        if (chunk.length < pageSize) break;
+        from += pageSize;
+      }
+      setProducts(all || []);
     } catch (error: any) {
       toast({
         title: 'Erro',
