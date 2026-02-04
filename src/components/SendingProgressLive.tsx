@@ -40,6 +40,42 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
   const [activeJob, setActiveJob] = useState<SendingJob | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<'pause' | 'cancel' | null>(null);
+  
+  // Estado local para countdown em tempo real
+  const [localCountdown, setLocalCountdown] = useState(0);
+  const [isWaiting, setIsWaiting] = useState(false);
+
+  // Efeito para decrementar o countdown localmente a cada segundo
+  useEffect(() => {
+    if (!isWaiting || localCountdown <= 0) return;
+    
+    const interval = setInterval(() => {
+      setLocalCountdown(prev => {
+        if (prev <= 1) {
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isWaiting, localCountdown]);
+
+  // Sincronizar com dados do banco quando receber atualização
+  useEffect(() => {
+    if (activeJob?.job_data) {
+      const serverCountdown = activeJob.job_data.countdownSeconds || 0;
+      const serverIsWaiting = activeJob.job_data.isWaitingForNextProduct || false;
+      
+      setIsWaiting(serverIsWaiting);
+      
+      // Só atualizar o countdown local se o servidor tem um valor maior (nova espera)
+      // ou se o servidor zerou (acabou a espera)
+      if (serverCountdown > localCountdown || serverCountdown === 0) {
+        setLocalCountdown(serverCountdown);
+      }
+    }
+  }, [activeJob?.job_data?.countdownSeconds, activeJob?.job_data?.isWaitingForNextProduct]);
 
   const handlePauseJob = async () => {
     if (!activeJob) return;
@@ -244,11 +280,9 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
   const totalGroups = activeJob.job_data?.groupIds?.length || 0;
   const currentProduct = (activeJob.job_data?.currentProductIndex || 0) + 1;
   const currentGroup = (activeJob.job_data?.currentGroupIndex || 0) + 1;
-  const countdownSeconds = activeJob.job_data?.countdownSeconds || 0;
-  const isWaitingForNextProduct = activeJob.job_data?.isWaitingForNextProduct || false;
-  
-  const countdownMinutes = Math.floor(countdownSeconds / 60);
-  const countdownSecs = countdownSeconds % 60;
+  // Usar estado local para countdown em tempo real
+  const countdownMinutes = Math.floor(localCountdown / 60);
+  const countdownSecs = localCountdown % 60;
 
   const startedAt = new Date(activeJob.started_at);
   const elapsed = Math.floor((Date.now() - startedAt.getTime()) / 1000);
@@ -265,7 +299,7 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
   const remainingMessages = (remainingProducts * totalGroups) + remainingGroupsThisProduct;
   
   // Adicionar tempo do countdown atual se estiver aguardando próximo produto
-  const countdownRemaining = isWaitingForNextProduct ? countdownSeconds : 0;
+  const countdownRemaining = isWaiting ? localCountdown : 0;
   const estimatedRemainingSeconds = Math.ceil((remainingMessages * avgTimePerMessage) + countdownRemaining);
   
   const estimatedHours = Math.floor(estimatedRemainingSeconds / 3600);
@@ -364,7 +398,7 @@ export default function SendingProgressLive({ jobType }: SendingProgressLiveProp
           </div>
         )}
 
-        {isWaitingForNextProduct && countdownSeconds > 0 ? (
+        {isWaiting && localCountdown > 0 ? (
           <div className="flex items-center justify-center gap-2 text-sm">
             <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
               <Timer className="h-4 w-4 animate-pulse" />
