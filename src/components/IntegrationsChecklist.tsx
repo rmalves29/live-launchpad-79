@@ -1,6 +1,6 @@
 import { useTenantContext } from '@/contexts/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2, Wallet, Zap } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2, Wallet, Zap, Instagram } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -102,7 +102,21 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
-  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || shippingLoading || blingLoading;
+  // Instagram Live Status
+  const { data: instagramIntegration, isLoading: instagramLoading } = useQuery({
+    queryKey: ['instagram-checklist-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_instagram')
+        .select('is_active')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || shippingLoading || blingLoading || instagramLoading;
 
   // Contagem de módulos ativos do Bling
   const blingActiveModules = blingIntegration ? [
@@ -144,6 +158,14 @@ export default function IntegrationsChecklist() {
   };
 
   const integrations: IntegrationStatus[] = [
+    {
+      name: 'Instagram Live',
+      icon: <Instagram className="h-5 w-5" />,
+      isActive: instagramIntegration?.is_active || false,
+      details: instagramIntegration?.is_active 
+        ? 'Captura de pedidos ativa' 
+        : 'Não configurado',
+    },
     {
       name: 'Bling ERP',
       icon: <Building2 className="h-5 w-5" />,
