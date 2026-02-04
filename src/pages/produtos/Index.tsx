@@ -105,25 +105,46 @@ const Produtos = () => {
     
     try {
       setLoading(true);
-      // Usar range(0, 9999) para buscar até 10000 produtos (sem limite padrão de 1000)
-      // e também pedir count exato para diagnosticar limite/paginação.
-      const { data, error, count } = await supabaseTenant
-        .from('products')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(0, 9999);
+      // ATENÇÃO: mesmo com range grande, o PostgREST pode impor um max-rows (comum: 1000).
+      // Então buscamos em páginas de 1000 e concatenamos até completar ou atingir 9999.
+      const pageSize = 1000;
+      const maxTotal = 9999;
+
+      let all: Product[] = [];
+      let from = 0;
+      let totalCount: number | null = null;
+
+      while (all.length < maxTotal) {
+        const to = Math.min(from + pageSize - 1, maxTotal - 1);
+
+        const { data, error, count } = await supabaseTenant
+          .from('products')
+          .select('*', { count: from === 0 ? 'exact' : undefined })
+          .order('created_at', { ascending: false })
+          .range(from, to);
+
+        if (error) throw error;
+        if (from === 0) totalCount = count ?? null;
+
+        const chunk = (data ?? []) as Product[];
+        all = all.concat(chunk);
+
+        // Se veio menos do que pageSize, acabou.
+        if (chunk.length < pageSize) break;
+
+        from += pageSize;
+      }
 
       console.log(
         '📦 [Produtos] Produtos carregados:',
-        data?.length || 0,
+        all.length,
         '| count(exact):',
-        count ?? null,
-        '| Erro:',
-        error?.message || 'nenhum'
+        totalCount,
+        '| pagesize:',
+        pageSize
       );
-      
-      if (error) throw error;
-      setProducts(data || []);
+
+      setProducts(all);
     } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
