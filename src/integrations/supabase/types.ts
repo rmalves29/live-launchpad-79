@@ -471,6 +471,47 @@ export type Database = {
           },
         ]
       }
+      integration_appmax: {
+        Row: {
+          access_token: string | null
+          appmax_customer_id: number | null
+          created_at: string | null
+          environment: string | null
+          id: string
+          is_active: boolean | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          appmax_customer_id?: number | null
+          created_at?: string | null
+          environment?: string | null
+          id?: string
+          is_active?: boolean | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          appmax_customer_id?: number | null
+          created_at?: string | null
+          environment?: string | null
+          id?: string
+          is_active?: boolean | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_appmax_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_bling: {
         Row: {
           access_token: string | null
