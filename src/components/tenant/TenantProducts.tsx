@@ -57,10 +57,12 @@ export default function TenantProducts() {
     if (!profile?.tenant_id) return;
 
     try {
+      // Usar range(0, 9999) para buscar até 10000 produtos (sem limite padrão de 1000)
       const { data, error } = await supabaseTenant
         .from('products')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(0, 9999);
       
       if (error) throw error;
       setProducts(data || []);

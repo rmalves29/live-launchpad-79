@@ -105,10 +105,12 @@ const Produtos = () => {
     
     try {
       setLoading(true);
+      // Usar range(0, 9999) para buscar até 10000 produtos (sem limite padrão de 1000)
       const { data, error } = await supabaseTenant
         .from('products')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(0, 9999);
 
       console.log('📦 [Produtos] Produtos carregados:', data?.length || 0, 'Erro:', error?.message || 'nenhum');
       
