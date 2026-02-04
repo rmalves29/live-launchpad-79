@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useState, useRef } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenantContext } from "@/contexts/TenantContext";
@@ -10,11 +10,16 @@ interface RequireTenantAuthProps {
   children: ReactNode;
 }
 
+// Cache global para status de assinatura - evita verificação repetida
+const subscriptionCache = new Map<string, { expired: boolean; checkedAt: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
 export default function RequireTenantAuth({ children }: RequireTenantAuthProps) {
   const { user, profile, isLoading: authLoading } = useAuth();
   const { tenant, loading: tenantLoading, tenantId, error: tenantError } = useTenantContext();
   const [subscriptionExpired, setSubscriptionExpired] = useState<boolean | null>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(false);
+  const lastCheckedTenantId = useRef<string | null>(null);
   
   // Ativar timeout de sessão apenas quando logado
   useSessionTimeout();
@@ -27,6 +32,19 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
         return;
       }
 
+      // Verificar cache primeiro
+      const cached = subscriptionCache.get(tenant.id);
+      const now = Date.now();
+      if (cached && (now - cached.checkedAt) < CACHE_DURATION) {
+        setSubscriptionExpired(cached.expired);
+        return;
+      }
+
+      // Se já verificamos este tenant recentemente, não verificar de novo
+      if (lastCheckedTenantId.current === tenant.id && subscriptionExpired !== null) {
+        return;
+      }
+
       setCheckingSubscription(true);
       try {
         const { data: tenantData } = await supabase
@@ -36,19 +54,18 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
           .single();
 
         if (tenantData) {
-          // Verificar se assinatura expirou
+          let expired = false;
           if (tenantData.subscription_ends_at) {
             const expirationDate = new Date(tenantData.subscription_ends_at);
-            const now = new Date();
-            console.log('[RequireTenantAuth] Verificando assinatura:', {
-              expirationDate: expirationDate.toISOString(),
-              now: now.toISOString(),
-              expired: expirationDate < now
-            });
-            setSubscriptionExpired(expirationDate < now);
-          } else {
-            setSubscriptionExpired(false);
+            expired = expirationDate < new Date();
           }
+          
+          // Salvar no cache
+          subscriptionCache.set(tenant.id, { expired, checkedAt: now });
+          lastCheckedTenantId.current = tenant.id;
+          setSubscriptionExpired(expired);
+        } else {
+          setSubscriptionExpired(false);
         }
       } catch (error) {
         console.error('[RequireTenantAuth] Erro ao verificar assinatura:', error);
@@ -59,21 +76,7 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     };
 
     checkSubscription();
-  }, [tenant?.id, profile]);
-
-  // Debug logs para diagnóstico
-  console.log('[RequireTenantAuth] Estado:', {
-    authLoading,
-    tenantLoading,
-    hasUser: !!user,
-    hasProfile: !!profile,
-    profileRole: profile?.role,
-    hasTenant: !!tenant,
-    tenantId,
-    tenantError,
-    subscriptionExpired,
-    checkingSubscription
-  });
+  }, [tenant?.id, profile?.role]);
 
   // Se ainda está carregando auth ou tenant, mostrar loading
   if (authLoading || tenantLoading || checkingSubscription) {
@@ -100,7 +103,6 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
 
   // Super admin pode acessar qualquer tenant
   if (profile.role === 'super_admin') {
-    // Mas precisa ter um tenant selecionado
     if (!tenant || !tenantId) {
       return (
         <div className="min-h-screen flex items-center justify-center">
@@ -133,18 +135,13 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
 
   // VERIFICAÇÃO CRÍTICA: O tenant carregado DEVE ser o mesmo do profile
   if (tenant.id !== profile.tenant_id) {
-    console.error('❌ [RequireTenantAuth] ERRO CRÍTICO: Tenant carregado não corresponde ao tenant do usuário!', {
-      tenantCarregado: tenant.id,
-      tenantDoUsuario: profile.tenant_id
-    });
-    // Limpar localStorage e redirecionar
+    console.error('❌ [RequireTenantAuth] ERRO CRÍTICO: Tenant carregado não corresponde ao tenant do usuário!');
     localStorage.removeItem('previewTenantId');
     return <Navigate to="/auth" replace />;
   }
 
   // VERIFICAÇÃO DE ASSINATURA: Se expirada, redirecionar para renovação
   if (subscriptionExpired) {
-    console.log('[RequireTenantAuth] Assinatura expirada, redirecionando para renovação');
     return <Navigate to="/renovar-assinatura" replace />;
   }
 
