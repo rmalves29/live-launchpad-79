@@ -1,6 +1,6 @@
 import { useTenantContext } from '@/contexts/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2, Wallet } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2, Wallet, Zap } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -59,6 +59,20 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
+  // App Max Status
+  const { data: appmaxIntegration, isLoading: appmaxLoading } = useQuery({
+    queryKey: ['appmax-checklist-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_appmax')
+        .select('is_active, environment')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
   // Melhor Envio Status
   const { data: shippingIntegration, isLoading: shippingLoading } = useQuery({
     queryKey: ['shipping-checklist-status', tenantId],
@@ -88,7 +102,7 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
-  const isLoading = zapiLoading || mpLoading || pagarmeLoading || shippingLoading || blingLoading;
+  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || shippingLoading || blingLoading;
 
   // Contagem de módulos ativos do Bling
   const blingActiveModules = blingIntegration ? [
@@ -102,11 +116,32 @@ export default function IntegrationsChecklist() {
   ].filter(Boolean).length : 0;
 
   // Determinar qual integração de pagamento está ativa
-  const activePaymentProvider = mpIntegration?.is_active 
-    ? 'mercado_pago' 
-    : pagarmeIntegration?.is_active 
-      ? 'pagarme' 
-      : null;
+  const activePaymentProvider = appmaxIntegration?.is_active 
+    ? 'appmax'
+    : mpIntegration?.is_active 
+      ? 'mercado_pago' 
+      : pagarmeIntegration?.is_active 
+        ? 'pagarme' 
+        : null;
+
+  const getPaymentIcon = () => {
+    if (activePaymentProvider === 'appmax') return <Zap className="h-5 w-5" />;
+    if (activePaymentProvider === 'pagarme') return <Wallet className="h-5 w-5" />;
+    return <CreditCard className="h-5 w-5" />;
+  };
+
+  const getPaymentDetails = () => {
+    if (activePaymentProvider === 'appmax') {
+      return `App Max (${appmaxIntegration?.environment === 'production' ? 'Produção' : 'Sandbox'})`;
+    }
+    if (activePaymentProvider === 'mercado_pago') {
+      return `Mercado Pago (${mpIntegration?.environment === 'production' ? 'Produção' : 'Sandbox'})`;
+    }
+    if (activePaymentProvider === 'pagarme') {
+      return `Pagar.me (${pagarmeIntegration?.environment === 'production' ? 'Produção' : 'Sandbox'})`;
+    }
+    return 'Nenhum configurado';
+  };
 
   const integrations: IntegrationStatus[] = [
     {
@@ -127,13 +162,9 @@ export default function IntegrationsChecklist() {
     },
     {
       name: 'Pagamento',
-      icon: activePaymentProvider === 'pagarme' ? <Wallet className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />,
+      icon: getPaymentIcon(),
       isActive: !!activePaymentProvider,
-      details: activePaymentProvider === 'mercado_pago' 
-        ? `Mercado Pago (${mpIntegration?.environment === 'production' ? 'Produção' : 'Sandbox'})`
-        : activePaymentProvider === 'pagarme'
-          ? `Pagar.me (${pagarmeIntegration?.environment === 'production' ? 'Produção' : 'Sandbox'})`
-          : 'Nenhum configurado',
+      details: getPaymentDetails(),
       provider: activePaymentProvider || undefined,
     },
     {

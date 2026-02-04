@@ -1,6 +1,6 @@
 /**
  * Página de Integrações por Tenant
- * Permite configurar Mercado Pago, Pagar.me, Melhor Envio, Mandae, Correios, Bling ERP e Manychat
+ * Permite configurar Mercado Pago, Pagar.me, App Max, Melhor Envio, Mandae, Correios, Bling ERP e Manychat
  * Usa automaticamente o tenant do usuário logado
  * Bling ERP só visível para super_admin até validação completa
  * Manychat: visível apenas para tenant "Mania de Mulher" ou super_admin
@@ -11,9 +11,10 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Bot } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Bot, Zap } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
+import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
@@ -150,6 +151,20 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId && showManychat,
   });
 
+  // App Max Status
+  const { data: appmaxIntegration } = useQuery({
+    queryKey: ['appmax-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_appmax')
+        .select('is_active')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
   // Verificar se auth ou tenant está carregando
   if (authLoading || tenantLoading) {
     return (
@@ -198,7 +213,7 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue="bling" className="w-full">
-        <TabsList className={`grid w-full ${showManychat ? 'grid-cols-7' : 'grid-cols-6'}`}>
+        <TabsList className={`grid w-full ${showManychat ? 'grid-cols-8' : 'grid-cols-7'}`}>
           <TabsTrigger value="bling" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Bling ERP</span>
@@ -220,6 +235,14 @@ export default function TenantIntegrationsPage() {
             <span className="hidden sm:inline">Pagar.me</span>
             <span className="sm:hidden">PG</span>
             {pagarmeIntegration?.is_active && (
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="appmax" className="flex items-center gap-2">
+            <Zap className="h-4 w-4" />
+            <span className="hidden sm:inline">App Max</span>
+            <span className="sm:hidden">AM</span>
+            {appmaxIntegration?.is_active && (
               <CheckCircle2 className="h-4 w-4 text-primary" />
             )}
           </TabsTrigger>
@@ -269,6 +292,10 @@ export default function TenantIntegrationsPage() {
 
         <TabsContent value="pagarme" className="mt-6">
           <PagarMeIntegration tenantId={tenantId} />
+        </TabsContent>
+
+        <TabsContent value="appmax" className="mt-6">
+          <AppmaxIntegration tenantId={tenantId} />
         </TabsContent>
 
         <TabsContent value="melhorenvio" className="mt-6">
