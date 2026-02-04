@@ -1,4 +1,4 @@
-import { ReactNode, useContext, useEffect } from 'react';
+import { ReactNode, useContext, useEffect, useRef } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { Card, CardContent } from '@/components/ui/card';
 import { Building2 } from 'lucide-react';
@@ -8,15 +8,30 @@ interface TenantLoaderProps {
   children: ReactNode;
 }
 
+// Flag global - uma vez carregado, nunca mais mostra loading
+let hasEverLoaded = false;
+
 /**
  * Componente que carrega os dados do tenant e configura o cliente Supabase
  * Deve envolver toda a aplicação após o TenantProvider
  */
 export const TenantLoader = ({ children }: TenantLoaderProps) => {
-  // Usar useContext diretamente para evitar throw durante HMR
   const contextValue = useContext(TenantContext);
+  const hasRendered = useRef(false);
   
-  // Se o contexto não está disponível, renderiza loading state
+  // Configurar o cliente Supabase com o tenant atual
+  useEffect(() => {
+    if (contextValue?.tenantId) {
+      supabaseTenant.setTenantId(contextValue.tenantId);
+    }
+  }, [contextValue?.tenantId]);
+
+  // Se já renderizamos uma vez com sucesso, NUNCA mostrar loading de novo
+  if (hasEverLoaded) {
+    return <>{children}</>;
+  }
+  
+  // Se o contexto não está disponível no primeiro load
   if (!contextValue) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
@@ -33,15 +48,10 @@ export const TenantLoader = ({ children }: TenantLoaderProps) => {
     );
   }
 
-  const { tenant, loading, tenantId } = contextValue;
+  const { loading } = contextValue;
 
-  // Configurar o cliente Supabase com o tenant atual
-  useEffect(() => {
-    supabaseTenant.setTenantId(tenantId);
-  }, [tenantId]);
-
-  // Loading state - apenas se authLoading também (loading já inclui authLoading)
-  if (loading) {
+  // Loading state - apenas no primeiro carregamento
+  if (loading && !hasRendered.current) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
         <Card className="w-full max-w-md">
@@ -57,13 +67,9 @@ export const TenantLoader = ({ children }: TenantLoaderProps) => {
     );
   }
 
-  // Sempre renderizar children - o controle de acesso é feito pelas rotas (RequireAuth, RequireTenantAuth)
-  // Isso permite que a página /auth seja acessível mesmo sem estar logado
-  if (tenant) {
-    console.log(`🏢 Renderizando com tenant: ${tenant.name}`);
-  } else {
-    console.log('🏢 Renderizando sem tenant (usuário pode precisar fazer login)');
-  }
+  // Marcar como carregado com sucesso
+  hasEverLoaded = true;
+  hasRendered.current = true;
   
   return <>{children}</>;
 };
