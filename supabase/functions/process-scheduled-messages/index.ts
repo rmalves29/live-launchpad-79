@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { 
+  antiBlockDelay, 
+  addMessageVariation, 
+  checkTenantRateLimit 
+} from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -110,7 +115,16 @@ Deno.serve(async (req) => {
           phone = "55" + phone;
         }
 
+        // Check rate limit
+        if (!checkTenantRateLimit(job.tenant_id)) {
+          console.log(`⚠️ Rate limit atingido, pausando...`);
+          await new Promise(resolve => setTimeout(resolve, 60000)); // Wait 1 min
+        }
+
         try {
+          // Add message variation to avoid identical messages
+          const variedMessage = addMessageVariation(personalizedMessage);
+          
           // Enviar via Z-API
           const zapiUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/send-text`;
           
@@ -122,7 +136,7 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               phone: phone,
-              message: personalizedMessage
+              message: variedMessage
             })
           });
 
@@ -134,7 +148,7 @@ Deno.serve(async (req) => {
             await supabase.from("whatsapp_messages").insert({
               tenant_id: job.tenant_id,
               phone: phone,
-              message: personalizedMessage,
+              message: variedMessage,
               type: "bulk",
               sent_at: new Date().toISOString(),
               processed: true
@@ -159,14 +173,18 @@ Deno.serve(async (req) => {
           })
           .eq("id", job.id);
 
-        // Delay entre mensagens
+        // Delay entre mensagens (mínimo 5 segundos para anti-bloqueio)
         if (i < customers.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, delay_between_messages * 1000));
+          const minDelay = Math.max(delay_between_messages, 5);
+          // Add randomness to delay (5-15 seconds variation)
+          const randomExtra = await antiBlockDelay(3000, 8000);
+          await new Promise(resolve => setTimeout(resolve, (minDelay * 1000) + randomExtra));
           
           // Pausa maior a cada X mensagens
           if ((i + 1) % messages_before_pause === 0) {
-            console.log(`⏸️ Pausa de ${pause_duration}s após ${i + 1} mensagens`);
-            await new Promise(resolve => setTimeout(resolve, pause_duration * 1000));
+            const pauseMs = Math.max(pause_duration * 1000, 30000); // Mínimo 30s
+            console.log(`⏸️ Pausa de ${pauseMs / 1000}s após ${i + 1} mensagens`);
+            await new Promise(resolve => setTimeout(resolve, pauseMs));
           }
         }
       }

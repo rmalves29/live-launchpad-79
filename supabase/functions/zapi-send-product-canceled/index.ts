@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { antiBlockDelay, logAntiBlockDelay } from "../_shared/anti-block-delay.ts";
+import { 
+  antiBlockDelayLive, 
+  logAntiBlockDelay, 
+  addMessageVariation,
+  getThrottleDelay,
+  checkTenantRateLimit
+} from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -178,15 +184,32 @@ serve(async (req) => {
       );
     }
 
+    // Check rate limit before processing
+    if (!checkTenantRateLimit(tenant_id)) {
+      console.log("[zapi-send-product-canceled] Rate limited - too many messages");
+      return new Response(
+        JSON.stringify({ sent: false, rateLimited: true, message: "Limite de mensagens por minuto excedido" }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const template = await getTemplate(supabase, tenant_id);
-    const message = formatMessage(template, body);
+    const baseMessage = formatMessage(template, body);
+    // Add variations to avoid identical messages
+    const message = addMessageVariation(baseMessage);
     const formattedPhone = formatPhoneNumber(customer_phone);
 
     const { instanceId, token, clientToken } = credentials;
     const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
 
-    // Apply anti-block delay before sending (1-4 seconds)
-    const delayMs = await antiBlockDelay(1000, 4000);
+    // Check for throttling (multiple messages to same phone)
+    const throttleDelay = await getThrottleDelay(formattedPhone);
+    if (throttleDelay > 0) {
+      console.log(`[zapi-send-product-canceled] 🛡️ Throttle delay for ${formattedPhone}: ${(throttleDelay / 1000).toFixed(1)}s`);
+    }
+
+    // Apply extended anti-block delay (8-20 seconds for automatic messages)
+    const delayMs = await antiBlockDelayLive();
     logAntiBlockDelay('zapi-send-product-canceled', delayMs);
 
     console.log(`[zapi-send-product-canceled] Sending to ${formattedPhone}`);
