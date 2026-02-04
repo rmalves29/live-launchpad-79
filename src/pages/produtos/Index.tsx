@@ -79,6 +79,9 @@ const Produtos = () => {
   }, []);
 
   const loadProducts = async () => {
+    const currentTenantId = (supabaseTenant as any).getTenantId?.();
+    console.log('🔍 [Produtos] Carregando produtos para tenant:', currentTenantId);
+    
     try {
       setLoading(true);
       const { data, error } = await supabaseTenant
@@ -86,6 +89,8 @@ const Produtos = () => {
         .select('*')
         .order('created_at', { ascending: false });
 
+      console.log('📦 [Produtos] Produtos carregados:', data?.length || 0, 'Erro:', error?.message || 'nenhum');
+      
       if (error) throw error;
       setProducts(data || []);
     } catch (error: any) {
