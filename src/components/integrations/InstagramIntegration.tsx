@@ -32,8 +32,7 @@ interface InstagramConfig {
   environment: string;
 }
 
-// Facebook App ID - deve ser configurado no Meta for Developers
-const FACEBOOK_APP_ID = '1234567890'; // Substitua pelo seu App ID real
+// A URL do OAuth é obtida via edge function para não expor o App ID no frontend
 
 export default function InstagramIntegration({ tenantId }: InstagramIntegrationProps) {
   const queryClient = useQueryClient();
@@ -105,20 +104,23 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
   }, [config]);
 
   // Função para iniciar OAuth do Instagram/Facebook
-  const handleConnectInstagram = () => {
-    const scopes = [
-      'instagram_basic',
-      'instagram_manage_comments',
-      'instagram_manage_messages',
-      'pages_show_list',
-      'pages_messaging',
-      'pages_read_engagement',
-      'pages_manage_metadata',
-    ].join(',');
+  const handleConnectInstagram = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('instagram-oauth-url', {
+        body: { tenantId }
+      });
 
-    const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${tenantId}&response_type=code`;
+      if (error || !data?.url) {
+        toast.error('Erro ao gerar URL de autorização');
+        console.error('Erro OAuth URL:', error);
+        return;
+      }
 
-    window.location.href = oauthUrl;
+      window.location.href = data.url;
+    } catch (err) {
+      console.error('Erro ao conectar Instagram:', err);
+      toast.error('Erro ao iniciar conexão com Instagram');
+    }
   };
 
   // Função para desconectar

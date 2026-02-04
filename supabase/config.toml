@@ -125,3 +125,6 @@ verify_jwt = false
 
 [functions.instagram-auth-callback]
 verify_jwt = false
+
+[functions.instagram-oauth-url]
+verify_jwt = false
