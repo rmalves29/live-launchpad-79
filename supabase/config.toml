@@ -116,3 +116,6 @@ verify_jwt = false
 
 [functions.appmax-create-payment]
 verify_jwt = false
+
+[functions.sendflow-process]
+verify_jwt = false
