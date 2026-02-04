@@ -78,25 +78,34 @@ export const useBackendSendFlow = () => {
 
       console.log('[useBackendSendFlow] Job created:', job.id);
 
-      // 3. Chamar Edge Function para processar em background (fire and forget)
-      // Usar fetch nativo para não bloquear - a Edge Function roda independentemente
-      const supabaseUrl = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-      const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
-      
-      // Fire and forget - não esperamos a resposta
-      fetch(`${supabaseUrl}/functions/v1/sendflow-process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': anonKey
-        },
-        body: JSON.stringify({
+      // 3. Enfileirar processamento no backend (Edge Function responde 202 e continua em background)
+      const { error: invokeError } = await supabase.functions.invoke('sendflow-process', {
+        body: {
           job_id: job.id,
-          tenant_id: tenant.id
-        })
-      }).catch(err => {
-        console.error('[useBackendSendFlow] Error calling edge function:', err);
+          tenant_id: tenant.id,
+        }
       });
+
+      if (invokeError) {
+        // Se não conseguir disparar a função, marcar job como erro para não ficar “running” sem executar
+        await supabase
+          .from('sending_jobs')
+          .update({
+            status: 'error',
+            error_message: `Falha ao disparar processamento: ${invokeError.message}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job.id);
+
+        toast({
+          title: 'Erro ao iniciar envio',
+          description: invokeError.message,
+          variant: 'destructive',
+          duration: 8000,
+        });
+
+        return null;
+      }
 
       toast({
         title: '🚀 Envio iniciado!',
@@ -131,23 +140,23 @@ export const useBackendSendFlow = () => {
         })
         .eq('id', jobId);
 
-      // Chamar Edge Function
-      const supabaseUrl = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-      const anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
-      
-      fetch(`${supabaseUrl}/functions/v1/sendflow-process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': anonKey
-        },
-        body: JSON.stringify({
+      // Disparar Edge Function (resposta rápida + background)
+      const { error: invokeError } = await supabase.functions.invoke('sendflow-process', {
+        body: {
           job_id: jobId,
-          tenant_id: tenant.id
-        })
-      }).catch(err => {
-        console.error('[useBackendSendFlow] Error resuming:', err);
+          tenant_id: tenant.id,
+        }
       });
+
+      if (invokeError) {
+        toast({
+          title: 'Erro ao retomar',
+          description: invokeError.message,
+          variant: 'destructive',
+          duration: 8000,
+        });
+        return false;
+      }
 
       toast({
         title: '▶️ Envio retomado!',
