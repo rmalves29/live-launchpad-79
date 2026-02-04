@@ -1068,9 +1068,9 @@ export default function SendFlow() {
         </div>
       </div>
 
-      {/* Progresso em tempo real de envio em outro dispositivo */}
+      {/* Progresso em tempo real de envio em outro dispositivo (com opção de retomar se travado) */}
       {!sending && (
-        <SendingProgressLive jobType="sendflow" />
+        <SendingProgressLive jobType="sendflow" onResumeJob={handleResumeJob} />
       )}
 
       {/* Card para retomar envio pausado */}
