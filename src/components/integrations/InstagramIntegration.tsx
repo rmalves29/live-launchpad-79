@@ -11,10 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Instagram, CheckCircle2, AlertTriangle, Copy, ExternalLink } from 'lucide-react';
+import { Loader2, Instagram, CheckCircle2, AlertTriangle, Copy, ExternalLink, Link2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useSearchParams } from 'react-router-dom';
 
 interface InstagramIntegrationProps {
   tenantId: string;
@@ -31,8 +32,12 @@ interface InstagramConfig {
   environment: string;
 }
 
+// Facebook App ID - deve ser configurado no Meta for Developers
+const FACEBOOK_APP_ID = '1234567890'; // Substitua pelo seu App ID real
+
 export default function InstagramIntegration({ tenantId }: InstagramIntegrationProps) {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [instagramAccountId, setInstagramAccountId] = useState('');
   const [pageAccessToken, setPageAccessToken] = useState('');
   const [pageId, setPageId] = useState('');
@@ -41,6 +46,36 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
 
   // URL do Webhook
   const webhookUrl = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/instagram-webhook';
+  const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/instagram-auth-callback';
+
+  // Verificar parâmetros de sucesso/erro do OAuth
+  useEffect(() => {
+    const instagramSuccess = searchParams.get('instagram_success');
+    const instagramError = searchParams.get('instagram_error');
+
+    if (instagramSuccess === 'true') {
+      toast.success('Instagram conectado com sucesso!');
+      queryClient.invalidateQueries({ queryKey: ['instagram-integration', tenantId] });
+      // Limpar parâmetros da URL
+      searchParams.delete('instagram_success');
+      setSearchParams(searchParams, { replace: true });
+    }
+
+    if (instagramError) {
+      const errorMessages: Record<string, string> = {
+        'codigo_nao_fornecido': 'Código de autorização não fornecido',
+        'tenant_nao_identificado': 'Tenant não identificado',
+        'credenciais_nao_configuradas': 'Credenciais do Facebook App não configuradas',
+        'nenhuma_pagina_encontrada': 'Nenhuma página do Facebook encontrada',
+        'instagram_business_nao_vinculado': 'Nenhuma conta Business do Instagram vinculada à página',
+        'erro_inesperado': 'Erro inesperado durante a conexão',
+      };
+      toast.error(errorMessages[instagramError] || `Erro: ${instagramError}`);
+      // Limpar parâmetros da URL
+      searchParams.delete('instagram_error');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, queryClient, tenantId]);
 
   // Buscar configuração atual
   const { data: config, isLoading } = useQuery({
@@ -68,6 +103,48 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
       setIsActive(config.is_active);
     }
   }, [config]);
+
+  // Função para iniciar OAuth do Instagram/Facebook
+  const handleConnectInstagram = () => {
+    const scopes = [
+      'instagram_basic',
+      'instagram_manage_comments',
+      'instagram_manage_messages',
+      'pages_show_list',
+      'pages_messaging',
+      'pages_read_engagement',
+      'pages_manage_metadata',
+    ].join(',');
+
+    const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scopes}&state=${tenantId}&response_type=code`;
+
+    window.location.href = oauthUrl;
+  };
+
+  // Função para desconectar
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from('integration_instagram')
+        .update({
+          is_active: false,
+          page_access_token: null,
+          access_token: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenantId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Instagram desconectado');
+      queryClient.invalidateQueries({ queryKey: ['instagram-integration', tenantId] });
+    },
+    onError: (error) => {
+      console.error('Erro ao desconectar:', error);
+      toast.error('Erro ao desconectar Instagram');
+    },
+  });
 
   // Salvar configuração
   const saveMutation = useMutation({
@@ -129,8 +206,8 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary">
-                <Instagram className="h-6 w-6 text-primary-foreground" />
+              <div className="p-2 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500">
+                <Instagram className="h-6 w-6 text-white" />
               </div>
               <div>
                 <CardTitle>Instagram Live Commerce</CardTitle>
@@ -139,7 +216,7 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
                 </CardDescription>
               </div>
             </div>
-            {config?.is_active ? (
+            {config?.is_active && config?.page_access_token ? (
               <div className="flex items-center gap-2 text-primary">
                 <CheckCircle2 className="h-5 w-5" />
                 <span className="text-sm font-medium">Conectado</span>
@@ -152,6 +229,36 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
             )}
           </div>
         </CardHeader>
+        <CardContent>
+          {config?.is_active && config?.page_access_token ? (
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <p className="text-sm text-muted-foreground">
+                  Conta conectada: <span className="font-medium text-foreground">{config.instagram_account_id}</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Page ID: {config.page_id}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => disconnectMutation.mutate()}
+                disabled={disconnectMutation.isPending}
+              >
+                {disconnectMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Desconectar
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={handleConnectInstagram}
+              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              Conectar Instagram
+            </Button>
+          )}
+        </CardContent>
       </Card>
 
       {/* Webhook URL */}
