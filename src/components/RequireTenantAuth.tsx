@@ -14,12 +14,16 @@ interface RequireTenantAuthProps {
 const subscriptionCache = new Map<string, { expired: boolean; checkedAt: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
 
+// Flag global para saber se já carregamos uma vez
+let hasInitiallyLoaded = false;
+
 export default function RequireTenantAuth({ children }: RequireTenantAuthProps) {
   const { user, profile, isLoading: authLoading } = useAuth();
-  const { tenant, loading: tenantLoading, tenantId, error: tenantError } = useTenantContext();
+  const { tenant, loading: tenantLoading, tenantId } = useTenantContext();
   const [subscriptionExpired, setSubscriptionExpired] = useState<boolean | null>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(false);
   const lastCheckedTenantId = useRef<string | null>(null);
+  const hasRenderedOnce = useRef(false);
   
   // Ativar timeout de sessão apenas quando logado
   useSessionTimeout();
@@ -45,7 +49,11 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
         return;
       }
 
-      setCheckingSubscription(true);
+      // NÃO setar checkingSubscription se já renderizamos uma vez
+      if (!hasRenderedOnce.current) {
+        setCheckingSubscription(true);
+      }
+      
       try {
         const { data: tenantData } = await supabase
           .from("tenants")
@@ -60,7 +68,6 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
             expired = expirationDate < new Date();
           }
           
-          // Salvar no cache
           subscriptionCache.set(tenant.id, { expired, checkedAt: now });
           lastCheckedTenantId.current = tenant.id;
           setSubscriptionExpired(expired);
@@ -78,8 +85,11 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     checkSubscription();
   }, [tenant?.id, profile?.role]);
 
-  // Se ainda está carregando auth ou tenant, mostrar loading
-  if (authLoading || tenantLoading || checkingSubscription) {
+  // Se já carregamos uma vez com sucesso, NUNCA mostrar loading de novo
+  const isFirstLoad = !hasInitiallyLoaded && (authLoading || tenantLoading || checkingSubscription);
+  
+  // Se ainda é o primeiro carregamento, mostrar loading
+  if (isFirstLoad) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -92,8 +102,8 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     return <Navigate to="/auth" replace />;
   }
 
-  // Se não tem profile carregado ainda
-  if (!profile) {
+  // Se não tem profile carregado ainda (primeiro load apenas)
+  if (!profile && !hasInitiallyLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -102,27 +112,32 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
   }
 
   // Super admin pode acessar qualquer tenant
-  if (profile.role === 'super_admin') {
+  if (profile?.role === 'super_admin') {
     if (!tenant || !tenantId) {
-      return (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-muted-foreground">Carregando empresa...</p>
+      if (!hasInitiallyLoaded) {
+        return (
+          <div className="min-h-screen flex items-center justify-center">
+            <div className="text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+              <p className="text-muted-foreground">Carregando empresa...</p>
+            </div>
           </div>
-        </div>
-      );
+        );
+      }
     }
+    // Marcar como carregado com sucesso
+    hasInitiallyLoaded = true;
+    hasRenderedOnce.current = true;
     return <>{children}</>;
   }
 
   // Usuário normal - DEVE ter tenant do seu profile
-  if (!profile.tenant_id) {
+  if (!profile?.tenant_id) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Aguardar tenant carregar
-  if (!tenant || !tenantId) {
+  // Aguardar tenant carregar (primeiro load apenas)
+  if ((!tenant || !tenantId) && !hasInitiallyLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -134,8 +149,7 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
   }
 
   // VERIFICAÇÃO CRÍTICA: O tenant carregado DEVE ser o mesmo do profile
-  if (tenant.id !== profile.tenant_id) {
-    console.error('❌ [RequireTenantAuth] ERRO CRÍTICO: Tenant carregado não corresponde ao tenant do usuário!');
+  if (tenant && tenant.id !== profile?.tenant_id) {
     localStorage.removeItem('previewTenantId');
     return <Navigate to="/auth" replace />;
   }
@@ -145,5 +159,9 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     return <Navigate to="/renovar-assinatura" replace />;
   }
 
+  // Marcar como carregado com sucesso
+  hasInitiallyLoaded = true;
+  hasRenderedOnce.current = true;
+  
   return <>{children}</>;
 }
