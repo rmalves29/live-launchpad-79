@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -56,6 +56,9 @@ interface SendingProgressLiveProps {
   onNewSend?: () => void;
 }
 
+const POLL_INTERVAL_MS = 15_000; // Poll every 15 seconds
+const STUCK_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes without DB changes
+
 export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }: SendingProgressLiveProps) {
   const { tenant } = useTenant();
   const { toast } = useToast();
@@ -69,8 +72,9 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
   const [localCountdown, setLocalCountdown] = useState(0);
   const [isWaiting, setIsWaiting] = useState(false);
 
-  // Stuck detection
+  // Resilient stuck detection based on DB progress
   const [isJobStuck, setIsJobStuck] = useState(false);
+  const lastProgressRef = useRef<{ count: number; timestamp: number }>({ count: 0, timestamp: Date.now() });
 
   // Countdown timer
   useEffect(() => {
@@ -94,18 +98,6 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     }
   }, [activeJob?.job_data?.countdownSeconds, activeJob?.job_data?.isWaitingForNextProduct, activeJob?.job_data?.isWaitingForNextGroup]);
 
-  // Check if job is stuck
-  useEffect(() => {
-    if (!activeJob) { setIsJobStuck(false); return; }
-    const checkIfStuck = () => {
-      const lastUpdate = new Date(activeJob.updated_at).getTime();
-      setIsJobStuck(Date.now() - lastUpdate > 30000);
-    };
-    checkIfStuck();
-    const interval = setInterval(checkIfStuck, 5000);
-    return () => clearInterval(interval);
-  }, [activeJob?.updated_at]);
-
   // Fetch tasks for active job
   const fetchTasks = useCallback(async (jobId: string) => {
     const { data, error } = await supabase
@@ -116,8 +108,86 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
 
     if (!error && data) {
       setTasks(data as SendFlowTask[]);
+      return data as SendFlowTask[];
     }
+    return null;
   }, []);
+
+  // Fetch job from DB (used by polling)
+  const fetchJobFromDb = useCallback(async (jobId: string): Promise<SendingJob | null> => {
+    const { data, error } = await supabase
+      .from('sending_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as SendingJob;
+  }, []);
+
+  // ─── Resilient Polling (every 15s) ───
+  useEffect(() => {
+    if (!activeJob?.id) return;
+
+    const poll = async () => {
+      try {
+        // 1. Re-fetch the job itself
+        const freshJob = await fetchJobFromDb(activeJob.id);
+        if (!freshJob) return;
+
+        // 2. If job completed on server, show success
+        if (freshJob.status === 'completed') {
+          setCompletedJob(freshJob);
+          setActiveJob(null);
+          setIsJobStuck(false);
+          return;
+        }
+
+        // 3. If job cancelled/paused/error on server, clear it
+        if (['cancelled', 'paused', 'error'].includes(freshJob.status)) {
+          setActiveJob(null);
+          setIsJobStuck(false);
+          return;
+        }
+
+        // 4. Update job data (countdown, progress, etc.)
+        setActiveJob(freshJob);
+
+        // 5. Re-fetch tasks to get latest progress
+        const freshTasks = await fetchTasks(freshJob.id);
+        if (freshTasks) {
+          const doneCount = freshTasks.filter(
+            (t: SendFlowTask) => ['completed', 'skipped', 'error'].includes(t.status)
+          ).length;
+
+          // Track progress changes for stuck detection
+          if (doneCount > lastProgressRef.current.count) {
+            // Progress was made — reset the stuck timer
+            lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
+            setIsJobStuck(false);
+          } else {
+            // No progress — check if we've exceeded the threshold
+            const elapsed = Date.now() - lastProgressRef.current.timestamp;
+            setIsJobStuck(elapsed > STUCK_THRESHOLD_MS);
+          }
+        }
+      } catch (err) {
+        console.error('[SendingProgressLive] Polling error:', err);
+      }
+    };
+
+    const intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [activeJob?.id, fetchJobFromDb, fetchTasks]);
+
+  // ─── Initialize lastProgressRef when tasks first load ───
+  useEffect(() => {
+    if (tasks.length > 0 && activeJob) {
+      const doneCount = tasks.filter(t => ['completed', 'skipped', 'error'].includes(t.status)).length;
+      if (doneCount > lastProgressRef.current.count) {
+        lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
+      }
+    }
+  }, [tasks, activeJob]);
 
   const handlePauseJob = async () => {
     if (!activeJob) return;
@@ -146,7 +216,6 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('id', activeJob.id);
       if (error) throw error;
-      // Cancel pending tasks
       await supabase
         .from('sendflow_tasks')
         .update({ status: 'cancelled' } as any)
@@ -172,7 +241,8 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
       if (error) throw error;
       toast({ title: 'Retomando envio...', description: 'O envio será continuado de onde parou.' });
       onResumeJob(activeJob);
-      setActiveJob(null);
+      setIsJobStuck(false);
+      lastProgressRef.current = { count: lastProgressRef.current.count, timestamp: Date.now() };
     } catch (error: any) {
       toast({ title: 'Erro ao retomar', description: error?.message, variant: 'destructive' });
     } finally {
@@ -180,28 +250,12 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     }
   }, [activeJob, onResumeJob, toast]);
 
-  const isJobStale = (job: SendingJob): boolean => {
-    return Date.now() - new Date(job.updated_at).getTime() > 5 * 60 * 1000;
-  };
-
-  const markJobAsAbandoned = async (jobId: string) => {
-    try {
-      await supabase
-        .from('sending_jobs')
-        .update({ status: 'paused', error_message: 'Envio abandonado - sem atividade por mais de 5 minutos', paused_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', jobId);
-    } catch (error) {
-      console.error('Erro ao marcar job como abandonado:', error);
-    }
-  };
-
-  // Fetch active job
+  // Fetch active job on mount
   useEffect(() => {
     if (!tenant?.id) return;
     const fetchActiveJob = async () => {
       setLoading(true);
       try {
-        // First check for running jobs
         let query = supabase
           .from('sending_jobs')
           .select('*')
@@ -214,14 +268,11 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
         if (error) throw error;
         if (data) {
           const job = data as SendingJob;
-          if (isJobStale(job)) {
-            await markJobAsAbandoned(job.id);
-            setActiveJob(null);
-          } else {
-            setActiveJob(job);
-            setCompletedJob(null);
-            fetchTasks(job.id);
-          }
+          setActiveJob(job);
+          setCompletedJob(null);
+          fetchTasks(job.id);
+          // Initialize progress tracking
+          lastProgressRef.current = { count: 0, timestamp: Date.now() };
         } else {
           setActiveJob(null);
           // Check for recently completed jobs (last 2 minutes)
@@ -248,7 +299,7 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     fetchActiveJob();
   }, [tenant?.id, jobType, fetchTasks]);
 
-  // Real-time subscription for job updates
+  // Real-time subscription for job updates (supplement to polling)
   useEffect(() => {
     if (!tenant?.id) return;
     const channel = supabase
@@ -263,19 +314,14 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           if (job.status === 'running') {
             if (!jobType || job.job_type === jobType) {
-              if (isJobStale(job)) {
-                await markJobAsAbandoned(job.id);
-                if (activeJob?.id === job.id) setActiveJob(null);
-              } else {
-                setActiveJob(job);
-                setCompletedJob(null);
-                setIsJobStuck(false);
-              }
+              setActiveJob(job);
+              setCompletedJob(null);
+              setIsJobStuck(false);
             }
           } else if (job.status === 'completed' && activeJob?.id === job.id) {
-            // Job completed — show success screen
             setCompletedJob(job);
             setActiveJob(null);
+            setIsJobStuck(false);
           } else if (activeJob?.id === job.id) {
             setActiveJob(null);
           }
@@ -288,7 +334,7 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id, jobType, activeJob?.id]);
 
-  // Real-time subscription for task updates
+  // Real-time subscription for task updates (supplement to polling)
   useEffect(() => {
     if (!activeJob?.id) return;
     const channel = supabase
@@ -299,7 +345,6 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
         table: 'sendflow_tasks',
         filter: `job_id=eq.${activeJob.id}`,
       }, () => {
-        // Refetch tasks on any change
         fetchTasks(activeJob.id);
       })
       .subscribe();
@@ -376,6 +421,29 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
   const processedCount = completedTasks.length + skippedTasks.length + errorTasks.length;
   const progress = totalTasks > 0 ? (processedCount / totalTasks) * 100 : 0;
 
+  // Check completion from tasks directly (fallback if realtime missed the job update)
+  if (totalTasks > 0 && processedCount === totalTasks && pendingTasks.length === 0 && !runningTask) {
+    // All tasks are done but job wasn't marked completed yet — trigger completion view
+    if (!completedJob) {
+      // Use the active job data to build a completed view
+      const syntheticCompleted: SendingJob = {
+        ...activeJob,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      };
+      // Async update the job in DB too
+      supabase
+        .from('sending_jobs')
+        .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', activeJob.id)
+        .then(() => {});
+      setCompletedJob(syntheticCompleted);
+      setActiveJob(null);
+      setIsJobStuck(false);
+      return null;
+    }
+  }
+
   const sentMessages = activeJob.job_data?.sentMessages || 0;
   const errorMessages = activeJob.job_data?.errorMessages || 0;
 
@@ -387,12 +455,10 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
   const elapsedMinutes = Math.floor(elapsed / 60);
   const elapsedSeconds = elapsed % 60;
 
-  // Find next action display
   const currentTask = runningTask || nextPendingTask;
   const currentProductCode = currentTask?.product_code || '—';
   const currentGroupName = currentTask?.group_name || '—';
 
-  // Unique products in tasks for progress
   const uniqueProducts = [...new Set(tasks.map(t => t.product_id))];
   const completedProducts = uniqueProducts.filter(pid => {
     const productTasks = tasks.filter(t => t.product_id === pid);
@@ -442,9 +508,9 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
             <div className="flex items-start gap-2">
               <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium">O envio foi interrompido</p>
+                <p className="text-sm font-medium">O envio parece estar parado</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  A página foi recarregada ou o navegador perdeu conexão. Clique em "Retomar Envio" para continuar.
+                  Nenhuma tarefa foi concluída nos últimos 2 minutos. Clique em "Retomar Envio" para continuar.
                 </p>
               </div>
             </div>
