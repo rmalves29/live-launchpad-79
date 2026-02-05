@@ -1298,50 +1298,66 @@ async function updateOrderTotal(supabase: any, orderId: number) {
      // MODO DE PROTEÇÃO POR CONSENTIMENTO
      // Apenas atualiza o DB, NÃO envia resposta ao cliente
      // ============================================================
-      console.log(`[zapi-webhook] 🛡️ Modo de Proteção por Consentimento: apenas atualizando DB`);
-      
-      // Normaliza telefone para buscar cliente
-      const targetPhone = (targetPhoneOverride || confirmation.customer_phone || '').replace(/\D/g, '');
-      
-      // Gera variantes do telefone (com/sem 55, com/sem 9)
-      function buildPhoneVariantsForDB(phone: string): string[] {
-        const variants = new Set<string>();
-        const p = phone.replace(/\D/g, '');
-        if (!p) return [];
-        
-        // Base
-        variants.add(p);
-        
-        // Sem prefixo 55
-        if (p.startsWith('55')) {
-          variants.add(p.substring(2));
-        }
-        
-        // Com prefixo 55 se não tiver
-        if (!p.startsWith('55') && p.length >= 10) {
-          variants.add('55' + p);
-        }
-        
-        // Variantes com/sem o 9º dígito para BR móveis
-        const with9 = p.match(/^(55)?(\d{2})9(\d{8})$/);
-        if (with9) {
-          const prefix = with9[1] || '';
-          variants.add(`${prefix}${with9[2]}${with9[3]}`); // remove o 9
-          if (!prefix) variants.add(`55${with9[2]}${with9[3]}`);
-        }
-        
-        const without9 = p.match(/^(55)?(\d{2})(\d{8})$/);
-        if (without9 && !without9[3].startsWith('9')) {
-          const prefix = without9[1] || '';
-          variants.add(`${prefix}${without9[2]}9${without9[3]}`); // adiciona o 9
-          if (!prefix) variants.add(`55${without9[2]}9${without9[3]}`);
-        }
-        
-        return Array.from(variants);
-      }
-      
-      const phoneVariants = buildPhoneVariantsForDB(targetPhone);
-      console.log(`[zapi-webhook] 📞 Variantes de telefone para busca: ${phoneVariants.join(', ')}`);
+       console.log(`[zapi-webhook] 🛡️ Modo de Proteção por Consentimento: apenas atualizando DB`);
+       
+       // Normaliza telefone para buscar cliente
+       // targetPhoneOverride vem do webhook (pode ser 5531992904210)
+       // confirmation.customer_phone vem do DB (é 5531992904210)
+       const targetPhone = (targetPhoneOverride || confirmation.customer_phone || '').replace(/\D/g, '');
+       
+       console.log(`[zapi-webhook] 📞 targetPhone: ${targetPhone} (from override: ${targetPhoneOverride}, confirmation: ${confirmation.customer_phone})`);
+       
+       // Gera TODAS as variantes do telefone brasileiro (com/sem 55, com/sem 9)
+       function buildPhoneVariantsForDB(phone: string): string[] {
+         const variants = new Set<string>();
+         const p = phone.replace(/\D/g, '');
+         if (!p) return [];
+         
+         // Determinar base sem país
+         let baseWithoutCountry = p;
+         if (p.startsWith('55') && p.length >= 12) {
+           baseWithoutCountry = p.substring(2);
+         }
+         
+         // Determinar base com país
+         const baseWithCountry = p.startsWith('55') ? p : '55' + p;
+         
+         // Adicionar variações principais
+         variants.add(baseWithoutCountry); // Ex: 31992904210
+         variants.add(baseWithCountry);     // Ex: 5531992904210
+         
+         // Variantes com/sem o 9º dígito para BR móveis
+         // Telefone COM 9: DDD(2) + 9 + número(8) = 11 dígitos
+         // Telefone SEM 9: DDD(2) + número(8) = 10 dígitos
+         
+         if (baseWithoutCountry.length === 11) {
+           // Tem 11 dígitos, assume que tem o 9 - gerar versão sem 9
+           const ddd = baseWithoutCountry.slice(0, 2);
+           const ninthDigit = baseWithoutCountry.charAt(2);
+           const rest = baseWithoutCountry.slice(3);
+           
+           if (ninthDigit === '9' && rest.length === 8) {
+             const without9 = ddd + rest;
+             variants.add(without9);           // Ex: 3199290421
+             variants.add('55' + without9);    // Ex: 553199290421
+           }
+         } else if (baseWithoutCountry.length === 10) {
+           // Tem 10 dígitos, assume que NÃO tem o 9 - gerar versão com 9
+           const ddd = baseWithoutCountry.slice(0, 2);
+           const rest = baseWithoutCountry.slice(2);
+           
+           if (rest.length === 8) {
+             const with9 = ddd + '9' + rest;
+             variants.add(with9);              // Ex: 31992904210
+             variants.add('55' + with9);       // Ex: 5531992904210
+           }
+         }
+         
+         return Array.from(variants);
+       }
+       
+       const phoneVariants = buildPhoneVariantsForDB(targetPhone);
+       console.log(`[zapi-webhook] 📞 Variantes geradas (${phoneVariants.length}): ${phoneVariants.join(', ')}`);
       
       // Primeiro, buscar o cliente existente com qualquer variante do telefone
       const { data: existingCustomer } = await supabase
