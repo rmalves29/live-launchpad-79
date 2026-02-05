@@ -1571,6 +1571,76 @@ export type Database = {
           },
         ]
       }
+      sendflow_tasks: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          group_id: string
+          group_name: string
+          id: string
+          job_id: string
+          product_code: string
+          product_id: number
+          sequence: number
+          started_at: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          group_id: string
+          group_name?: string
+          id?: string
+          job_id: string
+          product_code: string
+          product_id: number
+          sequence?: number
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          group_id?: string
+          group_name?: string
+          id?: string
+          job_id?: string
+          product_code?: string
+          product_id?: number
+          sequence?: number
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sendflow_tasks_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "sending_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sendflow_tasks_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sendflow_tasks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sending_jobs: {
         Row: {
           completed_at: string | null
