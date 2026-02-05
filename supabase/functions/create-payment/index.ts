@@ -67,6 +67,51 @@ function buildFreightNote(shipping: ShippingData, shippingCost: number) {
   return `[FRETE] ${shipping.company_name || "Transportadora"} - ${shipping.service_name} | R$ ${price.toFixed(2)}${prazo}`;
 }
 
+// Monta configuração de parcelamento para Pagar.me
+function buildInstallmentsConfig(
+  totalAmountCents: number,
+  minInstallmentValue: number | null,
+  maxInstallmentsWithoutInterest: number | null
+): { number: number; total: number }[] {
+  const totalAmountReais = totalAmountCents / 100;
+  const minValue = minInstallmentValue || 0;
+  const maxFreeInstallments = maxInstallmentsWithoutInterest || 1;
+
+  const installments: { number: number; total: number }[] = [];
+
+  // Sempre permitir pagamento à vista
+  installments.push({ number: 1, total: totalAmountCents });
+
+  // Se o valor total é menor que o mínimo para parcelar, só permite à vista
+  if (minValue > 0 && totalAmountReais < minValue) {
+    return installments;
+  }
+
+  // Calcular parcelas disponíveis (máximo 12)
+  for (let i = 2; i <= 12; i++) {
+    const installmentValue = totalAmountReais / i;
+    
+    // Se o valor da parcela for menor que R$5 (mínimo comum), para de calcular
+    if (installmentValue < 5) break;
+
+    // Se houver um mínimo configurado e a parcela for menor, para
+    if (minValue > 0 && installmentValue < minValue) break;
+
+    // Parcelas sem juros (até o limite configurado)
+    if (i <= maxFreeInstallments) {
+      installments.push({ number: i, total: totalAmountCents });
+    }
+    // Depois do limite, são parcelas com juros (o Pagar.me calcula automaticamente)
+    // Mas para o checkout, precisamos informar o total - deixamos o mesmo valor
+    // e o Pagar.me aplicará juros conforme configurado na conta
+    else {
+      installments.push({ number: i, total: totalAmountCents });
+    }
+  }
+
+  return installments;
+}
+
 function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: false; error: string } {
   if (!body || typeof body !== "object") return { ok: false, error: "Body inválido" };
   if (!body.tenant_id || typeof body.tenant_id !== "string" || !isUuid(body.tenant_id)) {
@@ -277,7 +322,7 @@ serve(async (req) => {
 
     const { data: pagarmeIntegration } = await sb
       .from("integration_pagarme")
-      .select("api_key, public_key, environment, is_active")
+      .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
@@ -516,6 +561,14 @@ serve(async (req) => {
                 additional_information: [
                   { name: "Pedido(s)", value: orderIds.join(",") },
                 ],
+              },
+              // Configurações de parcelamento do cartão de crédito
+              credit_card: {
+                installments: buildInstallmentsConfig(
+                  totalAmount,
+                  pagarmeIntegration.min_installment_value,
+                  pagarmeIntegration.max_installments_without_interest
+                ),
               },
             },
             amount: totalAmount,
