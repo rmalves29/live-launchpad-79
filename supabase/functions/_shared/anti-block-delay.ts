@@ -1,7 +1,8 @@
 /**
- * Anti-Block Delay Helper v2.0
+ * Anti-Block Delay Helper v2.1
  * Sistema avançado de proteção contra bloqueio do WhatsApp
- * 
+ * UPDATED: Removed auto-greetings (Olá!, Ei!, etc) - now strictly follows registered template
+ *
  * Estratégias implementadas:
  * 1. Delays aleatórios entre mensagens (5-15 segundos para automáticas)
  * 2. Variações dinâmicas no texto para evitar mensagens idênticas
@@ -103,28 +104,27 @@ const EMOJI_VARIATIONS: Record<string, string[]> = {
   '📦': ['🎁', '📬', '📭', '🗳️'],
 };
 
-// Greeting variations
-const GREETINGS = ['Olá!', 'Oi!', 'Ei!', 'Oie!', 'Opa!', ''];
+// NOTE: Greeting variations REMOVED - system should use only the registered template
+// Keeping empty array for backward compatibility
+const GREETINGS: string[] = [];
 
-// Suffix variations
-const SUFFIXES = ['✨', '💫', '!!', '! ✨', '🎉', ' ✔️', ''];
+// Suffix variations (subtle, don't change message meaning)
+const SUFFIXES = ['', '', '', '', '']; // Disabled - use only registered template
 
 /**
  * Adds subtle variations to message to avoid identical messages
  * This helps prevent automated message detection by WhatsApp
+ * 
+ * IMPORTANT: Does NOT add greetings or change the template structure
+ * Only adds invisible characters and minor emoji swaps to avoid spam detection
  */
 export function addMessageVariation(message: string): string {
   let result = message;
   
-  // 25% chance: Add random greeting at start
-  if (Math.random() < 0.25 && !result.match(/^(olá|oi|ei|opa|oie)/i)) {
-    const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-    if (greeting) {
-      result = greeting + '\n\n' + result;
-    }
-  }
+  // REMOVED: No longer adds random greetings - follow registered template only
+  // Previously: 25% chance to add "Olá!", "Ei!", etc. - DISABLED
   
-  // 30% chance: Swap emojis with alternatives
+  // 30% chance: Swap emojis with alternatives (subtle anti-spam)
   if (Math.random() < 0.30) {
     for (const [original, alternatives] of Object.entries(EMOJI_VARIATIONS)) {
       if (result.includes(original) && Math.random() < 0.5) {
@@ -135,21 +135,17 @@ export function addMessageVariation(message: string): string {
     }
   }
   
-  // 20% chance: Add/adjust spacing
-  if (Math.random() < 0.20) {
-    // Add extra line break somewhere
-    result = result.replace(/\n\n/g, '\n\n\n');
+  // 10% chance: Add invisible variation (zero-width space) - main anti-spam technique
+  if (Math.random() < 0.10) {
+    const pos = Math.floor(Math.random() * result.length);
+    result = result.slice(0, pos) + '\u200B' + result.slice(pos);
   }
   
-  // 15% chance: Add random suffix at end
-  if (Math.random() < 0.15) {
-    const suffix = SUFFIXES[Math.floor(Math.random() * SUFFIXES.length)];
-    if (suffix && !result.endsWith('✨') && !result.endsWith('💫')) {
-      result = result.trimEnd() + ' ' + suffix;
-    }
-  }
+  // REMOVED: No longer adds random suffixes or extra line breaks
+  // System now strictly follows the registered template
   
-  // 10% chance: Add invisible variation (zero-width space)
+  return result;
+}
   if (Math.random() < 0.10) {
     const pos = Math.floor(Math.random() * result.length);
     result = result.slice(0, pos) + '\u200B' + result.slice(pos);
