@@ -5,8 +5,8 @@ import {
   logAntiBlockDelay, 
   addMessageVariation,
   getThrottleDelay,
-   checkTenantRateLimit,
-   getTypingDelay
+  checkTenantRateLimit,
+  simulateTyping
 } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
@@ -128,28 +128,7 @@ function formatMessage(template: string, data: ItemAddedRequest): string {
     .replace(/\{\{codigo\}\}/g, data.product_code);
 }
 
- // Simulate typing before sending message
- async function simulateTyping(instanceId: string, token: string, clientToken: string, phone: string): Promise<void> {
-   try {
-     const typingUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/typing`;
-     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-     if (clientToken) headers['Client-Token'] = clientToken;
-     
-     await fetch(typingUrl, {
-       method: 'POST',
-       headers,
-       body: JSON.stringify({ phone, duration: 3 })
-     });
-     
-     // Wait 3-5 seconds to simulate typing
-     const typingDelay = 3000 + Math.random() * 2000;
-     await new Promise(resolve => setTimeout(resolve, typingDelay));
-   } catch (e) {
-     console.log('[zapi-send-item-added] Typing simulation failed, continuing...');
-   }
- }
- 
- // Build checkout URL for tenant
+// Build checkout URL for tenant
  async function getCheckoutUrl(supabase: any, tenantId: string, phone: string): Promise<string> {
    // Get tenant slug
    const { data: tenant } = await supabase
@@ -278,10 +257,10 @@ serve(async (req) => {
       console.log(`[zapi-send-item-added] 🛡️ Throttle delay for ${formattedPhone}: ${(throttleDelay / 1000).toFixed(1)}s`);
     }
 
-     // Simulate typing before sending (3-5 seconds)
-     console.log(`[zapi-send-item-added] Simulating typing for ${formattedPhone}...`);
-     await simulateTyping(instanceId, token, clientToken, formattedPhone);
- 
+    // Simulate typing before sending (3-5 seconds)
+    console.log(`[zapi-send-item-added] ⌨️ Starting typing simulation for ${formattedPhone}...`);
+    await simulateTyping(instanceId, token, clientToken, formattedPhone);
+
     // Apply extended anti-block delay (8-20 seconds for automatic messages)
     const delayMs = await antiBlockDelayLive();
     logAntiBlockDelay('zapi-send-item-added', delayMs);
