@@ -777,6 +777,8 @@ export type Database = {
           environment: string
           id: string
           is_active: boolean
+          max_installments_without_interest: number | null
+          min_installment_value: number | null
           public_key: string | null
           tenant_id: string
           updated_at: string
@@ -789,6 +791,8 @@ export type Database = {
           environment?: string
           id?: string
           is_active?: boolean
+          max_installments_without_interest?: number | null
+          min_installment_value?: number | null
           public_key?: string | null
           tenant_id: string
           updated_at?: string
@@ -801,6 +805,8 @@ export type Database = {
           environment?: string
           id?: string
           is_active?: boolean
+          max_installments_without_interest?: number | null
+          min_installment_value?: number | null
           public_key?: string | null
           tenant_id?: string
           updated_at?: string
