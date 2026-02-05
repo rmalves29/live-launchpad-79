@@ -19,21 +19,14 @@ interface Product {
   image_url?: string;
 }
 
-interface SendFlowJobData {
-  productIds: number[];
-  groupIds: string[];
-  messageTemplate: string;
-  perGroupDelaySeconds: number;
-  perProductDelayMinutes: number;
-  useRandomDelay?: boolean;
-  minGroupDelaySeconds?: number;
-  maxGroupDelaySeconds?: number;
-  currentProductIndex?: number;
-  currentGroupIndex?: number;
-  sentMessages?: number;
-  errorMessages?: number;
-  countdownSeconds?: number;
-  isWaitingForNextProduct?: boolean;
+interface SendFlowTask {
+  id: string;
+  product_id: number;
+  group_id: string;
+  sequence: number;
+  status: string;
+  product_code: string;
+  group_name: string;
 }
 
 async function sleep(ms: number) {
@@ -51,27 +44,23 @@ function formatPrice(price: number): string {
 function personalizeMessage(template: string, product: Product): string {
   let message = template;
   
-  // Replace basic variables
   message = message
     .replace(/\{\{?codigo\}?\}/gi, product.code.trim())
     .replace(/\{\{?nome\}?\}/gi, product.name.trim())
     .replace(/\{\{?valor\}?\}/gi, formatPrice(product.price));
   
-  // Handle color - remove entire line if empty
   if (product.color && product.color.trim()) {
     message = message.replace(/\{\{?cor\}?\}/gi, product.color.trim());
   } else {
     message = message.replace(/.*\{\{?cor\}?\}.*\n?/gi, '');
   }
   
-  // Handle size - remove entire line if empty
   if (product.size && product.size.trim()) {
     message = message.replace(/\{\{?tamanho\}?\}/gi, product.size.trim());
   } else {
     message = message.replace(/.*\{\{?tamanho\}?\}.*\n?/gi, '');
   }
   
-  // Clean up multiple consecutive line breaks
   message = message.replace(/\n{3,}/g, '\n\n');
   
   return message.trim();
@@ -106,45 +95,24 @@ async function sendGroupMessage(
   const { instanceId, token, clientToken } = credentials;
   
   try {
-    // Simulate typing indicator before sending (3-5 seconds)
     await simulateTyping(instanceId, token, clientToken, groupId);
-
-    // Add message variation
     const variedMessage = addMessageVariation(message);
 
     let url: string;
     let body: Record<string, unknown>;
     
     if (imageUrl) {
-      // Send image with caption
       url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-image`;
-      body = {
-        phone: groupId,
-        image: imageUrl,
-        caption: variedMessage
-      };
+      body = { phone: groupId, image: imageUrl, caption: variedMessage };
     } else {
-      // Send text only
       url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
-      body = {
-        phone: groupId,
-        message: variedMessage
-      };
+      body = { phone: groupId, message: variedMessage };
     }
     
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
-    };
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (clientToken) headers['Client-Token'] = clientToken;
     
-    if (clientToken) {
-      headers['Client-Token'] = clientToken;
-    }
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body)
-    });
+    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
     
     if (response.ok) {
       return { success: true };
@@ -181,7 +149,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validar job antes de enfileirar
     const { data: job, error: jobError } = await supabase
       .from('sending_jobs')
       .select('*')
@@ -190,25 +157,22 @@ Deno.serve(async (req) => {
       .single();
 
     if (jobError || !job) {
-      console.log(`[${timestamp}] [sendflow-process] Job not found: ${job_id}`);
       return new Response(
         JSON.stringify({ error: "Job não encontrado" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Se mode=sync (debug), roda bloqueante
     if (mode === 'sync') {
-      await processSendflowJob({ supabase, job, jobId: job_id, tenantId: tenant_id, timestamp });
+      await processTaskQueue({ supabase, job, jobId: job_id, tenantId: tenant_id, timestamp });
       return new Response(
         JSON.stringify({ queued: false, mode: 'sync' }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Background task: responde imediatamente e continua no servidor
     EdgeRuntime.waitUntil(
-      processSendflowJob({ supabase, job, jobId: job_id, tenantId: tenant_id, timestamp })
+      processTaskQueue({ supabase, job, jobId: job_id, tenantId: tenant_id, timestamp })
         .catch((e) => console.error(`[${timestamp}] [sendflow-process] Background error:`, e?.message || e))
     );
 
@@ -225,7 +189,7 @@ Deno.serve(async (req) => {
   }
 });
 
-async function processSendflowJob({
+async function processTaskQueue({
   supabase,
   job,
   jobId,
@@ -238,25 +202,21 @@ async function processSendflowJob({
   tenantId: string;
   timestamp: string;
 }) {
-  // Check if job is already completed or cancelled
   if (job.status === 'completed' || job.status === 'cancelled') {
     console.log(`[${timestamp}] [sendflow-process] Job ${jobId} already ${job.status}`);
     return;
   }
 
-  // Mark job as running
   await supabase
     .from('sending_jobs')
     .update({ status: 'running', updated_at: new Date().toISOString() })
     .eq('id', jobId);
 
-  const jobData = job.job_data as SendFlowJobData;
+  const jobData = job.job_data;
   const {
-    productIds,
-    groupIds,
     messageTemplate,
     perGroupDelaySeconds = 5,
-    perProductDelayMinutes = 1,
+    perProductDelayMinutes = 3,
     useRandomDelay = true,
     minGroupDelaySeconds = 3,
     maxGroupDelaySeconds = 15,
@@ -267,16 +227,30 @@ async function processSendflowJob({
   if (!credentials) {
     await supabase
       .from('sending_jobs')
-      .update({
-        status: 'error',
-        error_message: 'Z-API não configurado',
-        updated_at: new Date().toISOString(),
-      })
+      .update({ status: 'error', error_message: 'Z-API não configurado', updated_at: new Date().toISOString() })
       .eq('id', jobId);
     return;
   }
 
-  // Get products
+  // Fetch all pending/running tasks ordered by sequence
+  const { data: tasks, error: tasksError } = await supabase
+    .from('sendflow_tasks')
+    .select('*')
+    .eq('job_id', jobId)
+    .in('status', ['pending', 'running'])
+    .order('sequence', { ascending: true });
+
+  if (tasksError || !tasks || tasks.length === 0) {
+    console.log(`[${timestamp}] [sendflow-process] No pending tasks for job ${jobId}`);
+    await supabase
+      .from('sending_jobs')
+      .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', jobId);
+    return;
+  }
+
+  // Get all unique product IDs from tasks
+  const productIds = [...new Set(tasks.map((t: SendFlowTask) => t.product_id))];
   const { data: products, error: productsError } = await supabase
     .from('products')
     .select('id, code, name, color, size, price, image_url')
@@ -286,52 +260,20 @@ async function processSendflowJob({
   if (productsError || !products || products.length === 0) {
     await supabase
       .from('sending_jobs')
-      .update({
-        status: 'error',
-        error_message: 'Produtos não encontrados',
-        updated_at: new Date().toISOString(),
-      })
+      .update({ status: 'error', error_message: 'Produtos não encontrados', updated_at: new Date().toISOString() })
       .eq('id', jobId);
     return;
   }
 
-  // Create a map for product lookup preserving order
   const productsMap = new Map(products.map((p: any) => [p.id, p]));
-  const orderedProducts = productIds
-    .map((id) => productsMap.get(id))
-    .filter((p): p is Product => p !== undefined);
 
-  // Get starting position from job data
-  let currentProductIndex = jobData.currentProductIndex || 0;
-  let currentGroupIndex = jobData.currentGroupIndex || 0;
   let sentMessages = jobData.sentMessages || 0;
   let errorMessages = jobData.errorMessages || 0;
+  let lastProductId: number | null = null;
 
-  console.log(`[${timestamp}] [sendflow-process] Processing ${orderedProducts.length} products x ${groupIds.length} groups`);
-  console.log(`[${timestamp}] [sendflow-process] Starting from product ${currentProductIndex}, group ${currentGroupIndex}`);
+  console.log(`[${timestamp}] [sendflow-process] Processing ${tasks.length} tasks from queue`);
 
-  const updateProgress = async (productIdx: number, groupIdx: number, extra: Partial<SendFlowJobData> = {}) => {
-    const newJobData = {
-      ...jobData,
-      currentProductIndex: productIdx,
-      currentGroupIndex: groupIdx,
-      sentMessages,
-      errorMessages,
-      ...extra,
-    };
-
-    await supabase
-      .from('sending_jobs')
-      .update({
-        processed_items: sentMessages + errorMessages,
-        current_index: productIdx,
-        job_data: newJobData,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', jobId);
-  };
-
-  const checkJobStatus = async (): Promise<'running' | 'paused' | 'cancelled'> => {
+  const checkJobStatus = async (): Promise<string> => {
     const { data } = await supabase
       .from('sending_jobs')
       .select('status')
@@ -340,101 +282,62 @@ async function processSendflowJob({
     return data?.status || 'running';
   };
 
-  for (let productIdx = currentProductIndex; productIdx < orderedProducts.length; productIdx++) {
+  const updateJobProgress = async (extra: Record<string, any> = {}) => {
+    // Count completed tasks for accurate progress
+    const { count: completedCount } = await supabase
+      .from('sendflow_tasks')
+      .select('*', { count: 'exact', head: true })
+      .eq('job_id', jobId)
+      .in('status', ['completed', 'skipped', 'error']);
+
+    const processed = completedCount || 0;
+
+    await supabase
+      .from('sending_jobs')
+      .update({
+        processed_items: processed,
+        job_data: { ...jobData, sentMessages, errorMessages, ...extra },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', jobId);
+  };
+
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i] as SendFlowTask;
+    const product = productsMap.get(task.product_id);
+    if (!product) {
+      await supabase.from('sendflow_tasks').update({ status: 'error', error_message: 'Produto não encontrado', completed_at: new Date().toISOString() }).eq('id', task.id);
+      errorMessages++;
+      continue;
+    }
+
+    // Check if job was paused/cancelled
     const status = await checkJobStatus();
     if (status === 'paused' || status === 'cancelled') {
       console.log(`[${timestamp}] [sendflow-process] Job ${jobId} ${status}, stopping`);
+      await updateJobProgress();
       return;
     }
 
-    const product = orderedProducts[productIdx];
-    const message = personalizeMessage(messageTemplate, product);
-
-    console.log(`[${timestamp}] [sendflow-process] Product ${productIdx + 1}/${orderedProducts.length}: ${product.code}`);
-
-    const groupStartIdx = productIdx === currentProductIndex ? currentGroupIndex : 0;
-
-    for (let groupIdx = groupStartIdx; groupIdx < groupIds.length; groupIdx++) {
-      const status = await checkJobStatus();
-      if (status === 'paused' || status === 'cancelled') {
-        await updateProgress(productIdx, groupIdx);
-        console.log(`[${timestamp}] [sendflow-process] Job ${jobId} ${status}, stopping`);
-        return;
-      }
-
-      const groupId = groupIds[groupIdx];
-      const isLastGroup = groupIdx === groupIds.length - 1;
-
-      // Check duplicate within 8-hour window
-      const { data: alreadySent } = await supabase.rpc('is_product_recently_sent', {
-        p_tenant_id: tenantId,
-        p_product_id: product.id,
-        p_group_id: groupId,
-        p_hours: 8,
-      });
-
-      if (alreadySent) {
-        console.log(`[${timestamp}] [sendflow-process] SKIP duplicate: product ${product.code} already sent to ${groupId} within 8h`);
-        await updateProgress(productIdx, groupIdx + 1);
-        if (!isLastGroup) {
-          const delayMs = useRandomDelay
-            ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
-            : perGroupDelaySeconds * 1000;
-          if (delayMs > 0) await sleep(delayMs);
-        }
-        continue;
-      }
-
-      const result = await sendGroupMessage(credentials, groupId, message, product.image_url || undefined);
-
-      if (result.success) {
-        sentMessages++;
-        // Record in sendflow_history to prevent future duplicates
-        await supabase.from('sendflow_history').insert({
-          tenant_id: tenantId,
-          product_id: product.id,
-          group_id: groupId,
-          job_id: jobId,
-        });
-      } else {
-        errorMessages++;
-        console.log(`[${timestamp}] [sendflow-process] Error sending to ${groupId}: ${result.error}`);
-      }
-
-      await updateProgress(productIdx, groupIdx + 1);
-
-      if (!isLastGroup) {
-        const delayMs = useRandomDelay
-          ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
-          : perGroupDelaySeconds * 1000;
-
-        if (delayMs > 0) await sleep(delayMs);
-      }
-    }
-
-    console.log(`[${timestamp}] [sendflow-process] Completed product ${product.code}`);
-
-    const isLastProduct = productIdx === orderedProducts.length - 1;
-    if (!isLastProduct && perProductDelayMinutes > 0) {
+    // Delay between products (when product changes)
+    if (lastProductId !== null && task.product_id !== lastProductId && perProductDelayMinutes > 0) {
       const delayMs = perProductDelayMinutes * 60 * 1000;
       const delayStep = 5000;
       let elapsed = 0;
 
-      await updateProgress(productIdx + 1, 0, {
+      console.log(`[${timestamp}] [sendflow-process] Waiting ${perProductDelayMinutes}min before next product (${product.code})`);
+
+      await updateJobProgress({
         countdownSeconds: Math.ceil(delayMs / 1000),
         isWaitingForNextProduct: true,
+        nextTaskId: task.id,
       });
-
-      console.log(`[${timestamp}] [sendflow-process] Waiting ${perProductDelayMinutes}min before next product`);
 
       while (elapsed < delayMs) {
         const status = await checkJobStatus();
         if (status === 'paused' || status === 'cancelled') {
-          await updateProgress(productIdx + 1, 0, {
-            countdownSeconds: 0,
-            isWaitingForNextProduct: false,
-          });
-          console.log(`[${timestamp}] [sendflow-process] Job ${jobId} ${status}, stopping`);
+          await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
+          console.log(`[${timestamp}] [sendflow-process] Job ${jobId} ${status} during delay`);
           return;
         }
 
@@ -442,29 +345,91 @@ async function processSendflowJob({
         elapsed += delayStep;
 
         const remainingSeconds = Math.ceil((delayMs - elapsed) / 1000);
-        await updateProgress(productIdx + 1, 0, {
+        await updateJobProgress({
           countdownSeconds: Math.max(0, remainingSeconds),
           isWaitingForNextProduct: remainingSeconds > 0,
+          nextTaskId: task.id,
         });
       }
 
-      await updateProgress(productIdx + 1, 0, {
-        countdownSeconds: 0,
-        isWaitingForNextProduct: false,
+      await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
+    }
+
+    lastProductId = task.product_id;
+
+    // Mark task as running
+    await supabase.from('sendflow_tasks').update({ status: 'running', started_at: new Date().toISOString() }).eq('id', task.id);
+
+    // Idempotency check - 8 hour window
+    const { data: alreadySent } = await supabase.rpc('is_product_recently_sent', {
+      p_tenant_id: tenantId,
+      p_product_id: task.product_id,
+      p_group_id: task.group_id,
+      p_hours: 8,
+    });
+
+    if (alreadySent) {
+      console.log(`[${timestamp}] [sendflow-process] SKIP duplicate: ${product.code} -> ${task.group_id}`);
+      await supabase.from('sendflow_tasks').update({ status: 'skipped', completed_at: new Date().toISOString(), error_message: 'Duplicata (8h)' }).eq('id', task.id);
+      await updateJobProgress();
+
+      // Still apply group delay even for skipped
+      if (i < tasks.length - 1 && tasks[i + 1].product_id === task.product_id) {
+        const delayMs = useRandomDelay
+          ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
+          : perGroupDelaySeconds * 1000;
+        if (delayMs > 0) await sleep(delayMs);
+      }
+      continue;
+    }
+
+    // Send the message
+    const message = personalizeMessage(messageTemplate, product);
+    const result = await sendGroupMessage(credentials, task.group_id, message, product.image_url || undefined);
+
+    if (result.success) {
+      sentMessages++;
+      await supabase.from('sendflow_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', task.id);
+
+      // Record in sendflow_history
+      await supabase.from('sendflow_history').insert({
+        tenant_id: tenantId,
+        product_id: task.product_id,
+        group_id: task.group_id,
+        job_id: jobId,
       });
+    } else {
+      errorMessages++;
+      console.log(`[${timestamp}] [sendflow-process] Error: ${product.code} -> ${task.group_id}: ${result.error}`);
+      await supabase.from('sendflow_tasks').update({ status: 'error', error_message: result.error || 'Unknown error', completed_at: new Date().toISOString() }).eq('id', task.id);
+    }
+
+    await updateJobProgress();
+
+    // Delay between groups (same product)
+    if (i < tasks.length - 1 && tasks[i + 1].product_id === task.product_id) {
+      const delayMs = useRandomDelay
+        ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
+        : perGroupDelaySeconds * 1000;
+      if (delayMs > 0) await sleep(delayMs);
     }
   }
+
+  // Job completed
+  const { count: totalCompleted } = await supabase
+    .from('sendflow_tasks')
+    .select('*', { count: 'exact', head: true })
+    .eq('job_id', jobId)
+    .in('status', ['completed', 'skipped', 'error']);
 
   await supabase
     .from('sending_jobs')
     .update({
       status: 'completed',
       completed_at: new Date().toISOString(),
-      processed_items: sentMessages + errorMessages,
+      processed_items: totalCompleted || 0,
       job_data: {
         ...jobData,
-        currentProductIndex: orderedProducts.length,
-        currentGroupIndex: 0,
         sentMessages,
         errorMessages,
         countdownSeconds: 0,
