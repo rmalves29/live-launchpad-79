@@ -813,11 +813,13 @@ export type Database = {
       integration_whatsapp: {
         Row: {
           api_url: string | null
+          confirmation_timeout_minutes: number | null
           connected_phone: string | null
           created_at: string | null
           id: string
           instance_name: string
           is_active: boolean
+          item_added_confirmation_template: string | null
           last_status_check: string | null
           provider: string | null
           send_item_added_msg: boolean
@@ -833,11 +835,13 @@ export type Database = {
         }
         Insert: {
           api_url?: string | null
+          confirmation_timeout_minutes?: number | null
           connected_phone?: string | null
           created_at?: string | null
           id?: string
           instance_name: string
           is_active?: boolean
+          item_added_confirmation_template?: string | null
           last_status_check?: string | null
           provider?: string | null
           send_item_added_msg?: boolean
@@ -853,11 +857,13 @@ export type Database = {
         }
         Update: {
           api_url?: string | null
+          confirmation_timeout_minutes?: number | null
           connected_phone?: string | null
           created_at?: string | null
           id?: string
           instance_name?: string
           is_active?: boolean
+          item_added_confirmation_template?: string | null
           last_status_check?: string | null
           provider?: string | null
           send_item_added_msg?: boolean
@@ -1138,6 +1144,63 @@ export type Database = {
           webhook_secret?: string | null
         }
         Relationships: []
+      }
+      pending_message_confirmations: {
+        Row: {
+          checkout_url: string | null
+          confirmation_type: string
+          confirmed_at: string | null
+          created_at: string | null
+          customer_phone: string
+          expires_at: string
+          id: string
+          metadata: Json | null
+          order_id: number | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          checkout_url?: string | null
+          confirmation_type?: string
+          confirmed_at?: string | null
+          created_at?: string | null
+          customer_phone: string
+          expires_at: string
+          id?: string
+          metadata?: Json | null
+          order_id?: number | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          checkout_url?: string | null
+          confirmation_type?: string
+          confirmed_at?: string | null
+          created_at?: string | null
+          customer_phone?: string
+          expires_at?: string
+          id?: string
+          metadata?: Json | null
+          order_id?: number | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_message_confirmations_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_message_confirmations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       phone_fix_changes: {
         Row: {
