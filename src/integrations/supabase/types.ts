@@ -1522,6 +1522,55 @@ export type Database = {
           },
         ]
       }
+      sendflow_history: {
+        Row: {
+          group_id: string
+          id: string
+          job_id: string | null
+          product_id: number
+          sent_at: string
+          tenant_id: string
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          job_id?: string | null
+          product_id: number
+          sent_at?: string
+          tenant_id: string
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          job_id?: string | null
+          product_id?: number
+          sent_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sendflow_history_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "sending_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sendflow_history_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sendflow_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sending_jobs: {
         Row: {
           completed_at: string | null
@@ -2412,6 +2461,15 @@ export type Database = {
       http_reset_curlopt: { Args: never; Returns: boolean }
       http_set_curlopt: {
         Args: { curlopt: string; value: string }
+        Returns: boolean
+      }
+      is_product_recently_sent: {
+        Args: {
+          p_group_id: string
+          p_hours?: number
+          p_product_id: number
+          p_tenant_id: string
+        }
         Returns: boolean
       }
       is_super_admin: { Args: never; Returns: boolean }
