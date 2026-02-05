@@ -1167,32 +1167,63 @@ async function updateOrderTotal(supabase: any, orderId: number) {
 
     // IMPORTANT (BR): Z-API sometimes delivers private-message callbacks without the 9th digit
     // after DDD (e.g. stored: 5531999998888, received: 553199998888). We must match both.
-    function buildPhoneVariants(phone55: string): string[] {
+    function buildPhoneVariantsForConfirmation(phone: string): string[] {
       const variants = new Set<string>();
-      const p = (phone55 || '').replace(/\D/g, '');
+      const p = (phone || '').replace(/\D/g, '');
       if (!p) return [];
+      
+      console.log(`[zapi-webhook] 📱 buildPhoneVariantsForConfirmation input: ${p} (length: ${p.length})`);
 
-      // Base
-      variants.add(p);
-
-      // Variant without country
-      if (p.startsWith('55')) variants.add(p.replace(/^55/, ''));
-
-      // Add/remove 9th digit for BR mobiles: 55 + DDD(2) + 9 + number(8)
-      const with9 = p.match(/^55(\d{2})9(\d{8})$/);
-      if (with9) {
-        variants.add(`55${with9[1]}${with9[2]}`); // remove the 9
+      // Determinar base sem país
+      let baseWithoutCountry = p;
+      if (p.startsWith('55') && p.length >= 12) {
+        baseWithoutCountry = p.substring(2);
       }
-
-      const without9 = p.match(/^55(\d{2})(\d{8})$/);
-      if (without9) {
-        variants.add(`55${without9[1]}9${without9[2]}`); // add the 9
+      
+      // Determinar base com país
+      const baseWithCountry = p.startsWith('55') ? p : '55' + p;
+      
+      // Adicionar variações principais
+      variants.add(baseWithoutCountry); // Ex: 31992904210 ou 3192904210
+      variants.add(baseWithCountry);     // Ex: 5531992904210 ou 553192904210
+      
+      console.log(`[zapi-webhook] 📱 Base: withCountry=${baseWithCountry}, without=${baseWithoutCountry}`);
+      
+      // Variantes com/sem o 9º dígito para BR móveis
+      // Telefone COM 9: DDD(2) + 9 + número(8) = 11 dígitos sem país
+      // Telefone SEM 9: DDD(2) + número(8) = 10 dígitos sem país
+      
+      if (baseWithoutCountry.length === 11) {
+        // Tem 11 dígitos sem país, assume que TEM o 9 - gerar versão SEM 9
+        const ddd = baseWithoutCountry.slice(0, 2);
+        const ninthDigit = baseWithoutCountry.charAt(2);
+        const rest = baseWithoutCountry.slice(3);
+        
+        if (ninthDigit === '9' && rest.length === 8) {
+          const without9 = ddd + rest;
+          variants.add(without9);           // Ex: 3199290421
+          variants.add('55' + without9);    // Ex: 553199290421
+          console.log(`[zapi-webhook] 📱 Gerado versão SEM 9: ${without9}`);
+        }
+      } else if (baseWithoutCountry.length === 10) {
+        // Tem 10 dígitos sem país, assume que NÃO tem o 9 - gerar versão COM 9
+        const ddd = baseWithoutCountry.slice(0, 2);
+        const rest = baseWithoutCountry.slice(2);
+        
+        if (rest.length === 8) {
+          const with9 = ddd + '9' + rest;
+          variants.add(with9);              // Ex: 31992904210
+          variants.add('55' + with9);       // Ex: 5531992904210
+          console.log(`[zapi-webhook] 📱 Gerado versão COM 9: ${with9}`);
+        }
       }
-
-      return Array.from(variants);
+      
+      const result = Array.from(variants);
+      console.log(`[zapi-webhook] 📱 Variantes geradas (${result.length}): ${result.join(', ')}`);
+      return result;
     }
 
-    const phoneVariants = buildPhoneVariants(normalizedPhone);
+    const phoneVariants = buildPhoneVariantsForConfirmation(normalizedPhone);
     const phoneVariants55 = phoneVariants.filter((v) => v.startsWith('55'));
    
    // Check if message is a confirmation response
