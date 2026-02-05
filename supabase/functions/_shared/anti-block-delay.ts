@@ -224,23 +224,28 @@ export async function simulateTyping(
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (clientToken) headers['Client-Token'] = clientToken;
     
+    console.log(`[simulateTyping] 📞 Calling Z-API typing endpoint for ${phone}, duration: ${duration}s`);
+    
     const response = await fetch(typingUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify({ phone, duration })
     });
     
+    const responseText = await response.text();
+    
     if (response.ok) {
-      console.log(`[simulateTyping] ⌨️ Typing indicator sent to ${phone} for ${duration}s`);
+      console.log(`[simulateTyping] ✅ Typing indicator SUCCESS for ${phone} - Status: ${response.status}, Response: ${responseText.substring(0, 100)}`);
     } else {
-      console.log(`[simulateTyping] ⚠️ Typing request failed (${response.status}), continuing...`);
+      console.log(`[simulateTyping] ⚠️ Typing request FAILED - Status: ${response.status}, Response: ${responseText.substring(0, 200)}`);
     }
     
     // Wait for the typing duration (in ms) plus a small random buffer
     const waitMs = duration * 1000 + Math.random() * 1000;
+    console.log(`[simulateTyping] ⏱️ Waiting ${(waitMs/1000).toFixed(1)}s before sending message...`);
     await new Promise(resolve => setTimeout(resolve, waitMs));
     
   } catch (e: any) {
-    console.log(`[simulateTyping] ⚠️ Typing simulation error: ${e?.message || 'unknown'}, continuing...`);
+    console.log(`[simulateTyping] ❌ Typing simulation ERROR: ${e?.message || 'unknown'}, continuing without typing...`);
   }
 }
