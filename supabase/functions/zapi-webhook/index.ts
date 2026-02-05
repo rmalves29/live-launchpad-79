@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
- import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay } from "../_shared/anti-block-delay.ts";
+ import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay, simulateTyping } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -434,10 +434,20 @@ serve(async (req) => {
           if (whatsappConfig?.send_out_of_stock_msg === false) {
             console.log(`[zapi-webhook] ⏭️ Mensagem de estoque esgotado desativada para este tenant`);
           } else if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
-            const outOfStockMessage = `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.💚`;
+            const baseOutOfStockMessage = `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.💚`;
+            const outOfStockMessage = addMessageVariation(baseOutOfStockMessage);
             
             // Format phone for Z-API (needs 55 prefix)
             const phoneForZapi = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+            
+            // Simulate typing indicator before sending
+            console.log(`[zapi-webhook] Simulating typing for out-of-stock message to ${phoneForZapi}...`);
+            await simulateTyping(
+              whatsappConfig.zapi_instance_id,
+              whatsappConfig.zapi_token,
+              whatsappConfig.zapi_client_token,
+              phoneForZapi
+            );
             
             // Apply anti-block delay before sending (1-4 seconds)
             const delayMs = await antiBlockDelay(1000, 4000);

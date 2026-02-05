@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { simulateTyping, addMessageVariation } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -105,6 +106,12 @@ async function sendGroupMessage(
   const { instanceId, token, clientToken } = credentials;
   
   try {
+    // Simulate typing indicator before sending (3-5 seconds)
+    await simulateTyping(instanceId, token, clientToken, groupId);
+
+    // Add message variation
+    const variedMessage = addMessageVariation(message);
+
     let url: string;
     let body: Record<string, unknown>;
     
@@ -114,14 +121,14 @@ async function sendGroupMessage(
       body = {
         phone: groupId,
         image: imageUrl,
-        caption: message
+        caption: variedMessage
       };
     } else {
       // Send text only
       url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
       body = {
         phone: groupId,
-        message: message
+        message: variedMessage
       };
     }
     
