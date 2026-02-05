@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { simulateTyping, addMessageVariation } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,7 +23,7 @@ interface BroadcastRequest {
 async function getZAPICredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -34,7 +35,8 @@ async function getZAPICredentials(supabase: any, tenantId: string) {
 
   return {
     instanceId: integration.zapi_instance_id,
-    token: integration.zapi_token
+    token: integration.zapi_token,
+    clientToken: integration.zapi_client_token || ''
   };
 }
 
@@ -210,7 +212,7 @@ serve(async (req) => {
       );
     }
 
-    const { instanceId, token } = credentials;
+    const { instanceId, token, clientToken } = credentials;
     const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
 
     let sent = 0;
@@ -222,13 +224,21 @@ serve(async (req) => {
 
     for (const phone of targetPhones) {
       try {
+        // Simulate typing indicator (3-5 seconds)
+        await simulateTyping(instanceId, token, clientToken, phone);
+
+        // Add message variation
+        const variedMessage = addMessageVariation(message);
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        if (clientToken) headers['Client-Token'] = clientToken;
+
         const response = await fetch(sendUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Client-Token': token
-          },
-          body: JSON.stringify({ phone, message })
+          headers,
+          body: JSON.stringify({ phone, message: variedMessage })
         });
 
         if (response.ok) {
@@ -238,7 +248,7 @@ serve(async (req) => {
           await supabase.from('whatsapp_messages').insert({
             tenant_id,
             phone,
-            message: message.substring(0, 500),
+            message: variedMessage.substring(0, 500),
             type: 'mass',
             sent_at: new Date().toISOString()
           });

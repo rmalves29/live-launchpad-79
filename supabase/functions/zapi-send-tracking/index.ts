@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { 
+  antiBlockDelayLive, 
+  logAntiBlockDelay, 
+  addMessageVariation,
+  simulateTyping
+} from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,6 +112,22 @@ Obrigado pela preferência! 💚`;
     }
 
     console.log("📱 [TRACKING] Enviando mensagem para:", phone);
+
+    // Simulate typing indicator (3-5 seconds)
+    console.log("⌨️ [TRACKING] Simulating typing...");
+    await simulateTyping(
+      integration.zapi_instance_id,
+      integration.zapi_token,
+      integration.zapi_client_token,
+      phone
+    );
+
+    // Apply anti-block delay
+    const delayMs = await antiBlockDelayLive();
+    logAntiBlockDelay('zapi-send-tracking', delayMs);
+
+    // Add message variation
+    messageContent = addMessageVariation(messageContent);
 
     // Enviar mensagem via Z-API
     const zapiUrl = `https://api.z-api.io/instances/${integration.zapi_instance_id}/token/${integration.zapi_token}/send-text`;

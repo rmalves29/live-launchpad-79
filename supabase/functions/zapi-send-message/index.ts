@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { simulateTyping } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +21,7 @@ interface SendMessageRequest {
 async function getZAPICredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -41,7 +42,8 @@ async function getZAPICredentials(supabase: any, tenantId: string) {
 
   return {
     instanceId: integration.zapi_instance_id,
-    token: integration.zapi_token
+    token: integration.zapi_token,
+    clientToken: integration.zapi_client_token || ''
   };
 }
 
@@ -60,39 +62,45 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
-async function sendTextMessage(baseUrl: string, token: string, phone: string, message: string) {
+async function sendTextMessage(baseUrl: string, token: string, clientToken: string, phone: string, message: string) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  if (clientToken) headers['Client-Token'] = clientToken;
+  
   const response = await fetch(`${baseUrl}/send-text`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Client-Token': token
-    },
+    headers,
     body: JSON.stringify({ phone, message })
   });
   
   return response;
 }
 
-async function sendImageMessage(baseUrl: string, token: string, phone: string, imageUrl: string, caption: string) {
+async function sendImageMessage(baseUrl: string, token: string, clientToken: string, phone: string, imageUrl: string, caption: string) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  if (clientToken) headers['Client-Token'] = clientToken;
+  
   const response = await fetch(`${baseUrl}/send-image`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Client-Token': token
-    },
+    headers,
     body: JSON.stringify({ phone, image: imageUrl, caption })
   });
   
   return response;
 }
 
-async function sendDocumentMessage(baseUrl: string, token: string, phone: string, documentUrl: string) {
+async function sendDocumentMessage(baseUrl: string, token: string, clientToken: string, phone: string, documentUrl: string) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  if (clientToken) headers['Client-Token'] = clientToken;
+  
   const response = await fetch(`${baseUrl}/send-document`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Client-Token': token
-    },
+    headers,
     body: JSON.stringify({ phone, document: documentUrl })
   });
   
@@ -134,11 +142,15 @@ serve(async (req) => {
       );
     }
 
-    const { instanceId, token } = credentials;
+    const { instanceId, token, clientToken } = credentials;
     const baseUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}`;
     const formattedPhone = formatPhoneNumber(phone);
 
     console.log(`[zapi-send-message] Formatted phone: ${formattedPhone}`);
+
+    // Simulate typing indicator (3-5 seconds)
+    console.log(`[zapi-send-message] Simulating typing for ${formattedPhone}...`);
+    await simulateTyping(instanceId, token, clientToken, formattedPhone);
 
     let response;
     
@@ -151,7 +163,7 @@ serve(async (req) => {
               { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
-          response = await sendImageMessage(baseUrl, token, formattedPhone, mediaUrl, caption || '');
+          response = await sendImageMessage(baseUrl, token, clientToken, formattedPhone, mediaUrl, caption || '');
           break;
           
         case 'document':
@@ -161,12 +173,12 @@ serve(async (req) => {
               { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
-          response = await sendDocumentMessage(baseUrl, token, formattedPhone, mediaUrl);
+          response = await sendDocumentMessage(baseUrl, token, clientToken, formattedPhone, mediaUrl);
           break;
           
         case 'text':
         default:
-          response = await sendTextMessage(baseUrl, token, formattedPhone, message);
+          response = await sendTextMessage(baseUrl, token, clientToken, formattedPhone, message);
           break;
       }
     } catch (fetchError: any) {

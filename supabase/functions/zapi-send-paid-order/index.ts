@@ -4,7 +4,8 @@ import {
   antiBlockDelayLive, 
   logAntiBlockDelay, 
   addMessageVariation,
-  getThrottleDelay 
+  getThrottleDelay,
+  simulateTyping
 } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
@@ -203,6 +204,10 @@ serve(async (req) => {
     if (throttleDelay > 0) {
       console.log(`[zapi-send-paid-order] 🛡️ Throttle delay for ${formattedPhone}: ${(throttleDelay / 1000).toFixed(1)}s`);
     }
+
+    // Simulate typing indicator (3-5 seconds)
+    console.log(`[zapi-send-paid-order] Simulating typing for ${formattedPhone}...`);
+    await simulateTyping(instanceId, token, clientToken, formattedPhone);
 
     // Apply extended anti-block delay for live scenarios (5-15 seconds)
     const delayMs = await antiBlockDelayLive();
