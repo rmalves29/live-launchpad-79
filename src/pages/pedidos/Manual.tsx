@@ -140,8 +140,18 @@ const PedidosManual = () => {
       const subtotal = product.price * qty;
       const today = getBrasiliaDateISO();
       
+      console.log('[Manual] 🛒 Iniciando lançamento:', {
+        productId: product.id,
+        productCode: product.code,
+        phone: normalizedPhone,
+        qty,
+        subtotal,
+        today
+      });
+      
       // Function to get or create order with retry logic
       const getOrCreateOrder = async (): Promise<{ orderId: number; cartId: number | null; isNew: boolean }> => {
+        console.log('[Manual] 📦 Buscando pedido existente para:', normalizedPhone, today);
         // First attempt: Check for existing unpaid order
         const { data: existingOrders, error: searchError } = await supabaseTenant
           .from('orders')
@@ -155,9 +165,11 @@ const PedidosManual = () => {
           .order('created_at', { ascending: false });
 
         if (searchError) {
-          console.error('Error searching for existing order:', searchError);
+          console.error('[Manual] ❌ Erro ao buscar pedido existente:', searchError);
           throw searchError;
         }
+        
+        console.log('[Manual] 📋 Pedidos existentes encontrados:', existingOrders?.length || 0, existingOrders);
 
         if (existingOrders && existingOrders.length > 0) {
           const existingOrder = existingOrders[0];
@@ -284,6 +296,7 @@ const PedidosManual = () => {
       }
 
       if (existingCartItem) {
+        console.log('[Manual] 📝 Atualizando item existente no carrinho:', existingCartItem.id);
         // Update existing cart item - also update product snapshot
         const { error: updateCartError } = await supabaseTenant
           .from('cart_items')
@@ -296,10 +309,19 @@ const PedidosManual = () => {
           })
           .eq('id', existingCartItem.id);
 
-        if (updateCartError) throw updateCartError;
+        if (updateCartError) {
+          console.error('[Manual] ❌ Erro ao atualizar item no carrinho:', updateCartError);
+          throw updateCartError;
+        }
+        console.log('[Manual] ✅ Item do carrinho atualizado');
       } else {
+        console.log('[Manual] ➕ Inserindo novo item no carrinho:', {
+          cart_id: cartId,
+          product_id: product.id,
+          qty
+        });
         // Add new cart item with product snapshot for when product is deleted
-        const { error: cartItemError } = await supabaseTenant
+        const { data: newCartItem, error: cartItemError } = await supabaseTenant
           .from('cart_items')
           .insert({
             cart_id: cartId,
@@ -309,9 +331,14 @@ const PedidosManual = () => {
             product_name: product.name,
             product_code: product.code,
             product_image_url: product.image_url
-          });
+          })
+          .select();
 
-        if (cartItemError) throw cartItemError;
+        if (cartItemError) {
+          console.error('[Manual] ❌ Erro ao inserir item no carrinho:', cartItemError);
+          throw cartItemError;
+        }
+        console.log('[Manual] ✅ Item inserido com sucesso:', newCartItem);
       }
 
       // Update product stock in database
