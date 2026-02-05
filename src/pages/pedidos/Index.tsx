@@ -1815,6 +1815,27 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
+                          {order.is_cancelled ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-amber-600 hover:text-amber-700"
+                              onClick={() => toggleCancelledStatus(order.id, true)}
+                              title="Reverter cancelamento"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : !order.is_paid ? (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                              onClick={() => toggleCancelledStatus(order.id, false)}
+                              title="Cancelar pedido"
+                            >
+                              <Ban className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : null}
                         </div>
                       </TableCell>
                     </TableRow>
