@@ -1493,6 +1493,157 @@ serve(async (req) => {
       }
 
       case 'test_payload': {
+      }
+
+      case 'sync_tracking': {
+        // Buscar códigos de rastreio do Bling e atualizar pedidos locais
+        console.log(`[bling-sync-orders] SYNC_TRACKING for tenant: ${tenant_id}`);
+        
+        // Buscar pedidos pagos que têm bling_order_id mas não têm tracking code
+        const { data: ordersToSync, error: ordersError } = await supabase
+          .from('orders')
+          .select('id, bling_order_id, customer_phone, customer_name, tenant_id')
+          .eq('tenant_id', tenant_id)
+          .eq('is_paid', true)
+          .not('bling_order_id', 'is', null)
+          .or('melhor_envio_tracking_code.is.null,melhor_envio_tracking_code.eq.')
+          .order('created_at', { ascending: false })
+          .limit(100);
+        
+        if (ordersError) {
+          throw new Error(`Erro ao buscar pedidos: ${ordersError.message}`);
+        }
+        
+        if (!ordersToSync || ordersToSync.length === 0) {
+          result = { 
+            message: 'Nenhum pedido pendente de rastreio encontrado',
+            synced: 0,
+            total_checked: 0
+          };
+          break;
+        }
+        
+        console.log(`[bling-sync-orders] Found ${ordersToSync.length} orders to check for tracking`);
+        
+        const trackingResults: any[] = [];
+        let syncedCount = 0;
+        
+        for (const order of ordersToSync) {
+          try {
+            // Rate limiting
+            await delay(350);
+            
+            // Buscar detalhes do pedido no Bling
+            const { response: detailRes, text: detailText } = await blingFetchWithRetry(
+              `${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`,
+              {
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'Accept': 'application/json',
+                },
+              },
+              { label: `get-order-${order.bling_order_id}` }
+            );
+            
+            if (!detailRes.ok) {
+              console.log(`[bling-sync-orders] Could not fetch Bling order ${order.bling_order_id}: ${detailRes.status}`);
+              trackingResults.push({ 
+                order_id: order.id, 
+                bling_order_id: order.bling_order_id,
+                success: false, 
+                error: `HTTP ${detailRes.status}` 
+              });
+              continue;
+            }
+            
+            const blingOrder = JSON.parse(detailText);
+            const volumes = blingOrder?.data?.transporte?.volumes || [];
+            
+            // Pegar o primeiro código de rastreamento disponível
+            let trackingCode: string | null = null;
+            for (const volume of volumes) {
+              if (volume?.codigoRastreamento) {
+                trackingCode = volume.codigoRastreamento;
+                break;
+              }
+            }
+            
+            if (trackingCode) {
+              console.log(`[bling-sync-orders] Found tracking code for order ${order.id}: ${trackingCode}`);
+              
+              // Atualizar pedido local
+              const { error: updateError } = await supabase
+                .from('orders')
+                .update({ melhor_envio_tracking_code: trackingCode })
+                .eq('id', order.id);
+              
+              if (updateError) {
+                console.error(`[bling-sync-orders] Error updating tracking for order ${order.id}:`, updateError);
+                trackingResults.push({ 
+                  order_id: order.id, 
+                  bling_order_id: order.bling_order_id,
+                  success: false, 
+                  error: updateError.message 
+                });
+              } else {
+                syncedCount++;
+                trackingResults.push({ 
+                  order_id: order.id, 
+                  bling_order_id: order.bling_order_id,
+                  tracking_code: trackingCode,
+                  success: true 
+                });
+                
+                // Enviar WhatsApp com código de rastreio (via edge function)
+                try {
+                  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+                  await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+                    },
+                    body: JSON.stringify({
+                      order_id: order.id,
+                      tenant_id: order.tenant_id,
+                      tracking_code: trackingCode,
+                      shipped_at: new Date().toISOString(),
+                    }),
+                  });
+                  console.log(`[bling-sync-orders] WhatsApp tracking notification sent for order ${order.id}`);
+                } catch (whatsappError) {
+                  console.log(`[bling-sync-orders] WhatsApp notification failed for order ${order.id}:`, whatsappError);
+                }
+              }
+            } else {
+              trackingResults.push({ 
+                order_id: order.id, 
+                bling_order_id: order.bling_order_id,
+                success: false, 
+                error: 'Sem código de rastreio no Bling' 
+              });
+            }
+          } catch (orderError: any) {
+            console.error(`[bling-sync-orders] Error processing order ${order.id}:`, orderError);
+            trackingResults.push({ 
+              order_id: order.id, 
+              bling_order_id: order.bling_order_id,
+              success: false, 
+              error: orderError.message 
+            });
+          }
+        }
+        
+        result = {
+          message: `Sincronização de rastreios concluída`,
+          synced: syncedCount,
+          total_checked: ordersToSync.length,
+          details: trackingResults,
+        };
+        break;
+      }
+
+      case 'test_payload': {
         // Ação de teste: gera o payload que seria enviado ao Bling sem criar o pedido
         // Útil para verificar se os dados do cliente estão sendo carregados corretamente
         const { customer_phone } = await req.json().catch(() => ({}));

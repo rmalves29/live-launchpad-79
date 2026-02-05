@@ -16,7 +16,8 @@ import {
   Info,
   CheckCircle2,
   Wrench,
-  Calendar
+  Calendar,
+  Truck
 } from 'lucide-react';
 
 interface BlingOrdersSyncPanelProps {
@@ -29,6 +30,7 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
   const [isSyncing, setIsSyncing] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [isFixingFreight, setIsFixingFreight] = useState(false);
+  const [isSyncingTracking, setIsSyncingTracking] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -163,6 +165,55 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
       toast.error(error.message || 'Erro ao buscar pedidos do Bling');
     } finally {
       setIsFetching(false);
+    }
+  };
+
+  const handleFixFreight = async () => {
+  };
+
+  const handleSyncTracking = async () => {
+    setIsSyncingTracking(true);
+    try {
+      toast.info('Buscando códigos de rastreio do Bling...');
+      const session = await supabase.auth.getSession();
+      const response = await fetch(
+        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-sync-orders',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'sync_tracking',
+            tenant_id: tenantId,
+          }),
+        }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao sincronizar rastreios');
+      }
+      
+      if (result.success) {
+        const data = result.data;
+        if (data.synced === 0) {
+          toast.info(`Verificados ${data.total_checked} pedido(s). Nenhum código de rastreio novo encontrado.`);
+        } else {
+          toast.success(`${data.synced} código(s) de rastreio atualizado(s) de ${data.total_checked} pedido(s) verificados!`);
+        }
+        console.log('Resultado sync tracking:', data);
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+      } else {
+        throw new Error(result.error || 'Erro desconhecido');
+      }
+    } catch (error: any) {
+      console.error('Erro ao sincronizar rastreios:', error);
+      toast.error(error.message || 'Erro ao sincronizar rastreios');
+    } finally {
+      setIsSyncingTracking(false);
     }
   };
 
@@ -360,6 +411,30 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
               Buscar Pedidos do Bling
             </Button>
           </div>
+        </div>
+
+        {/* Sincronizar Rastreios do Bling */}
+        <div className="border rounded-lg p-4 space-y-3 border-primary/50 bg-primary/5">
+          <div className="flex items-center gap-2">
+            <Truck className="h-5 w-5 text-primary" />
+            <h4 className="font-medium">Sincronizar Rastreios do Bling</h4>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Busca códigos de rastreio dos pedidos no Bling e atualiza o sistema.
+            Envia WhatsApp automaticamente ao cliente quando um código novo é encontrado.
+          </p>
+          <Button
+            onClick={handleSyncTracking}
+            disabled={isSyncingTracking}
+            className="w-full"
+          >
+            {isSyncingTracking ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Truck className="h-4 w-4 mr-2" />
+            )}
+            Buscar Rastreios do Bling
+          </Button>
         </div>
 
         {/* Corrigir fretes */}
