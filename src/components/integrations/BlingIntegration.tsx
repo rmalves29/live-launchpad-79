@@ -20,6 +20,7 @@ import { useSearchParams } from 'react-router-dom';
 import BlingOrdersSyncPanel from './BlingOrdersSyncPanel';
 import BlingProductsSyncPanel from './BlingProductsSyncPanel';
 import BlingFiscalSettings from './BlingFiscalSettings';
+import BlingBulkAddressSync from './BlingBulkAddressSync';
 import { 
   Loader2, 
   Save, 
@@ -894,6 +895,11 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
       {/* Dados Fiscais */}
       {isAuthorized && !isExpired && (
         <BlingFiscalSettings tenantId={tenantId} />
+      )}
+
+      {/* Atualizar endereços em massa no Bling */}
+      {isAuthorized && !isExpired && (
+        <BlingBulkAddressSync tenantId={tenantId} />
       )}
 
       {/* Última sincronização */}

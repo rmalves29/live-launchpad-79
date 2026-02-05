@@ -12,7 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck, RefreshCw, Ban, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MapPin } from 'lucide-react';
+import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck, RefreshCw, Ban, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -161,7 +161,6 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     // Paginação
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(25);
-    const [syncingAllAddresses, setSyncingAllAddresses] = useState(false);
 
     const loadOrders = async () => {
       try {
@@ -888,59 +887,6 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
       }
     };
 
-    const syncAllAddressesWithBling = async () => {
-      // Filtrar pedidos que têm integração Bling (bling_order_id ou bling_contact_id)
-      const blingOrders = orders.filter(o => 
-        !o.is_cancelled && (o.bling_order_id || o.customer?.bling_contact_id)
-      );
-
-      if (blingOrders.length === 0) {
-        toast({
-          title: 'Aviso',
-          description: 'Nenhum pedido com integração Bling encontrado na listagem atual.',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      const confirmed = await confirm({
-        description: `Deseja atualizar o endereço de ${blingOrders.length} pedido(s) no Bling?`,
-        confirmText: 'Atualizar Todos',
-      });
-
-      if (!confirmed) return;
-
-      setSyncingAllAddresses(true);
-      let successCount = 0;
-      let errorCount = 0;
-
-      for (const order of blingOrders) {
-        try {
-          const { data, error } = await supabase.functions.invoke('sync-address-bling', {
-            body: { order_id: order.id, tenant_id: order.tenant_id }
-          });
-
-          if (error) throw error;
-          if (data?.success) {
-            successCount++;
-          } else {
-            errorCount++;
-          }
-        } catch (err) {
-          console.error(`Erro ao sincronizar pedido #${order.id}:`, err);
-          errorCount++;
-        }
-      }
-
-      setSyncingAllAddresses(false);
-
-      toast({
-        title: errorCount === 0 ? 'Sucesso' : 'Resultado',
-        description: `${successCount} endereço(s) atualizado(s) com sucesso${errorCount > 0 ? `, ${errorCount} com erro` : ''}.`,
-        variant: errorCount > 0 ? 'destructive' : 'default'
-      });
-    };
-
     const exportSelectedOrders = async () => {
       if (selectedOrders.size === 0) {
         toast({
@@ -1506,18 +1452,6 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
                   Deletar ({selectedOrders.size})
-                </Button>
-                <Button 
-                  onClick={syncAllAddressesWithBling} 
-                  variant="outline"
-                  disabled={syncingAllAddresses}
-                >
-                  {syncingAllAddresses ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <MapPin className="h-4 w-4 mr-2" />
-                  )}
-                  {syncingAllAddresses ? 'Atualizando...' : 'Atualizar Endereços Bling'}
                 </Button>
                 <Button onClick={exportToCSV} variant="outline">
                   <Download className="h-4 w-4 mr-2" />
