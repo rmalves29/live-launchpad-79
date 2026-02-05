@@ -128,3 +128,6 @@ verify_jwt = false
 
 [functions.instagram-oauth-url]
 verify_jwt = false
+
+[functions.sync-address-bling]
+verify_jwt = false

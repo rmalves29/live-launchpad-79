@@ -1007,6 +1007,7 @@ export type Database = {
       orders: {
         Row: {
           bling_order_id: number | null
+          bling_sync_status: string | null
           cart_id: number | null
           created_at: string | null
           customer_cep: string | null
@@ -1043,6 +1044,7 @@ export type Database = {
         }
         Insert: {
           bling_order_id?: number | null
+          bling_sync_status?: string | null
           cart_id?: number | null
           created_at?: string | null
           customer_cep?: string | null
@@ -1079,6 +1081,7 @@ export type Database = {
         }
         Update: {
           bling_order_id?: number | null
+          bling_sync_status?: string | null
           cart_id?: number | null
           created_at?: string | null
           customer_cep?: string | null

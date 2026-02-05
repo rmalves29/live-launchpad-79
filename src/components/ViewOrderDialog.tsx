@@ -1,10 +1,15 @@
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatBrasiliaDate, formatBrasiliaDateTime } from '@/lib/date-utils';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { Loader2, MapPin } from 'lucide-react';
 
 interface Order {
   id: number;
@@ -16,6 +21,8 @@ interface Order {
   is_paid: boolean;
   created_at: string;
   observation?: string;
+  bling_order_id?: number;
+  tenant_id?: string;
   customer?: {
     name?: string;
     cpf?: string;
@@ -26,6 +33,7 @@ interface Order {
     city?: string;
     state?: string;
     cep?: string;
+    bling_contact_id?: number;
   };
   cart_items?: {
     id: number;
@@ -52,7 +60,47 @@ interface ViewOrderDialogProps {
 }
 
 export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogProps) => {
+  const { toast } = useToast();
+  const [syncingAddress, setSyncingAddress] = useState(false);
+
   if (!order) return null;
+
+  const hasBlingIntegration = !!(order.bling_order_id || order.customer?.bling_contact_id);
+
+  const syncAddressWithBling = async () => {
+    if (!order.tenant_id) {
+      toast({ title: 'Erro', description: 'Tenant não identificado', variant: 'destructive' });
+      return;
+    }
+
+    setSyncingAddress(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-address-bling', {
+        body: { order_id: order.id, tenant_id: order.tenant_id }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast({ title: 'Sucesso', description: 'Endereço atualizado no Bling com sucesso!' });
+      } else {
+        toast({
+          title: 'Resultado parcial',
+          description: data?.message || 'Verifique os logs para detalhes',
+          variant: 'destructive'
+        });
+      }
+    } catch (error: any) {
+      console.error('Erro ao sincronizar endereço:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao atualizar endereço no Bling',
+        variant: 'destructive'
+      });
+    } finally {
+      setSyncingAddress(false);
+    }
+  };
 
   const customerName = order.customer?.name || 'Cliente não identificado';
   const customerAddress = order.customer ? 
@@ -113,6 +161,24 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                 <div className="md:col-span-2">
                   <strong>Endereço:</strong> {customerAddress}
                 </div>
+                {hasBlingIntegration && (
+                  <div className="md:col-span-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={syncAddressWithBling}
+                      disabled={syncingAddress}
+                      className="mt-1"
+                    >
+                      {syncingAddress ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <MapPin className="h-4 w-4 mr-2" />
+                      )}
+                      Atualizar Endereço no Bling
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
