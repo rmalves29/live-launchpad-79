@@ -21,13 +21,15 @@ COMMENT ON COLUMN customers.data_permissao IS 'Data/hora em que o cliente deu a 
 ## 2. Adicionar campos na tabela integration_whatsapp
 
 ```sql
--- Adiciona campos de proteção por consentimento
+-- Adiciona campos de proteção por consentimento e templates
 ALTER TABLE integration_whatsapp
+ADD COLUMN IF NOT EXISTS template_item_added TEXT,
 ADD COLUMN IF NOT EXISTS consent_protection_enabled BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS template_solicitacao TEXT,
 ADD COLUMN IF NOT EXISTS template_com_link TEXT;
 
 -- Comentários
+COMMENT ON COLUMN integration_whatsapp.template_item_added IS 'Template da mensagem 1 (modo padrão) - notificação de item adicionado';
 COMMENT ON COLUMN integration_whatsapp.consent_protection_enabled IS 'Ativa o modo de proteção por consentimento (2 etapas)';
 COMMENT ON COLUMN integration_whatsapp.template_solicitacao IS 'Template A - Mensagem de solicitação de permissão';
 COMMENT ON COLUMN integration_whatsapp.template_com_link IS 'Template B - Mensagem com link de checkout';
@@ -51,12 +53,13 @@ ON customers(tenant_id, consentimento_ativo, data_permissao);
 
 -- 2. Tabela integration_whatsapp
 ALTER TABLE integration_whatsapp
+ADD COLUMN IF NOT EXISTS template_item_added TEXT,
 ADD COLUMN IF NOT EXISTS consent_protection_enabled BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS template_solicitacao TEXT,
 ADD COLUMN IF NOT EXISTS template_com_link TEXT;
 
 -- Confirmação
-SELECT 'Campos de consentimento adicionados com sucesso!' as status;
+SELECT 'Campos de consentimento e templates adicionados com sucesso!' as status;
 ```
 
 ## Como funciona o sistema
