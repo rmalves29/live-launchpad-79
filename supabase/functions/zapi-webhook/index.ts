@@ -1149,11 +1149,41 @@ async function updateOrderTotal(supabase: any, orderId: number) {
    instanceId?: string
  ): Promise<{ handled: boolean; action?: string; error?: string }> {
    
-   // Normalize phone
-   let normalizedPhone = senderPhone.replace(/\D/g, '');
-   if (normalizedPhone.length >= 10 && !normalizedPhone.startsWith('55')) {
-     normalizedPhone = '55' + normalizedPhone;
-   }
+    // Normalize phone
+    let normalizedPhone = senderPhone.replace(/\D/g, '');
+    if (normalizedPhone.length >= 10 && !normalizedPhone.startsWith('55')) {
+      normalizedPhone = '55' + normalizedPhone;
+    }
+
+    // IMPORTANT (BR): Z-API sometimes delivers private-message callbacks without the 9th digit
+    // after DDD (e.g. stored: 5531999998888, received: 553199998888). We must match both.
+    function buildPhoneVariants(phone55: string): string[] {
+      const variants = new Set<string>();
+      const p = (phone55 || '').replace(/\D/g, '');
+      if (!p) return [];
+
+      // Base
+      variants.add(p);
+
+      // Variant without country
+      if (p.startsWith('55')) variants.add(p.replace(/^55/, ''));
+
+      // Add/remove 9th digit for BR mobiles: 55 + DDD(2) + 9 + number(8)
+      const with9 = p.match(/^55(\d{2})9(\d{8})$/);
+      if (with9) {
+        variants.add(`55${with9[1]}${with9[2]}`); // remove the 9
+      }
+
+      const without9 = p.match(/^55(\d{2})(\d{8})$/);
+      if (without9) {
+        variants.add(`55${without9[1]}9${without9[2]}`); // add the 9
+      }
+
+      return Array.from(variants);
+    }
+
+    const phoneVariants = buildPhoneVariants(normalizedPhone);
+    const phoneVariants55 = phoneVariants.filter((v) => v.startsWith('55'));
    
    // Check if message is a confirmation response
    const cleanMessage = messageText.trim().toLowerCase();
@@ -1183,22 +1213,27 @@ async function updateOrderTotal(supabase: any, orderId: number) {
      }
    }
    
-   // Build query for pending confirmations
-   let query = supabase
-     .from('pending_message_confirmations')
-     .select('*')
-     .eq('status', 'pending')
-     .gt('expires_at', new Date().toISOString())
-     .order('created_at', { ascending: false });
-   
-   // Try with full phone first
-   query = query.eq('customer_phone', normalizedPhone);
-   
-   if (tenantId) {
-     query = query.eq('tenant_id', tenantId);
-   }
-   
-   const { data: confirmations, error: confError } = await query.limit(1);
+    // Build query for pending confirmations
+    let query = supabase
+      .from('pending_message_confirmations')
+      .select('*')
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false });
+
+    // Prefer matching by tenant (derived from instanceId) when possible
+    if (tenantId) {
+      query = query.eq('tenant_id', tenantId);
+    }
+
+    // Try exact matches for multiple phone variants (with/without 9)
+    if (phoneVariants55.length > 0) {
+      query = query.in('customer_phone', phoneVariants55);
+    } else {
+      query = query.eq('customer_phone', normalizedPhone);
+    }
+
+    const { data: confirmations, error: confError } = await query.limit(1);
    
    if (confError) {
      console.log(`[zapi-webhook] Error finding confirmation:`, confError);
@@ -1206,16 +1241,24 @@ async function updateOrderTotal(supabase: any, orderId: number) {
    }
    
    if (!confirmations || confirmations.length === 0) {
-     // Try with phone without country code
-     const phoneWithoutCountry = normalizedPhone.replace(/^55/, '');
-     const { data: confirmations2 } = await supabase
-       .from('pending_message_confirmations')
-       .select('*')
-       .eq('status', 'pending')
-       .ilike('customer_phone', `%${phoneWithoutCountry}`)
-       .gt('expires_at', new Date().toISOString())
-       .order('created_at', { ascending: false })
-       .limit(1);
+      // Fallback: match by last digits (helps when provider changes formatting)
+      const phoneWithoutCountry = normalizedPhone.replace(/^55/, '');
+      const last10 = phoneWithoutCountry.slice(-10);
+      const last11 = phoneWithoutCountry.slice(-11);
+
+      let fallbackQuery = supabase
+        .from('pending_message_confirmations')
+        .select('*')
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false });
+
+      if (tenantId) fallbackQuery = fallbackQuery.eq('tenant_id', tenantId);
+
+      // Try last 11 first (BR mobile with 9), then last 10
+      const { data: confirmations2 } = await fallbackQuery
+        .or(`customer_phone.ilike.%${last11},customer_phone.ilike.%${last10}`)
+        .limit(1);
      
      if (!confirmations2 || confirmations2.length === 0) {
        console.log(`[zapi-webhook] No pending confirmation found for ${normalizedPhone}`);
@@ -1223,17 +1266,18 @@ async function updateOrderTotal(supabase: any, orderId: number) {
      }
      
      // Found confirmation with alternative phone format
-     return await sendConfirmationLink(supabase, confirmations2[0], instanceId);
+      return await sendConfirmationLink(supabase, confirmations2[0], instanceId, normalizedPhone);
    }
    
-   return await sendConfirmationLink(supabase, confirmations[0], instanceId);
+    return await sendConfirmationLink(supabase, confirmations[0], instanceId, normalizedPhone);
  }
  
  // Send the confirmation link (second message with checkout URL)
  async function sendConfirmationLink(
    supabase: any, 
    confirmation: any,
-   instanceId?: string
+    instanceId?: string,
+    targetPhoneOverride?: string
  ): Promise<{ handled: boolean; action?: string; error?: string }> {
    
    console.log(`[zapi-webhook] 📤 Sending confirmation link for ${confirmation.id}`);
@@ -1267,7 +1311,9 @@ async function updateOrderTotal(supabase: any, orderId: number) {
    // Add message variation
    message = addMessageVariation(message);
    
-   // Simulate typing (3-5 seconds)
+    const targetPhone = (targetPhoneOverride || confirmation.customer_phone || '').replace(/\D/g, '') || confirmation.customer_phone;
+
+    // Simulate typing (3-5 seconds)
    try {
      const typingUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/typing`;
      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -1276,7 +1322,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
      await fetch(typingUrl, {
        method: 'POST',
        headers,
-       body: JSON.stringify({ phone: confirmation.customer_phone, duration: 4 })
+        body: JSON.stringify({ phone: targetPhone, duration: 4 })
      });
      
      const typingDelay = 3000 + Math.random() * 2000;
@@ -1294,12 +1340,12 @@ async function updateOrderTotal(supabase: any, orderId: number) {
    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
    if (whatsappConfig.zapi_client_token) headers['Client-Token'] = whatsappConfig.zapi_client_token;
    
-   console.log(`[zapi-webhook] Sending confirmation link to ${confirmation.customer_phone}`);
+    console.log(`[zapi-webhook] Sending confirmation link to ${targetPhone}`);
    
    const response = await fetch(sendUrl, {
      method: 'POST',
      headers,
-     body: JSON.stringify({ phone: confirmation.customer_phone, message })
+      body: JSON.stringify({ phone: targetPhone, message })
    });
    
    const responseText = await response.text();
@@ -1324,7 +1370,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
    // Log the message
    await supabase.from('whatsapp_messages').insert({
      tenant_id: confirmation.tenant_id,
-     phone: confirmation.customer_phone,
+      phone: targetPhone,
      message: message.substring(0, 500),
      type: 'outgoing',
      sent_at: new Date().toISOString(),
