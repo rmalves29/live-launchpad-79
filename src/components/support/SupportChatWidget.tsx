@@ -28,6 +28,12 @@ export function SupportChatWidget({ tenantId, customerPhone, customerName }: Sup
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [escalated, setEscalated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // Estado para coleta de dados antes de escalar
+  const [pendingEscalation, setPendingEscalation] = useState(false);
+  const [collectedName, setCollectedName] = useState(customerName || '');
+  const [collectedPhone, setCollectedPhone] = useState(customerPhone || '');
+  const [originalQuestion, setOriginalQuestion] = useState('');
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -67,8 +73,8 @@ export function SupportChatWidget({ tenantId, customerPhone, customerName }: Sup
           message: userMessage.content,
           tenant_id: tenantId,
           conversation_id: conversationId,
-          customer_phone: customerPhone,
-          customer_name: customerName
+          customer_phone: collectedPhone || customerPhone,
+          customer_name: collectedName || customerName
         }
       });
 
@@ -78,19 +84,38 @@ export function SupportChatWidget({ tenantId, customerPhone, customerName }: Sup
         setConversationId(data.conversation_id);
       }
 
-      if (data.escalated) {
+      // Verificar se precisa coletar dados antes de escalar
+      if (data.needs_escalation && !data.escalated) {
+        setPendingEscalation(true);
+        setOriginalQuestion(userMessage.content);
+        
+        const collectDataMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `${data.message}\n\nPara que um atendente humano possa te ajudar melhor, preciso de algumas informações:\n\n**Por favor, informe seu nome completo:**`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, collectDataMessage]);
+      } else if (data.escalated) {
         setEscalated(true);
         toast.info('Sua solicitação foi encaminhada para um atendente humano.');
+        
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      } else {
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, assistantMessage]);
       }
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.message,
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
 
     } catch (error: any) {
       console.error('Support chat error:', error);
@@ -103,11 +128,101 @@ export function SupportChatWidget({ tenantId, customerPhone, customerName }: Sup
       setIsLoading(false);
     }
   };
+  
+  // Função para processar coleta de dados para escalação
+  const handleDataCollection = async () => {
+    if (!input.trim() || isLoading) return;
+    
+    const userInput = input.trim();
+    
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: userInput,
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    
+    // Se ainda não tem nome, coletar nome
+    if (!collectedName) {
+      setCollectedName(userInput);
+      const askPhoneMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Obrigado, **${userInput}**! 📝\n\nAgora, por favor, informe seu **número de telefone com DDD** (ex: 31999999999):`,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, askPhoneMessage]);
+      return;
+    }
+    
+    // Se já tem nome mas não tem telefone, coletar telefone e escalar
+    if (!collectedPhone) {
+      const phoneClean = userInput.replace(/\D/g, '');
+      if (phoneClean.length < 10) {
+        const invalidPhoneMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: 'Por favor, informe um número de telefone válido com DDD (ex: 31999999999):',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, invalidPhoneMessage]);
+        return;
+      }
+      
+      setCollectedPhone(phoneClean);
+      setIsLoading(true);
+      
+      // Agora sim, escalar com todos os dados
+      try {
+        const { data, error } = await supabase.functions.invoke('support-chat', {
+          body: {
+            message: `[ESCALAR_AGORA] Pergunta original: ${originalQuestion}`,
+            tenant_id: tenantId,
+            conversation_id: conversationId,
+            customer_phone: phoneClean,
+            customer_name: collectedName,
+            original_question: originalQuestion,
+            force_escalation: true
+          }
+        });
+
+        if (error) throw error;
+
+        setEscalated(true);
+        setPendingEscalation(false);
+        toast.info('Sua solicitação foi encaminhada para um atendente humano.');
+        
+        const escalatedMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          role: 'assistant',
+          content: `Perfeito! ✅\n\nSuas informações foram registradas:\n- **Nome:** ${collectedName}\n- **Telefone:** ${phoneClean}\n- **Dúvida:** ${originalQuestion}\n\nUm atendente humano entrará em contato com você em breve pelo WhatsApp. Obrigado pela paciência! 🙏`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, escalatedMessage]);
+        
+      } catch (error: any) {
+        console.error('Escalation error:', error);
+        toast.error('Erro ao encaminhar. Tente novamente.');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+  
+  const handleSendMessage = () => {
+    if (pendingEscalation && (!collectedName || !collectedPhone)) {
+      handleDataCollection();
+    } else {
+      sendMessage();
+    }
+  };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSendMessage();
     }
   };
 
@@ -219,7 +334,7 @@ export function SupportChatWidget({ tenantId, customerPhone, customerName }: Sup
                 className="flex-1"
               />
               <Button
-                onClick={sendMessage}
+                onClick={handleSendMessage}
                 disabled={isLoading || !input.trim()}
                 size="icon"
                 className="shrink-0"

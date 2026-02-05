@@ -12,6 +12,8 @@ interface SupportChatRequest {
   conversation_id?: string;
   customer_phone?: string;
   customer_name?: string;
+  original_question?: string;
+  force_escalation?: boolean;
 }
 
 serve(async (req) => {
@@ -33,7 +35,9 @@ serve(async (req) => {
       tenant_id, 
       conversation_id,
       customer_phone,
-      customer_name
+      customer_name,
+      original_question,
+      force_escalation
     } = await req.json() as SupportChatRequest;
 
     if (!message || !tenant_id) {
@@ -231,9 +235,32 @@ Quando detectar esses indicadores, adicione no final da sua resposta:
     // Verificar se deve escalar
     let escalated = false;
     let escalationSummary = "";
+    const needsEscalation = (failedAttempts >= maxAttempts || force_escalation) && humanSupportPhone;
+    
+    // Se precisa escalar mas não tem dados do cliente, sinalizar para o frontend coletar
+    if (needsEscalation && !force_escalation && (!customer_phone || customer_phone === "chat-widget" || !customer_name)) {
+      // Atualizar contador de tentativas
+      await supabase.from("support_conversations").update({
+        failed_attempts: failedAttempts
+      }).eq("id", currentConversationId);
+      
+      return new Response(
+        JSON.stringify({
+          message: assistantMessage,
+          conversation_id: currentConversationId,
+          escalated: false,
+          needs_escalation: true,
+          failed_attempts: failedAttempts
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    if (failedAttempts >= maxAttempts && humanSupportPhone) {
+    if (needsEscalation) {
       escalated = true;
+      
+      // Usar a pergunta original se fornecida
+      const questionToInclude = original_question || message;
 
       // Gerar resumo da conversa
       const summaryResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -268,17 +295,19 @@ Quando detectar esses indicadores, adicione no final da sua resposta:
         escalated_at: new Date().toISOString(),
         escalated_to_phone: humanSupportPhone,
         escalation_summary: escalationSummary,
-        failed_attempts: failedAttempts
+        failed_attempts: failedAttempts,
+        customer_name: customer_name || "Não identificado",
+        customer_phone: customer_phone || "Não informado"
       }).eq("id", currentConversationId);
 
-      // Enviar mensagem de escalação via WhatsApp para o humano
+      // Enviar mensagem de escalação via WhatsApp para o humano com a pergunta exata
       try {
         await supabase.functions.invoke("zapi-proxy", {
           body: {
             action: "send-text",
             tenant_id,
             phone: humanSupportPhone,
-            message: `🆘 *SUPORTE ESCALADO*\n\n👤 Cliente: ${customer_name || "Não identificado"}\n📱 Telefone: ${customer_phone || "Não informado"}\n\n📋 *Resumo:*\n${escalationSummary}\n\n⏰ ${new Date().toLocaleString("pt-BR")}`
+            message: `🆘 *SUPORTE ESCALADO*\n\n👤 *Cliente:* ${customer_name || "Não identificado"}\n📱 *Telefone:* ${customer_phone || "Não informado"}\n\n❓ *Pergunta do cliente:*\n"${questionToInclude}"\n\n📋 *Resumo da conversa:*\n${escalationSummary}\n\n⏰ ${new Date().toLocaleString("pt-BR")}`
           }
         });
       } catch (whatsappError) {
