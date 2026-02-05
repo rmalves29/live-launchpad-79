@@ -24,6 +24,7 @@ interface ZAPIIntegration {
   send_paid_order_msg: boolean;
   send_product_canceled_msg: boolean;
   send_out_of_stock_msg: boolean;
+  template_item_added: string | null;
   item_added_confirmation_template: string | null;
   confirmation_timeout_minutes: number;
   // Novos campos de proteção por consentimento
@@ -61,7 +62,8 @@ export function ZAPISettings() {
     send_out_of_stock_msg: true,
   });
  
-   // Confirmation message template
+   // Confirmation message template (legacy mode)
+   const [templateItemAdded, setTemplateItemAdded] = useState('');
    const [confirmationTemplate, setConfirmationTemplate] = useState('');
    const [confirmationTimeout, setConfirmationTimeout] = useState(30);
    
@@ -81,7 +83,7 @@ export function ZAPISettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-         .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, item_added_confirmation_template, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link')
+        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, template_item_added, item_added_confirmation_template, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
@@ -101,6 +103,7 @@ export function ZAPISettings() {
           send_product_canceled_msg: typedData.send_product_canceled_msg ?? true,
           send_out_of_stock_msg: typedData.send_out_of_stock_msg ?? true,
         });
+         setTemplateItemAdded(typedData.template_item_added || '');
          setConfirmationTemplate(typedData.item_added_confirmation_template || '');
          setConfirmationTimeout(typedData.confirmation_timeout_minutes || 30);
          // Proteção por consentimento
@@ -141,6 +144,7 @@ export function ZAPISettings() {
         provider: 'zapi',
         updated_at: new Date().toISOString(),
         ...messageFlags,
+         template_item_added: templateItemAdded || null,
          item_added_confirmation_template: confirmationTemplate || null,
          confirmation_timeout_minutes: confirmationTimeout,
          // Proteção por consentimento
@@ -608,21 +612,61 @@ Qualquer dúvida, estou à disposição! ✨`}
            <div className="pt-4 border-t space-y-4">
              <div className="flex items-center gap-2">
                <MessageSquare className="h-4 w-4 text-muted-foreground" />
-               <span className="text-sm font-medium">Mensagem de Confirmação (2ª Etapa)</span>
+               <span className="text-sm font-medium">Templates de Mensagem (Modo Padrão)</span>
              </div>
              <p className="text-xs text-muted-foreground">
-               Esta mensagem é enviada após o cliente responder "SIM" ou "OK" à primeira mensagem. 
-               Use <code className="bg-muted px-1 rounded">{"{{checkout_url}}"}</code> para inserir o link.
+               Configure os templates para o fluxo de confirmação em duas etapas
              </p>
              
-             <div className="space-y-2">
-               <Textarea
-                 value={confirmationTemplate}
-                 onChange={(e) => setConfirmationTemplate(e.target.value)}
-                 placeholder={`Perfeito! 🎉\n\nAqui está o seu link exclusivo para finalizar a compra:\n\n👉 {{checkout_url}}\n\nQualquer dúvida estou à disposição! ✨`}
-                 rows={6}
-                 className="font-mono text-sm"
-               />
+             <div className="space-y-4 pl-4 border-l-2 border-muted">
+               {/* Template Mensagem 1 - Item Adicionado */}
+               <div className="space-y-2">
+                 <Label className="text-sm font-medium">
+                   📩 Mensagem 1 - Notificação de Item Adicionado
+                 </Label>
+                 <p className="text-xs text-muted-foreground">
+                   Enviada quando um item é adicionado. Variáveis: {'{{'}<code>produto</code>{'}}'},
+                   {'{{'}<code>quantidade</code>{'}}'},
+                   {'{{'}<code>valor</code>{'}}'}
+                 </p>
+                 <Textarea
+                   value={templateItemAdded}
+                   onChange={(e) => setTemplateItemAdded(e.target.value)}
+                   placeholder={`🛒 *Item adicionado ao pedido*
+
+✅ {{produto}}
+Qtd: *{{quantidade}}*
+Valor: *R$ {{valor}}*
+
+Deseja receber o link para finalizar a compra?
+Responda *SIM* para receber! ✨`}
+                   rows={8}
+                   className="font-mono text-sm"
+                 />
+               </div>
+               
+               {/* Template Mensagem 2 - Confirmação com Link */}
+               <div className="space-y-2">
+                 <Label className="text-sm font-medium">
+                   🔗 Mensagem 2 - Confirmação com Link
+                 </Label>
+                 <p className="text-xs text-muted-foreground">
+                   Enviada após o cliente responder "SIM". Use {'{{'}<code>checkout_url</code>{'}}'}
+                 </p>
+                 <Textarea
+                   value={confirmationTemplate}
+                   onChange={(e) => setConfirmationTemplate(e.target.value)}
+                   placeholder={`Perfeito! 🎉
+
+Aqui está o seu link exclusivo para finalizar a compra:
+
+👉 {{checkout_url}}
+
+Qualquer dúvida estou à disposição! ✨`}
+                   rows={6}
+                   className="font-mono text-sm"
+                 />
+               </div>
              </div>
              
              <div className="space-y-2">
