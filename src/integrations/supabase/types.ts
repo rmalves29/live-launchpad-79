@@ -834,6 +834,7 @@ export type Database = {
           send_paid_order_msg: boolean
           send_product_canceled_msg: boolean
           template_com_link: string | null
+          template_item_added: string | null
           template_solicitacao: string | null
           tenant_id: string
           updated_at: string | null
@@ -859,6 +860,7 @@ export type Database = {
           send_paid_order_msg?: boolean
           send_product_canceled_msg?: boolean
           template_com_link?: string | null
+          template_item_added?: string | null
           template_solicitacao?: string | null
           tenant_id: string
           updated_at?: string | null
@@ -884,6 +886,7 @@ export type Database = {
           send_paid_order_msg?: boolean
           send_product_canceled_msg?: boolean
           template_com_link?: string | null
+          template_item_added?: string | null
           template_solicitacao?: string | null
           tenant_id?: string
           updated_at?: string | null

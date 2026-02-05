@@ -12,6 +12,44 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 
+// Templates padrão
+const DEFAULT_TEMPLATE_SOLICITACAO = `🛒 *Item adicionado ao pedido*
+
+✅ {{produto}}
+Qtd: *{{quantidade}}*
+Valor: *R$ {{valor}}*
+
+Posso te enviar o link para finalizar o pedido por aqui?
+
+Responda *SIM* para receber o link. ✨`;
+
+const DEFAULT_TEMPLATE_COM_LINK = `🛒 *Item adicionado ao pedido*
+
+✅ {{produto}}
+Qtd: *{{quantidade}}*
+Valor: *R$ {{valor}}*
+
+👉 Finalize seu pedido: {{link_checkout}}
+
+Qualquer dúvida, estou à disposição! ✨`;
+
+const DEFAULT_TEMPLATE_ITEM_ADDED = `🛒 *Item adicionado ao pedido*
+
+✅ {{produto}}
+Qtd: *{{quantidade}}*
+Valor: *R$ {{valor}}*
+
+Deseja receber o link para finalizar a compra?
+Responda *SIM* para receber! ✨`;
+
+const DEFAULT_CONFIRMATION_TEMPLATE = `Perfeito! 🎉
+
+Aqui está o seu link exclusivo para finalizar a compra:
+
+👉 {{checkout_url}}
+
+Qualquer dúvida estou à disposição! ✨`;
+
 interface ZAPIIntegration {
   id: string;
   zapi_instance_id: string | null;
@@ -63,14 +101,14 @@ export function ZAPISettings() {
   });
  
    // Confirmation message template (legacy mode)
-   const [templateItemAdded, setTemplateItemAdded] = useState('');
-   const [confirmationTemplate, setConfirmationTemplate] = useState('');
+   const [templateItemAdded, setTemplateItemAdded] = useState(DEFAULT_TEMPLATE_ITEM_ADDED);
+   const [confirmationTemplate, setConfirmationTemplate] = useState(DEFAULT_CONFIRMATION_TEMPLATE);
    const [confirmationTimeout, setConfirmationTimeout] = useState(30);
    
    // Proteção por consentimento
    const [consentProtectionEnabled, setConsentProtectionEnabled] = useState(false);
-   const [templateSolicitacao, setTemplateSolicitacao] = useState('');
-   const [templateComLink, setTemplateComLink] = useState('');
+   const [templateSolicitacao, setTemplateSolicitacao] = useState(DEFAULT_TEMPLATE_SOLICITACAO);
+   const [templateComLink, setTemplateComLink] = useState(DEFAULT_TEMPLATE_COM_LINK);
 
   useEffect(() => {
     loadIntegration();
@@ -103,13 +141,14 @@ export function ZAPISettings() {
           send_product_canceled_msg: typedData.send_product_canceled_msg ?? true,
           send_out_of_stock_msg: typedData.send_out_of_stock_msg ?? true,
         });
-         setTemplateItemAdded(typedData.template_item_added || '');
-         setConfirmationTemplate(typedData.item_added_confirmation_template || '');
+         // Usa o valor do banco se existir, senão mantém o default
+         if (typedData.template_item_added) setTemplateItemAdded(typedData.template_item_added);
+         if (typedData.item_added_confirmation_template) setConfirmationTemplate(typedData.item_added_confirmation_template);
          setConfirmationTimeout(typedData.confirmation_timeout_minutes || 30);
          // Proteção por consentimento
          setConsentProtectionEnabled(typedData.consent_protection_enabled ?? false);
-         setTemplateSolicitacao(typedData.template_solicitacao || '');
-         setTemplateComLink(typedData.template_com_link || '');
+         if (typedData.template_solicitacao) setTemplateSolicitacao(typedData.template_solicitacao);
+         if (typedData.template_com_link) setTemplateComLink(typedData.template_com_link);
       }
     } catch (error: any) {
       console.error('Error loading Z-API integration:', error);
