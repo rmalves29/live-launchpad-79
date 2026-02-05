@@ -1235,6 +1235,29 @@ serve(async (req) => {
           break;
         }
 
+        // TRAVA DE CONCORRÊNCIA: Verificar se outro processo já está sincronizando este pedido
+        if (order.bling_sync_status === 'processing') {
+          console.log(`[bling-sync-orders] Order ${order.id} is already being processed by another request`);
+          result = {
+            skipped: true,
+            reason: 'order_already_processing',
+            order_id: order.id,
+          };
+          break;
+        }
+
+        // Marcar como "processing" IMEDIATAMENTE para evitar envios paralelos
+        const { error: lockError } = await supabase
+          .from('orders')
+          .update({ bling_sync_status: 'processing' })
+          .eq('id', order.id)
+          .eq('tenant_id', tenant_id)
+          .is('bling_order_id', null); // Só trava se ainda não tem bling_order_id
+
+        if (lockError) {
+          console.error(`[bling-sync-orders] Failed to acquire lock for order ${order.id}:`, lockError);
+        }
+
         let cartItems: any[] = [];
         if (order.cart_id) {
           // Buscar cart_items com JOIN em products para pegar código atualizado e bling_product_id
@@ -1311,10 +1334,10 @@ serve(async (req) => {
         
         const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider, customShippingOptions);
 
-        // Persistir o ID do pedido no Bling (inclui caso "já existe")
+        // Persistir o ID do pedido no Bling e marcar como synced
         await supabase
           .from('orders')
-          .update({ bling_order_id: blingResult.blingOrderId })
+          .update({ bling_order_id: blingResult.blingOrderId, bling_sync_status: 'synced' })
           .eq('id', order.id)
           .eq('tenant_id', tenant_id);
 
@@ -1338,13 +1361,14 @@ serve(async (req) => {
       }
 
       case 'sync_all': {
-        // Buscar pedidos pagos que ainda não foram sincronizados
+        // Buscar pedidos pagos que ainda não foram sincronizados e não estão sendo processados
         let ordersQuery = supabase
           .from('orders')
           .select('*')
           .eq('tenant_id', tenant_id)
           .eq('is_paid', true)
-          .is('bling_order_id', null);
+          .is('bling_order_id', null)
+          .or('bling_sync_status.is.null,bling_sync_status.eq.error'); // Ignorar pedidos em 'processing'
         
         // Aplicar filtro de data se fornecido
         if (start_date) {
@@ -1399,6 +1423,20 @@ serve(async (req) => {
           }
 
           try {
+            // TRAVA DE CONCORRÊNCIA: Marcar como processing antes de enviar
+            const { error: lockErr } = await supabase
+              .from('orders')
+              .update({ bling_sync_status: 'processing' })
+              .eq('id', order.id)
+              .eq('tenant_id', tenant_id)
+              .is('bling_order_id', null);
+
+            if (lockErr) {
+              console.log(`[bling-sync-orders] Could not lock order ${order.id}, skipping`);
+              results.push({ order_id: order.id, success: false, error: 'Lock failed' });
+              continue;
+            }
+
             let cartItems: any[] = [];
             if (order.cart_id) {
               // Buscar cart_items com JOIN em products para pegar código atualizado e bling_product_id
@@ -1419,6 +1457,7 @@ serve(async (req) => {
             // Skip orders without items
             if (cartItems.length === 0) {
               console.log(`[bling-sync-orders] Skipping order ${order.id}: no items`);
+              await supabase.from('orders').update({ bling_sync_status: null }).eq('id', order.id);
               results.push({ order_id: order.id, success: false, error: 'Pedido sem itens' });
               continue;
             }
@@ -1439,9 +1478,6 @@ serve(async (req) => {
 
             console.log(`[bling-sync-orders] Order ${order.id} - Customer found:`, customer ? customer.name : 'NOT FOUND');
 
-            // Buscar integração de frete ativa do tenant para definir a logística (apenas uma vez no início do loop)
-            // Movido para fora do loop para melhor performance
-            
             // Usar loja configurada no banco (se houver)
             const blingStoreId = integration.bling_store_id || null;
             
@@ -1463,7 +1499,7 @@ serve(async (req) => {
 
             await supabase
               .from('orders')
-              .update({ bling_order_id: blingResult.blingOrderId })
+              .update({ bling_order_id: blingResult.blingOrderId, bling_sync_status: 'synced' })
               .eq('id', order.id)
               .eq('tenant_id', tenant_id);
 
@@ -1475,6 +1511,8 @@ serve(async (req) => {
             });
           } catch (error) {
             console.error(`[bling-sync-orders] Error syncing order ${order.id}:`, error);
+            // Liberar o lock em caso de erro
+            await supabase.from('orders').update({ bling_sync_status: 'error' }).eq('id', order.id).eq('tenant_id', tenant_id);
             results.push({ order_id: order.id, success: false, error: error.message });
           }
         }
@@ -1859,6 +1897,19 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('[bling-sync-orders] Error:', error);
+
+    // Tentar liberar o lock do pedido em caso de erro no send_order
+    try {
+      const body = await req.clone().json().catch(() => ({}));
+      if (body?.order_id && body?.tenant_id) {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const sb = createClient(supabaseUrl, supabaseServiceKey);
+        await sb.from('orders').update({ bling_sync_status: 'error' }).eq('id', body.order_id).eq('tenant_id', body.tenant_id);
+        console.log(`[bling-sync-orders] Released lock for order ${body.order_id} after error`);
+      }
+    } catch (_) { /* ignore cleanup errors */ }
+
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
