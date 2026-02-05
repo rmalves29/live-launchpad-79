@@ -647,7 +647,9 @@ export default function SendFlow() {
 
       {/* Progresso em tempo real de envio em outro dispositivo (com opção de retomar se travado) */}
       {!sending && (
-        <SendingProgressLive jobType="sendflow" onResumeJob={handleResumeJob} />
+        <SendingProgressLive jobType="sendflow" onResumeJob={handleResumeJob} onNewSend={() => {
+          // Reset is already done since selections were cleared on send start
+        }} />
       )}
 
       {/* Card para retomar envio pausado */}
