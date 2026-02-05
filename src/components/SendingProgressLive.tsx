@@ -22,6 +22,7 @@ interface SendingJob {
     groupIds?: string[];
     countdownSeconds?: number;
     isWaitingForNextProduct?: boolean;
+    isWaitingForNextGroup?: boolean;
     messageTemplate?: string;
     perGroupDelaySeconds?: number;
     perProductDelayMinutes?: number;
@@ -33,6 +34,7 @@ interface SendingJob {
   error_message?: string;
   started_at: string;
   updated_at: string;
+  completed_at?: string;
 }
 
 interface SendFlowTask {
@@ -51,12 +53,14 @@ interface SendFlowTask {
 interface SendingProgressLiveProps {
   jobType?: 'sendflow' | 'mass_message';
   onResumeJob?: (job: SendingJob) => void;
+  onNewSend?: () => void;
 }
 
-export default function SendingProgressLive({ jobType, onResumeJob }: SendingProgressLiveProps) {
+export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }: SendingProgressLiveProps) {
   const { tenant } = useTenant();
   const { toast } = useToast();
   const [activeJob, setActiveJob] = useState<SendingJob | null>(null);
+  const [completedJob, setCompletedJob] = useState<SendingJob | null>(null);
   const [tasks, setTasks] = useState<SendFlowTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<'pause' | 'cancel' | 'resume' | null>(null);
@@ -197,6 +201,7 @@ export default function SendingProgressLive({ jobType, onResumeJob }: SendingPro
     const fetchActiveJob = async () => {
       setLoading(true);
       try {
+        // First check for running jobs
         let query = supabase
           .from('sending_jobs')
           .select('*')
@@ -214,10 +219,25 @@ export default function SendingProgressLive({ jobType, onResumeJob }: SendingPro
             setActiveJob(null);
           } else {
             setActiveJob(job);
+            setCompletedJob(null);
             fetchTasks(job.id);
           }
         } else {
           setActiveJob(null);
+          // Check for recently completed jobs (last 2 minutes)
+          let completedQuery = supabase
+            .from('sending_jobs')
+            .select('*')
+            .eq('tenant_id', tenant.id)
+            .eq('status', 'completed')
+            .gte('completed_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+            .order('completed_at', { ascending: false })
+            .limit(1);
+          if (jobType) completedQuery = completedQuery.eq('job_type', jobType);
+          const { data: recentCompleted } = await completedQuery.maybeSingle();
+          if (recentCompleted) {
+            setCompletedJob(recentCompleted as SendingJob);
+          }
         }
       } catch (error) {
         console.error('Erro ao buscar job ativo:', error);
@@ -248,9 +268,14 @@ export default function SendingProgressLive({ jobType, onResumeJob }: SendingPro
                 if (activeJob?.id === job.id) setActiveJob(null);
               } else {
                 setActiveJob(job);
+                setCompletedJob(null);
                 setIsJobStuck(false);
               }
             }
+          } else if (job.status === 'completed' && activeJob?.id === job.id) {
+            // Job completed — show success screen
+            setCompletedJob(job);
+            setActiveJob(null);
           } else if (activeJob?.id === job.id) {
             setActiveJob(null);
           }
@@ -280,6 +305,63 @@ export default function SendingProgressLive({ jobType, onResumeJob }: SendingPro
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [activeJob?.id, fetchTasks]);
+
+  // Completed job screen
+  if (completedJob) {
+    const finalSent = completedJob.job_data?.sentMessages || 0;
+    const finalErrors = completedJob.job_data?.errorMessages || 0;
+    const completedAt = completedJob.completed_at ? new Date(completedJob.completed_at) : new Date();
+    const startedAt = new Date(completedJob.started_at);
+    const durationSec = Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000);
+    const durationMin = Math.floor(durationSec / 60);
+    const durationSecRemainder = durationSec % 60;
+
+    return (
+      <Card className="animate-fade-in border-success bg-success/5">
+        <CardContent className="py-8 space-y-6 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="rounded-full bg-success/20 p-4">
+              <CheckCircle2 className="h-10 w-10 text-success" />
+            </div>
+            <h2 className="text-2xl font-bold">Envio Finalizado!</h2>
+            <p className="text-muted-foreground">
+              Todos os produtos foram enviados para os grupos selecionados.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm max-w-lg mx-auto">
+            <div className="p-3 rounded-lg bg-background border">
+              <div className="text-muted-foreground text-xs">Enviadas</div>
+              <div className="font-bold text-xl text-success">{finalSent}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-background border">
+              <div className="text-muted-foreground text-xs">Erros</div>
+              <div className="font-bold text-xl text-destructive">{finalErrors}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-background border">
+              <div className="text-muted-foreground text-xs">Total</div>
+              <div className="font-bold text-xl">{completedJob.total_items}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-background border">
+              <div className="text-muted-foreground text-xs">Duração</div>
+              <div className="font-bold text-xl">{durationMin}m {durationSecRemainder}s</div>
+            </div>
+          </div>
+
+          <Button
+            onClick={() => {
+              setCompletedJob(null);
+              onNewSend?.();
+            }}
+            className="gap-2"
+          >
+            <Play className="h-4 w-4" />
+            Novo Envio
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (loading || !activeJob) return null;
 
