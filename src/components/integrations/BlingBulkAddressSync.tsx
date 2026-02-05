@@ -1,12 +1,19 @@
 import { useState } from 'react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { CalendarIcon, Loader2, MapPin, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Loader2, MapPin, AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { getBrasiliaDayBoundsISO, toBrasiliaDateISO } from '@/lib/date-utils';
 
 interface BlingBulkAddressSyncProps {
   tenantId: string;
@@ -18,6 +25,8 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
   const [total, setTotal] = useState(0);
   const [processed, setProcessed] = useState(0);
   const [lastResult, setLastResult] = useState<{ success: number; errors: number; details: string[] } | null>(null);
+  const [startDate, setStartDate] = useState<Date | undefined>();
+  const [endDate, setEndDate] = useState<Date | undefined>();
 
   const syncAllAddresses = async () => {
     setSyncing(true);
@@ -26,17 +35,27 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
     setLastResult(null);
 
     try {
-      // Buscar TODOS os pedidos pagos não cancelados (inclui os sem bling_order_id, pois a function tenta resolver)
-      const { data: orders, error } = await supabaseTenant
+      let query = supabaseTenant
         .from('orders')
         .select('id, tenant_id, bling_order_id, customer_phone')
         .eq('is_cancelled', false)
         .eq('is_paid', true);
 
+      if (startDate) {
+        const { start } = getBrasiliaDayBoundsISO(toBrasiliaDateISO(startDate));
+        query = query.gte('created_at', start);
+      }
+      if (endDate) {
+        const { end } = getBrasiliaDayBoundsISO(toBrasiliaDateISO(endDate));
+        query = query.lte('created_at', end);
+      }
+
+      const { data: orders, error } = await query;
+
       if (error) throw error;
 
       if (!orders || orders.length === 0) {
-        toast.info('Nenhum pedido pago encontrado para sincronizar.');
+        toast.info('Nenhum pedido encontrado no período selecionado.');
         setSyncing(false);
         return;
       }
@@ -72,7 +91,6 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
         setProcessed(i + 1);
         setProgress(Math.round(((i + 1) / orders.length) * 100));
 
-        // Intervalo de 500ms entre pedidos para respeitar rate limit do Bling
         if (i < orders.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
@@ -101,11 +119,76 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
           Atualizar Endereços em Massa
         </CardTitle>
         <CardDescription>
-          Atualiza o endereço de todos os pedidos pagos e contatos no Bling com os dados mais recentes do sistema.
-          Pedidos sem ID do Bling serão buscados automaticamente pelo número (OZ-ID).
+          Atualiza o endereço dos pedidos pagos no Bling. Use os filtros de data para limitar o período.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 space-y-1.5">
+            <Label className="text-sm">Data inicial</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !startDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {startDate ? format(startDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecione..."}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={startDate}
+                  onSelect={setStartDate}
+                  initialFocus
+                  locale={ptBR}
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="flex-1 space-y-1.5">
+            <Label className="text-sm">Data final</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !endDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {endDate ? format(endDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecione..."}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={endDate}
+                  onSelect={setEndDate}
+                  initialFocus
+                  locale={ptBR}
+                  className="p-3 pointer-events-auto"
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {(startDate || endDate) && (
+            <div className="flex items-end">
+              <Button variant="ghost" size="sm" onClick={() => { setStartDate(undefined); setEndDate(undefined); }}>
+                Limpar
+              </Button>
+            </div>
+          )}
+        </div>
+
         {syncing && (
           <div className="space-y-2">
             <Progress value={progress} />
@@ -142,7 +225,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
           ) : (
             <MapPin className="h-4 w-4 mr-2" />
           )}
-          {syncing ? 'Atualizando...' : 'Atualizar Todos os Endereços no Bling'}
+          {syncing ? 'Atualizando...' : 'Atualizar Endereços no Bling'}
         </Button>
       </CardContent>
     </Card>
