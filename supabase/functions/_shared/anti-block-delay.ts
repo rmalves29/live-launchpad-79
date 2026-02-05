@@ -197,55 +197,33 @@ export function getTypingDelay(messageLength: number): number {
 }
 
 /**
- * Simulate typing indicator before sending a message
- * This makes the message appear more human-like to WhatsApp
+ * NOTE: Z-API does NOT support sending typing indicators (COMPOSING status)
+ * The /typing endpoint does not exist. Z-API only provides a webhook to RECEIVE
+ * typing status from other users, not to SEND it.
  * 
- * @param instanceId Z-API instance ID
- * @param token Z-API token
- * @param clientToken Z-API client token (optional)
- * @param phone Target phone number
- * @param durationSeconds Typing duration (default 3-5s random)
- * @returns Promise that resolves after typing simulation
+ * This function now only adds a human-like delay before sending messages,
+ * without calling any Z-API endpoint.
+ * 
+ * @param _instanceId Z-API instance ID (unused)
+ * @param _token Z-API token (unused)
+ * @param _clientToken Z-API client token (unused)
+ * @param phone Target phone number (for logging)
+ * @param durationSeconds Delay duration (default 3-5s random)
+ * @returns Promise that resolves after delay
  */
 export async function simulateTyping(
-  instanceId: string,
-  token: string,
-  clientToken: string | null | undefined,
+  _instanceId: string,
+  _token: string,
+  _clientToken: string | null | undefined,
   phone: string,
   durationSeconds?: number
 ): Promise<void> {
-  const ZAPI_BASE_URL = "https://api.z-api.io";
-  
   // Default duration: random 3-5 seconds
   const duration = durationSeconds ?? (3 + Math.floor(Math.random() * 3));
   
-  try {
-    const typingUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/typing`;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (clientToken) headers['Client-Token'] = clientToken;
-    
-    console.log(`[simulateTyping] 📞 Calling Z-API typing endpoint for ${phone}, duration: ${duration}s`);
-    
-    const response = await fetch(typingUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ phone, duration })
-    });
-    
-    const responseText = await response.text();
-    
-    if (response.ok) {
-      console.log(`[simulateTyping] ✅ Typing indicator SUCCESS for ${phone} - Status: ${response.status}, Response: ${responseText.substring(0, 100)}`);
-    } else {
-      console.log(`[simulateTyping] ⚠️ Typing request FAILED - Status: ${response.status}, Response: ${responseText.substring(0, 200)}`);
-    }
-    
-    // Wait for the typing duration (in ms) plus a small random buffer
-    const waitMs = duration * 1000 + Math.random() * 1000;
-    console.log(`[simulateTyping] ⏱️ Waiting ${(waitMs/1000).toFixed(1)}s before sending message...`);
-    await new Promise(resolve => setTimeout(resolve, waitMs));
-    
-  } catch (e: any) {
-    console.log(`[simulateTyping] ❌ Typing simulation ERROR: ${e?.message || 'unknown'}, continuing without typing...`);
-  }
+  // Z-API does not support sending typing indicators
+  // We just add a human-like delay to make messages feel more natural
+  const waitMs = duration * 1000 + Math.random() * 1000;
+  console.log(`[simulateTyping] ⏱️ Human-like delay for ${phone}: ${(waitMs/1000).toFixed(1)}s (Note: Z-API does not support typing indicators)`);
+  await new Promise(resolve => setTimeout(resolve, waitMs));
 }
