@@ -1213,7 +1213,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
    if (instanceId) {
      const { data: integration } = await supabase
        .from('integration_whatsapp')
-       .select('tenant_id')
+       .select('tenant_id, consent_protection_enabled')
        .eq('zapi_instance_id', instanceId)
        .eq('is_active', true)
        .maybeSingle();
@@ -1276,10 +1276,104 @@ async function updateOrderTotal(supabase: any, orderId: number) {
      }
      
      // Found confirmation with alternative phone format
-      return await sendConfirmationLink(supabase, confirmations2[0], instanceId, normalizedPhone);
+      return await processConfirmationResponse(supabase, confirmations2[0], instanceId, normalizedPhone);
    }
    
-    return await sendConfirmationLink(supabase, confirmations[0], instanceId, normalizedPhone);
+    return await processConfirmationResponse(supabase, confirmations[0], instanceId, normalizedPhone);
+ }
+
+ // Processa a resposta de confirmação - ATUALIZADO para suportar modo de proteção por consentimento
+ async function processConfirmationResponse(
+   supabase: any, 
+   confirmation: any,
+   instanceId?: string,
+   targetPhoneOverride?: string
+ ): Promise<{ handled: boolean; action?: string; error?: string }> {
+   
+   // Verificar se o modo de proteção por consentimento está ativo
+   const consentProtectionEnabled = confirmation.metadata?.consent_protection_enabled === true;
+   
+   if (consentProtectionEnabled) {
+     // ============================================================
+     // MODO DE PROTEÇÃO POR CONSENTIMENTO
+     // Apenas atualiza o DB, NÃO envia resposta ao cliente
+     // ============================================================
+     console.log(`[zapi-webhook] 🛡️ Modo de Proteção por Consentimento: apenas atualizando DB`);
+     
+     // Normaliza telefone para buscar cliente
+     const targetPhone = (targetPhoneOverride || confirmation.customer_phone || '').replace(/\D/g, '');
+     let phoneForDB = targetPhone;
+     if (phoneForDB.startsWith('55') && phoneForDB.length > 11) {
+       phoneForDB = phoneForDB.substring(2);
+     }
+     
+     // Atualizar consentimento do cliente
+     const { data: customer, error: customerError } = await supabase
+       .from('customers')
+       .update({
+         consentimento_ativo: true,
+         data_permissao: new Date().toISOString()
+       })
+       .eq('tenant_id', confirmation.tenant_id)
+       .eq('phone', phoneForDB)
+       .select('id, name')
+       .maybeSingle();
+     
+     if (customerError) {
+       console.log(`[zapi-webhook] Error updating customer consent:`, customerError);
+       // Tentar criar cliente se não existir
+       const { data: newCustomer, error: createError } = await supabase
+         .from('customers')
+         .insert({
+           tenant_id: confirmation.tenant_id,
+           phone: phoneForDB,
+           name: `Cliente ${phoneForDB.slice(-4)}`,
+           consentimento_ativo: true,
+           data_permissao: new Date().toISOString()
+         })
+         .select('id')
+         .single();
+       
+       if (createError) {
+         console.error(`[zapi-webhook] Error creating customer:`, createError);
+       } else {
+         console.log(`[zapi-webhook] ✅ Criado novo cliente ${newCustomer.id} com consentimento ativo`);
+       }
+     } else {
+       console.log(`[zapi-webhook] ✅ Consentimento atualizado para cliente ${customer?.id} (${customer?.name})`);
+     }
+     
+     // Marcar confirmação como confirmada (mas não enviar nada)
+     await supabase
+       .from('pending_message_confirmations')
+       .update({
+         status: 'confirmed',
+         confirmed_at: new Date().toISOString()
+       })
+       .eq('id', confirmation.id);
+     
+     // Log para auditoria
+     await supabase.from('whatsapp_messages').insert({
+       tenant_id: confirmation.tenant_id,
+       phone: targetPhone,
+       message: '[SISTEMA] Cliente confirmou recebimento de mensagens. Consentimento registrado.',
+       type: 'system_log',
+       sent_at: new Date().toISOString()
+     });
+     
+     console.log(`[zapi-webhook] ✅ Consentimento registrado. NÃO enviando resposta ao cliente.`);
+     
+     return { 
+       handled: true, 
+       action: 'consent_registered_no_reply'
+     };
+     
+   } else {
+     // ============================================================
+     // MODO LEGADO: Enviar link de checkout como resposta
+     // ============================================================
+     return await sendConfirmationLink(supabase, confirmation, instanceId, targetPhoneOverride);
+   }
  }
  
  // Send the confirmation link (second message with checkout URL)
