@@ -53,7 +53,7 @@ function validateInternalRequest(req: Request): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-     .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider, send_item_added_msg, confirmation_timeout_minutes")
+     .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -73,8 +73,38 @@ async function getZAPICredentials(supabase: any, tenantId: string) {
     token: integration.zapi_token,
     clientToken: integration.zapi_client_token || '',
      disabled: false,
-     confirmationTimeoutMinutes: integration.confirmation_timeout_minutes || 30
+     confirmationTimeoutMinutes: integration.confirmation_timeout_minutes || 30,
+     // Campos de proteção por consentimento
+     consentProtectionEnabled: integration.consent_protection_enabled || false,
+     templateSolicitacao: integration.template_solicitacao || null,
+     templateComLink: integration.template_com_link || null,
   };
+}
+
+// Template padrão A - Solicitação (sem link)
+function getDefaultTemplateSolicitacao(): string {
+  return `🛒 *Item adicionado ao pedido*
+
+✅ {{produto}}
+Qtd: *{{quantidade}}*
+Valor: *R$ {{valor}}*
+
+Posso te enviar o link para finalizar o pedido por aqui?
+
+Responda *SIM* para receber o link. ✨`;
+}
+
+// Template padrão B - Com link (para quem já tem consentimento)
+function getDefaultTemplateComLink(): string {
+  return `🛒 *Item adicionado ao pedido*
+
+✅ {{produto}}
+Qtd: *{{quantidade}}*
+Valor: *R$ {{valor}}*
+
+👉 Finalize seu pedido: {{link_checkout}}
+
+Qualquer dúvida, estou à disposição! ✨`;
 }
 
 async function getTemplate(supabase: any, tenantId: string) {
@@ -89,16 +119,49 @@ async function getTemplate(supabase: any, tenantId: string) {
     return template.content;
   }
 
-   // Template padrão SEM link de checkout - pede confirmação
-  return `🛒 *Item adicionado ao pedido*
+  // Template padrão SEM link de checkout - pede confirmação
+  return getDefaultTemplateSolicitacao();
+}
 
-✅ {{produto}}
-Qtd: *{{quantidade}}*
-Valor: *R$ {{valor}}*
+// Verifica se o cliente tem consentimento ativo (< 3 dias)
+async function checkCustomerConsent(supabase: any, tenantId: string, phone: string): Promise<{ hasConsent: boolean; customerId?: number }> {
+  // Normaliza telefone para busca
+  let normalizedPhone = phone.replace(/\D/g, '');
+  if (normalizedPhone.startsWith('55') && normalizedPhone.length > 11) {
+    normalizedPhone = normalizedPhone.substring(2);
+  }
 
- Posso te enviar o link para finalizar o pedido por aqui?
- 
- Responda *SIM* para receber o link. ✨`;
+  // Busca cliente
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("id, consentimento_ativo, data_permissao")
+    .eq("tenant_id", tenantId)
+    .eq("phone", normalizedPhone)
+    .maybeSingle();
+
+  if (!customer) {
+    console.log(`[zapi-send-item-added] Cliente não encontrado para ${normalizedPhone}`);
+    return { hasConsent: false };
+  }
+
+  // Verifica se tem consentimento ativo e se está dentro de 3 dias
+  if (!customer.consentimento_ativo || !customer.data_permissao) {
+    console.log(`[zapi-send-item-added] Cliente ${customer.id} sem consentimento ativo`);
+    return { hasConsent: false, customerId: customer.id };
+  }
+
+  const dataPermissao = new Date(customer.data_permissao);
+  const agora = new Date();
+  const diffMs = agora.getTime() - dataPermissao.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+  if (diffDays > 3) {
+    console.log(`[zapi-send-item-added] Consentimento expirado para cliente ${customer.id} (${diffDays.toFixed(1)} dias)`);
+    return { hasConsent: false, customerId: customer.id };
+  }
+
+  console.log(`[zapi-send-item-added] ✅ Consentimento válido para cliente ${customer.id} (${diffDays.toFixed(1)} dias atrás)`);
+  return { hasConsent: true, customerId: customer.id };
 }
 
 function formatPhoneNumber(phone: string): string {
@@ -242,14 +305,59 @@ serve(async (req) => {
       );
     }
 
-    const template = await getTemplate(supabase, tenant_id);
-    const baseMessage = formatMessage(template, body);
-    // Add variations to avoid identical messages
-    const message = addMessageVariation(baseMessage);
     const formattedPhone = formatPhoneNumber(customer_phone);
-
-    const { instanceId, token, clientToken } = credentials;
+    const { instanceId, token, clientToken, consentProtectionEnabled, templateSolicitacao, templateComLink } = credentials;
     const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
+    
+    let message: string;
+    let templateType: 'A' | 'B' | 'legacy' = 'legacy';
+    let skipPendingConfirmation = false;
+
+    // ============================================================
+    // LÓGICA DE PROTEÇÃO POR CONSENTIMENTO
+    // ============================================================
+    if (consentProtectionEnabled) {
+      console.log(`[zapi-send-item-added] 🛡️ Modo de Proteção por Consentimento ATIVADO`);
+      
+      // Verificar consentimento do cliente
+      const { hasConsent, customerId } = await checkCustomerConsent(supabase, tenant_id, formattedPhone);
+      
+      if (hasConsent) {
+        // Template B - Com link (cliente tem consentimento válido < 3 dias)
+        console.log(`[zapi-send-item-added] ✅ Usando Template B (com link) para cliente ${customerId}`);
+        templateType = 'B';
+        
+        const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
+        const template = templateComLink || getDefaultTemplateComLink();
+        const baseMessage = formatMessage(template, body)
+          .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
+          .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
+        message = addMessageVariation(baseMessage);
+        
+        // Com Template B, não precisamos criar pending_message_confirmations
+        skipPendingConfirmation = true;
+        
+      } else {
+        // Template A - Solicitar permissão (cliente novo ou expirado)
+        console.log(`[zapi-send-item-added] 📝 Usando Template A (solicitação) para cliente ${customerId || 'novo'}`);
+        templateType = 'A';
+        
+        const template = templateSolicitacao || getDefaultTemplateSolicitacao();
+        const baseMessage = formatMessage(template, body);
+        message = addMessageVariation(baseMessage);
+        
+        // Com proteção ativada, ao receber "SIM" apenas atualiza DB (não envia link)
+        // Por isso ainda criamos pending confirmation, mas com flag especial
+      }
+    } else {
+      // ============================================================
+      // MODO LEGADO (sem proteção por consentimento)
+      // ============================================================
+      console.log(`[zapi-send-item-added] 📨 Modo legado (proteção desativada)`);
+      const template = await getTemplate(supabase, tenant_id);
+      const baseMessage = formatMessage(template, body);
+      message = addMessageVariation(baseMessage);
+    }
 
     // Check for throttling (multiple messages to same phone)
     const throttleDelay = await getThrottleDelay(formattedPhone);
@@ -265,7 +373,7 @@ serve(async (req) => {
     const delayMs = await antiBlockDelayLive();
     logAntiBlockDelay('zapi-send-item-added', delayMs);
 
-    console.log(`[zapi-send-item-added] Sending to ${formattedPhone}`);
+    console.log(`[zapi-send-item-added] Sending to ${formattedPhone} (template: ${templateType})`);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
@@ -293,8 +401,8 @@ serve(async (req) => {
       console.log(`[zapi-send-item-added] Could not parse Z-API response for message ID`);
     }
 
-     // Create pending confirmation record
-     if (response.ok) {
+     // Create pending confirmation record (apenas se não for Template B ou se for modo legado)
+     if (response.ok && !skipPendingConfirmation) {
        const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
        const timeoutMinutes = credentials.confirmationTimeoutMinutes || 30;
        const expiresAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
@@ -318,7 +426,13 @@ serve(async (req) => {
              expires_at: expiresAt.toISOString(),
              checkout_url: checkoutUrl,
              order_id: order_id || null,
-             metadata: { product_name, product_code, unit_price, quantity }
+             metadata: { 
+               product_name, 
+               product_code, 
+               unit_price, 
+               quantity,
+               consent_protection_enabled: consentProtectionEnabled // Flag para webhook saber como tratar
+             }
            })
            .eq("id", existingConfirmation.id);
          console.log(`[zapi-send-item-added] Updated existing pending confirmation ${existingConfirmation.id}`);
@@ -334,7 +448,13 @@ serve(async (req) => {
              status: 'pending',
              expires_at: expiresAt.toISOString(),
              checkout_url: checkoutUrl,
-             metadata: { product_name, product_code, unit_price, quantity }
+             metadata: { 
+               product_name, 
+               product_code, 
+               unit_price, 
+               quantity,
+               consent_protection_enabled: consentProtectionEnabled // Flag para webhook saber como tratar
+             }
            })
            .select()
            .single();
@@ -373,7 +493,8 @@ serve(async (req) => {
          sent: response.ok, 
          status: response.status, 
          messageId: zapiMessageId,
-         waitingConfirmation: response.ok
+         templateType,
+         waitingConfirmation: !skipPendingConfirmation && response.ok
        }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
