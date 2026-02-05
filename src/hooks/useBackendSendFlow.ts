@@ -85,7 +85,7 @@ export const useBackendSendFlow = () => {
         .insert(batch as any);
 
       if (error) {
-        console.error('[useBackendSendFlow] Error inserting tasks batch:', error);
+        console.error('[useBackendSendFlow] Error inserting tasks batch:', error.message, error.code, error.details);
         return false;
       }
     }
