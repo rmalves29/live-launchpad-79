@@ -365,10 +365,37 @@ async function processSendflowJob({
       const groupId = groupIds[groupIdx];
       const isLastGroup = groupIdx === groupIds.length - 1;
 
+      // Check duplicate within 8-hour window
+      const { data: alreadySent } = await supabase.rpc('is_product_recently_sent', {
+        p_tenant_id: tenantId,
+        p_product_id: product.id,
+        p_group_id: groupId,
+        p_hours: 8,
+      });
+
+      if (alreadySent) {
+        console.log(`[${timestamp}] [sendflow-process] SKIP duplicate: product ${product.code} already sent to ${groupId} within 8h`);
+        await updateProgress(productIdx, groupIdx + 1);
+        if (!isLastGroup) {
+          const delayMs = useRandomDelay
+            ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
+            : perGroupDelaySeconds * 1000;
+          if (delayMs > 0) await sleep(delayMs);
+        }
+        continue;
+      }
+
       const result = await sendGroupMessage(credentials, groupId, message, product.image_url || undefined);
 
       if (result.success) {
         sentMessages++;
+        // Record in sendflow_history to prevent future duplicates
+        await supabase.from('sendflow_history').insert({
+          tenant_id: tenantId,
+          product_id: product.id,
+          group_id: groupId,
+          job_id: jobId,
+        });
       } else {
         errorMessages++;
         console.log(`[${timestamp}] [sendflow-process] Error sending to ${groupId}: ${result.error}`);
