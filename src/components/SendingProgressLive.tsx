@@ -81,13 +81,14 @@ export default function SendingProgressLive({ jobType, onResumeJob }: SendingPro
   useEffect(() => {
     if (activeJob?.job_data) {
       const serverCountdown = activeJob.job_data.countdownSeconds || 0;
-      const serverIsWaiting = activeJob.job_data.isWaitingForNextProduct || false;
-      setIsWaiting(serverIsWaiting);
+      const serverIsWaitingProduct = activeJob.job_data.isWaitingForNextProduct || false;
+      const serverIsWaitingGroup = activeJob.job_data.isWaitingForNextGroup || false;
+      setIsWaiting(serverIsWaitingProduct || serverIsWaitingGroup);
       if (serverCountdown > localCountdown || serverCountdown === 0) {
         setLocalCountdown(serverCountdown);
       }
     }
-  }, [activeJob?.job_data?.countdownSeconds, activeJob?.job_data?.isWaitingForNextProduct]);
+  }, [activeJob?.job_data?.countdownSeconds, activeJob?.job_data?.isWaitingForNextProduct, activeJob?.job_data?.isWaitingForNextGroup]);
 
   // Check if job is stuck
   useEffect(() => {
@@ -432,13 +433,15 @@ export default function SendingProgressLive({ jobType, onResumeJob }: SendingPro
           </div>
         )}
 
-        {/* Product Countdown Timer */}
+        {/* Countdown Timer */}
         {!showStuckWarning && isWaiting && localCountdown > 0 && (
           <div className="flex items-center justify-center">
             <div className="flex items-center gap-3 px-6 py-3 rounded-xl bg-warning/10 border-2 border-warning/30">
               <Timer className="h-5 w-5 text-warning animate-pulse" />
               <div className="text-center">
-                <span className="text-xs text-muted-foreground block">Próximo produto em</span>
+                <span className="text-xs text-muted-foreground block">
+                  {activeJob?.job_data?.isWaitingForNextProduct ? 'Próximo produto em' : 'Próximo envio em'}
+                </span>
                 <span className="font-bold text-2xl tabular-nums text-warning">
                   {countdownMinutes}:{countdownSecs.toString().padStart(2, '0')}
                 </span>

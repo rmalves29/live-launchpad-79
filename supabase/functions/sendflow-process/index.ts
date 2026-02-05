@@ -407,11 +407,39 @@ async function processTaskQueue({
     await updateJobProgress();
 
     // Delay between groups (same product)
-    if (i < tasks.length - 1 && tasks[i + 1].product_id === task.product_id) {
-      const delayMs = useRandomDelay
-        ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
-        : perGroupDelaySeconds * 1000;
-      if (delayMs > 0) await sleep(delayMs);
+    if (i < tasks.length - 1) {
+      const nextTask = tasks[i + 1];
+      const isProductChange = nextTask.product_id !== task.product_id;
+      
+      if (!isProductChange) {
+        const delayMs = useRandomDelay
+          ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
+          : perGroupDelaySeconds * 1000;
+        
+        if (delayMs > 0) {
+          const delaySec = Math.ceil(delayMs / 1000);
+          await updateJobProgress({
+            countdownSeconds: delaySec,
+            isWaitingForNextGroup: true,
+            isWaitingForNextProduct: false,
+            nextTaskId: nextTask.id,
+          });
+
+          const step = 2000;
+          let elapsed = 0;
+          while (elapsed < delayMs) {
+            await sleep(Math.min(step, delayMs - elapsed));
+            elapsed += step;
+            const remaining = Math.max(0, Math.ceil((delayMs - elapsed) / 1000));
+            await updateJobProgress({
+              countdownSeconds: remaining,
+              isWaitingForNextGroup: remaining > 0,
+              isWaitingForNextProduct: false,
+              nextTaskId: nextTask.id,
+            });
+          }
+        }
+      }
     }
   }
 
