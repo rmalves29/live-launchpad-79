@@ -368,8 +368,10 @@ export type Database = {
           cep: string | null
           city: string | null
           complement: string | null
+          consentimento_ativo: boolean | null
           cpf: string | null
           created_at: string | null
+          data_permissao: string | null
           email: string | null
           id: number
           instagram: string | null
@@ -387,8 +389,10 @@ export type Database = {
           cep?: string | null
           city?: string | null
           complement?: string | null
+          consentimento_ativo?: boolean | null
           cpf?: string | null
           created_at?: string | null
+          data_permissao?: string | null
           email?: string | null
           id?: number
           instagram?: string | null
@@ -406,8 +410,10 @@ export type Database = {
           cep?: string | null
           city?: string | null
           complement?: string | null
+          consentimento_ativo?: boolean | null
           cpf?: string | null
           created_at?: string | null
+          data_permissao?: string | null
           email?: string | null
           id?: number
           instagram?: string | null
@@ -815,6 +821,7 @@ export type Database = {
           api_url: string | null
           confirmation_timeout_minutes: number | null
           connected_phone: string | null
+          consent_protection_enabled: boolean | null
           created_at: string | null
           id: string
           instance_name: string
@@ -826,6 +833,8 @@ export type Database = {
           send_out_of_stock_msg: boolean
           send_paid_order_msg: boolean
           send_product_canceled_msg: boolean
+          template_com_link: string | null
+          template_solicitacao: string | null
           tenant_id: string
           updated_at: string | null
           webhook_secret: string
@@ -837,6 +846,7 @@ export type Database = {
           api_url?: string | null
           confirmation_timeout_minutes?: number | null
           connected_phone?: string | null
+          consent_protection_enabled?: boolean | null
           created_at?: string | null
           id?: string
           instance_name: string
@@ -848,6 +858,8 @@ export type Database = {
           send_out_of_stock_msg?: boolean
           send_paid_order_msg?: boolean
           send_product_canceled_msg?: boolean
+          template_com_link?: string | null
+          template_solicitacao?: string | null
           tenant_id: string
           updated_at?: string | null
           webhook_secret: string
@@ -859,6 +871,7 @@ export type Database = {
           api_url?: string | null
           confirmation_timeout_minutes?: number | null
           connected_phone?: string | null
+          consent_protection_enabled?: boolean | null
           created_at?: string | null
           id?: string
           instance_name?: string
@@ -870,6 +883,8 @@ export type Database = {
           send_out_of_stock_msg?: boolean
           send_paid_order_msg?: boolean
           send_product_canceled_msg?: boolean
+          template_com_link?: string | null
+          template_solicitacao?: string | null
           tenant_id?: string
           updated_at?: string | null
           webhook_secret?: string
