@@ -25,6 +25,9 @@ interface IntegrationData {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Configurações de parcelamento
+  min_installment_value: number | null;
+  max_installments_without_interest: number | null;
 }
 
 export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps) {
@@ -36,6 +39,8 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
     encryption_key: '',
     webhook_secret: '',
     environment: 'production' as 'sandbox' | 'production',
+    min_installment_value: 0,
+    max_installments_without_interest: 1,
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -82,6 +87,8 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         encryption_key: integration.encryption_key || '',
         webhook_secret: integration.webhook_secret || '',
         environment: integration.environment as 'sandbox' | 'production',
+        min_installment_value: integration.min_installment_value || 0,
+        max_installments_without_interest: integration.max_installments_without_interest || 1,
       });
     }
   }, [integration]);
@@ -99,6 +106,8 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         webhook_secret: formData.webhook_secret || null,
         environment: formData.environment,
         is_active: true,
+        min_installment_value: formData.min_installment_value || 0,
+        max_installments_without_interest: formData.max_installments_without_interest || 1,
         updated_at: new Date().toISOString(),
       };
 
@@ -280,6 +289,26 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
               </div>
             </div>
 
+            {/* Configurações de Parcelamento */}
+            <div className="border rounded-lg p-4 bg-muted/30">
+              <h4 className="font-medium mb-3 flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Configurações de Parcelamento
+              </h4>
+              <div className="grid gap-2 text-sm">
+                <div>
+                  <span className="font-medium">Valor mínimo para parcelar:</span>{' '}
+                  {integration.min_installment_value 
+                    ? `R$ ${integration.min_installment_value.toFixed(2).replace('.', ',')}`
+                    : 'Sem mínimo'}
+                </div>
+                <div>
+                  <span className="font-medium">Parcelas sem juros:</span>{' '}
+                  {integration.max_installments_without_interest || 1}x
+                </div>
+              </div>
+            </div>
+
             {/* Seção de Webhook obrigatória */}
             <Alert className="border-destructive/50 bg-destructive/10">
               <AlertCircle className="h-4 w-4 text-destructive" />
@@ -350,6 +379,48 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
                 onChange={(e) => setFormData({ ...formData, webhook_secret: e.target.value })}
                 placeholder="Segredo para validar webhooks"
               />
+            </div>
+
+            {/* Configurações de Parcelamento */}
+            <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+              <h4 className="font-medium flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Configurações de Parcelamento
+              </h4>
+              
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="min_installment_value">Valor mínimo para parcelar (R$)</Label>
+                  <Input
+                    id="min_installment_value"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formData.min_installment_value}
+                    onChange={(e) => setFormData({ ...formData, min_installment_value: parseFloat(e.target.value) || 0 })}
+                    placeholder="Ex: 100.00"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Pedidos abaixo desse valor só poderão ser pagos à vista. 0 = sem mínimo.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="max_installments_without_interest">Parcelas sem juros</Label>
+                  <Input
+                    id="max_installments_without_interest"
+                    type="number"
+                    min="1"
+                    max="12"
+                    value={formData.max_installments_without_interest}
+                    onChange={(e) => setFormData({ ...formData, max_installments_without_interest: parseInt(e.target.value) || 1 })}
+                    placeholder="Ex: 3"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Quantidade máxima de parcelas sem juros (1 a 12).
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center space-x-2">
