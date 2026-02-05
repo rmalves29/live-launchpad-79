@@ -1497,18 +1497,44 @@ serve(async (req) => {
 
       case 'sync_tracking': {
         // Buscar códigos de rastreio do Bling e atualizar pedidos locais
+        // Este fluxo é usado quando a integração de frete é via Correios (direto no Bling)
+        // O código de rastreio é inserido no Bling e sincronizado para o sistema local
         console.log(`[bling-sync-orders] SYNC_TRACKING for tenant: ${tenant_id}`);
         
-        // Buscar pedidos pagos que têm bling_order_id mas não têm tracking code
-        const { data: ordersToSync, error: ordersError } = await supabase
+        // Verificar qual integração de frete está ativa
+        const { data: shippingIntegration } = await supabase
+          .from('shipping_integrations')
+          .select('provider, is_active')
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true)
+          .maybeSingle();
+        
+        const activeShippingProvider = shippingIntegration?.provider || 'correios';
+        console.log(`[bling-sync-orders] Active shipping provider: ${activeShippingProvider}`);
+        
+        // Se for Correios, buscar TODOS os pedidos com bling_order_id sem rastreio local
+        // (mesmo que melhor_envio_tracking_code tenha sido preenchido manualmente incorretamente)
+        // Se for Melhor Envio, só busca os que não têm tracking ainda
+        let ordersQuery = supabase
           .from('orders')
-          .select('id, bling_order_id, customer_phone, customer_name, tenant_id')
+          .select('id, bling_order_id, customer_phone, customer_name, tenant_id, melhor_envio_tracking_code, melhor_envio_shipment_id')
           .eq('tenant_id', tenant_id)
           .eq('is_paid', true)
           .not('bling_order_id', 'is', null)
-          .or('melhor_envio_tracking_code.is.null,melhor_envio_tracking_code.eq.')
           .order('created_at', { ascending: false })
           .limit(100);
+        
+        // Para Correios: buscar pedidos sem shipment_id do Melhor Envio (ou seja, não usaram ME)
+        // Isso permite atualizar códigos de rastreio vindos do Bling
+        if (activeShippingProvider === 'correios') {
+          // Buscar pedidos que podem ter rastreio no Bling mas não vieram do Melhor Envio
+          ordersQuery = ordersQuery.or('melhor_envio_shipment_id.is.null');
+        } else {
+          // Para outras integrações, só buscar os que não têm tracking
+          ordersQuery = ordersQuery.or('melhor_envio_tracking_code.is.null,melhor_envio_tracking_code.eq.');
+        }
+        
+        const { data: ordersToSync, error: ordersError } = await ordersQuery;
         
         if (ordersError) {
           throw new Error(`Erro ao buscar pedidos: ${ordersError.message}`);
@@ -1569,9 +1595,24 @@ serve(async (req) => {
             }
             
             if (trackingCode) {
-              console.log(`[bling-sync-orders] Found tracking code for order ${order.id}: ${trackingCode}`);
+              // Verificar se o código é diferente do que já está no banco
+              const existingTracking = order.melhor_envio_tracking_code;
               
-              // Atualizar pedido local
+              if (existingTracking === trackingCode) {
+                console.log(`[bling-sync-orders] Order ${order.id} already has same tracking: ${trackingCode}`);
+                trackingResults.push({ 
+                  order_id: order.id, 
+                  bling_order_id: order.bling_order_id,
+                  tracking_code: trackingCode,
+                  success: true,
+                  status: 'already_synced'
+                });
+                continue;
+              }
+              
+              console.log(`[bling-sync-orders] Found tracking code for order ${order.id}: ${trackingCode} (previous: ${existingTracking || 'none'})`);
+              
+              // Atualizar pedido local com código do Bling (fonte verdadeira para Correios)
               const { error: updateError } = await supabase
                 .from('orders')
                 .update({ melhor_envio_tracking_code: trackingCode })
@@ -1591,28 +1632,33 @@ serve(async (req) => {
                   order_id: order.id, 
                   bling_order_id: order.bling_order_id,
                   tracking_code: trackingCode,
-                  success: true 
+                  previous_tracking: existingTracking || null,
+                  success: true,
+                  status: existingTracking ? 'updated' : 'new'
                 });
                 
-                // Enviar WhatsApp com código de rastreio (via edge function)
-                try {
-                  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-                  await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-                    },
-                    body: JSON.stringify({
-                      order_id: order.id,
-                      tenant_id: order.tenant_id,
-                      tracking_code: trackingCode,
-                      shipped_at: new Date().toISOString(),
-                    }),
-                  });
-                  console.log(`[bling-sync-orders] WhatsApp tracking notification sent for order ${order.id}`);
-                } catch (whatsappError) {
-                  console.log(`[bling-sync-orders] WhatsApp notification failed for order ${order.id}:`, whatsappError);
+                // Enviar WhatsApp APENAS se não tinha código antes
+                // (evita enviar novamente se apenas atualizou o código)
+                if (!existingTracking) {
+                  try {
+                    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+                    await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+                      },
+                      body: JSON.stringify({
+                        order_id: order.id,
+                        tenant_id: order.tenant_id,
+                        tracking_code: trackingCode,
+                        shipped_at: new Date().toISOString(),
+                      }),
+                    });
+                    console.log(`[bling-sync-orders] WhatsApp tracking notification sent for order ${order.id}`);
+                  } catch (whatsappError) {
+                    console.log(`[bling-sync-orders] WhatsApp notification failed for order ${order.id}:`, whatsappError);
+                  }
                 }
               }
             } else {
