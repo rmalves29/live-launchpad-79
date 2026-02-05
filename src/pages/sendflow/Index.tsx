@@ -174,7 +174,7 @@ export default function SendFlow() {
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [messageTemplate, setMessageTemplate] = useState('');
   const [perGroupDelaySeconds, setPerGroupDelaySeconds] = useState(10);
-  const [perProductDelayMinutes, setPerProductDelayMinutes] = useState(1);
+  const [perProductDelayMinutes, setPerProductDelayMinutes] = useState(3);
   
   // Estados para delays randomizados (anti-bloqueio)
   const [useRandomDelay, setUseRandomDelay] = useState(true); // Ativado por padrão
@@ -558,17 +558,32 @@ export default function SendFlow() {
       
       console.log('📋 Ordem de envio determinada:', orderedProductIds);
 
-      // Iniciar job no backend
-      const jobId = await backendSendFlow.startSendFlowJob({
-        productIds: orderedProductIds,
-        groupIds: selectedGroupArray,
-        messageTemplate,
-        perGroupDelaySeconds,
-        perProductDelayMinutes,
-        useRandomDelay,
-        minGroupDelaySeconds,
-        maxGroupDelaySeconds
+      // Prepare product/group info for task generation
+      const selectedProductList = orderedProductIds
+        .map(id => products.find(p => p.id === id))
+        .filter((p): p is Product => p !== undefined)
+        .map(p => ({ id: p.id, code: p.code }));
+
+      const selectedGroupList = selectedGroupArray.map(gid => {
+        const group = groups.find(g => g.id === gid);
+        return { id: gid, name: group?.name || gid };
       });
+
+      // Iniciar job no backend com task queue
+      const jobId = await backendSendFlow.startSendFlowJob(
+        {
+          productIds: orderedProductIds,
+          groupIds: selectedGroupArray,
+          messageTemplate,
+          perGroupDelaySeconds,
+          perProductDelayMinutes: perProductDelayMinutes || 3, // Padrão 3 minutos
+          useRandomDelay,
+          minGroupDelaySeconds,
+          maxGroupDelaySeconds
+        },
+        selectedProductList,
+        selectedGroupList
+      );
 
       if (jobId) {
         // Limpar seleções após iniciar
