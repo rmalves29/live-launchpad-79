@@ -92,7 +92,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
         setProgress(Math.round(((i + 1) / orders.length) * 100));
 
         if (i < orders.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise((resolve) => setTimeout(resolve, 800));
         }
       }
 
