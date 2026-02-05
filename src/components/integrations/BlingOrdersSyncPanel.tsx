@@ -168,9 +168,6 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
     }
   };
 
-  const handleFixFreight = async () => {
-  };
-
   const handleSyncTracking = async () => {
     setIsSyncingTracking(true);
     try {
