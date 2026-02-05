@@ -5,7 +5,8 @@ import {
   logAntiBlockDelay, 
   addMessageVariation,
   getThrottleDelay,
-  checkTenantRateLimit
+   checkTenantRateLimit,
+   getTypingDelay
 } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
@@ -52,7 +53,7 @@ function validateInternalRequest(req: Request): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider, send_item_added_msg")
+     .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider, send_item_added_msg, confirmation_timeout_minutes")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -71,7 +72,8 @@ async function getZAPICredentials(supabase: any, tenantId: string) {
     instanceId: integration.zapi_instance_id,
     token: integration.zapi_token,
     clientToken: integration.zapi_client_token || '',
-    disabled: false
+     disabled: false,
+     confirmationTimeoutMinutes: integration.confirmation_timeout_minutes || 30
   };
 }
 
@@ -87,13 +89,16 @@ async function getTemplate(supabase: any, tenantId: string) {
     return template.content;
   }
 
+   // Template padrão SEM link de checkout - pede confirmação
   return `🛒 *Item adicionado ao pedido*
 
 ✅ {{produto}}
 Qtd: *{{quantidade}}*
 Valor: *R$ {{valor}}*
 
-Digite *FINALIZAR* para concluir seu pedido.`;
+ Posso te enviar o link para finalizar o pedido por aqui?
+ 
+ Responda *SIM* para receber o link. ✨`;
 }
 
 function formatPhoneNumber(phone: string): string {
@@ -123,6 +128,52 @@ function formatMessage(template: string, data: ItemAddedRequest): string {
     .replace(/\{\{codigo\}\}/g, data.product_code);
 }
 
+ // Simulate typing before sending message
+ async function simulateTyping(instanceId: string, token: string, clientToken: string, phone: string): Promise<void> {
+   try {
+     const typingUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/typing`;
+     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+     if (clientToken) headers['Client-Token'] = clientToken;
+     
+     await fetch(typingUrl, {
+       method: 'POST',
+       headers,
+       body: JSON.stringify({ phone, duration: 3 })
+     });
+     
+     // Wait 3-5 seconds to simulate typing
+     const typingDelay = 3000 + Math.random() * 2000;
+     await new Promise(resolve => setTimeout(resolve, typingDelay));
+   } catch (e) {
+     console.log('[zapi-send-item-added] Typing simulation failed, continuing...');
+   }
+ }
+ 
+ // Build checkout URL for tenant
+ async function getCheckoutUrl(supabase: any, tenantId: string, phone: string): Promise<string> {
+   // Get tenant slug
+   const { data: tenant } = await supabase
+     .from("tenants")
+     .select("slug")
+     .eq("id", tenantId)
+     .maybeSingle();
+   
+   // Get public base URL
+   const { data: settings } = await supabase
+     .from("app_settings")
+     .select("public_base_url")
+     .limit(1)
+     .maybeSingle();
+   
+   const baseUrl = settings?.public_base_url || "https://live-launchpad-79.lovable.app";
+   const slug = tenant?.slug || tenantId;
+   
+   // Format phone for URL (remove country code for cleaner URL)
+   const phoneForUrl = phone.replace(/^55/, '');
+   
+   return `${baseUrl}/t/${slug}/checkout?phone=${phoneForUrl}`;
+ }
+ 
 // Input validation
 function validateRequest(body: any): body is ItemAddedRequest {
   if (!body || typeof body !== 'object') return false;
@@ -227,6 +278,10 @@ serve(async (req) => {
       console.log(`[zapi-send-item-added] 🛡️ Throttle delay for ${formattedPhone}: ${(throttleDelay / 1000).toFixed(1)}s`);
     }
 
+     // Simulate typing before sending (3-5 seconds)
+     console.log(`[zapi-send-item-added] Simulating typing for ${formattedPhone}...`);
+     await simulateTyping(instanceId, token, clientToken, formattedPhone);
+ 
     // Apply extended anti-block delay (8-20 seconds for automatic messages)
     const delayMs = await antiBlockDelayLive();
     logAntiBlockDelay('zapi-send-item-added', delayMs);
@@ -259,6 +314,60 @@ serve(async (req) => {
       console.log(`[zapi-send-item-added] Could not parse Z-API response for message ID`);
     }
 
+     // Create pending confirmation record
+     if (response.ok) {
+       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
+       const timeoutMinutes = credentials.confirmationTimeoutMinutes || 30;
+       const expiresAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
+       
+       console.log(`[zapi-send-item-added] Creating pending confirmation for ${formattedPhone}, expires in ${timeoutMinutes} min`);
+       
+       // Check if there's already a pending confirmation for this phone
+       const { data: existingConfirmation } = await supabase
+         .from("pending_message_confirmations")
+         .select("id")
+         .eq("tenant_id", tenant_id)
+         .eq("customer_phone", formattedPhone)
+         .eq("status", "pending")
+         .maybeSingle();
+       
+       if (existingConfirmation) {
+         // Update existing confirmation with new expiry
+         await supabase
+           .from("pending_message_confirmations")
+           .update({
+             expires_at: expiresAt.toISOString(),
+             checkout_url: checkoutUrl,
+             order_id: order_id || null,
+             metadata: { product_name, product_code, unit_price, quantity }
+           })
+           .eq("id", existingConfirmation.id);
+         console.log(`[zapi-send-item-added] Updated existing pending confirmation ${existingConfirmation.id}`);
+       } else {
+         // Create new pending confirmation
+         const { data: newConfirmation, error: confError } = await supabase
+           .from("pending_message_confirmations")
+           .insert({
+             tenant_id,
+             customer_phone: formattedPhone,
+             order_id: order_id || null,
+             confirmation_type: 'item_added',
+             status: 'pending',
+             expires_at: expiresAt.toISOString(),
+             checkout_url: checkoutUrl,
+             metadata: { product_name, product_code, unit_price, quantity }
+           })
+           .select()
+           .single();
+         
+         if (confError) {
+           console.error(`[zapi-send-item-added] Error creating pending confirmation:`, confError);
+         } else {
+           console.log(`[zapi-send-item-added] Created pending confirmation ${newConfirmation.id}`);
+         }
+       }
+     }
+ 
     // Insert message record with Z-API message ID for tracking
     await supabase.from('whatsapp_messages').insert({
       tenant_id,
@@ -281,7 +390,12 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ sent: response.ok, status: response.status, messageId: zapiMessageId }),
+       JSON.stringify({ 
+         sent: response.ok, 
+         status: response.status, 
+         messageId: zapiMessageId,
+         waitingConfirmation: response.ok
+       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

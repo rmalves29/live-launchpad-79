@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { antiBlockDelay, logAntiBlockDelay } from "../_shared/anti-block-delay.ts";
+ import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay } from "../_shared/anti-block-delay.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -190,17 +190,30 @@ serve(async (req) => {
 
     console.log(`[zapi-webhook] Message: "${messageText}", From: ${senderPhone}, Group: ${groupName}, IsGroup: ${isGroup}, MessageId: ${messageId || 'N/A'}`);
 
-    // CRITICAL: Only process messages from WhatsApp GROUPS - ignore direct/private messages
-    // This prevents creating orders from direct messages to the business number
+     // IMPORTANT: Check for confirmation responses (SIM/OK) from PRIVATE messages FIRST
+     // This handles the two-step message flow where customer replies to confirm checkout link
     if (!isGroup) {
-      console.log('[zapi-webhook] ⏭️ Ignoring message from direct/private chat - only group messages create orders');
-      return new Response(JSON.stringify({ 
-        success: true, 
-        skipped: 'not_a_group_message',
-        reason: 'Orders are only created from WhatsApp group messages'
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+       const confirmationResult = await handleConfirmationResponse(supabase, senderPhone, messageText, payload.instanceId);
+       if (confirmationResult.handled) {
+         console.log(`[zapi-webhook] ✅ Confirmation response handled for ${senderPhone}`);
+         return new Response(JSON.stringify({ 
+           success: true, 
+           confirmation_handled: true,
+           result: confirmationResult
+         }), {
+           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+         });
+       }
+       
+       // If not a confirmation response, skip - only group messages create orders
+       console.log('[zapi-webhook] ⏭️ Private message not a confirmation - only group messages create orders');
+       return new Response(JSON.stringify({ 
+         success: true, 
+         skipped: 'not_a_group_message',
+         reason: 'Orders are only created from WhatsApp group messages'
+       }), {
+         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+       });
     }
 
     // Recognize product codes strictly in the format: C + 1-6 digits (e.g., C100, C40895)
@@ -1127,3 +1140,202 @@ async function updateOrderTotal(supabase: any, orderId: number) {
 
   console.log(`[zapi-webhook] Updated order ${orderId} total to ${total}`);
 }
+ 
+ // Handle confirmation responses (SIM, OK, sim, ok) for the two-step message flow
+ async function handleConfirmationResponse(
+   supabase: any, 
+   senderPhone: string, 
+   messageText: string,
+   instanceId?: string
+ ): Promise<{ handled: boolean; action?: string; error?: string }> {
+   
+   // Normalize phone
+   let normalizedPhone = senderPhone.replace(/\D/g, '');
+   if (normalizedPhone.length >= 10 && !normalizedPhone.startsWith('55')) {
+     normalizedPhone = '55' + normalizedPhone;
+   }
+   
+   // Check if message is a confirmation response
+   const cleanMessage = messageText.trim().toLowerCase();
+   const isConfirmation = ['sim', 'ok', 'yes', 's', 'simmm', 'simm', 'si', 'okay', 'pode'].includes(cleanMessage);
+   
+   if (!isConfirmation) {
+     console.log(`[zapi-webhook] Message "${cleanMessage}" is not a confirmation response`);
+     return { handled: false };
+   }
+   
+   console.log(`[zapi-webhook] 🔔 Detected confirmation response "${cleanMessage}" from ${normalizedPhone}`);
+   
+   // Find pending confirmation for this phone
+   // First, try to find by instanceId to get the correct tenant
+   let tenantId: string | null = null;
+   
+   if (instanceId) {
+     const { data: integration } = await supabase
+       .from('integration_whatsapp')
+       .select('tenant_id')
+       .eq('zapi_instance_id', instanceId)
+       .eq('is_active', true)
+       .maybeSingle();
+     
+     if (integration) {
+       tenantId = integration.tenant_id;
+     }
+   }
+   
+   // Build query for pending confirmations
+   let query = supabase
+     .from('pending_message_confirmations')
+     .select('*')
+     .eq('status', 'pending')
+     .gt('expires_at', new Date().toISOString())
+     .order('created_at', { ascending: false });
+   
+   // Try with full phone first
+   query = query.eq('customer_phone', normalizedPhone);
+   
+   if (tenantId) {
+     query = query.eq('tenant_id', tenantId);
+   }
+   
+   const { data: confirmations, error: confError } = await query.limit(1);
+   
+   if (confError) {
+     console.log(`[zapi-webhook] Error finding confirmation:`, confError);
+     return { handled: false, error: confError.message };
+   }
+   
+   if (!confirmations || confirmations.length === 0) {
+     // Try with phone without country code
+     const phoneWithoutCountry = normalizedPhone.replace(/^55/, '');
+     const { data: confirmations2 } = await supabase
+       .from('pending_message_confirmations')
+       .select('*')
+       .eq('status', 'pending')
+       .ilike('customer_phone', `%${phoneWithoutCountry}`)
+       .gt('expires_at', new Date().toISOString())
+       .order('created_at', { ascending: false })
+       .limit(1);
+     
+     if (!confirmations2 || confirmations2.length === 0) {
+       console.log(`[zapi-webhook] No pending confirmation found for ${normalizedPhone}`);
+       return { handled: false };
+     }
+     
+     // Found confirmation with alternative phone format
+     return await sendConfirmationLink(supabase, confirmations2[0], instanceId);
+   }
+   
+   return await sendConfirmationLink(supabase, confirmations[0], instanceId);
+ }
+ 
+ // Send the confirmation link (second message with checkout URL)
+ async function sendConfirmationLink(
+   supabase: any, 
+   confirmation: any,
+   instanceId?: string
+ ): Promise<{ handled: boolean; action?: string; error?: string }> {
+   
+   console.log(`[zapi-webhook] 📤 Sending confirmation link for ${confirmation.id}`);
+   
+   // Get tenant's WhatsApp config
+   const { data: whatsappConfig } = await supabase
+     .from('integration_whatsapp')
+     .select('zapi_instance_id, zapi_token, zapi_client_token, item_added_confirmation_template')
+     .eq('tenant_id', confirmation.tenant_id)
+     .eq('is_active', true)
+     .maybeSingle();
+   
+   if (!whatsappConfig?.zapi_instance_id || !whatsappConfig?.zapi_token) {
+     console.log(`[zapi-webhook] No WhatsApp config for tenant ${confirmation.tenant_id}`);
+     return { handled: true, error: 'no_whatsapp_config' };
+   }
+   
+   // Build confirmation message
+   const defaultTemplate = `Perfeito! 🎉
+ 
+ Aqui está o seu link exclusivo para finalizar a compra:
+ 
+ 👉 {{checkout_url}}
+ 
+ Qualquer dúvida estou à disposição! ✨`;
+   
+   let message = (whatsappConfig.item_added_confirmation_template || defaultTemplate)
+     .replace(/\{\{checkout_url\}\}/g, confirmation.checkout_url || '')
+     .replace(/\{\{link\}\}/g, confirmation.checkout_url || '');
+   
+   // Add message variation
+   message = addMessageVariation(message);
+   
+   // Simulate typing (3-5 seconds)
+   try {
+     const typingUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/typing`;
+     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+     if (whatsappConfig.zapi_client_token) headers['Client-Token'] = whatsappConfig.zapi_client_token;
+     
+     await fetch(typingUrl, {
+       method: 'POST',
+       headers,
+       body: JSON.stringify({ phone: confirmation.customer_phone, duration: 4 })
+     });
+     
+     const typingDelay = 3000 + Math.random() * 2000;
+     await new Promise(resolve => setTimeout(resolve, typingDelay));
+   } catch (e) {
+     console.log('[zapi-webhook] Typing simulation failed, continuing...');
+   }
+   
+   // Apply anti-block delay
+   const delayMs = await antiBlockDelayLive();
+   logAntiBlockDelay('zapi-webhook (confirmation link)', delayMs);
+   
+   // Send the message
+   const sendUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/send-text`;
+   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+   if (whatsappConfig.zapi_client_token) headers['Client-Token'] = whatsappConfig.zapi_client_token;
+   
+   console.log(`[zapi-webhook] Sending confirmation link to ${confirmation.customer_phone}`);
+   
+   const response = await fetch(sendUrl, {
+     method: 'POST',
+     headers,
+     body: JSON.stringify({ phone: confirmation.customer_phone, message })
+   });
+   
+   const responseText = await response.text();
+   console.log(`[zapi-webhook] Confirmation link response: ${response.status} - ${responseText.substring(0, 200)}`);
+   
+   // Parse message ID
+   let zapiMessageId = null;
+   try {
+     const responseJson = JSON.parse(responseText);
+     zapiMessageId = responseJson.messageId || responseJson.id || null;
+   } catch (e) { }
+   
+   // Update confirmation status
+   await supabase
+     .from('pending_message_confirmations')
+     .update({
+       status: 'confirmed',
+       confirmed_at: new Date().toISOString()
+     })
+     .eq('id', confirmation.id);
+   
+   // Log the message
+   await supabase.from('whatsapp_messages').insert({
+     tenant_id: confirmation.tenant_id,
+     phone: confirmation.customer_phone,
+     message: message.substring(0, 500),
+     type: 'outgoing',
+     sent_at: new Date().toISOString(),
+     zapi_message_id: zapiMessageId,
+     delivery_status: response.ok ? 'SENT' : 'FAILED'
+   });
+   
+   console.log(`[zapi-webhook] ✅ Confirmation link sent for ${confirmation.id}`);
+   
+   return { 
+     handled: true, 
+     action: 'confirmation_link_sent',
+   };
+ }

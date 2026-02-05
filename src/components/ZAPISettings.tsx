@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+ import { Textarea } from '@/components/ui/textarea';
 import { MessageSquare, Save, CheckCircle2, AlertCircle, ExternalLink, Eye, EyeOff, Loader2, QrCode, RefreshCw, Bell, BellOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,6 +24,8 @@ interface ZAPIIntegration {
   send_paid_order_msg: boolean;
   send_product_canceled_msg: boolean;
   send_out_of_stock_msg: boolean;
+   item_added_confirmation_template: string | null;
+   confirmation_timeout_minutes: number;
 }
 
 interface MessageFlags {
@@ -53,6 +56,10 @@ export function ZAPISettings() {
     send_product_canceled_msg: true,
     send_out_of_stock_msg: true,
   });
+ 
+   // Confirmation message template
+   const [confirmationTemplate, setConfirmationTemplate] = useState('');
+   const [confirmationTimeout, setConfirmationTimeout] = useState(30);
 
   useEffect(() => {
     loadIntegration();
@@ -65,7 +72,7 @@ export function ZAPISettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg')
+         .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, item_added_confirmation_template, confirmation_timeout_minutes')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
@@ -85,6 +92,8 @@ export function ZAPISettings() {
           send_product_canceled_msg: typedData.send_product_canceled_msg ?? true,
           send_out_of_stock_msg: typedData.send_out_of_stock_msg ?? true,
         });
+         setConfirmationTemplate(typedData.item_added_confirmation_template || '');
+         setConfirmationTimeout(typedData.confirmation_timeout_minutes || 30);
       }
     } catch (error: any) {
       console.error('Error loading Z-API integration:', error);
@@ -119,6 +128,8 @@ export function ZAPISettings() {
         provider: 'zapi',
         updated_at: new Date().toISOString(),
         ...messageFlags,
+         item_added_confirmation_template: confirmationTemplate || null,
+         confirmation_timeout_minutes: confirmationTimeout,
       };
 
       if (integration?.id) {
@@ -495,6 +506,44 @@ export function ZAPISettings() {
           </div>
         </div>
 
+         {/* Confirmation Message Template Section */}
+         <div className="pt-4 border-t space-y-4">
+           <div className="flex items-center gap-2">
+             <MessageSquare className="h-4 w-4 text-muted-foreground" />
+             <span className="text-sm font-medium">Mensagem de Confirmação (2ª Etapa)</span>
+           </div>
+           <p className="text-xs text-muted-foreground">
+             Esta mensagem é enviada após o cliente responder "SIM" ou "OK" à primeira mensagem. 
+             Use <code className="bg-muted px-1 rounded">{"{{checkout_url}}"}</code> para inserir o link.
+           </p>
+           
+           <div className="space-y-2">
+             <Textarea
+               value={confirmationTemplate}
+               onChange={(e) => setConfirmationTemplate(e.target.value)}
+               placeholder={`Perfeito! 🎉\n\nAqui está o seu link exclusivo para finalizar a compra:\n\n👉 {{checkout_url}}\n\nQualquer dúvida estou à disposição! ✨`}
+               rows={6}
+               className="font-mono text-sm"
+             />
+           </div>
+           
+           <div className="space-y-2">
+             <Label htmlFor="timeout">Tempo limite para resposta (minutos)</Label>
+             <Input
+               id="timeout"
+               type="number"
+               min={5}
+               max={1440}
+               value={confirmationTimeout}
+               onChange={(e) => setConfirmationTimeout(parseInt(e.target.value) || 30)}
+               className="w-32"
+             />
+             <p className="text-xs text-muted-foreground">
+               Após esse tempo, o sistema não aguarda mais a resposta (padrão: 30 min)
+             </p>
+           </div>
+         </div>
+ 
         <div className="flex items-center justify-between pt-4">
           <a 
             href="https://developer.z-api.io/docs" 
