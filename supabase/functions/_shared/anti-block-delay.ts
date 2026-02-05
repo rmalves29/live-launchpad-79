@@ -146,13 +146,6 @@ export function addMessageVariation(message: string): string {
   
   return result;
 }
-  if (Math.random() < 0.10) {
-    const pos = Math.floor(Math.random() * result.length);
-    result = result.slice(0, pos) + '\u200B' + result.slice(pos);
-  }
-  
-  return result;
-}
 
 /**
  * Check rate limit for tenant (max messages per minute)
