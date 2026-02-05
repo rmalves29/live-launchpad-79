@@ -1298,50 +1298,100 @@ async function updateOrderTotal(supabase: any, orderId: number) {
      // MODO DE PROTEÇÃO POR CONSENTIMENTO
      // Apenas atualiza o DB, NÃO envia resposta ao cliente
      // ============================================================
-     console.log(`[zapi-webhook] 🛡️ Modo de Proteção por Consentimento: apenas atualizando DB`);
-     
-     // Normaliza telefone para buscar cliente
-     const targetPhone = (targetPhoneOverride || confirmation.customer_phone || '').replace(/\D/g, '');
-     let phoneForDB = targetPhone;
-     if (phoneForDB.startsWith('55') && phoneForDB.length > 11) {
-       phoneForDB = phoneForDB.substring(2);
-     }
-     
-     // Atualizar consentimento do cliente
-     const { data: customer, error: customerError } = await supabase
-       .from('customers')
-       .update({
-         consentimento_ativo: true,
-         data_permissao: new Date().toISOString()
-       })
-       .eq('tenant_id', confirmation.tenant_id)
-       .eq('phone', phoneForDB)
-       .select('id, name')
-       .maybeSingle();
-     
-     if (customerError) {
-       console.log(`[zapi-webhook] Error updating customer consent:`, customerError);
-       // Tentar criar cliente se não existir
-       const { data: newCustomer, error: createError } = await supabase
-         .from('customers')
-         .insert({
-           tenant_id: confirmation.tenant_id,
-           phone: phoneForDB,
-           name: `Cliente ${phoneForDB.slice(-4)}`,
-           consentimento_ativo: true,
-           data_permissao: new Date().toISOString()
-         })
-         .select('id')
-         .single();
-       
-       if (createError) {
-         console.error(`[zapi-webhook] Error creating customer:`, createError);
-       } else {
-         console.log(`[zapi-webhook] ✅ Criado novo cliente ${newCustomer.id} com consentimento ativo`);
-       }
-     } else {
-       console.log(`[zapi-webhook] ✅ Consentimento atualizado para cliente ${customer?.id} (${customer?.name})`);
-     }
+      console.log(`[zapi-webhook] 🛡️ Modo de Proteção por Consentimento: apenas atualizando DB`);
+      
+      // Normaliza telefone para buscar cliente
+      const targetPhone = (targetPhoneOverride || confirmation.customer_phone || '').replace(/\D/g, '');
+      
+      // Gera variantes do telefone (com/sem 55, com/sem 9)
+      function buildPhoneVariantsForDB(phone: string): string[] {
+        const variants = new Set<string>();
+        const p = phone.replace(/\D/g, '');
+        if (!p) return [];
+        
+        // Base
+        variants.add(p);
+        
+        // Sem prefixo 55
+        if (p.startsWith('55')) {
+          variants.add(p.substring(2));
+        }
+        
+        // Com prefixo 55 se não tiver
+        if (!p.startsWith('55') && p.length >= 10) {
+          variants.add('55' + p);
+        }
+        
+        // Variantes com/sem o 9º dígito para BR móveis
+        const with9 = p.match(/^(55)?(\d{2})9(\d{8})$/);
+        if (with9) {
+          const prefix = with9[1] || '';
+          variants.add(`${prefix}${with9[2]}${with9[3]}`); // remove o 9
+          if (!prefix) variants.add(`55${with9[2]}${with9[3]}`);
+        }
+        
+        const without9 = p.match(/^(55)?(\d{2})(\d{8})$/);
+        if (without9 && !without9[3].startsWith('9')) {
+          const prefix = without9[1] || '';
+          variants.add(`${prefix}${without9[2]}9${without9[3]}`); // adiciona o 9
+          if (!prefix) variants.add(`55${without9[2]}9${without9[3]}`);
+        }
+        
+        return Array.from(variants);
+      }
+      
+      const phoneVariants = buildPhoneVariantsForDB(targetPhone);
+      console.log(`[zapi-webhook] 📞 Variantes de telefone para busca: ${phoneVariants.join(', ')}`);
+      
+      // Primeiro, buscar o cliente existente com qualquer variante do telefone
+      const { data: existingCustomer } = await supabase
+        .from('customers')
+        .select('id, phone, name')
+        .eq('tenant_id', confirmation.tenant_id)
+        .in('phone', phoneVariants)
+        .limit(1)
+        .maybeSingle();
+      
+      if (existingCustomer) {
+        // Atualizar consentimento do cliente encontrado
+        const { error: updateError } = await supabase
+          .from('customers')
+          .update({
+            consentimento_ativo: true,
+            data_permissao: new Date().toISOString()
+          })
+          .eq('id', existingCustomer.id);
+        
+        if (updateError) {
+          console.error(`[zapi-webhook] Error updating customer consent:`, updateError);
+        } else {
+          console.log(`[zapi-webhook] ✅ Consentimento atualizado para cliente ${existingCustomer.id} (${existingCustomer.name}) - telefone: ${existingCustomer.phone}`);
+        }
+      } else {
+        // Criar novo cliente com o telefone sem prefixo 55 (padrão do sistema)
+        let phoneForDB = targetPhone;
+        if (phoneForDB.startsWith('55') && phoneForDB.length > 11) {
+          phoneForDB = phoneForDB.substring(2);
+        }
+        
+        const { data: newCustomer, error: createError } = await supabase
+          .from('customers')
+          .insert({
+            tenant_id: confirmation.tenant_id,
+            phone: phoneForDB,
+            name: `Cliente ${phoneForDB.slice(-4)}`,
+            consentimento_ativo: true,
+            data_permissao: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+        
+        if (createError) {
+          console.error(`[zapi-webhook] Error creating customer:`, createError);
+        } else {
+          console.log(`[zapi-webhook] ✅ Criado novo cliente ${newCustomer.id} com consentimento ativo`);
+        }
+      }
      
      // Marcar confirmação como confirmada (mas não enviar nada)
      await supabase
