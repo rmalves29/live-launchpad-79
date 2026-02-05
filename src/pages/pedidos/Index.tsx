@@ -46,16 +46,19 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
     unique_order_id?: string;
     melhor_envio_tracking_code?: string;
     customer_name?: string;
+    bling_order_id?: number;
     customer?: {
       name?: string;
       cpf?: string;
       street?: string;
       number?: string;
       complement?: string;
+      neighborhood?: string;
       city?: string;
       state?: string;
       cep?: string;
       instagram?: string;
+      bling_contact_id?: number;
     };
     cart_items?: {
       id: number;
@@ -206,7 +209,7 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
         // Batch query para clientes (uma única query para todos os telefones)
         const { data: allCustomers } = await supabaseTenant
           .from('customers')
-          .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram')
+          .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram, bling_contact_id')
           .in('phone', uniquePhones);
 
         // Criar mapa de clientes por telefone para lookup O(1)
