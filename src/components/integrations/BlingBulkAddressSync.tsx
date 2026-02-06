@@ -132,10 +132,10 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <MapPin className="h-5 w-5" />
-          Atualizar Endereços em Massa
+          Atualizar Cadastro de Clientes no Bling
         </CardTitle>
         <CardDescription>
-          Atualiza o endereço de todos os pedidos pagos no Bling sequencialmente com intervalo de {DELAY_MS}ms.
+          Atualiza o cadastro (nome, endereço) de todos os contatos dos pedidos pagos no Bling sequencialmente.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -229,7 +229,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
           ) : (
             <MapPin className="h-4 w-4 mr-2" />
           )}
-          {syncing ? 'Atualizando...' : 'Atualizar Endereços no Bling'}
+          {syncing ? 'Atualizando...' : 'Atualizar Cadastro do Cliente no Bling'}
         </Button>
       </CardContent>
     </Card>
