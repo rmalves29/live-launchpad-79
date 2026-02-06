@@ -160,7 +160,7 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue="bling" className="w-full">
-        <TabsList className="flex w-full overflow-x-auto">
+        <TabsList className="flex flex-wrap h-auto gap-1 w-full">
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
