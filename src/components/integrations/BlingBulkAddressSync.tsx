@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { getBrasiliaDayBoundsISO, toBrasiliaDateISO } from '@/lib/date-utils';
@@ -37,6 +38,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
+  const [singleOrderId, setSingleOrderId] = useState('');
 
   const fetchOrders = async () => {
     let query = supabaseTenant
@@ -57,6 +59,50 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
     const { data: orders, error } = await query.order('id', { ascending: true });
     if (error) throw error;
     return orders || [];
+  };
+
+  const syncSingleOrder = async () => {
+    const orderId = parseInt(singleOrderId.trim(), 10);
+    if (isNaN(orderId)) {
+      toast.error('Informe um ID de pedido válido.');
+      return;
+    }
+
+    setSyncing(true);
+    setTotal(1);
+    setProcessed(0);
+    setProgress(0);
+    setCurrentOrderId(orderId);
+    setLastResult(null);
+
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke('sync-address-bling', {
+        body: { order_id: orderId, tenant_id: tenantId },
+      });
+
+      if (fnError) throw new Error(fnError.message || 'Erro na chamada da função');
+
+      const result: SyncResult = { success: 0, errors: 0, skipped: 0, details: [] };
+
+      if (data?.success) {
+        result.success = 1;
+        toast.success(`Pedido #${orderId} atualizado com sucesso!`);
+      } else {
+        result.errors = 1;
+        result.details.push(`#${orderId}: ${data?.message || data?.error || 'Erro desconhecido'}`);
+        toast.error(`Erro ao atualizar pedido #${orderId}`);
+      }
+
+      setLastResult(result);
+    } catch (err: any) {
+      setLastResult({ success: 0, errors: 1, skipped: 0, details: [`#${orderId}: ${err?.message || 'Falha'}`] });
+      toast.error(`Erro ao atualizar pedido #${orderId}`);
+    } finally {
+      setProcessed(1);
+      setProgress(100);
+      setCurrentOrderId(null);
+      setSyncing(false);
+    }
   };
 
   const startSync = async () => {
@@ -186,7 +232,25 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
           )}
         </div>
 
-        {/* Progress */}
+        {/* Single order */}
+        <div className="border-t pt-4 space-y-2">
+          <Label className="text-sm font-medium">Atualizar pedido específico</Label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="ID do pedido (ex: 12345)"
+              value={singleOrderId}
+              onChange={(e) => setSingleOrderId(e.target.value)}
+              className="max-w-[200px]"
+              disabled={syncing}
+            />
+            <Button variant="outline" onClick={syncSingleOrder} disabled={syncing || !singleOrderId.trim()}>
+              {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MapPin className="h-4 w-4 mr-2" />}
+              Atualizar
+            </Button>
+          </div>
+        </div>
+
+
         {syncing && (
           <div className="space-y-2">
             <Progress value={progress} />
