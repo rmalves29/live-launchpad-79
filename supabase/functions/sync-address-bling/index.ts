@@ -122,14 +122,6 @@ serve(async (req) => {
       }
     }
 
-    if (!blingContactId) {
-      return new Response(
-        JSON.stringify({ success: false, message: 'Contato não encontrado no Bling (sem bling_contact_id e sem CPF para busca).' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // PUT /contatos/{id} — Apenas atualizar cadastro do cliente
     const contactBody = {
       nome: customer?.name || order.customer_name || '',
       tipo: 'F',
@@ -147,6 +139,47 @@ serve(async (req) => {
         },
       },
     };
+
+    // Se não tem blingContactId, criar contato no Bling
+    if (!blingContactId) {
+      log('Contato não encontrado no Bling. Criando novo contato...');
+      try {
+        const createRes = await fetch(`${BLING_API_URL}/contatos`, {
+          method: 'POST',
+          headers: blingHeaders,
+          body: JSON.stringify(contactBody),
+          signal: AbortSignal.timeout(10000),
+        });
+        const createBody = await createRes.text();
+
+        if (createRes.status >= 200 && createRes.status < 300) {
+          const created = JSON.parse(createBody);
+          blingContactId = created?.data?.id;
+          log(`✅ Contato criado com sucesso: ${blingContactId}`);
+
+          if (customer && blingContactId) {
+            await supabase.from('customers').update({ bling_contact_id: blingContactId }).eq('id', customer.id);
+          }
+
+          return new Response(
+            JSON.stringify({ success: true, message: 'Contato criado no Bling com sucesso!', bling_contact_id: blingContactId }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        log(`❌ POST /contatos falhou: HTTP ${createRes.status} — ${createBody.slice(0, 300)}`);
+        return new Response(
+          JSON.stringify({ success: false, message: `Erro ao criar contato: HTTP ${createRes.status}`, detail: createBody.slice(0, 300) }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (err) {
+        log(`❌ Erro ao criar contato: ${(err as Error).message}`);
+        return new Response(
+          JSON.stringify({ success: false, message: `Erro ao criar contato: ${(err as Error).message}` }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     log(`PUT /contatos/${blingContactId}`);
 
