@@ -234,7 +234,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
 
         {/* Single order */}
         <div className="border-t pt-4 space-y-2">
-          <Label className="text-sm font-medium">Atualizar pedido específico</Label>
+          <Label className="text-sm font-medium">Atualizar cadastro do cliente específico</Label>
           <div className="flex gap-2">
             <Input
               placeholder="ID do pedido (ex: 12345)"
@@ -245,7 +245,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
             />
             <Button variant="outline" onClick={syncSingleOrder} disabled={syncing || !singleOrderId.trim()}>
               {syncing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MapPin className="h-4 w-4 mr-2" />}
-              Atualizar
+              Atualizar Cadastro
             </Button>
           </div>
         </div>

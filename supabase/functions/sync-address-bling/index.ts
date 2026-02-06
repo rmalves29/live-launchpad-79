@@ -27,17 +27,13 @@ serve(async (req) => {
       );
     }
 
-    const ts = () => new Date().toISOString();
     const log = (msg: string, data?: unknown) => {
-      console.log(`[${ts()}] [sync-address-bling] [order=${order_id}] ${msg}`, data !== undefined ? JSON.stringify(data) : '');
-    };
-    const logErr = (msg: string, data?: unknown) => {
-      console.error(`[${ts()}] [sync-address-bling] [order=${order_id}] ${msg}`, data !== undefined ? JSON.stringify(data) : '');
+      console.log(`[sync-address-bling] [order=${order_id}] ${msg}`, data !== undefined ? JSON.stringify(data) : '');
     };
 
     log('▶ INÍCIO — Modo: somente contato');
 
-    // 1. Buscar pedido (para pegar o telefone do cliente)
+    // 1. Buscar pedido
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select('id, tenant_id, customer_phone, customer_name, customer_street, customer_number, customer_complement, customer_neighborhood, customer_cep, customer_city, customer_state')
@@ -46,39 +42,29 @@ serve(async (req) => {
       .single();
 
     if (orderError || !order) {
-      logErr('Pedido não encontrado no banco', orderError);
       return new Response(
         JSON.stringify({ error: 'Pedido não encontrado', detail: orderError?.message }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    log('Pedido encontrado', { phone: order.customer_phone });
-
     // 2. Buscar cliente
     const { data: customer } = await supabase
       .from('customers')
-      .select('*')
+      .select('id, name, cpf, phone, street, number, complement, neighborhood, cep, city, state, bling_contact_id')
       .eq('phone', order.customer_phone)
       .eq('tenant_id', tenant_id)
       .maybeSingle();
 
-    log('Cliente', {
-      found: !!customer,
-      cpf: customer?.cpf || 'N/A',
-      bling_contact_id: customer?.bling_contact_id || 'N/A',
-    });
-
-    // 3. Buscar integração Bling
+    // 3. Buscar token Bling
     const { data: blingConfig } = await supabase
       .from('integration_bling')
-      .select('access_token, is_active')
+      .select('access_token')
       .eq('tenant_id', tenant_id)
       .eq('is_active', true)
       .maybeSingle();
 
     if (!blingConfig?.access_token) {
-      logErr('Integração Bling inativa ou sem token');
       return new Response(
         JSON.stringify({ error: 'Integração Bling não configurada ou inativa' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -90,24 +76,7 @@ serve(async (req) => {
       'Content-Type': 'application/json',
     };
 
-    // ── Helper: fetch com retry para 429 ──
-    const fetchWithRetry = async (url: string, options: RequestInit, context: string, maxRetries = 3): Promise<Response> => {
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        log(`→ ${context} (tentativa ${attempt + 1}/${maxRetries + 1})`);
-        const res = await fetch(url, options);
-        log(`← ${context}: HTTP ${res.status}`);
-        if (res.status === 429) {
-          const waitMs = (attempt + 1) * 2500;
-          log(`⏳ 429 Rate Limit. Aguardando ${waitMs}ms...`);
-          await new Promise((r) => setTimeout(r, waitMs));
-          continue;
-        }
-        return res;
-      }
-      return await fetch(url, options);
-    };
-
-    // ── Montar dados de endereço ──
+    // Montar endereço
     const street = customer?.street || order.customer_street || '';
     const number = customer?.number || order.customer_number || 'S/N';
     const complement = customer?.complement || order.customer_complement || '';
@@ -117,106 +86,91 @@ serve(async (req) => {
     const state = customer?.state || order.customer_state || '';
 
     if (!street || !cep || !city || !state) {
-      logErr('Endereço incompleto', { street: !!street, cep: !!cep, city: !!city, state: !!state });
       return new Response(
         JSON.stringify({ error: 'Endereço incompleto. Preencha rua, CEP, cidade e estado.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const addressPayload = {
-      endereco: street,
-      numero: number || 'S/N',
-      complemento: complement || '',
-      bairro: neighborhood || '',
-      cep,
-      municipio: city,
-      uf: state,
-    };
-
-    log('Endereço montado', addressPayload);
-
-    // ════════════════════════════════════════════
     // Resolver bling_contact_id
-    // ════════════════════════════════════════════
     let blingContactId = customer?.bling_contact_id;
 
     if (!blingContactId && customer?.cpf) {
       const cpfClean = customer.cpf.replace(/\D/g, '');
-      log(`🔍 Buscando contato no Bling por CPF: ${cpfClean}`);
+      log(`Buscando contato por CPF: ${cpfClean}`);
       try {
-        const searchRes = await fetchWithRetry(
-          `${BLING_API_URL}/contatos?pesquisa=${cpfClean}`,
-          { method: 'GET', headers: blingHeaders },
-          `GET /contatos?cpf=${cpfClean}`
-        );
-
+        const searchRes = await fetch(`${BLING_API_URL}/contatos?pesquisa=${cpfClean}`, {
+          method: 'GET',
+          headers: blingHeaders,
+          signal: AbortSignal.timeout(8000),
+        });
         if (searchRes.ok) {
           const searchData = await searchRes.json();
           const contatos = searchData?.data;
-          if (contatos && contatos.length > 0) {
+          if (contatos?.length > 0) {
             blingContactId = contatos[0].id;
-            log(`✅ Contato encontrado no Bling: ${blingContactId}`);
+            log(`Contato encontrado: ${blingContactId}`);
             if (customer) {
               await supabase.from('customers').update({ bling_contact_id: blingContactId }).eq('id', customer.id);
             }
-          } else {
-            log('⚠ Nenhum contato encontrado no Bling para este CPF');
           }
+        } else {
+          await searchRes.text(); // consume body
         }
-        await new Promise((r) => setTimeout(r, 500));
       } catch (err) {
-        logErr('Exceção ao buscar contato por CPF', { message: (err as Error).message });
+        log(`Erro ao buscar contato por CPF: ${(err as Error).message}`);
       }
-    } else if (!blingContactId) {
-      log('⚠ Cliente sem CPF — não é possível buscar contato no Bling');
     }
 
-    // ════════════════════════════════════════════
-    // PUT /contatos — Atualizar cadastro do cliente
-    // ════════════════════════════════════════════
     if (!blingContactId) {
-      log('⏭ Sem bling_contact_id — não foi possível localizar o contato no Bling');
       return new Response(
         JSON.stringify({ success: false, message: 'Contato não encontrado no Bling (sem bling_contact_id e sem CPF para busca).' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const contactName = customer?.name || order.customer_name || '';
-    const contactBody: Record<string, unknown> = {
-      nome: contactName,
+    // PUT /contatos/{id} — Apenas atualizar cadastro do cliente
+    const contactBody = {
+      nome: customer?.name || order.customer_name || '',
       tipo: 'F',
       situacao: 'A',
-      endereco: { geral: { ...addressPayload } },
+      ...(customer?.cpf ? { numeroDocumento: customer.cpf.replace(/\D/g, '') } : {}),
+      endereco: {
+        geral: {
+          endereco: street,
+          numero: number || 'S/N',
+          complemento: complement || '',
+          bairro: neighborhood || '',
+          cep,
+          municipio: city,
+          uf: state,
+        },
+      },
     };
-    if (customer?.cpf) {
-      contactBody.numeroDocumento = customer.cpf.replace(/\D/g, '');
-    }
 
-    log(`📤 PUT /contatos/${blingContactId}`, contactBody);
+    log(`PUT /contatos/${blingContactId}`);
 
-    const contactRes = await fetchWithRetry(
-      `${BLING_API_URL}/contatos/${blingContactId}`,
-      { method: 'PUT', headers: blingHeaders, body: JSON.stringify(contactBody) },
-      `PUT /contatos/${blingContactId}`
-    );
+    const contactRes = await fetch(`${BLING_API_URL}/contatos/${blingContactId}`, {
+      method: 'PUT',
+      headers: blingHeaders,
+      body: JSON.stringify(contactBody),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    const resBody = await contactRes.text();
 
     if (contactRes.status >= 200 && contactRes.status < 300) {
-      log(`✅ Contato ${blingContactId} atualizado com sucesso`);
+      log(`✅ Contato ${blingContactId} atualizado`);
       return new Response(
         JSON.stringify({ success: true, message: 'Cadastro do cliente atualizado no Bling!', bling_contact_id: blingContactId }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Erro no PUT
-    const errBody = await contactRes.text();
-    logErr(`PUT /contatos/${blingContactId} falhou: HTTP ${contactRes.status}`, { body: errBody.slice(0, 500) });
-
+    log(`❌ PUT falhou: HTTP ${contactRes.status} — ${resBody.slice(0, 300)}`);
     return new Response(
       JSON.stringify({ success: false, message: `Erro ao atualizar contato: HTTP ${contactRes.status}`, bling_contact_id: blingContactId }),
-      { status: 207, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('[sync-address-bling] Unhandled error:', error);
