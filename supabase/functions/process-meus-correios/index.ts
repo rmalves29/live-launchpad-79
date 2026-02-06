@@ -34,8 +34,7 @@ serve(async (req: Request) => {
       .from("shipping_integrations")
       .select("*")
       .eq("tenant_id", tenant_id)
-      .eq("provider", "correios")
-      .eq("is_active", true)
+      .eq("provider", "meuscorreios")
       .maybeSingle();
 
     if (intError || !integration) {
