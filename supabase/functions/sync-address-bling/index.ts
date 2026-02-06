@@ -114,8 +114,16 @@ serve(async (req) => {
     const logBlingError = async (context: string, response: Response) => {
       const body = await response.text();
       logErr(`BLING API ERROR - ${context}: HTTP ${response.status}`, { body: body.slice(0, 500) });
-      if (response.status === 401) logErr('⛔ Token expirado — reautorize o Bling');
-      if (response.status === 404) logErr('⛔ Recurso não existe no Bling');
+      if (response.status === 401) logErr('⛔ ERRO DE AUTENTICAÇÃO COM BLING — Token expirado ou inválido. Reautorize na página de Integrações.');
+      if (response.status === 403) logErr('⛔ ERRO DE AUTENTICAÇÃO COM BLING — Sem permissão para este recurso.');
+      if (response.status === 404) logErr('⛔ Recurso não existe no Bling (404)');
+      if (response.status === 400) {
+        try {
+          const parsed = JSON.parse(body);
+          const fields = parsed?.error?.fields || [];
+          logErr('⛔ VALIDAÇÃO BLING — Campos com erro:', fields.map((f: { msg: string; element: string }) => `${f.element}: ${f.msg}`));
+        } catch { /* ignore parse error */ }
+      }
       return { status: response.status, body };
     };
 
@@ -189,17 +197,25 @@ serve(async (req) => {
     // Atualizar contato no Bling
     if (blingContactId) {
       log(`📤 Atualizando contato ${blingContactId} no Bling`);
+      const contactName = customer?.name || order.customer_name || '';
+      log('Nome do contato para PUT', { contactName });
       try {
+        const contactBody: Record<string, unknown> = {
+          nome: contactName,
+          tipo: 'F',
+          situacao: 'A',
+          endereco: { geral: { ...addressPayload } },
+        };
+        if (customer?.cpf) {
+          contactBody.numeroDocumento = customer.cpf.replace(/\D/g, '');
+        }
+        log('Payload contato completo', contactBody);
         const contactRes = await fetchWithRetry(
           `${BLING_API_URL}/contatos/${blingContactId}`,
           {
             method: 'PUT',
             headers: blingHeaders,
-            body: JSON.stringify({
-              tipo: 'F',
-              situacao: 'A',
-              endereco: { geral: { ...addressPayload } },
-            }),
+            body: JSON.stringify(contactBody),
           },
           `PUT /contatos/${blingContactId}`
         );
@@ -258,16 +274,48 @@ serve(async (req) => {
     if (blingOrderId) {
       log(`📤 Atualizando pedido ${blingOrderId} no Bling`);
       try {
-        const orderPayload: Record<string, unknown> = {
-          transporte: {
-            etapa: 1,
-            enderecoEntrega: { ...addressPayload },
-          },
-        };
+        // Primeiro, buscar o pedido completo para obter dados obrigatórios
+        log('📥 Buscando pedido completo do Bling para merge...');
+        const getOrderRes = await fetchWithRetry(
+          `${BLING_API_URL}/pedidos/vendas/${blingOrderId}`,
+          { method: 'GET', headers: blingHeaders },
+          `GET /pedidos/vendas/${blingOrderId}`
+        );
+
+        if (!getOrderRes.ok) {
+          const errInfo = await logBlingError(`GET /pedidos/vendas/${blingOrderId}`, getOrderRes);
+          if (getOrderRes.status === 401) logErr('⛔ Erro de Autenticação com Bling — reautorize o token');
+          // Tentar PATCH direto como fallback
+          log('⚠ Não conseguiu GET do pedido, tentando PATCH direto...');
+        }
+
+        const existingOrder = getOrderRes.ok ? (await getOrderRes.json())?.data : null;
+        await new Promise((r) => setTimeout(r, 500));
+
+        // Montar payload preservando dados existentes
+        const orderPayload: Record<string, unknown> = {};
+
+        // Preservar dados obrigatórios do pedido existente
+        if (existingOrder) {
+          if (existingOrder.data) orderPayload.data = existingOrder.data;
+          if (existingOrder.itens) orderPayload.itens = existingOrder.itens;
+          if (existingOrder.parcelas) orderPayload.parcelas = existingOrder.parcelas;
+          if (existingOrder.numero) orderPayload.numero = existingOrder.numero;
+          if (existingOrder.contato) orderPayload.contato = existingOrder.contato;
+        }
+
+        // Sobrescrever contato se temos bling_contact_id
         if (blingContactId) {
           orderPayload.contato = { id: blingContactId };
         }
-        log('Payload do pedido', orderPayload);
+
+        // Atualizar endereço de entrega
+        orderPayload.transporte = {
+          ...(existingOrder?.transporte || {}),
+          enderecoEntrega: { ...addressPayload },
+        };
+
+        log('Payload do pedido (com merge)', orderPayload);
 
         const orderRes = await fetchWithRetry(
           `${BLING_API_URL}/pedidos/vendas/${blingOrderId}`,
