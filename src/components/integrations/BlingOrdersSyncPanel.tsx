@@ -31,8 +31,10 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
   const [isFetching, setIsFetching] = useState(false);
   const [isFixingFreight, setIsFixingFreight] = useState(false);
   const [isSyncingTracking, setIsSyncingTracking] = useState(false);
+  const [isSyncingSingle, setIsSyncingSingle] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [singleOrderId, setSingleOrderId] = useState('');
 
   // Buscar contagem de pedidos pendentes de sincronização (pagos E sem bling_order_id)
   const { data: pendingCount = 0, refetch: refetchPending, isLoading: isLoadingCount } = useQuery({
@@ -60,6 +62,63 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
 
   // Por enquanto, não temos contagem de sincronizados (coluna não existe)
   const syncedCount = 0;
+
+  const handleSyncSingle = async () => {
+    const orderId = parseInt(singleOrderId.trim(), 10);
+    if (isNaN(orderId)) {
+      toast.error('Informe um ID de pedido válido.');
+      return;
+    }
+
+    setIsSyncingSingle(true);
+    try {
+      setScopeError(null);
+      toast.info(`Enviando pedido #${orderId} para o Bling...`);
+
+      const session = await supabase.auth.getSession();
+      const response = await fetch(
+        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-sync-orders',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'send_order',
+            tenant_id: tenantId,
+            order_id: orderId,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao sincronizar pedido');
+      }
+
+      if (result.success) {
+        const data = result.data;
+        if (data.skipped) {
+          toast.info(`Pedido #${orderId} já está sincronizado (Bling ID: ${data.bling_order_id || 'N/A'}).`);
+        } else if (data.bling_order_id || data.blingOrderId) {
+          toast.success(`Pedido #${orderId} enviado ao Bling com sucesso!`);
+        } else {
+          toast.success(`Pedido #${orderId} processado com sucesso!`);
+        }
+        queryClient.invalidateQueries({ queryKey: ['bling-integration', tenantId] });
+        refetchPending();
+      } else {
+        throw new Error(result.error || 'Erro desconhecido');
+      }
+    } catch (error: any) {
+      console.error('Erro ao sincronizar pedido:', error);
+      toast.error(error.message || 'Erro ao sincronizar pedido');
+    } finally {
+      setIsSyncingSingle(false);
+    }
+  };
 
   const handleSyncAll = async () => {
     setIsSyncing(true);
@@ -358,6 +417,37 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
               {endDate ? `até ${new Date(endDate + 'T00:00:00').toLocaleDateString('pt-BR')}` : ''}
             </p>
           )}
+        </div>
+
+        {/* Exportar pedido específico */}
+        <div className="border rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Upload className="h-5 w-5 text-primary" />
+            <h4 className="font-medium">Exportar Pedido Específico</h4>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Envie um pedido específico para o Bling informando o ID do pedido.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              placeholder="ID do pedido (ex: 1477)"
+              value={singleOrderId}
+              onChange={(e) => setSingleOrderId(e.target.value)}
+              className="max-w-[200px]"
+              disabled={isSyncingSingle}
+            />
+            <Button
+              onClick={handleSyncSingle}
+              disabled={isSyncingSingle || !singleOrderId.trim()}
+            >
+              {isSyncingSingle ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 mr-2" />
+              )}
+              Enviar Pedido
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
