@@ -131,3 +131,6 @@ verify_jwt = false
 
 [functions.sync-address-bling]
 verify_jwt = false
+
+[functions.process-meus-correios]
+verify_jwt = false
