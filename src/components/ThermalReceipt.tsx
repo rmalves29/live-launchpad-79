@@ -57,11 +57,22 @@ export const printThermalReceipt = (order: ReceiptOrder, companyName?: string) =
   // Parse shipping info from observation
   const parseShipping = (obs?: string) => {
     if (!obs) return null;
-    const m = obs.match(/\[FRETE\]\s*(.+)/) || obs.match(/Frete:\s*(.+)/);
-    return m ? m[1].trim() : null;
+    // Format: [FRETE] Melhor Envio - PAC | R$ 21.00 | Prazo: 6 dias úteis
+    const m = obs.match(/\[FRETE\]\s*(.+)/);
+    if (!m) {
+      const m2 = obs.match(/Frete:\s*(.+)/);
+      return m2 ? { label: m2[1].trim(), price: null, deadline: null } : null;
+    }
+    const parts = m[1].split('|').map(s => s.trim());
+    const label = parts[0] || 'Frete';
+    const priceMatch = parts[1]?.match(/R\$\s*([\d.,]+)/);
+    const price = priceMatch ? priceMatch[1] : null;
+    const deadlineMatch = parts[2]?.match(/Prazo:\s*(.+)/i);
+    const deadline = deadlineMatch ? deadlineMatch[1].trim() : null;
+    return { label, price, deadline };
   };
 
-  const shippingLabel = parseShipping(order.observation);
+  const shippingInfo = parseShipping(order.observation);
 
   // Build HTML for thermal printing
   const widthPx = Math.round(config.paperWidth * 3.78); // mm to px approx
@@ -161,11 +172,16 @@ export const printThermalReceipt = (order: ReceiptOrder, companyName?: string) =
     <div class="bold" style="color:red;">Pendente</div>
   </div>`}
 
-  ${shippingLabel || freteValue > 0 ? `
+  ${shippingInfo ? `
   <div class="center section">
     <div>Entrega:</div>
-    <div class="bold">${shippingLabel || 'Não informado'}</div>
+    <div class="bold">${shippingInfo.label}</div>
+    ${shippingInfo.deadline ? `<div>Prazo: ${shippingInfo.deadline}</div>` : ''}
   </div>
+  <div class="center section">
+    <div>Frete:</div>
+    <div class="bold" style="font-size:${fs + 1}px;">${shippingInfo.price ? 'R$ ' + shippingInfo.price : formatCurrency(freteValue)}</div>
+  </div>` : freteValue > 0 ? `
   <div class="center section">
     <div>Frete:</div>
     <div class="bold" style="font-size:${fs + 1}px;">${formatCurrency(freteValue)}</div>
