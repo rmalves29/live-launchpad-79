@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarIcon, Loader2, MapPin, AlertTriangle, ChevronRight } from 'lucide-react';
+import { CalendarIcon, Loader2, MapPin, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,6 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { getBrasiliaDayBoundsISO, toBrasiliaDateISO } from '@/lib/date-utils';
 
-const BATCH_SIZE = 10;
 const DELAY_MS = 1500;
 
 interface BlingBulkAddressSyncProps {
@@ -38,9 +37,6 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
   const [lastResult, setLastResult] = useState<SyncResult | null>(null);
   const [startDate, setStartDate] = useState<Date | undefined>();
   const [endDate, setEndDate] = useState<Date | undefined>();
-  const [batchOffset, setBatchOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [allOrders, setAllOrders] = useState<any[]>([]);
 
   const fetchOrders = async () => {
     let query = supabaseTenant
@@ -63,79 +59,8 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
     return orders || [];
   };
 
-  const processBatch = async (orders: any[], offset: number) => {
-    const batch = orders.slice(offset, offset + BATCH_SIZE);
-    if (batch.length === 0) return;
-
-    setSyncing(true);
-    setTotal(batch.length);
-    setProcessed(0);
-    setProgress(0);
-
-    const result: SyncResult = lastResult && offset > 0
-      ? { ...lastResult, details: [...lastResult.details] }
-      : { success: 0, errors: 0, skipped: 0, details: [] };
-
-    for (let i = 0; i < batch.length; i++) {
-      const order = batch[i];
-      setCurrentOrderId(order.id);
-
-      try {
-        const { data, error: fnError } = await supabase.functions.invoke('sync-address-bling', {
-          body: { order_id: order.id, tenant_id: order.tenant_id },
-        });
-
-        if (fnError) throw new Error(fnError.message || 'Erro na chamada da função');
-
-        if (data?.success) {
-          result.success++;
-        } else if (!data?.had_order_id && !data?.resolved_order_id) {
-          result.skipped++;
-          result.details.push(`#${order.id}: Pedido não encontrado no Bling (skip)`);
-        } else {
-          result.errors++;
-          result.details.push(`#${order.id}: ${data?.message || data?.error || 'Erro desconhecido'}`);
-        }
-      } catch (err: any) {
-        result.errors++;
-        result.details.push(`#${order.id}: ${err?.message || 'Falha na requisição'}`);
-      }
-
-      setProcessed(i + 1);
-      setProgress(Math.round(((i + 1) / batch.length) * 100));
-
-      // Delay between orders
-      if (i < batch.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
-      }
-    }
-
-    setCurrentOrderId(null);
-    const nextOffset = offset + BATCH_SIZE;
-    const remaining = orders.length - nextOffset;
-    setHasMore(remaining > 0);
-    setBatchOffset(nextOffset);
-    setLastResult({ ...result, details: result.details.slice(0, 20) });
-    setSyncing(false);
-
-    const batchNum = Math.ceil(nextOffset / BATCH_SIZE);
-    const totalBatches = Math.ceil(orders.length / BATCH_SIZE);
-
-    if (remaining > 0) {
-      toast.info(`Lote ${batchNum}/${totalBatches} concluído. Restam ${remaining} pedido(s).`);
-    } else {
-      if (result.errors === 0 && result.skipped === 0) {
-        toast.success(`Todos os ${result.success} endereço(s) atualizados com sucesso!`);
-      } else {
-        toast.warning(`${result.success} OK, ${result.errors} erro(s), ${result.skipped} não encontrado(s).`);
-      }
-    }
-  };
-
   const startSync = async () => {
     setLastResult(null);
-    setBatchOffset(0);
-    setHasMore(false);
 
     try {
       const orders = await fetchOrders();
@@ -143,21 +68,64 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
         toast.info('Nenhum pedido encontrado no período selecionado.');
         return;
       }
-      setAllOrders(orders);
-      toast.info(`${orders.length} pedido(s) encontrado(s). Processando em lotes de ${BATCH_SIZE}.`);
-      await processBatch(orders, 0);
+
+      setSyncing(true);
+      setTotal(orders.length);
+      setProcessed(0);
+      setProgress(0);
+
+      toast.info(`${orders.length} pedido(s) encontrado(s). Processando todos sequencialmente...`);
+
+      const result: SyncResult = { success: 0, errors: 0, skipped: 0, details: [] };
+
+      for (let i = 0; i < orders.length; i++) {
+        const order = orders[i];
+        setCurrentOrderId(order.id);
+
+        try {
+          const { data, error: fnError } = await supabase.functions.invoke('sync-address-bling', {
+            body: { order_id: order.id, tenant_id: order.tenant_id },
+          });
+
+          if (fnError) throw new Error(fnError.message || 'Erro na chamada da função');
+
+          if (data?.success) {
+            result.success++;
+          } else if (!data?.had_order_id && !data?.resolved_order_id) {
+            result.skipped++;
+            result.details.push(`#${order.id}: Pedido não encontrado no Bling (skip)`);
+          } else {
+            result.errors++;
+            result.details.push(`#${order.id}: ${data?.message || data?.error || 'Erro desconhecido'}`);
+          }
+        } catch (err: any) {
+          result.errors++;
+          result.details.push(`#${order.id}: ${err?.message || 'Falha na requisição'}`);
+        }
+
+        setProcessed(i + 1);
+        setProgress(Math.round(((i + 1) / orders.length) * 100));
+
+        if (i < orders.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+        }
+      }
+
+      setCurrentOrderId(null);
+      setLastResult({ ...result, details: result.details.slice(0, 50) });
+      setSyncing(false);
+
+      if (result.errors === 0 && result.skipped === 0) {
+        toast.success(`Todos os ${result.success} endereço(s) atualizados com sucesso!`);
+      } else {
+        toast.warning(`${result.success} OK, ${result.errors} erro(s), ${result.skipped} não encontrado(s).`);
+      }
     } catch (err) {
       console.error('Erro ao buscar pedidos:', err);
       toast.error('Erro ao buscar pedidos para sincronização.');
+      setSyncing(false);
     }
   };
-
-  const continueSync = async () => {
-    await processBatch(allOrders, batchOffset);
-  };
-
-  const totalProcessed = batchOffset;
-  const totalOrders = allOrders.length;
 
   return (
     <Card>
@@ -167,10 +135,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
           Atualizar Endereços em Massa
         </CardTitle>
         <CardDescription>
-          Atualiza o endereço dos pedidos pagos no Bling em lotes de {BATCH_SIZE}.
-          {totalOrders > 0 && !syncing && (
-            <span className="font-medium"> ({totalProcessed}/{totalOrders} processados)</span>
-          )}
+          Atualiza o endereço de todos os pedidos pagos no Bling sequencialmente com intervalo de {DELAY_MS}ms.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -214,7 +179,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
 
           {(startDate || endDate) && (
             <div className="flex items-end">
-              <Button variant="ghost" size="sm" onClick={() => { setStartDate(undefined); setEndDate(undefined); setAllOrders([]); setBatchOffset(0); setHasMore(false); }}>
+              <Button variant="ghost" size="sm" onClick={() => { setStartDate(undefined); setEndDate(undefined); }}>
                 Limpar
               </Button>
             </div>
@@ -226,7 +191,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
           <div className="space-y-2">
             <Progress value={progress} />
             <p className="text-sm text-muted-foreground text-center">
-              Processando pedido <strong>#{currentOrderId}</strong> — {processed} de {total} neste lote
+              Processando pedido <strong>#{currentOrderId}</strong> — {processed} de {total}
             </p>
           </div>
         )}
@@ -258,23 +223,14 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
         )}
 
         {/* Actions */}
-        <div className="flex gap-2">
-          <Button onClick={startSync} disabled={syncing}>
-            {syncing ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <MapPin className="h-4 w-4 mr-2" />
-            )}
-            {syncing ? 'Atualizando...' : hasMore ? 'Recomeçar do Início' : 'Atualizar Endereços no Bling'}
-          </Button>
-
-          {hasMore && !syncing && (
-            <Button onClick={continueSync} variant="secondary">
-              <ChevronRight className="h-4 w-4 mr-2" />
-              Próximos {Math.min(BATCH_SIZE, totalOrders - batchOffset)} pedidos
-            </Button>
+        <Button onClick={startSync} disabled={syncing}>
+          {syncing ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <MapPin className="h-4 w-4 mr-2" />
           )}
-        </div>
+          {syncing ? 'Atualizando...' : 'Atualizar Endereços no Bling'}
+        </Button>
       </CardContent>
     </Card>
   );
