@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Package, CheckCircle2, XCircle, Truck, TestTube, Eye, EyeOff } from 'lucide-react';
+import CorreiosBulkLabels from './CorreiosBulkLabels';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
@@ -22,6 +23,7 @@ interface CorreiosIntegrationData {
   client_secret: string;
   contrato: string;
   cartao_postagem: string;
+  token_meuscorreios: string;
   is_active: boolean;
 }
 
@@ -34,6 +36,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
     client_secret: '',
     contrato: '',
     cartao_postagem: '',
+    token_meuscorreios: '',
     is_active: false,
   });
   const [isTesting, setIsTesting] = useState(false);
@@ -59,8 +62,9 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           from_cep: data.from_cep || '',
           client_id: data.client_id || '',
           client_secret: data.client_secret || '',
-          contrato: data.scope || '', // Usando scope para contrato
-          cartao_postagem: data.refresh_token || '', // Usando refresh_token para cartão
+          contrato: data.scope || '',
+          cartao_postagem: data.refresh_token || '',
+          token_meuscorreios: data.token_type || '',
           is_active: data.is_active,
         });
       }
@@ -76,12 +80,13 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
       const payload = {
         tenant_id: tenantId,
         provider: 'correios',
-        access_token: 'contract', // Placeholder
+        access_token: 'contract',
         from_cep: data.from_cep.replace(/\D/g, ''),
         client_id: data.client_id,
         client_secret: data.client_secret,
-        scope: data.contrato, // Armazenando contrato em scope
-        refresh_token: data.cartao_postagem, // Armazenando cartão em refresh_token
+        scope: data.contrato,
+        refresh_token: data.cartao_postagem,
+        token_type: data.token_meuscorreios,
         is_active: data.is_active,
         sandbox: false,
       };
@@ -285,8 +290,21 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
                   Obrigatório para autenticação
                 </p>
               </div>
+
+              <div className="sm:col-span-2 space-y-2">
+                <Label htmlFor="token_meuscorreios">Token MeusCorreios</Label>
+                <Input
+                  id="token_meuscorreios"
+                  type={showSecrets ? 'text' : 'password'}
+                  value={formData.token_meuscorreios}
+                  onChange={(e) => setFormData({ ...formData, token_meuscorreios: e.target.value })}
+                  placeholder="Token gerado em MeusCorreios > Configurações > Tokens"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Obrigatório para gerar etiquetas. Acesse meuscorreios.app → Configurações → Tokens.
+                </p>
+              </div>
             </div>
-          </div>
 
           {/* CEP de Origem */}
           <div className="space-y-2">
@@ -390,6 +408,11 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           )}
         </CardContent>
       </Card>
+
+      {/* Bulk Labels - only show when integration is active */}
+      {formData.is_active && formData.token_meuscorreios && (
+        <CorreiosBulkLabels tenantId={tenantId} />
+      )}
     </div>
   );
 }
