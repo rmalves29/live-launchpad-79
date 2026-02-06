@@ -195,7 +195,11 @@ serve(async (req) => {
           {
             method: 'PUT',
             headers: blingHeaders,
-            body: JSON.stringify({ endereco: { geral: { ...addressPayload } } }),
+            body: JSON.stringify({
+              tipo: 'F',
+              situacao: 'A',
+              endereco: { geral: { ...addressPayload } },
+            }),
           },
           `PUT /contatos/${blingContactId}`
         );
@@ -254,12 +258,23 @@ serve(async (req) => {
     if (blingOrderId) {
       log(`📤 Atualizando pedido ${blingOrderId} no Bling`);
       try {
+        const orderPayload: Record<string, unknown> = {
+          transporte: {
+            etapa: 1,
+            enderecoEntrega: { ...addressPayload },
+          },
+        };
+        if (blingContactId) {
+          orderPayload.contato = { id: blingContactId };
+        }
+        log('Payload do pedido', orderPayload);
+
         const orderRes = await fetchWithRetry(
           `${BLING_API_URL}/pedidos/vendas/${blingOrderId}`,
           {
             method: 'PUT',
             headers: blingHeaders,
-            body: JSON.stringify({ contato: { endereco: { geral: { ...addressPayload } } } }),
+            body: JSON.stringify(orderPayload),
           },
           `PUT /pedidos/vendas/${blingOrderId}`
         );
