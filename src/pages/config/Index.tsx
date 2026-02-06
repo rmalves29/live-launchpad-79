@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, ArrowLeft, BarChart3, TrendingUp, Building2, Users } from 'lucide-react';
+import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, ArrowLeft, BarChart3, TrendingUp, Building2, Users, Printer } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { CompanySettings } from '@/components/CompanySettings';
@@ -17,6 +17,7 @@ import { AvailabilitySettings } from '@/components/AvailabilitySettings';
 import { TenantSimulator } from '@/components/TenantSimulator';
 import IntegrationsChecklist from '@/components/IntegrationsChecklist';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
+import { PrinterSettings } from '@/components/PrinterSettings';
 import { useToast } from '@/hooks/use-toast';
 import { formatBrasiliaDate } from '@/lib/date-utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -231,7 +232,7 @@ const Config = () => {
 
           <div className="space-y-6">
             <Tabs defaultValue={searchParams.get('tab') || (isMaster ? 'config' : 'company')} className="w-full">
-              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-7' : 'grid-cols-5'}`}>
+              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-8' : 'grid-cols-6'}`}>
                 {isMaster && (
                   <TabsTrigger value="config" className="flex items-center text-xs sm:text-sm">
                     <Settings className="h-4 w-4 mr-1 sm:mr-2" />
@@ -259,6 +260,11 @@ const Config = () => {
                 <TabsTrigger value="gifts" className="flex items-center text-xs sm:text-sm">
                   <Gift className="h-4 w-4 mr-1 sm:mr-2" />
                   Brindes
+                </TabsTrigger>
+                <TabsTrigger value="printer" className="flex items-center text-xs sm:text-sm">
+                  <Printer className="h-4 w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Impressora</span>
+                  <span className="sm:hidden">Impr.</span>
                 </TabsTrigger>
                 {isMaster && (
                   <TabsTrigger value="tenants" className="flex items-center text-xs sm:text-sm">
@@ -370,6 +376,10 @@ const Config = () => {
 
               <TabsContent value="gifts" className="space-y-6 mt-6">
                 <GiftsManager />
+              </TabsContent>
+
+              <TabsContent value="printer" className="space-y-6 mt-6">
+                <PrinterSettings />
               </TabsContent>
 
               {isMaster && (

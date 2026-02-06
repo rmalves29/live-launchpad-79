@@ -9,7 +9,8 @@ import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatBrasiliaDate, formatBrasiliaDateTime } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, MapPin } from 'lucide-react';
+import { Loader2, MapPin, Printer } from 'lucide-react';
+import { printThermalReceipt } from '@/components/ThermalReceipt';
 
 interface Order {
   id: number;
@@ -137,8 +138,21 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Detalhes do Pedido #{order.tenant_order_number || order.id}</DialogTitle>
-          <DialogDescription>Visualize todos os produtos e informações do pedido.</DialogDescription>
+          <div className="flex items-center justify-between pr-8">
+            <div>
+              <DialogTitle>Detalhes do Pedido #{order.tenant_order_number || order.id}</DialogTitle>
+              <DialogDescription>Visualize todos os produtos e informações do pedido.</DialogDescription>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => printThermalReceipt(order)}
+              title="Imprimir romaneio térmico"
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              Imprimir
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="space-y-6">
