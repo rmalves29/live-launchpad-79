@@ -305,6 +305,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
                 </p>
               </div>
             </div>
+          </div>
 
           {/* CEP de Origem */}
           <div className="space-y-2">
