@@ -1,6 +1,6 @@
 /**
  * Página de Integrações por Tenant
- * Permite configurar Mercado Pago, Pagar.me, App Max, Melhor Envio, Mandae, Correios, Bling ERP e Instagram Live
+ * Permite configurar Mercado Pago, Pagar.me, App Max, Melhor Envio, Mandae, Correios, MeusCorreios, Bling ERP e Instagram Live
  * Usa automaticamente o tenant do usuário logado
  * IMPORTANTE: Apenas UMA integração de pagamento pode estar ativa por vez
  */
@@ -9,25 +9,24 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
+import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function TenantIntegrationsPage() {
-  // Todos os hooks devem estar no topo, antes de qualquer return condicional
   const { tenant, loading: tenantLoading, error: tenantError } = useTenantContext();
   const { profile, isLoading: authLoading } = useAuth();
   const tenantId = tenant?.id || '';
 
-  // Debug: mostrar qual tenant está sendo usado
   console.log('[TenantIntegrationsPage] Estado atual:', {
     tenantId,
     tenantName: tenant?.name,
@@ -39,15 +38,10 @@ export default function TenantIntegrationsPage() {
     previewTenantId: localStorage.getItem('previewTenantId')
   });
 
-  // Buscar status das integrações
   const { data: mpIntegration } = useQuery({
     queryKey: ['mp-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('integration_mp')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
+      const { data } = await supabase.from('integration_mp').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
     },
     enabled: !!tenantId,
@@ -56,12 +50,7 @@ export default function TenantIntegrationsPage() {
   const { data: melhorEnvioIntegration } = useQuery({
     queryKey: ['melhor-envio-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('shipping_integrations')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .eq('provider', 'melhor_envio')
-        .maybeSingle();
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'melhor_envio').maybeSingle();
       return data;
     },
     enabled: !!tenantId,
@@ -70,12 +59,7 @@ export default function TenantIntegrationsPage() {
   const { data: mandaeIntegration } = useQuery({
     queryKey: ['mandae-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('shipping_integrations')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .eq('provider', 'mandae')
-        .maybeSingle();
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'mandae').maybeSingle();
       return data;
     },
     enabled: !!tenantId,
@@ -84,74 +68,57 @@ export default function TenantIntegrationsPage() {
   const { data: blingIntegration } = useQuery({
     queryKey: ['bling-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('integration_bling')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
+      const { data } = await supabase.from('integration_bling').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
     },
     enabled: !!tenantId,
   });
 
-  // Pagar.me Status
   const { data: pagarmeIntegration } = useQuery({
     queryKey: ['pagarme-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('integration_pagarme')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
+      const { data } = await supabase.from('integration_pagarme').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
     },
     enabled: !!tenantId,
   });
 
-  // Correios Status
   const { data: correiosIntegration } = useQuery({
     queryKey: ['correios-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('shipping_integrations')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .eq('provider', 'correios')
-        .maybeSingle();
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'correios').maybeSingle();
       return data;
     },
     enabled: !!tenantId,
   });
 
-  // App Max Status
+  const { data: meusCorreiosIntegration } = useQuery({
+    queryKey: ['meuscorreios-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'meuscorreios').maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
   const { data: appmaxIntegration } = useQuery({
     queryKey: ['appmax-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('integration_appmax')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
+      const { data } = await supabase.from('integration_appmax').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
     },
     enabled: !!tenantId,
   });
 
-  // Instagram Live Status
   const { data: instagramIntegration } = useQuery({
     queryKey: ['instagram-status', tenantId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('integration_instagram')
-        .select('is_active')
-        .eq('tenant_id', tenantId)
-        .maybeSingle();
+      const { data } = await supabase.from('integration_instagram').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
     },
     enabled: !!tenantId,
   });
 
-  // Verificar se auth ou tenant está carregando
   if (authLoading || tenantLoading) {
     return (
       <div className="container mx-auto p-6 flex items-center justify-center h-64">
@@ -163,29 +130,23 @@ export default function TenantIntegrationsPage() {
     );
   }
 
-  // Mostrar erro se houver
   if (tenantError) {
     return (
       <div className="container mx-auto p-6 max-w-2xl">
         <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Erro:</strong> {tenantError}
-          </AlertDescription>
+          <AlertDescription><strong>Erro:</strong> {tenantError}</AlertDescription>
         </Alert>
       </div>
     );
   }
 
-  // Redirecionar se não tiver tenant
   if (!tenant || !tenantId) {
     return (
       <div className="container mx-auto p-6 max-w-2xl">
         <Alert variant="destructive">
           <XCircle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Erro:</strong> Você precisa estar logado em uma empresa para acessar as integrações.
-          </AlertDescription>
+          <AlertDescription><strong>Erro:</strong> Você precisa estar logado em uma empresa para acessar as integrações.</AlertDescription>
         </Alert>
       </div>
     );
@@ -199,103 +160,89 @@ export default function TenantIntegrationsPage() {
       </p>
 
       <Tabs defaultValue="bling" className="w-full">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="flex w-full overflow-x-auto">
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
             <span className="sm:hidden">IG</span>
-            {instagramIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
+            {instagramIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="bling" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Bling ERP</span>
             <span className="sm:hidden">Bling</span>
-            {blingIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
+            {blingIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="mercadopago" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Mercado Pago</span>
             <span className="sm:hidden">MP</span>
-            {mpIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
+            {mpIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="pagarme" className="flex items-center gap-2">
             <Wallet className="h-4 w-4" />
             <span className="hidden sm:inline">Pagar.me</span>
             <span className="sm:hidden">PG</span>
-            {pagarmeIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
+            {pagarmeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="appmax" className="flex items-center gap-2">
             <Zap className="h-4 w-4" />
             <span className="hidden sm:inline">App Max</span>
             <span className="sm:hidden">AM</span>
-            {appmaxIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
+            {appmaxIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="melhorenvio" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
             <span className="hidden sm:inline">Melhor Envio</span>
             <span className="sm:hidden">ME</span>
-            {melhorEnvioIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
+            {melhorEnvioIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="mandae" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
             <span className="hidden sm:inline">Mandae</span>
             <span className="sm:hidden">MD</span>
-            {mandaeIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
+            {mandaeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="correios" className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
             <span className="hidden sm:inline">Correios</span>
             <span className="sm:hidden">CR</span>
-            {correiosIntegration?.is_active && (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
+            {correiosIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
+          <TabsTrigger value="meuscorreios" className="flex items-center gap-2">
+            <Printer className="h-4 w-4" />
+            <span className="hidden sm:inline">Meus Correios</span>
+            <span className="sm:hidden">MC</span>
+            {meusCorreiosIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="instagram" className="mt-6">
           <InstagramIntegration tenantId={tenantId} />
         </TabsContent>
-
         <TabsContent value="bling" className="mt-6">
           <BlingIntegration tenantId={tenantId} />
         </TabsContent>
-
         <TabsContent value="mercadopago" className="mt-6">
           <PaymentIntegrations tenantId={tenantId} />
         </TabsContent>
-
         <TabsContent value="pagarme" className="mt-6">
           <PagarMeIntegration tenantId={tenantId} />
         </TabsContent>
-
         <TabsContent value="appmax" className="mt-6">
           <AppmaxIntegration tenantId={tenantId} />
         </TabsContent>
-
         <TabsContent value="melhorenvio" className="mt-6">
           <ShippingIntegrations tenantId={tenantId} />
         </TabsContent>
-
         <TabsContent value="mandae" className="mt-6">
           <MandaeIntegration tenantId={tenantId} />
         </TabsContent>
-
         <TabsContent value="correios" className="mt-6">
           <CorreiosIntegration tenantId={tenantId} />
+        </TabsContent>
+        <TabsContent value="meuscorreios" className="mt-6">
+          <MeusCorreiosIntegration tenantId={tenantId} />
         </TabsContent>
       </Tabs>
     </div>
