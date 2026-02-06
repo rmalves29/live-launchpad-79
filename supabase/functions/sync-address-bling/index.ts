@@ -27,7 +27,15 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[sync-address-bling] Starting for order ${order_id}, tenant ${tenant_id}`);
+    const ts = () => new Date().toISOString();
+    const log = (msg: string, data?: unknown) => {
+      console.log(`[${ts()}] [sync-address-bling] [order=${order_id}] ${msg}`, data !== undefined ? JSON.stringify(data) : '');
+    };
+    const logErr = (msg: string, data?: unknown) => {
+      console.error(`[${ts()}] [sync-address-bling] [order=${order_id}] ${msg}`, data !== undefined ? JSON.stringify(data) : '');
+    };
+
+    log('▶ INÍCIO');
 
     // 1. Buscar pedido
     const { data: order, error: orderError } = await supabase
@@ -38,12 +46,14 @@ serve(async (req) => {
       .single();
 
     if (orderError || !order) {
-      console.error(`[sync-address-bling] Order not found: ${order_id}`, orderError);
+      logErr('Pedido não encontrado no banco', orderError);
       return new Response(
-        JSON.stringify({ error: 'Pedido não encontrado' }),
+        JSON.stringify({ error: 'Pedido não encontrado', detail: orderError?.message }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    log('Pedido encontrado', { phone: order.customer_phone, bling_order_id: order.bling_order_id });
 
     // 2. Buscar cliente
     const { data: customer } = await supabase
@@ -52,6 +62,12 @@ serve(async (req) => {
       .eq('phone', order.customer_phone)
       .eq('tenant_id', tenant_id)
       .maybeSingle();
+
+    log('Cliente', {
+      found: !!customer,
+      cpf: customer?.cpf || 'N/A',
+      bling_contact_id: customer?.bling_contact_id || 'N/A',
+    });
 
     // 3. Buscar integração Bling
     const { data: blingConfig } = await supabase
@@ -62,7 +78,7 @@ serve(async (req) => {
       .maybeSingle();
 
     if (!blingConfig?.access_token) {
-      console.error(`[sync-address-bling] No active Bling integration for tenant ${tenant_id}`);
+      logErr('Integração Bling inativa ou sem token');
       return new Response(
         JSON.stringify({ error: 'Integração Bling não configurada ou inativa' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -75,30 +91,32 @@ serve(async (req) => {
       'Content-Type': 'application/json',
     };
 
-    // ── Helper: fetch com retry automático para 429 ──
-    const fetchWithRetry = async (url: string, options: RequestInit, context: string, maxRetries = 2): Promise<Response> => {
+    // ── Helper: fetch com retry para 429 ──
+    const fetchWithRetry = async (url: string, options: RequestInit, context: string, maxRetries = 3): Promise<Response> => {
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        log(`→ ${context} (tentativa ${attempt + 1}/${maxRetries + 1})`);
         const res = await fetch(url, options);
+        log(`← ${context}: HTTP ${res.status}`);
+
         if (res.status === 429) {
-          const waitMs = (attempt + 1) * 2000;
-          console.warn(`[sync-address-bling] 429 Rate Limit on ${context}. Waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}`);
+          const waitMs = (attempt + 1) * 2500;
+          log(`⏳ 429 Rate Limit em ${context}. Aguardando ${waitMs}ms...`);
           await new Promise((r) => setTimeout(r, waitMs));
           continue;
         }
         return res;
       }
-      // fallback final (sem retry)
+      log(`⚠ ${context}: todas as tentativas falharam, última chamada...`);
       return await fetch(url, options);
     };
 
     // ── Helper: log detalhado de erros Bling ──
     const logBlingError = async (context: string, response: Response) => {
-      const status = response.status;
       const body = await response.text();
-      console.error(`[sync-address-bling] BLING API ERROR - ${context}: HTTP ${status}, Body: ${body}`);
-      if (status === 401) console.error(`[sync-address-bling] 401 - Token expirado. Reautorize o Bling.`);
-      if (status === 404) console.error(`[sync-address-bling] 404 - Recurso não existe no Bling.`);
-      return { status, body };
+      logErr(`BLING API ERROR - ${context}: HTTP ${response.status}`, { body: body.slice(0, 500) });
+      if (response.status === 401) logErr('⛔ Token expirado — reautorize o Bling');
+      if (response.status === 404) logErr('⛔ Recurso não existe no Bling');
+      return { status: response.status, body };
     };
 
     // ── Montar dados de endereço ──
@@ -111,7 +129,7 @@ serve(async (req) => {
     const state = customer?.state || order.customer_state || '';
 
     if (!street || !cep || !city || !state) {
-      console.warn(`[sync-address-bling] Incomplete address for order ${order_id}`);
+      logErr('Endereço incompleto', { street: !!street, cep: !!cep, city: !!city, state: !!state });
       return new Response(
         JSON.stringify({ error: 'Endereço incompleto. Preencha rua, CEP, cidade e estado.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -128,7 +146,7 @@ serve(async (req) => {
       uf: state,
     };
 
-    console.log(`[sync-address-bling] Address payload:`, JSON.stringify(addressPayload));
+    log('Payload de endereço montado', addressPayload);
 
     const results = { contact: false, order: false };
 
@@ -138,13 +156,13 @@ serve(async (req) => {
     let blingContactId = customer?.bling_contact_id;
 
     if (!blingContactId && customer?.cpf) {
-      console.log(`[sync-address-bling] No bling_contact_id, searching by CPF: ${customer.cpf}`);
+      const cpfClean = customer.cpf.replace(/\D/g, '');
+      log(`🔍 Buscando contato no Bling por CPF: ${cpfClean}`);
       try {
-        const cpfClean = customer.cpf.replace(/\D/g, '');
         const searchRes = await fetchWithRetry(
           `${BLING_API_URL}/contatos?pesquisa=${cpfClean}`,
           { method: 'GET', headers: blingHeaders },
-          `GET /contatos?pesquisa=${cpfClean}`
+          `GET /contatos?cpf=${cpfClean}`
         );
 
         if (searchRes.ok) {
@@ -152,43 +170,48 @@ serve(async (req) => {
           const contatos = searchData?.data;
           if (contatos && contatos.length > 0) {
             blingContactId = contatos[0].id;
-            console.log(`[sync-address-bling] Found bling_contact_id ${blingContactId} via CPF`);
-            // Salvar no banco
+            log(`✅ Contato encontrado no Bling: ${blingContactId}`);
             await supabase.from('customers').update({ bling_contact_id: blingContactId }).eq('id', customer.id);
           } else {
-            console.warn(`[sync-address-bling] No Bling contact found for CPF ${cpfClean}`);
+            log('⚠ Nenhum contato encontrado no Bling para este CPF');
           }
         } else {
-          await logBlingError(`GET /contatos?pesquisa=CPF`, searchRes);
+          await logBlingError('Busca contato por CPF', searchRes);
         }
         await new Promise((r) => setTimeout(r, 500));
       } catch (err) {
-        console.error(`[sync-address-bling] Error searching contact by CPF:`, err);
+        logErr('Exceção ao buscar contato por CPF', { message: (err as Error).message });
       }
+    } else if (!blingContactId) {
+      log('⚠ Cliente sem CPF cadastrado — não é possível buscar contato no Bling');
     }
 
-    // Atualizar contato no Bling (se temos o ID)
+    // Atualizar contato no Bling
     if (blingContactId) {
-      console.log(`[sync-address-bling] Updating contact ${blingContactId}`);
-      const contactRes = await fetchWithRetry(
-        `${BLING_API_URL}/contatos/${blingContactId}`,
-        {
-          method: 'PUT',
-          headers: blingHeaders,
-          body: JSON.stringify({ endereco: { geral: { ...addressPayload } } }),
-        },
-        `PUT /contatos/${blingContactId}`
-      );
+      log(`📤 Atualizando contato ${blingContactId} no Bling`);
+      try {
+        const contactRes = await fetchWithRetry(
+          `${BLING_API_URL}/contatos/${blingContactId}`,
+          {
+            method: 'PUT',
+            headers: blingHeaders,
+            body: JSON.stringify({ endereco: { geral: { ...addressPayload } } }),
+          },
+          `PUT /contatos/${blingContactId}`
+        );
 
-      if (contactRes.status >= 200 && contactRes.status < 300) {
-        console.log(`[sync-address-bling] Contact ${blingContactId} updated OK`);
-        results.contact = true;
-      } else {
-        await logBlingError(`PUT /contatos/${blingContactId}`, contactRes);
+        if (contactRes.status >= 200 && contactRes.status < 300) {
+          log(`✅ Contato ${blingContactId} atualizado com sucesso`);
+          results.contact = true;
+        } else {
+          await logBlingError(`PUT /contatos/${blingContactId}`, contactRes);
+        }
+      } catch (err) {
+        logErr('Exceção ao atualizar contato', { message: (err as Error).message });
       }
       await new Promise((r) => setTimeout(r, 500));
     } else {
-      console.log(`[sync-address-bling] No bling_contact_id resolved, skipping contact update`);
+      log('⏭ Sem bling_contact_id — pulando atualização de contato');
     }
 
     // ════════════════════════════════════════════
@@ -197,12 +220,13 @@ serve(async (req) => {
     let blingOrderId = order.bling_order_id;
 
     if (!blingOrderId) {
-      console.log(`[sync-address-bling] No bling_order_id, searching by number OZ-${order_id}`);
+      const searchNum = `OZ-${order_id}`;
+      log(`🔍 Buscando pedido no Bling por número: ${searchNum}`);
       try {
         const searchRes = await fetchWithRetry(
-          `${BLING_API_URL}/pedidos/vendas?numero=OZ-${order_id}`,
+          `${BLING_API_URL}/pedidos/vendas?numero=${searchNum}`,
           { method: 'GET', headers: blingHeaders },
-          `GET /pedidos/vendas?numero=OZ-${order_id}`
+          `GET /pedidos/vendas?numero=${searchNum}`
         );
 
         if (searchRes.ok) {
@@ -210,17 +234,17 @@ serve(async (req) => {
           const pedidos = searchData?.data;
           if (pedidos && pedidos.length > 0) {
             blingOrderId = pedidos[0].id;
-            console.log(`[sync-address-bling] Found bling_order_id ${blingOrderId}`);
+            log(`✅ Pedido encontrado no Bling: ${blingOrderId}`);
             await supabase.from('orders').update({ bling_order_id: blingOrderId }).eq('id', order_id).eq('tenant_id', tenant_id);
           } else {
-            console.warn(`[sync-address-bling] No Bling order found for OZ-${order_id}`);
+            log('⚠ Nenhum pedido encontrado no Bling para este número');
           }
         } else {
-          await logBlingError(`GET /pedidos/vendas?numero=OZ-${order_id}`, searchRes);
+          await logBlingError(`Busca pedido por número ${searchNum}`, searchRes);
         }
         await new Promise((r) => setTimeout(r, 500));
       } catch (err) {
-        console.error(`[sync-address-bling] Error searching order by number:`, err);
+        logErr('Exceção ao buscar pedido por número', { message: (err as Error).message });
       }
     }
 
@@ -228,25 +252,29 @@ serve(async (req) => {
     // PASSO 3: Atualizar pedido no Bling
     // ════════════════════════════════════════════
     if (blingOrderId) {
-      console.log(`[sync-address-bling] Updating order ${blingOrderId}`);
-      const orderRes = await fetchWithRetry(
-        `${BLING_API_URL}/pedidos/vendas/${blingOrderId}`,
-        {
-          method: 'PUT',
-          headers: blingHeaders,
-          body: JSON.stringify({ contato: { endereco: { geral: { ...addressPayload } } } }),
-        },
-        `PUT /pedidos/vendas/${blingOrderId}`
-      );
+      log(`📤 Atualizando pedido ${blingOrderId} no Bling`);
+      try {
+        const orderRes = await fetchWithRetry(
+          `${BLING_API_URL}/pedidos/vendas/${blingOrderId}`,
+          {
+            method: 'PUT',
+            headers: blingHeaders,
+            body: JSON.stringify({ contato: { endereco: { geral: { ...addressPayload } } } }),
+          },
+          `PUT /pedidos/vendas/${blingOrderId}`
+        );
 
-      if (orderRes.status >= 200 && orderRes.status < 300) {
-        console.log(`[sync-address-bling] Order ${blingOrderId} updated OK`);
-        results.order = true;
-      } else {
-        await logBlingError(`PUT /pedidos/vendas/${blingOrderId}`, orderRes);
+        if (orderRes.status >= 200 && orderRes.status < 300) {
+          log(`✅ Pedido ${blingOrderId} atualizado com sucesso`);
+          results.order = true;
+        } else {
+          await logBlingError(`PUT /pedidos/vendas/${blingOrderId}`, orderRes);
+        }
+      } catch (err) {
+        logErr('Exceção ao atualizar pedido', { message: (err as Error).message });
       }
     } else {
-      console.warn(`[sync-address-bling] No bling_order_id resolved for order ${order_id}, skipping`);
+      log('⏭ Sem bling_order_id — pedido não encontrado no Bling, pulando atualização');
     }
 
     // ── Resultado ──
@@ -255,7 +283,7 @@ serve(async (req) => {
       ? 'Endereço atualizado no Bling com sucesso!'
       : `Resultado parcial: Contato=${results.contact ? 'OK' : 'falhou/skip'}, Pedido=${results.order ? 'OK' : 'falhou/skip'}`;
 
-    console.log(`[sync-address-bling] Final: ${message}`);
+    log(`◀ FIM: ${message}`, results);
 
     return new Response(
       JSON.stringify({
@@ -274,7 +302,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('[sync-address-bling] Unhandled error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
