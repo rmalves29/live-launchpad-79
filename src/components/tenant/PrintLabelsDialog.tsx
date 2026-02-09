@@ -189,8 +189,8 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     height: auto;
   }
   .label-code {
-    font-size: 6pt;
-    font-weight: 600;
+    font-size: 8pt;
+    font-weight: 700;
     text-align: center;
     letter-spacing: 0.5pt;
   }
