@@ -33,6 +33,7 @@ interface CustomerForm {
   phone: string;
   email: string;
   cpf: string;
+  instagram: string;
   street: string;
   number: string;
   complement: string;
@@ -51,6 +52,7 @@ export default function TenantCustomers() {
     phone: '',
     email: '',
     cpf: '',
+    instagram: '',
     street: '',
     number: '',
     complement: '',
@@ -96,6 +98,7 @@ export default function TenantCustomers() {
       phone: '',
       email: '',
       cpf: '',
+      instagram: '',
       street: '',
       number: '',
       complement: '',
@@ -118,6 +121,7 @@ export default function TenantCustomers() {
       phone: customer.phone,
       email: customer.email || '',
       cpf: customer.cpf || '',
+      instagram: customer.instagram || '',
       street: customer.street || '',
       number: customer.number || '',
       complement: customer.complement || '',
@@ -140,6 +144,7 @@ export default function TenantCustomers() {
         phone: normalizeForStorage(formData.phone),
         email: formData.email || null,
         cpf: formData.cpf || null,
+        instagram: formData.instagram || null,
         street: formData.street || null,
         number: formData.number || null,
         complement: formData.complement || null,
@@ -312,25 +317,25 @@ export default function TenantCustomers() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="Ex: joao@email.com"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cpf">CPF</Label>
-                <Input
-                  id="cpf"
-                  value={formData.cpf}
-                  onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
-                  placeholder="Ex: 123.456.789-00"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="instagram">Instagram</Label>
+                  <Input
+                    id="instagram"
+                    value={formData.instagram}
+                    onChange={(e) => setFormData({ ...formData, instagram: e.target.value })}
+                    placeholder="Ex: nicemaxis"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cpf">CPF</Label>
+                  <Input
+                    id="cpf"
+                    value={formData.cpf}
+                    onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+                    placeholder="Ex: 123.456.789-00"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-3 gap-4">
