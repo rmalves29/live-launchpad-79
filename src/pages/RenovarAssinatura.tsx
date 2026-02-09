@@ -14,6 +14,7 @@ interface Plan {
   name: string;
   days: number;
   price: number;
+  displayPrice?: string;
   features: string[];
   popular?: boolean;
   icon: React.ReactNode;
@@ -24,7 +25,8 @@ const PLANS: Plan[] = [
     id: "basic",
     name: "Basic",
     days: 30,
-    price: 0.01, // Valor de teste - substituir depois
+    price: 499.00,
+    displayPrice: "R$ 499,00",
     features: [
       "Acesso completo ao sistema",
       "Suporte por WhatsApp Horário Comercial",
@@ -36,12 +38,14 @@ const PLANS: Plan[] = [
     id: "pro",
     name: "Pro",
     days: 185,
-    price: 0.01, // Valor de teste - substituir depois
+    price: 2694.60,
+    displayPrice: "6x de R$ 449,10",
     features: [
       "Acesso completo ao sistema",
       "Suporte prioritário",
       "6 meses de acesso",
       "Relatórios avançados",
+      "10% de desconto incluso",
     ],
     popular: true,
     icon: <Crown className="h-6 w-6" />,
@@ -50,12 +54,14 @@ const PLANS: Plan[] = [
     id: "enterprise",
     name: "Enterprise",
     days: 365,
-    price: 0.01, // Valor de teste - substituir depois
+    price: 5089.80,
+    displayPrice: "12x de R$ 424,15",
     features: [
       "Acesso completo ao sistema",
       "Suporte VIP 24/7",
       "12 meses de acesso",
       "Relatórios avançados",
+      "15% de desconto incluso",
     ],
     icon: <Building2 className="h-6 w-6" />,
   },
@@ -262,8 +268,8 @@ export default function RenovarAssinatura() {
               </CardHeader>
               <CardContent className="text-center">
                 <div className="mb-6">
-                  <span className="text-4xl font-bold">
-                    R$ {plan.price.toFixed(2).replace(".", ",")}
+                  <span className="text-3xl font-bold">
+                    {plan.displayPrice || `R$ ${plan.price.toFixed(2).replace(".", ",")}`}
                   </span>
                 </div>
                 <ul className="space-y-3 text-left">
