@@ -15,6 +15,7 @@ interface Plan {
   days: number;
   price: number;
   displayPrice?: string;
+  discount?: string;
   features: string[];
   popular?: boolean;
   icon: React.ReactNode;
@@ -40,12 +41,12 @@ const PLANS: Plan[] = [
     days: 185,
     price: 2694.60,
     displayPrice: "6x de R$ 449,10",
+    discount: "10% de desconto",
     features: [
       "Acesso completo ao sistema",
       "Suporte prioritário",
       "6 meses de acesso",
       "Relatórios avançados",
-      "10% de desconto incluso",
     ],
     popular: true,
     icon: <Crown className="h-6 w-6" />,
@@ -56,12 +57,12 @@ const PLANS: Plan[] = [
     days: 365,
     price: 5089.80,
     displayPrice: "12x de R$ 424,15",
+    discount: "15% de desconto",
     features: [
       "Acesso completo ao sistema",
       "Suporte VIP 24/7",
       "12 meses de acesso",
       "Relatórios avançados",
-      "15% de desconto incluso",
     ],
     icon: <Building2 className="h-6 w-6" />,
   },
@@ -268,9 +269,14 @@ export default function RenovarAssinatura() {
               </CardHeader>
               <CardContent className="text-center">
                 <div className="mb-6">
-                  <span className="text-3xl font-bold">
+                  <span className="text-4xl font-bold">
                     {plan.displayPrice || `R$ ${plan.price.toFixed(2).replace(".", ",")}`}
                   </span>
+                  {plan.discount && (
+                    <p className="text-base font-semibold text-primary mt-1">
+                      {plan.discount}
+                    </p>
+                  )}
                 </div>
                 <ul className="space-y-3 text-left">
                   {plan.features.map((feature, idx) => (
