@@ -1,11 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Printer, Tags } from 'lucide-react';
+import { Printer, Tags, X, Plus, Minus } from 'lucide-react';
 
 interface Product {
   id: number;
@@ -15,57 +14,120 @@ interface Product {
   is_active: boolean;
 }
 
+interface LabelItem {
+  product: Product;
+  quantity: number;
+}
+
 interface PrintLabelsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   products: Product[];
+  preSelectedIds?: number[];
 }
 
-export default function PrintLabelsDialog({ open, onOpenChange, products }: PrintLabelsDialogProps) {
+export default function PrintLabelsDialog({ open, onOpenChange, products, preSelectedIds }: PrintLabelsDialogProps) {
   const [labelWidth, setLabelWidth] = useState(33);
   const [labelHeight, setLabelHeight] = useState(18);
   const [columns, setColumns] = useState(3);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [selectAll, setSelectAll] = useState(false);
-  const printRef = useRef<HTMLDivElement>(null);
+  const [codeInput, setCodeInput] = useState('');
+  const [items, setItems] = useState<LabelItem[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const activeProducts = products.filter(p => p.is_active);
-
-  const handleSelectAll = (checked: boolean) => {
-    setSelectAll(checked);
-    if (checked) {
-      setSelectedIds(new Set(activeProducts.map(p => p.id)));
-    } else {
-      setSelectedIds(new Set());
+  // Pre-select products from table checkboxes when dialog opens
+  useEffect(() => {
+    if (open && preSelectedIds && preSelectedIds.length > 0) {
+      const existingIds = new Set(items.map(i => i.product.id));
+      const newItems: LabelItem[] = [];
+      for (const id of preSelectedIds) {
+        if (!existingIds.has(id)) {
+          const product = products.find(p => p.id === id);
+          if (product) newItems.push({ product, quantity: 1 });
+        }
+      }
+      if (newItems.length > 0) {
+        setItems(prev => [...prev, ...newItems]);
+      }
     }
+  }, [open, preSelectedIds]);
+
+  // Focus input when dialog opens
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [open]);
+
+  const handleCodeSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || !codeInput.trim()) return;
+    e.preventDefault();
+
+    const searchCode = codeInput.trim().toUpperCase();
+    // Normalize: try raw, with C prefix, without C prefix
+    const variations = [searchCode, `C${searchCode}`, searchCode.replace(/^C/i, '')];
+
+    const found = products.find(p =>
+      variations.some(v => p.code.toUpperCase() === v)
+    );
+
+    if (!found) {
+      setCodeInput('');
+      return;
+    }
+
+    // If already in list, increment quantity
+    const existingIndex = items.findIndex(i => i.product.id === found.id);
+    if (existingIndex >= 0) {
+      setItems(prev => prev.map((item, idx) =>
+        idx === existingIndex ? { ...item, quantity: item.quantity + 1 } : item
+      ));
+    } else {
+      setItems(prev => [...prev, { product: found, quantity: 1 }]);
+    }
+
+    setCodeInput('');
   };
 
-  const toggleProduct = (id: number) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const updateQuantity = (productId: number, delta: number) => {
+    setItems(prev => prev.map(item =>
+      item.product.id === productId
+        ? { ...item, quantity: Math.max(1, item.quantity + delta) }
+        : item
+    ));
   };
+
+  const setQuantity = (productId: number, qty: number) => {
+    setItems(prev => prev.map(item =>
+      item.product.id === productId
+        ? { ...item, quantity: Math.max(1, qty) }
+        : item
+    ));
+  };
+
+  const removeItem = (productId: number) => {
+    setItems(prev => prev.filter(i => i.product.id !== productId));
+  };
+
+  const totalLabels = items.reduce((sum, i) => sum + i.quantity, 0);
 
   const handlePrint = () => {
-    const selected = activeProducts.filter(p => selectedIds.has(p.id));
-    if (selected.length === 0) return;
+    if (items.length === 0) return;
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const labelsHtml = selected.map(p => {
-      const barcodeHtml = generateCode128SVG(p.code);
-      return `
-        <div class="label">
-          <div class="label-name">${escapeHtml(p.name)}</div>
-          <div class="label-barcode">${barcodeHtml}</div>
-          <div class="label-code">${escapeHtml(p.code)}</div>
-        </div>
-      `;
-    }).join('');
+    const labelsHtml = items.flatMap(({ product, quantity }) =>
+      Array.from({ length: quantity }, () => {
+        const barcodeHtml = generateCode128SVG(product.code);
+        return `
+          <div class="label">
+            <div class="label-name">${escapeHtml(product.name)}</div>
+            <div class="label-barcode">${barcodeHtml}</div>
+            <div class="label-code">${escapeHtml(product.code)}</div>
+          </div>
+        `;
+      })
+    ).join('');
 
     printWindow.document.write(`<!DOCTYPE html>
 <html>
@@ -156,7 +218,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products }: Prin
             Imprimir Etiquetas
           </DialogTitle>
           <DialogDescription>
-            Configure o tamanho, colunas e selecione os produtos para impressão.
+            Bipe ou digite o código do produto e pressione Enter para adicionar.
           </DialogDescription>
         </DialogHeader>
 
@@ -177,36 +239,67 @@ export default function PrintLabelsDialog({ open, onOpenChange, products }: Prin
             </div>
           </div>
 
-          {/* Product selection */}
+          {/* Code input */}
+          <div className="space-y-1">
+            <Label className="text-xs">Código do produto</Label>
+            <Input
+              ref={inputRef}
+              placeholder="Digite ou bipe o código e pressione Enter..."
+              value={codeInput}
+              onChange={e => setCodeInput(e.target.value)}
+              onKeyDown={handleCodeSubmit}
+            />
+          </div>
+
+          {/* Items list */}
           <div className="space-y-2">
-            <div className="flex items-center space-x-2 border-b pb-2">
-              <Checkbox id="select-all" checked={selectAll} onCheckedChange={(c) => handleSelectAll(!!c)} />
-              <Label htmlFor="select-all" className="text-sm font-medium">Selecionar todos ({activeProducts.length})</Label>
-            </div>
-            <ScrollArea className="h-48">
-              <div className="space-y-1 pr-3">
-                {activeProducts.map(p => (
-                  <div key={p.id} className="flex items-center space-x-2 py-1">
-                    <Checkbox
-                      id={`prod-${p.id}`}
-                      checked={selectedIds.has(p.id)}
-                      onCheckedChange={() => toggleProduct(p.id)}
-                    />
-                    <Label htmlFor={`prod-${p.id}`} className="text-sm flex-1 cursor-pointer">
-                      {p.name} <span className="text-muted-foreground">({p.code})</span>
-                    </Label>
-                  </div>
-                ))}
-              </div>
+            <Label className="text-xs font-medium">
+              Prontos para imprimir ({items.length} {items.length === 1 ? 'produto' : 'produtos'}, {totalLabels} {totalLabels === 1 ? 'etiqueta' : 'etiquetas'})
+            </Label>
+            <ScrollArea className="h-48 border rounded-md">
+              {items.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4">
+                  Nenhum produto adicionado
+                </div>
+              ) : (
+                <div className="space-y-1 p-2">
+                  {items.map(({ product, quantity }) => (
+                    <div key={product.id} className="flex items-center gap-2 py-1.5 px-2 rounded-md bg-muted/50">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{product.name}</p>
+                        <p className="text-xs text-muted-foreground">{product.code}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQuantity(product.id, -1)}>
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={quantity}
+                          onChange={e => setQuantity(product.id, Number(e.target.value))}
+                          className="w-12 h-7 text-center text-sm p-0"
+                        />
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => updateQuantity(product.id, 1)}>
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeItem(product.id)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </ScrollArea>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button onClick={handlePrint} disabled={selectedIds.size === 0}>
+          <Button onClick={handlePrint} disabled={items.length === 0}>
             <Printer className="h-4 w-4 mr-2" />
-            Imprimir ({selectedIds.size})
+            Imprimir ({totalLabels})
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -218,11 +311,7 @@ function escapeHtml(str: string) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/**
- * Generates a simple Code 128B barcode as inline SVG string.
- */
 function generateCode128SVG(text: string): string {
-  // Code 128B encoding
   const CODE128B: number[][] = [
     [2,1,2,2,2,2],[2,2,2,1,2,2],[2,2,2,2,2,1],[1,2,1,2,2,3],[1,2,1,3,2,2],
     [1,3,1,2,2,2],[1,2,2,2,1,3],[1,2,2,3,1,2],[1,3,2,2,1,2],[2,2,1,2,1,3],
@@ -264,14 +353,12 @@ function generateCode128SVG(text: string): string {
   codes.push(checksum % 103);
   codes.push(STOP);
 
-  // Build bars
   const bars: number[] = [];
   for (const code of codes) {
     const pattern = CODE128B[code];
     if (pattern) bars.push(...pattern);
   }
 
-  // Render SVG
   const barWidth = 1;
   const totalWidth = bars.reduce((sum, b) => sum + b, 0) * barWidth;
   let x = 0;
