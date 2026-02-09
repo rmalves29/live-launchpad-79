@@ -12,7 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags } from 'lucide-react';
+import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
@@ -56,6 +57,7 @@ const Produtos = () => {
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'LIVE' | 'BAZAR'>('ALL');
   const [importing, setImporting] = useState(false);
+  const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
 
@@ -654,6 +656,10 @@ const Produtos = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
+              <Tags className="h-4 w-4 mr-2" />
+              Imprimir Etiquetas
+            </Button>
             {/* Import Dialog */}
             <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
               <DialogTrigger asChild>
@@ -1067,6 +1073,7 @@ const Produtos = () => {
         </Card>
       </div>
       <ConfirmDialog />
+      <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} />
     </div>
   );
 };
