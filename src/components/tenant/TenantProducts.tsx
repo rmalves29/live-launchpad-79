@@ -9,7 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Edit, Trash2, Package } from 'lucide-react';
+import { Plus, Edit, Trash2, Package, Tags } from 'lucide-react';
+import PrintLabelsDialog from './PrintLabelsDialog';
 
 interface Product {
   id: number;
@@ -35,6 +36,7 @@ interface ProductForm {
 export default function TenantProducts() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState<ProductForm>({
     code: '',
@@ -232,10 +234,16 @@ export default function TenantProducts() {
               Gerencie o catálogo de produtos da sua empresa
             </CardDescription>
           </div>
-          <Button onClick={openCreateDialog}>
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Produto
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
+              <Tags className="h-4 w-4 mr-2" />
+              Imprimir Etiquetas
+            </Button>
+            <Button onClick={openCreateDialog}>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Produto
+            </Button>
+          </div>
         </div>
         <div className="mt-4">
           <Input
@@ -379,6 +387,11 @@ export default function TenantProducts() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <PrintLabelsDialog
+          open={isLabelsOpen}
+          onOpenChange={setIsLabelsOpen}
+          products={products}
+        />
       </CardContent>
     </Card>
   );
