@@ -20,7 +20,7 @@ const Navbar = () => {
   
   const isWhatsappActive = location.pathname.startsWith('/whatsapp');
 
-  const isSuperAdmin = user?.email === 'rmalves21@hotmail.com' || profile?.role === 'super_admin';
+  const isSuperAdmin = profile?.role === 'super_admin';
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Manual' },
@@ -30,7 +30,7 @@ const Navbar = () => {
     { path: '/clientes', label: 'Clientes' },
     { path: '/pedidos', label: 'Pedidos' },
     ...(enableSendflow ? [{ path: '/sendflow', label: 'SendFlow' }] : []),
-    { path: '/agente-ia', label: '🤖 Agente IA' },
+    
     { path: '/relatorios', label: 'Relatórios' },
     { path: '/sorteio', label: 'Sorteio' },
     { path: '/etiquetas', label: 'Etiquetas' },

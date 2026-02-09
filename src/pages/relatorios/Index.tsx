@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +25,8 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatBrasiliaDate, getBrasiliaDateISO, getBrasiliaDate, toBrasiliaDateISO, getBrasiliaDayBoundsISO } from '@/lib/date-utils';
+
+const AgenteIAContent = lazy(() => import('@/pages/agente-ia/Index'));
 
 interface DailySales {
   date: string;
@@ -1172,11 +1174,12 @@ const Relatorios = () => {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="products">Produtos Mais Vendidos</TabsTrigger>
           <TabsTrigger value="customers">Clientes com Mais Compras</TabsTrigger>
           <TabsTrigger value="whatsapp">Grupos WhatsApp</TabsTrigger>
+          <TabsTrigger value="agente-ia">🤖 Agente IA</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -1823,9 +1826,15 @@ const Relatorios = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Agente IA Tab */}
+        <TabsContent value="agente-ia">
+          <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
+            <AgenteIAContent />
+          </Suspense>
+        </TabsContent>
       </Tabs>
     </div>
   );
 };
 
-export default Relatorios;
