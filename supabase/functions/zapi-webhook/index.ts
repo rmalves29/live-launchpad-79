@@ -1440,7 +1440,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
         }
       }
      
-     // Marcar confirmação como confirmada (mas não enviar nada)
+     // Marcar confirmação como confirmada
      await supabase
        .from('pending_message_confirmations')
        .update({
@@ -1458,11 +1458,104 @@ async function updateOrderTotal(supabase: any, orderId: number) {
        sent_at: new Date().toISOString()
      });
      
-     console.log(`[zapi-webhook] ✅ Consentimento registrado. NÃO enviando resposta ao cliente.`);
+     console.log(`[zapi-webhook] ✅ Consentimento registrado. Enviando link de checkout imediatamente.`);
+
+     // ============================================================
+     // NOVO: Enviar link de checkout imediatamente após consentimento
+     // ============================================================
+     try {
+       // Buscar config Z-API do tenant
+       const { data: whatsappConfig } = await supabase
+         .from('integration_whatsapp')
+         .select('zapi_instance_id, zapi_token, zapi_client_token')
+         .eq('tenant_id', confirmation.tenant_id)
+         .eq('is_active', true)
+         .maybeSingle();
+
+       if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
+         // Buscar slug do tenant
+         const { data: tenant } = await supabase
+           .from('tenants')
+           .select('slug')
+           .eq('id', confirmation.tenant_id)
+           .maybeSingle();
+
+         // Buscar public_base_url
+         const { data: settings } = await supabase
+           .from('app_settings')
+           .select('public_base_url')
+           .limit(1)
+           .maybeSingle();
+
+         const baseUrl = settings?.public_base_url || 'https://live-launchpad-79.lovable.app';
+         const slug = tenant?.slug || confirmation.tenant_id;
+         const checkoutUrl = `${baseUrl}/t/${slug}/checkout`;
+
+         const linkMessage = `Segue o link: ${checkoutUrl} 😘🥰`;
+
+         // Simulate typing
+         try {
+           const typingUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/typing`;
+           const typingHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+           if (whatsappConfig.zapi_client_token) typingHeaders['Client-Token'] = whatsappConfig.zapi_client_token;
+           await fetch(typingUrl, {
+             method: 'POST',
+             headers: typingHeaders,
+             body: JSON.stringify({ phone: targetPhone, duration: 3 })
+           });
+           const typingDelay = 2000 + Math.random() * 2000;
+           await new Promise(resolve => setTimeout(resolve, typingDelay));
+         } catch (e) {
+           console.log('[zapi-webhook] Typing simulation failed, continuing...');
+         }
+
+         // Anti-block delay
+         const delayMs = await antiBlockDelayLive();
+         logAntiBlockDelay('zapi-webhook (consent-link)', delayMs);
+
+         // Enviar mensagem com link
+         const sendUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/send-text`;
+         const sendHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+         if (whatsappConfig.zapi_client_token) sendHeaders['Client-Token'] = whatsappConfig.zapi_client_token;
+
+         const response = await fetch(sendUrl, {
+           method: 'POST',
+           headers: sendHeaders,
+           body: JSON.stringify({ phone: targetPhone, message: linkMessage })
+         });
+
+         const responseText = await response.text();
+         console.log(`[zapi-webhook] 📤 Checkout link sent after consent: ${response.status} - ${responseText.substring(0, 200)}`);
+
+         // Parse message ID
+         let zapiMessageId = null;
+         try {
+           const responseJson = JSON.parse(responseText);
+           zapiMessageId = responseJson.messageId || responseJson.id || null;
+         } catch (e) { }
+
+         // Log da mensagem enviada
+         await supabase.from('whatsapp_messages').insert({
+           tenant_id: confirmation.tenant_id,
+           phone: targetPhone,
+           message: linkMessage,
+           type: 'outgoing',
+           sent_at: new Date().toISOString(),
+           zapi_message_id: zapiMessageId,
+           delivery_status: response.ok ? 'SENT' : 'FAILED'
+         });
+
+         console.log(`[zapi-webhook] ✅ Link de checkout enviado após consentimento!`);
+       } else {
+         console.log(`[zapi-webhook] ⚠️ Config Z-API não encontrada para enviar link após consentimento`);
+       }
+     } catch (linkError) {
+       console.error(`[zapi-webhook] ❌ Erro ao enviar link após consentimento:`, linkError);
+     }
      
      return { 
        handled: true, 
-       action: 'consent_registered_no_reply'
+       action: 'consent_registered_and_link_sent'
      };
      
    } else {
