@@ -658,7 +658,7 @@ const Produtos = () => {
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
               <Tags className="h-4 w-4 mr-2" />
-              Imprimir Etiquetas
+              Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
             </Button>
             {/* Import Dialog */}
             <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
@@ -1073,7 +1073,7 @@ const Produtos = () => {
         </Card>
       </div>
       <ConfirmDialog />
-      <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} />
+      <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} preSelectedIds={selectedProducts} />
     </div>
   );
 };
