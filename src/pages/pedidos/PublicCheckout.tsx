@@ -17,7 +17,7 @@ import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
-import { getActiveShippingIntegration } from '@/lib/shipping-utils';
+import { getActiveShippingIntegration, ShippingProvider } from '@/lib/shipping-utils';
 
 interface Tenant {
   id: string;
@@ -319,7 +319,7 @@ const PublicCheckout = () => {
     return `${handlingDays} dias para postagem + ${originalTime}`;
   };
 
-  const filterShippingOptions = (options: any[], activeProvider: 'melhor_envio' | 'mandae' | null) => {
+  const filterShippingOptions = (options: any[], activeProvider: ShippingProvider) => {
     const normalizeText = (value: unknown) =>
       String(value || '')
         .toLowerCase()
@@ -333,10 +333,18 @@ const PublicCheckout = () => {
       // Allow pickup option
       if (option.id === 'retirada') return true;
       
+      // For meuscorreios/correios, allow all Correios services
+      if (activeProvider === 'meuscorreios' || activeProvider === 'correios') {
+        return (
+          companyName.includes('correios') ||
+          serviceName.includes('pac') ||
+          serviceName.includes('sedex') ||
+          serviceName.includes('mini')
+        );
+      }
+      
       // IMPORTANTE: só permitir serviços "Mandae" quando a integração ativa do tenant for Mandae.
-      // (No Melhor Envio pode aparecer a transportadora Mandaê, mas isso NÃO significa integração Mandae ativa.)
       const isMandaeService =
-        // Alguns retornos vêm como "Mandaê" (com acento). Normalizamos para pegar ambos.
         companyName.includes('mandae') ||
         serviceName.includes('economico') ||
         serviceName.includes('rapido');
@@ -439,7 +447,9 @@ const PublicCheckout = () => {
            .filter((option: any) => option && !option.error && option.price)
            .map((option: any) => {
              // SEMPRE exibe o nome da integração ativa do tenant, não da transportadora
-             const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae' : 'Melhor Envio';
+             const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae' 
+               : (activeIntegration.provider === 'meuscorreios' || activeIntegration.provider === 'correios') ? 'Correios' 
+               : 'Melhor Envio';
 
              return {
                id: String(option.service_id || option.id || Math.random()),
