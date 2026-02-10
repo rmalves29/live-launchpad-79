@@ -9,16 +9,18 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp, FileText, X, Download } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp, FileText, X, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import { formatBrasiliaDate, formatBrasiliaDateTime, getBrasiliaDateISO } from '@/lib/date-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { normalizeForStorage, formatPhoneForDisplay } from '@/lib/phone-utils';
+import * as XLSX from 'xlsx';
 interface Customer {
   id: number;
   phone: string;
@@ -100,6 +102,10 @@ const Clientes = () => {
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<Order | null>(null);
   const [showOrderDetailsDialog, setShowOrderDetailsDialog] = useState(false);
   const [searchingCep, setSearchingCep] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
 
   const searchCep = async (cep: string) => {
     const cleanCep = cep.replace(/\D/g, '');
@@ -612,7 +618,188 @@ const Clientes = () => {
     });
   };
 
-  const openOrderDetails = (order: OrderWithCustomer) => {
+  // Download template Excel para importação de clientes
+  const downloadCustomerTemplate = () => {
+    const templateData = [
+      {
+        nome: 'Maria Silva',
+        telefone: '11987654321',
+        email: 'maria@email.com',
+        instagram: 'mariasilva',
+        cpf: '123.456.789-00',
+        cep: '01234-567',
+        rua: 'Rua das Flores',
+        numero: '123',
+        complemento: 'Apto 45',
+        bairro: 'Centro',
+        cidade: 'São Paulo',
+        estado: 'SP'
+      },
+      {
+        nome: 'João Santos',
+        telefone: '21912345678',
+        email: '',
+        instagram: 'joaosantos',
+        cpf: '',
+        cep: '',
+        rua: '',
+        numero: '',
+        complemento: '',
+        bairro: '',
+        cidade: 'Rio de Janeiro',
+        estado: 'RJ'
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    ws['!cols'] = [
+      { wch: 25 }, // nome
+      { wch: 15 }, // telefone
+      { wch: 25 }, // email
+      { wch: 20 }, // instagram
+      { wch: 18 }, // cpf
+      { wch: 12 }, // cep
+      { wch: 30 }, // rua
+      { wch: 10 }, // numero
+      { wch: 20 }, // complemento
+      { wch: 20 }, // bairro
+      { wch: 20 }, // cidade
+      { wch: 5 },  // estado
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+    XLSX.writeFile(wb, 'modelo_importacao_clientes.xlsx');
+
+    toast({
+      title: 'Modelo baixado',
+      description: 'Preencha a planilha e importe os clientes'
+    });
+  };
+
+  // Import customers from Excel
+  const handleImportCustomers = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportProgress(0);
+    setImportResults(null);
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
+
+      if (jsonData.length === 0) {
+        toast({
+          title: 'Erro',
+          description: 'Planilha vazia ou formato inválido',
+          variant: 'destructive'
+        });
+        setImporting(false);
+        return;
+      }
+
+      const errors: string[] = [];
+      let successCount = 0;
+
+      for (let i = 0; i < jsonData.length; i++) {
+        const row = jsonData[i];
+        setImportProgress(Math.round(((i + 1) / jsonData.length) * 100));
+
+        const nome = row.nome ? String(row.nome).trim() : '';
+        const telefone = row.telefone ? String(row.telefone).trim() : '';
+
+        if (!nome || !telefone) {
+          errors.push(`Linha ${i + 2}: Campos obrigatórios (nome, telefone) faltando`);
+          continue;
+        }
+
+        const normalizedPhone = normalizeForStorage(telefone);
+        if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
+          errors.push(`Linha ${i + 2}: Telefone inválido "${telefone}"`);
+          continue;
+        }
+
+        const customerData: Record<string, any> = {
+          name: nome,
+          phone: normalizedPhone,
+          email: row.email ? String(row.email).trim() || null : null,
+          instagram: row.instagram ? String(row.instagram).trim().replace('@', '') || null : null,
+          cpf: row.cpf ? String(row.cpf).trim() || null : null,
+          cep: row.cep ? String(row.cep).trim() || null : null,
+          street: row.rua ? String(row.rua).trim() || null : null,
+          number: row.numero ? String(row.numero).trim() || null : null,
+          complement: row.complemento ? String(row.complemento).trim() || null : null,
+          neighborhood: row.bairro ? String(row.bairro).trim() || null : null,
+          city: row.cidade ? String(row.cidade).trim() || null : null,
+          state: row.estado ? String(row.estado).trim() || null : null,
+        };
+
+        // Check if customer with same phone exists
+        const { data: existing } = await supabaseTenant
+          .from('customers')
+          .select('id')
+          .eq('phone', normalizedPhone)
+          .maybeSingle();
+
+        if (existing) {
+          const { error } = await supabaseTenant
+            .from('customers')
+            .update(customerData)
+            .eq('id', existing.id);
+
+          if (error) {
+            errors.push(`Linha ${i + 2}: Erro ao atualizar "${nome}" - ${error.message}`);
+          } else {
+            successCount++;
+          }
+        } else {
+          const { error } = await supabaseTenant
+            .from('customers')
+            .insert([customerData]);
+
+          if (error) {
+            errors.push(`Linha ${i + 2}: Erro ao inserir "${nome}" - ${error.message}`);
+          } else {
+            successCount++;
+          }
+        }
+      }
+
+      setImportResults({ success: successCount, errors });
+
+      if (errors.length === 0) {
+        toast({
+          title: 'Importação concluída',
+          description: `${successCount} cliente(s) importado(s) com sucesso`
+        });
+      } else {
+        toast({
+          title: 'Importação parcial',
+          description: `${successCount} sucesso(s), ${errors.length} erro(s)`,
+          variant: 'destructive'
+        });
+      }
+
+      loadCustomers();
+    } catch (error: any) {
+      console.error('Import error:', error);
+      toast({
+        title: 'Erro na importação',
+        description: error.message || 'Erro ao processar arquivo',
+        variant: 'destructive'
+      });
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
+  };
+
+
     setSelectedOrderForDetails(order);
     setShowOrderDetailsDialog(true);
   };
@@ -771,6 +958,81 @@ const Clientes = () => {
                   Lista de Clientes ({filteredCustomers.length})
                 </span>
                 <div className="flex items-center gap-2">
+                  <Dialog open={isImportDialogOpen} onOpenChange={(open) => { setIsImportDialogOpen(open); if (!open) setImportResults(null); }}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <FileSpreadsheet className="h-4 w-4 mr-2" />
+                        Importar
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Importar Clientes</DialogTitle>
+                        <DialogDescription>
+                          Importe clientes em massa usando uma planilha Excel
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="p-4 bg-muted rounded-lg">
+                          <h4 className="font-medium mb-2">Passo 1: Baixe o modelo</h4>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Baixe a planilha modelo, preencha com seus clientes e importe. Campos obrigatórios: <strong>nome</strong> e <strong>telefone</strong>.
+                          </p>
+                          <Button variant="outline" onClick={downloadCustomerTemplate} className="w-full">
+                            <Download className="h-4 w-4 mr-2" />
+                            Baixar Planilha Modelo
+                          </Button>
+                        </div>
+
+                        <div className="p-4 bg-muted rounded-lg">
+                          <h4 className="font-medium mb-2">Passo 2: Importe a planilha</h4>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Selecione o arquivo Excel (.xlsx) preenchido. Clientes com telefone já cadastrado serão atualizados.
+                          </p>
+                          <div className="space-y-2">
+                            <Input
+                              type="file"
+                              accept=".xlsx,.xls"
+                              onChange={handleImportCustomers}
+                              disabled={importing}
+                              className="cursor-pointer"
+                            />
+                            {importing && (
+                              <div className="space-y-2">
+                                <Progress value={importProgress} className="h-2" />
+                                <p className="text-sm text-center text-muted-foreground">
+                                  Importando... {importProgress}%
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {importResults && (
+                          <div className="p-4 rounded-lg border">
+                            <h4 className="font-medium mb-2">Resultado da Importação</h4>
+                            <div className="space-y-2">
+                              <p className="text-sm text-primary">
+                                ✓ {importResults.success} cliente(s) importado(s)
+                              </p>
+                              {importResults.errors.length > 0 && (
+                                <div className="space-y-1">
+                                  <p className="text-sm text-destructive font-medium">
+                                    ✗ {importResults.errors.length} erro(s):
+                                  </p>
+                                  <div className="max-h-32 overflow-y-auto">
+                                    {importResults.errors.map((err, idx) => (
+                                      <p key={idx} className="text-xs text-destructive">{err}</p>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                   <Button onClick={exportToCSV} disabled={loading || filteredCustomers.length === 0} size="sm" variant="outline">
                     <Download className="h-4 w-4 mr-2" />
                     Exportar CSV
