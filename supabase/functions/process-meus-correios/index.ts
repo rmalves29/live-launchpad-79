@@ -155,6 +155,7 @@ serve(async (req: Request) => {
       }
 
       // Build MeusCorreios payload
+      // Try multiple service code formats since API docs are not public
       const payload = {
         parmIn: {
           Token: tokenMeusCorreios,
@@ -174,14 +175,16 @@ serve(async (req: Request) => {
           dstxcel: (order.customer_phone || "").replace(/\D/g, "").substring(0, 12),
           dstxnfi: String(order.unique_order_id || order.id).substring(0, 15),
           impetq: "PDF",
-          servicos: [{ servico }],
+          servicos: [{ servico, codigo: servico }],
           objetos: [{
             dstxItem: 1,
+            dstxsrv: servico,
+            servico: servico,
             dstxobs: `Pedido #${order.unique_order_id || order.id}`,
-            dstxpes: 500, // 500g default
-            dstxvo1: 10,  // altura cm
-            dstxvo2: 16,  // largura cm
-            dstxvo3: 20,  // comprimento cm
+            dstxpes: 500,
+            dstxvo1: 10,
+            dstxvo2: 16,
+            dstxvo3: 20,
             dstxvd: order.total_amount || 0,
             dstxcob: 0,
           }],
