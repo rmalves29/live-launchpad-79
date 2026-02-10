@@ -799,7 +799,7 @@ const Clientes = () => {
     }
   };
 
-
+  const openOrderDetails = (order: OrderWithCustomer) => {
     setSelectedOrderForDetails(order);
     setShowOrderDetailsDialog(true);
   };
