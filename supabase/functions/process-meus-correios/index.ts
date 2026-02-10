@@ -160,6 +160,7 @@ serve(async (req: Request) => {
           Token: tokenMeusCorreios,
           dstxrmtcod: codigoRemetente,
           dstxcar: cartaoPostagem,
+          dstxsrv: servico,
           dstnom: order.customer_name.substring(0, 55),
           dstnom2: "",
           dstend: (order.customer_street || "").substring(0, 55),
@@ -188,6 +189,7 @@ serve(async (req: Request) => {
       };
 
       console.log(`📦 [MeusCorreios] Processing order #${order.id} with service: ${servicoNome} (code: ${servico})`);
+      console.log(`📦 [MeusCorreios] Full payload:`, JSON.stringify(payload));
 
       try {
         const response = await fetch(MEUSCORREIOS_API_URL, {
