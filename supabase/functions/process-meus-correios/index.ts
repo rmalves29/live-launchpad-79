@@ -139,12 +139,19 @@ serve(async (req: Request) => {
         continue;
       }
 
-      // Determine service from observation
-      let servico = "PAC"; // default
+      // Determine service code from observation
+      // MeusCorreios API requires service codes, not names
+      let servico = "03298"; // PAC default
+      let servicoNome = "PAC";
       if (order.observation) {
         const obs = order.observation.toUpperCase();
-        if (obs.includes("SEDEX")) servico = "SEDEX";
-        else if (obs.includes("MINI")) servico = "MINI ENVIOS";
+        if (obs.includes("SEDEX")) {
+          servico = "03220";
+          servicoNome = "SEDEX";
+        } else if (obs.includes("MINI")) {
+          servico = "04227";
+          servicoNome = "MINI ENVIOS";
+        }
       }
 
       // Build MeusCorreios payload
@@ -180,7 +187,7 @@ serve(async (req: Request) => {
         },
       };
 
-      console.log(`📦 [MeusCorreios] Processing order #${order.id} with service: ${servico}`);
+      console.log(`📦 [MeusCorreios] Processing order #${order.id} with service: ${servicoNome} (code: ${servico})`);
 
       try {
         const response = await fetch(MEUSCORREIOS_API_URL, {
