@@ -917,6 +917,7 @@ const Live = () => {
                           <TableRow>
                             <TableHead className="w-8"></TableHead>
                             <TableHead>ID</TableHead>
+                            <TableHead>Foto</TableHead>
                             <TableHead>Telefone</TableHead>
                             <TableHead>Data</TableHead>
                             <TableHead>Total</TableHead>
@@ -936,6 +937,27 @@ const Live = () => {
                                   )}
                                 </TableCell>
                                 <TableCell>{order.id}</TableCell>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center gap-1">
+                                    {(orderCartItems[order.id] || []).slice(0, 3).map(item => (
+                                      <ZoomableImage
+                                        key={item.id}
+                                        src={item.product_image_url || ''}
+                                        alt={item.product_name || ''}
+                                        className="w-12 h-12"
+                                        containerClassName="w-12 h-12 rounded-md"
+                                        fallback={
+                                          <div className="w-12 h-12 bg-muted rounded-md flex items-center justify-center">
+                                            <Package className="h-4 w-4 text-muted-foreground" />
+                                          </div>
+                                        }
+                                      />
+                                    ))}
+                                    {(orderCartItems[order.id] || []).length > 3 && (
+                                      <span className="text-xs text-muted-foreground">+{(orderCartItems[order.id] || []).length - 3}</span>
+                                    )}
+                                  </div>
+                                </TableCell>
                                 <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                                 <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
                                 <TableCell>{formatCurrency(order.total_amount)}</TableCell>
@@ -957,7 +979,7 @@ const Live = () => {
                               </TableRow>
                               {expandedOrders.has(order.id) && (
                                 <TableRow key={`${order.id}-items`}>
-                                  <TableCell colSpan={7} className="bg-muted/30 p-0">
+                                  <TableCell colSpan={8} className="bg-muted/30 p-0">
                                     <div className="p-3">
                                       <p className="text-xs font-medium text-muted-foreground mb-2">Produtos do pedido:</p>
                                       {(orderCartItems[order.id] || []).length === 0 ? (
