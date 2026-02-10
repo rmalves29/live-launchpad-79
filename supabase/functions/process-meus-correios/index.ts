@@ -1,12 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const MEUSCORREIOS_API_URL = "http://meuscorreios.app/rest/apimccriprepos";
+const MEUSCORREIOS_API_URL = "https://meuscorreios.app/rest/apimccriprepos";
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -66,15 +66,26 @@ serve(async (req: Request) => {
     }
 
     // 2. Buscar dados da empresa (remetente)
-    const { data: tenant } = await supabase
+    const { data: tenant, error: tenantError } = await supabase
       .from("tenants")
       .select("company_name, company_document, company_email, company_phone, company_address, company_number, company_complement, company_district, company_city, company_state, company_cep")
       .eq("id", tenant_id)
-      .single();
+      .maybeSingle();
+
+    console.log("📦 [MeusCorreios] Tenant data:", { name: tenant?.company_name, cep: tenant?.company_cep, city: tenant?.company_city, error: tenantError?.message });
 
     if (!tenant || !tenant.company_cep) {
+      const missing: string[] = [];
+      if (!tenant) missing.push("empresa não encontrada");
+      else {
+        if (!tenant.company_cep) missing.push("CEP");
+        if (!tenant.company_name) missing.push("Nome da empresa");
+        if (!tenant.company_address) missing.push("Endereço");
+        if (!tenant.company_city) missing.push("Cidade");
+        if (!tenant.company_state) missing.push("Estado");
+      }
       return new Response(
-        JSON.stringify({ success: false, error: "Dados da empresa incompletos. Configure o endereço em Configurações > Empresa." }),
+        JSON.stringify({ success: false, error: `Dados da empresa incompletos: ${missing.join(", ")}. Configure em Configurações > Empresa.` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
