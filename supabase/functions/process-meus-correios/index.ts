@@ -139,14 +139,17 @@ serve(async (req: Request) => {
         continue;
       }
 
-      // Determine service code from observation
-      // MeusCorreios API requires service codes, not names
-      let servico = "03298"; // PAC default
+      // Determine service - try env secrets first, then defaults
+      // MeusCorreios may use service names ("PAC") or codes ("03298")
+      const envPac = Deno.env.get("CORREIOS_SERVICE_PAC") || "PAC";
+      const envSedex = Deno.env.get("CORREIOS_SERVICE_SEDEX") || "SEDEX";
+      
+      let servico = envPac; // default PAC
       let servicoNome = "PAC";
       if (order.observation) {
         const obs = order.observation.toUpperCase();
         if (obs.includes("SEDEX")) {
-          servico = "03220";
+          servico = envSedex;
           servicoNome = "SEDEX";
         } else if (obs.includes("MINI")) {
           servico = "04227";
