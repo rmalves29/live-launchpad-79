@@ -139,17 +139,23 @@ serve(async (req: Request) => {
         continue;
       }
 
-      // Determine service - try env secrets first, then defaults
-      // MeusCorreios may use service names ("PAC") or codes ("03298")
-      const envPac = Deno.env.get("CORREIOS_SERVICE_PAC") || "PAC";
-      const envSedex = Deno.env.get("CORREIOS_SERVICE_SEDEX") || "SEDEX";
+      // Determine service code - pad to 5 digits with leading zeros
+      // Correios official codes: PAC=03298, SEDEX=03220, Mini=04227
+      const rawPac = Deno.env.get("CORREIOS_SERVICE_PAC") || "03298";
+      const rawSedex = Deno.env.get("CORREIOS_SERVICE_SEDEX") || "03220";
       
-      let servico = envPac; // default PAC
+      // Ensure 5-digit format with leading zeros
+      const padService = (code: string) => {
+        const numeric = code.replace(/\D/g, "");
+        return numeric.padStart(5, "0");
+      };
+      
+      let servico = padService(rawPac); // default PAC
       let servicoNome = "PAC";
       if (order.observation) {
         const obs = order.observation.toUpperCase();
         if (obs.includes("SEDEX")) {
-          servico = envSedex;
+          servico = padService(rawSedex);
           servicoNome = "SEDEX";
         } else if (obs.includes("MINI")) {
           servico = "04227";
@@ -157,14 +163,14 @@ serve(async (req: Request) => {
         }
       }
 
-      // Build MeusCorreios payload
-      // Try multiple service code formats since API docs are not public
+      // Build MeusCorreios payload - simplified structure
+      // The service code goes ONLY in objetos[].dstxsrv (per item)
+      // NOT at the parmIn root level to avoid conflicts
       const payload = {
         parmIn: {
           Token: tokenMeusCorreios,
           dstxrmtcod: codigoRemetente,
           dstxcar: cartaoPostagem,
-          dstxsrv: servico,
           dstnom: order.customer_name.substring(0, 55),
           dstnom2: "",
           dstend: (order.customer_street || "").substring(0, 55),
@@ -177,12 +183,9 @@ serve(async (req: Request) => {
           dstxemail: "",
           dstxcel: (order.customer_phone || "").replace(/\D/g, "").substring(0, 12),
           dstxnfi: String(order.unique_order_id || order.id).substring(0, 15),
-          impetq: "PDF",
-          servicos: [{ servico, codigo: servico }],
           objetos: [{
             dstxItem: 1,
             dstxsrv: servico,
-            servico: servico,
             dstxobs: `Pedido #${order.unique_order_id || order.id}`,
             dstxpes: 500,
             dstxvo1: 10,
