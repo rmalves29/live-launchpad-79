@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package } from 'lucide-react';
+import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -41,6 +41,18 @@ interface Order {
   total_amount: number;
   is_paid: boolean;
   created_at: string;
+  cart_id: number | null;
+}
+
+interface CartItem {
+  id: number;
+  cart_id: number;
+  product_id: number | null;
+  product_name: string | null;
+  product_code: string | null;
+  product_image_url: string | null;
+  qty: number;
+  unit_price: number;
 }
 
 interface Customer {
@@ -68,6 +80,11 @@ const Live = () => {
   const [editAmount, setEditAmount] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalProducts, setTotalProducts] = useState(0);
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
+  const debouncedOrderSearch = useDebounce(orderSearchQuery, 300);
+  const [orderCartItems, setOrderCartItems] = useState<{[orderId: number]: CartItem[]}>({});
+  const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
+  const [deletingItems, setDeletingItems] = useState<Set<number>>(new Set());
 
   const loadProducts = async () => {
     try {
@@ -153,7 +170,47 @@ const Live = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setOrders(data || []);
+      
+      let filteredOrders = data || [];
+      
+      // Load cart items for all orders
+      const cartIds = filteredOrders.filter(o => o.cart_id).map(o => o.cart_id as number);
+      let allCartItems: CartItem[] = [];
+      if (cartIds.length > 0) {
+        const { data: items } = await supabaseTenant.raw
+          .from('cart_items')
+          .select('*')
+          .in('cart_id', cartIds);
+        allCartItems = (items || []) as CartItem[];
+      }
+      
+      // Group cart items by order
+      const itemsByOrder: {[orderId: number]: CartItem[]} = {};
+      for (const order of filteredOrders) {
+        if (order.cart_id) {
+          itemsByOrder[order.id] = allCartItems.filter(i => i.cart_id === order.cart_id);
+        } else {
+          itemsByOrder[order.id] = [];
+        }
+      }
+      
+      // Apply search filter
+      if (debouncedOrderSearch.trim()) {
+        const search = debouncedOrderSearch.trim().toLowerCase();
+        filteredOrders = filteredOrders.filter(order => {
+          // Match by phone
+          if (order.customer_phone.includes(search) || formatPhoneForDisplay(order.customer_phone).includes(search)) return true;
+          // Match by order ID
+          if (order.id.toString().includes(search.replace('#', ''))) return true;
+          // Match by product code in cart items
+          const items = itemsByOrder[order.id] || [];
+          if (items.some(item => item.product_code?.toLowerCase().includes(search) || item.product_name?.toLowerCase().includes(search))) return true;
+          return false;
+        });
+      }
+      
+      setOrderCartItems(itemsByOrder);
+      setOrders(filteredOrders);
     } catch (error) {
       console.error('Error loading orders:', error);
       toast({
@@ -176,7 +233,7 @@ const Live = () => {
     if (tenant?.id) {
       loadOrders();
     }
-  }, [tenant?.id]);
+  }, [tenant?.id, debouncedOrderSearch]);
 
   // Reset to first page when search or items per page changes
   useEffect(() => {
@@ -539,6 +596,73 @@ const Live = () => {
     }
   };
 
+  const toggleOrderExpand = (orderId: number) => {
+    setExpandedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) newSet.delete(orderId);
+      else newSet.add(orderId);
+      return newSet;
+    });
+  };
+
+  const handleDeleteCartItem = async (order: Order, item: CartItem) => {
+    if (!confirm(`Remover "${item.product_name || item.product_code}" deste pedido?`)) return;
+    
+    setDeletingItems(prev => new Set(prev).add(item.id));
+    try {
+      // Delete the cart item
+      const { error: deleteError } = await supabaseTenant.raw
+        .from('cart_items')
+        .delete()
+        .eq('id', item.id);
+      if (deleteError) throw deleteError;
+
+      // Restore stock if product still exists and order is not paid
+      if (item.product_id && !order.is_paid) {
+        const { data: prod } = await supabaseTenant
+          .from('products')
+          .select('stock')
+          .eq('id', item.product_id)
+          .maybeSingle();
+        if (prod) {
+          await supabaseTenant
+            .from('products')
+            .update({ stock: prod.stock + item.qty })
+            .eq('id', item.product_id);
+        }
+      }
+
+      // Recalculate order total
+      const remainingItems = (orderCartItems[order.id] || []).filter(i => i.id !== item.id);
+      const newTotal = remainingItems.reduce((sum, i) => sum + (i.unit_price * i.qty), 0);
+
+      if (remainingItems.length === 0) {
+        // No items left - delete the order entirely
+        if (order.cart_id) {
+          await supabaseTenant.raw.from('carts').delete().eq('id', order.cart_id);
+        }
+        await supabaseTenant.from('orders').delete().eq('id', order.id);
+        toast({ title: 'Sucesso', description: 'Pedido removido (sem itens restantes)' });
+      } else {
+        // Update order total
+        await supabaseTenant.from('orders').update({ total_amount: newTotal }).eq('id', order.id);
+        toast({ title: 'Sucesso', description: 'Produto removido do pedido' });
+      }
+
+      loadOrders();
+      loadProducts(); // Refresh stock
+    } catch (error) {
+      console.error('Error deleting cart item:', error);
+      toast({ title: 'Erro', description: 'Erro ao remover produto do pedido', variant: 'destructive' });
+    } finally {
+      setDeletingItems(prev => {
+        const s = new Set(prev);
+        s.delete(item.id);
+        return s;
+      });
+    }
+  };
+
   const fillDefaultInstagram = () => {
     if (!defaultInstagram) return;
     const newInstagrams: {[key: number]: string} = {};
@@ -770,7 +894,18 @@ const Live = () => {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                    <Input
+                      placeholder="Buscar por telefone, código do produto ou nome..."
+                      value={orderSearchQuery}
+                      onChange={(e) => setOrderSearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+
                   {ordersLoading ? (
                     <div className="flex justify-center p-8">
                       <Loader2 className="h-8 w-8 animate-spin" />
@@ -780,6 +915,7 @@ const Live = () => {
                       <Table>
                         <TableHeader>
                           <TableRow>
+                            <TableHead className="w-8"></TableHead>
                             <TableHead>ID</TableHead>
                             <TableHead>Telefone</TableHead>
                             <TableHead>Data</TableHead>
@@ -790,35 +926,81 @@ const Live = () => {
                         </TableHeader>
                         <TableBody>
                           {orders.map((order) => (
-                            <TableRow key={order.id}>
-                              <TableCell>{order.id}</TableCell>
-                              <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
-                              <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
-                              <TableCell>{formatCurrency(order.total_amount)}</TableCell>
-                              <TableCell>
-                                <Badge variant={order.is_paid ? "default" : "secondary"}>
-                                  {order.is_paid ? 'Pago' : 'Pendente'}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleEditOrder(order)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleDeleteOrder(order.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </TableCell>
-                            </TableRow>
+                            <>
+                              <TableRow key={order.id} className="cursor-pointer" onClick={() => toggleOrderExpand(order.id)}>
+                                <TableCell className="w-8 px-2">
+                                  {expandedOrders.has(order.id) ? (
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </TableCell>
+                                <TableCell>{order.id}</TableCell>
+                                <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
+                                <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
+                                <TableCell>{formatCurrency(order.total_amount)}</TableCell>
+                                <TableCell>
+                                  <Badge variant={order.is_paid ? "default" : "secondary"}>
+                                    {order.is_paid ? 'Pago' : 'Pendente'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                    <Button variant="ghost" size="sm" onClick={() => handleEditOrder(order)}>
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="sm" onClick={() => handleDeleteOrder(order.id)}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                              {expandedOrders.has(order.id) && (
+                                <TableRow key={`${order.id}-items`}>
+                                  <TableCell colSpan={7} className="bg-muted/30 p-0">
+                                    <div className="p-3">
+                                      <p className="text-xs font-medium text-muted-foreground mb-2">Produtos do pedido:</p>
+                                      {(orderCartItems[order.id] || []).length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic">Nenhum produto encontrado</p>
+                                      ) : (
+                                        <div className="space-y-1">
+                                          {(orderCartItems[order.id] || []).map(item => (
+                                            <div key={item.id} className="flex items-center justify-between bg-background rounded p-2 text-sm">
+                                              <div className="flex items-center gap-3 flex-wrap">
+                                                {item.product_image_url ? (
+                                                  <img src={item.product_image_url} alt="" className="w-8 h-8 rounded object-cover" />
+                                                ) : (
+                                                  <div className="w-8 h-8 bg-muted rounded flex items-center justify-center">
+                                                    <Package className="h-3 w-3 text-muted-foreground" />
+                                                  </div>
+                                                )}
+                                                <span className="font-medium">{item.product_code}</span>
+                                                <span className="text-muted-foreground">{item.product_name}</span>
+                                                <span>x{item.qty}</span>
+                                                <span className="text-muted-foreground">{formatCurrency(item.unit_price * item.qty)}</span>
+                                              </div>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                                onClick={() => handleDeleteCartItem(order, item)}
+                                                disabled={deletingItems.has(item.id)}
+                                              >
+                                                {deletingItems.has(item.id) ? (
+                                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                                ) : (
+                                                  <X className="h-3 w-3" />
+                                                )}
+                                              </Button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </>
                           ))}
                         </TableBody>
                       </Table>
