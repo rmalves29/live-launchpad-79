@@ -666,7 +666,14 @@ async function sendOrderToBling(
     default_pis_cofins: string | null;
   },
   activeShippingProvider?: string | null,
-  customShippingOptions?: CustomShippingOption[]
+  customShippingOptions?: CustomShippingOption[],
+  blingPaymentIds?: {
+    pix?: number | null;
+    credit_card?: number | null;
+    boleto?: number | null;
+    debit_card?: number | null;
+    other?: number | null;
+  }
 ): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
@@ -1056,6 +1063,47 @@ async function sendOrderToBling(
     console.log('[bling-sync-orders] Adicionando apenas valor de frete:', freteValor);
   }
 
+  // Adicionar parcelas/pagamento se o pedido tem info de pagamento e IDs configurados
+  if (order.payment_method && blingPaymentIds) {
+    const methodMap: Record<string, number | null | undefined> = {
+      pix: blingPaymentIds.pix,
+      credit_card: blingPaymentIds.credit_card,
+      boleto: blingPaymentIds.boleto,
+      debit_card: blingPaymentIds.debit_card,
+      account_money: blingPaymentIds.pix, // MP account_money -> PIX
+    };
+    
+    const blingPaymentId = methodMap[order.payment_method] || blingPaymentIds.other;
+    
+    if (blingPaymentId) {
+      const installments = order.payment_installments || 1;
+      const totalAmount = Number(order.total_amount) || 0;
+      const parcelas: any[] = [];
+      
+      for (let i = 0; i < installments; i++) {
+        parcelas.push({
+          dataVencimento: new Date(order.created_at).toISOString().split('T')[0],
+          valor: Math.round((totalAmount / installments) * 100) / 100,
+          formaPagamento: { id: blingPaymentId },
+        });
+      }
+      
+      blingOrder.parcelas = parcelas;
+      
+      const methodNames: Record<string, string> = {
+        pix: 'PIX',
+        credit_card: 'Cartão de Crédito',
+        boleto: 'Boleto',
+        debit_card: 'Cartão de Débito',
+        account_money: 'PIX (Conta MP)',
+      };
+      const methodName = methodNames[order.payment_method] || order.payment_method;
+      console.log(`[bling-sync-orders] Pagamento: ${methodName} em ${installments}x, Bling forma ID: ${blingPaymentId}`);
+    } else {
+      console.log(`[bling-sync-orders] Método de pagamento "${order.payment_method}" sem ID configurado no Bling`);
+    }
+  }
+
   // Vincular à loja OrderZap se configurado
   if (storeId) {
     blingOrder.loja = { id: storeId };
@@ -1332,7 +1380,15 @@ serve(async (req) => {
         
         console.log(`[bling-sync-orders] FISCAL DATA FOR TENANT ${tenant_id}:`, JSON.stringify(fiscalData, null, 2));
         
-        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider, customShippingOptions);
+        const blingPaymentIds = {
+          pix: integration.bling_payment_id_pix || null,
+          credit_card: integration.bling_payment_id_credit_card || null,
+          boleto: integration.bling_payment_id_boleto || null,
+          debit_card: integration.bling_payment_id_debit_card || null,
+          other: integration.bling_payment_id_other || null,
+        };
+        
+        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider, customShippingOptions, blingPaymentIds);
 
         // Persistir o ID do pedido no Bling e marcar como synced
         await supabase
@@ -1495,7 +1551,15 @@ serve(async (req) => {
             
             console.log(`[bling-sync-orders] SYNC_ALL - FISCAL DATA FOR ORDER ${order.id}:`, JSON.stringify(fiscalData, null, 2));
             
-            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk, customShippingOptionsBulk);
+            const blingPaymentIdsBulk = {
+              pix: integration.bling_payment_id_pix || null,
+              credit_card: integration.bling_payment_id_credit_card || null,
+              boleto: integration.bling_payment_id_boleto || null,
+              debit_card: integration.bling_payment_id_debit_card || null,
+              other: integration.bling_payment_id_other || null,
+            };
+            
+            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk, customShippingOptionsBulk, blingPaymentIdsBulk);
 
             await supabase
               .from('orders')
