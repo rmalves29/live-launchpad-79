@@ -1127,10 +1127,10 @@ async function findOrCreateOrder(
 }
 
 async function updateOrderTotal(supabase: any, orderId: number) {
-  // Calculate total from cart items
+  // Calculate total from cart items + freight from observation
   const { data: order } = await supabase
     .from('orders')
-    .select('cart_id')
+    .select('cart_id, observation')
     .eq('id', orderId)
     .single();
 
@@ -1141,14 +1141,25 @@ async function updateOrderTotal(supabase: any, orderId: number) {
     .select('qty, unit_price')
     .eq('cart_id', order.cart_id);
 
-  const total = items?.reduce((sum: number, item: any) => sum + (item.qty * item.unit_price), 0) || 0;
+  const productsTotal = items?.reduce((sum: number, item: any) => sum + (item.qty * item.unit_price), 0) || 0;
+
+  // Extract freight value from observation field if present
+  let freightValue = 0;
+  if (order.observation) {
+    const match = order.observation.match(/R\$\s*([\d]+[.,][\d]{2})/i);
+    if (match) {
+      freightValue = parseFloat(match[1].replace(",", ".")) || 0;
+    }
+  }
+
+  const total = productsTotal + freightValue;
 
   await supabase
     .from('orders')
     .update({ total_amount: total })
     .eq('id', orderId);
 
-  console.log(`[zapi-webhook] Updated order ${orderId} total to ${total}`);
+  console.log(`[zapi-webhook] Updated order ${orderId} total to ${total} (products: ${productsTotal}, freight: ${freightValue})`);
 }
  
  // Handle confirmation responses (SIM, OK, sim, ok) for the two-step message flow
