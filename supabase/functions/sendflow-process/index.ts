@@ -96,7 +96,7 @@ async function sendGroupMessage(
   
   try {
     await simulateTyping(instanceId, token, clientToken, groupId);
-    const variedMessage = addMessageVariation(message);
+    const variedMessage = addMessageVariation(message, false);
 
     let url: string;
     let body: Record<string, unknown>;
