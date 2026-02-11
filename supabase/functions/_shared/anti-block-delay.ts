@@ -104,9 +104,12 @@ const EMOJI_VARIATIONS: Record<string, string[]> = {
   '📦': ['🎁', '📬', '📭', '🗳️'],
 };
 
-// NOTE: Greeting variations REMOVED - system should use only the registered template
-// Keeping empty array for backward compatibility
-const GREETINGS: string[] = [];
+// Greeting variations for bulk/mass messages to avoid identical content
+const BULK_GREETINGS: string[] = [
+  'Olá tudo bem ? ',
+  'Oi, tudo bem ? ',
+  'Olá como vai ? ',
+];
 
 // Suffix variations (subtle, don't change message meaning)
 const SUFFIXES = ['', '', '', '', '']; // Disabled - use only registered template
@@ -115,14 +118,18 @@ const SUFFIXES = ['', '', '', '', '']; // Disabled - use only registered templat
  * Adds subtle variations to message to avoid identical messages
  * This helps prevent automated message detection by WhatsApp
  * 
- * IMPORTANT: Does NOT add greetings or change the template structure
- * Only adds invisible characters and minor emoji swaps to avoid spam detection
+ * Adds variations to message to avoid identical messages being flagged as spam.
+ * For bulk/mass messages: always prepends a random greeting.
+ * Also adds invisible characters and minor emoji swaps.
  */
-export function addMessageVariation(message: string): string {
+export function addMessageVariation(message: string, isBulk: boolean = true): string {
   let result = message;
   
-  // REMOVED: No longer adds random greetings - follow registered template only
-  // Previously: 25% chance to add "Olá!", "Ei!", etc. - DISABLED
+  // For bulk/mass messages, always prepend a random greeting
+  if (isBulk && BULK_GREETINGS.length > 0) {
+    const greeting = BULK_GREETINGS[Math.floor(Math.random() * BULK_GREETINGS.length)];
+    result = greeting + '\n' + result;
+  }
   
   // 30% chance: Swap emojis with alternatives (subtle anti-spam)
   if (Math.random() < 0.30) {
@@ -135,8 +142,8 @@ export function addMessageVariation(message: string): string {
     }
   }
   
-  // 10% chance: Add invisible variation (zero-width space) - main anti-spam technique
-  if (Math.random() < 0.10) {
+  // 60% chance: Add invisible variation (zero-width space) - anti-spam technique
+  if (Math.random() < 0.60) {
     const pos = Math.floor(Math.random() * result.length);
     result = result.slice(0, pos) + '\u200B' + result.slice(pos);
   }
