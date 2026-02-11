@@ -176,9 +176,9 @@ serve(async (req) => {
     // Get messageId for deduplication (Z-API may send messageId or zapiMessageId)
     const messageId = payload.messageId || payload.zapiMessageId;
 
-    // Check for duplicate message BEFORE processing
+    // Check for duplicate message BEFORE processing (in-memory cache - fast path)
     if (isDuplicateMessage(messageId, senderPhone, messageText)) {
-      console.log(`[zapi-webhook] ⏭️ Skipping duplicate message from ${senderPhone}`);
+      console.log(`[zapi-webhook] ⏭️ Skipping duplicate message from ${senderPhone} (in-memory)`);
       return new Response(JSON.stringify({ 
         success: true, 
         skipped: 'duplicate_message',
@@ -186,6 +186,28 @@ serve(async (req) => {
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // DATABASE-LEVEL deduplication (handles multiple Edge Function instances)
+    // This catches duplicates that in-memory cache misses when Z-API sends
+    // the same webhook to different function instances
+    if (messageId) {
+      const { data: existingMsg } = await supabase
+        .from('whatsapp_messages')
+        .select('id')
+        .eq('zapi_message_id', messageId)
+        .maybeSingle();
+      
+      if (existingMsg) {
+        console.log(`[zapi-webhook] ⏭️ Skipping duplicate message from ${senderPhone} (DB-level, messageId: ${messageId})`);
+        return new Response(JSON.stringify({ 
+          success: true, 
+          skipped: 'duplicate_message_db',
+          messageId
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     console.log(`[zapi-webhook] Message: "${messageText}", From: ${senderPhone}, Group: ${groupName}, IsGroup: ${isGroup}, MessageId: ${messageId || 'N/A'}`);
@@ -311,6 +333,20 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: false, error: 'tenant_not_found' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // EARLY LOG: Insert webhook log BEFORE processing items
+    // This ensures the zapi_message_id is in the DB for cross-instance deduplication
+    if (messageId) {
+      await supabase.from('whatsapp_messages').insert({
+        tenant_id: tenantId,
+        phone: normalizedPhone,
+        message: `[WEBHOOK] Processado: ${messageText}`,
+        type: 'incoming',
+        whatsapp_group_name: groupName || null,
+        received_at: new Date().toISOString(),
+        zapi_message_id: messageId,
       });
     }
 
@@ -727,15 +763,17 @@ serve(async (req) => {
       });
     }
 
-    // Log the webhook processing
-    await supabase.from('whatsapp_messages').insert({
-      tenant_id: tenantId,
-      phone: normalizedPhone,
-      message: `[WEBHOOK] Processado: ${messageText}`,
-      type: 'incoming',
-      whatsapp_group_name: groupName || null,
-      received_at: new Date().toISOString(),
-    });
+    // Log the webhook processing (only if we didn't already log with messageId above)
+    if (!messageId) {
+      await supabase.from('whatsapp_messages').insert({
+        tenant_id: tenantId,
+        phone: normalizedPhone,
+        message: `[WEBHOOK] Processado: ${messageText}`,
+        type: 'incoming',
+        whatsapp_group_name: groupName || null,
+        received_at: new Date().toISOString(),
+      });
+    }
 
     console.log(`[zapi-webhook] Processing complete. Results:`, results);
 
