@@ -339,6 +339,45 @@ serve(async (req) => {
         
       } else {
         // Template A - Solicitar permissão (cliente novo ou expirado)
+        // IMPORTANTE: Se já existe uma solicitação pendente para este telefone,
+        // NÃO enviar nova mensagem (evita spam quando cliente não respondeu SIM)
+        const { data: existingPending } = await supabase
+          .from("pending_message_confirmations")
+          .select("id, created_at")
+          .eq("tenant_id", tenant_id)
+          .eq("customer_phone", formattedPhone)
+          .eq("status", "pending")
+          .eq("confirmation_type", "item_added")
+          .maybeSingle();
+
+        if (existingPending) {
+          console.log(`[zapi-send-item-added] ⛔ Já existe solicitação pendente (${existingPending.id}) para ${formattedPhone}. Não enviando nova mensagem.`);
+          
+          // Apenas atualiza os metadados da confirmação existente com o novo produto
+          await supabase
+            .from("pending_message_confirmations")
+            .update({
+              metadata: { 
+                product_name, 
+                product_code, 
+                unit_price, 
+                quantity,
+                consent_protection_enabled: true
+              }
+            })
+            .eq("id", existingPending.id);
+
+          return new Response(
+            JSON.stringify({ 
+              sent: false, 
+              skipped: true, 
+              reason: "Solicitação de consentimento já pendente para este cliente",
+              existing_confirmation_id: existingPending.id
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         console.log(`[zapi-send-item-added] 📝 Usando Template A (solicitação) para cliente ${customerId || 'novo'}`);
         templateType = 'A';
         
