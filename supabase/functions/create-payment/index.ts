@@ -540,7 +540,7 @@ serve(async (req) => {
             complement: payload.addressData.complement || "",
             zip_code: payload.addressData.cep.replace(/\D/g, ""),
           },
-          amount: Math.round(Number(payload.shippingCost) * 100),
+          amount: 0, // Frete já incluído como item na lista de items (code: FRETE)
           description: "Envio padrão",
         },
         payments: [
