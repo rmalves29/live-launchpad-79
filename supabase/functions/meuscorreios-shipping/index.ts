@@ -7,10 +7,20 @@ const corsHeaders = {
 };
 
 // Códigos dos serviços dos Correios
-const SERVICES = [
+// Códigos públicos (sem contrato)
+const PUBLIC_SERVICES = [
   { code: "04510", name: "PAC", company: "Correios" },
   { code: "04014", name: "SEDEX", company: "Correios" },
   { code: "04227", name: "Mini Envios", company: "Correios" },
+];
+
+// Códigos de contrato (AG) - usados quando o tenant tem contrato ativo
+const CONTRACT_SERVICES = [
+  { code: "03298", name: "PAC", company: "Correios" },
+  { code: "03220", name: "SEDEX", company: "Correios" },
+  { code: "04227", name: "Mini Envios", company: "Correios" },
+  { code: "03140", name: "SEDEX 12", company: "Correios" },
+  { code: "03204", name: "SEDEX Hoje", company: "Correios" },
 ];
 
 interface CalcResult {
@@ -48,11 +58,16 @@ serve(async (req) => {
     // Tentar buscar from_cep da integração meuscorreios
     const { data: integration } = await supabase
       .from("shipping_integrations")
-      .select("from_cep")
+      .select("from_cep, access_token")
       .eq("tenant_id", tenant_id)
       .eq("provider", "meuscorreios")
       .eq("is_active", true)
       .maybeSingle();
+
+    // Se tem token MeusCorreios, assume contrato ativo com códigos AG
+    const hasContract = !!integration?.access_token && integration.access_token !== "";
+    const SERVICES = hasContract ? CONTRACT_SERVICES : PUBLIC_SERVICES;
+    console.log("[meuscorreios-shipping] Using", hasContract ? "CONTRACT" : "PUBLIC", "service codes");
 
     if (integration?.from_cep) {
       cepOrigem = integration.from_cep.replace(/\D/g, "");
@@ -92,7 +107,8 @@ serve(async (req) => {
     const cepDestino = to_postal_code.replace(/\D/g, "");
 
     // Usar API pública de cálculo via HTTPS
-    const calcUrl = `https://www.correios.com.br/@@precosEPrazos?cepOrigem=${cepOrigem}&cepDestino=${cepDestino}&nVlPeso=${pesoTotal}&nCdFormato=1&nVlComprimento=20&nVlAltura=10&nVlLargura=16&nVlDiametro=0&sCdMaoPropria=N&nVlValorDeclarado=0&sCdAvisoRecebimento=N&nCdServico=04510,04014,04227&StrRetorno=json`;
+    const serviceCodes = SERVICES.map(s => s.code).join(",");
+    const calcUrl = `https://www.correios.com.br/@@precosEPrazos?cepOrigem=${cepOrigem}&cepDestino=${cepDestino}&nVlPeso=${pesoTotal}&nCdFormato=1&nVlComprimento=20&nVlAltura=10&nVlLargura=16&nVlDiametro=0&sCdMaoPropria=N&nVlValorDeclarado=0&sCdAvisoRecebimento=N&nCdServico=${serviceCodes}&StrRetorno=json`;
 
     console.log("[meuscorreios-shipping] Trying Correios API...");
 
@@ -160,10 +176,14 @@ serve(async (req) => {
       const destinoRegiao = cepDestino.substring(0, 1);
       const mesmaRegiao = origemRegiao === destinoRegiao;
       
+      // Usar códigos corretos baseados no contrato
+      const pacCode = hasContract ? "03298" : "04510";
+      const sedexCode = hasContract ? "03220" : "04014";
+
       const shippingOptions = [
         {
-          id: "correios_04510",
-          service_id: "04510",
+          id: `correios_${pacCode}`,
+          service_id: pacCode,
           name: "PAC",
           service_name: "PAC",
           company: { name: "Correios", picture: "" },
@@ -173,8 +193,8 @@ serve(async (req) => {
           custom_delivery_time: mesmaRegiao ? 5 : 10,
         },
         {
-          id: "correios_04014",
-          service_id: "04014",
+          id: `correios_${sedexCode}`,
+          service_id: sedexCode,
           name: "SEDEX",
           service_name: "SEDEX",
           company: { name: "Correios", picture: "" },
