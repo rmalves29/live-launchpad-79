@@ -401,18 +401,54 @@ serve(async (req) => {
       };
 
       console.log("[create-payment] Creating App Max customer...");
-      const customerRes = await fetch(`${baseUrl}/customer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(customerBody),
-      });
+      let customerRes: Response;
+      try {
+        customerRes = await fetch(`${baseUrl}/customer`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(customerBody),
+          signal: AbortSignal.timeout(60000),
+        });
+      } catch (fetchErr: any) {
+        console.error("[create-payment] App Max customer fetch error:", fetchErr.message);
+        return new Response(JSON.stringify({ 
+          error: `App Max indisponível: ${fetchErr.message}` 
+        }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-      const customerJson = await customerRes.json();
+      const customerContentType = customerRes.headers.get("content-type") || "";
+      if (!customerContentType.includes("application/json")) {
+        const rawText = await customerRes.text();
+        console.error("[create-payment] App Max returned non-JSON for customer:", rawText.substring(0, 300));
+        return new Response(JSON.stringify({ 
+          error: "App Max retornou resposta inválida. Verifique se o Access Token está correto e tente novamente.",
+          details: `Status: ${customerRes.status}, Content-Type: ${customerContentType}`
+        }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let customerJson: any;
+      try {
+        customerJson = await customerRes.json();
+      } catch (parseErr) {
+        console.error("[create-payment] App Max customer JSON parse error:", parseErr);
+        return new Response(JSON.stringify({ 
+          error: "App Max retornou resposta malformada. Tente novamente." 
+        }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       
       if (!customerRes.ok || !customerJson.data?.id) {
         console.error("[create-payment] App Max customer creation failed:", customerJson);
         return new Response(JSON.stringify({ 
-          error: "Erro ao criar cliente no App Max", 
+          error: customerJson?.message || "Erro ao criar cliente no App Max", 
           details: customerJson 
         }), {
           status: 400,
@@ -443,18 +479,54 @@ serve(async (req) => {
       };
 
       console.log("[create-payment] Creating App Max order...");
-      const orderRes = await fetch(`${baseUrl}/order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderBody),
-      });
+      let orderRes: Response;
+      try {
+        orderRes = await fetch(`${baseUrl}/order`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(orderBody),
+          signal: AbortSignal.timeout(60000),
+        });
+      } catch (fetchErr: any) {
+        console.error("[create-payment] App Max order fetch error:", fetchErr.message);
+        return new Response(JSON.stringify({ 
+          error: `App Max indisponível ao criar pedido: ${fetchErr.message}` 
+        }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-      const orderJson = await orderRes.json();
+      const orderContentType = orderRes.headers.get("content-type") || "";
+      if (!orderContentType.includes("application/json")) {
+        const rawText = await orderRes.text();
+        console.error("[create-payment] App Max returned non-JSON for order:", rawText.substring(0, 300));
+        return new Response(JSON.stringify({ 
+          error: "App Max retornou resposta inválida ao criar pedido. Verifique o Access Token.",
+          details: `Status: ${orderRes.status}, Content-Type: ${orderContentType}`
+        }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      let orderJson: any;
+      try {
+        orderJson = await orderRes.json();
+      } catch (parseErr) {
+        console.error("[create-payment] App Max order JSON parse error:", parseErr);
+        return new Response(JSON.stringify({ 
+          error: "App Max retornou resposta malformada ao criar pedido." 
+        }), {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       
       if (!orderRes.ok || !orderJson.data?.id) {
         console.error("[create-payment] App Max order creation failed:", orderJson);
         return new Response(JSON.stringify({ 
-          error: "Erro ao criar pedido no App Max", 
+          error: orderJson?.message || "Erro ao criar pedido no App Max", 
           details: orderJson 
         }), {
           status: 400,
