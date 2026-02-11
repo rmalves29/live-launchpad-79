@@ -21,6 +21,7 @@ import BlingOrdersSyncPanel from './BlingOrdersSyncPanel';
 import BlingProductsSyncPanel from './BlingProductsSyncPanel';
 import BlingFiscalSettings from './BlingFiscalSettings';
 import BlingBulkAddressSync from './BlingBulkAddressSync';
+import BlingPaymentSettings from './BlingPaymentSettings';
 import { 
   Loader2, 
   Save, 
@@ -895,6 +896,11 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
       {/* Dados Fiscais */}
       {isAuthorized && !isExpired && (
         <BlingFiscalSettings tenantId={tenantId} />
+      )}
+
+      {/* Formas de Pagamento do Bling */}
+      {isAuthorized && !isExpired && (
+        <BlingPaymentSettings tenantId={tenantId} />
       )}
 
       {/* Atualizar endereços em massa no Bling */}

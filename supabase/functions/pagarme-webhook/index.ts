@@ -128,9 +128,20 @@ serve(async (req) => {
 
       console.log("[pagarme-webhook] Updating orders:", orderIds);
 
+      // Extract payment method info from Pagar.me webhook
+      const charge = eventData.charges?.[0] || eventData.charge || eventData || {};
+      const lastTransaction = charge.last_transaction || charge.lastTransaction || {};
+      const pmType = lastTransaction.transaction_type || lastTransaction.transactionType || 
+                     charge.payment_method || eventData.payment_method || "";
+      // Map Pagar.me types: credit_card, debit_card, boleto, pix, voucher
+      let paymentMethod = pmType;
+      if (pmType === "voucher") paymentMethod = "other";
+      const pmInstallments = lastTransaction.installments || charge.installments || 1;
+      console.log(`[pagarme-webhook] Payment method: ${paymentMethod}, installments: ${pmInstallments}`);
+
       // Marcar pedidos como pagos
       for (const orderId of orderIds) {
-        await markOrderAsPaid(sb, orderId, parsedTenantId, body.id);
+        await markOrderAsPaid(sb, orderId, parsedTenantId, body.id, paymentMethod, pmInstallments);
       }
 
       return new Response(
@@ -178,7 +189,9 @@ async function markOrderAsPaid(
   sb: ReturnType<typeof createClient>,
   orderId: number,
   tenantId: string | null,
-  webhookEventId: string
+  webhookEventId: string,
+  paymentMethod?: string | null,
+  installments?: number
 ) {
   try {
     console.log(`[pagarme-webhook] Marking order ${orderId} as paid`);
@@ -203,10 +216,14 @@ async function markOrderAsPaid(
     // Usar tenant do pedido se não vier no webhook
     const orderTenantId = existingOrder.tenant_id || tenantId;
 
-    // Marcar como pago - o TRIGGER do banco de dados vai disparar zapi-send-paid-order automaticamente
+    // Marcar como pago com info de pagamento - o TRIGGER do banco de dados vai disparar zapi-send-paid-order automaticamente
+    const updateData: any = { is_paid: true };
+    if (paymentMethod) updateData.payment_method = paymentMethod;
+    if (installments && installments > 0) updateData.payment_installments = installments;
+
     const { error } = await sb
       .from("orders")
-      .update({ is_paid: true })
+      .update(updateData)
       .eq("id", orderId);
 
     if (error) {
