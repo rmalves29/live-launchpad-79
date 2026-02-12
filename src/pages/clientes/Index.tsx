@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp, FileText, X, Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { Loader2, Users, UserPlus, Edit, Trash2, Search, Eye, ShoppingBag, DollarSign, Calendar, ArrowLeft, BarChart3, TrendingUp, FileText, X, Download, FileSpreadsheet, Upload, ShieldBan, ShieldCheck } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { formatBrasiliaDate, formatBrasiliaDateTime, getBrasiliaDateISO } from '@/lib/date-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
@@ -35,6 +36,7 @@ interface Customer {
   city?: string;
   state?: string;
   cep?: string;
+  is_blocked?: boolean;
   created_at: string;
   updated_at: string;
   total_orders: number;
@@ -103,6 +105,7 @@ const Clientes = () => {
   const [showOrderDetailsDialog, setShowOrderDetailsDialog] = useState(false);
   const [searchingCep, setSearchingCep] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [blockingCustomer, setBlockingCustomer] = useState<Customer | null>(null);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
@@ -799,6 +802,34 @@ const Clientes = () => {
     }
   };
 
+  const toggleBlockCustomer = async (customer: Customer) => {
+    try {
+      const newStatus = !customer.is_blocked;
+      const { error } = await supabaseTenant
+        .from('customers')
+        .update({ is_blocked: newStatus })
+        .eq('id', customer.id);
+
+      if (error) throw error;
+
+      toast({
+        title: newStatus ? '🚫 Cliente Bloqueado' : '✅ Cliente Desbloqueado',
+        description: newStatus 
+          ? `${customer.name} foi bloqueado e não poderá realizar novas compras.`
+          : `${customer.name} foi desbloqueado e pode realizar compras normalmente.`,
+      });
+      
+      setBlockingCustomer(null);
+      loadCustomers();
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao alterar status do cliente',
+        variant: 'destructive'
+      });
+    }
+  };
+
   const openOrderDetails = (order: OrderWithCustomer) => {
     setSelectedOrderForDetails(order);
     setShowOrderDetailsDialog(true);
@@ -1085,7 +1116,12 @@ const Clientes = () => {
                              <TableRow key={customer.id}>
                                <TableCell className="font-medium">
                                  <div className="flex flex-col space-y-1">
-                                   <span>{customer.name}</span>
+                                   <div className="flex items-center gap-2">
+                                     <span>{customer.name}</span>
+                                     {customer.is_blocked && (
+                                       <Badge variant="destructive" className="text-xs">BLOQUEADO</Badge>
+                                     )}
+                                   </div>
                                    {customer.tags && customer.tags.length > 0 && (
                                      <div className="flex flex-wrap gap-1">
                                        {customer.tags.map((tag) => (
@@ -1422,6 +1458,15 @@ const Clientes = () => {
                                   </Dialog>
 
                                   <Button
+                                    onClick={() => setBlockingCustomer(customer)}
+                                    size="sm"
+                                    variant={customer.is_blocked ? "outline" : "ghost"}
+                                    title={customer.is_blocked ? 'Desbloquear cliente' : 'Bloquear cliente'}
+                                    className={customer.is_blocked ? 'text-green-600 hover:text-green-700 border-green-300' : 'text-destructive hover:text-destructive'}
+                                  >
+                                    {customer.is_blocked ? <ShieldCheck className="h-4 w-4" /> : <ShieldBan className="h-4 w-4" />}
+                                  </Button>
+                                  <Button
                                     onClick={() => deleteCustomer(customer.id)}
                                     size="sm"
                                     variant="outline"
@@ -1444,6 +1489,32 @@ const Clientes = () => {
               </TabsContent>
             </Tabs>
           </div>
+
+          {/* Block/Unblock Confirmation Dialog */}
+          <AlertDialog open={!!blockingCustomer} onOpenChange={(open) => !open && setBlockingCustomer(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {blockingCustomer?.is_blocked ? '✅ Desbloquear Cliente' : '🚫 Bloquear Cliente'}
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-base">
+                  {blockingCustomer?.is_blocked 
+                    ? `Deseja desbloquear ${blockingCustomer?.name}? O cliente poderá realizar novas compras normalmente.`
+                    : `Deseja bloquear ${blockingCustomer?.name}? O cliente não poderá mais adicionar itens ao carrinho e receberá uma mensagem automática de restrição.`
+                  }
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => blockingCustomer && toggleBlockCustomer(blockingCustomer)}
+                  className={blockingCustomer?.is_blocked ? '' : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'}
+                >
+                  {blockingCustomer?.is_blocked ? 'Desbloquear' : 'Bloquear'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
     );
