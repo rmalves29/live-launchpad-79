@@ -593,42 +593,45 @@ const Checkout = () => {
     console.log('📋 Tenant ID:', tenantId);
     console.log('📦 Order items:', order.items);
     
-    // Buscar opções de frete customizadas do banco de dados
-    const customOptions = await fetchCustomShippingOptions(tenantId || '');
-    
-    // Usar opções customizadas do banco ou fallback padrão
-    const fallbackShipping = customOptions.length > 0 
-      ? customOptions 
-      : [DEFAULT_SHIPPING_OPTION];
-
     setLoadingShipping(true);
     
-    // Preservar opção de merge se existir
-    const mergeOption = hasPaidOrderWithinPeriod ? MERGE_ORDER_SHIPPING_OPTION : null;
-    // Sempre garantir que há pelo menos as opções de frete padrão
-    setShippingOptions(mergeOption ? [mergeOption, ...fallbackShipping] : fallbackShipping);
-    
     try {
-      // Buscar endereço pelo CEP (ViaCEP) - forma segura
+      // 1. Buscar endereço pelo CEP PRIMEIRO para saber estado/cidade
+      let customerState = '';
+      let customerCity = '';
       if (cep.replace(/[^0-9]/g, '').length === 8) {
         try {
           const cepResponse = await fetch(`https://viacep.com.br/ws/${cep.replace(/[^0-9]/g, '')}/json/`);
           const cepData = await cepResponse.json();
           
           if (!cepData.erro && cepData.localidade) {
+            customerState = cepData.uf || '';
+            customerCity = cepData.localidade || '';
             setCustomerData(prev => ({
               ...prev,
               street: cepData.logradouro || prev.street,
               neighborhood: cepData.bairro || prev.neighborhood,
-              city: cepData.localidade || prev.city,
-              state: cepData.uf || prev.state
+              city: customerCity || prev.city,
+              state: customerState || prev.state
             }));
           }
         } catch (cepError) {
           console.error('Error fetching address from ViaCEP:', cepError);
-          // Não throw aqui, continua sem os dados do CEP
         }
       }
+
+      // 2. Buscar opções de frete customizadas FILTRADAS por cobertura geográfica
+      const customOptions = await fetchCustomShippingOptions(tenantId || '', customerState, customerCity);
+    
+      // Usar opções customizadas do banco ou fallback padrão
+      const fallbackShipping = customOptions.length > 0 
+        ? customOptions 
+        : [DEFAULT_SHIPPING_OPTION];
+
+      // Preservar opção de merge se existir
+      const mergeOption = hasPaidOrderWithinPeriod ? MERGE_ORDER_SHIPPING_OPTION : null;
+      // Sempre garantir que há pelo menos as opções de frete padrão
+      setShippingOptions(mergeOption ? [mergeOption, ...fallbackShipping] : fallbackShipping);
 
       // Verificar se supabaseTenant está disponível
       if (!supabaseTenant || !supabaseTenant.raw) {

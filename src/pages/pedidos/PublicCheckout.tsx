@@ -366,33 +366,38 @@ const PublicCheckout = () => {
     if (!cep || ordersToCalc.length === 0 || !tenant) return;
     if (cep.replace(/[^0-9]/g, '').length !== 8) return;
 
-    // Buscar opções de frete customizadas do banco de dados
-    const customOptions = await fetchCustomShippingOptions(tenant.id);
-    
-    // Usar opções customizadas do banco ou fallback padrão
-    const fallbackShipping = customOptions.length > 0 
-      ? customOptions 
-      : [DEFAULT_SHIPPING_OPTION];
-
     setLoadingShipping(true);
-    // Preservar opção de merge se existir
-    const mergeOption = hasPaidOrderWithinPeriod ? MERGE_ORDER_SHIPPING_OPTION : null;
-    setShippingOptions(mergeOption ? [mergeOption, ...fallbackShipping] : fallbackShipping);
 
     try {
-      // Buscar endereço pelo CEP
+      // 1. Buscar endereço pelo CEP PRIMEIRO para saber estado/cidade
+      let customerState = '';
+      let customerCity = '';
       const cepResponse = await fetch(`https://viacep.com.br/ws/${cep.replace(/[^0-9]/g, '')}/json/`);
       const cepData = await cepResponse.json();
       
       if (!cepData.erro && cepData.localidade) {
+        customerState = cepData.uf || '';
+        customerCity = cepData.localidade || '';
         setCustomerData(prev => ({
           ...prev,
           street: cepData.logradouro || prev.street,
           neighborhood: cepData.bairro || prev.neighborhood,
-          city: cepData.localidade || prev.city,
-          state: cepData.uf || prev.state
+          city: customerCity || prev.city,
+          state: customerState || prev.state
         }));
       }
+
+      // 2. Buscar opções de frete customizadas FILTRADAS por cobertura geográfica
+      const customOptions = await fetchCustomShippingOptions(tenant.id, customerState, customerCity);
+    
+      // Usar opções customizadas do banco ou fallback padrão
+      const fallbackShipping = customOptions.length > 0 
+        ? customOptions 
+        : [DEFAULT_SHIPPING_OPTION];
+
+      // Preservar opção de merge se existir
+      const mergeOption = hasPaidOrderWithinPeriod ? MERGE_ORDER_SHIPPING_OPTION : null;
+      setShippingOptions(mergeOption ? [mergeOption, ...fallbackShipping] : fallbackShipping);
 
       // Detectar qual integração de frete está ativa
       const activeIntegration = await getActiveShippingIntegration(tenant.id);
