@@ -367,10 +367,12 @@ const Clientes = () => {
 
     setSaving(true);
     try {
+      const normalizedPhone = normalizePhone(editingCustomer.phone);
       const { error } = await supabaseTenant
         .from('customers')
         .update({
           name: editingCustomer.name,
+          phone: normalizedPhone,
           instagram: editingCustomer.instagram?.trim().replace('@', '') || null,
           cpf: editingCustomer.cpf || null,
           street: editingCustomer.street || null,
@@ -1351,8 +1353,7 @@ const Clientes = () => {
                                                  id="phone"
                                                  value={editingCustomer.phone}
                                                  onChange={(e) => setEditingCustomer(prev => prev ? {...prev, phone: e.target.value} : null)}
-                                                 disabled
-                                                 className="bg-muted"
+                                                  className=""
                                                />
                                              </div>
                                              <div>
