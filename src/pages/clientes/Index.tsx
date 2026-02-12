@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -106,6 +107,7 @@ const Clientes = () => {
   const [searchingCep, setSearchingCep] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [blockingCustomer, setBlockingCustomer] = useState<Customer | null>(null);
+  const [filterBlocked, setFilterBlocked] = useState<string>('all');
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
@@ -504,22 +506,21 @@ const Clientes = () => {
   }, [activeView, customers.length]);
 
   const filteredCustomers = customers.filter(customer => {
+    // Filter by blocked status
+    if (filterBlocked === 'blocked' && !customer.is_blocked) return false;
+    if (filterBlocked === 'active' && customer.is_blocked) return false;
+
     const searchLower = searchTerm.toLowerCase().trim();
     if (!searchLower) return true;
     
-    // Search by name
     if (customer.name.toLowerCase().includes(searchLower)) return true;
     
-    // Search by phone (normalized and raw)
     const normalizedSearch = normalizeForStorage(searchTerm);
     const normalizedCustomerPhone = normalizeForStorage(customer.phone);
     if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
     if (customer.phone.includes(searchTerm)) return true;
     
-    // Search by CPF
     if (customer.cpf && customer.cpf.includes(searchTerm)) return true;
-    
-    // Search by Instagram
     if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
     
     return false;
@@ -1079,14 +1080,26 @@ const Clientes = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Search className="h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por nome, telefone ou CPF..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="max-w-sm"
-                  />
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Search className="h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por nome, telefone ou CPF..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="max-w-sm"
+                    />
+                  </div>
+                  <Select value={filterBlocked} onValueChange={setFilterBlocked}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Filtrar status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="active">Ativos</SelectItem>
+                      <SelectItem value="blocked">Bloqueados</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <Separator />
