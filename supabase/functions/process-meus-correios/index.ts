@@ -187,10 +187,10 @@ serve(async (req: Request) => {
             dstxItem: 1,
             dstxsrv: servico,
             dstxobs: `Pedido #${order.unique_order_id || order.id}`,
-            dstxpes: 500,
-            dstxvo1: 10,
-            dstxvo2: 16,
-            dstxvo3: 20,
+            dstxpes: 500, // Peso em GRAMAS (500g = 0.5kg) - API MeusCorreios exige gramas
+            dstxvo1: 10,  // Altura em cm
+            dstxvo2: 16,  // Largura em cm
+            dstxvo3: 20,  // Comprimento em cm
             dstxvd: order.total_amount || 0,
             dstxcob: 0,
           }],
@@ -208,45 +208,90 @@ serve(async (req: Request) => {
           signal: AbortSignal.timeout(30000),
         });
 
-        const data = await response.json();
-        console.log(`📦 [MeusCorreios] Response for order #${order.id}:`, JSON.stringify(data).substring(0, 500));
+        // Capturar resposta como texto primeiro para detectar erros HTML/não-JSON
+        const responseText = await response.text();
+        console.log(`📦 [MeusCorreios] Raw response status: ${response.status} for order #${order.id}`);
+        console.log(`📦 [MeusCorreios] Raw response body (first 800 chars):`, responseText.substring(0, 800));
 
-        // Check for general errors
-        if (data.Erro) {
+        if (!response.ok) {
           results.push({
             order_id: order.id,
             status: "error",
-            message: data.Erro,
+            message: `API retornou HTTP ${response.status}: ${responseText.substring(0, 200)}`,
           });
           continue;
         }
 
-        // Check prepos results
-        const prepos = data.prepos || data.PrePos || [];
+        // Tentar parsear como JSON
+        let data: any;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseErr) {
+          results.push({
+            order_id: order.id,
+            status: "error",
+            message: `Resposta não é JSON válido. Conteúdo: ${responseText.substring(0, 200)}`,
+          });
+          continue;
+        }
+
+        // ---- Captura detalhada de erros da estrutura SDTWSCriPrePosOut ----
+        const sdtOut = data.SDTWSCriPrePosOut || data.sdtwscripreposout || data;
+
+        // Erro geral na raiz
+        const erroGeral = sdtOut.Erro || sdtOut.erro || data.Erro || data.erro;
+        if (erroGeral && String(erroGeral).trim() !== "" && String(erroGeral).trim() !== "0") {
+          console.error(`❌ [MeusCorreios] Erro geral para pedido #${order.id}: ${erroGeral}`);
+          results.push({
+            order_id: order.id,
+            status: "error",
+            message: `Erro API MeusCorreios: ${erroGeral}`,
+          });
+          continue;
+        }
+
+        // Verificar erroItem na raiz do SDTWSCriPrePosOut
+        const erroItemRaiz = sdtOut.erroItem || sdtOut.ErroItem;
+        if (erroItemRaiz && String(erroItemRaiz).trim() !== "" && String(erroItemRaiz).trim() !== "0") {
+          console.error(`❌ [MeusCorreios] ErroItem raiz para pedido #${order.id}: ${erroItemRaiz}`);
+          results.push({
+            order_id: order.id,
+            status: "error",
+            message: `Erro no item: ${erroItemRaiz}`,
+          });
+          continue;
+        }
+
+        // Check prepos results - buscar em múltiplos caminhos possíveis
+        const prepos = sdtOut.prepos || sdtOut.PrePos || data.prepos || data.PrePos || [];
         const firstResult = Array.isArray(prepos) ? prepos[0] : prepos;
 
         if (!firstResult) {
+          // Se não encontrou prepos, logar toda a estrutura para debug
+          console.error(`❌ [MeusCorreios] Sem prepos. Estrutura completa:`, JSON.stringify(data).substring(0, 1000));
           results.push({
             order_id: order.id,
             status: "error",
-            message: "Resposta inesperada da API MeusCorreios",
+            message: `Resposta inesperada da API MeusCorreios. Campos disponíveis: ${Object.keys(data).join(", ")}`,
           });
           continue;
         }
 
-        // Check item-level errors
-        if (firstResult.ErroItem || firstResult.erroItem) {
+        // Check item-level errors no resultado individual
+        const erroItem = firstResult.ErroItem || firstResult.erroItem || firstResult.Erro || firstResult.erro;
+        if (erroItem && String(erroItem).trim() !== "" && String(erroItem).trim() !== "0") {
+          console.error(`❌ [MeusCorreios] ErroItem pedido #${order.id}: ${erroItem}`);
           results.push({
             order_id: order.id,
             status: "error",
-            message: firstResult.ErroItem || firstResult.erroItem,
+            message: `Erro no item: ${erroItem}`,
           });
           continue;
         }
 
-        // Extract tracking code (etiqueta)
-        const trackingCode = firstResult.dstxetq || firstResult.Dstxetq || firstResult.codigoAwb || "";
-        const labelPdf = firstResult.etqPDF || firstResult.EtqPDF || "";
+        // Extract tracking code (etiqueta) - buscar em múltiplos campos possíveis
+        const trackingCode = firstResult.dstxetq || firstResult.Dstxetq || firstResult.codigoAwb || firstResult.CodigoAwb || "";
+        const labelPdf = firstResult.etqPDF || firstResult.EtqPDF || firstResult.etqpdf || "";
         const lote = firstResult.dstxlot || firstResult.Dstxlot || "";
 
         if (!trackingCode) {
