@@ -250,13 +250,23 @@ const Live = () => {
     
     const { data, error } = await supabaseTenant
       .from('customers')
-      .select('phone')
+      .select('phone, is_blocked')
       .eq('instagram', normalized)
       .maybeSingle();
 
     if (error) {
       console.error('Error fetching customer by instagram:', error);
       return null;
+    }
+
+    if (data?.is_blocked) {
+      toast({
+        title: '⚠️ CLIENTE BLOQUEADA',
+        description: 'Este perfil possui restrições e não pode realizar novas compras.',
+        variant: 'destructive',
+        duration: 8000,
+      });
+      return '__BLOCKED__';
     }
 
     return data?.phone || null;
@@ -298,6 +308,15 @@ const Live = () => {
     try {
       // Buscar telefone do cliente pelo Instagram
       const phone = await getPhoneFromInstagram(instagram);
+      
+      if (phone === '__BLOCKED__') {
+        setProcessingIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(product.id);
+          return newSet;
+        });
+        return;
+      }
       
       if (!phone) {
         toast({
