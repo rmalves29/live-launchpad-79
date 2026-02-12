@@ -337,16 +337,51 @@ serve(async (req) => {
     }
 
     // EARLY LOG: Insert webhook log BEFORE processing items
-    // This ensures the zapi_message_id is in the DB for cross-instance deduplication
+    // This ensures deduplication works across multiple Edge Function instances
+    // ALWAYS insert - even without messageId - to enable DB-level dedup
+    const earlyLogMessage = `[WEBHOOK] Processado: ${messageText}`;
+    
     if (messageId) {
       await supabase.from('whatsapp_messages').insert({
         tenant_id: tenantId,
         phone: normalizedPhone,
-        message: `[WEBHOOK] Processado: ${messageText}`,
+        message: earlyLogMessage,
         type: 'incoming',
         whatsapp_group_name: groupName || null,
         received_at: new Date().toISOString(),
         zapi_message_id: messageId,
+      });
+    } else {
+      // Without messageId: check DB for recent duplicate (same phone + same message within 15s)
+      const fifteenSecondsAgo = new Date(Date.now() - 15000).toISOString();
+      const { data: recentDup } = await supabase
+        .from('whatsapp_messages')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('phone', normalizedPhone)
+        .eq('message', earlyLogMessage)
+        .gte('created_at', fifteenSecondsAgo)
+        .limit(1)
+        .maybeSingle();
+      
+      if (recentDup) {
+        console.log(`[zapi-webhook] ⏭️ Skipping duplicate message from ${normalizedPhone} (DB-level, no messageId, matched recent log)`);
+        return new Response(JSON.stringify({ 
+          success: true, 
+          skipped: 'duplicate_message_db_no_id'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      // Insert early log for future dedup
+      await supabase.from('whatsapp_messages').insert({
+        tenant_id: tenantId,
+        phone: normalizedPhone,
+        message: earlyLogMessage,
+        type: 'incoming',
+        whatsapp_group_name: groupName || null,
+        received_at: new Date().toISOString(),
       });
     }
 
