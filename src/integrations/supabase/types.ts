@@ -375,6 +375,7 @@ export type Database = {
           email: string | null
           id: number
           instagram: string | null
+          is_blocked: boolean | null
           name: string
           neighborhood: string | null
           number: string | null
@@ -396,6 +397,7 @@ export type Database = {
           email?: string | null
           id?: number
           instagram?: string | null
+          is_blocked?: boolean | null
           name: string
           neighborhood?: string | null
           number?: string | null
@@ -417,6 +419,7 @@ export type Database = {
           email?: string | null
           id?: number
           instagram?: string | null
+          is_blocked?: boolean | null
           name?: string
           neighborhood?: string | null
           number?: string | null
@@ -825,6 +828,7 @@ export type Database = {
       integration_whatsapp: {
         Row: {
           api_url: string | null
+          blocked_customer_template: string | null
           confirmation_timeout_minutes: number | null
           connected_phone: string | null
           consent_protection_enabled: boolean | null
@@ -851,6 +855,7 @@ export type Database = {
         }
         Insert: {
           api_url?: string | null
+          blocked_customer_template?: string | null
           confirmation_timeout_minutes?: number | null
           connected_phone?: string | null
           consent_protection_enabled?: boolean | null
@@ -877,6 +882,7 @@ export type Database = {
         }
         Update: {
           api_url?: string | null
+          blocked_customer_template?: string | null
           confirmation_timeout_minutes?: number | null
           connected_phone?: string | null
           consent_protection_enabled?: boolean | null
