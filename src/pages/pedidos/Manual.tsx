@@ -137,6 +137,28 @@ const PedidosManual = () => {
     setProcessingIds(prev => new Set(prev).add(product.id));
 
     try {
+      // Check if customer is blocked
+      const { data: customerData } = await supabaseTenant
+        .from('customers')
+        .select('is_blocked')
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+
+      if (customerData?.is_blocked) {
+        toast({
+          title: '⚠️ CLIENTE BLOQUEADA',
+          description: 'Este perfil possui restrições e não pode realizar novas compras.',
+          variant: 'destructive',
+          duration: 8000,
+        });
+        setProcessingIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(product.id);
+          return newSet;
+        });
+        return;
+      }
+
       const subtotal = product.price * qty;
       const today = getBrasiliaDateISO();
       

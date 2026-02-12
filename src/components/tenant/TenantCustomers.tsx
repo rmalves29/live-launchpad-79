@@ -4,10 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Users, Edit, Phone, MapPin } from 'lucide-react';
+import { Plus, Users, Edit, Phone, MapPin, ShieldBan, ShieldCheck } from 'lucide-react';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 
 interface Customer {
@@ -17,6 +20,7 @@ interface Customer {
   phone: string;
   email?: string;
   cpf?: string;
+  instagram?: string;
   street?: string;
   number?: string;
   complement?: string;
@@ -24,6 +28,7 @@ interface Customer {
   city?: string;
   state?: string;
   cep?: string;
+  is_blocked?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -62,6 +67,8 @@ export default function TenantCustomers() {
     cep: ''
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterBlocked, setFilterBlocked] = useState<string>('all');
+  const [blockingCustomer, setBlockingCustomer] = useState<Customer | null>(null);
   const { profile } = useAuth();
   const { toast } = useToast();
 
@@ -198,10 +205,42 @@ export default function TenantCustomers() {
   const filteredCustomers = customers.filter(customer => {
     const normalizedSearch = normalizeForStorage(searchTerm);
     const normalizedCustomerPhone = normalizeForStorage(customer.phone);
-    return customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       normalizedCustomerPhone.includes(normalizedSearch) ||
       customer.phone.includes(searchTerm);
+    
+    if (filterBlocked === 'blocked') return matchesSearch && customer.is_blocked;
+    if (filterBlocked === 'active') return matchesSearch && !customer.is_blocked;
+    return matchesSearch;
   });
+
+  const toggleBlockCustomer = async (customer: Customer) => {
+    try {
+      const newStatus = !customer.is_blocked;
+      const { error } = await supabase
+        .from('customers')
+        .update({ is_blocked: newStatus })
+        .eq('id', customer.id);
+
+      if (error) throw error;
+
+      toast({
+        title: newStatus ? '🚫 Cliente Bloqueado' : '✅ Cliente Desbloqueado',
+        description: newStatus 
+          ? `${customer.name} foi bloqueado e não poderá realizar novas compras.`
+          : `${customer.name} foi desbloqueado e pode realizar compras normalmente.`,
+      });
+      
+      setBlockingCustomer(null);
+      loadCustomers();
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao alterar status do cliente',
+        variant: 'destructive'
+      });
+    }
+  };
 
   return (
     <Card>
@@ -221,13 +260,23 @@ export default function TenantCustomers() {
             Novo Cliente
           </Button>
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex items-center gap-4">
           <Input
             placeholder="Buscar clientes por nome ou telefone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="max-w-md"
           />
+          <Select value={filterBlocked} onValueChange={setFilterBlocked}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filtrar status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="active">Ativos</SelectItem>
+              <SelectItem value="blocked">Bloqueados</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </CardHeader>
       <CardContent>
@@ -248,13 +297,22 @@ export default function TenantCustomers() {
             </div>
           ) : (
             filteredCustomers.map((customer) => (
-              <div key={customer.id} className="flex items-center justify-between p-4 border rounded-lg">
+              <div key={customer.id} className={`flex items-center justify-between p-4 border rounded-lg ${customer.is_blocked ? 'border-destructive/50 bg-destructive/5' : ''}`}>
                 <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center">
-                    <Users className="h-6 w-6 text-muted-foreground" />
+                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${customer.is_blocked ? 'bg-destructive/10' : 'bg-muted'}`}>
+                    {customer.is_blocked ? (
+                      <ShieldBan className="h-6 w-6 text-destructive" />
+                    ) : (
+                      <Users className="h-6 w-6 text-muted-foreground" />
+                    )}
                   </div>
                   <div>
-                    <h4 className="font-semibold">{customer.name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold">{customer.name}</h4>
+                      {customer.is_blocked && (
+                        <Badge variant="destructive" className="text-xs">BLOQUEADO</Badge>
+                      )}
+                    </div>
                     <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                       <div className="flex items-center space-x-1">
                         <Phone className="h-3 w-3" />
@@ -272,6 +330,15 @@ export default function TenantCustomers() {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
+                  <Button
+                    variant={customer.is_blocked ? "outline" : "ghost"}
+                    size="sm"
+                    onClick={() => setBlockingCustomer(customer)}
+                    title={customer.is_blocked ? 'Desbloquear cliente' : 'Bloquear cliente'}
+                    className={customer.is_blocked ? 'text-green-600 hover:text-green-700 border-green-300' : 'text-destructive hover:text-destructive'}
+                  >
+                    {customer.is_blocked ? <ShieldCheck className="h-4 w-4" /> : <ShieldBan className="h-4 w-4" />}
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -419,6 +486,32 @@ export default function TenantCustomers() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Block/Unblock Confirmation Dialog */}
+        <AlertDialog open={!!blockingCustomer} onOpenChange={(open) => !open && setBlockingCustomer(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {blockingCustomer?.is_blocked ? '✅ Desbloquear Cliente' : '🚫 Bloquear Cliente'}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-base">
+                {blockingCustomer?.is_blocked 
+                  ? `Deseja desbloquear ${blockingCustomer?.name}? O cliente poderá realizar novas compras normalmente.`
+                  : `Deseja bloquear ${blockingCustomer?.name}? O cliente não poderá mais adicionar itens ao carrinho e receberá uma mensagem automática de restrição.`
+                }
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => blockingCustomer && toggleBlockCustomer(blockingCustomer)}
+                className={blockingCustomer?.is_blocked ? '' : 'bg-destructive text-destructive-foreground hover:bg-destructive/90'}
+              >
+                {blockingCustomer?.is_blocked ? 'Desbloquear' : 'Bloquear'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );
