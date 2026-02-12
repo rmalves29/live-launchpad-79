@@ -205,6 +205,7 @@ const Checkout = () => {
       
       // Buscar opções de frete customizadas do banco de dados de forma assíncrona
       (async () => {
+        // Não filtrar por região aqui - será re-filtrado ao calcular frete com CEP
         const customOptions = await fetchCustomShippingOptions(tenantId || '');
         
         // Limpar qualquer dado de frete que possa causar duplicação
