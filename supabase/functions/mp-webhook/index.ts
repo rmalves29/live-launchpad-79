@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -226,10 +226,8 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
 
   const orderTenantId = existingOrder.tenant_id || tenantId;
 
-  // Update order to paid with payment method info
+  // Update order to paid
   const updateData: any = { is_paid: true };
-  if (paymentMethod) updateData.payment_method = paymentMethod;
-  if (installments && installments > 0) updateData.payment_installments = installments;
 
   const { error: updateError } = await sb
     .from("orders")
