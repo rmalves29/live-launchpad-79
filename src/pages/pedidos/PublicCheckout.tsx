@@ -124,6 +124,7 @@ const PublicCheckout = () => {
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [searched, setSearched] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
+  const [expandedOrders, setExpandedOrders] = useState<number[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
   const [cpfError, setCpfError] = useState(false);
   
@@ -1164,7 +1165,7 @@ const PublicCheckout = () => {
                               </div>
                               {/* Lista de produtos */}
                               <div className="space-y-1.5">
-                                {order.items.slice(0, 3).map((item) => (
+                              {(expandedOrders.includes(order.id) ? order.items : order.items.slice(0, 3)).map((item) => (
                                   <div key={item.id} className="flex items-center gap-2 text-sm">
                                     {item.image_url && (
                                       <ZoomableImage src={item.image_url} alt={item.product_name} className="h-8 w-8" containerClassName="h-8 w-8 rounded" />
@@ -1174,7 +1175,22 @@ const PublicCheckout = () => {
                                   </div>
                                 ))}
                                 {order.items.length > 3 && (
-                                  <p className="text-xs text-muted-foreground">+ {order.items.length - 3} outros produtos</p>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedOrders(prev => 
+                                        prev.includes(order.id) 
+                                          ? prev.filter(id => id !== order.id) 
+                                          : [...prev, order.id]
+                                      );
+                                    }}
+                                    className="text-xs text-primary hover:underline font-medium mt-1"
+                                  >
+                                    {expandedOrders.includes(order.id) 
+                                      ? 'Ver menos' 
+                                      : `Ver todos (+${order.items.length - 3} produtos)`}
+                                  </button>
                                 )}
                               </div>
                             </div>
