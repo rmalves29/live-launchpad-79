@@ -216,10 +216,8 @@ async function markOrderAsPaid(
     // Usar tenant do pedido se não vier no webhook
     const orderTenantId = existingOrder.tenant_id || tenantId;
 
-    // Marcar como pago com info de pagamento - o TRIGGER do banco de dados vai disparar zapi-send-paid-order automaticamente
+    // Marcar como pago - o TRIGGER do banco de dados vai disparar zapi-send-paid-order automaticamente
     const updateData: any = { is_paid: true };
-    if (paymentMethod) updateData.payment_method = paymentMethod;
-    if (installments && installments > 0) updateData.payment_installments = installments;
 
     const { error } = await sb
       .from("orders")
