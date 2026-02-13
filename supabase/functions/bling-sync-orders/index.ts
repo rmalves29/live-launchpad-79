@@ -806,7 +806,7 @@ async function sendOrderToBling(
     numeroLoja: orderNumber,
     data: new Date(order.created_at).toISOString().split('T')[0],
     dataPrevista: order.event_date,
-    situacao: { id: order.is_paid ? 9 : 6 }, // 9 = Atendido (pago), 6 = Em andamento (pendente)
+    situacao: { id: 0 }, // 0 = Em aberto (todos os pedidos importados como "Em aberto")
     contato: { id: contactId },
     itens: processedItems,
     observacoes: order.observation || '',
