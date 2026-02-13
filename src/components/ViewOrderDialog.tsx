@@ -150,7 +150,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
               title="Imprimir romaneio térmico"
             >
               <Printer className="h-4 w-4 mr-2" />
-              Imprimir
+              Imprimir - Térmica
             </Button>
           </div>
         </DialogHeader>

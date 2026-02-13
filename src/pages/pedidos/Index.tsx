@@ -23,7 +23,7 @@ import { ViewOrderDialog } from '@/components/ViewOrderDialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
-
+import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
   interface Order {
     id: number;
     tenant_order_number?: number;
@@ -1427,6 +1427,21 @@ import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from 
                 >
                   <FileText className="h-4 w-4 mr-2" />
                   Imprimir Selecionados ({selectedOrders.size})
+                </Button>
+                <Button 
+                  onClick={() => {
+                    const selectedOrdersData = orders.filter(order => selectedOrders.has(order.id));
+                    if (selectedOrdersData.length === 0) {
+                      toast({ title: 'Aviso', description: 'Selecione pelo menos um pedido', variant: 'destructive' });
+                      return;
+                    }
+                    printMultipleThermalReceipts(selectedOrdersData);
+                  }} 
+                  variant="outline"
+                  disabled={selectedOrders.size === 0}
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Imprimir - Térmica ({selectedOrders.size})
                 </Button>
                 <Button 
                   onClick={markOrdersAsPrinted} 
