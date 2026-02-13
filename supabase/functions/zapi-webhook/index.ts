@@ -488,6 +488,17 @@ serve(async (req) => {
 
       console.log(`[zapi-webhook] Found product: ${product.name} (${product.code}) - R$ ${product.price} - Estoque: ${product.stock}`);
 
+      // Re-read stock fresh from DB to avoid stale data from race conditions
+      const { data: freshProduct } = await supabase
+        .from('products')
+        .select('stock')
+        .eq('id', product.id)
+        .single();
+      
+      if (freshProduct) {
+        product.stock = freshProduct.stock;
+      }
+
       // STOCK VALIDATION: Block if no stock available
       if (product.stock <= 0) {
         console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO para ${product.code}: estoque atual = ${product.stock}`);
@@ -736,16 +747,23 @@ serve(async (req) => {
           continue;
         }
         
-        // STOCK VALIDATION: Check if adding +1 exceeds available stock
+        // STOCK VALIDATION: Re-read fresh stock to prevent race condition
+        const { data: freshStockCheck } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('id', product.id)
+          .single();
+        
+        const currentStock = freshStockCheck?.stock ?? product.stock;
         const newQty = existingItem.qty + 1;
-        if (newQty > product.stock) {
-          console.log(`[zapi-webhook] ❌ ESTOQUE INSUFICIENTE para +1 ${product.code}: estoque=${product.stock}, qty atual=${existingItem.qty}`);
+        if (newQty > currentStock) {
+          console.log(`[zapi-webhook] ❌ ESTOQUE INSUFICIENTE para +1 ${product.code}: estoque=${currentStock}, qty atual=${existingItem.qty}`);
           results.push({ 
             code, 
             success: false, 
             error: 'insufficient_stock',
             product_name: product.name,
-            current_stock: product.stock,
+            current_stock: currentStock,
             requested_qty: newQty
           });
           continue;
@@ -772,16 +790,23 @@ serve(async (req) => {
         }
         cartItem = updatedItem;
         
-        // DECREMENT STOCK after successful cart update
-        const { error: stockError } = await supabase
+        // ATOMIC STOCK DECREMENT: Only decrement if stock > 0
+        // Uses WHERE stock > 0 to prevent overselling in race conditions
+        const { data: stockRows, error: stockError } = await supabase
           .from('products')
-          .update({ stock: product.stock - 1 })
-          .eq('id', product.id);
+          .update({ stock: currentStock - 1 })
+          .eq('id', product.id)
+          .gt('stock', 0)
+          .select('stock');
         
-        if (stockError) {
-          console.log(`[zapi-webhook] Error updating stock:`, stockError);
+        if (stockError || !stockRows || stockRows.length === 0) {
+          console.log(`[zapi-webhook] ❌ ATOMIC stock decrement failed for ${product.code}: stock already 0 or error`);
+          // Rollback cart item update
+          await supabase.from('cart_items').update({ qty: existingItem.qty }).eq('id', existingItem.id);
+          results.push({ code, success: false, error: 'stock_race_condition', product_name: product.name });
+          continue;
         } else {
-          console.log(`[zapi-webhook] ✅ Estoque decrementado: ${product.code} agora tem ${product.stock - 1}`);
+          console.log(`[zapi-webhook] ✅ Estoque decrementado atomicamente: ${product.code} -> ${stockRows[0].stock}`);
         }
         
         console.log(`[zapi-webhook] Updated existing cart item: ${cartItem.id}, new qty: ${cartItem.qty}`);
@@ -845,16 +870,22 @@ serve(async (req) => {
         
         cartItem = newItem;
         
-        // DECREMENT STOCK after successful cart insert
-        const { error: stockError } = await supabase
+        // ATOMIC STOCK DECREMENT: Only decrement if stock > 0
+        const { data: stockRows, error: stockError } = await supabase
           .from('products')
           .update({ stock: product.stock - 1 })
-          .eq('id', product.id);
+          .eq('id', product.id)
+          .gt('stock', 0)
+          .select('stock');
         
-        if (stockError) {
-          console.log(`[zapi-webhook] Error updating stock:`, stockError);
+        if (stockError || !stockRows || stockRows.length === 0) {
+          console.log(`[zapi-webhook] ❌ ATOMIC stock decrement failed for ${product.code}: stock already 0 or error`);
+          // Rollback: delete the cart item we just inserted
+          await supabase.from('cart_items').delete().eq('id', cartItem.id);
+          results.push({ code, success: false, error: 'stock_race_condition', product_name: product.name });
+          continue;
         } else {
-          console.log(`[zapi-webhook] ✅ Estoque decrementado: ${product.code} agora tem ${product.stock - 1}`);
+          console.log(`[zapi-webhook] ✅ Estoque decrementado atomicamente: ${product.code} -> ${stockRows[0].stock}`);
         }
         
         console.log(`[zapi-webhook] Added new item to cart: ${cartItem.id}`);
