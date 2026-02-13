@@ -279,7 +279,7 @@ const Live = () => {
             body: {
               phone: data.phone,
               message: blockedMessage,
-              tenant_id: profile?.tenant_id,
+              tenant_id: tenant?.id || profile?.tenant_id,
             }
           });
         }

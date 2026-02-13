@@ -167,7 +167,7 @@ const PedidosManual = () => {
               body: {
                 phone: normalizedPhone,
                 message: blockedMessage,
-                tenant_id: profile?.tenant_id,
+                tenant_id: tenant?.id || profile?.tenant_id,
               }
             });
             console.log('[Manual] 📤 Blocked customer WhatsApp message sent to', normalizedPhone);
