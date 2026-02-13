@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,29 +23,35 @@ export function useConfirmDialog() {
   const [options, setOptions] = useState<ConfirmDialogOptions>({
     description: '',
   });
-  const [resolvePromise, setResolvePromise] = useState<((value: boolean) => void) | null>(null);
+  const resolveRef = React.useRef<((value: boolean) => void) | null>(null);
 
   const confirm = useCallback((opts: ConfirmDialogOptions): Promise<boolean> => {
     setOptions(opts);
     setIsOpen(true);
     
     return new Promise((resolve) => {
-      setResolvePromise(() => resolve);
+      resolveRef.current = resolve;
     });
   }, []);
 
   const handleConfirm = useCallback(() => {
     setIsOpen(false);
-    resolvePromise?.(true);
-  }, [resolvePromise]);
+    resolveRef.current?.(true);
+    resolveRef.current = null;
+  }, []);
 
   const handleCancel = useCallback(() => {
     setIsOpen(false);
-    resolvePromise?.(false);
-  }, [resolvePromise]);
+    resolveRef.current?.(false);
+    resolveRef.current = null;
+  }, []);
 
   const ConfirmDialog = useCallback(() => (
-    <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
+    <AlertDialog open={isOpen} onOpenChange={(open) => {
+      if (!open) {
+        handleCancel();
+      }
+    }}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{options.title || 'Confirmar'}</AlertDialogTitle>
