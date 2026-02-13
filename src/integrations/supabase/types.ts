@@ -2606,6 +2606,7 @@ export type Database = {
         | "MSG_MASSA"
         | "SENDFLOW"
         | "TRACKING"
+        | "BLOCKED_CUSTOMER"
     }
     CompositeTypes: {
       http_header: {
@@ -2771,6 +2772,7 @@ export const Constants = {
         "MSG_MASSA",
         "SENDFLOW",
         "TRACKING",
+        "BLOCKED_CUSTOMER",
       ],
     },
   },
