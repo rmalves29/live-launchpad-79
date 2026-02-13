@@ -139,26 +139,28 @@ serve(async (req: Request) => {
         continue;
       }
 
-      // Determine service code - pad to 5 digits with leading zeros
-      // Correios official codes: PAC=03298, SEDEX=03220, Mini=04227
-      const rawPac = Deno.env.get("CORREIOS_SERVICE_PAC") || "03298";
-      const rawSedex = Deno.env.get("CORREIOS_SERVICE_SEDEX") || "03220";
+      // Determine service code
+      // MeusCorreios API accepts BOTH public codes (04510/04014) and contract codes (03298/03220)
+      // but contract codes require the cartão de postagem to be linked to an active contract.
+      // If the tenant has CWS credentials (client_id), use contract codes; otherwise use public codes.
+      const hasCWSContract = !!(integration.client_id && integration.client_secret);
       
-      // Ensure 5-digit format with leading zeros
-      const padService = (code: string) => {
-        const numeric = code.replace(/\D/g, "");
-        return numeric.padStart(5, "0");
-      };
+      const SERVICE_CODES = hasCWSContract
+        ? { PAC: "03298", SEDEX: "03220", MINI: "04227", SEDEX12: "03140" }
+        : { PAC: "03085", SEDEX: "03050", MINI: "04227", SEDEX12: "03140" };
       
-      let servico = padService(rawPac); // default PAC
+      let servico = SERVICE_CODES.PAC; // default PAC
       let servicoNome = "PAC";
       if (order.observation) {
         const obs = order.observation.toUpperCase();
-        if (obs.includes("SEDEX")) {
-          servico = padService(rawSedex);
+        if (obs.includes("SEDEX 12") || obs.includes("SEDEX12")) {
+          servico = SERVICE_CODES.SEDEX12;
+          servicoNome = "SEDEX 12";
+        } else if (obs.includes("SEDEX")) {
+          servico = SERVICE_CODES.SEDEX;
           servicoNome = "SEDEX";
         } else if (obs.includes("MINI")) {
-          servico = "04227";
+          servico = SERVICE_CODES.MINI;
           servicoNome = "MINI ENVIOS";
         }
       }
@@ -235,8 +237,8 @@ serve(async (req: Request) => {
           continue;
         }
 
-        // ---- Captura detalhada de erros da estrutura SDTWSCriPrePosOut ----
-        const sdtOut = data.SDTWSCriPrePosOut || data.sdtwscripreposout || data;
+        // ---- Captura detalhada de erros - suporta parmOut e SDTWSCriPrePosOut ----
+        const sdtOut = data.parmOut || data.ParmOut || data.SDTWSCriPrePosOut || data.sdtwscripreposout || data;
 
         // Erro geral na raiz
         const erroGeral = sdtOut.Erro || sdtOut.erro || data.Erro || data.erro;
@@ -250,7 +252,7 @@ serve(async (req: Request) => {
           continue;
         }
 
-        // Verificar erroItem na raiz do SDTWSCriPrePosOut
+        // Verificar erroItem na raiz
         const erroItemRaiz = sdtOut.erroItem || sdtOut.ErroItem;
         if (erroItemRaiz && String(erroItemRaiz).trim() !== "" && String(erroItemRaiz).trim() !== "0") {
           console.error(`❌ [MeusCorreios] ErroItem raiz para pedido #${order.id}: ${erroItemRaiz}`);
@@ -262,9 +264,10 @@ serve(async (req: Request) => {
           continue;
         }
 
-        // Check prepos results - buscar em múltiplos caminhos possíveis
+        // Check prepos results - buscar em múltiplos caminhos possíveis (incluindo parmOut.prepos)
         const prepos = sdtOut.prepos || sdtOut.PrePos || data.prepos || data.PrePos || [];
-        const firstResult = Array.isArray(prepos) ? prepos[0] : prepos;
+        const preposList = Array.isArray(prepos) ? prepos : [prepos];
+        const firstResult = preposList[0];
 
         if (!firstResult) {
           // Se não encontrou prepos, logar toda a estrutura para debug
@@ -280,25 +283,35 @@ serve(async (req: Request) => {
         // Check item-level errors no resultado individual
         const erroItem = firstResult.ErroItem || firstResult.erroItem || firstResult.Erro || firstResult.erro;
         if (erroItem && String(erroItem).trim() !== "" && String(erroItem).trim() !== "0") {
-          console.error(`❌ [MeusCorreios] ErroItem pedido #${order.id}: ${erroItem}`);
+          console.error(`❌ [MeusCorreios] ErroItem pedido #${order.id}: ${erroItem} (service: ${servico})`);
+          
+          // Provide helpful message for common errors
+          let helpMsg = String(erroItem);
+          if (helpMsg.includes("Definição Serviço") || helpMsg.includes("Definicao Servico")) {
+            helpMsg += ` — O código de serviço "${servico}" (${servicoNome}) não é válido para seu cartão de postagem. Verifique se seu contrato inclui este serviço.`;
+          }
+          
           results.push({
             order_id: order.id,
             status: "error",
-            message: `Erro no item: ${erroItem}`,
+            message: `Erro no item: ${helpMsg}`,
           });
           continue;
         }
 
         // Extract tracking code (etiqueta) - buscar em múltiplos campos possíveis
-        const trackingCode = firstResult.dstxetq || firstResult.Dstxetq || firstResult.codigoAwb || firstResult.CodigoAwb || "";
+        // parmOut format uses: etqSRO (tracking), dstxetq (etiqueta), etqPDF (label PDF)
+        const trackingCode = firstResult.etqSRO || firstResult.EtqSRO || firstResult.dstxetq || firstResult.Dstxetq || firstResult.codigoAwb || firstResult.CodigoAwb || "";
         const labelPdf = firstResult.etqPDF || firstResult.EtqPDF || firstResult.etqpdf || "";
-        const lote = firstResult.dstxlot || firstResult.Dstxlot || "";
+        const lote = firstResult.dstxlot || firstResult.Dstxlot || firstResult.codectcod || "";
 
         if (!trackingCode) {
+          // Log all available fields for debugging
+          console.error(`❌ [MeusCorreios] No tracking code. Available fields:`, JSON.stringify(firstResult));
           results.push({
             order_id: order.id,
             status: "error",
-            message: "Código de rastreio não retornado pela API",
+            message: "Código de rastreio não retornado pela API. Verifique se o serviço e cartão de postagem estão corretos.",
           });
           continue;
         }
