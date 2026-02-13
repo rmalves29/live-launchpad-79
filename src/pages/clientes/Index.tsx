@@ -322,9 +322,23 @@ const Clientes = () => {
   };
 
   const deleteCustomer = async (id: number) => {
+    // Find the customer to get their phone for order check
+    const customer = customers.find(c => c.id === id);
+    if (!customer) return;
+
+    // Check if customer has orders
+    if (customer.total_orders > 0) {
+      toast({
+        title: '⚠️ Exclusão não permitida',
+        description: `Não é possível excluir "${customer.name}" pois possui ${customer.total_orders} pedido(s) vinculado(s).`,
+        variant: 'destructive'
+      });
+      return;
+    }
+
     const confirmed = await confirm({
-      title: 'Excluir Cliente',
-      description: 'Deseja excluir este cliente? Esta ação não pode ser desfeita.',
+      title: '🗑️ Excluir Cliente',
+      description: `Tem certeza que deseja excluir "${customer.name}"? Esta ação não pode ser desfeita.`,
       confirmText: 'Excluir',
       cancelText: 'Cancelar',
       variant: 'destructive',
@@ -332,24 +346,32 @@ const Clientes = () => {
     if (!confirmed) return;
 
     try {
-      const { error } = await supabaseTenant
+      console.log('[deleteCustomer] Deleting customer ID:', id);
+      const { data, error } = await supabase
         .from('customers')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .select('id');
+
+      console.log('[deleteCustomer] Result:', { data, error });
 
       if (error) throw error;
 
+      if (!data || data.length === 0) {
+        throw new Error('Nenhum registro excluído. Verifique as permissões (RLS).');
+      }
+
       toast({
-        title: 'Sucesso',
-        description: 'Cliente excluído com sucesso'
+        title: '✅ Cliente excluído',
+        description: `"${customer.name}" foi removido com sucesso.`
       });
       
       loadCustomers();
-    } catch (error) {
-      console.error('Error deleting customer:', error);
+    } catch (error: any) {
+      console.error('[deleteCustomer] Error:', error);
       toast({
-        title: 'Erro',
-        description: 'Erro ao excluir cliente',
+        title: 'Erro ao excluir',
+        description: error.message || 'Erro ao excluir cliente',
         variant: 'destructive'
       });
     }
