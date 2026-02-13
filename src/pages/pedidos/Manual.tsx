@@ -151,6 +151,31 @@ const PedidosManual = () => {
           variant: 'destructive',
           duration: 8000,
         });
+
+        // Send WhatsApp blocked message
+        try {
+          const { data: whatsappConfig } = await supabaseTenant
+            .from('integration_whatsapp')
+            .select('blocked_customer_template, is_active')
+            .maybeSingle();
+
+          if (whatsappConfig?.is_active) {
+            const blockedMessage = whatsappConfig.blocked_customer_template || 
+              'Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔\n\nPara entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.';
+            
+            await supabase.functions.invoke('zapi-send-message', {
+              body: {
+                phone: normalizedPhone,
+                message: blockedMessage,
+                tenant_id: profile?.tenant_id,
+              }
+            });
+            console.log('[Manual] 📤 Blocked customer WhatsApp message sent to', normalizedPhone);
+          }
+        } catch (err) {
+          console.error('[Manual] Error sending blocked customer WhatsApp message:', err);
+        }
+
         setProcessingIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(product.id);
