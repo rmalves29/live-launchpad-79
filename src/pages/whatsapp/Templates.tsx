@@ -199,7 +199,8 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
     try {
       if (editingId) {
         // Atualizar
-        const { error } = await supabaseTenant
+        console.log('📝 Atualizando template:', editingId, formData);
+        const result = await supabaseTenant
           .from('whatsapp_templates')
           .update({
             type: formData.type,
@@ -209,6 +210,8 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
           })
           .eq('id', editingId);
 
+        console.log('📝 Resultado update:', result);
+        const error = result?.error;
         if (error) throw error;
         toast.success('Template atualizado com sucesso');
       } else {
@@ -243,6 +246,8 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
     });
     setEditingId(template.id);
     setIsCreating(true);
+    // Scroll to top so user can see the edit form
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
   };
 
   const handleDelete = async (id: number) => {
