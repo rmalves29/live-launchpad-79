@@ -140,14 +140,10 @@ serve(async (req: Request) => {
       }
 
       // Determine service code
-      // MeusCorreios API accepts BOTH public codes (04510/04014) and contract codes (03298/03220)
-      // but contract codes require the cartão de postagem to be linked to an active contract.
-      // If the tenant has CWS credentials (client_id), use contract codes; otherwise use public codes.
-      const hasCWSContract = !!(integration.client_id && integration.client_secret);
-      
-      const SERVICE_CODES = hasCWSContract
-        ? { PAC: "03298", SEDEX: "03220", MINI: "04227", SEDEX12: "03140" }
-        : { PAC: "03085", SEDEX: "03050", MINI: "04227", SEDEX12: "03140" };
+      // Having a cartão de postagem means the tenant has a Correios contract,
+      // so we MUST use contract service codes (03298/03220), not public codes.
+      // Public codes (04510/04014/03085/03050) are NOT valid for contract cards.
+      const SERVICE_CODES = { PAC: "03298", SEDEX: "03220", MINI: "04227", SEDEX12: "03140" };
       
       let servico = SERVICE_CODES.PAC; // default PAC
       let servicoNome = "PAC";
