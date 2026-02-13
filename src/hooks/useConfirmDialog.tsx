@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,15 +20,13 @@ interface ConfirmDialogOptions {
 
 export function useConfirmDialog() {
   const [isOpen, setIsOpen] = useState(false);
-  const [options, setOptions] = useState<ConfirmDialogOptions>({
-    description: '',
-  });
-  const resolveRef = React.useRef<((value: boolean) => void) | null>(null);
+  const [options, setOptions] = useState<ConfirmDialogOptions>({ description: '' });
+  const resolveRef = useRef<((value: boolean) => void) | null>(null);
 
   const confirm = useCallback((opts: ConfirmDialogOptions): Promise<boolean> => {
     setOptions(opts);
     setIsOpen(true);
-    
+
     return new Promise((resolve) => {
       resolveRef.current = resolve;
     });
@@ -46,12 +44,9 @@ export function useConfirmDialog() {
     resolveRef.current = null;
   }, []);
 
-  const ConfirmDialog = useCallback(() => (
-    <AlertDialog open={isOpen} onOpenChange={(open) => {
-      if (!open) {
-        handleCancel();
-      }
-    }}>
+  // Return a stable React element, NOT a component function
+  const confirmDialogElement = (
+    <AlertDialog open={isOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{options.title || 'Confirmar'}</AlertDialogTitle>
@@ -72,7 +67,7 @@ export function useConfirmDialog() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  ), [isOpen, options, handleConfirm, handleCancel]);
+  );
 
-  return { confirm, ConfirmDialog };
+  return { confirm, confirmDialogElement };
 }

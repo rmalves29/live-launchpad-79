@@ -46,7 +46,7 @@ interface ImportRow {
 
 const Produtos = () => {
   const { toast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialogElement } = useConfirmDialog();
   const { profile } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1072,7 +1072,7 @@ const Produtos = () => {
           </CardContent>
         </Card>
       </div>
-      <ConfirmDialog />
+      {confirmDialogElement}
       <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} preSelectedIds={selectedProducts} />
     </div>
   );

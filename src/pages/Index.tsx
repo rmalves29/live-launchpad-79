@@ -65,7 +65,7 @@ interface Order {
 
 const Pedidos = () => {
   const { toast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialogElement } = useConfirmDialog();
   const { profile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1347,7 +1347,7 @@ const Pedidos = () => {
         onOpenChange={setViewOrderOpen}
         order={viewingOrder}
       />
-      <ConfirmDialog />
+      {confirmDialogElement}
         </div>
       </div>
     </div>
