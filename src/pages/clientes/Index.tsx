@@ -806,25 +806,38 @@ const Clientes = () => {
   };
 
   const toggleBlockCustomer = async (customer: Customer) => {
+    const customerId = customer.id;
+    const customerName = customer.name;
+    const newStatus = !customer.is_blocked;
+    
+    console.log(`[toggleBlock] Attempting to ${newStatus ? 'block' : 'unblock'} customer ${customerId} (${customerName})`);
+    
     try {
-      const newStatus = !customer.is_blocked;
-      const { error } = await supabaseTenant
+      const { data, error } = await supabase
         .from('customers')
         .update({ is_blocked: newStatus })
-        .eq('id', customer.id);
+        .eq('id', customerId)
+        .select('id, is_blocked');
+
+      console.log('[toggleBlock] Result:', { data, error });
 
       if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        throw new Error('Nenhum registro atualizado. Verifique as permissões (RLS).');
+      }
 
       toast({
         title: newStatus ? '🚫 Cliente Bloqueado' : '✅ Cliente Desbloqueado',
         description: newStatus 
-          ? `${customer.name} foi bloqueado e não poderá realizar novas compras.`
-          : `${customer.name} foi desbloqueado e pode realizar compras normalmente.`,
+          ? `${customerName} foi bloqueado e não poderá realizar novas compras.`
+          : `${customerName} foi desbloqueado e pode realizar compras normalmente.`,
       });
       
       setBlockingCustomer(null);
       loadCustomers();
     } catch (error: any) {
+      console.error('[toggleBlock] Error:', error);
       toast({
         title: 'Erro',
         description: error.message || 'Erro ao alterar status do cliente',
