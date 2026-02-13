@@ -48,7 +48,7 @@ export default function TenantsManager() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [showPasswords, setShowPasswords] = useState<{[key: string]: boolean}>({});
   const { toast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialogElement } = useConfirmDialog();
   const { user, profile } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -714,7 +714,7 @@ export default function TenantsManager() {
         </Card>
       )}
     </div>
-      <ConfirmDialog />
+      {confirmDialogElement}
     </>
   );
 }

@@ -85,7 +85,7 @@ interface OrderWithCustomer extends Order {
 
 const Clientes = () => {
   const { toast } = useToast();
-  const { confirm, ConfirmDialog } = useConfirmDialog();
+  const { confirm, confirmDialogElement } = useConfirmDialog();
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { tenantId } = useTenantContext();
@@ -1944,7 +1944,7 @@ const Clientes = () => {
           })}
         </div>
       </div>
-      <ConfirmDialog />
+      {confirmDialogElement}
     </div>
   );
 };

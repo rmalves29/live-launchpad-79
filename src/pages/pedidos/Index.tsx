@@ -79,7 +79,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
   const Pedidos = () => {
     const { toast } = useToast();
-    const { confirm, ConfirmDialog } = useConfirmDialog();
+    const { confirm, confirmDialogElement } = useConfirmDialog();
     const { profile } = useAuth();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -1962,7 +1962,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           </AlertDialogContent>
         </AlertDialog>
 
-        <ConfirmDialog />
+        {confirmDialogElement}
       </div>
     </div>
   </div>
