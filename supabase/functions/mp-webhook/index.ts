@@ -56,26 +56,37 @@ serve(async (req) => {
       mpAccessToken = Deno.env.get("MP_ACCESS_TOKEN") || null;
     }
 
-    // Handle different webhook types
-    const { type, data, topic, resource } = body;
+    if (!mpAccessToken) {
+      console.error("[mp-webhook] No MP access token found for tenant:", tenantIdFromQuery);
+      return new Response(JSON.stringify({ error: "No MP token" }), {
+        status: 200, // Return 200 to MP so it doesn't retry endlessly
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    // Payment notification (IPN style)
+    // Handle different webhook types
+    const { type, data, topic, resource, action } = body;
+
+    // === IPN-style: topic=payment, resource=paymentId ===
     if (topic === "payment" && resource) {
-      const paymentId = typeof resource === "string" ? resource : null;
+      const paymentId = String(resource).replace(/\D/g, "");
       if (paymentId) {
-        await processPayment(sb, paymentId, mpAccessToken);
+        console.log(`[mp-webhook] IPN payment notification: ${paymentId}`);
+        await processPayment(sb, paymentId, mpAccessToken, tenantIdFromQuery);
       }
     }
 
-    // Payment notification (Webhook style)
+    // === Webhook V2 style: type=payment, data.id=paymentId ===
     if (type === "payment" && data?.id) {
-      await processPayment(sb, String(data.id), mpAccessToken);
+      const paymentId = String(data.id);
+      console.log(`[mp-webhook] Webhook V2 payment notification: ${paymentId}, action: ${action}`);
+      await processPayment(sb, paymentId, mpAccessToken, tenantIdFromQuery);
     }
 
-    // Merchant order notification
+    // === Merchant order notification ===
     if (topic === "merchant_order" && resource) {
-      console.log("[mp-webhook] Merchant order notification, checking payments...");
-      await processMerchantOrder(sb, resource, mpAccessToken);
+      console.log("[mp-webhook] Merchant order notification:", resource);
+      await processMerchantOrder(sb, String(resource), mpAccessToken, tenantIdFromQuery);
     }
 
     return new Response(JSON.stringify({ success: true }), {
@@ -91,20 +102,16 @@ serve(async (req) => {
       error_message: error instanceof Error ? error.message : String(error),
     });
 
+    // Return 200 to prevent MP from retrying on our errors
     return new Response(JSON.stringify({ error: "Internal error" }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
 
-async function processPayment(sb: any, paymentId: string, mpAccessToken: string | null) {
+async function processPayment(sb: any, paymentId: string, mpAccessToken: string, tenantIdHint: string | null) {
   console.log(`[mp-webhook] Processing payment: ${paymentId}`);
-
-  if (!mpAccessToken) {
-    console.error("[mp-webhook] Mercado Pago token não encontrado (tenant/global)");
-    return;
-  }
 
   try {
     // Fetch payment details from Mercado Pago
@@ -115,67 +122,93 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string 
     });
 
     if (!paymentRes.ok) {
-      console.error(`[mp-webhook] Failed to fetch payment ${paymentId}: ${paymentRes.status}`);
+      const errText = await paymentRes.text();
+      console.error(`[mp-webhook] Failed to fetch payment ${paymentId}: ${paymentRes.status} - ${errText.substring(0, 200)}`);
+      
+      // Log the failure
+      await sb.from("webhook_logs").insert({
+        webhook_type: "mercadopago_payment_fetch_error",
+        status_code: paymentRes.status,
+        tenant_id: tenantIdHint,
+        error_message: `Failed to fetch payment ${paymentId}: ${paymentRes.status}`,
+        payload: { payment_id: paymentId, response_preview: errText.substring(0, 500) },
+      });
       return;
     }
 
     const payment = await paymentRes.json();
-    console.log(`[mp-webhook] Payment status: ${payment.status}, external_reference: ${payment.external_reference}`);
+    console.log(`[mp-webhook] Payment ${paymentId}: status=${payment.status}, external_reference=${payment.external_reference}, preference_id=${payment.preference_id}`);
 
     // Only process approved payments
     if (payment.status !== "approved") {
-      console.log(`[mp-webhook] Payment ${paymentId} not approved (status: ${payment.status})`);
+      console.log(`[mp-webhook] Payment ${paymentId} not approved (status: ${payment.status}), skipping`);
+      
+      // Log non-approved payment for debugging
+      await sb.from("webhook_logs").insert({
+        webhook_type: "mercadopago_payment_not_approved",
+        status_code: 200,
+        tenant_id: tenantIdHint,
+        payload: { payment_id: paymentId, status: payment.status, external_reference: payment.external_reference },
+      });
       return;
     }
 
-    // Extract payment method info
-    const paymentMethodId = payment.payment_method_id || payment.payment_type_id || null;
-    const installments = payment.installments || 1;
-    // Map MP payment methods: credit_card, debit_card, account_money, pix, bolbradesco, etc.
-    let paymentMethod = paymentMethodId;
-    if (paymentMethodId === "account_money") paymentMethod = "pix";
-    if (paymentMethodId === "bolbradesco" || paymentMethodId === "pec") paymentMethod = "boleto";
-    console.log(`[mp-webhook] Payment method: ${paymentMethod}, installments: ${installments}`);
-
     // Parse external_reference to get order IDs
-    // Format: "tenant:UUID;orders:1,2,3"
     const externalRef = payment.external_reference || "";
     const orderIds = parseOrderIds(externalRef);
-    const tenantId = parseTenantId(externalRef);
+    const tenantId = parseTenantId(externalRef) || tenantIdHint;
 
-    if (orderIds.length === 0) {
-      // Try to find order by preference_id in payment_link
-      const preferenceId = payment.preference_id;
-      if (preferenceId) {
-        const { data: orders } = await sb
-          .from("orders")
-          .select("id, is_paid, tenant_id")
-          .ilike("payment_link", `%${preferenceId}%`);
+    console.log(`[mp-webhook] Payment ${paymentId} APPROVED. external_ref="${externalRef}", parsed orderIds=[${orderIds}], tenantId=${tenantId}`);
 
-        if (orders && orders.length > 0) {
-          for (const order of orders) {
-            await markOrderAsPaid(sb, order.id, order.tenant_id, paymentId, paymentMethod, installments);
-          }
-        }
+    if (orderIds.length > 0) {
+      // Mark orders as paid using external_reference
+      for (const orderId of orderIds) {
+        await markOrderAsPaid(sb, orderId, tenantId, paymentId);
       }
       return;
     }
 
-    // Mark orders as paid
-    for (const orderId of orderIds) {
-      await markOrderAsPaid(sb, orderId, tenantId, paymentId, paymentMethod, installments);
+    // Fallback: Try to find order by preference_id in payment_link
+    const preferenceId = payment.preference_id;
+    if (preferenceId) {
+      console.log(`[mp-webhook] No orderIds from external_ref, trying preference_id: ${preferenceId}`);
+      const { data: orders } = await sb
+        .from("orders")
+        .select("id, is_paid, tenant_id")
+        .ilike("payment_link", `%${preferenceId}%`);
+
+      if (orders && orders.length > 0) {
+        console.log(`[mp-webhook] Found ${orders.length} order(s) by preference_id`);
+        for (const order of orders) {
+          await markOrderAsPaid(sb, order.id, order.tenant_id || tenantId, paymentId);
+        }
+      } else {
+        console.log(`[mp-webhook] No orders found for preference_id: ${preferenceId}`);
+        
+        await sb.from("webhook_logs").insert({
+          webhook_type: "mercadopago_payment_no_order",
+          status_code: 200,
+          tenant_id: tenantId,
+          payload: { payment_id: paymentId, preference_id: preferenceId, external_reference: externalRef },
+        });
+      }
+    } else {
+      console.log(`[mp-webhook] Payment ${paymentId} approved but no way to find matching order`);
     }
   } catch (error) {
     console.error(`[mp-webhook] Error processing payment ${paymentId}:`, error);
+    
+    await sb.from("webhook_logs").insert({
+      webhook_type: "mercadopago_payment_process_error",
+      status_code: 500,
+      tenant_id: tenantIdHint,
+      error_message: error instanceof Error ? error.message : String(error),
+      payload: { payment_id: paymentId },
+    });
   }
 }
 
-async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken: string | null) {
-  if (!mpAccessToken) {
-    console.error("[mp-webhook] Mercado Pago token não encontrado (tenant/global)");
-    return;
-  }
-
+async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken: string, tenantIdHint: string | null) {
   try {
     const orderRes = await fetch(resourceUrl, {
       headers: {
@@ -184,28 +217,34 @@ async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken:
     });
 
     if (!orderRes.ok) {
-      console.error(`[mp-webhook] Failed to fetch merchant order: ${orderRes.status}`);
+      const errText = await orderRes.text();
+      console.error(`[mp-webhook] Failed to fetch merchant order: ${orderRes.status} - ${errText.substring(0, 200)}`);
       return;
     }
 
     const merchantOrder = await orderRes.json();
-    console.log(`[mp-webhook] Merchant order status: ${merchantOrder.order_status}`);
+    console.log(`[mp-webhook] Merchant order: status=${merchantOrder.order_status}, payments=${merchantOrder.payments?.length || 0}`);
 
-    // Check if order is fully paid
-    if (merchantOrder.order_status === "paid" && merchantOrder.payments) {
+    // Process ALL payments in the merchant order, not just when order_status is "paid"
+    // This is the key fix: sometimes order_status is "payment_required" but individual payments are "approved"
+    if (merchantOrder.payments && merchantOrder.payments.length > 0) {
       for (const payment of merchantOrder.payments) {
+        console.log(`[mp-webhook] Merchant order payment: id=${payment.id}, status=${payment.status}, amount=${payment.transaction_amount}`);
+        
         if (payment.status === "approved") {
-          await processPayment(sb, String(payment.id), mpAccessToken);
+          await processPayment(sb, String(payment.id), mpAccessToken, tenantIdHint);
         }
       }
+    } else {
+      console.log(`[mp-webhook] Merchant order has no payments yet (status: ${merchantOrder.order_status})`);
     }
   } catch (error) {
     console.error("[mp-webhook] Error processing merchant order:", error);
   }
 }
 
-async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null, paymentId: string, paymentMethod?: string | null, installments?: number) {
-  console.log(`[mp-webhook] Marking order ${orderId} as paid`);
+async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null, paymentId: string) {
+  console.log(`[mp-webhook] Marking order ${orderId} as paid (payment: ${paymentId})`);
 
   // Check if already paid
   const { data: existingOrder } = await sb
@@ -220,26 +259,32 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
   }
 
   if (existingOrder.is_paid) {
-    console.log(`[mp-webhook] Order ${orderId} already marked as paid`);
+    console.log(`[mp-webhook] Order ${orderId} already marked as paid, skipping`);
     return;
   }
 
   const orderTenantId = existingOrder.tenant_id || tenantId;
 
   // Update order to paid
-  const updateData: any = { is_paid: true };
-
   const { error: updateError } = await sb
     .from("orders")
-    .update(updateData)
+    .update({ is_paid: true })
     .eq("id", orderId);
 
   if (updateError) {
     console.error(`[mp-webhook] Error updating order ${orderId}:`, updateError);
+    
+    await sb.from("webhook_logs").insert({
+      webhook_type: "mercadopago_update_error",
+      status_code: 500,
+      tenant_id: orderTenantId,
+      error_message: updateError.message,
+      payload: { order_id: orderId, payment_id: paymentId },
+    });
     return;
   }
 
-  console.log(`[mp-webhook] Order ${orderId} marked as paid successfully`);
+  console.log(`[mp-webhook] ✅ Order ${orderId} marked as paid successfully`);
 
   // Log success
   await sb.from("webhook_logs").insert({
@@ -257,13 +302,9 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
 }
 
 async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | null) {
-  if (!tenantId) {
-    console.log(`[mp-webhook] Cannot sync with Bling: no tenant_id`);
-    return;
-  }
+  if (!tenantId) return;
 
   try {
-    // Check if Bling integration is active
     const { data: blingIntegration } = await sb
       .from("integration_bling")
       .select("is_active, sync_orders, access_token")
@@ -271,7 +312,6 @@ async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | n
       .maybeSingle();
 
     if (!blingIntegration?.is_active || !blingIntegration?.sync_orders || !blingIntegration?.access_token) {
-      console.log(`[mp-webhook] Bling ERP not configured or sync_orders disabled for tenant ${tenantId}`);
       return;
     }
 
@@ -280,7 +320,6 @@ async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | n
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    // Call Bling sync edge function
     const response = await fetch(`${supabaseUrl}/functions/v1/bling-sync-orders`, {
       method: "POST",
       headers: {
@@ -297,7 +336,7 @@ async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | n
     const result = await response.json();
 
     if (response.ok && result.success) {
-      console.log(`[mp-webhook] Order ${orderId} synced with Bling ERP successfully`);
+      console.log(`[mp-webhook] ✅ Order ${orderId} synced with Bling`);
     } else {
       console.error(`[mp-webhook] Bling sync failed for order ${orderId}:`, result);
     }
@@ -307,7 +346,6 @@ async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | n
 }
 
 function parseOrderIds(externalRef: string): number[] {
-  // Format: "tenant:UUID;orders:1,2,3"
   const match = externalRef.match(/orders:([0-9,]+)/);
   if (!match) return [];
   
@@ -318,7 +356,6 @@ function parseOrderIds(externalRef: string): number[] {
 }
 
 function parseTenantId(externalRef: string): string | null {
-  // Format: "tenant:UUID;orders:1,2,3"
   const match = externalRef.match(/tenant:([a-f0-9-]+)/i);
   return match ? match[1] : null;
 }
