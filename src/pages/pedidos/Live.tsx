@@ -13,7 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+  import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+  import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
@@ -85,6 +86,7 @@ const Live = () => {
   const [orderCartItems, setOrderCartItems] = useState<{[orderId: number]: CartItem[]}>({});
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
   const [deletingItems, setDeletingItems] = useState<Set<number>>(new Set());
+  const [blockedCustomerName, setBlockedCustomerName] = useState<string | null>(null);
 
   const loadProducts = async () => {
     try {
@@ -260,12 +262,31 @@ const Live = () => {
     }
 
     if (data?.is_blocked) {
-      toast({
-        title: '⚠️ CLIENTE BLOQUEADA',
-        description: 'Este perfil possui restrições e não pode realizar novas compras.',
-        variant: 'destructive',
-        duration: 8000,
-      });
+      setBlockedCustomerName(normalized);
+      
+      // Send WhatsApp blocked message
+      try {
+        const { data: whatsappConfig } = await supabaseTenant
+          .from('integration_whatsapp')
+          .select('blocked_customer_template, zapi_instance_id, zapi_token, provider, is_active')
+          .maybeSingle();
+
+        if (whatsappConfig?.is_active && data.phone) {
+          const blockedMessage = whatsappConfig.blocked_customer_template || 
+            'Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔\n\nPara entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.';
+          
+          await supabase.functions.invoke('zapi-send-message', {
+            body: {
+              phone: data.phone,
+              message: blockedMessage,
+              tenant_id: profile?.tenant_id,
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Error sending blocked customer WhatsApp message:', err);
+      }
+      
       return '__BLOCKED__';
     }
 
@@ -1084,6 +1105,26 @@ const Live = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Blocked Customer Alert - Centered */}
+      <AlertDialog open={!!blockedCustomerName} onOpenChange={(open) => !open && setBlockedCustomerName(null)}>
+        <AlertDialogContent className="border-destructive">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive text-xl flex items-center gap-2">
+              ⚠️ CLIENTE BLOQUEADA
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              O perfil <strong>@{blockedCustomerName}</strong> possui restrições e não pode realizar novas compras.
+              {'\n\n'}Uma mensagem automática de restrição foi enviada via WhatsApp.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setBlockedCustomerName(null)}>
+              Entendi
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
