@@ -580,14 +580,22 @@ serve(async (req) => {
         try {
           const { data: whatsappConfig } = await supabase
             .from('integration_whatsapp')
-            .select('zapi_instance_id, zapi_token, zapi_client_token, is_active, blocked_customer_template')
+            .select('zapi_instance_id, zapi_token, zapi_client_token, is_active')
             .eq('tenant_id', tenantId)
             .eq('is_active', true)
             .maybeSingle();
 
+          // Try to get custom template from whatsapp_templates
+          const { data: blockedTemplate } = await supabase
+            .from('whatsapp_templates')
+            .select('content')
+            .eq('tenant_id', tenantId)
+            .eq('type', 'BLOCKED_CUSTOMER')
+            .maybeSingle();
+
           if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
             const defaultBlockedMsg = 'Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔\n\nPara entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.';
-            const blockedMessage = addMessageVariation(whatsappConfig.blocked_customer_template || defaultBlockedMsg);
+            const blockedMessage = addMessageVariation(blockedTemplate?.content || defaultBlockedMsg);
             
             const phoneForZapi = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
             

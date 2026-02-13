@@ -56,6 +56,12 @@ const TEMPLATE_TYPES = [
     label: 'Código de Rastreio',
     description: 'Enviado quando o código de rastreio é adicionado',
     variables: ['{{customer_name}}', '{{order_id}}', '{{tracking_code}}', '{{shipped_at}}']
+  },
+  { 
+    value: 'BLOCKED_CUSTOMER', 
+    label: 'Cliente Bloqueado',
+    description: 'Enviado automaticamente quando um cliente bloqueado tenta fazer pedido',
+    variables: ['{{customer_name}}']
   }
 ];
 
@@ -107,6 +113,13 @@ https://www.melhorrastreio.com.br/rastreio/{{tracking_code}}
 ⏳ _O rastreio pode demorar até 2 dias úteis para aparecer no sistema._
 
 Obrigado pela preferência! 💚`
+    },
+    {
+      type: 'BLOCKED_CUSTOMER',
+      title: 'Mensagem de Cliente Bloqueado',
+      content: `Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔
+
+Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.`
     }
   ];
 
