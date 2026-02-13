@@ -1,14 +1,12 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// App Max API URLs
-const APPMAX_SANDBOX_URL = "https://homolog.sandboxappmax.com.br/api/v3";
-const APPMAX_PRODUCTION_URL = "https://appmax.com.br/api/v3";
+// App Max API v1 URL
+const APPMAX_API_URL = "https://api.appmax.com.br/v1";
 
 type CartItem = {
   product_name: string;
@@ -42,6 +40,8 @@ type ShippingData = {
   delivery_time: string;
 } | null;
 
+type PaymentMethod = "pix" | "credit-card" | "boleto";
+
 type CreatePaymentRequest = {
   tenant_id: string;
   order_id: number;
@@ -55,6 +55,8 @@ type CreatePaymentRequest = {
   coupon_discount?: number;
   coupon_code?: string | null;
   merge_observation?: string | null;
+  payment_method?: PaymentMethod;
+  payment_data?: Record<string, unknown>;
 };
 
 function isUuid(v: string) {
@@ -135,49 +137,74 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
       coupon_discount: toNumber(body.coupon_discount, 0),
       coupon_code: body.coupon_code ? String(body.coupon_code).slice(0, 50) : null,
       merge_observation: body.merge_observation ? String(body.merge_observation).slice(0, 255) : null,
+      payment_method: body.payment_method || "pix",
+      payment_data: body.payment_data || {},
     },
   };
 }
 
-// Formatar telefone para o padrão App Max: (XX) XXXXX-XXXX
-function formatPhoneForAppmax(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length === 11) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-  }
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  }
-  return phone;
-}
-
-// Formatar CEP: XXXXX-XXX
-function formatCep(cep: string): string {
-  const digits = cep.replace(/\D/g, "");
-  if (digits.length === 8) {
-    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
-  }
-  return cep;
-}
-
-// Separar nome em firstname e lastname
-function splitName(fullName: string): { firstname: string; lastname: string } {
+function splitName(fullName: string): { first_name: string; last_name: string } {
   const parts = fullName.trim().split(/\s+/);
-  const firstname = parts[0] || "";
-  const lastname = parts.slice(1).join(" ") || firstname;
-  return { firstname, lastname };
+  const first_name = parts[0] || "";
+  const last_name = parts.slice(1).join(" ") || first_name;
+  return { first_name, last_name };
 }
 
-// Função para pegar IP do cliente (fallback para local)
 function getClientIp(req: Request): string {
   const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
+  if (forwarded) return forwarded.split(",")[0].trim();
   return "127.0.0.1";
 }
 
-serve(async (req) => {
+function formatCep(cep: string): string {
+  const digits = cep.replace(/\D/g, "");
+  if (digits.length === 8) return `${digits.slice(0, 5)}${digits.slice(5)}`;
+  return digits;
+}
+
+function formatPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 11) return `${digits.slice(0, 2)}${digits.slice(2)}`;
+  return digits;
+}
+
+// ─── Appmax API helper ──────────────────────────────────────────
+async function appmaxFetch(
+  path: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const url = `${APPMAX_API_URL}${path}`;
+  console.log(`[appmax] POST ${url}`);
+
+  const headers: Record<string, string> = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "Authorization": `Bearer ${accessToken}`,
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  let data: any;
+
+  if (contentType.includes("application/json")) {
+    data = await res.json();
+  } else {
+    const text = await res.text();
+    console.error(`[appmax] Non-JSON response (${res.status}):`, text.slice(0, 500));
+    data = { error: `Resposta inesperada da API (${res.status})`, raw: text.slice(0, 300) };
+  }
+
+  console.log(`[appmax] Response ${res.status}:`, JSON.stringify(data).slice(0, 500));
+  return { ok: res.ok, status: res.status, data };
+}
+
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -190,7 +217,6 @@ serve(async (req) => {
     }
 
     const payload = parsed.data;
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceKey) {
@@ -202,7 +228,7 @@ serve(async (req) => {
 
     const sb = createClient(supabaseUrl, serviceKey);
 
-    // 1) Buscar integração App Max do tenant
+    // ─── 1) Buscar integração App Max do tenant ─────────────────
     const { data: appmaxIntegration, error: integrationError } = await sb
       .from("integration_appmax")
       .select("*")
@@ -211,7 +237,7 @@ serve(async (req) => {
       .maybeSingle();
 
     if (integrationError || !appmaxIntegration) {
-      console.log("[appmax-create-payment] No active integration found for tenant:", payload.tenant_id);
+      console.log("[appmax] No active integration for tenant:", payload.tenant_id);
       return new Response(JSON.stringify({ error: "Integração App Max não configurada ou inativa" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -219,12 +245,16 @@ serve(async (req) => {
     }
 
     const accessToken = appmaxIntegration.access_token;
-    const isSandbox = appmaxIntegration.environment === "sandbox";
-    const baseUrl = isSandbox ? APPMAX_SANDBOX_URL : APPMAX_PRODUCTION_URL;
+    if (!accessToken) {
+      return new Response(JSON.stringify({ error: "Access token do App Max não configurado" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-    console.log(`[appmax-create-payment] Using ${isSandbox ? "SANDBOX" : "PRODUCTION"} environment`);
+    console.log(`[appmax] Environment: ${appmaxIntegration.environment}`);
 
-    // 2) Persistir endereço no cliente
+    // ─── 2) Persistir endereço no cliente local ─────────────────
     await sb
       .from("customers")
       .upsert(
@@ -246,7 +276,7 @@ serve(async (req) => {
         { onConflict: "tenant_id,phone" },
       );
 
-    // 3) Atualizar pedido(s) com endereço e frete
+    // ─── 3) Atualizar pedido(s) locais com endereço e frete ─────
     const freightNote = buildFreightNote(payload.shippingData, payload.shippingCost);
     const orderIds = (payload.order_ids && payload.order_ids.length > 0 ? payload.order_ids : [payload.order_id]).filter(Boolean);
 
@@ -260,12 +290,12 @@ serve(async (req) => {
       if (existingOrder) {
         let obs = (existingOrder.observation ?? "").toString();
         const cleaned = obs.replace(/\n?\[FRETE\][^\n]*/g, "").trim();
-        
+
         let mergeNote = "";
         if (payload.merge_observation) {
           mergeNote = `[MERGE] ${payload.merge_observation}`;
         }
-        
+
         const parts = [cleaned, freightNote, mergeNote].filter(Boolean);
         const nextObs = parts.join("\n");
 
@@ -275,19 +305,18 @@ serve(async (req) => {
             .from("cart_items")
             .select("unit_price, qty")
             .eq("cart_id", existingOrder.cart_id);
-          
+
           if (cartItems && cartItems.length > 0) {
-            productsTotal = cartItems.reduce((sum, item) => sum + (Number(item.unit_price) * Number(item.qty)), 0);
+            productsTotal = cartItems.reduce((sum: number, item: any) => sum + (Number(item.unit_price) * Number(item.qty)), 0);
           }
         }
-        
+
         if (productsTotal === 0) {
           productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
         }
-        
+
         const shippingValue = toNumber(payload.shippingCost, 0);
         const newTotal = productsTotal + shippingValue;
-
         const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
 
         await sb
@@ -309,138 +338,216 @@ serve(async (req) => {
       }
     }
 
-    // 4) Criar cliente no App Max
-    const { firstname, lastname } = splitName(payload.customerData.name);
+    // ─── 4) APPMAX STEP 1: Criar/Atualizar Cliente ─────────────
+    const { first_name, last_name } = splitName(payload.customerData.name);
     const clientIp = getClientIp(req);
 
-    const customerBody = {
-      "access-token": accessToken,
-      firstname,
-      lastname,
+    const customerBody: Record<string, unknown> = {
+      first_name,
+      last_name,
       email: payload.customerData.email || `${payload.customerData.phone}@checkout.local`,
-      telephone: formatPhoneForAppmax(payload.customerData.phone),
-      postcode: formatCep(payload.addressData.cep),
-      address_street: payload.addressData.street,
-      address_street_number: payload.addressData.number,
-      address_street_complement: payload.addressData.complement || "",
-      address_street_district: payload.addressData.neighborhood,
-      address_city: payload.addressData.city,
-      address_state: payload.addressData.state,
+      phone: formatPhone(payload.customerData.phone),
       ip: clientIp,
-      custom_txt: `Pedido(s): ${orderIds.join(", ")}`,
-      products: payload.cartItems.map(item => ({
-        product_sku: item.product_code || `SKU-${Date.now()}`,
-        product_qty: item.qty,
-      })),
+      document_number: payload.customerData.cpf || "",
+      address: {
+        postcode: formatCep(payload.addressData.cep),
+        street: payload.addressData.street,
+        number: payload.addressData.number,
+        complement: payload.addressData.complement || "",
+        district: payload.addressData.neighborhood,
+        city: payload.addressData.city,
+        state: payload.addressData.state,
+      },
     };
 
-    console.log("[appmax-create-payment] Creating customer...");
-    const customerRes = await fetch(`${baseUrl}/customer`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(customerBody),
-    });
+    console.log("[appmax] Step 1: Creating/updating customer...");
+    const customerResult = await appmaxFetch("/customer", accessToken, customerBody);
 
-    const customerJson = await customerRes.json();
-    
-    if (!customerRes.ok || !customerJson.data?.id) {
-      console.error("[appmax-create-payment] Customer creation failed:", customerJson);
-      return new Response(JSON.stringify({ 
-        error: "Erro ao criar cliente no App Max", 
-        details: customerJson 
+    if (!customerResult.ok || !customerResult.data?.data?.id) {
+      console.error("[appmax] Customer creation failed:", customerResult.data);
+      return new Response(JSON.stringify({
+        error: "Erro ao criar cliente no App Max. Verifique se o token está correto.",
+        details: customerResult.data,
       }), {
-        status: 400,
+        status: customerResult.status >= 400 ? customerResult.status : 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const appmaxCustomerId = customerJson.data.id;
-    console.log("[appmax-create-payment] Customer created:", appmaxCustomerId);
+    const appmaxCustomerId = customerResult.data.data.id;
+    console.log("[appmax] Customer ID:", appmaxCustomerId);
 
-    // 5) Criar pedido no App Max
+    // Salvar customer_id na integração para referência futura
+    await sb
+      .from("integration_appmax")
+      .update({ appmax_customer_id: appmaxCustomerId, updated_at: new Date().toISOString() })
+      .eq("id", appmaxIntegration.id);
+
+    // ─── 5) APPMAX STEP 2: Criar Pedido ─────────────────────────
     const productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
     const totalWithShipping = productsTotal + payload.shippingCost;
+    const discount = toNumber(payload.coupon_discount, 0);
 
-    const orderBody = {
-      "access-token": accessToken,
-      total: totalWithShipping,
+    const orderBody: Record<string, unknown> = {
+      customer_id: appmaxCustomerId,
       products: payload.cartItems.map(item => ({
-        sku: item.product_code || `SKU-${Date.now()}`,
+        sku: item.product_code || `SKU-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         name: item.product_name,
         qty: item.qty,
-        price: item.unit_price,
+        unit_value: item.unit_price,
       })),
-      shipping: payload.shippingCost,
-      customer_id: appmaxCustomerId,
-      discount: payload.coupon_discount || 0,
+      shipping_value: payload.shippingCost,
       freight_type: payload.shippingData?.service_name || "Retirada",
     };
 
-    console.log("[appmax-create-payment] Creating order...");
-    const orderRes = await fetch(`${baseUrl}/order`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(orderBody),
-    });
+    // Se tiver desconto, incluir
+    if (discount > 0) {
+      orderBody.discount = discount;
+    }
 
-    const orderJson = await orderRes.json();
-    
-    if (!orderRes.ok || !orderJson.data?.id) {
-      console.error("[appmax-create-payment] Order creation failed:", orderJson);
-      return new Response(JSON.stringify({ 
-        error: "Erro ao criar pedido no App Max", 
-        details: orderJson 
+    console.log("[appmax] Step 2: Creating order...");
+    const orderResult = await appmaxFetch("/order", accessToken, orderBody);
+
+    if (!orderResult.ok || !orderResult.data?.data?.id) {
+      console.error("[appmax] Order creation failed:", orderResult.data);
+      return new Response(JSON.stringify({
+        error: "Erro ao criar pedido no App Max",
+        details: orderResult.data,
       }), {
-        status: 400,
+        status: orderResult.status >= 400 ? orderResult.status : 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const appmaxOrderId = orderJson.data.id;
-    console.log("[appmax-create-payment] Order created:", appmaxOrderId);
+    const appmaxOrderId = orderResult.data.data.id;
+    console.log("[appmax] Order ID:", appmaxOrderId);
 
-    // 6) Salvar IDs do App Max nos pedidos locais
-    for (const orderId of orderIds) {
-      await sb
-        .from("orders")
-        .update({
-          observation: sb.sql`observation || '\n[APPMAX] customer_id: ${appmaxCustomerId}, order_id: ${appmaxOrderId}'`,
-        })
-        .eq("id", orderId);
-    }
-
-    // 7) Retornar URL de pagamento do App Max
-    // O App Max usa um checkout próprio - retornamos os dados para o frontend processar
-    const checkoutData = {
-      appmax_customer_id: appmaxCustomerId,
-      appmax_order_id: appmaxOrderId,
-      total: totalWithShipping,
-      environment: isSandbox ? "sandbox" : "production",
-      base_url: baseUrl,
+    // ─── 6) APPMAX STEP 3: Processar Pagamento ─────────────────
+    const paymentMethod: PaymentMethod = payload.payment_method || "pix";
+    let paymentEndpoint: string;
+    const paymentBody: Record<string, unknown> = {
+      order_id: appmaxOrderId,
     };
 
-    // Construir URL do checkout App Max (o cliente pode ter um link específico)
-    const checkoutUrl = isSandbox 
-      ? `https://homolog.sandboxappmax.com.br/checkout/${appmaxOrderId}`
-      : `https://appmax.com.br/checkout/${appmaxOrderId}`;
+    switch (paymentMethod) {
+      case "credit-card":
+        paymentEndpoint = "/payments/credit-card";
+        paymentBody.customer_id = appmaxCustomerId;
+        paymentBody.payment_data = payload.payment_data || {};
+        break;
 
-    // Salvar link de pagamento nos pedidos
-    await sb
-      .from("orders")
-      .update({ payment_link: checkoutUrl })
-      .in("id", orderIds);
+      case "boleto":
+        paymentEndpoint = "/payments/boleto";
+        paymentBody.payment_data = payload.payment_data || {};
+        break;
 
-    return new Response(
-      JSON.stringify({ 
-        init_point: checkoutUrl, 
-        provider: "appmax",
-        appmax_data: checkoutData,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+      case "pix":
+      default:
+        paymentEndpoint = "/payments/pix";
+        paymentBody.payment_data = payload.payment_data || {};
+        break;
+    }
+
+    console.log(`[appmax] Step 3: Creating payment via ${paymentMethod}...`);
+    const paymentResult = await appmaxFetch(paymentEndpoint, accessToken, paymentBody);
+
+    if (!paymentResult.ok) {
+      console.error("[appmax] Payment creation failed:", paymentResult.data);
+
+      // Mesmo com falha no pagamento, salvamos os IDs do Appmax nos pedidos locais
+      for (const orderId of orderIds) {
+        await sb
+          .from("orders")
+          .update({
+            observation: `[APPMAX] customer_id: ${appmaxCustomerId}, order_id: ${appmaxOrderId} | Pagamento pendente (${paymentMethod})`,
+          })
+          .eq("id", orderId);
+      }
+
+      return new Response(JSON.stringify({
+        error: `Erro ao processar pagamento via ${paymentMethod} no App Max`,
+        details: paymentResult.data,
+        appmax_order_id: appmaxOrderId,
+        appmax_customer_id: appmaxCustomerId,
+      }), {
+        status: paymentResult.status >= 400 ? paymentResult.status : 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const paymentData = paymentResult.data?.data || paymentResult.data;
+    console.log("[appmax] Payment created successfully:", JSON.stringify(paymentData).slice(0, 300));
+
+    // ─── 7) Salvar dados nos pedidos locais ──────────────────────
+    // Extrair link de pagamento (PIX QR code, boleto URL, etc.)
+    const paymentLink = paymentData?.pix_qrcode
+      || paymentData?.pix_url
+      || paymentData?.boleto_url
+      || paymentData?.payment_url
+      || paymentData?.checkout_url
+      || null;
+
+    const appmaxNote = [
+      `[APPMAX] customer_id: ${appmaxCustomerId}`,
+      `order_id: ${appmaxOrderId}`,
+      `payment: ${paymentMethod}`,
+      paymentData?.status ? `status: ${paymentData.status}` : "",
+    ].filter(Boolean).join(" | ");
+
+    for (const orderId of orderIds) {
+      const updateData: Record<string, unknown> = {};
+
+      if (paymentLink) {
+        updateData.payment_link = paymentLink;
+      }
+
+      // Append appmax note to observation
+      const { data: currentOrder } = await sb
+        .from("orders")
+        .select("observation")
+        .eq("id", orderId)
+        .single();
+
+      const currentObs = (currentOrder?.observation ?? "").toString();
+      const cleanedObs = currentObs.replace(/\n?\[APPMAX\][^\n]*/g, "").trim();
+      updateData.observation = [cleanedObs, appmaxNote].filter(Boolean).join("\n");
+
+      await sb.from("orders").update(updateData).eq("id", orderId);
+    }
+
+    // ─── 8) Resposta final ──────────────────────────────────────
+    const response: Record<string, unknown> = {
+      provider: "appmax",
+      payment_method: paymentMethod,
+      appmax_customer_id: appmaxCustomerId,
+      appmax_order_id: appmaxOrderId,
+      payment: paymentData,
+    };
+
+    // Incluir init_point para compatibilidade com o frontend
+    if (paymentLink) {
+      response.init_point = paymentLink;
+    }
+
+    // Para PIX, incluir dados específicos
+    if (paymentMethod === "pix") {
+      response.pix_qrcode = paymentData?.pix_qrcode || null;
+      response.pix_code = paymentData?.pix_code || paymentData?.pix_emv || null;
+      response.pix_expiration = paymentData?.pix_expiration || null;
+    }
+
+    // Para boleto, incluir URL
+    if (paymentMethod === "boleto") {
+      response.boleto_url = paymentData?.boleto_url || paymentData?.url || null;
+      response.boleto_barcode = paymentData?.boleto_barcode || paymentData?.barcode || null;
+    }
+
+    return new Response(JSON.stringify(response), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   } catch (error: any) {
-    console.error("[appmax-create-payment] Error:", error);
+    console.error("[appmax] Unhandled error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Erro interno" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
