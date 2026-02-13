@@ -51,6 +51,12 @@ serve(async (req) => {
       .select("tenant_id, access_token, is_active")
       .in("tenant_id", tenantIds);
 
+    // Fetch all Appmax integrations
+    const { data: appmaxIntegrations } = await sb
+      .from("integration_appmax")
+      .select("tenant_id, access_token, is_active, environment")
+      .in("tenant_id", tenantIds);
+
     const pagarmeKeys: Record<string, string> = {};
     for (const p of pagarmeIntegrations || []) {
       if (p.is_active && p.api_key) pagarmeKeys[p.tenant_id] = p.api_key;
@@ -61,10 +67,16 @@ serve(async (req) => {
       if (m.is_active && m.access_token) mpTokens[m.tenant_id] = m.access_token;
     }
 
+    const appmaxTokens: Record<string, { token: string; env: string }> = {};
+    for (const a of appmaxIntegrations || []) {
+      if (a.is_active && a.access_token) appmaxTokens[a.tenant_id] = { token: a.access_token, env: a.environment || "production" };
+    }
+
     for (const order of orders) {
       const link = order.payment_link || "";
       const isPagarme = link.includes("pagar.me");
       const isMp = link.includes("mercadopago");
+      const isAppmax = link.includes("appmax") || link.includes("sandboxappmax");
 
       try {
         if (isPagarme) {
@@ -182,6 +194,49 @@ serve(async (req) => {
             results.push({ order_id: order.id, status: "marked_paid", source: "mp" });
           } else {
             results.push({ order_id: order.id, status: "not_paid", source: "mp" });
+          }
+
+        } else if (isAppmax) {
+          const appmaxData = appmaxTokens[order.tenant_id];
+          if (!appmaxData) {
+            results.push({ order_id: order.id, status: "skip", reason: "no_appmax_token" });
+            continue;
+          }
+
+          // Extract appmax order ID from checkout URL (e.g. .../checkout/12345)
+          const appmaxOrderMatch = link.match(/checkout\/(\d+)/);
+          if (!appmaxOrderMatch) {
+            results.push({ order_id: order.id, status: "skip", reason: "no_appmax_order_id" });
+            continue;
+          }
+
+          const appmaxOrderId = appmaxOrderMatch[1];
+          const isSandbox = appmaxData.env === "sandbox";
+          const baseUrl = isSandbox 
+            ? "https://homolog.sandboxappmax.com.br/api/v3" 
+            : "https://appmax.com.br/api/v3";
+
+          try {
+            const res = await fetch(`${baseUrl}/order/${appmaxOrderId}?access-token=${appmaxData.token}`, {
+              headers: { "Accept": "application/json" },
+            });
+
+            if (!res.ok) {
+              results.push({ order_id: order.id, status: "api_error", code: res.status, source: "appmax" });
+              continue;
+            }
+
+            const data = await res.json();
+            const orderStatus = data?.data?.status || data?.status || "";
+            
+            if (orderStatus === "approved" || orderStatus === "paid" || orderStatus === "captured") {
+              await markPaid(sb, order.id);
+              results.push({ order_id: order.id, status: "marked_paid", source: "appmax" });
+            } else {
+              results.push({ order_id: order.id, status: "not_paid", source: "appmax", appmax_status: orderStatus });
+            }
+          } catch (appmaxErr) {
+            results.push({ order_id: order.id, status: "error", source: "appmax", message: String(appmaxErr) });
           }
 
         } else {

@@ -106,22 +106,57 @@ serve(async (req) => {
       console.log("[pagarme-webhook] Parsed order_ids:", orderIds);
 
       if (orderIds.length === 0) {
-        console.log("[pagarme-webhook] No order IDs found in external_reference, trying to find by metadata");
+        console.log("[pagarme-webhook] No order IDs from external_reference, trying fallback by checkout code");
         
-        // Log mais detalhado para debug
+        // Fallback: try to find orders by the Pagar.me order/checkout code in payment_link
+        const pagarmeOrderId = body.id || eventData.id || eventData.code || "";
+        const pagarmeCheckoutId = eventData.checkouts?.[0]?.id || "";
+        
+        let foundOrders: any[] = [];
+        
+        if (pagarmeOrderId) {
+          const { data } = await sb
+            .from("orders")
+            .select("id, is_paid, tenant_id")
+            .ilike("payment_link", `%${pagarmeOrderId}%`)
+            .eq("is_paid", false);
+          if (data && data.length > 0) foundOrders = data;
+        }
+        
+        if (foundOrders.length === 0 && pagarmeCheckoutId) {
+          const { data } = await sb
+            .from("orders")
+            .select("id, is_paid, tenant_id")
+            .ilike("payment_link", `%${pagarmeCheckoutId}%`)
+            .eq("is_paid", false);
+          if (data && data.length > 0) foundOrders = data;
+        }
+        
+        if (foundOrders.length > 0) {
+          console.log(`[pagarme-webhook] Found ${foundOrders.length} order(s) by payment_link fallback`);
+          for (const order of foundOrders) {
+            await markOrderAsPaid(sb, order.id, order.tenant_id || parsedTenantId, body.id || "unknown", paymentMethod, pmInstallments);
+          }
+          return new Response(
+            JSON.stringify({ status: "ok", orders_updated: foundOrders.map((o: any) => o.id), source: "payment_link_fallback" }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        
+        // Log failure for debug
         await sb.from("webhook_logs").insert({
           webhook_type: "pagarme_no_orders_found",
           status_code: 200,
           payload: { 
             external_reference: externalReference, 
             metadata,
-            full_body_keys: Object.keys(body),
-            event_data_keys: Object.keys(eventData)
+            pagarme_order_id: pagarmeOrderId,
+            pagarme_checkout_id: pagarmeCheckoutId,
           },
           tenant_id: parsedTenantId,
         });
         
-        return new Response(JSON.stringify({ status: "ok", message: "No orders to update - check external_reference format" }), {
+        return new Response(JSON.stringify({ status: "ok", message: "No orders to update" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }

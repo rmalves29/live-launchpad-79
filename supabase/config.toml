@@ -134,3 +134,6 @@ verify_jwt = false
 
 [functions.process-meus-correios]
 verify_jwt = false
+
+[functions.appmax-webhook]
+verify_jwt = false
