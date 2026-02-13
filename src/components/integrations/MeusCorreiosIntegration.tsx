@@ -8,8 +8,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Printer, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Printer, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import CorreiosBulkLabels from './CorreiosBulkLabels';
+import MeusCorreiosServiceCodes from './MeusCorreiosServiceCodes';
 
 interface MeusCorreiosIntegrationProps {
   tenantId: string;
@@ -242,8 +243,21 @@ export default function MeusCorreiosIntegration({ tenantId }: MeusCorreiosIntegr
         </CardContent>
       </Card>
 
-      {formData.is_active && isFormValid && (
-        <CorreiosBulkLabels tenantId={tenantId} />
+      {formData.is_active && isFormValid && integration && (
+        <>
+          <MeusCorreiosServiceCodes
+            tenantId={tenantId}
+            integrationId={integration.id}
+            currentCodes={(() => {
+              try {
+                const parsed = JSON.parse(integration.webhook_secret || '{}');
+                return typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+              } catch { return {}; }
+            })()}
+            onSaved={() => queryClient.invalidateQueries({ queryKey: ['meuscorreios-integration', tenantId] })}
+          />
+          <CorreiosBulkLabels tenantId={tenantId} />
+        </>
       )}
     </div>
   );
