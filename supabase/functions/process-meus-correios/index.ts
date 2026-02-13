@@ -8,15 +8,78 @@ const corsHeaders = {
 
 const MEUSCORREIOS_API_URL = "https://meuscorreios.app/rest/apimccriprepos";
 
+// Default service codes dictionary (contract codes)
+const DEFAULT_SERVICE_CODES: Record<string, string> = {
+  PAC: "03298",
+  SEDEX: "03220",
+  "MINI ENVIOS": "04227",
+  "SEDEX 12": "03140",
+  "SEDEX HOJE": "03204",
+  "PAC GRANDE": "03328",
+};
+
+/**
+ * Parse service codes from integration webhook_secret field (JSON string)
+ * Format: {"PAC":"03298","SEDEX":"03220",...}
+ */
+function getServiceCodes(integration: any): Record<string, string> {
+  const raw = integration.webhook_secret;
+  if (!raw) return { ...DEFAULT_SERVICE_CODES };
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "object" && !Array.isArray(parsed)) {
+      // Merge with defaults so new codes are always available
+      return { ...DEFAULT_SERVICE_CODES, ...parsed };
+    }
+  } catch {
+    // Not JSON, ignore
+  }
+  return { ...DEFAULT_SERVICE_CODES };
+}
+
+/**
+ * Resolve service code for an order based on observation text and per-order override
+ */
+function resolveService(
+  serviceCodes: Record<string, string>,
+  observation: string | null,
+  overrideServiceCode?: string
+): { code: string; name: string } {
+  // If a specific service code was passed (manual override), use it directly
+  if (overrideServiceCode) {
+    // Find the name for this code
+    const entry = Object.entries(serviceCodes).find(([_, c]) => c === overrideServiceCode);
+    return {
+      code: overrideServiceCode,
+      name: entry ? entry[0] : `Código ${overrideServiceCode}`,
+    };
+  }
+
+  // Auto-detect from observation
+  if (observation) {
+    const obs = observation.toUpperCase();
+    if (obs.includes("SEDEX HOJE")) return { code: serviceCodes["SEDEX HOJE"] || "03204", name: "SEDEX HOJE" };
+    if (obs.includes("SEDEX 12") || obs.includes("SEDEX12")) return { code: serviceCodes["SEDEX 12"] || "03140", name: "SEDEX 12" };
+    if (obs.includes("PAC GRANDE")) return { code: serviceCodes["PAC GRANDE"] || "03328", name: "PAC GRANDE" };
+    if (obs.includes("SEDEX")) return { code: serviceCodes["SEDEX"] || "03220", name: "SEDEX" };
+    if (obs.includes("MINI")) return { code: serviceCodes["MINI ENVIOS"] || "04227", name: "MINI ENVIOS" };
+  }
+
+  // Default: PAC
+  return { code: serviceCodes["PAC"] || "03298", name: "PAC" };
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { tenant_id, order_ids } = await req.json();
+    const body = await req.json();
+    const { tenant_id, order_ids, service_overrides } = body;
+    // service_overrides: optional Record<number, string> mapping order_id -> service_code
 
-    console.log("📦 [MeusCorreios] Request:", { tenant_id, order_count: order_ids?.length });
+    console.log("📦 [MeusCorreios] Request:", { tenant_id, order_count: order_ids?.length, has_overrides: !!service_overrides });
 
     if (!tenant_id || !order_ids?.length) {
       return new Response(
@@ -29,7 +92,7 @@ serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // 1. Buscar integração Correios do tenant
+    // 1. Fetch integration
     const { data: integration, error: intError } = await supabase
       .from("shipping_integrations")
       .select("*")
@@ -44,20 +107,16 @@ serve(async (req: Request) => {
       );
     }
 
-    // Token MeusCorreios stored in token_type field
     const tokenMeusCorreios = integration.token_type || "";
-    // Cartão de postagem stored in refresh_token field
     const cartaoPostagem = integration.refresh_token || "";
-    // Código do remetente stored in scope or default "1"
     const codigoRemetente = integration.scope || "1";
 
     if (!tokenMeusCorreios) {
       return new Response(
-        JSON.stringify({ success: false, error: "Token MeusCorreios não configurado. Acesse Configurações > Tokens no MeusCorreios para gerar." }),
+        JSON.stringify({ success: false, error: "Token MeusCorreios não configurado." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
     if (!cartaoPostagem) {
       return new Response(
         JSON.stringify({ success: false, error: "Cartão de Postagem não configurado." }),
@@ -65,14 +124,16 @@ serve(async (req: Request) => {
       );
     }
 
-    // 2. Buscar dados da empresa (remetente)
+    // Load service codes dictionary from integration
+    const serviceCodes = getServiceCodes(integration);
+    console.log("📦 [MeusCorreios] Service codes dictionary:", JSON.stringify(serviceCodes));
+
+    // 2. Fetch tenant data
     const { data: tenant, error: tenantError } = await supabase
       .from("tenants")
       .select("company_name, company_document, company_email, company_phone, company_address, company_number, company_complement, company_district, company_city, company_state, company_cep")
       .eq("id", tenant_id)
       .maybeSingle();
-
-    console.log("📦 [MeusCorreios] Tenant data:", { name: tenant?.company_name, cep: tenant?.company_cep, city: tenant?.company_city, error: tenantError?.message });
 
     if (!tenant || !tenant.company_cep) {
       const missing: string[] = [];
@@ -80,9 +141,6 @@ serve(async (req: Request) => {
       else {
         if (!tenant.company_cep) missing.push("CEP");
         if (!tenant.company_name) missing.push("Nome da empresa");
-        if (!tenant.company_address) missing.push("Endereço");
-        if (!tenant.company_city) missing.push("Cidade");
-        if (!tenant.company_state) missing.push("Estado");
       }
       return new Response(
         JSON.stringify({ success: false, error: `Dados da empresa incompletos: ${missing.join(", ")}. Configure em Configurações > Empresa.` }),
@@ -90,7 +148,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // 3. Buscar pedidos selecionados
+    // 3. Fetch orders
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
       .select("id, customer_name, customer_phone, customer_street, customer_number, customer_complement, customer_neighborhood, customer_city, customer_state, customer_cep, total_amount, unique_order_id, melhor_envio_tracking_code, observation")
@@ -104,7 +162,7 @@ serve(async (req: Request) => {
       );
     }
 
-    // 4. Buscar integração WhatsApp para notificação
+    // 4. WhatsApp integration
     const { data: whatsappIntegration } = await supabase
       .from("integration_whatsapp")
       .select("zapi_instance_id, zapi_token, zapi_client_token")
@@ -115,55 +173,24 @@ serve(async (req: Request) => {
 
     const results: any[] = [];
 
-    // 5. Processar cada pedido com delay de 500ms
+    // 5. Process each order
     for (let i = 0; i < orders.length; i++) {
       const order = orders[i];
 
-      // Skip if already has tracking code
       if (order.melhor_envio_tracking_code) {
-        results.push({
-          order_id: order.id,
-          status: "skipped",
-          message: "Já possui código de rastreio: " + order.melhor_envio_tracking_code,
-        });
+        results.push({ order_id: order.id, status: "skipped", message: "Já possui rastreio: " + order.melhor_envio_tracking_code });
         continue;
       }
 
-      // Validate required destination fields
       if (!order.customer_cep || !order.customer_name || !order.customer_street || !order.customer_city || !order.customer_state) {
-        results.push({
-          order_id: order.id,
-          status: "error",
-          message: "Dados de endereço incompletos (CEP, nome, rua, cidade ou UF faltando)",
-        });
+        results.push({ order_id: order.id, status: "error", message: "Dados de endereço incompletos" });
         continue;
       }
 
-      // Determine service code
-      // Having a cartão de postagem means the tenant has a Correios contract,
-      // so we MUST use contract service codes (03298/03220), not public codes.
-      // Public codes (04510/04014/03085/03050) are NOT valid for contract cards.
-      const SERVICE_CODES = { PAC: "03298", SEDEX: "03220", MINI: "04227", SEDEX12: "03140" };
-      
-      let servico = SERVICE_CODES.PAC; // default PAC
-      let servicoNome = "PAC";
-      if (order.observation) {
-        const obs = order.observation.toUpperCase();
-        if (obs.includes("SEDEX 12") || obs.includes("SEDEX12")) {
-          servico = SERVICE_CODES.SEDEX12;
-          servicoNome = "SEDEX 12";
-        } else if (obs.includes("SEDEX")) {
-          servico = SERVICE_CODES.SEDEX;
-          servicoNome = "SEDEX";
-        } else if (obs.includes("MINI")) {
-          servico = SERVICE_CODES.MINI;
-          servicoNome = "MINI ENVIOS";
-        }
-      }
+      // Resolve service: check for manual override, then auto-detect from observation
+      const overrideCode = service_overrides?.[String(order.id)] || null;
+      const { code: servico, name: servicoNome } = resolveService(serviceCodes, order.observation, overrideCode);
 
-      // Build MeusCorreios payload - simplified structure
-      // The service code goes ONLY in objetos[].dstxsrv (per item)
-      // NOT at the parmIn root level to avoid conflicts
       const payload = {
         parmIn: {
           Token: tokenMeusCorreios,
@@ -185,18 +212,17 @@ serve(async (req: Request) => {
             dstxItem: 1,
             dstxsrv: servico,
             dstxobs: `Pedido #${order.unique_order_id || order.id}`,
-            dstxpes: 500, // Peso em GRAMAS (500g = 0.5kg) - API MeusCorreios exige gramas
-            dstxvo1: 10,  // Altura em cm
-            dstxvo2: 16,  // Largura em cm
-            dstxvo3: 20,  // Comprimento em cm
+            dstxpes: 500,
+            dstxvo1: 10,
+            dstxvo2: 16,
+            dstxvo3: 20,
             dstxvd: order.total_amount || 0,
             dstxcob: 0,
           }],
         },
       };
 
-      console.log(`📦 [MeusCorreios] Processing order #${order.id} with service: ${servicoNome} (code: ${servico})`);
-      console.log(`📦 [MeusCorreios] Full payload:`, JSON.stringify(payload));
+      console.log(`📦 [MeusCorreios] Order #${order.id}: ${servicoNome} (${servico})`);
 
       try {
         const response = await fetch(MEUSCORREIOS_API_URL, {
@@ -206,198 +232,131 @@ serve(async (req: Request) => {
           signal: AbortSignal.timeout(30000),
         });
 
-        // Capturar resposta como texto primeiro para detectar erros HTML/não-JSON
         const responseText = await response.text();
-        console.log(`📦 [MeusCorreios] Raw response status: ${response.status} for order #${order.id}`);
-        console.log(`📦 [MeusCorreios] Raw response body (first 800 chars):`, responseText.substring(0, 800));
+        console.log(`📦 [MeusCorreios] Response ${response.status} for #${order.id}:`, responseText.substring(0, 500));
 
         if (!response.ok) {
-          results.push({
-            order_id: order.id,
-            status: "error",
-            message: `API retornou HTTP ${response.status}: ${responseText.substring(0, 200)}`,
-          });
+          results.push({ order_id: order.id, status: "error", message: `HTTP ${response.status}`, error_type: "http" });
           continue;
         }
 
-        // Tentar parsear como JSON
         let data: any;
-        try {
-          data = JSON.parse(responseText);
-        } catch (parseErr) {
-          results.push({
-            order_id: order.id,
-            status: "error",
-            message: `Resposta não é JSON válido. Conteúdo: ${responseText.substring(0, 200)}`,
-          });
+        try { data = JSON.parse(responseText); } catch {
+          results.push({ order_id: order.id, status: "error", message: "Resposta não é JSON válido", error_type: "parse" });
           continue;
         }
 
-        // ---- Captura detalhada de erros - suporta parmOut e SDTWSCriPrePosOut ----
+        // Parse response - supports parmOut and SDTWSCriPrePosOut
         const sdtOut = data.parmOut || data.ParmOut || data.SDTWSCriPrePosOut || data.sdtwscripreposout || data;
 
-        // Erro geral na raiz
+        // Check general error
         const erroGeral = sdtOut.Erro || sdtOut.erro || data.Erro || data.erro;
         if (erroGeral && String(erroGeral).trim() !== "" && String(erroGeral).trim() !== "0") {
-          console.error(`❌ [MeusCorreios] Erro geral para pedido #${order.id}: ${erroGeral}`);
-          results.push({
-            order_id: order.id,
-            status: "error",
-            message: `Erro API MeusCorreios: ${erroGeral}`,
-          });
+          results.push({ order_id: order.id, status: "error", message: `Erro API: ${erroGeral}`, error_type: "api" });
           continue;
         }
 
-        // Verificar erroItem na raiz
-        const erroItemRaiz = sdtOut.erroItem || sdtOut.ErroItem;
-        if (erroItemRaiz && String(erroItemRaiz).trim() !== "" && String(erroItemRaiz).trim() !== "0") {
-          console.error(`❌ [MeusCorreios] ErroItem raiz para pedido #${order.id}: ${erroItemRaiz}`);
-          results.push({
-            order_id: order.id,
-            status: "error",
-            message: `Erro no item: ${erroItemRaiz}`,
-          });
-          continue;
-        }
-
-        // Check prepos results - buscar em múltiplos caminhos possíveis (incluindo parmOut.prepos)
+        // Check prepos
         const prepos = sdtOut.prepos || sdtOut.PrePos || data.prepos || data.PrePos || [];
         const preposList = Array.isArray(prepos) ? prepos : [prepos];
         const firstResult = preposList[0];
 
         if (!firstResult) {
-          // Se não encontrou prepos, logar toda a estrutura para debug
-          console.error(`❌ [MeusCorreios] Sem prepos. Estrutura completa:`, JSON.stringify(data).substring(0, 1000));
-          results.push({
-            order_id: order.id,
-            status: "error",
-            message: `Resposta inesperada da API MeusCorreios. Campos disponíveis: ${Object.keys(data).join(", ")}`,
-          });
+          results.push({ order_id: order.id, status: "error", message: "Resposta sem dados de pré-postagem", error_type: "empty" });
           continue;
         }
 
-        // Check item-level errors no resultado individual
+        // Check item-level error
         const erroItem = firstResult.ErroItem || firstResult.erroItem || firstResult.Erro || firstResult.erro;
         if (erroItem && String(erroItem).trim() !== "" && String(erroItem).trim() !== "0") {
-          console.error(`❌ [MeusCorreios] ErroItem pedido #${order.id}: ${erroItem} (service: ${servico})`);
-          
-          // Provide helpful message for common errors
-          let helpMsg = String(erroItem);
-          if (helpMsg.includes("Definição Serviço") || helpMsg.includes("Definicao Servico")) {
-            helpMsg += ` — O código de serviço "${servico}" (${servicoNome}) não é válido para seu cartão de postagem. Verifique se seu contrato inclui este serviço.`;
-          }
-          
+          const isServiceError = String(erroItem).includes("Definição Serviço") || String(erroItem).includes("Definicao Servico");
+
           results.push({
             order_id: order.id,
             status: "error",
-            message: `Erro no item: ${helpMsg}`,
+            error_type: isServiceError ? "invalid_service" : "item",
+            failed_service_code: servico,
+            failed_service_name: servicoNome,
+            message: isServiceError
+              ? `Código "${servico}" (${servicoNome}) não é válido para seu cartão de postagem. Use o seletor de serviço para escolher outro código.`
+              : `Erro: ${erroItem}`,
           });
           continue;
         }
 
-        // Extract tracking code (etiqueta) - buscar em múltiplos campos possíveis
-        // parmOut format uses: etqSRO (tracking), dstxetq (etiqueta), etqPDF (label PDF)
-        const trackingCode = firstResult.etqSRO || firstResult.EtqSRO || firstResult.dstxetq || firstResult.Dstxetq || firstResult.codigoAwb || firstResult.CodigoAwb || "";
-        const labelPdf = firstResult.etqPDF || firstResult.EtqPDF || firstResult.etqpdf || "";
+        // Extract tracking
+        const trackingCode = firstResult.etqSRO || firstResult.EtqSRO || firstResult.dstxetq || firstResult.Dstxetq || firstResult.codigoAwb || "";
+        const labelPdf = firstResult.etqPDF || firstResult.EtqPDF || "";
         const lote = firstResult.dstxlot || firstResult.Dstxlot || firstResult.codectcod || "";
 
         if (!trackingCode) {
-          // Log all available fields for debugging
-          console.error(`❌ [MeusCorreios] No tracking code. Available fields:`, JSON.stringify(firstResult));
-          results.push({
-            order_id: order.id,
-            status: "error",
-            message: "Código de rastreio não retornado pela API. Verifique se o serviço e cartão de postagem estão corretos.",
-          });
+          results.push({ order_id: order.id, status: "error", message: "Rastreio não retornado", error_type: "no_tracking" });
           continue;
         }
 
-        console.log(`✅ [MeusCorreios] Order #${order.id} → tracking: ${trackingCode}, lote: ${lote}`);
+        console.log(`✅ [MeusCorreios] #${order.id} → ${trackingCode}`);
 
-        // Save tracking code to orders table
-        await supabase
-          .from("orders")
-          .update({
-            melhor_envio_tracking_code: trackingCode,
-            tracking_updated_at: new Date().toISOString(),
-          })
-          .eq("id", order.id)
-          .eq("tenant_id", tenant_id);
+        await supabase.from("orders").update({
+          melhor_envio_tracking_code: trackingCode,
+          tracking_updated_at: new Date().toISOString(),
+        }).eq("id", order.id).eq("tenant_id", tenant_id);
 
-        results.push({
+        const resultEntry: any = {
           order_id: order.id,
           status: "success",
           tracking_code: trackingCode,
           lote,
-          label_pdf: labelPdf ? true : false,
+          service_name: servicoNome,
+          service_code: servico,
+          label_pdf: !!labelPdf,
           label_base64: labelPdf || null,
-        });
+        };
 
-        // 6. Send WhatsApp notification if Z-API is configured
+        // WhatsApp notification
         if (whatsappIntegration?.zapi_instance_id && whatsappIntegration?.zapi_token) {
           try {
-            const customerName = order.customer_name ? `, ${order.customer_name}` : "";
             const trackingUrl = `https://rastreamento.correios.com.br/app/index.php?objeto=${trackingCode}`;
-            
-            const message = `📦 *Pedido Enviado!*\n\nOlá${customerName}! 🎉\n\nSeu pedido *#${order.unique_order_id || order.id}* foi enviado!\n\n🚚 *Código de Rastreio:* ${trackingCode}\n\n🔗 *Rastreie seu pedido:*\n${trackingUrl}\n\n⏳ _O rastreio pode demorar até 2 dias úteis para aparecer no sistema._\n\nObrigado pela preferência! 💚`;
+            const customerName = order.customer_name ? `, ${order.customer_name}` : "";
+            const message = `📦 *Pedido Enviado!*\n\nOlá${customerName}! 🎉\n\nSeu pedido *#${order.unique_order_id || order.id}* foi enviado!\n\n🚚 *Código de Rastreio:* ${trackingCode}\n\n🔗 *Rastreie:*\n${trackingUrl}\n\nObrigado pela preferência! 💚`;
 
             let phone = order.customer_phone.replace(/\D/g, "");
             if (!phone.startsWith("55")) phone = "55" + phone;
 
             const zapiUrl = `https://api.z-api.io/instances/${whatsappIntegration.zapi_instance_id}/token/${whatsappIntegration.zapi_token}/send-text`;
             const zapiHeaders: Record<string, string> = { "Content-Type": "application/json" };
-            if (whatsappIntegration.zapi_client_token) {
-              zapiHeaders["Client-Token"] = whatsappIntegration.zapi_client_token;
-            }
+            if (whatsappIntegration.zapi_client_token) zapiHeaders["Client-Token"] = whatsappIntegration.zapi_client_token;
 
-            const zapiRes = await fetch(zapiUrl, {
-              method: "POST",
-              headers: zapiHeaders,
-              body: JSON.stringify({ phone, message }),
-              signal: AbortSignal.timeout(10000),
-            });
-
-            const zapiData = await zapiRes.json();
-            console.log(`📱 [MeusCorreios] WhatsApp sent for order #${order.id}:`, zapiData.messageId || "no id");
-
-            results[results.length - 1].whatsapp_sent = true;
-          } catch (whatsappErr: any) {
-            console.error(`⚠️ [MeusCorreios] WhatsApp failed for order #${order.id}:`, whatsappErr.message);
-            results[results.length - 1].whatsapp_sent = false;
-            results[results.length - 1].whatsapp_error = whatsappErr.message;
+            await fetch(zapiUrl, { method: "POST", headers: zapiHeaders, body: JSON.stringify({ phone, message }), signal: AbortSignal.timeout(10000) });
+            resultEntry.whatsapp_sent = true;
+          } catch (e: any) {
+            resultEntry.whatsapp_sent = false;
+            resultEntry.whatsapp_error = e.message;
           }
         }
 
+        results.push(resultEntry);
       } catch (apiErr: any) {
-        console.error(`❌ [MeusCorreios] API error for order #${order.id}:`, apiErr.message);
-        results.push({
-          order_id: order.id,
-          status: "error",
-          message: `Erro na API: ${apiErr.message}`,
-        });
+        results.push({ order_id: order.id, status: "error", message: `Erro: ${apiErr.message}`, error_type: "network" });
       }
 
-      // Delay 500ms between orders
-      if (i < orders.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      if (i < orders.length - 1) await new Promise(r => setTimeout(r, 500));
     }
 
     const successCount = results.filter(r => r.status === "success").length;
     const errorCount = results.filter(r => r.status === "error").length;
     const skippedCount = results.filter(r => r.status === "skipped").length;
 
-    console.log(`📊 [MeusCorreios] Done: ${successCount} success, ${errorCount} errors, ${skippedCount} skipped`);
+    console.log(`📊 [MeusCorreios] Done: ${successCount}✅ ${errorCount}❌ ${skippedCount}⏭️`);
 
     return new Response(
       JSON.stringify({
         success: true,
         summary: { total: orders.length, success: successCount, errors: errorCount, skipped: skippedCount },
         results,
+        available_services: serviceCodes,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-
   } catch (error: any) {
     console.error("❌ [MeusCorreios] Critical error:", error);
     return new Response(
