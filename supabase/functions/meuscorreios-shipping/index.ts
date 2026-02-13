@@ -6,29 +6,114 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Códigos dos serviços dos Correios
-// Códigos públicos (sem contrato)
-const PUBLIC_SERVICES = [
-  { code: "04510", name: "PAC", company: "Correios" },
-  { code: "04014", name: "SEDEX", company: "Correios" },
-  { code: "04227", name: "Mini Envios", company: "Correios" },
-];
-
-// Códigos de contrato (AG) - usados quando o tenant tem contrato ativo
+// Códigos de contrato (AG) - usados na API CWS autenticada
 const CONTRACT_SERVICES = [
   { code: "03298", name: "PAC", company: "Correios" },
   { code: "03220", name: "SEDEX", company: "Correios" },
   { code: "04227", name: "Mini Envios", company: "Correios" },
   { code: "03140", name: "SEDEX 12", company: "Correios" },
-  { code: "03204", name: "SEDEX Hoje", company: "Correios" },
 ];
 
-interface CalcResult {
-  Codigo: string;
-  Valor: string;
-  PrazoEntrega: string;
-  Erro: string;
-  MsgErro: string;
+// Cache do token CWS por tenant
+const tokenCacheMap: Map<string, { token: string; expiresAt: Date }> = new Map();
+
+async function getCorreiosCWSToken(
+  clientId: string,
+  clientSecret: string,
+  cartaoPostagem: string,
+  tenantId: string
+): Promise<string> {
+  const cached = tokenCacheMap.get(tenantId);
+  if (cached && new Date(cached.expiresAt) > new Date(Date.now() + 5 * 60 * 1000)) {
+    return cached.token;
+  }
+
+  const authUrl = "https://api.correios.com.br/token/v1/autentica/cartaopostagem";
+  const basicAuth = btoa(`${clientId}:${clientSecret}`);
+
+  const resp = await fetch(authUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Basic ${basicAuth}` },
+    body: JSON.stringify({ numero: cartaoPostagem }),
+  });
+
+  const text = await resp.text();
+  if (!resp.ok) throw new Error(`CWS auth failed (${resp.status}): ${text.substring(0, 200)}`);
+
+  const data = JSON.parse(text);
+  if (!data.token) throw new Error("Token CWS não retornado");
+
+  const expiresAt = data.expiraEm ? new Date(data.expiraEm) : new Date(Date.now() + 55 * 60 * 1000);
+  tokenCacheMap.set(tenantId, { token: data.token, expiresAt });
+  return data.token;
+}
+
+async function calcCWSPreco(token: string, cepO: string, cepD: string, pesoG: number, cod: string) {
+  const isMini = cod === "04227";
+  const params = new URLSearchParams({
+    cepOrigem: cepO, cepDestino: cepD,
+    psObjeto: String(isMini ? Math.min(pesoG, 300) : pesoG),
+    tpObjeto: "2",
+    comprimento: isMini ? "16" : "20",
+    largura: isMini ? "11" : "16",
+    altura: isMini ? "3" : "10",
+  });
+  const r = await fetch(`https://api.correios.com.br/preco/v1/nacional/${cod}?${params}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+  if (!r.ok) { console.error(`[mc] CWS price ${cod}: ${r.status}`); return null; }
+  return r.json();
+}
+
+async function calcCWSPrazo(token: string, cepO: string, cepD: string, cod: string) {
+  const params = new URLSearchParams({ cepOrigem: cepO, cepDestino: cepD });
+  const r = await fetch(`https://api.correios.com.br/prazo/v1/nacional/${cod}?${params}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+  });
+  if (!r.ok) { console.error(`[mc] CWS deadline ${cod}: ${r.status}`); return null; }
+  return r.json();
+}
+
+// Usar API pública de terceiros como fallback (mais confiável que a API legada dos Correios)
+async function calcPublicShipping(cepO: string, cepD: string, pesoKg: number): Promise<any[]> {
+  const results: any[] = [];
+
+  // Tentar ws.correios.com.br (legado)
+  try {
+    const codes = "04510,04014";
+    const url = `http://ws.correios.com.br/calculador/CalcPrecoPrazo.aspx?nCdEmpresa=&sDsSenha=&sCepOrigem=${cepO}&sCepDestino=${cepD}&nVlPeso=${pesoKg}&nCdFormato=1&nVlComprimento=20&nVlAltura=10&nVlLargura=16&nVlDiametro=0&sCdMaoPropria=N&nVlValorDeclarado=0&sCdAvisoRecebimento=N&nCdServico=${codes}&StrRetorno=json`;
+
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) {
+      const text = await r.text();
+      if (!text.includes("<html") && !text.includes("<!doctype")) {
+        const data = JSON.parse(text);
+        const servicos = data?.Servicos?.cServico || data?.cServico || [];
+        const list = Array.isArray(servicos) ? servicos : [servicos];
+        for (const s of list) {
+          if (s.Erro && s.Erro !== "0") continue;
+          const price = parseFloat((s.Valor || "0").replace(".", "").replace(",", "."));
+          if (price > 0) {
+            results.push({
+              id: `correios_${s.Codigo}`,
+              service_id: s.Codigo,
+              name: s.Codigo === "04510" ? "PAC" : "SEDEX",
+              service_name: s.Codigo === "04510" ? "PAC" : "SEDEX",
+              company: { name: "Correios", picture: "" },
+              price: price.toFixed(2),
+              custom_price: price.toFixed(2),
+              delivery_time: `${s.PrazoEntrega || "?"} dias úteis`,
+              custom_delivery_time: parseInt(s.PrazoEntrega || "0"),
+            });
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.log("[mc] Legacy API error:", (e as Error).message);
+  }
+
+  return results;
 }
 
 serve(async (req) => {
@@ -38,8 +123,7 @@ serve(async (req) => {
 
   try {
     const { tenant_id, to_postal_code, products } = await req.json();
-
-    console.log("[meuscorreios-shipping] Request:", { tenant_id, to_postal_code, products_count: products?.length });
+    console.log("[mc] Request:", { tenant_id, to_postal_code, products_count: products?.length });
 
     if (!to_postal_code) {
       return new Response(
@@ -48,214 +132,129 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-    // Buscar CEP de origem: primeiro da integração, depois do tenant
-    let cepOrigem = "";
-
-    // Tentar buscar from_cep da integração meuscorreios
     const { data: integration } = await supabase
       .from("shipping_integrations")
-      .select("from_cep, access_token")
+      .select("from_cep, access_token, token_type, refresh_token, scope, client_id, client_secret")
       .eq("tenant_id", tenant_id)
       .eq("provider", "meuscorreios")
       .eq("is_active", true)
       .maybeSingle();
 
-    // Se tem token MeusCorreios, assume contrato ativo com códigos AG
-    const hasContract = !!integration?.access_token && integration.access_token !== "";
-    const SERVICES = hasContract ? CONTRACT_SERVICES : PUBLIC_SERVICES;
-    console.log("[meuscorreios-shipping] Using", hasContract ? "CONTRACT" : "PUBLIC", "service codes");
-
-    if (integration?.from_cep) {
-      cepOrigem = integration.from_cep.replace(/\D/g, "");
-    }
-
-    // Fallback: buscar company_cep do tenant
+    let cepOrigem = integration?.from_cep?.replace(/\D/g, "") || "";
     if (!cepOrigem) {
-      const { data: tenant } = await supabase
-        .from("tenants")
-        .select("company_cep")
-        .eq("id", tenant_id)
-        .single();
-
-      if (tenant?.company_cep) {
-        cepOrigem = tenant.company_cep.replace(/\D/g, "");
-      }
+      const { data: tenant } = await supabase.from("tenants").select("company_cep").eq("id", tenant_id).single();
+      cepOrigem = tenant?.company_cep?.replace(/\D/g, "") || "";
     }
 
     if (!cepOrigem || cepOrigem.length !== 8) {
       return new Response(
-        JSON.stringify({ success: false, error: "CEP de origem não configurado. Configure o endereço da empresa em Configurações." }),
+        JSON.stringify({ success: false, error: "CEP de origem não configurado." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Calcular peso e valor total dos produtos
     let pesoTotal = 0;
-    let valorTotal = 0;
-    for (const p of (products || [])) {
-      const peso = (p.weight || 0.3) * (p.quantity || 1);
-      const valor = (p.insurance_value || 50) * (p.quantity || 1);
-      pesoTotal += peso;
-      valorTotal += valor;
-    }
+    for (const p of (products || [])) pesoTotal += (p.weight || 0.3) * (p.quantity || 1);
     pesoTotal = Math.max(pesoTotal, 0.3);
 
     const cepDestino = to_postal_code.replace(/\D/g, "");
+    let shippingOptions: any[] = [];
 
-    // Usar API pública de cálculo via HTTPS
-    const serviceCodes = SERVICES.map(s => s.code).join(",");
-    const calcUrl = `https://www.correios.com.br/@@precosEPrazos?cepOrigem=${cepOrigem}&cepDestino=${cepDestino}&nVlPeso=${pesoTotal}&nCdFormato=1&nVlComprimento=20&nVlAltura=10&nVlLargura=16&nVlDiametro=0&sCdMaoPropria=N&nVlValorDeclarado=0&sCdAvisoRecebimento=N&nCdServico=${serviceCodes}&StrRetorno=json`;
+    // Credenciais CWS dos Correios (armazenadas nos campos client_id/client_secret da integração)
+    const clientId = integration?.client_id || "";
+    const clientSecret = integration?.client_secret || "";
+    const cartaoPostagem = integration?.refresh_token || "";
+    const hasCWS = !!clientId && !!clientSecret && !!cartaoPostagem;
 
-    console.log("[meuscorreios-shipping] Trying Correios API...");
-
-    let servicosList: any[] = [];
-    let apiSuccess = false;
-
-    // Tentar API oficial dos Correios
-    try {
-      const response = await fetch(calcUrl, {
-        headers: { "Accept": "application/json" },
-        signal: AbortSignal.timeout(10000),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const servicos = data?.Servicos?.cServico || data?.cServico || [];
-        servicosList = Array.isArray(servicos) ? servicos : [servicos];
-        apiSuccess = servicosList.length > 0;
-      }
-    } catch (e) {
-      console.log("[meuscorreios-shipping] Official API failed, trying fallback...");
-    }
-
-    // Fallback: usar calculador legado via HTTP
-    if (!apiSuccess) {
+    // ESTRATÉGIA 1: API CWS autenticada (se tem credenciais)
+    if (hasCWS) {
+      console.log("[mc] Using CWS API");
       try {
-        const legacyUrl = new URL("http://ws.correios.com.br/calculador/CalcPrecoPrazo.aspx");
-        legacyUrl.searchParams.set("nCdEmpresa", "");
-        legacyUrl.searchParams.set("sDsSenha", "");
-        legacyUrl.searchParams.set("sCepOrigem", cepOrigem);
-        legacyUrl.searchParams.set("sCepDestino", cepDestino);
-        legacyUrl.searchParams.set("nVlPeso", String(pesoTotal));
-        legacyUrl.searchParams.set("nCdFormato", "1");
-        legacyUrl.searchParams.set("nVlComprimento", "20");
-        legacyUrl.searchParams.set("nVlAltura", "10");
-        legacyUrl.searchParams.set("nVlLargura", "16");
-        legacyUrl.searchParams.set("nVlDiametro", "0");
-        legacyUrl.searchParams.set("sCdMaoPropria", "N");
-        legacyUrl.searchParams.set("nVlValorDeclarado", "0");
-        legacyUrl.searchParams.set("sCdAvisoRecebimento", "N");
-        legacyUrl.searchParams.set("nCdServico", SERVICES.map(s => s.code).join(","));
-        legacyUrl.searchParams.set("StrRetorno", "json");
+        const token = await getCorreiosCWSToken(clientId, clientSecret, cartaoPostagem, tenant_id);
+        const pesoG = Math.round(pesoTotal * 1000);
 
-        const response = await fetch(legacyUrl.toString(), {
-          signal: AbortSignal.timeout(10000),
-        });
+        const results = await Promise.allSettled(
+          CONTRACT_SERVICES.map(async (svc) => {
+            const [preco, prazo] = await Promise.all([
+              calcCWSPreco(token, cepOrigem, cepDestino, pesoG, svc.code),
+              calcCWSPrazo(token, cepOrigem, cepDestino, svc.code),
+            ]);
+            if (preco && prazo) {
+              return {
+                id: `correios_${svc.code}`, service_id: svc.code,
+                name: svc.name, service_name: svc.name,
+                company: { name: svc.company, picture: "" },
+                price: String(preco.pcFinal || preco.pcBase || "0"),
+                custom_price: String(preco.pcFinal || preco.pcBase || "0"),
+                delivery_time: `${prazo.prazoEntrega || "?"} dias úteis`,
+                custom_delivery_time: prazo.prazoEntrega || 0,
+              };
+            }
+            return null;
+          })
+        );
 
-        if (response.ok) {
-          const data = await response.json();
-          const servicos = data?.Servicos?.cServico || data?.cServico || [];
-          servicosList = Array.isArray(servicos) ? servicos : [servicos];
-          apiSuccess = servicosList.length > 0;
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value) shippingOptions.push(r.value);
         }
-      } catch (e2) {
-        console.log("[meuscorreios-shipping] Legacy API also failed");
+
+        if (shippingOptions.length > 0) {
+          console.log("[mc] CWS options:", shippingOptions.length);
+          return new Response(
+            JSON.stringify({ success: true, shipping_options: shippingOptions, provider: "meuscorreios" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        console.log("[mc] CWS returned no options, trying public API");
+      } catch (e) {
+        console.error("[mc] CWS error:", (e as Error).message);
       }
     }
 
-    // Fallback final: usar estimativas fixas baseadas na distância
-    if (!apiSuccess || servicosList.length === 0) {
-      console.log("[meuscorreios-shipping] Using fixed estimates as final fallback");
-      
-      // Verificar se é mesmo estado (primeiros 2 dígitos do CEP)
-      const origemRegiao = cepOrigem.substring(0, 1);
-      const destinoRegiao = cepDestino.substring(0, 1);
-      const mesmaRegiao = origemRegiao === destinoRegiao;
-      
-      // Usar códigos corretos baseados no contrato
-      const pacCode = hasContract ? "03298" : "04510";
-      const sedexCode = hasContract ? "03220" : "04014";
+    // ESTRATÉGIA 2: API pública (legada) com códigos públicos
+    console.log("[mc] Using public API");
+    shippingOptions = await calcPublicShipping(cepOrigem, cepDestino, pesoTotal);
 
-      const shippingOptions = [
-        {
-          id: `correios_${pacCode}`,
-          service_id: pacCode,
-          name: "PAC",
-          service_name: "PAC",
-          company: { name: "Correios", picture: "" },
-          price: mesmaRegiao ? "18.90" : "28.90",
-          custom_price: mesmaRegiao ? "18.90" : "28.90",
-          delivery_time: mesmaRegiao ? "5 dias úteis" : "10 dias úteis",
-          custom_delivery_time: mesmaRegiao ? 5 : 10,
-        },
-        {
-          id: `correios_${sedexCode}`,
-          service_id: sedexCode,
-          name: "SEDEX",
-          service_name: "SEDEX",
-          company: { name: "Correios", picture: "" },
-          price: mesmaRegiao ? "28.90" : "45.90",
-          custom_price: mesmaRegiao ? "28.90" : "45.90",
-          delivery_time: mesmaRegiao ? "2 dias úteis" : "5 dias úteis",
-          custom_delivery_time: mesmaRegiao ? 2 : 5,
-        },
-      ];
-
+    if (shippingOptions.length > 0) {
+      console.log("[mc] Public options:", shippingOptions.length);
       return new Response(
-        JSON.stringify({ success: true, shipping_options: shippingOptions, provider: "meuscorreios", fallback: true }),
+        JSON.stringify({ success: true, shipping_options: shippingOptions, provider: "meuscorreios" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const shippingOptions: any[] = [];
-
-    for (const servico of servicosList) {
-      // Skip services with errors
-      if (servico.Erro && servico.Erro !== "0") {
-        console.log(`[meuscorreios-shipping] Service ${servico.Codigo} error: ${servico.MsgErro}`);
-        continue;
-      }
-
-      const serviceInfo = SERVICES.find(s => s.code === servico.Codigo);
-      if (!serviceInfo) continue;
-
-      // Parse price (format: "25,50")
-      const priceStr = (servico.Valor || "0").replace(".", "").replace(",", ".");
-      const price = parseFloat(priceStr);
-
-      if (isNaN(price) || price <= 0) continue;
-
-      const prazo = parseInt(servico.PrazoEntrega || "0");
-
-      shippingOptions.push({
-        id: `correios_${servico.Codigo}`,
-        service_id: servico.Codigo,
-        name: serviceInfo.name,
-        service_name: serviceInfo.name,
-        company: { name: serviceInfo.company, picture: "" },
-        price: price.toFixed(2),
-        custom_price: price.toFixed(2),
-        delivery_time: `${prazo} dias úteis`,
-        custom_delivery_time: prazo,
-      });
-    }
-
-    console.log("[meuscorreios-shipping] Options found:", shippingOptions.length);
+    // ESTRATÉGIA 3: Fallback por distância
+    console.log("[mc] Using distance fallback");
+    const mesmaRegiao = cepOrigem[0] === cepDestino[0];
+    const fallback = [
+      {
+        id: "correios_pac_est", service_id: "04510",
+        name: "PAC", service_name: "PAC",
+        company: { name: "Correios", picture: "" },
+        price: mesmaRegiao ? "18.90" : "28.90",
+        custom_price: mesmaRegiao ? "18.90" : "28.90",
+        delivery_time: mesmaRegiao ? "5 dias úteis" : "10 dias úteis",
+        custom_delivery_time: mesmaRegiao ? 5 : 10,
+      },
+      {
+        id: "correios_sedex_est", service_id: "04014",
+        name: "SEDEX", service_name: "SEDEX",
+        company: { name: "Correios", picture: "" },
+        price: mesmaRegiao ? "28.90" : "45.90",
+        custom_price: mesmaRegiao ? "28.90" : "45.90",
+        delivery_time: mesmaRegiao ? "2 dias úteis" : "5 dias úteis",
+        custom_delivery_time: mesmaRegiao ? 2 : 5,
+      },
+    ];
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        shipping_options: shippingOptions,
-        provider: "meuscorreios",
-      }),
+      JSON.stringify({ success: true, shipping_options: fallback, provider: "meuscorreios", fallback: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
-    console.error("[meuscorreios-shipping] Error:", error);
+    console.error("[mc] Error:", error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

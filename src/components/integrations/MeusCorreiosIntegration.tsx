@@ -20,6 +20,8 @@ interface MeusCorreiosData {
   token_meuscorreios: string;
   cartao_postagem: string;
   codigo_remetente: string;
+  correios_client_id: string;
+  correios_client_secret: string;
   is_active: boolean;
 }
 
@@ -30,6 +32,8 @@ export default function MeusCorreiosIntegration({ tenantId }: MeusCorreiosIntegr
     token_meuscorreios: '',
     cartao_postagem: '',
     codigo_remetente: '1',
+    correios_client_id: '',
+    correios_client_secret: '',
     is_active: false,
   });
   const [showSecrets, setShowSecrets] = useState(false);
@@ -52,6 +56,8 @@ export default function MeusCorreiosIntegration({ tenantId }: MeusCorreiosIntegr
           token_meuscorreios: data.token_type || '',
           cartao_postagem: data.refresh_token || '',
           codigo_remetente: data.scope || '1',
+          correios_client_id: data.client_id || '',
+          correios_client_secret: data.client_secret || '',
           is_active: data.is_active,
         });
       }
@@ -70,6 +76,8 @@ export default function MeusCorreiosIntegration({ tenantId }: MeusCorreiosIntegr
         token_type: data.token_meuscorreios,
         refresh_token: data.cartao_postagem,
         scope: data.codigo_remetente || '1',
+        client_id: data.correios_client_id || null,
+        client_secret: data.correios_client_secret || null,
         is_active: data.is_active,
         sandbox: false,
       };
@@ -183,6 +191,35 @@ export default function MeusCorreiosIntegration({ tenantId }: MeusCorreiosIntegr
                 <p className="text-xs text-muted-foreground">
                   Informe "1" se for remetente único, ou o código cadastrado no MeusCorreios.
                 </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 border-t pt-4">
+            <h3 className="text-sm font-medium">Credenciais CWS Correios (opcional - para preços reais de contrato)</h3>
+            <p className="text-xs text-muted-foreground">
+              Se você possui contrato com os Correios, informe o Client ID e Client Secret do CWS para obter preços de contrato no checkout. Sem essas credenciais, o sistema usa preços da tabela pública.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="cws_client_id">Client ID (CWS)</Label>
+                <Input
+                  id="cws_client_id"
+                  type={showSecrets ? 'text' : 'password'}
+                  value={formData.correios_client_id}
+                  onChange={(e) => setFormData({ ...formData, correios_client_id: e.target.value })}
+                  placeholder="Client ID do portal CWS Correios"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cws_client_secret">Client Secret (CWS)</Label>
+                <Input
+                  id="cws_client_secret"
+                  type={showSecrets ? 'text' : 'password'}
+                  value={formData.correios_client_secret}
+                  onChange={(e) => setFormData({ ...formData, correios_client_secret: e.target.value })}
+                  placeholder="Client Secret do portal CWS Correios"
+                />
               </div>
             </div>
           </div>
