@@ -18,6 +18,14 @@ const DEFAULT_SERVICE_CODES: Record<string, string> = {
   "PAC GRANDE": "03328",
 };
 
+// Known public/invalid codes that should be auto-replaced by contract equivalents
+const PUBLIC_TO_CONTRACT_MAP: Record<string, string> = {
+  "03085": "PAC",      // PAC público v2 → PAC contrato
+  "03050": "SEDEX",    // SEDEX público v2 → SEDEX contrato
+  "04510": "PAC",      // PAC público → PAC contrato
+  "04014": "SEDEX",    // SEDEX público → SEDEX contrato
+};
+
 /**
  * Parse service codes from integration webhook_secret field (JSON string)
  * Format: {"PAC":"03298","SEDEX":"03220",...}
@@ -45,13 +53,13 @@ function resolveService(
   observation: string | null,
   overrideServiceCode?: string
 ): { code: string; name: string } {
-  // If a specific service code was passed (manual override), use it directly
+  // If a specific service code was passed (manual override), sanitize it first
   if (overrideServiceCode) {
-    // Find the name for this code
-    const entry = Object.entries(serviceCodes).find(([_, c]) => c === overrideServiceCode);
+    const sanitized = sanitizeServiceCode(overrideServiceCode, serviceCodes);
+    const entry = Object.entries(serviceCodes).find(([_, c]) => c === sanitized);
     return {
-      code: overrideServiceCode,
-      name: entry ? entry[0] : `Código ${overrideServiceCode}`,
+      code: sanitized,
+      name: entry ? entry[0] : `Código ${sanitized}`,
     };
   }
 
@@ -67,6 +75,21 @@ function resolveService(
 
   // Default: PAC
   return { code: serviceCodes["PAC"] || "03298", name: "PAC" };
+}
+
+/**
+ * Sanitize a service code: if it's a known public code, replace with contract equivalent
+ */
+function sanitizeServiceCode(code: string, serviceCodes: Record<string, string>): string {
+  const mappedName = PUBLIC_TO_CONTRACT_MAP[code];
+  if (mappedName) {
+    const contractCode = serviceCodes[mappedName];
+    if (contractCode) {
+      console.log(`🔄 [MeusCorreios] Auto-replacing public code ${code} → ${contractCode} (${mappedName})`);
+      return contractCode;
+    }
+  }
+  return code;
 }
 
 serve(async (req: Request) => {
@@ -189,9 +212,18 @@ serve(async (req: Request) => {
 
       // Resolve service: check for manual override, then auto-detect from observation
       const overrideCode = service_overrides?.[String(order.id)] || null;
-      const { code: servico, name: servicoNome } = resolveService(serviceCodes, order.observation, overrideCode);
+      let { code: servico, name: servicoNome } = resolveService(serviceCodes, order.observation, overrideCode);
 
-      const payload = {
+      // Sanitize: auto-replace known public codes with contract equivalents
+      const sanitized = sanitizeServiceCode(servico, serviceCodes);
+      if (sanitized !== servico) {
+        console.log(`🔄 [MeusCorreios] Order #${order.id}: replaced ${servico} → ${sanitized}`);
+        servicoNome = `${servicoNome} (corrigido)`;
+        servico = sanitized;
+      }
+
+      // Helper to build payload
+      const buildPayload = (serviceCode: string) => ({
         parmIn: {
           Token: tokenMeusCorreios,
           dstxrmtcod: codigoRemetente,
@@ -210,7 +242,7 @@ serve(async (req: Request) => {
           dstxnfi: String(order.unique_order_id || order.id).substring(0, 15),
           objetos: [{
             dstxItem: 1,
-            dstxsrv: servico,
+            dstxsrv: serviceCode,
             dstxobs: `Pedido #${order.unique_order_id || order.id}`,
             dstxpes: 500,
             dstxvo1: 10,
@@ -220,57 +252,73 @@ serve(async (req: Request) => {
             dstxcob: 0,
           }],
         },
+      });
+
+      // Helper to call API and parse response
+      const callApi = async (serviceCode: string): Promise<{ success: boolean; trackingCode?: string; labelPdf?: string; lote?: string; erroItem?: string; isServiceError?: boolean }> => {
+        const response = await fetch(MEUSCORREIOS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildPayload(serviceCode)),
+          signal: AbortSignal.timeout(30000),
+        });
+
+        const responseText = await response.text();
+        console.log(`📦 [MeusCorreios] Response ${response.status} for #${order.id} (srv=${serviceCode}):`, responseText.substring(0, 500));
+
+        if (!response.ok) return { success: false, erroItem: `HTTP ${response.status}` };
+
+        let data: any;
+        try { data = JSON.parse(responseText); } catch { return { success: false, erroItem: "Resposta não é JSON válido" }; }
+
+        const sdtOut = data.parmOut || data.ParmOut || data.SDTWSCriPrePosOut || data.sdtwscripreposout || data;
+        const erroGeral = sdtOut.Erro || sdtOut.erro || data.Erro || data.erro;
+        if (erroGeral && String(erroGeral).trim() !== "" && String(erroGeral).trim() !== "0") {
+          return { success: false, erroItem: `Erro API: ${erroGeral}` };
+        }
+
+        const prepos = sdtOut.prepos || sdtOut.PrePos || data.prepos || data.PrePos || [];
+        const preposList = Array.isArray(prepos) ? prepos : [prepos];
+        const firstResult = preposList[0];
+        if (!firstResult) return { success: false, erroItem: "Resposta sem dados de pré-postagem" };
+
+        const erroItem = firstResult.ErroItem || firstResult.erroItem || firstResult.Erro || firstResult.erro;
+        if (erroItem && String(erroItem).trim() !== "" && String(erroItem).trim() !== "0") {
+          const isServiceError = String(erroItem).includes("Defini") && String(erroItem).includes("Servi");
+          return { success: false, erroItem: String(erroItem), isServiceError };
+        }
+
+        return {
+          success: true,
+          trackingCode: firstResult.etqSRO || firstResult.EtqSRO || firstResult.dstxetq || firstResult.Dstxetq || firstResult.codigoAwb || "",
+          labelPdf: firstResult.etqPDF || firstResult.EtqPDF || "",
+          lote: firstResult.dstxlot || firstResult.Dstxlot || firstResult.codectcod || "",
+        };
       };
 
       console.log(`📦 [MeusCorreios] Order #${order.id}: ${servicoNome} (${servico})`);
 
       try {
-        const response = await fetch(MEUSCORREIOS_API_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(30000),
-        });
+        let apiResult = await callApi(servico);
 
-        const responseText = await response.text();
-        console.log(`📦 [MeusCorreios] Response ${response.status} for #${order.id}:`, responseText.substring(0, 500));
-
-        if (!response.ok) {
-          results.push({ order_id: order.id, status: "error", message: `HTTP ${response.status}`, error_type: "http" });
-          continue;
+        // Auto-retry: if service error, try fallback contract code
+        if (!apiResult.success && apiResult.isServiceError) {
+          const fallbackName = PUBLIC_TO_CONTRACT_MAP[servico];
+          const fallbackCode = fallbackName ? serviceCodes[fallbackName] : null;
+          
+          if (fallbackCode && fallbackCode !== servico) {
+            console.log(`🔄 [MeusCorreios] Auto-retry #${order.id}: ${servico} → ${fallbackCode} (${fallbackName})`);
+            await new Promise(r => setTimeout(r, 300));
+            apiResult = await callApi(fallbackCode);
+            if (apiResult.success) {
+              servico = fallbackCode;
+              servicoNome = `${fallbackName} (auto-corrigido)`;
+            }
+          }
         }
 
-        let data: any;
-        try { data = JSON.parse(responseText); } catch {
-          results.push({ order_id: order.id, status: "error", message: "Resposta não é JSON válido", error_type: "parse" });
-          continue;
-        }
-
-        // Parse response - supports parmOut and SDTWSCriPrePosOut
-        const sdtOut = data.parmOut || data.ParmOut || data.SDTWSCriPrePosOut || data.sdtwscripreposout || data;
-
-        // Check general error
-        const erroGeral = sdtOut.Erro || sdtOut.erro || data.Erro || data.erro;
-        if (erroGeral && String(erroGeral).trim() !== "" && String(erroGeral).trim() !== "0") {
-          results.push({ order_id: order.id, status: "error", message: `Erro API: ${erroGeral}`, error_type: "api" });
-          continue;
-        }
-
-        // Check prepos
-        const prepos = sdtOut.prepos || sdtOut.PrePos || data.prepos || data.PrePos || [];
-        const preposList = Array.isArray(prepos) ? prepos : [prepos];
-        const firstResult = preposList[0];
-
-        if (!firstResult) {
-          results.push({ order_id: order.id, status: "error", message: "Resposta sem dados de pré-postagem", error_type: "empty" });
-          continue;
-        }
-
-        // Check item-level error
-        const erroItem = firstResult.ErroItem || firstResult.erroItem || firstResult.Erro || firstResult.erro;
-        if (erroItem && String(erroItem).trim() !== "" && String(erroItem).trim() !== "0") {
-          const isServiceError = String(erroItem).includes("Definição Serviço") || String(erroItem).includes("Definicao Servico");
-
+        if (!apiResult.success) {
+          const isServiceError = apiResult.isServiceError || false;
           results.push({
             order_id: order.id,
             status: "error",
@@ -278,21 +326,19 @@ serve(async (req: Request) => {
             failed_service_code: servico,
             failed_service_name: servicoNome,
             message: isServiceError
-              ? `Código "${servico}" (${servicoNome}) não é válido para seu cartão de postagem. Use o seletor de serviço para escolher outro código.`
-              : `Erro: ${erroItem}`,
+              ? `Código "${servico}" (${servicoNome}) não é válido para seu cartão de postagem. Revise o Dicionário de Serviços ou reatribua manualmente.`
+              : `Erro: ${apiResult.erroItem}`,
           });
           continue;
         }
 
-        // Extract tracking
-        const trackingCode = firstResult.etqSRO || firstResult.EtqSRO || firstResult.dstxetq || firstResult.Dstxetq || firstResult.codigoAwb || "";
-        const labelPdf = firstResult.etqPDF || firstResult.EtqPDF || "";
-        const lote = firstResult.dstxlot || firstResult.Dstxlot || firstResult.codectcod || "";
+        const { trackingCode, labelPdf, lote } = apiResult;
 
         if (!trackingCode) {
           results.push({ order_id: order.id, status: "error", message: "Rastreio não retornado", error_type: "no_tracking" });
           continue;
         }
+
 
         console.log(`✅ [MeusCorreios] #${order.id} → ${trackingCode}`);
 
