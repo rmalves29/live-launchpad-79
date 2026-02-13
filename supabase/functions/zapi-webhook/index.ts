@@ -814,6 +814,31 @@ serve(async (req) => {
         // Try to insert new item - use a transaction-safe approach with retry
         // to handle race conditions where another request inserted just before us
         
+        // Pre-check: Re-read fresh stock before inserting
+        const { data: preCheckStock } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('id', product.id)
+          .single();
+        
+        if (!preCheckStock || preCheckStock.stock <= 0) {
+          console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO (pre-check) para novo item ${product.code}: estoque real=${preCheckStock?.stock}`);
+          results.push({ 
+            code, 
+            success: false, 
+            error: 'out_of_stock',
+            product_name: product.name,
+            current_stock: 0
+          });
+          
+          // Send out of stock message
+          if (whatsappConfig?.send_out_of_stock_msg !== false) {
+            const outOfStockMsg = `❌ *Produto Esgotado!*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\nDesculpe pelo inconveniente! 😔`;
+            await sendZAPIMessage(supabase, tenantId, senderPhone, outOfStockMsg);
+          }
+          continue;
+        }
+        
         // First attempt: try to insert
         const { data: newItem, error: cartItemError } = await supabase
           .from('cart_items')
@@ -870,10 +895,17 @@ serve(async (req) => {
         
         cartItem = newItem;
         
-        // ATOMIC STOCK DECREMENT: Only decrement if stock > 0
+        // ATOMIC STOCK DECREMENT: Re-read fresh stock then decrement only if stock > 0
+        const { data: freshStockForNew } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('id', product.id)
+          .single();
+        const freshStockVal = freshStockForNew?.stock ?? product.stock;
+        
         const { data: stockRows, error: stockError } = await supabase
           .from('products')
-          .update({ stock: product.stock - 1 })
+          .update({ stock: freshStockVal - 1 })
           .eq('id', product.id)
           .gt('stock', 0)
           .select('stock');
