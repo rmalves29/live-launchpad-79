@@ -1203,6 +1203,155 @@ serve(async (req) => {
     console.log(`[bling-sync-orders] Action: ${action}, Tenant: ${tenant_id}, Order: ${order_id}`);
     console.log(`[bling-sync-orders] Date range: ${start_date} to ${end_date}`);
 
+    // sync_tracking can run without tenant_id (iterates all tenants)
+    if (action === 'sync_tracking' && !tenant_id) {
+      console.log('[bling-sync-orders] SYNC_TRACKING for ALL tenants (cron mode)');
+      
+      // Fetch all active Bling integrations
+      const { data: allIntegrations, error: allIntError } = await supabase
+        .from('integration_bling')
+        .select('tenant_id, access_token, refresh_token, client_id, client_secret, token_expires_at, sync_orders')
+        .eq('is_active', true)
+        .not('access_token', 'is', null);
+      
+      if (allIntError || !allIntegrations || allIntegrations.length === 0) {
+        console.log('[bling-sync-orders] No active Bling integrations found');
+        return new Response(
+          JSON.stringify({ success: true, message: 'No active Bling integrations', tenants_processed: 0 }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log(`[bling-sync-orders] Found ${allIntegrations.length} active Bling integrations`);
+      
+      const allResults: any[] = [];
+      
+      for (const integration of allIntegrations) {
+        try {
+          const validToken = await getValidAccessToken(supabase, integration);
+          if (!validToken) {
+            console.log(`[bling-sync-orders] Could not get valid token for tenant ${integration.tenant_id}`);
+            allResults.push({ tenant_id: integration.tenant_id, success: false, error: 'Invalid token' });
+            continue;
+          }
+          
+          // Buscar pedidos com bling_order_id mas sem tracking
+          const { data: ordersToSync, error: ordersErr } = await supabase
+            .from('orders')
+            .select('id, bling_order_id, customer_phone, customer_name, tenant_id, melhor_envio_tracking_code, melhor_envio_shipment_id')
+            .eq('tenant_id', integration.tenant_id)
+            .eq('is_paid', true)
+            .not('bling_order_id', 'is', null)
+            .or('melhor_envio_tracking_code.is.null,melhor_envio_tracking_code.eq.')
+            .order('created_at', { ascending: false })
+            .limit(100);
+          
+          if (ordersErr || !ordersToSync || ordersToSync.length === 0) {
+            console.log(`[bling-sync-orders] No orders to sync for tenant ${integration.tenant_id}`);
+            allResults.push({ tenant_id: integration.tenant_id, success: true, synced: 0, checked: 0 });
+            continue;
+          }
+          
+          console.log(`[bling-sync-orders] Tenant ${integration.tenant_id}: ${ordersToSync.length} orders to check`);
+          
+          let syncedCount = 0;
+          
+          for (const order of ordersToSync) {
+            try {
+              await delay(350);
+              
+              const { response: detailRes, text: detailText } = await blingFetchWithRetry(
+                `${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`,
+                {
+                  headers: {
+                    'Authorization': `Bearer ${validToken}`,
+                    'Accept': 'application/json',
+                  },
+                },
+                { label: `get-order-${order.bling_order_id}` }
+              );
+              
+              if (!detailRes.ok) {
+                console.log(`[bling-sync-orders] Could not fetch Bling order ${order.bling_order_id}: ${detailRes.status}`);
+                continue;
+              }
+              
+              const blingOrder = JSON.parse(detailText);
+              const volumes = blingOrder?.data?.transporte?.volumes || [];
+              
+              let trackingCode: string | null = null;
+              for (const volume of volumes) {
+                if (volume?.codigoRastreamento) {
+                  trackingCode = volume.codigoRastreamento;
+                  break;
+                }
+              }
+              
+              if (trackingCode && trackingCode !== order.melhor_envio_tracking_code) {
+                console.log(`[bling-sync-orders] Found tracking for order ${order.id}: ${trackingCode}`);
+                
+                const { error: updateError } = await supabase
+                  .from('orders')
+                  .update({ melhor_envio_tracking_code: trackingCode })
+                  .eq('id', order.id);
+                
+                if (!updateError) {
+                  syncedCount++;
+                  
+                  // Enviar WhatsApp apenas se não tinha tracking antes
+                  if (!order.melhor_envio_tracking_code) {
+                    try {
+                      await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+                        },
+                        body: JSON.stringify({
+                          order_id: order.id,
+                          tenant_id: order.tenant_id,
+                          tracking_code: trackingCode,
+                          shipped_at: new Date().toISOString(),
+                        }),
+                      });
+                      console.log(`[bling-sync-orders] WhatsApp tracking sent for order ${order.id}`);
+                    } catch (whatsappError) {
+                      console.log(`[bling-sync-orders] WhatsApp failed for order ${order.id}:`, whatsappError);
+                    }
+                  }
+                }
+              }
+            } catch (orderError: any) {
+              console.error(`[bling-sync-orders] Error processing order ${order.id}:`, orderError);
+            }
+          }
+          
+          allResults.push({ 
+            tenant_id: integration.tenant_id, 
+            success: true, 
+            synced: syncedCount, 
+            checked: ordersToSync.length 
+          });
+          
+        } catch (tenantError: any) {
+          console.error(`[bling-sync-orders] Error for tenant ${integration.tenant_id}:`, tenantError);
+          allResults.push({ tenant_id: integration.tenant_id, success: false, error: tenantError.message });
+        }
+      }
+      
+      console.log(`[bling-sync-orders] SYNC_TRACKING completed for ${allResults.length} tenants`);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          tenants_processed: allResults.length,
+          total_synced: allResults.reduce((sum, r) => sum + (r.synced || 0), 0),
+          details: allResults 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     if (!tenant_id) {
       return new Response(
         JSON.stringify({ error: 'tenant_id is required' }),
