@@ -363,9 +363,12 @@ serve(async (req) => {
               .eq("id", existingPending.id);
             // Continua o fluxo para enviar nova mensagem (não retorna aqui)
           } else {
-            console.log(`[zapi-send-item-added] ⛔ Já existe solicitação pendente (${existingPending.id}) para ${formattedPhone}. Não enviando nova mensagem.`);
-            
-            // Apenas atualiza os metadados da confirmação existente com o novo produto
+            // Cliente ainda não respondeu SIM mas prazo não expirou:
+            // Pedido já foi criado normalmente pelo sistema. Apenas NÃO enviamos mensagem.
+            // NÃO bloqueamos o pedido - apenas silenciamos o WhatsApp.
+            console.log(`[zapi-send-item-added] 🔇 Consentimento pendente para ${formattedPhone}. Pedido criado, mensagem silenciada (cliente ainda não respondeu SIM).`);
+
+            // Atualiza metadados com o produto mais recente
             await supabase
               .from("pending_message_confirmations")
               .update({
@@ -379,11 +382,24 @@ serve(async (req) => {
               })
               .eq("id", existingPending.id);
 
+            // Registra no log de mensagens como silenciado (para rastreabilidade)
+            await supabase.from('whatsapp_messages').insert({
+              tenant_id,
+              phone: formattedPhone,
+              message: `[SILENCIADO - aguardando consentimento] ${product_name} (${product_code})`,
+              type: 'item_added',
+              product_name: product_name.substring(0, 100),
+              sent_at: new Date().toISOString(),
+              order_id: order_id || null,
+              delivery_status: 'SKIPPED'
+            });
+
             return new Response(
               JSON.stringify({ 
                 sent: false, 
                 skipped: true, 
-                reason: "Solicitação de consentimento já pendente para este cliente",
+                order_created: true,
+                reason: "Mensagem silenciada - cliente ainda não respondeu SIM ao consentimento. Pedido foi registrado normalmente.",
                 existing_confirmation_id: existingPending.id
               }),
               { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
