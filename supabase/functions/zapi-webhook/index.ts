@@ -192,6 +192,31 @@ serve(async (req) => {
     // This catches duplicates that in-memory cache misses when Z-API sends
     // the same webhook to different function instances
     if (messageId) {
+      // ─── TRAVA DE BANCO: pg_advisory_xact_lock via messageId ────────────────
+      // Converte o messageId em um bigint determinístico para usar como lock key.
+      // Isso garante que duas instâncias concorrentes da Edge Function com o mesmo
+      // messageId não processem o webhook ao mesmo tempo (race condition).
+      const { data: lockResult, error: lockError } = await supabase.rpc(
+        'acquire_message_advisory_lock',
+        { p_message_id: messageId }
+      );
+
+      if (lockError) {
+        console.warn(`[zapi-webhook] Advisory lock RPC error (non-fatal): ${lockError.message}`);
+        // Se a função RPC não existir ainda, continua com verificação simples
+      } else if (lockResult === false) {
+        // Outra instância já está processando este messageId
+        console.log(`[zapi-webhook] 🔒 Advisory lock NEGADO para messageId ${messageId} — descartando duplicata`);
+        return new Response(JSON.stringify({
+          success: true,
+          skipped: 'advisory_lock_denied',
+          messageId
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Verificação adicional no banco (para casos onde o lock passou mas o registro já existe)
       const { data: existingMsg } = await supabase
         .from('whatsapp_messages')
         .select('id')
@@ -727,25 +752,44 @@ serve(async (req) => {
       let wasSkipped = false;
       
       if (existingItem) {
-        // DEDUPLICATION: Check if this product was added recently (within 30 seconds)
-        // Reduced from 3 minutes to 30 seconds for better UX while still preventing duplicates
-        const itemCreatedAt = new Date(existingItem.created_at).getTime();
-        const thirtySecondsAgo = Date.now() - (30 * 1000);
-        
-        if (itemCreatedAt > thirtySecondsAgo) {
-          // Product was added less than 30 seconds ago - skip to prevent duplicate
-          console.log(`[zapi-webhook] ⏭️ SKIPPING duplicate product ${product.code} - already added ${Math.round((Date.now() - itemCreatedAt) / 1000)}s ago`);
-          results.push({ 
-            code, 
-            success: true, 
-            skipped: 'recent_duplicate',
-            product_name: product.name,
-            cart_id: cart.id,
-            existing_qty: existingItem.qty,
-            seconds_ago: Math.round((Date.now() - itemCreatedAt) / 1000)
-          });
-          continue;
-        }
+      // ─── TRAVA DE TEMPO: 1 segundo por product_id no mesmo cart ──────────────
+      // Se o mesmo código chegar duas vezes no mesmo carrinho em menos de 1 segundo,
+      // é duplicata de webhook (mesmo messageId processado em paralelo ou reenvio imediato).
+      // Mantemos 30 segundos como threshold de "realmente é nova compra".
+      const itemCreatedAt = new Date(existingItem.created_at).getTime();
+      const elapsedMs = Date.now() - itemCreatedAt;
+      const oneSecondMs = 1 * 1000;
+      const thirtySecondsMs = 30 * 1000;
+      
+      if (elapsedMs < oneSecondMs) {
+        // Menos de 1 segundo → duplicata de webhook — descartar imediatamente
+        console.log(`[zapi-webhook] 🔒 TRAVA 1s: produto ${product.code} adicionado há ${elapsedMs}ms — descartando duplicata de webhook`);
+        results.push({ 
+          code, 
+          success: true, 
+          skipped: 'webhook_duplicate_1s',
+          product_name: product.name,
+          cart_id: cart.id,
+          existing_qty: existingItem.qty,
+          elapsed_ms: elapsedMs
+        });
+        continue;
+      }
+
+      if (elapsedMs < thirtySecondsMs) {
+        // Entre 1s e 30s → reenvio acidental — skip mas sem bloquear compra intencional futura
+        console.log(`[zapi-webhook] ⏭️ SKIPPING duplicate product ${product.code} - already added ${Math.round(elapsedMs / 1000)}s ago`);
+        results.push({ 
+          code, 
+          success: true, 
+          skipped: 'recent_duplicate',
+          product_name: product.name,
+          cart_id: cart.id,
+          existing_qty: existingItem.qty,
+          seconds_ago: Math.round(elapsedMs / 1000)
+        });
+        continue;
+      }
         
         // STOCK VALIDATION: Re-read fresh stock to prevent race condition
         const { data: freshStockCheck } = await supabase
