@@ -1658,24 +1658,28 @@ const Relatorios = () => {
                           : 0;
                         const score = customer.score ?? 0;
                         
-                        // Qualificação por score
-                        const tier = score > 85
-                          ? { label: '🏆 Ouro', className: 'bg-yellow-100 text-yellow-800 border-yellow-300' }
-                          : score >= 50
-                          ? { label: '🥈 Prata', className: 'bg-slate-100 text-slate-700 border-slate-300' }
-                          : { label: '🥉 Bronze', className: 'bg-orange-100 text-orange-800 border-orange-300' };
+                        // Premiação exclusiva apenas para o Top 3 (baseado em posição após ordenação por score)
+                        const podium = index === 0
+                          ? { label: '🏆 Ouro', badgeClass: 'bg-yellow-100 text-yellow-800 border-yellow-300', rowClass: 'bg-yellow-50/40' }
+                          : index === 1
+                          ? { label: '🥈 Prata', badgeClass: 'bg-slate-100 text-slate-600 border-slate-300', rowClass: 'bg-slate-50/60' }
+                          : index === 2
+                          ? { label: '🥉 Bronze', badgeClass: 'bg-orange-100 text-orange-700 border-orange-300', rowClass: 'bg-orange-50/30' }
+                          : null;
                         
                         return (
-                          <TableRow key={customer.customer_phone}>
+                          <TableRow key={customer.customer_phone} className={podium?.rowClass ?? ''}>
                             <TableCell className="pl-6">
                               <div className="flex flex-col items-center gap-1">
                                 <span className="text-lg font-bold text-foreground">{score}</span>
-                                <Badge
-                                  variant="outline"
-                                  className={`text-xs font-semibold px-2 py-0.5 ${tier.className}`}
-                                >
-                                  {tier.label}
-                                </Badge>
+                                {podium && (
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-xs font-semibold px-2 py-0.5 ${podium.badgeClass}`}
+                                  >
+                                    {podium.label}
+                                  </Badge>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-center">
