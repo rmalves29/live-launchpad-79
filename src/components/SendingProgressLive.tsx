@@ -57,7 +57,7 @@ interface SendingProgressLiveProps {
 }
 
 const POLL_INTERVAL_MS = 15_000; // Poll every 15 seconds
-const STUCK_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes without DB changes
+const STUCK_THRESHOLD_MS = 8 * 60 * 1000; // 8 minutes without DB changes (allows for long product delays)
 
 export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }: SendingProgressLiveProps) {
   const { tenant } = useTenant();
@@ -165,9 +165,21 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
             lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
             setIsJobStuck(false);
           } else {
-            // No progress — check if we've exceeded the threshold
-            const elapsed = Date.now() - lastProgressRef.current.timestamp;
-            setIsJobStuck(elapsed > STUCK_THRESHOLD_MS);
+            // No new tasks completed — but check if we're in an intentional waiting period
+            const isIntentionalWait =
+              (freshJob.job_data?.isWaitingForNextProduct === true) ||
+              (freshJob.job_data?.isWaitingForNextGroup === true) ||
+              ((freshJob.job_data?.countdownSeconds ?? 0) > 0);
+
+            if (isIntentionalWait) {
+              // We're waiting intentionally between groups or products — reset stuck timer
+              lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
+              setIsJobStuck(false);
+            } else {
+              // Truly no progress and not waiting — check threshold
+              const elapsed = Date.now() - lastProgressRef.current.timestamp;
+              setIsJobStuck(elapsed > STUCK_THRESHOLD_MS);
+            }
           }
         }
       } catch (err) {
@@ -183,11 +195,10 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
   useEffect(() => {
     if (tasks.length > 0 && activeJob) {
       const doneCount = tasks.filter(t => ['completed', 'skipped', 'error'].includes(t.status)).length;
-      if (doneCount > lastProgressRef.current.count) {
-        lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
-      }
+      // Always sync the reference with actual current count to avoid false stuck detection
+      lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
     }
-  }, [tasks, activeJob]);
+  }, [activeJob?.id]); // Only run when job changes, not every task update
 
   const handlePauseJob = async () => {
     if (!activeJob) return;
@@ -270,9 +281,16 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
           const job = data as SendingJob;
           setActiveJob(job);
           setCompletedJob(null);
-          fetchTasks(job.id);
-          // Initialize progress tracking
-          lastProgressRef.current = { count: 0, timestamp: Date.now() };
+          // Fetch tasks and initialize progress ref with actual current count
+          fetchTasks(job.id).then(fetchedTasks => {
+            if (fetchedTasks) {
+              const doneCount = fetchedTasks.filter(
+                (t: SendFlowTask) => ['completed', 'skipped', 'error'].includes(t.status)
+              ).length;
+              // Start tracking from current progress, not from 0
+              lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
+            }
+          });
         } else {
           setActiveJob(null);
           // Check for recently completed jobs (last 2 minutes)
