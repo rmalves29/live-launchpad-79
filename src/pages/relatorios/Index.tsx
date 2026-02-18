@@ -85,6 +85,7 @@ interface CustomerStats {
   unpaid_revenue: number;
   first_order_date: string;
   last_order_date: string;
+  score?: number;
 }
 
 const Relatorios = () => {
@@ -1075,9 +1076,20 @@ const Relatorios = () => {
         }
       });
 
-      // Converter para array e ordenar por total de pedidos (clientes com mais compras)
-      const customersArray = Array.from(customerMap.values())
-        .sort((a, b) => b.total_orders - a.total_orders)
+      // Calcular score: 40% volume (paid_orders) + 60% valor (paid_revenue)
+      const customersRaw = Array.from(customerMap.values());
+      const maxPaidOrders = Math.max(...customersRaw.map(c => c.paid_orders), 1);
+      const maxPaidRevenue = Math.max(...customersRaw.map(c => c.paid_revenue), 1);
+
+      const customersArray = customersRaw
+        .map(c => ({
+          ...c,
+          score: Math.round(
+            ((c.paid_orders / maxPaidOrders) * 40) +
+            ((c.paid_revenue / maxPaidRevenue) * 60)
+          )
+        }))
+        .sort((a, b) => b.score - a.score)
         .slice(0, 50); // Top 50 clientes
       
       console.log('📊 Top clientes:', customersArray);
@@ -1620,11 +1632,12 @@ const Relatorios = () => {
                   Nenhum cliente encontrado no período selecionado
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto -mx-6">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Posição</TableHead>
+                        <TableHead className="pl-6 text-center w-28">Score</TableHead>
+                        <TableHead className="text-center w-20">Posição</TableHead>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Telefone</TableHead>
                         <TableHead className="text-center">Total Pedidos</TableHead>
@@ -1635,7 +1648,7 @@ const Relatorios = () => {
                         <TableHead className="text-right">Receita Pendente</TableHead>
                         <TableHead className="text-center">Taxa Pagamento</TableHead>
                         <TableHead>Primeira Compra</TableHead>
-                        <TableHead>Última Compra</TableHead>
+                        <TableHead className="pr-6">Última Compra</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1643,10 +1656,29 @@ const Relatorios = () => {
                         const conversionRate = customer.total_orders > 0 
                           ? (customer.paid_orders / customer.total_orders) * 100 
                           : 0;
+                        const score = customer.score ?? 0;
+                        
+                        // Qualificação por score
+                        const tier = score > 85
+                          ? { label: '🏆 Ouro', className: 'bg-yellow-100 text-yellow-800 border-yellow-300' }
+                          : score >= 50
+                          ? { label: '🥈 Prata', className: 'bg-slate-100 text-slate-700 border-slate-300' }
+                          : { label: '🥉 Bronze', className: 'bg-orange-100 text-orange-800 border-orange-300' };
                         
                         return (
                           <TableRow key={customer.customer_phone}>
-                            <TableCell>
+                            <TableCell className="pl-6">
+                              <div className="flex flex-col items-center gap-1">
+                                <span className="text-lg font-bold text-foreground">{score}</span>
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs font-semibold px-2 py-0.5 ${tier.className}`}
+                                >
+                                  {tier.label}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
                               <Badge variant={index < 3 ? "default" : "secondary"}>
                                 {index + 1}º
                               </Badge>
@@ -1692,7 +1724,7 @@ const Relatorios = () => {
                             <TableCell className="text-sm text-muted-foreground">
                               {formatDate(customer.first_order_date)}
                             </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
+                            <TableCell className="pr-6 text-sm text-muted-foreground">
                               {formatDate(customer.last_order_date)}
                             </TableCell>
                           </TableRow>
