@@ -508,7 +508,7 @@ serve(async (req) => {
       }
 
       case 'sync_all': {
-        // Get all active products without bling_product_id
+        // Get ALL active products without bling_product_id (no limit - process everything)
         const { data: products, error: productsError } = await supabase
           .from('products')
           .select('*')
@@ -516,7 +516,7 @@ serve(async (req) => {
           .eq('is_active', true)
           .is('bling_product_id', null)
           .order('created_at', { ascending: true })
-          .limit(100); // Process in batches of 100
+          .limit(9999); // Fetch up to 9999 products at once
 
         if (productsError) {
           console.error('[bling-sync-products] Error fetching products:', productsError);
