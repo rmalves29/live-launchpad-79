@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,8 +44,8 @@ export function useConfirmDialog() {
     resolveRef.current = null;
   }, []);
 
-  // Return a stable React element, NOT a component function
-  const confirmDialogElement = (
+  // useMemo ensures the element re-renders when state changes
+  const confirmDialogElement = useMemo(() => (
     <AlertDialog open={isOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -67,7 +67,7 @@ export function useConfirmDialog() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
+  ), [isOpen, options, handleConfirm, handleCancel]);
 
   return { confirm, confirmDialogElement };
 }
