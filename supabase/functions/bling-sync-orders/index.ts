@@ -336,16 +336,16 @@ async function getOrCreateBlingContactId(
 ): Promise<number> {
   const phone = (order.customer_phone || '').replace(/\D/g, '');
   
-  // Priorizar dados do customer, fallback para dados do order
-  const customerName = customer?.name || order.customer_name || 'Cliente';
+  // PRIORIDADE: dados do PEDIDO (order) sempre prevalecem sobre cadastro do customer.
+  const customerName = order.customer_name || customer?.name || 'Cliente';
   const customerCpf = (customer?.cpf || '').replace(/\D/g, '');
-  const customerCep = (customer?.cep || order.customer_cep || '').replace(/\D/g, '');
-  const customerStreet = customer?.street || order.customer_street || '';
-  const customerNumber = customer?.number || order.customer_number || 'S/N';
-  const customerComplement = customer?.complement || order.customer_complement || '';
-  const customerNeighborhood = customer?.neighborhood || order.customer_neighborhood || '';
-  const customerCity = customer?.city || order.customer_city || '';
-  const customerState = customer?.state || order.customer_state || '';
+  const customerCep = (order.customer_cep || customer?.cep || '').replace(/\D/g, '');
+  const customerStreet = order.customer_street || customer?.street || '';
+  const customerNumber = order.customer_number || customer?.number || 'S/N';
+  const customerComplement = order.customer_complement || customer?.complement || '';
+  const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
+  const customerCity = order.customer_city || customer?.city || '';
+  const customerState = order.customer_state || customer?.state || '';
   const customerEmail = customer?.email || '';
 
   // Helper to build address data for updates
@@ -681,15 +681,17 @@ async function sendOrderToBling(
 
   const contactId = await getOrCreateBlingContactId(order, customer, accessToken, supabase, tenantId);
 
-  // Priorizar dados do customer, fallback para dados do order
-  const customerCep = (customer?.cep || order.customer_cep || '').replace(/\D/g, '');
-  const customerStreet = customer?.street || order.customer_street || '';
-  const customerNumber = customer?.number || order.customer_number || 'S/N';
-  const customerComplement = customer?.complement || order.customer_complement || '';
-  const customerNeighborhood = customer?.neighborhood || order.customer_neighborhood || '';
-  const customerCity = customer?.city || order.customer_city || '';
-  const customerState = customer?.state || order.customer_state || '';
-  const customerName = customer?.name || order.customer_name || 'Cliente';
+  // PRIORIDADE: dados do PEDIDO (order) sempre prevalecem sobre cadastro do customer.
+  // O endereço do pedido representa o endereço de entrega atual informado pelo cliente,
+  // enquanto o cadastro pode estar desatualizado.
+  const customerCep = (order.customer_cep || customer?.cep || '').replace(/\D/g, '');
+  const customerStreet = order.customer_street || customer?.street || '';
+  const customerNumber = order.customer_number || customer?.number || 'S/N';
+  const customerComplement = order.customer_complement || customer?.complement || '';
+  const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
+  const customerCity = order.customer_city || customer?.city || '';
+  const customerState = order.customer_state || customer?.state || '';
+  const customerName = order.customer_name || customer?.name || 'Cliente';
 
   // Determinar CFOP com base no estado do cliente vs estado da loja
   let cfop: string | null = null;
