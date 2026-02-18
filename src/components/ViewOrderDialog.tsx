@@ -66,7 +66,10 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
 
   if (!order) return null;
 
-  const hasBlingIntegration = !!(order.bling_order_id || order.customer?.bling_contact_id);
+  // Mostrar botão de sincronização de endereço sempre que o pedido tiver endereço preenchido
+  // (independente de já ter sido sincronizado com o Bling)
+  const hasAddress = !!(order.customer?.street || order.customer?.cep);
+  const hasBlingIntegration = !!(order.bling_order_id || order.customer?.bling_contact_id || hasAddress);
 
   const syncAddressWithBling = async () => {
     if (!order.tenant_id) {

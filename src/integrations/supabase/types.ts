@@ -2389,6 +2389,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      acquire_message_advisory_lock: {
+        Args: { p_message_id: string }
+        Returns: boolean
+      }
       bytea_to_text: { Args: { data: string }; Returns: string }
       cleanup_stale_sessions: { Args: never; Returns: undefined }
       get_current_tenant_id: { Args: never; Returns: string }
