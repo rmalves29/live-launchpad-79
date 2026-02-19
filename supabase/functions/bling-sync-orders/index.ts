@@ -1562,6 +1562,125 @@ serve(async (req) => {
         break;
       }
 
+      case 'force_resync_order': {
+        // Limpa bling_order_id e força reenvio — cria novo pedido no Bling
+        if (!order_id) {
+          return new Response(
+            JSON.stringify({ error: 'order_id is required for force_resync_order action' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { data: forceOrder, error: forceOrderError } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('id', order_id)
+          .eq('tenant_id', tenant_id)
+          .single();
+
+        if (forceOrderError || !forceOrder) {
+          return new Response(
+            JSON.stringify({ error: 'Order not found' }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const oldBlingOrderId = forceOrder.bling_order_id;
+        console.log(`[bling-sync-orders] force_resync_order: clearing old bling_order_id ${oldBlingOrderId} for order ${order_id}`);
+
+        // Limpar ID antigo do Bling para permitir reenvio
+        await supabase
+          .from('orders')
+          .update({ bling_order_id: null, bling_sync_status: null })
+          .eq('id', order_id)
+          .eq('tenant_id', tenant_id);
+
+        // Buscar cart_items
+        let forceCartItems: any[] = [];
+        if (forceOrder.cart_id) {
+          const { data: items } = await supabase
+            .from('cart_items')
+            .select('*, products:product_id(code, name, bling_product_id)')
+            .eq('cart_id', forceOrder.cart_id);
+          if (items) {
+            forceCartItems = items.map((item: any) => ({
+              ...item,
+              product_code: item.products?.code || item.product_code,
+              product_name: item.products?.name || item.product_name,
+              bling_product_id: item.products?.bling_product_id || null,
+            }));
+          }
+        }
+
+        // Buscar cliente
+        const forcePhone = (forceOrder.customer_phone || '').replace(/\D/g, '');
+        let forceCustomer = null;
+        if (forcePhone) {
+          const { data: cd } = await supabase
+            .from('customers')
+            .select('*')
+            .eq('tenant_id', tenant_id)
+            .or(`phone.eq.${forcePhone},phone.like.%${forcePhone.slice(-9)}%`)
+            .limit(1)
+            .single();
+          forceCustomer = cd;
+        }
+
+        const { data: forceShipping } = await supabase
+          .from('shipping_integrations')
+          .select('provider')
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+
+        const { data: forceCustomShipping } = await supabase
+          .from('custom_shipping_options')
+          .select('id, name, carrier_service_id, carrier_service_name, price, delivery_days')
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true);
+
+        const forceFiscalData = {
+          store_state: integration.store_state || null,
+          default_ncm: integration.default_ncm || null,
+          default_cfop_same_state: integration.default_cfop_same_state || null,
+          default_cfop_other_state: integration.default_cfop_other_state || null,
+          default_ipi: integration.default_ipi || null,
+          default_icms_situacao: integration.default_icms_situacao || null,
+          default_icms_origem: integration.default_icms_origem || null,
+          default_pis_cofins: integration.default_pis_cofins || null,
+        };
+
+        const forceBlingPaymentIds = {
+          pix: integration.bling_payment_id_pix || null,
+          credit_card: integration.bling_payment_id_credit_card || null,
+          boleto: integration.bling_payment_id_boleto || null,
+          debit_card: integration.bling_payment_id_debit_card || null,
+          other: integration.bling_payment_id_other || null,
+        };
+
+        const forceResult = await sendOrderToBling(
+          forceOrder, forceCartItems, forceCustomer, accessToken, supabase, tenant_id,
+          integration.bling_store_id || null, forceFiscalData,
+          forceShipping?.provider || null, forceCustomShipping || [], forceBlingPaymentIds
+        );
+
+        // Salvar novo bling_order_id
+        await supabase
+          .from('orders')
+          .update({ bling_order_id: forceResult.blingOrderId, bling_sync_status: 'synced' })
+          .eq('id', order_id)
+          .eq('tenant_id', tenant_id);
+
+        result = {
+          order_id: order_id,
+          old_bling_order_id: oldBlingOrderId,
+          new_bling_order_id: forceResult.blingOrderId,
+          status: forceResult.kind,
+        };
+        break;
+      }
+
       case 'fetch_orders': {
         result = await fetchOrdersFromBling(accessToken);
         break;

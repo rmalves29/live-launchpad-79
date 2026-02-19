@@ -32,9 +32,11 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
   const [isFixingFreight, setIsFixingFreight] = useState(false);
   const [isSyncingTracking, setIsSyncingTracking] = useState(false);
   const [isSyncingSingle, setIsSyncingSingle] = useState(false);
+  const [isForceResyncing, setIsForceResyncing] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [singleOrderId, setSingleOrderId] = useState('');
+  const [forceResyncOrderId, setForceResyncOrderId] = useState('');
 
   // Buscar contagem de pedidos pendentes de sincronização (pagos E sem bling_order_id)
   const { data: pendingCount = 0, refetch: refetchPending, isLoading: isLoadingCount } = useQuery({
@@ -273,6 +275,56 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
     }
   };
 
+  const handleForceResync = async () => {
+    const orderId = parseInt(forceResyncOrderId.trim(), 10);
+    if (isNaN(orderId)) {
+      toast.error('Informe um ID de pedido válido.');
+      return;
+    }
+
+    if (!confirm(`⚠️ Isso vai criar um NOVO pedido no Bling para o pedido #${orderId}.\nO pedido antigo no Bling NÃO será excluído automaticamente — você precisará excluí-lo manualmente.\n\nDeseja continuar?`)) {
+      return;
+    }
+
+    setIsForceResyncing(true);
+    try {
+      toast.info(`Forçando reenvio do pedido #${orderId}...`);
+      const session = await supabase.auth.getSession();
+      const response = await fetch(
+        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-sync-orders',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'force_resync_order',
+            tenant_id: tenantId,
+            order_id: orderId,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error || 'Erro ao forçar reenvio');
+
+      if (result.success) {
+        const data = result.data;
+        toast.success(`Pedido #${orderId} reenviado! Novo Bling ID: ${data.new_bling_order_id}. Lembre de excluir o pedido antigo (ID: ${data.old_bling_order_id}) no Bling.`);
+        setForceResyncOrderId('');
+        refetchPending();
+      } else {
+        throw new Error(result.error || 'Erro desconhecido');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao forçar reenvio');
+    } finally {
+      setIsForceResyncing(false);
+    }
+  };
+
   const handleFixFreight = async () => {
     setIsFixingFreight(true);
     try {
@@ -446,6 +498,39 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
                 <Upload className="h-4 w-4 mr-2" />
               )}
               Enviar Pedido
+            </Button>
+          </div>
+        </div>
+
+        {/* Forçar Reenvio de Pedido */}
+        <div className="border rounded-lg p-4 space-y-3 border-dashed border-destructive/50 bg-destructive/5">
+          <div className="flex items-center gap-2">
+            <Wrench className="h-5 w-5 text-destructive" />
+            <h4 className="font-medium text-destructive">Forçar Reenvio de Pedido</h4>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Use quando um pedido já foi enviado ao Bling mas com produtos incorretos.
+            <strong className="block mt-1 text-destructive">⚠️ Atenção: cria um novo pedido no Bling. O pedido antigo precisa ser excluído manualmente no Bling.</strong>
+          </p>
+          <div className="flex gap-2">
+            <Input
+              placeholder="ID do pedido (ex: 1875)"
+              value={forceResyncOrderId}
+              onChange={(e) => setForceResyncOrderId(e.target.value)}
+              className="max-w-[200px]"
+              disabled={isForceResyncing}
+            />
+            <Button
+              variant="destructive"
+              onClick={handleForceResync}
+              disabled={isForceResyncing || !forceResyncOrderId.trim()}
+            >
+              {isForceResyncing ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Wrench className="h-4 w-4 mr-2" />
+              )}
+              Forçar Reenvio
             </Button>
           </div>
         </div>
