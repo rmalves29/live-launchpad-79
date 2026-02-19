@@ -28,6 +28,32 @@ function isDuplicateCodigoError(payloadText: string): boolean {
 }
 
 /**
+ * Update existing product in Bling via PUT /produtos/{id}
+ */
+async function updateExistingBlingProduct(
+  blingProductId: number,
+  productData: any,
+  accessToken: string
+): Promise<void> {
+  try {
+    console.log(`[bling-sync-products] Updating existing product ${blingProductId} in Bling...`);
+    const response = await fetch(`${BLING_API_URL}/produtos/${blingProductId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(productData),
+    });
+    const responseText = await response.text();
+    console.log(`[bling-sync-products] PUT /produtos/${blingProductId} -> ${response.status}: ${responseText}`);
+  } catch (error) {
+    console.error(`[bling-sync-products] Error updating product ${blingProductId}:`, error);
+  }
+}
+
+/**
  * Find existing Bling product by code
  */
 async function findExistingBlingProductByCodigo(accessToken: string, codigo: string): Promise<number | null> {
@@ -327,6 +353,9 @@ async function sendProductToBling(
       if (existingId) {
         blingProductId = existingId;
         kind = 'already_exists';
+        // Update the existing product with current data (price, name, etc.)
+        await delay(350);
+        await updateExistingBlingProduct(existingId, blingProduct, accessToken);
       } else {
         throw new Error(`Bling API error: ${response.status} - ${responseText}`);
       }
