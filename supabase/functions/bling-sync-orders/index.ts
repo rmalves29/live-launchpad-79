@@ -664,6 +664,7 @@ async function sendOrderToBling(
     default_icms_situacao: string | null;
     default_icms_origem: string | null;
     default_pis_cofins: string | null;
+    default_unit: string | null;
   },
   activeShippingProvider?: string | null,
   customShippingOptions?: CustomShippingOption[],
@@ -710,7 +711,7 @@ async function sendOrderToBling(
     const itemData: any = {
       quantidade: item.qty || 1,
       valor: Number(item.unit_price) || 0,
-      unidade: 'UN',
+      unidade: fiscalData?.default_unit || 'UN',
     };
 
     let blingProductId = item.bling_product_id;
@@ -1527,6 +1528,7 @@ serve(async (req) => {
           default_icms_situacao: integration.default_icms_situacao || null,
           default_icms_origem: integration.default_icms_origem || null,
           default_pis_cofins: integration.default_pis_cofins || null,
+          default_unit: integration.default_unit || null,
         };
         
         console.log(`[bling-sync-orders] FISCAL DATA FOR TENANT ${tenant_id}:`, JSON.stringify(fiscalData, null, 2));
@@ -1649,6 +1651,7 @@ serve(async (req) => {
           default_icms_situacao: integration.default_icms_situacao || null,
           default_icms_origem: integration.default_icms_origem || null,
           default_pis_cofins: integration.default_pis_cofins || null,
+          default_unit: integration.default_unit || null,
         };
 
         const forceBlingPaymentIds = {
@@ -1817,6 +1820,7 @@ serve(async (req) => {
               default_icms_situacao: integration.default_icms_situacao || null,
               default_icms_origem: integration.default_icms_origem || null,
               default_pis_cofins: integration.default_pis_cofins || null,
+              default_unit: integration.default_unit || null,
             };
             
             console.log(`[bling-sync-orders] SYNC_ALL - FISCAL DATA FOR ORDER ${order.id}:`, JSON.stringify(fiscalData, null, 2));
