@@ -16,9 +16,14 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
  */
 function isDuplicateCodigoError(payloadText: string): boolean {
   return (
-    payloadText.includes('"code":') &&
     payloadText.includes('codigo') &&
-    (payloadText.includes('duplicado') || payloadText.includes('já existe') || payloadText.includes('already exists'))
+    (
+      payloadText.includes('duplicado') ||
+      payloadText.includes('já existe') ||
+      payloadText.includes('already exists') ||
+      payloadText.includes('já foi cadastrado') ||
+      payloadText.includes('ja foi cadastrado')
+    )
   );
 }
 
