@@ -15,7 +15,8 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
  * Check if error is due to duplicate product code
  */
 function isDuplicateCodigoError(payloadText: string): boolean {
-  return (
+  // Check plain text patterns
+  const plainMatch = (
     payloadText.includes('codigo') &&
     (
       payloadText.includes('duplicado') ||
@@ -25,6 +26,32 @@ function isDuplicateCodigoError(payloadText: string): boolean {
       payloadText.includes('ja foi cadastrado')
     )
   );
+  if (plainMatch) return true;
+
+  // Check Bling API v3 structured error: fields[].msg contains duplicate info
+  // Bling returns: {"error":{"fields":[{"code":4,"msg":"O código X já foi cadastrado...","element":"codigo"}]}}
+  try {
+    const parsed = JSON.parse(payloadText);
+    const fields = parsed?.error?.fields;
+    if (Array.isArray(fields)) {
+      return fields.some((f: any) =>
+        f.element === 'codigo' &&
+        (
+          f.code === 4 ||
+          (typeof f.msg === 'string' && (
+            f.msg.includes('já foi cadastrado') ||
+            f.msg.includes('ja foi cadastrado') ||
+            f.msg.includes('já existe') ||
+            f.msg.includes('duplicado')
+          ))
+        )
+      );
+    }
+  } catch {
+    // ignore parse errors
+  }
+
+  return false;
 }
 
 /**
@@ -535,6 +562,62 @@ serve(async (req) => {
           success: true,
           kind: sendResult.kind,
           bling_product_id: sendResult.blingProductId,
+          linked_to_store: sendResult.linkedToStore,
+          product_name: product.name,
+        };
+        break;
+      }
+
+      case 'force_resync': {
+        // Force re-sync a single product even if already marked as synced
+        // Clears bling_product_id and re-sends to Bling
+        if (!product_id) {
+          return new Response(
+            JSON.stringify({ error: 'product_id is required for force_resync action' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { data: product, error: productError } = await supabase
+          .from('products')
+          .select('*')
+          .eq('id', product_id)
+          .eq('tenant_id', tenant_id)
+          .single();
+
+        if (productError || !product) {
+          return new Response(
+            JSON.stringify({ error: 'Product not found' }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Clear existing bling_product_id first
+        const oldBlingId = product.bling_product_id;
+        await supabase
+          .from('products')
+          .update({ bling_product_id: null, updated_at: new Date().toISOString() })
+          .eq('id', product_id);
+
+        console.log(`[bling-sync-products] force_resync: cleared old bling_product_id ${oldBlingId} for product ${product_id}`);
+
+        // Re-send to Bling
+        const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData);
+
+        // Update product with new Bling ID
+        await supabase
+          .from('products')
+          .update({
+            bling_product_id: sendResult.blingProductId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', product_id);
+
+        result = {
+          success: true,
+          kind: sendResult.kind,
+          old_bling_product_id: oldBlingId,
+          new_bling_product_id: sendResult.blingProductId,
           linked_to_store: sendResult.linkedToStore,
           product_name: product.name,
         };
