@@ -28,6 +28,7 @@ interface FiscalData {
   default_icms_situacao: string | null;
   default_icms_origem: string | null;
   default_pis_cofins: string | null;
+  default_unit: string | null;
 }
 
 const ESTADOS_BRASIL = [
@@ -96,6 +97,7 @@ export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsPro
     default_icms_situacao: null,
     default_icms_origem: null,
     default_pis_cofins: null,
+    default_unit: null,
   });
 
   useEffect(() => {
@@ -107,7 +109,7 @@ export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsPro
       setIsLoading(true);
       const { data, error } = await supabase
         .from('integration_bling')
-        .select('store_state, default_ncm, default_cfop_same_state, default_cfop_other_state, default_ipi, default_icms_situacao, default_icms_origem, default_pis_cofins')
+        .select('store_state, default_ncm, default_cfop_same_state, default_cfop_other_state, default_ipi, default_icms_situacao, default_icms_origem, default_pis_cofins, default_unit')
         .eq('tenant_id', tenantId)
         .single();
 
@@ -130,6 +132,7 @@ export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsPro
           default_icms_situacao: data.default_icms_situacao || null,
           default_icms_origem: data.default_icms_origem || null,
           default_pis_cofins: data.default_pis_cofins || null,
+          default_unit: data.default_unit || null,
         });
       }
     } catch (error) {
@@ -153,6 +156,7 @@ export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsPro
           default_icms_situacao: fiscalData.default_icms_situacao,
           default_icms_origem: fiscalData.default_icms_origem,
           default_pis_cofins: fiscalData.default_pis_cofins,
+          default_unit: fiscalData.default_unit,
           updated_at: new Date().toISOString(),
         })
         .eq('tenant_id', tenantId);
@@ -225,6 +229,20 @@ export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsPro
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* Unidade Padrão */}
+        <div className="space-y-2">
+          <Label htmlFor="default_unit">Unidade Padrão</Label>
+          <Input
+            id="default_unit"
+            placeholder="Ex: UN, KG, MT"
+            value={fiscalData.default_unit || ''}
+            onChange={(e) => updateField('default_unit', e.target.value.toUpperCase())}
+            maxLength={6}
+            className="w-[200px]"
+          />
+          <p className="text-xs text-muted-foreground">Unidade de medida dos produtos (ex: UN, KG, MT, CX)</p>
         </div>
 
         {/* NCM e CFOP */}
