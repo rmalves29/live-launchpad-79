@@ -165,6 +165,44 @@ async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero:
 }
 
 // Buscar produto existente no Bling pelo código
+/**
+ * Update a Bling product's fiscal data (unidade, NCM) via PUT /produtos/{id}
+ */
+async function updateBlingProductFiscalData(
+  accessToken: string,
+  blingProductId: number,
+  fiscalData: { default_unit?: string | null; default_ncm?: string | null }
+): Promise<void> {
+  const payload: any = {};
+  if (fiscalData.default_unit) payload.unidade = fiscalData.default_unit;
+  if (fiscalData.default_ncm) payload.ncm = fiscalData.default_ncm;
+
+  if (Object.keys(payload).length === 0) return;
+
+  try {
+    const { response, text } = await blingFetchWithRetry(
+      `${BLING_API_URL}/produtos/${blingProductId}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+      { label: `update-product-fiscal-${blingProductId}` }
+    );
+    if (response.ok) {
+      console.log(`[bling-sync-orders] Product ${blingProductId} fiscal data updated (UN=${fiscalData.default_unit}, NCM=${fiscalData.default_ncm})`);
+    } else {
+      console.log(`[bling-sync-orders] Failed to update product ${blingProductId} fiscal data: ${response.status} - ${text}`);
+    }
+  } catch (e: any) {
+    console.log(`[bling-sync-orders] Error updating product ${blingProductId} fiscal data:`, String(e?.message || e));
+  }
+}
+
 async function findBlingProductByCode(accessToken: string, codigo: string): Promise<number | null> {
   try {
     const { response: res, text } = await blingFetchWithRetry(
@@ -751,6 +789,10 @@ async function sendOrderToBling(
     if (blingProductId) {
       itemData.produto = { id: blingProductId };
       console.log(`[bling-sync-orders] Item "${item.product_name}" usando bling_product_id: ${blingProductId}`);
+      // Atualizar dados fiscais (UN, NCM) no cadastro do produto no Bling
+      if (fiscalData && (fiscalData.default_unit || fiscalData.default_ncm)) {
+        await updateBlingProductFiscalData(accessToken, blingProductId, fiscalData);
+      }
     } else {
       // Fallback: enviar código e descrição apenas se for a PRIMEIRA vez vendo este código
       // Para itens duplicados sem ID, usar referência ao primeiro item
