@@ -382,11 +382,21 @@ async function processTaskQueue({
 
     // Delay between products (when product changes)
     if (lastProductId !== null && task.product_id !== lastProductId && perProductDelayMinutes > 0) {
-      const delayMs = perProductDelayMinutes * 60 * 1000;
+      // Check if we're resuming a partial delay from a previous invocation that timed out
+      let delayMs: number;
+      if (jobData._pendingProductDelayMs && jobData._pendingProductId === task.product_id) {
+        delayMs = jobData._pendingProductDelayMs;
+        console.log(`[${timestamp}] [sendflow-process] Resuming partial product delay: ${Math.ceil(delayMs / 1000)}s remaining for ${product.code}`);
+        // Clear the flag from jobData so it's not used again
+        jobData._pendingProductDelayMs = null;
+        jobData._pendingProductId = null;
+      } else {
+        delayMs = perProductDelayMinutes * 60 * 1000;
+        console.log(`[${timestamp}] [sendflow-process] Waiting ${perProductDelayMinutes}min before next product (${product.code})`);
+      }
+
       const delayStep = 5000;
       let elapsed = 0;
-
-      console.log(`[${timestamp}] [sendflow-process] Waiting ${perProductDelayMinutes}min before next product (${product.code})`);
 
       await updateJobProgress({
         countdownSeconds: Math.ceil(delayMs / 1000),
@@ -397,9 +407,8 @@ async function processTaskQueue({
       while (elapsed < delayMs) {
         // ─── Timeout check during product delay ───
         if (isNearTimeout()) {
-          console.log(`[${timestamp}] [sendflow-process] ⏱️ Near timeout during product delay, reinvoking...`);
-          // Save remaining delay info so next invocation can continue the wait
           const remainingMs = delayMs - elapsed;
+          console.log(`[${timestamp}] [sendflow-process] ⏱️ Near timeout during product delay, reinvoking with ${Math.ceil(remainingMs / 1000)}s remaining...`);
           await updateJobProgress({
             countdownSeconds: Math.ceil(remainingMs / 1000),
             isWaitingForNextProduct: true,
@@ -429,54 +438,7 @@ async function processTaskQueue({
         });
       }
 
-      await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
-    }
-
-    // Handle pending product delay from a previous invocation that timed out mid-delay
-    if (lastProductId !== null && task.product_id !== lastProductId && jobData._pendingProductDelayMs && jobData._pendingProductId === task.product_id) {
-      const remainingMs = jobData._pendingProductDelayMs;
-      console.log(`[${timestamp}] [sendflow-process] Resuming product delay: ${Math.ceil(remainingMs / 1000)}s remaining`);
-
-      const delayStep = 5000;
-      let elapsed = 0;
-
-      while (elapsed < remainingMs) {
-        if (isNearTimeout()) {
-          const newRemaining = remainingMs - elapsed;
-          await updateJobProgress({
-            countdownSeconds: Math.ceil(newRemaining / 1000),
-            isWaitingForNextProduct: true,
-            nextTaskId: task.id,
-            _pendingProductDelayMs: newRemaining,
-            _pendingProductId: task.product_id,
-          });
-          await selfReinvoke(supabaseUrl, jobId, tenantId);
-          return;
-        }
-
-        const status = await checkJobStatus();
-        if (status === 'paused' || status === 'cancelled') {
-          await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
-          return;
-        }
-
-        await sleep(Math.min(delayStep, remainingMs - elapsed));
-        elapsed += delayStep;
-
-        await updateJobProgress({
-          countdownSeconds: Math.max(0, Math.ceil((remainingMs - elapsed) / 1000)),
-          isWaitingForNextProduct: (remainingMs - elapsed) > 0,
-          nextTaskId: task.id,
-        });
-      }
-
-      // Clear the pending delay flag
-      await updateJobProgress({
-        countdownSeconds: 0,
-        isWaitingForNextProduct: false,
-        _pendingProductDelayMs: null,
-        _pendingProductId: null,
-      });
+      await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false, _pendingProductDelayMs: null, _pendingProductId: null });
     }
 
     lastProductId = task.product_id;
