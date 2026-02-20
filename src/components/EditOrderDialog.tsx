@@ -170,15 +170,27 @@ useEffect(() => {
 
     setLoading(true);
     try {
-      // STOCK VALIDATION: Check if product has enough stock
+      // STOCK VALIDATION: Fresh read from DB to prevent race conditions
       const existingItem = cartItems.find(item => item.product_id === selectedProduct.id);
       const currentQtyInCart = existingItem ? existingItem.qty : 0;
+
+      const { data: freshProduct, error: freshError } = await supabaseTenant
+        .from('products')
+        .select('stock')
+        .eq('id', selectedProduct.id)
+        .single();
+
+      if (freshError || !freshProduct) {
+        toast({ title: 'Erro', description: 'Não foi possível verificar estoque atual', variant: 'destructive' });
+        setLoading(false);
+        return;
+      }
+
       const totalRequestedQty = currentQtyInCart + quantity;
-      
-      if (totalRequestedQty > selectedProduct.stock) {
+      if (totalRequestedQty > freshProduct.stock) {
         toast({
           title: 'Estoque insuficiente',
-          description: `Estoque disponível: ${selectedProduct.stock}. Já no carrinho: ${currentQtyInCart}. Não é possível adicionar ${quantity} unidade(s).`,
+          description: `Estoque disponível: ${freshProduct.stock}. Já no carrinho: ${currentQtyInCart}. Não é possível adicionar ${quantity} unidade(s).`,
           variant: 'destructive'
         });
         setLoading(false);
@@ -216,11 +228,12 @@ useEffect(() => {
         if (error) throw error;
       }
 
-      // DECREMENT STOCK after successful cart operation
+      // ATOMIC DECREMENT STOCK after successful cart operation
       const { error: stockError } = await supabaseTenant
         .from('products')
-        .update({ stock: selectedProduct.stock - quantity })
-        .eq('id', selectedProduct.id);
+        .update({ stock: freshProduct.stock - quantity })
+        .eq('id', selectedProduct.id)
+        .gt('stock', 0);
       
       if (stockError) {
         console.error('Error updating stock:', stockError);
