@@ -858,6 +858,22 @@ async function sendOrderToBling(
     processedItems.push(itemData);
   }
 
+  // CONSOLIDAR itens duplicados (mesmo produto.id no Bling) somando quantidades
+  const consolidatedItems: any[] = [];
+  const blingIdMap = new Map<number, number>(); // blingProductId -> index in consolidatedItems
+  
+  for (const item of processedItems) {
+    const blingId = item.produto?.id;
+    if (blingId && blingIdMap.has(blingId)) {
+      const existingIdx = blingIdMap.get(blingId)!;
+      consolidatedItems[existingIdx].quantidade += item.quantidade;
+      console.log(`[bling-sync-orders] Consolidado item duplicado bling_product_id=${blingId}, nova qty=${consolidatedItems[existingIdx].quantidade}`);
+    } else {
+      if (blingId) blingIdMap.set(blingId, consolidatedItems.length);
+      consolidatedItems.push(item);
+    }
+  }
+
   // Bling v3: situacao do pedido (0=Em aberto, 6=Em andamento, 9=Atendido, 12=Cancelado)
   // numeroLoja é o número visível para busca no painel
   // loja vincula o pedido a um canal de venda específico
@@ -870,7 +886,7 @@ async function sendOrderToBling(
     dataPrevista: order.event_date,
     situacao: { id: 0 }, // 0 = Em aberto (todos os pedidos importados como "Em aberto")
     contato: { id: contactId },
-    itens: processedItems,
+    itens: consolidatedItems,
     observacoes: order.observation || '',
     observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
   };
