@@ -272,6 +272,7 @@ export type Database = {
           coverage_type: string | null
           created_at: string
           delivery_days: number
+          description: string | null
           id: string
           is_active: boolean
           name: string
@@ -288,6 +289,7 @@ export type Database = {
           coverage_type?: string | null
           created_at?: string
           delivery_days?: number
+          description?: string | null
           id?: string
           is_active?: boolean
           name: string
@@ -304,6 +306,7 @@ export type Database = {
           coverage_type?: string | null
           created_at?: string
           delivery_days?: number
+          description?: string | null
           id?: string
           is_active?: boolean
           name?: string
