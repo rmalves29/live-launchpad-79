@@ -712,7 +712,8 @@ async function sendOrderToBling(
     boleto?: number | null;
     debit_card?: number | null;
     other?: number | null;
-  }
+  },
+  resyncSuffix?: string
 ): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
@@ -878,7 +879,7 @@ async function sendOrderToBling(
   // numeroLoja é o número visível para busca no painel
   // loja vincula o pedido a um canal de venda específico
   // IMPORTANTE: Usamos prefixo "OZ-" para evitar conflito com pedidos de outros canais (Shopee, ML, etc)
-  const orderNumber = `OZ-${order.id}`;
+  const orderNumber = resyncSuffix ? `OZ-${order.id}-${resyncSuffix}` : `OZ-${order.id}`;
   const blingOrder: any = {
     numero: orderNumber,
     numeroLoja: orderNumber,
@@ -1737,10 +1738,13 @@ serve(async (req) => {
           other: integration.bling_payment_id_other || null,
         };
 
+        // Gerar sufixo único para evitar erro "idêntica à última venda" do Bling
+        const resyncSuffix = `R${Date.now().toString(36).slice(-4).toUpperCase()}`;
         const forceResult = await sendOrderToBling(
           forceOrder, forceCartItems, forceCustomer, accessToken, supabase, tenant_id,
           integration.bling_store_id || null, forceFiscalData,
-          forceShipping?.provider || null, forceCustomShipping || [], forceBlingPaymentIds
+          forceShipping?.provider || null, forceCustomShipping || [], forceBlingPaymentIds,
+          resyncSuffix
         );
 
         // Salvar novo bling_order_id
