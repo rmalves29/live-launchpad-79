@@ -449,6 +449,41 @@ const Produtos = () => {
     }).format(value);
   };
 
+  // Exportar produtos para Excel
+  const handleExportProducts = () => {
+    const dataToExport = (filteredProducts.length > 0 ? filteredProducts : products).map(p => ({
+      codigo: p.code,
+      nome: p.name,
+      preco: p.price,
+      estoque: p.stock,
+      cor: p.color || '',
+      tamanho: p.size || '',
+      tipo_venda: p.sale_type || 'BAZAR',
+      ativo: p.is_active ? 'Sim' : 'Não',
+      imagem_url: p.image_url || '',
+    }));
+
+    if (dataToExport.length === 0) {
+      toast({
+        title: 'Nenhum produto',
+        description: 'Não há produtos para exportar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    ws['!cols'] = [
+      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 10 },
+      { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Produtos');
+    XLSX.writeFile(wb, `produtos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+    toast({ title: 'Exportação concluída', description: `${dataToExport.length} produto(s) exportado(s).` });
+  };
+
   // Download template Excel
   const downloadTemplate = () => {
     const templateData = [
@@ -659,6 +694,10 @@ const Produtos = () => {
             <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
+            </Button>
+            <Button variant="outline" onClick={handleExportProducts}>
+              <Download className="h-4 w-4 mr-2" />
+              Exportar
             </Button>
             {/* Import Dialog */}
             <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
