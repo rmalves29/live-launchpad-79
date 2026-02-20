@@ -512,8 +512,13 @@ const Checkout = () => {
     }
   };
 
-  const formatDeliveryTime = (originalTime: string, companyName: string) => {
+  const formatDeliveryTime = (originalTime: string, companyName: string, optionId?: string) => {
     if (companyName === 'Retirada') {
+      return originalTime;
+    }
+    
+    // Custom shipping options with custom descriptions should not be reformatted
+    if (optionId?.startsWith('custom_')) {
       return originalTime;
     }
     
@@ -1911,7 +1916,7 @@ const Checkout = () => {
                               {option.name}
                             </label>
                             <p className="text-sm text-muted-foreground ml-6">
-                              {option.company} - {formatDeliveryTime(option.delivery_time, option.company)}
+                              {option.company} - {formatDeliveryTime(option.delivery_time, option.company, option.id)}
                             </p>
                           </div>
                           <span className="font-bold">

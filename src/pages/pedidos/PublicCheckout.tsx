@@ -311,8 +311,10 @@ const PublicCheckout = () => {
     }
   }, [hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays]);
 
-  const formatDeliveryTime = (originalTime: string, companyName: string) => {
+  const formatDeliveryTime = (originalTime: string, companyName: string, optionId?: string) => {
     if (companyName === 'Retirada') return originalTime;
+    // Custom shipping options with custom descriptions should not be reformatted
+    if (optionId?.startsWith('custom_')) return originalTime;
     const timeMatch = originalTime.match(/(\d+(?:-\d+)?)/);
     if (timeMatch) {
       return `${handlingDays} dias para postagem + ${timeMatch[1]} dias úteis`;
@@ -1478,7 +1480,7 @@ const PublicCheckout = () => {
                             <label htmlFor={option.id} className="cursor-pointer">
                               <span className="font-medium">{option.name}</span>
                               <p className="text-sm text-muted-foreground">
-                                {option.company} - {formatDeliveryTime(option.delivery_time, option.company)}
+                                {option.company} - {formatDeliveryTime(option.delivery_time, option.company, option.id)}
                               </p>
                             </label>
                           </div>
