@@ -9,6 +9,9 @@ const corsHeaders = {
 
 const ZAPI_BASE_URL = "https://api.z-api.io";
 
+// Max wall-clock time before self-reinvoking (leave margin for cleanup)
+const MAX_EXECUTION_MS = 120_000; // 120s safe limit (Supabase max ~150s)
+
 interface Product {
   id: number;
   code: string;
@@ -125,6 +128,33 @@ async function sendGroupMessage(
   }
 }
 
+/**
+ * Self-reinvoke this edge function to continue processing after timeout-safe limit.
+ * This prevents the function from being killed mid-execution.
+ */
+async function selfReinvoke(supabaseUrl: string, jobId: string, tenantId: string) {
+  const functionUrl = `${supabaseUrl}/functions/v1/sendflow-process`;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  console.log(`[sendflow-process] ♻️ Self-reinvoking for job ${jobId}`);
+
+  try {
+    const resp = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ job_id: jobId, tenant_id: tenantId }),
+    });
+    console.log(`[sendflow-process] ♻️ Reinvoke response status: ${resp.status}`);
+    // Consume the body to prevent resource leak
+    await resp.text();
+  } catch (e: any) {
+    console.error(`[sendflow-process] ♻️ Reinvoke failed:`, e?.message);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -164,7 +194,7 @@ Deno.serve(async (req) => {
     }
 
     if (mode === 'sync') {
-      await processTaskQueue({ supabase, job, jobId: job_id, tenantId: tenant_id, timestamp });
+      await processTaskQueue({ supabase, supabaseUrl, job, jobId: job_id, tenantId: tenant_id, timestamp });
       return new Response(
         JSON.stringify({ queued: false, mode: 'sync' }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -172,7 +202,7 @@ Deno.serve(async (req) => {
     }
 
     EdgeRuntime.waitUntil(
-      processTaskQueue({ supabase, job, jobId: job_id, tenantId: tenant_id, timestamp })
+      processTaskQueue({ supabase, supabaseUrl, job, jobId: job_id, tenantId: tenant_id, timestamp })
         .catch((e) => console.error(`[${timestamp}] [sendflow-process] Background error:`, e?.message || e))
     );
 
@@ -191,17 +221,26 @@ Deno.serve(async (req) => {
 
 async function processTaskQueue({
   supabase,
+  supabaseUrl,
   job,
   jobId,
   tenantId,
   timestamp,
 }: {
   supabase: any;
+  supabaseUrl: string;
   job: any;
   jobId: string;
   tenantId: string;
   timestamp: string;
 }) {
+  const startTime = Date.now();
+
+  /** Returns true if we're approaching the timeout limit */
+  function isNearTimeout(): boolean {
+    return (Date.now() - startTime) >= MAX_EXECUTION_MS;
+  }
+
   if (job.status === 'completed' || job.status === 'cancelled') {
     console.log(`[${timestamp}] [sendflow-process] Job ${jobId} already ${job.status}`);
     return;
@@ -269,9 +308,24 @@ async function processTaskQueue({
 
   let sentMessages = jobData.sentMessages || 0;
   let errorMessages = jobData.errorMessages || 0;
-  let lastProductId: number | null = null;
 
-  console.log(`[${timestamp}] [sendflow-process] Processing ${tasks.length} tasks from queue`);
+  // Determine the last completed product to detect product changes correctly
+  let lastProductId: number | null = null;
+  {
+    const { data: lastCompleted } = await supabase
+      .from('sendflow_tasks')
+      .select('product_id')
+      .eq('job_id', jobId)
+      .in('status', ['completed', 'skipped', 'error'])
+      .order('sequence', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastCompleted) {
+      lastProductId = lastCompleted.product_id;
+    }
+  }
+
+  console.log(`[${timestamp}] [sendflow-process] Processing ${tasks.length} pending tasks (lastProductId=${lastProductId})`);
 
   const checkJobStatus = async (): Promise<string> => {
     const { data } = await supabase
@@ -283,7 +337,6 @@ async function processTaskQueue({
   };
 
   const updateJobProgress = async (extra: Record<string, any> = {}) => {
-    // Count completed tasks for accurate progress
     const { count: completedCount } = await supabase
       .from('sendflow_tasks')
       .select('*', { count: 'exact', head: true })
@@ -311,6 +364,14 @@ async function processTaskQueue({
       continue;
     }
 
+    // ─── Timeout check: reinvoke before being killed ───
+    if (isNearTimeout()) {
+      console.log(`[${timestamp}] [sendflow-process] ⏱️ Near timeout after ${Math.round((Date.now() - startTime) / 1000)}s, reinvoking...`);
+      await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
+      await selfReinvoke(supabaseUrl, jobId, tenantId);
+      return;
+    }
+
     // Check if job was paused/cancelled
     const status = await checkJobStatus();
     if (status === 'paused' || status === 'cancelled') {
@@ -334,6 +395,22 @@ async function processTaskQueue({
       });
 
       while (elapsed < delayMs) {
+        // ─── Timeout check during product delay ───
+        if (isNearTimeout()) {
+          console.log(`[${timestamp}] [sendflow-process] ⏱️ Near timeout during product delay, reinvoking...`);
+          // Save remaining delay info so next invocation can continue the wait
+          const remainingMs = delayMs - elapsed;
+          await updateJobProgress({
+            countdownSeconds: Math.ceil(remainingMs / 1000),
+            isWaitingForNextProduct: true,
+            nextTaskId: task.id,
+            _pendingProductDelayMs: remainingMs,
+            _pendingProductId: task.product_id,
+          });
+          await selfReinvoke(supabaseUrl, jobId, tenantId);
+          return;
+        }
+
         const status = await checkJobStatus();
         if (status === 'paused' || status === 'cancelled') {
           await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
@@ -353,6 +430,53 @@ async function processTaskQueue({
       }
 
       await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
+    }
+
+    // Handle pending product delay from a previous invocation that timed out mid-delay
+    if (lastProductId !== null && task.product_id !== lastProductId && jobData._pendingProductDelayMs && jobData._pendingProductId === task.product_id) {
+      const remainingMs = jobData._pendingProductDelayMs;
+      console.log(`[${timestamp}] [sendflow-process] Resuming product delay: ${Math.ceil(remainingMs / 1000)}s remaining`);
+
+      const delayStep = 5000;
+      let elapsed = 0;
+
+      while (elapsed < remainingMs) {
+        if (isNearTimeout()) {
+          const newRemaining = remainingMs - elapsed;
+          await updateJobProgress({
+            countdownSeconds: Math.ceil(newRemaining / 1000),
+            isWaitingForNextProduct: true,
+            nextTaskId: task.id,
+            _pendingProductDelayMs: newRemaining,
+            _pendingProductId: task.product_id,
+          });
+          await selfReinvoke(supabaseUrl, jobId, tenantId);
+          return;
+        }
+
+        const status = await checkJobStatus();
+        if (status === 'paused' || status === 'cancelled') {
+          await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
+          return;
+        }
+
+        await sleep(Math.min(delayStep, remainingMs - elapsed));
+        elapsed += delayStep;
+
+        await updateJobProgress({
+          countdownSeconds: Math.max(0, Math.ceil((remainingMs - elapsed) / 1000)),
+          isWaitingForNextProduct: (remainingMs - elapsed) > 0,
+          nextTaskId: task.id,
+        });
+      }
+
+      // Clear the pending delay flag
+      await updateJobProgress({
+        countdownSeconds: 0,
+        isWaitingForNextProduct: false,
+        _pendingProductDelayMs: null,
+        _pendingProductId: null,
+      });
     }
 
     lastProductId = task.product_id;
@@ -462,6 +586,8 @@ async function processTaskQueue({
         errorMessages,
         countdownSeconds: 0,
         isWaitingForNextProduct: false,
+        _pendingProductDelayMs: null,
+        _pendingProductId: null,
       },
       updated_at: new Date().toISOString(),
     })
