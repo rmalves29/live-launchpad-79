@@ -256,6 +256,7 @@ interface FiscalData {
   default_icms_origem?: string | null;
   default_ipi?: number | null;
   default_pis_cofins?: string | null;
+  default_unit?: string | null;
 }
 
 /**
@@ -269,6 +270,7 @@ async function sendProductToBling(
 ): Promise<SendProductResult> {
   // Map local product to Bling API v3 format
   // Required fields: nome, tipo, situacao, formato
+  // IMPORTANT: Always include unidade to prevent missing UN in Bling
   const blingProduct: any = {
     nome: product.name,
     codigo: product.code || product.sku || `PROD-${product.id}`,
@@ -276,6 +278,7 @@ async function sendProductToBling(
     situacao: product.is_active !== false ? 'A' : 'I', // A = Ativo, I = Inativo
     formato: 'S', // S = Simples, V = Com variação, E = Com composição
     preco: Number(product.price) || 0,
+    unidade: fiscalData?.default_unit || 'UN', // Always send unit, default to 'UN'
   };
 
   // NOTE: Bling API v3 does NOT accept "loja" field in POST /produtos
@@ -310,10 +313,11 @@ async function sendProductToBling(
 
   // Add fiscal data (tributos) if available
   if (fiscalData) {
-    // NCM is added directly to product
+    // NCM is added BOTH at root level and in tributacao for maximum compatibility
     if (fiscalData.default_ncm) {
+      blingProduct.ncm = fiscalData.default_ncm; // Root level NCM (used by some Bling endpoints)
       blingProduct.tributacao = blingProduct.tributacao || {};
-      blingProduct.tributacao.ncm = fiscalData.default_ncm;
+      blingProduct.tributacao.ncm = fiscalData.default_ncm; // Tributacao level NCM
     }
 
     // Build tributos object for ICMS, IPI, PIS/COFINS
@@ -508,6 +512,7 @@ serve(async (req) => {
       default_icms_origem: integration.default_icms_origem,
       default_ipi: integration.default_ipi,
       default_pis_cofins: integration.default_pis_cofins,
+      default_unit: integration.default_unit,
     };
     console.log('[bling-sync-products] Fiscal data from integration:', JSON.stringify(fiscalData, null, 2));
 
