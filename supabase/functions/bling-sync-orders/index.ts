@@ -759,7 +759,7 @@ async function sendOrderToBling(
     const seenProduct = productCodesSeen.get(productCode);
 
     // Se não tem bling_product_id, tentar buscar no Bling pelo código
-    if (!blingProductId && item.product_id) {
+    if (!blingProductId) {
       // Se já vimos este código e encontramos um ID, usar o mesmo
       if (seenProduct?.blingProductId) {
         blingProductId = seenProduct.blingProductId;
@@ -770,13 +770,17 @@ async function sendOrderToBling(
         const foundId = await findBlingProductByCode(accessToken, productCode);
         if (foundId) {
           blingProductId = foundId;
-          // Salvar no banco para uso futuro
-          await supabase
-            .from('products')
-            .update({ bling_product_id: foundId })
-            .eq('id', item.product_id)
-            .eq('tenant_id', tenantId);
-          console.log(`[bling-sync-orders] Encontrado e salvo bling_product_id ${foundId} para produto ${item.product_id}`);
+          // Salvar no banco para uso futuro (só se product_id existir)
+          if (item.product_id) {
+            await supabase
+              .from('products')
+              .update({ bling_product_id: foundId })
+              .eq('id', item.product_id)
+              .eq('tenant_id', tenantId);
+            console.log(`[bling-sync-orders] Encontrado e salvo bling_product_id ${foundId} para produto ${item.product_id}`);
+          } else {
+            console.log(`[bling-sync-orders] Encontrado bling_product_id ${foundId} para código ${productCode} (produto deletado, não salvo no DB)`);
+          }
           productCodesSeen.set(productCode, { hasBlindId: true, blingProductId: foundId });
         } else {
           // Marcar que já vimos mas não encontramos - NÃO enviar duplicado
@@ -795,18 +799,31 @@ async function sendOrderToBling(
       }
     } else {
       // Fallback: enviar código e descrição apenas se for a PRIMEIRA vez vendo este código
-      // Para itens duplicados sem ID, usar referência ao primeiro item
       if (!seenProduct) {
         itemData.codigo = productCode;
         itemData.descricao = item.product_name || 'Produto';
         console.log(`[bling-sync-orders] Item "${item.product_name}" não encontrado no Bling, criando com código: ${productCode}`);
+        // Registrar no seen para evitar duplicatas
+        if (!productCodesSeen.has(productCode)) {
+          productCodesSeen.set(productCode, { hasBlindId: false });
+        }
       } else {
-        // Item duplicado que não tem ID no Bling - não podemos enviar código duplicado
-        // Usar uma referência genérica com sufixo único para evitar conflito
-        const uniqueSuffix = `-${processedItems.length + 1}`;
-        itemData.codigo = `${productCode}${uniqueSuffix}`;
-        itemData.descricao = item.product_name || 'Produto';
-        console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando código único: ${itemData.codigo}`);
+        // Item duplicado sem ID no Bling - somar quantidade ao item anterior
+        const existingIdx = processedItems.findIndex(
+          (pi: any) => pi.codigo === productCode || (pi.produto?.id && seenProduct?.blingProductId && pi.produto.id === seenProduct.blingProductId)
+        );
+        if (existingIdx >= 0) {
+          processedItems[existingIdx].quantidade += (item.qty || 1);
+          processedItems[existingIdx].valor = Number(item.unit_price) || processedItems[existingIdx].valor;
+          console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - somado ao item existente, nova qty: ${processedItems[existingIdx].quantidade}`);
+          continue; // Skip adding this item separately
+        } else {
+          // Fallback: usar sufixo único
+          const uniqueSuffix = `-${processedItems.length + 1}`;
+          itemData.codigo = `${productCode}${uniqueSuffix}`;
+          itemData.descricao = item.product_name || 'Produto';
+          console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando código único: ${itemData.codigo}`);
+        }
       }
     }
 
