@@ -536,6 +536,7 @@ export type Database = {
           default_ipi: number | null
           default_ncm: string | null
           default_pis_cofins: string | null
+          default_unit: string | null
           environment: string
           id: string
           is_active: boolean
@@ -568,6 +569,7 @@ export type Database = {
           default_ipi?: number | null
           default_ncm?: string | null
           default_pis_cofins?: string | null
+          default_unit?: string | null
           environment?: string
           id?: string
           is_active?: boolean
@@ -600,6 +602,7 @@ export type Database = {
           default_ipi?: number | null
           default_ncm?: string | null
           default_pis_cofins?: string | null
+          default_unit?: string | null
           environment?: string
           id?: string
           is_active?: boolean
