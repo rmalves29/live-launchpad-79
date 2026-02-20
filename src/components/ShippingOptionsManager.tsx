@@ -21,6 +21,7 @@ type CoverageType = 'national' | 'states' | 'city' | 'capital' | 'interior';
 interface ShippingOption {
   id: string;
   name: string;
+  description: string | null;
   delivery_days: number;
   price: number;
   is_active: boolean;
@@ -110,6 +111,7 @@ export const ShippingOptionsManager = () => {
   const [editingOption, setEditingOption] = useState<ShippingOption | null>(null);
   const [formData, setFormData] = useState({
     name: '',
+    description: '',
     delivery_days: 5,
     price: 0,
     is_active: true,
@@ -159,6 +161,7 @@ export const ShippingOptionsManager = () => {
         setOptions(shippingOptions.map((opt: any) => ({
           id: opt.id,
           name: opt.name,
+          description: opt.description || null,
           delivery_days: opt.delivery_days,
           price: Number(opt.price),
           is_active: opt.is_active,
@@ -203,6 +206,7 @@ export const ShippingOptionsManager = () => {
       setEditingOption(option);
       setFormData({
         name: option.name,
+        description: option.description || '',
         delivery_days: option.delivery_days,
         price: option.price,
         is_active: option.is_active,
@@ -217,6 +221,7 @@ export const ShippingOptionsManager = () => {
       setEditingOption(null);
       setFormData({
         name: '',
+        description: '',
         delivery_days: 5,
         price: 0,
         is_active: true,
@@ -269,6 +274,7 @@ export const ShippingOptionsManager = () => {
           .from('custom_shipping_options' as any)
           .update({
             name: formData.name,
+            description: formData.description || null,
             delivery_days: formData.delivery_days,
             price: formData.price,
             is_active: formData.is_active,
@@ -298,6 +304,7 @@ export const ShippingOptionsManager = () => {
           .insert({
             tenant_id: tenantId,
             name: formData.name,
+            description: formData.description || null,
             delivery_days: formData.delivery_days,
             price: formData.price,
             is_active: formData.is_active,
@@ -316,6 +323,7 @@ export const ShippingOptionsManager = () => {
         const newOption: ShippingOption = {
           id: data.id,
           name: data.name,
+          description: data.description || null,
           delivery_days: data.delivery_days,
           price: Number(data.price),
           is_active: data.is_active,
@@ -491,6 +499,18 @@ export const ShippingOptionsManager = () => {
                       onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="Ex: Frete Expresso, Entrega Local..."
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Descrição (exibida abaixo do nome no checkout)</Label>
+                    <Input
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                      placeholder="Ex: Envio - 2 dias para postagem + 3 dias úteis"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Se vazio, será gerado automaticamente com base no prazo de dias.
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">

@@ -48,9 +48,11 @@ export function useCustomShippingOptions(tenantId: string | null) {
           name: opt.name,
           company: opt.delivery_days === 0 ? 'Retirada' : 'Envio',
           price: parseFloat(opt.price).toFixed(2),
-          delivery_time: opt.delivery_days === 0 
-            ? 'Imediato' 
-            : `${opt.delivery_days} dias para postagem + 5-10 dias úteis`,
+          delivery_time: opt.description 
+            ? opt.description
+            : opt.delivery_days === 0 
+              ? 'Imediato' 
+              : `${opt.delivery_days} dias para postagem + 5-10 dias úteis`,
           custom_price: parseFloat(opt.price).toFixed(2)
         }));
 
@@ -173,9 +175,11 @@ export async function fetchCustomShippingOptions(
         name: opt.name,
         company: opt.delivery_days === 0 ? 'Retirada' : 'Envio',
         price: parseFloat(opt.price).toFixed(2),
-        delivery_time: opt.delivery_days === 0 
-          ? 'Imediato' 
-          : `${opt.delivery_days} dias para postagem + 5-10 dias úteis`,
+        delivery_time: opt.description 
+          ? opt.description
+          : opt.delivery_days === 0 
+            ? 'Imediato' 
+            : `${opt.delivery_days} dias para postagem + 5-10 dias úteis`,
         custom_price: parseFloat(opt.price).toFixed(2)
       }));
     }
