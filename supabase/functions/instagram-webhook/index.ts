@@ -266,6 +266,18 @@ Deno.serve(async (req) => {
           console.log(`[${timestamp}] [instagram-webhook] New cart created: ${cart.id}`);
         }
 
+        // STOCK VALIDATION: Check current stock before adding to cart
+        const { data: freshProduct } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('id', product.id)
+          .single();
+
+        if (!freshProduct || freshProduct.stock < 1) {
+          console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} out of stock (stock=${freshProduct?.stock || 0})`);
+          continue;
+        }
+
         // Verificar se item já existe no carrinho
         const { data: existingItem } = await supabase
           .from('cart_items')
@@ -277,6 +289,10 @@ Deno.serve(async (req) => {
         let itemQty = 1;
         if (existingItem) {
           itemQty = existingItem.qty + 1;
+          if (itemQty > freshProduct.stock) {
+            console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${itemQty} (stock=${freshProduct.stock})`);
+            continue;
+          }
           await supabase
             .from('cart_items')
             .update({ qty: itemQty })
@@ -296,6 +312,24 @@ Deno.serve(async (req) => {
               qty: 1,
             });
           console.log(`[${timestamp}] [instagram-webhook] New item added: ${product.code}`);
+        }
+
+        // ATOMIC stock decrement
+        const { error: stockDecErr } = await supabase
+          .from('products')
+          .update({ stock: freshProduct.stock - itemQty + (existingItem ? existingItem.qty : 0) })
+          .eq('id', product.id)
+          .gt('stock', 0);
+
+        if (stockDecErr) {
+          console.log(`[${timestamp}] [instagram-webhook] ❌ Stock decrement failed for ${product.code}:`, stockDecErr);
+          // Rollback cart item
+          if (existingItem) {
+            await supabase.from('cart_items').update({ qty: existingItem.qty }).eq('id', existingItem.id);
+          } else {
+            await supabase.from('cart_items').delete().eq('cart_id', cart.id).eq('product_id', product.id);
+          }
+          continue;
         }
 
         // Calcular total do carrinho

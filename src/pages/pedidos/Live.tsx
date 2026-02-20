@@ -525,18 +525,57 @@ const Live = () => {
         if (cartItemError) throw cartItemError;
       }
 
-      // Update product stock in database
-      const { error: stockError } = await supabaseTenant
+      // ATOMIC stock decrement: fresh read + conditional update to prevent overselling
+      const { data: freshProduct, error: freshError } = await supabaseTenant
         .from('products')
-        .update({ stock: product.stock - qty })
-        .eq('id', product.id);
+        .select('stock')
+        .eq('id', product.id)
+        .single();
 
-      if (stockError) throw stockError;
+      if (freshError || !freshProduct) throw new Error('Erro ao verificar estoque atual');
+
+      if (freshProduct.stock < qty) {
+        // Rollback: remove the cart item we just added
+        if (existingCartItem) {
+          await supabaseTenant.from('cart_items').update({ qty: existingCartItem.qty }).eq('id', existingCartItem.id);
+        } else {
+          await supabaseTenant.from('cart_items').delete().eq('cart_id', cartId).eq('product_id', product.id);
+        }
+        toast({
+          title: 'Estoque insuficiente',
+          description: `${product.code} tem apenas ${freshProduct.stock} unidade(s) em estoque.`,
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      const { data: stockResult, error: stockError } = await supabaseTenant
+        .from('products')
+        .update({ stock: freshProduct.stock - qty })
+        .eq('id', product.id)
+        .gt('stock', 0)
+        .select('stock')
+        .single();
+
+      if (stockError || !stockResult) {
+        // Rollback cart item
+        if (existingCartItem) {
+          await supabaseTenant.from('cart_items').update({ qty: existingCartItem.qty }).eq('id', existingCartItem.id);
+        } else {
+          await supabaseTenant.from('cart_items').delete().eq('cart_id', cartId).eq('product_id', product.id);
+        }
+        toast({
+          title: 'Estoque esgotado',
+          description: `${product.code} sem estoque disponível.`,
+          variant: 'destructive'
+        });
+        return;
+      }
       
       // Update stock locally for immediate feedback
       setProducts(prev => prev.map(p => 
         p.id === product.id 
-          ? { ...p, stock: p.stock - qty }
+          ? { ...p, stock: stockResult.stock }
           : p
       ));
       
