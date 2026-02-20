@@ -210,10 +210,7 @@ function formatMessage(template: string, data: ItemAddedRequest): string {
    const baseUrl = settings?.public_base_url || "https://live-launchpad-79.lovable.app";
    const slug = tenant?.slug || tenantId;
    
-   // Format phone for URL (remove country code for cleaner URL)
-   const phoneForUrl = phone.replace(/^55/, '');
-   
-   return `${baseUrl}/t/${slug}/checkout?phone=${phoneForUrl}`;
+   return `${baseUrl}/t/${slug}/checkout`;
  }
  
 // Input validation
