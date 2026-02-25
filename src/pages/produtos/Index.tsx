@@ -59,7 +59,7 @@ const Produtos = () => {
   const [importing, setImporting] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
-  const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[]; skipped: number; skippedDetails: string[] } | null>(null);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -580,7 +580,9 @@ const Produtos = () => {
       }
 
       const errors: string[] = [];
+      const skippedDetails: string[] = [];
       let successCount = 0;
+      let skippedCount = 0;
 
       for (let i = 0; i < jsonData.length; i++) {
         const row = jsonData[i];
@@ -588,7 +590,13 @@ const Produtos = () => {
 
         // Validate required fields
         if (!row.codigo || !row.nome || row.preco === undefined) {
-          errors.push(`Linha ${i + 2}: Campos obrigatórios (codigo, nome, preco) faltando`);
+          const missing: string[] = [];
+          if (!row.codigo) missing.push('codigo');
+          if (!row.nome) missing.push('nome');
+          if (row.preco === undefined) missing.push('preco');
+          const rowPreview = row.codigo || row.nome || `(vazia)`;
+          skippedDetails.push(`Linha ${i + 2} (${rowPreview}): faltando ${missing.join(', ')}`);
+          skippedCount++;
           continue;
         }
 
@@ -646,18 +654,21 @@ const Produtos = () => {
         }
       }
 
-      setImportResults({ success: successCount, errors });
+      setImportResults({ success: successCount, errors, skipped: skippedCount, skippedDetails });
 
-      if (errors.length === 0) {
+      if (errors.length === 0 && skippedCount === 0) {
         toast({
           title: 'Importação concluída',
           description: `${successCount} produto(s) importado(s) com sucesso`
         });
       } else {
+        const parts = [`${successCount} importado(s)`];
+        if (skippedCount > 0) parts.push(`${skippedCount} pulado(s)`);
+        if (errors.length > 0) parts.push(`${errors.length} erro(s)`);
         toast({
-          title: 'Importação parcial',
-          description: `${successCount} sucesso(s), ${errors.length} erro(s)`,
-          variant: 'destructive'
+          title: skippedCount > 0 || errors.length > 0 ? 'Importação parcial' : 'Importação concluída',
+          description: parts.join(', '),
+          variant: errors.length > 0 ? 'destructive' : undefined
         });
       }
 
@@ -755,12 +766,27 @@ const Produtos = () => {
                       <h4 className="font-medium mb-2">Resultado da Importação</h4>
                       <div className="space-y-2">
                         <p className="text-sm text-green-600">
-                          ✓ {importResults.success} produto(s) importado(s)
+                          ✓ {importResults.success} produto(s) importado(s) com sucesso
                         </p>
+                        {importResults.skipped > 0 && (
+                          <p className="text-sm text-yellow-600">
+                            ⚠ {importResults.skipped} linha(s) pulada(s) por campos obrigatórios vazios
+                          </p>
+                        )}
                         {importResults.errors.length > 0 && (
-                          <div className="max-h-32 overflow-y-auto">
+                          <p className="text-sm text-destructive">
+                            ✗ {importResults.errors.length} erro(s) ao salvar
+                          </p>
+                        )}
+                        {(importResults.errors.length > 0 || (importResults.skippedDetails && importResults.skippedDetails.length > 0)) && (
+                          <div className="max-h-48 overflow-y-auto mt-2 space-y-1 border-t pt-2">
+                            {importResults.skippedDetails?.map((detail, idx) => (
+                              <p key={`skip-${idx}`} className="text-xs text-yellow-600 font-mono">
+                                ⚠ {detail}
+                              </p>
+                            ))}
                             {importResults.errors.map((error, idx) => (
-                              <p key={idx} className="text-sm text-destructive">
+                              <p key={`err-${idx}`} className="text-xs text-destructive font-mono">
                                 ✗ {error}
                               </p>
                             ))}
