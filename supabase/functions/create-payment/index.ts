@@ -563,12 +563,15 @@ serve(async (req) => {
     if (usePagarme) {
       console.log("[create-payment] Using Pagar.me for tenant:", payload.tenant_id);
       
-      const items = payload.cartItems.map((it) => ({
-        code: it.product_code || `PROD-${Date.now()}`,
-        description: it.product_name || it.product_code || "Produto",
-        quantity: it.qty,
-        amount: Math.round(Number(it.unit_price) * 100), // Pagar.me usa centavos
-      }));
+      // Pagar.me não aceita itens com valor 0 — filtrar brindes/gratuitos
+      const items = payload.cartItems
+        .filter((it) => Number(it.unit_price) > 0)
+        .map((it) => ({
+          code: it.product_code || `PROD-${Date.now()}`,
+          description: it.product_name || it.product_code || "Produto",
+          quantity: it.qty,
+          amount: Math.round(Number(it.unit_price) * 100), // Pagar.me usa centavos
+        }));
 
       // Adicionar frete como item
       if (payload.shippingCost && payload.shippingCost > 0) {
