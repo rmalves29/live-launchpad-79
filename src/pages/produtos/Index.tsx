@@ -567,7 +567,32 @@ const Produtos = () => {
       const workbook = XLSX.read(data);
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      const jsonData = XLSX.utils.sheet_to_json<ImportRow>(worksheet);
+      const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
+
+      // Normalizar nomes das colunas: remover acentos, lowercase, trim
+      const normalizeKey = (key: string) =>
+        key.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, '_');
+
+      const columnMap: Record<string, string> = {
+        'codigo': 'codigo', 'cod': 'codigo', 'code': 'codigo', 'sku': 'codigo',
+        'nome': 'nome', 'name': 'nome', 'produto': 'nome', 'descricao': 'nome',
+        'preco': 'preco', 'price': 'preco', 'valor': 'preco',
+        'estoque': 'estoque', 'stock': 'estoque', 'qtd': 'estoque', 'quantidade': 'estoque',
+        'cor': 'cor', 'color': 'cor',
+        'tamanho': 'tamanho', 'size': 'tamanho', 'tam': 'tamanho',
+        'tipo_venda': 'tipo_venda', 'tipo': 'tipo_venda',
+        'imagem_url': 'imagem_url', 'imagem': 'imagem_url', 'image': 'imagem_url', 'image_url': 'imagem_url',
+      };
+
+      const jsonData: ImportRow[] = rawData.map((rawRow) => {
+        const mapped: any = {};
+        for (const [key, value] of Object.entries(rawRow)) {
+          const normalized = normalizeKey(key);
+          const target = columnMap[normalized] || normalized;
+          mapped[target] = value;
+        }
+        return mapped as ImportRow;
+      });
 
       if (jsonData.length === 0) {
         toast({
