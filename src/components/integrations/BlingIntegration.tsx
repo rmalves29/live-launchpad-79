@@ -138,13 +138,13 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
   const [manualStoreId, setManualStoreId] = useState('');
   const [manualStoreName, setManualStoreName] = useState('');
   const [modules, setModules] = useState<Record<string, boolean>>({
-    sync_orders: false,
-    sync_products: false,
+    sync_orders: true,
+    sync_products: true,
     sync_stock: false,
-    sync_invoices: false,
-    sync_marketplaces: false,
-    sync_ecommerce: false,
-    sync_logistics: false,
+    sync_invoices: true,
+    sync_marketplaces: true,
+    sync_ecommerce: true,
+    sync_logistics: true,
   });
 
   // Verificar resultado do callback OAuth
