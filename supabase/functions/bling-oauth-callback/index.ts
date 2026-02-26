@@ -176,6 +176,14 @@ serve(async (req) => {
         refresh_token: tokenData.refresh_token,
         token_expires_at: expiresAt.toISOString(),
         is_active: true,
+        // Ativar módulos padrão automaticamente (exceto controle de estoque)
+        sync_orders: true,
+        sync_products: true,
+        sync_stock: false,
+        sync_invoices: true,
+        sync_marketplaces: true,
+        sync_ecommerce: true,
+        sync_logistics: true,
         updated_at: new Date().toISOString(),
       })
       .eq("tenant_id", tenant_id);
