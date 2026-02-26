@@ -263,25 +263,60 @@ serve(async (req) => {
        });
     }
 
-    // Recognize product codes strictly in the format: C + 1-6 digits (e.g., C100, C40895)
-    // IMPORTANT: We intentionally do NOT accept plain numbers like "100" to avoid false positives.
-    const productCodes: string[] = [];
+    // Recognize product codes with optional quantity:
+    // Formats: C76126x2, C76126 x2, 2xC76126, 2x C76126, C76126X2, etc.
+    // Also plain: C76126 (qty=1)
+    const productEntries: Array<{ code: string; qty: number }> = [];
 
-    const codeWithCRegex = /\b[Cc](\d{1,6})\b/g;
+    // Pattern 1: code first, then optional quantity — C76126x2, C76126 x 2, C76126
+    const codeFirstRegex = /\b[Cc](\d{1,6})\s*[xX]\s*(\d{1,3})\b/g;
+    // Pattern 2: quantity first, then code — 2xC76126, 2x C76126
+    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*[Cc](\d{1,6})\b/g;
+    // Pattern 3: plain code without quantity — C76126
+    const plainCodeRegex = /\b[Cc](\d{1,6})\b/g;
+
+    const processedCodes = new Set<string>();
     let match;
-    while ((match = codeWithCRegex.exec(messageText)) !== null) {
+
+    // First pass: "C76126x2" style
+    while ((match = codeFirstRegex.exec(messageText)) !== null) {
       const normalized = `C${match[1]}`;
-      if (!productCodes.includes(normalized)) productCodes.push(normalized);
+      const qty = Math.max(1, Math.min(parseInt(match[2], 10), 99));
+      if (!processedCodes.has(normalized)) {
+        processedCodes.add(normalized);
+        productEntries.push({ code: normalized, qty });
+      }
     }
 
-    if (productCodes.length === 0) {
+    // Second pass: "2xC76126" style
+    while ((match = qtyFirstRegex.exec(messageText)) !== null) {
+      const normalized = `C${match[2]}`;
+      const qty = Math.max(1, Math.min(parseInt(match[1], 10), 99));
+      if (!processedCodes.has(normalized)) {
+        processedCodes.add(normalized);
+        productEntries.push({ code: normalized, qty });
+      }
+    }
+
+    // Third pass: plain "C76126" (only if not already matched with quantity)
+    while ((match = plainCodeRegex.exec(messageText)) !== null) {
+      const normalized = `C${match[1]}`;
+      if (!processedCodes.has(normalized)) {
+        processedCodes.add(normalized);
+        productEntries.push({ code: normalized, qty: 1 });
+      }
+    }
+
+    const productCodes = productEntries.map(e => e.code);
+
+    if (productEntries.length === 0) {
       console.log('[zapi-webhook] No product codes found in message');
       return new Response(JSON.stringify({ success: true, skipped: 'no_product_codes' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log(`[zapi-webhook] Found product codes: ${productCodes.join(', ')}`);
+    console.log(`[zapi-webhook] Found product entries: ${productEntries.map(e => `${e.code}x${e.qty}`).join(', ')}`);
 
     // Normalize phone number (remove country code if present)
     const normalizedPhone = normalizePhone(senderPhone);
@@ -412,7 +447,9 @@ serve(async (req) => {
 
     // Process each product code
     const results = [];
-    for (const code of productCodes) {
+    for (const entry of productEntries) {
+      const code = entry.code;
+      const requestedQty = entry.qty;
       const codeUpper = code.toUpperCase();
       
       // DEDUPLICATION: Check if this product was already processed for THIS message
@@ -799,9 +836,9 @@ serve(async (req) => {
           .single();
         
         const currentStock = freshStockCheck?.stock ?? product.stock;
-        const newQty = existingItem.qty + 1;
+        const newQty = existingItem.qty + requestedQty;
         if (newQty > currentStock) {
-          console.log(`[zapi-webhook] ❌ ESTOQUE INSUFICIENTE para +1 ${product.code}: estoque=${currentStock}, qty atual=${existingItem.qty}`);
+          console.log(`[zapi-webhook] ❌ ESTOQUE INSUFICIENTE para +${requestedQty} ${product.code}: estoque=${currentStock}, qty atual=${existingItem.qty}`);
           results.push({ 
             code, 
             success: false, 
@@ -813,7 +850,7 @@ serve(async (req) => {
           continue;
         }
         
-        // Product exists and was added more than 30 seconds ago - customer genuinely wants another
+        // Product exists and was added more than 30 seconds ago - customer genuinely wants more
         const { data: updatedItem, error: updateError } = await supabase
           .from('cart_items')
           .update({
@@ -834,23 +871,22 @@ serve(async (req) => {
         }
         cartItem = updatedItem;
         
-        // ATOMIC STOCK DECREMENT: Only decrement if stock > 0
-        // Uses WHERE stock > 0 to prevent overselling in race conditions
+        // ATOMIC STOCK DECREMENT: Only decrement by requestedQty
         const { data: stockRows, error: stockError } = await supabase
           .from('products')
-          .update({ stock: currentStock - 1 })
+          .update({ stock: currentStock - requestedQty })
           .eq('id', product.id)
-          .gt('stock', 0)
+          .gte('stock', requestedQty)
           .select('stock');
         
         if (stockError || !stockRows || stockRows.length === 0) {
-          console.log(`[zapi-webhook] ❌ ATOMIC stock decrement failed for ${product.code}: stock already 0 or error`);
+          console.log(`[zapi-webhook] ❌ ATOMIC stock decrement failed for ${product.code}: stock insufficient or error`);
           // Rollback cart item update
           await supabase.from('cart_items').update({ qty: existingItem.qty }).eq('id', existingItem.id);
           results.push({ code, success: false, error: 'stock_race_condition', product_name: product.name });
           continue;
         } else {
-          console.log(`[zapi-webhook] ✅ Estoque decrementado atomicamente: ${product.code} -> ${stockRows[0].stock}`);
+          console.log(`[zapi-webhook] ✅ Estoque decrementado atomicamente: ${product.code} -${requestedQty} -> ${stockRows[0].stock}`);
         }
         
         console.log(`[zapi-webhook] Updated existing cart item: ${cartItem.id}, new qty: ${cartItem.qty}`);
@@ -865,7 +901,7 @@ serve(async (req) => {
           .eq('id', product.id)
           .single();
         
-        if (!preCheckStock || preCheckStock.stock <= 0) {
+        if (!preCheckStock || preCheckStock.stock < requestedQty) {
           console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO (pre-check) para novo item ${product.code}: estoque real=${preCheckStock?.stock}`);
           results.push({ 
             code, 
@@ -889,7 +925,7 @@ serve(async (req) => {
           .insert({
             cart_id: cart.id,
             product_id: product.id,
-            qty: 1,
+            qty: requestedQty,
             unit_price: product.price,
             tenant_id: tenantId,
             product_name: product.name,
@@ -949,9 +985,9 @@ serve(async (req) => {
         
         const { data: stockRows, error: stockError } = await supabase
           .from('products')
-          .update({ stock: freshStockVal - 1 })
+          .update({ stock: freshStockVal - requestedQty })
           .eq('id', product.id)
-          .gt('stock', 0)
+          .gte('stock', requestedQty)
           .select('stock');
         
         if (stockError || !stockRows || stockRows.length === 0) {
