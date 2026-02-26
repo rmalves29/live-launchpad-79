@@ -789,43 +789,44 @@ serve(async (req) => {
       let wasSkipped = false;
       
       if (existingItem) {
-      // ─── TRAVA DE TEMPO: 1 segundo por product_id no mesmo cart ──────────────
-      // Se o mesmo código chegar duas vezes no mesmo carrinho em menos de 1 segundo,
-      // é duplicata de webhook (mesmo messageId processado em paralelo ou reenvio imediato).
-      // Mantemos 30 segundos como threshold de "realmente é nova compra".
-      const itemCreatedAt = new Date(existingItem.created_at).getTime();
-      const elapsedMs = Date.now() - itemCreatedAt;
-      const oneSecondMs = 1 * 1000;
-      const thirtySecondsMs = 30 * 1000;
-      
-      if (elapsedMs < oneSecondMs) {
-        // Menos de 1 segundo → duplicata de webhook — descartar imediatamente
-        console.log(`[zapi-webhook] 🔒 TRAVA 1s: produto ${product.code} adicionado há ${elapsedMs}ms — descartando duplicata de webhook`);
-        results.push({ 
-          code, 
-          success: true, 
-          skipped: 'webhook_duplicate_1s',
-          product_name: product.name,
-          cart_id: cart.id,
-          existing_qty: existingItem.qty,
-          elapsed_ms: elapsedMs
-        });
-        continue;
-      }
+      // ─── TRAVA DE TEMPO: só aplica quando qty=1 (sem quantidade explícita) ──────────────
+      // Quando o cliente digita "C76126x2" ou "2xC76126", requestedQty > 1 e a trava é ignorada.
+      // Isso permite adicionar múltiplas unidades explicitamente sem ser bloqueado pela proteção de duplicidade.
+      if (requestedQty === 1) {
+        const itemCreatedAt = new Date(existingItem.created_at).getTime();
+        const elapsedMs = Date.now() - itemCreatedAt;
+        const oneSecondMs = 1 * 1000;
+        const thirtySecondsMs = 30 * 1000;
+        
+        if (elapsedMs < oneSecondMs) {
+          console.log(`[zapi-webhook] 🔒 TRAVA 1s: produto ${product.code} adicionado há ${elapsedMs}ms — descartando duplicata de webhook`);
+          results.push({ 
+            code, 
+            success: true, 
+            skipped: 'webhook_duplicate_1s',
+            product_name: product.name,
+            cart_id: cart.id,
+            existing_qty: existingItem.qty,
+            elapsed_ms: elapsedMs
+          });
+          continue;
+        }
 
-      if (elapsedMs < thirtySecondsMs) {
-        // Entre 1s e 30s → reenvio acidental — skip mas sem bloquear compra intencional futura
-        console.log(`[zapi-webhook] ⏭️ SKIPPING duplicate product ${product.code} - already added ${Math.round(elapsedMs / 1000)}s ago`);
-        results.push({ 
-          code, 
-          success: true, 
-          skipped: 'recent_duplicate',
-          product_name: product.name,
-          cart_id: cart.id,
-          existing_qty: existingItem.qty,
-          seconds_ago: Math.round(elapsedMs / 1000)
-        });
-        continue;
+        if (elapsedMs < thirtySecondsMs) {
+          console.log(`[zapi-webhook] ⏭️ SKIPPING duplicate product ${product.code} - already added ${Math.round(elapsedMs / 1000)}s ago`);
+          results.push({ 
+            code, 
+            success: true, 
+            skipped: 'recent_duplicate',
+            product_name: product.name,
+            cart_id: cart.id,
+            existing_qty: existingItem.qty,
+            seconds_ago: Math.round(elapsedMs / 1000)
+          });
+          continue;
+        }
+      } else {
+        console.log(`[zapi-webhook] 🔢 Quantidade explícita (${requestedQty}x) — ignorando trava de duplicidade para ${product.code}`);
       }
         
         // STOCK VALIDATION: Re-read fresh stock to prevent race condition
