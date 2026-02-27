@@ -434,17 +434,22 @@ const PublicCheckout = () => {
       const defHeight = appSettings?.default_height_cm ?? 6;
       const defLength = appSettings?.default_length_cm ?? 16;
 
-      // Calcular frete com todos os items dos pedidos selecionados
+      // Consolidar todos os itens em um único pacote para cálculo de frete
       const allItems = ordersToCalc.flatMap(order => order.items);
-      const products = allItems.map(item => ({
-        id: String(item.id || Math.random()),
+      const totalQty = allItems.reduce((sum, item) => sum + (Number(item.qty) || 1), 0);
+      const totalInsurance = allItems.reduce((sum, item) => sum + (Number(item.unit_price) || 1) * (Number(item.qty) || 1), 0);
+      const totalWeight = totalQty * defWeight;
+
+      // Enviar como pacote único com peso e valor total
+      const products = [{
+        id: 'consolidated',
         width: defWidth,
         height: defHeight,
         length: defLength,
-        weight: defWeight,
-        insurance_value: Number(item.unit_price) || 1,
-        quantity: Number(item.qty) || 1
-      }));
+        weight: totalWeight > 0.01 ? totalWeight : 0.01,
+        insurance_value: totalInsurance,
+        quantity: 1
+      }];
 
       // Chamar a função de frete ativa (mandae-shipping ou melhor-envio-shipping)
       console.log(`[PublicCheckout] Chamando ${activeIntegration.functionName}...`);
