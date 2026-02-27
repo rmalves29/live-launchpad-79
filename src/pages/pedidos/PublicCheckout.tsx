@@ -422,14 +422,26 @@ const PublicCheckout = () => {
         }
       }
 
+      // Buscar dimensões/peso padrão do app_settings
+      const { data: appSettings } = await supabase
+        .from('app_settings')
+        .select('default_weight_kg, default_width_cm, default_height_cm, default_length_cm')
+        .limit(1)
+        .single();
+
+      const defWeight = appSettings?.default_weight_kg ?? 0.01;
+      const defWidth = appSettings?.default_width_cm ?? 13;
+      const defHeight = appSettings?.default_height_cm ?? 6;
+      const defLength = appSettings?.default_length_cm ?? 16;
+
       // Calcular frete com todos os items dos pedidos selecionados
       const allItems = ordersToCalc.flatMap(order => order.items);
       const products = allItems.map(item => ({
         id: String(item.id || Math.random()),
-        width: 16,
-        height: 2,
-        length: 20,
-        weight: 0.3,
+        width: defWidth,
+        height: defHeight,
+        length: defLength,
+        weight: defWeight,
         insurance_value: Number(item.unit_price) || 1,
         quantity: Number(item.qty) || 1
       }));
