@@ -163,13 +163,25 @@ serve(async (req) => {
       }
     }
 
+    // Buscar dimensões/peso padrão do app_settings
+    const { data: appSettings } = await supabase
+      .from("app_settings")
+      .select("default_weight_kg, default_width_cm, default_height_cm, default_length_cm")
+      .limit(1)
+      .single();
+
+    const defWeight = appSettings?.default_weight_kg ?? 0.01;
+    const defWidth = appSettings?.default_width_cm ?? 13;
+    const defHeight = appSettings?.default_height_cm ?? 6;
+    const defLength = appSettings?.default_length_cm ?? 16;
+
     // Preparar produtos para cálculo
     const productsList = (products || []).map((p: any) => ({
       id: String(p.id || Math.random()),
-      width: p.width || 16,
-      height: p.height || 2,
-      length: p.length || 20,
-      weight: p.weight || 0.3,
+      width: p.width || defWidth,
+      height: p.height || defHeight,
+      length: p.length || defLength,
+      weight: p.weight || defWeight,
       insurance_value: Number(p.insurance_value) || 1,
       quantity: Number(p.quantity) || 1
     }));
@@ -177,7 +189,7 @@ serve(async (req) => {
     if (productsList.length === 0) {
       productsList.push({
         id: "default",
-        width: 16, height: 2, length: 20, weight: 0.3,
+        width: defWidth, height: defHeight, length: defLength, weight: defWeight,
         insurance_value: 50, quantity: 1
       });
     }
