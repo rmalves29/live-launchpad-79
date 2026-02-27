@@ -175,28 +175,31 @@ serve(async (req) => {
     const defHeight = appSettings?.default_height_cm ?? 6;
     const defLength = appSettings?.default_length_cm ?? 16;
 
-    // Preparar produtos para cálculo
-    const productsList = (products || []).map((p: any) => ({
-      id: String(p.id || Math.random()),
-      width: p.width || defWidth,
-      height: p.height || defHeight,
-      length: p.length || defLength,
-      weight: p.weight || defWeight,
-      insurance_value: Number(p.insurance_value) || 1,
-      quantity: Number(p.quantity) || 1
-    }));
+    // Consolidar todos os produtos em um único pacote
+    const rawProducts = products || [];
+    let totalWeight = 0;
+    let totalInsuranceValue = 0;
 
-    if (productsList.length === 0) {
-      productsList.push({
-        id: "default",
-        width: defWidth, height: defHeight, length: defLength, weight: defWeight,
-        insurance_value: 50, quantity: 1
-      });
+    for (const p of rawProducts) {
+      const qty = Number(p.quantity) || 1;
+      const w = Number(p.weight) || defWeight;
+      totalWeight += w * qty;
+      totalInsuranceValue += (Number(p.insurance_value) || 1) * qty;
     }
 
-    const totalInsuranceValue = productsList.reduce((sum: number, p: any) => 
-      sum + (p.insurance_value * p.quantity), 0
-    );
+    if (totalWeight < 0.01) totalWeight = 0.01;
+    if (totalInsuranceValue < 1) totalInsuranceValue = 1;
+
+    // Enviar como pacote único para evitar cálculo por volume individual
+    const productsList = [{
+      id: "consolidated",
+      width: defWidth,
+      height: defHeight,
+      length: defLength,
+      weight: totalWeight,
+      insurance_value: totalInsuranceValue,
+      quantity: 1
+    }];
 
     const baseUrl = integration.sandbox 
       ? "https://sandbox.melhorenvio.com.br/api/v2" 
