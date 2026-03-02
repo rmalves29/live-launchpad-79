@@ -1,4 +1,4 @@
-// Bling Sync Orders - v2.1 (Correios tracking sync from Bling)
+// Bling Sync Orders - v2.2 (with sync logging)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -11,6 +11,32 @@ const BLING_API_URL = 'https://www.bling.com.br/Api/v3';
 
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Log a Bling sync operation to bling_sync_logs table */
+async function logBlingSync(
+  supabase: any,
+  tenantId: string,
+  action: string,
+  entityType: string,
+  entityId: string | number | null,
+  blingId: string | number | null,
+  status: 'success' | 'error' | 'skipped',
+  details?: any
+) {
+  try {
+    await supabase.from('bling_sync_logs').insert({
+      tenant_id: tenantId,
+      action,
+      entity_type: entityType,
+      entity_id: entityId != null ? String(entityId) : null,
+      bling_id: blingId != null ? String(blingId) : null,
+      status,
+      details: details ? JSON.stringify(details) : null,
+    });
+  } catch (e: any) {
+    console.log('[bling-sync-orders] Failed to write sync log:', e?.message || e);
+  }
+}
 
 type BlingFetchResult = {
   response: Response;
@@ -1631,6 +1657,9 @@ serve(async (req) => {
           .eq('id', order.id)
           .eq('tenant_id', tenant_id);
 
+        // Log sync operation
+        await logBlingSync(supabase, tenant_id, 'send_order', 'order', order.id, blingResult.blingOrderId, 'success', { status: blingResult.kind });
+
         await supabase
           .from('integration_bling')
           .update({ last_sync_at: new Date().toISOString() })
@@ -1765,6 +1794,9 @@ serve(async (req) => {
           new_bling_order_id: forceResult.blingOrderId,
           status: forceResult.kind,
         };
+
+        // Log force resync operation
+        await logBlingSync(supabase, tenant_id, 'force_resync_order', 'order', order_id, forceResult.blingOrderId, 'success', { old_bling_order_id: oldBlingOrderId, status: forceResult.kind });
         break;
       }
 
@@ -1925,6 +1957,9 @@ serve(async (req) => {
               .eq('id', order.id)
               .eq('tenant_id', tenant_id);
 
+            // Log sync_all individual order
+            await logBlingSync(supabase, tenant_id, 'sync_all', 'order', order.id, blingResult.blingOrderId, 'success', { status: blingResult.kind });
+
             results.push({
               order_id: order.id,
               success: true,
@@ -1935,6 +1970,7 @@ serve(async (req) => {
             console.error(`[bling-sync-orders] Error syncing order ${order.id}:`, error);
             // Liberar o lock em caso de erro
             await supabase.from('orders').update({ bling_sync_status: 'error' }).eq('id', order.id).eq('tenant_id', tenant_id);
+            await logBlingSync(supabase, tenant_id, 'sync_all', 'order', order.id, null, 'error', { error: error.message });
             results.push({ order_id: order.id, success: false, error: error.message });
           }
         }
@@ -1954,6 +1990,7 @@ serve(async (req) => {
       }
 
       case 'test_payload': {
+        break;
       }
 
       case 'sync_tracking': {
