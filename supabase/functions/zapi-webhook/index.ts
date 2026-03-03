@@ -268,12 +268,12 @@ serve(async (req) => {
     // Also plain: C76126 (qty=1)
     const productEntries: Array<{ code: string; qty: number }> = [];
 
-    // Pattern 1: code first, then optional quantity — C76126x2, C76126 x 2, C76126
-    const codeFirstRegex = /\b[Cc](\d{1,6})\s*[xX]\s*(\d{1,3})\b/g;
-    // Pattern 2: quantity first, then code — 2xC76126, 2x C76126
-    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*[Cc](\d{1,6})\b/g;
-    // Pattern 3: plain code without quantity — C76126
-    const plainCodeRegex = /\b[Cc](\d{1,6})\b/g;
+    // Pattern 1: code first, then optional quantity — C76126x2, C014-1x2, C014-1 x 2
+    const codeFirstRegex = /\b[Cc](\d{1,6}(?:-\d{1,3})?)\s*[xX]\s*(\d{1,3})\b/g;
+    // Pattern 2: quantity first, then code — 2xC76126, 2xC014-1
+    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*[Cc](\d{1,6}(?:-\d{1,3})?)\b/g;
+    // Pattern 3: plain code without quantity — C76126, C014-1
+    const plainCodeRegex = /\b[Cc](\d{1,6}(?:-\d{1,3})?)\b/g;
 
     const processedCodes = new Set<string>();
     let match;
