@@ -151,12 +151,27 @@ serve(async (req) => {
 
     const shippingData = JSON.parse(responseText);
 
-    // Mapear resposta do Mandae para formato padrão
-    // Mandae retorna array de shippingServices
+    // Parse enabled_services filter
+    let enabledServices: Record<string, boolean> | null = null;
+    try {
+      const raw = integration.enabled_services;
+      if (raw) {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (typeof parsed === 'object' && !Array.isArray(parsed)) enabledServices = parsed;
+      }
+    } catch {}
+
     const services = shippingData.shippingServices || shippingData || [];
     
     const validOptions = (Array.isArray(services) ? services : [])
-      .filter((option: any) => option.price || option.value)
+      .filter((option: any) => {
+        if (!(option.price || option.value)) return false;
+        if (enabledServices && Object.keys(enabledServices).length > 0) {
+          const serviceName = option.name || option.description || 'Mandae';
+          if (enabledServices[serviceName] === false) return false;
+        }
+        return true;
+      })
       .map((option: any) => ({
         id: `mandae_${option.id || option.name?.toLowerCase().replace(/\s/g, '_')}`,
         service_id: option.id || option.name,

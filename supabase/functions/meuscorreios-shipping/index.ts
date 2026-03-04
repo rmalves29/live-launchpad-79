@@ -136,11 +136,21 @@ serve(async (req) => {
 
     const { data: integration } = await supabase
       .from("shipping_integrations")
-      .select("from_cep, access_token, token_type, refresh_token, scope, client_id, client_secret")
+      .select("from_cep, access_token, token_type, refresh_token, scope, client_id, client_secret, enabled_services")
       .eq("tenant_id", tenant_id)
       .eq("provider", "meuscorreios")
       .eq("is_active", true)
       .maybeSingle();
+
+    // Parse enabled_services filter
+    let enabledServices: Record<string, boolean> | null = null;
+    try {
+      const raw = integration?.enabled_services;
+      if (raw) {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (typeof parsed === 'object' && !Array.isArray(parsed)) enabledServices = parsed;
+      }
+    } catch {}
 
     let cepOrigem = integration?.from_cep?.replace(/\D/g, "") || "";
     if (!cepOrigem) {
@@ -175,8 +185,13 @@ serve(async (req) => {
         const token = await getCorreiosCWSToken(clientId, clientSecret, cartaoPostagem, tenant_id);
         const pesoG = Math.round(pesoTotal * 1000);
 
+        const servicesToCheck = CONTRACT_SERVICES.filter(svc => {
+          if (!enabledServices || Object.keys(enabledServices).length === 0) return true;
+          return enabledServices[svc.name] !== false;
+        });
+
         const results = await Promise.allSettled(
-          CONTRACT_SERVICES.map(async (svc) => {
+          servicesToCheck.map(async (svc) => {
             const [preco, prazo] = await Promise.all([
               calcCWSPreco(token, cepOrigem, cepDestino, pesoG, svc.code),
               calcCWSPrazo(token, cepOrigem, cepDestino, svc.code),
@@ -217,6 +232,11 @@ serve(async (req) => {
     console.log("[mc] Using public API");
     shippingOptions = await calcPublicShipping(cepOrigem, cepDestino, pesoTotal);
 
+    // Filter by enabled services
+    if (enabledServices && Object.keys(enabledServices).length > 0) {
+      shippingOptions = shippingOptions.filter(opt => enabledServices[opt.name] !== false);
+    }
+
     if (shippingOptions.length > 0) {
       console.log("[mc] Public options:", shippingOptions.length);
       return new Response(
@@ -228,7 +248,7 @@ serve(async (req) => {
     // ESTRATÉGIA 3: Fallback por distância
     console.log("[mc] Using distance fallback");
     const mesmaRegiao = cepOrigem[0] === cepDestino[0];
-    const fallback = [
+    let fallback = [
       {
         id: "correios_pac_est", service_id: "04510",
         name: "PAC", service_name: "PAC",
@@ -248,6 +268,11 @@ serve(async (req) => {
         custom_delivery_time: mesmaRegiao ? 2 : 5,
       },
     ];
+
+    // Filter fallback by enabled services
+    if (enabledServices && Object.keys(enabledServices).length > 0) {
+      fallback = fallback.filter(opt => enabledServices[opt.name] !== false);
+    }
 
     return new Response(
       JSON.stringify({ success: true, shipping_options: fallback, provider: "meuscorreios", fallback: true }),
