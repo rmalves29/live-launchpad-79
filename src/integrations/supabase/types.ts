@@ -1723,6 +1723,7 @@ export type Database = {
           client_secret: string | null
           company_id: number | null
           created_at: string | null
+          enabled_services: string | null
           expires_at: string | null
           from_cep: string | null
           id: string
@@ -1744,6 +1745,7 @@ export type Database = {
           client_secret?: string | null
           company_id?: number | null
           created_at?: string | null
+          enabled_services?: string | null
           expires_at?: string | null
           from_cep?: string | null
           id?: string
@@ -1765,6 +1767,7 @@ export type Database = {
           client_secret?: string | null
           company_id?: number | null
           created_at?: string | null
+          enabled_services?: string | null
           expires_at?: string | null
           from_cep?: string | null
           id?: string
