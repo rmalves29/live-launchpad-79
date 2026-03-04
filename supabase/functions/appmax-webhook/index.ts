@@ -45,6 +45,78 @@ serve(async (req) => {
     const isPaid = status === "approved" || status === "paid" || status === "captured" ||
                    event === "payment.approved" || event === "order.paid" || event === "payment.captured";
 
+    // Verificar se é um evento de cancelamento/estorno
+    const isCancelled = status === "canceled" || status === "cancelled" || status === "refunded" || 
+                        status === "chargedback" || status === "failed" || status === "rejected" ||
+                        event === "payment.refunded" || event === "order.canceled" || event === "payment.canceled" ||
+                        event === "payment.chargedback";
+
+    if (isCancelled) {
+      console.log("[appmax-webhook] Processing CANCELLATION/REFUND event");
+
+      let ordersToCancel: any[] = [];
+
+      if (appmaxOrderId) {
+        const appmaxIdStr = String(appmaxOrderId);
+        const { data: byLink } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id")
+          .ilike("payment_link", `%${appmaxIdStr}%`);
+        if (byLink && byLink.length > 0) ordersToCancel = byLink;
+
+        if (ordersToCancel.length === 0) {
+          const { data: byObs } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id")
+            .ilike("observation", `%order_id: ${appmaxIdStr}%`);
+          if (byObs && byObs.length > 0) ordersToCancel = byObs;
+        }
+      }
+
+      const externalRef = eventData.external_reference || body.external_reference || "";
+      if (ordersToCancel.length === 0 && externalRef) {
+        const match = externalRef.match(/orders:([0-9,]+)/);
+        if (match) {
+          const orderIds = match[1].split(",").map(Number).filter((n: number) => !isNaN(n) && n > 0);
+          if (orderIds.length > 0) {
+            const { data } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id").in("id", orderIds);
+            if (data && data.length > 0) ordersToCancel = data;
+          }
+        }
+      }
+
+      for (const order of ordersToCancel) {
+        if (order.is_cancelled) continue;
+
+        const { error } = await sb.from("orders")
+          .update({ is_paid: false, is_cancelled: true })
+          .eq("id", order.id);
+
+        if (error) {
+          console.error(`[appmax-webhook] Error cancelling order ${order.id}:`, error);
+          continue;
+        }
+
+        console.log(`[appmax-webhook] ✅ Order ${order.id} cancelled and unmarked as paid`);
+
+        await sb.from("audit_logs").insert({
+          entity: "order",
+          entity_id: String(order.id),
+          action: "auto_cancel_payment_refunded",
+          tenant_id: order.tenant_id || tenantId,
+          meta: { reason: status || event, appmax_order_id: appmaxOrderId, previous_is_paid: order.is_paid },
+        });
+
+        await sb.from("webhook_logs").insert({
+          webhook_type: "appmax_payment_cancelled",
+          status_code: 200,
+          payload: { order_id: order.id, appmax_order_id: appmaxOrderId, reason: status || event },
+          tenant_id: order.tenant_id || tenantId,
+        });
+      }
+
+      return new Response(
+        JSON.stringify({ status: "ok", orders_cancelled: ordersToCancel.filter(o => !o.is_cancelled).map((o: any) => o.id) }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!isPaid) {
       console.log("[appmax-webhook] Not a payment confirmation event, skipping");
       return new Response(JSON.stringify({ status: "ok", message: "Event logged but not a payment" }), {
