@@ -65,7 +65,8 @@ const Sorteio = () => {
         body: { action: 'profile-picture', tenant_id: tenantId, phone: formattedPhone }
       });
 
-      if (!error && data?.link) return data.link;
+      // Z-API retorna link:"null" (string) quando não encontra — tratar como falha
+      if (!error && data?.link && data.link !== 'null' && !data.errorMessage) return data.link;
       if (!error && (data?.imgUrl || data?.image)) return data.imgUrl || data.image;
     } catch (error) {
       console.log('Erro ao buscar foto do WhatsApp:', error);
