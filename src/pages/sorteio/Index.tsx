@@ -52,14 +52,14 @@ const Sorteio = () => {
 
       console.log('Z-API profile-picture response:', data);
 
-      // Z-API retorna { imgUrl: "https://..." } no endpoint /contacts/{phone}
-      if (!error && data?.imgUrl) {
-        return data.imgUrl;
+      // Z-API GET /profile-picture retorna { link: "https://..." }
+      if (!error && data?.link) {
+        return data.link;
       }
       
-      // Fallback se tiver link ou image
-      if (!error && (data?.link || data?.image)) {
-        return data.link || data.image;
+      // Fallbacks alternativos
+      if (!error && (data?.imgUrl || data?.image)) {
+        return data.imgUrl || data.image;
       }
     } catch (error) {
       console.log('Erro ao buscar foto do WhatsApp:', error);
