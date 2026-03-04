@@ -139,11 +139,43 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
     const payment = await paymentRes.json();
     console.log(`[mp-webhook] Payment ${paymentId}: status=${payment.status}, external_reference=${payment.external_reference}, preference_id=${payment.preference_id}`);
 
+    // Process cancelled/refunded payments
+    const isCancelled = payment.status === "refunded" || payment.status === "cancelled" || 
+                        payment.status === "charged_back" || payment.status === "rejected";
+
+    if (isCancelled) {
+      console.log(`[mp-webhook] Payment ${paymentId} is ${payment.status}, processing cancellation`);
+
+      const externalRef = payment.external_reference || "";
+      const orderIds = parseOrderIds(externalRef);
+      const tenantId = parseTenantId(externalRef) || tenantIdHint;
+
+      let ordersToCancel: any[] = [];
+
+      if (orderIds.length > 0) {
+        const { data } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id").in("id", orderIds);
+        if (data) ordersToCancel = data;
+      }
+
+      // Fallback by preference_id
+      if (ordersToCancel.length === 0 && payment.preference_id) {
+        const { data } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id")
+          .ilike("payment_link", `%${payment.preference_id}%`);
+        if (data && data.length > 0) ordersToCancel = data;
+      }
+
+      for (const order of ordersToCancel) {
+        if (order.is_cancelled) continue;
+        await markOrderAsCancelled(sb, order.id, order.tenant_id || tenantId, paymentId, payment.status);
+      }
+
+      return;
+    }
+
     // Only process approved payments
     if (payment.status !== "approved") {
       console.log(`[mp-webhook] Payment ${paymentId} not approved (status: ${payment.status}), skipping`);
       
-      // Log non-approved payment for debugging
       await sb.from("webhook_logs").insert({
         webhook_type: "mercadopago_payment_not_approved",
         status_code: 200,
@@ -343,6 +375,51 @@ async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | n
   } catch (error) {
     console.error(`[mp-webhook] Error syncing order ${orderId} with Bling:`, error);
   }
+}
+
+async function markOrderAsCancelled(sb: any, orderId: number, tenantId: string | null, paymentId: string, reason: string) {
+  console.log(`[mp-webhook] Cancelling order ${orderId} (reason: ${reason})`);
+
+  const { data: existingOrder } = await sb
+    .from("orders")
+    .select("id, is_paid, is_cancelled, tenant_id")
+    .eq("id", orderId)
+    .single();
+
+  if (!existingOrder || existingOrder.is_cancelled) {
+    console.log(`[mp-webhook] Order ${orderId} not found or already cancelled`);
+    return;
+  }
+
+  const orderTenantId = existingOrder.tenant_id || tenantId;
+
+  const { error } = await sb
+    .from("orders")
+    .update({ is_paid: false, is_cancelled: true })
+    .eq("id", orderId);
+
+  if (error) {
+    console.error(`[mp-webhook] Error cancelling order ${orderId}:`, error);
+    return;
+  }
+
+  console.log(`[mp-webhook] ✅ Order ${orderId} cancelled and unmarked as paid`);
+
+  await sb.from("audit_logs").insert({
+    entity: "order",
+    entity_id: String(orderId),
+    action: "auto_cancel_payment_refunded",
+    tenant_id: orderTenantId,
+    meta: { reason, payment_id: paymentId, previous_is_paid: existingOrder.is_paid },
+  });
+
+  await sb.from("webhook_logs").insert({
+    webhook_type: "mercadopago_payment_cancelled",
+    status_code: 200,
+    tenant_id: orderTenantId,
+    payload: { order_id: orderId, payment_id: paymentId, reason },
+    response: `Order ${orderId} cancelled`,
+  });
 }
 
 function parseOrderIds(externalRef: string): number[] {
