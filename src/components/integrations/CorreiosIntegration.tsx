@@ -8,7 +8,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Package, CheckCircle2, XCircle, Truck, TestTube, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff } from 'lucide-react';
+import ShippingServiceSelector from './ShippingServiceSelector';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
@@ -22,7 +23,14 @@ interface CorreiosIntegrationData {
   contrato: string;
   cartao_postagem: string;
   is_active: boolean;
+  enabled_services: Record<string, boolean>;
 }
+
+const CORREIOS_SERVICES = [
+  { key: 'PAC', name: 'PAC', description: 'Econômico' },
+  { key: 'SEDEX', name: 'SEDEX', description: 'Expresso' },
+  { key: 'Mini Envios', name: 'Mini Envios', description: 'Pequenos objetos até 300g' },
+];
 
 export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationProps) {
   const { toast } = useToast();
@@ -34,6 +42,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
     contrato: '',
     cartao_postagem: '',
     is_active: false,
+    enabled_services: {},
   });
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; services?: string[] } | null>(null);
@@ -52,6 +61,12 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
       if (error) throw error;
       
       if (data) {
+        let enabledServices: Record<string, boolean> = {};
+        try {
+          const parsed = JSON.parse((data as any).enabled_services || '{}');
+          if (typeof parsed === 'object' && !Array.isArray(parsed)) enabledServices = parsed;
+        } catch { /* default empty */ }
+
         setFormData({
           id: data.id,
           from_cep: data.from_cep || '',
@@ -60,6 +75,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           contrato: data.scope || '',
           cartao_postagem: data.refresh_token || '',
           is_active: data.is_active,
+          enabled_services: enabledServices,
         });
       }
       
@@ -70,7 +86,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
 
   const saveMutation = useMutation({
     mutationFn: async (data: CorreiosIntegrationData) => {
-      const payload = {
+      const payload: Record<string, any> = {
         tenant_id: tenantId,
         provider: 'correios',
         access_token: 'contract',
@@ -81,6 +97,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         refresh_token: data.cartao_postagem,
         is_active: data.is_active,
         sandbox: false,
+        enabled_services: JSON.stringify(data.enabled_services),
       };
 
       if (data.id) {
@@ -240,44 +257,14 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Truck className="h-5 w-5" />
-            Serviços Disponíveis
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              { name: 'PAC', description: 'Econômico' },
-              { name: 'SEDEX', description: 'Expresso' },
-              { name: 'Mini Envios', description: 'Pequenos objetos' },
-            ].map((service) => {
-              const isAvailable = testResult?.services?.includes(service.name);
-              const hasTestedSuccessfully = testResult?.success;
-              return (
-                <div key={service.name} className={`flex items-center gap-3 rounded-lg border p-3 ${hasTestedSuccessfully && !isAvailable ? 'opacity-50' : ''}`}>
-                  {hasTestedSuccessfully ? (
-                    isAvailable ? <CheckCircle2 className="h-5 w-5 text-primary" /> : <XCircle className="h-5 w-5 text-muted-foreground" />
-                  ) : (
-                    <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
-                  )}
-                  <div>
-                    <p className="font-medium">{service.name}</p>
-                    <p className="text-xs text-muted-foreground">{service.description}</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {!testResult && (
-            <p className="text-sm text-muted-foreground mt-3">
-              Clique em "Testar Conexão" para verificar quais serviços estão disponíveis no seu contrato.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      <ShippingServiceSelector
+        services={CORREIOS_SERVICES}
+        enabledServices={formData.enabled_services}
+        onToggle={(key, enabled) => {
+          const updated = { ...formData.enabled_services, [key]: enabled };
+          setFormData({ ...formData, enabled_services: updated });
+        }}
+      />
     </div>
   );
 }

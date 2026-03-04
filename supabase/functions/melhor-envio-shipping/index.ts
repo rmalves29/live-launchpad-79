@@ -260,8 +260,26 @@ serve(async (req) => {
 
     const shippingData = JSON.parse(responseText);
 
+    // Parse enabled_services filter
+    let enabledServices: Record<string, boolean> | null = null;
+    try {
+      const raw = integration.enabled_services;
+      if (raw) {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (typeof parsed === 'object' && !Array.isArray(parsed)) enabledServices = parsed;
+      }
+    } catch {}
+
     const validOptions = (Array.isArray(shippingData) ? shippingData : [])
-      .filter((option: any) => !option.error && option.price)
+      .filter((option: any) => {
+        if (option.error || !option.price) return false;
+        // Filter by enabled services if configured
+        if (enabledServices && Object.keys(enabledServices).length > 0) {
+          const serviceName = option.name || '';
+          if (enabledServices[serviceName] === false) return false;
+        }
+        return true;
+      })
       .map((option: any) => ({
         id: option.id,
         service_id: option.id,
