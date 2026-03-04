@@ -21,60 +21,68 @@ interface Plan {
   icon: React.ReactNode;
 }
 
-const PLANS: Plan[] = [
-  {
-    id: "basic",
-    name: "Basic",
-    days: 30,
-    price: 499.00,
-    displayPrice: "R$ 499,00",
-    features: [
-      "Acesso completo ao sistema",
-      "Suporte por WhatsApp Horário Comercial",
-      "1 mês de acesso",
-    ],
-    icon: <Rocket className="h-6 w-6" />,
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    days: 185,
-    price: 2694.60,
-    displayPrice: "6x de R$ 449,10",
-    discount: "10% de desconto",
-    features: [
-      "Acesso completo ao sistema",
-      "Suporte prioritário",
-      "6 meses de acesso",
-      "Relatórios avançados",
-      "10% de desconto incluso",
-    ],
-    popular: true,
-    icon: <Crown className="h-6 w-6" />,
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    days: 365,
-    price: 5089.80,
-    displayPrice: "12x de R$ 424,15",
-    discount: "15% de desconto",
-    features: [
-      "Acesso completo ao sistema",
-      "Suporte VIP 24/7",
-      "12 meses de acesso",
-      "Relatórios avançados",
-      "15% de desconto incluso",
-    ],
-    icon: <Building2 className="h-6 w-6" />,
-  },
-];
+// Tenant IDs com preços personalizados
+const JU_BIJOUX_TENANT_ID = "1761e19e-d04f-4ed2-8695-df1912441054";
+
+const getPlans = (tenantId?: string | null): Plan[] => {
+  const isJuBijoux = tenantId === JU_BIJOUX_TENANT_ID;
+
+  return [
+    {
+      id: "basic",
+      name: "Basic",
+      days: 30,
+      price: isJuBijoux ? 399.00 : 499.00,
+      displayPrice: isJuBijoux ? "R$ 399,00" : "R$ 499,00",
+      features: [
+        "Acesso completo ao sistema",
+        "Suporte por WhatsApp Horário Comercial",
+        "1 mês de acesso",
+      ],
+      icon: <Rocket className="h-6 w-6" />,
+    },
+    {
+      id: "pro",
+      name: "Pro",
+      days: 185,
+      price: isJuBijoux ? 2100.00 : 2694.60,
+      displayPrice: isJuBijoux ? "6x de R$ 350,00" : "6x de R$ 449,10",
+      discount: isJuBijoux ? "Preço especial" : "10% de desconto",
+      features: [
+        "Acesso completo ao sistema",
+        "Suporte prioritário",
+        "6 meses de acesso",
+        "Relatórios avançados",
+        isJuBijoux ? "Preço especial incluso" : "10% de desconto incluso",
+      ],
+      popular: true,
+      icon: <Crown className="h-6 w-6" />,
+    },
+    {
+      id: "enterprise",
+      name: "Enterprise",
+      days: 365,
+      price: isJuBijoux ? 3588.00 : 5089.80,
+      displayPrice: isJuBijoux ? "12x de R$ 299,00" : "12x de R$ 424,15",
+      discount: isJuBijoux ? "Preço especial" : "15% de desconto",
+      features: [
+        "Acesso completo ao sistema",
+        "Suporte VIP 24/7",
+        "12 meses de acesso",
+        "Relatórios avançados",
+        isJuBijoux ? "Preço especial incluso" : "15% de desconto incluso",
+      ],
+      icon: <Building2 className="h-6 w-6" />,
+    },
+  ];
+};
 
 export default function RenovarAssinatura() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const [loading, setLoading] = useState<string | null>(null);
+  const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
   const [tenantInfo, setTenantInfo] = useState<{
     name: string;
     subscription_ends_at: string | null;
@@ -116,6 +124,7 @@ export default function RenovarAssinatura() {
       if (data) {
         console.log('[RenovarAssinatura] Tenant info:', data);
         setTenantInfo(data);
+        setCurrentTenantId(tenantId);
       }
     };
 
@@ -240,7 +249,7 @@ export default function RenovarAssinatura() {
 
         {/* Cards de Planos */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {PLANS.map((plan) => (
+          {getPlans(currentTenantId).map((plan) => (
             <Card
               key={plan.id}
               className={`relative transition-all duration-300 hover:shadow-xl ${
