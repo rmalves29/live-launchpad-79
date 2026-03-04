@@ -154,8 +154,28 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     return <Navigate to="/auth" replace />;
   }
 
-  // VERIFICAÇÃO DE ASSINATURA: Se expirada, redirecionar para renovação
-  if (subscriptionExpired) {
+  // VERIFICAÇÃO DE ASSINATURA: Aguardar verificação antes de liberar acesso
+  if (subscriptionExpired === null && tenant?.id) {
+    // Ainda verificando assinatura - só mostrar loading no primeiro carregamento
+    if (!hasInitiallyLoaded) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      );
+    }
+    // Se já carregou antes, não mostrar loading mas também não liberar até verificar
+    // Usar o cache se disponível
+    const cached = subscriptionCache.get(tenant.id);
+    if (cached && (Date.now() - cached.checkedAt) < CACHE_DURATION) {
+      if (cached.expired) {
+        return <Navigate to="/renovar-assinatura" replace />;
+      }
+    }
+  }
+
+  // Se verificação concluiu e assinatura está expirada
+  if (subscriptionExpired === true) {
     return <Navigate to="/renovar-assinatura" replace />;
   }
 
