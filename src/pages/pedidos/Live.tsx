@@ -37,6 +37,7 @@ interface Product {
 interface Order {
   id: number;
   customer_phone: string;
+  customer_name: string | null;
   event_type: string;
   event_date: string;
   total_amount: number;
@@ -247,12 +248,12 @@ const Live = () => {
     return instagram.replace('@', '').trim();
   };
 
-  const getPhoneFromInstagram = async (instagram: string): Promise<string | null> => {
+  const getPhoneFromInstagram = async (instagram: string): Promise<{ phone: string; name: string | null; cep: string | null; street: string | null; number: string | null; complement: string | null; neighborhood: string | null; city: string | null; state: string | null } | '__BLOCKED__' | null> => {
     const normalized = normalizeInstagram(instagram);
     
     const { data, error } = await supabaseTenant
       .from('customers')
-      .select('phone, is_blocked')
+      .select('phone, name, is_blocked, cep, street, number, complement, neighborhood, city, state')
       .eq('instagram', normalized)
       .maybeSingle();
 
@@ -290,7 +291,7 @@ const Live = () => {
       return '__BLOCKED__';
     }
 
-    return data?.phone || null;
+    return data ? { phone: data.phone, name: data.name, cep: data.cep, street: data.street, number: data.number, complement: data.complement, neighborhood: data.neighborhood, city: data.city, state: data.state } : null;
   };
 
   const handleInstagramChange = (productId: number, value: string) => {
@@ -328,9 +329,9 @@ const Live = () => {
 
     try {
       // Buscar telefone do cliente pelo Instagram
-      const phone = await getPhoneFromInstagram(instagram);
+      const customerResult = await getPhoneFromInstagram(instagram);
       
-      if (phone === '__BLOCKED__') {
+      if (customerResult === '__BLOCKED__') {
         setProcessingIds(prev => {
           const newSet = new Set(prev);
           newSet.delete(product.id);
@@ -339,7 +340,7 @@ const Live = () => {
         return;
       }
       
-      if (!phone) {
+      if (!customerResult) {
         toast({
           title: 'Erro',
           description: `Cliente com Instagram @${normalizeInstagram(instagram)} não encontrado no cadastro`,
@@ -352,6 +353,8 @@ const Live = () => {
         });
         return;
       }
+
+      const phone = customerResult.phone;
 
       // Normalizar para armazenamento (sempre com 11 dígitos)
       const normalizedPhone = normalizeForStorage(phone);
@@ -401,6 +404,14 @@ const Live = () => {
             .from('orders')
             .insert([{
               customer_phone: normalizedPhone,
+              customer_name: customerResult.name || null,
+              customer_cep: customerResult.cep || null,
+              customer_street: customerResult.street || null,
+              customer_number: customerResult.number || null,
+              customer_complement: customerResult.complement || null,
+              customer_neighborhood: customerResult.neighborhood || null,
+              customer_city: customerResult.city || null,
+              customer_state: customerResult.state || null,
               event_type: 'LIVE',
               event_date: today,
               total_amount: subtotal,
@@ -465,6 +476,7 @@ const Live = () => {
           .from('carts')
           .insert({
             customer_phone: normalizedPhone,
+            customer_instagram: normalizeInstagram(instagram),
             event_type: 'LIVE',
             event_date: today,
             status: 'OPEN'
@@ -995,11 +1007,12 @@ const Live = () => {
                         <TableHeader>
                           <TableRow>
                             <TableHead className="w-8"></TableHead>
-                            <TableHead>ID</TableHead>
-                            <TableHead>Foto</TableHead>
-                            <TableHead>Telefone</TableHead>
-                            <TableHead>Data</TableHead>
-                            <TableHead>Total</TableHead>
+                             <TableHead>ID</TableHead>
+                             <TableHead>Foto</TableHead>
+                             <TableHead>Cliente</TableHead>
+                             <TableHead>Telefone</TableHead>
+                             <TableHead>Data</TableHead>
+                             <TableHead>Total</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Ações</TableHead>
                           </TableRow>
@@ -1037,6 +1050,11 @@ const Live = () => {
                                     )}
                                   </div>
                                 </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{order.customer_name || '-'}</span>
+                                  </div>
+                                </TableCell>
                                 <TableCell>{formatPhoneForDisplay(order.customer_phone)}</TableCell>
                                 <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
                                 <TableCell>{formatCurrency(order.total_amount)}</TableCell>
@@ -1058,7 +1076,7 @@ const Live = () => {
                               </TableRow>
                               {expandedOrders.has(order.id) && (
                                 <TableRow key={`${order.id}-items`}>
-                                  <TableCell colSpan={8} className="bg-muted/30 p-0">
+                                  <TableCell colSpan={9} className="bg-muted/30 p-0">
                                     <div className="p-3">
                                       <p className="text-xs font-medium text-muted-foreground mb-2">Produtos do pedido:</p>
                                       {(orderCartItems[order.id] || []).length === 0 ? (
