@@ -203,6 +203,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         
         // Extrair IDs únicos para batch queries
         const uniquePhones = [...new Set(orderData.map(o => o.customer_phone))];
+        const normalizedUniquePhones = [...new Set([...uniquePhones, ...uniquePhones.map(p => normalizeForStorage(p))])];
         const cartIds = orderData.filter(o => o.cart_id).map(o => o.cart_id!);
         const uniqueCartIds = [...new Set(cartIds)];
 
@@ -210,11 +211,15 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         const { data: allCustomers } = await supabaseTenant
           .from('customers')
           .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram, bling_contact_id')
-          .in('phone', uniquePhones);
+          .in('phone', normalizedUniquePhones);
 
         // Criar mapa de clientes por telefone para lookup O(1)
+        // Usa telefone normalizado para garantir match mesmo com diferenças de formato
         const customerMap = new Map<string, any>();
-        (allCustomers || []).forEach(c => customerMap.set(c.phone, c));
+        (allCustomers || []).forEach(c => {
+          customerMap.set(c.phone, c);
+          customerMap.set(normalizeForStorage(c.phone), c);
+        });
 
         // Batch query para cart_items (uma única query para todos os cart_ids)
         // NOTA: Usamos fromGlobal porque super_admins podem visualizar pedidos de outros tenants
@@ -254,7 +259,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         // 3. Montar resultado final com lookups O(1)
         const ordersWithDetails = orderData.map(order => ({
           ...order,
-          customer: customerMap.get(order.customer_phone) || undefined,
+          customer: customerMap.get(order.customer_phone) || customerMap.get(normalizeForStorage(order.customer_phone)) || undefined,
           cart_items: order.cart_id ? (cartItemsMap.get(order.cart_id) || []) : []
         }));
 
