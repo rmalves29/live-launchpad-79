@@ -199,13 +199,51 @@ async function updateBlingProductFiscalData(
   blingProductId: number,
   fiscalData: { default_unit?: string | null; default_ncm?: string | null }
 ): Promise<void> {
-  // ALWAYS send unidade (default 'UN') to ensure Bling product has it set
   const unitValue = fiscalData.default_unit || 'UN';
-  const payload: any = { unidade: unitValue };
-  
-  // Always include NCM if available
+
+  // Primeiro, buscar dados atuais do produto para fazer merge
+  let currentProduct: any = null;
+  try {
+    const { response: getRes, text: getText } = await blingFetchWithRetry(
+      `${BLING_API_URL}/produtos/${blingProductId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+      },
+      { label: `get-product-fiscal-${blingProductId}` }
+    );
+    if (getRes.ok) {
+      const parsed = JSON.parse(getText);
+      currentProduct = parsed?.data || parsed;
+    }
+  } catch (e: any) {
+    console.log(`[bling-sync-orders] Could not GET product ${blingProductId} before update:`, String(e?.message || e));
+  }
+
+  // Construir payload de atualização com dados existentes + novos
+  const payload: any = {
+    formato: currentProduct?.formato || 'S', // S = Simples (obrigatório para unidade funcionar)
+    unidade: unitValue,
+  };
+
+  // Preservar nome existente (campo obrigatório no PUT)
+  if (currentProduct?.nome) {
+    payload.nome = currentProduct.nome;
+  }
+
+  // NCM: enviar no campo tributacao E no campo raiz
   if (fiscalData.default_ncm) {
+    // Campo raiz para compatibilidade
     payload.ncm = fiscalData.default_ncm;
+    
+    // Tributação estruturada (formato v3 do Bling)
+    payload.tributacao = {
+      ...(currentProduct?.tributacao || {}),
+      ncm: fiscalData.default_ncm,
+    };
   }
 
   try {
@@ -223,7 +261,7 @@ async function updateBlingProductFiscalData(
       { label: `update-product-fiscal-${blingProductId}` }
     );
     if (response.ok) {
-      console.log(`[bling-sync-orders] Product ${blingProductId} fiscal data updated: UN=${unitValue}, NCM=${fiscalData.default_ncm || 'N/A'}`);
+      console.log(`[bling-sync-orders] Product ${blingProductId} fiscal data updated: formato=${payload.formato}, UN=${unitValue}, NCM=${fiscalData.default_ncm || 'N/A'}`);
     } else {
       console.log(`[bling-sync-orders] Failed to update product ${blingProductId} fiscal data: ${response.status} - ${text}`);
     }
