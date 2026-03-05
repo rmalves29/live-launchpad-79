@@ -10,7 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X, UserPlus } from 'lucide-react';
+import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X, UserPlus, CalendarIcon } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
   import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -88,6 +93,9 @@ const Live = () => {
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
   const [deletingItems, setDeletingItems] = useState<Set<number>>(new Set());
   const [blockedCustomerName, setBlockedCustomerName] = useState<string | null>(null);
+
+  // Estado para filtro de data nos pedidos
+  const [orderFilterDates, setOrderFilterDates] = useState<Date[]>([]);
 
   // Estado para cadastro de cliente
   const [newClientPhone, setNewClientPhone] = useState('');
@@ -221,14 +229,24 @@ const Live = () => {
     setCurrentPage(page);
   };
 
-  const loadOrders = async () => {
+   const loadOrders = async () => {
     try {
       setOrdersLoading(true);
-      const { data, error } = await supabaseTenant
+      let query = supabaseTenant
         .from('orders')
         .select('*')
         .eq('event_type', 'LIVE')
         .order('created_at', { ascending: false });
+
+      // Filtrar por datas selecionadas
+      if (orderFilterDates.length === 1) {
+        query = query.eq('event_date', format(orderFilterDates[0], 'yyyy-MM-dd'));
+      } else if (orderFilterDates.length > 1) {
+        const dateStrings = orderFilterDates.map(d => format(d, 'yyyy-MM-dd'));
+        query = query.in('event_date', dateStrings);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       
@@ -294,7 +312,7 @@ const Live = () => {
     if (tenant?.id) {
       loadOrders();
     }
-  }, [tenant?.id, debouncedOrderSearch]);
+  }, [tenant?.id, debouncedOrderSearch, orderFilterDates]);
 
   // Reset to first page when search or items per page changes
   useEffect(() => {
@@ -1048,15 +1066,50 @@ const Live = () => {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Search */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                    <Input
-                      placeholder="Buscar por telefone, código do produto ou nome..."
-                      value={orderSearchQuery}
-                      onChange={(e) => setOrderSearchQuery(e.target.value)}
-                      className="pl-9"
-                    />
+                  {/* Filtros: Busca + Data */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                      <Input
+                        placeholder="Buscar por telefone, código do produto ou nome..."
+                        value={orderSearchQuery}
+                        onChange={(e) => setOrderSearchQuery(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full sm:w-[260px] justify-start text-left font-normal",
+                            orderFilterDates.length === 0 && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {orderFilterDates.length === 0
+                            ? "Filtrar por data"
+                            : orderFilterDates.length === 1
+                              ? format(orderFilterDates[0], "dd/MM/yyyy")
+                              : `${orderFilterDates.length} dias selecionados`}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="end">
+                        <Calendar
+                          mode="multiple"
+                          selected={orderFilterDates}
+                          onSelect={(dates) => setOrderFilterDates(dates || [])}
+                          initialFocus
+                          className={cn("p-3 pointer-events-auto")}
+                          locale={ptBR}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {orderFilterDates.length > 0 && (
+                      <Button variant="ghost" size="icon" onClick={() => setOrderFilterDates([])}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
 
                   {ordersLoading ? (
