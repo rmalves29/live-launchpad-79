@@ -107,9 +107,10 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           .eq('id', data.id);
         if (error) throw error;
       } else {
+        // Use upsert to handle case where record already exists (unique constraint on tenant_id + provider)
         const { error } = await supabase
           .from('shipping_integrations')
-          .insert(payload);
+          .upsert(payload, { onConflict: 'tenant_id,provider' });
         if (error) throw error;
       }
 
