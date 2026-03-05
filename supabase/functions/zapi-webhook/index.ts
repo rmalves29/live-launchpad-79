@@ -772,7 +772,7 @@ serve(async (req) => {
       }
 
       // Find or create order for this cart
-      const order = await findOrCreateOrder(supabase, tenantId, normalizedPhone, cart.id, groupName, eventType);
+      const order = await findOrCreateOrder(supabase, tenantId, normalizedPhone, cart.id, groupName, eventType, customer?.name || null);
 
       // ATOMIC UPSERT: Prevents race conditions when multiple messages arrive simultaneously
       // Uses PostgreSQL's ON CONFLICT to handle concurrent inserts safely
@@ -1294,7 +1294,8 @@ async function findOrCreateOrder(
   phone: string,
   cartId: number,
   groupName: string,
-  eventType: string
+  eventType: string,
+  customerName?: string | null
 ) {
   const today = getBrasiliaDateISO();
 
@@ -1395,11 +1396,32 @@ async function findOrCreateOrder(
   // Create new order with correct event type
   console.log(`[zapi-webhook] 🆕 Creating new order - tenant: ${tenantId}, phone: ${phone}, cartId: ${cartId}, eventType: ${eventType}`);
   
+  // Buscar dados do cliente cadastrado para preencher no pedido
+  let customerData: any = null;
+  if (customerName) {
+    const { data: custData } = await supabase
+      .from('customers')
+      .select('name, cep, street, number, complement, neighborhood, city, state')
+      .eq('tenant_id', tenantId)
+      .eq('phone', phone)
+      .limit(1)
+      .maybeSingle();
+    customerData = custData;
+  }
+
   const { data: newOrder, error } = await supabase
     .from('orders')
     .insert({
       tenant_id: tenantId,
       customer_phone: phone,
+      customer_name: customerData?.name || customerName || null,
+      customer_cep: customerData?.cep || null,
+      customer_street: customerData?.street || null,
+      customer_number: customerData?.number || null,
+      customer_complement: customerData?.complement || null,
+      customer_neighborhood: customerData?.neighborhood || null,
+      customer_city: customerData?.city || null,
+      customer_state: customerData?.state || null,
       event_date: today,
       event_type: eventType,
       total_amount: 0,
