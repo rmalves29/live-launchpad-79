@@ -1307,7 +1307,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
       setSearchTerm('');
     };
 
-    // Filtrar pedidos por telefone ou número do pedido
+    // Filtrar pedidos por telefone, nome, CPF, Instagram ou número do pedido
     const filteredOrders = orders.filter(order => {
       if (!searchTerm) return true;
       
@@ -1319,6 +1319,29 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         const tenantOrderNum = String(order.tenant_order_number || '');
         const orderId = String(order.id);
         if (tenantOrderNum === orderNumber || orderId === orderNumber) {
+          return true;
+        }
+      }
+
+      // Buscar por nome do cliente
+      if (order.customer_name && order.customer_name.toLowerCase().includes(search)) {
+        return true;
+      }
+
+      // Buscar por @ do Instagram
+      if (search.startsWith('@') || !search.match(/^\d/)) {
+        const instagramHandle = order.customer?.instagram?.toLowerCase()?.replace(/^@/, '') || '';
+        const searchHandle = search.replace(/^@/, '');
+        if (instagramHandle && instagramHandle.includes(searchHandle)) {
+          return true;
+        }
+      }
+
+      // Buscar por CPF
+      if (order.customer?.cpf) {
+        const cleanCpf = order.customer.cpf.replace(/\D/g, '');
+        const cleanSearch = search.replace(/\D/g, '');
+        if (cleanCpf.includes(cleanSearch) || order.customer.cpf.includes(search)) {
           return true;
         }
       }
@@ -1493,7 +1516,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
               <div className="flex items-center space-x-2">
                 <Search className="h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por telefone ou nº do pedido..."
+                  placeholder="Buscar por nome, telefone, CPF, @ Instagram ou nº do pedido..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="max-w-sm"
