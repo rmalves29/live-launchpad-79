@@ -1662,6 +1662,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       <TableCell className="px-2 py-2">
                         <div className="flex flex-col gap-0.5">
                           <span className="text-xs font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
+                          {order.customer?.instagram && (
+                            <span className="text-[10px] text-muted-foreground">@{order.customer.instagram.replace(/^@/, '')}</span>
+                          )}
                           {(() => {
                             const normalizedPhone = normalizeForStorage(order.customer_phone);
                             const count = orderCountByPhone[normalizedPhone] || 1;
