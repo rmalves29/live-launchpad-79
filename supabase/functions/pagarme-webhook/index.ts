@@ -377,6 +377,20 @@ async function markOrderAsCancelled(
       return;
     }
 
+    // GUARD: Se o pedido já está pago, NÃO cancelar automaticamente
+    // Isso evita que um order.closed por falha de validação (ex: CPF inválido)
+    // cancele um pedido que já foi pago com sucesso em outra tentativa
+    if (existingOrder.is_paid) {
+      console.log(`[pagarme-webhook] Order ${orderId} is already PAID — skipping cancellation (reason: ${reason})`);
+      await sb.from("webhook_logs").insert({
+        webhook_type: "pagarme_cancel_skipped_paid",
+        status_code: 200,
+        payload: { order_id: orderId, reason, webhook_event_id: webhookEventId },
+        tenant_id: existingOrder.tenant_id || tenantId,
+      });
+      return;
+    }
+
     const orderTenantId = existingOrder.tenant_id || tenantId;
 
     const { error } = await sb

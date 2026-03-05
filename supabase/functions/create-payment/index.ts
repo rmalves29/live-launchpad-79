@@ -588,6 +588,46 @@ serve(async (req) => {
       const now = new Date();
       const boletoDueAt = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
+      // Validar CPF antes de enviar ao Pagar.me
+      const cpfDigits = (payload.customerData.cpf || "").replace(/\D/g, "");
+      if (cpfDigits && cpfDigits.length === 11) {
+        // Validação algorítmica do CPF
+        const allSame = cpfDigits.split("").every((d: string) => d === cpfDigits[0]);
+        if (allSame) {
+          return new Response(JSON.stringify({ error: "CPF inválido. Verifique o número informado." }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        let sum = 0;
+        for (let i = 0; i < 9; i++) sum += parseInt(cpfDigits[i]) * (10 - i);
+        let d1 = 11 - (sum % 11);
+        if (d1 >= 10) d1 = 0;
+        if (d1 !== parseInt(cpfDigits[9])) {
+          return new Response(JSON.stringify({ error: "CPF inválido. Verifique o número informado." }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        sum = 0;
+        for (let i = 0; i < 10; i++) sum += parseInt(cpfDigits[i]) * (11 - i);
+        let d2 = 11 - (sum % 11);
+        if (d2 >= 10) d2 = 0;
+        if (d2 !== parseInt(cpfDigits[10])) {
+          return new Response(JSON.stringify({ error: "CPF inválido. Verifique o número informado." }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } else if (cpfDigits && cpfDigits.length !== 11) {
+        return new Response(JSON.stringify({ error: "CPF deve ter 11 dígitos." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const validCpf = (cpfDigits && cpfDigits.length === 11) ? cpfDigits : "";
+
       const pagarmeBody = {
         items,
         customer: {
@@ -595,7 +635,7 @@ serve(async (req) => {
           type: "individual",
           name: payload.customerData.name,
           email: payload.customerData.email || `${payload.customerData.phone}@checkout.local`,
-          document: payload.customerData.cpf || "00000000000",
+          document: validCpf || "00000000000",
           phones: {
             mobile_phone: {
               country_code: "55",
