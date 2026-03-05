@@ -1328,8 +1328,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         }
       }
 
-      // Buscar por nome do cliente
-      if (order.customer_name && order.customer_name.toLowerCase().includes(search)) {
+      // Buscar por nome do cliente (campo do pedido ou cadastro do cliente)
+      const customerName = (order.customer_name || order.customer?.name || '').toLowerCase();
+      if (customerName.includes(search)) {
         return true;
       }
 
@@ -1342,11 +1343,11 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         }
       }
 
-      // Buscar por CPF
+      // Buscar por CPF (somente quando busca contém dígitos)
       if (order.customer?.cpf) {
         const cleanCpf = order.customer.cpf.replace(/\D/g, '');
         const cleanSearch = search.replace(/\D/g, '');
-        if (cleanCpf.includes(cleanSearch) || order.customer.cpf.includes(search)) {
+        if (cleanSearch.length > 0 && (cleanCpf.includes(cleanSearch) || order.customer.cpf.toLowerCase().includes(search))) {
           return true;
         }
       }
