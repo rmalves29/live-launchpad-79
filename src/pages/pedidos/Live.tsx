@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X, UserPlus } from 'lucide-react';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
   import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -88,6 +88,64 @@ const Live = () => {
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
   const [deletingItems, setDeletingItems] = useState<Set<number>>(new Set());
   const [blockedCustomerName, setBlockedCustomerName] = useState<string | null>(null);
+
+  // Estado para cadastro de cliente
+  const [newClientPhone, setNewClientPhone] = useState('');
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientInstagram, setNewClientInstagram] = useState('');
+  const [savingClient, setSavingClient] = useState(false);
+
+  const handleCreateClient = async () => {
+    if (!newClientPhone.trim() || !newClientName.trim()) {
+      toast({ title: 'Preencha telefone e nome', variant: 'destructive' });
+      return;
+    }
+
+    const tenantId = tenant?.id || profile?.tenant_id;
+    if (!tenantId) {
+      toast({ title: 'Tenant não identificado', variant: 'destructive' });
+      return;
+    }
+
+    setSavingClient(true);
+    try {
+      const normalizedPhone = normalizeForStorage(newClientPhone.trim());
+
+      // Verificar se já existe
+      const { data: existing } = await supabaseTenant
+        .from('customers')
+        .select('id')
+        .eq('phone', normalizedPhone);
+
+      if (existing && existing.length > 0) {
+        toast({ title: 'Cliente já cadastrado com este telefone', variant: 'destructive' });
+        setSavingClient(false);
+        return;
+      }
+
+      const instagramValue = newClientInstagram.trim().replace(/^@/, '') || null;
+
+      const { error } = await supabaseTenant
+        .from('customers')
+        .insert([{
+          phone: normalizedPhone,
+          name: newClientName.trim(),
+          instagram: instagramValue,
+        }]);
+
+      if (error) throw error;
+
+      toast({ title: '✅ Cliente cadastrado com sucesso!' });
+      setNewClientPhone('');
+      setNewClientName('');
+      setNewClientInstagram('');
+    } catch (err: any) {
+      console.error('Erro ao cadastrar cliente:', err);
+      toast({ title: 'Erro ao cadastrar', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingClient(false);
+    }
+  };
 
   const loadProducts = async () => {
     try {
@@ -772,9 +830,13 @@ const Live = () => {
           </div>
 
           <Tabs defaultValue="vendas" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="vendas">Lançar Vendas</TabsTrigger>
               <TabsTrigger value="pedidos">Pedidos Live</TabsTrigger>
+              <TabsTrigger value="cadastrar" className="flex items-center gap-1">
+                <UserPlus className="h-4 w-4" />
+                Cadastrar Cliente
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="vendas" className="space-y-4">
@@ -1125,6 +1187,47 @@ const Live = () => {
                       </Table>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="cadastrar" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <UserPlus className="h-5 w-5" />
+                    Cadastrar Novo Cliente
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input
+                      placeholder="Telefone (obrigatório)"
+                      value={newClientPhone}
+                      onChange={(e) => setNewClientPhone(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Nome completo (obrigatório)"
+                      value={newClientName}
+                      onChange={(e) => setNewClientName(e.target.value)}
+                    />
+                    <Input
+                      placeholder="@usuario (Instagram)"
+                      value={newClientInstagram}
+                      onChange={(e) => setNewClientInstagram(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex justify-end mt-4">
+                    <Button onClick={handleCreateClient} disabled={savingClient}>
+                      {savingClient ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <UserPlus className="h-4 w-4 mr-2" />
+                      )}
+                      Cadastrar Cliente
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
