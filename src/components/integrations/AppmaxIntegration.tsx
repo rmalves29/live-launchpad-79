@@ -21,6 +21,7 @@ interface IntegrationData {
   environment: string;
   is_active: boolean;
   appmax_customer_id: number | null;
+  pix_discount_percent: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -31,6 +32,7 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
   const [formData, setFormData] = useState({
     access_token: '',
     environment: 'production' as 'sandbox' | 'production',
+    pix_discount_percent: 0,
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -82,6 +84,7 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
       setFormData({
         access_token: integration.access_token || '',
         environment: integration.environment as 'sandbox' | 'production',
+        pix_discount_percent: integration.pix_discount_percent || 0,
       });
     }
   }, [integration]);
@@ -113,6 +116,7 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
         access_token: formData.access_token || null,
         environment: formData.environment,
         is_active: true,
+        pix_discount_percent: formData.pix_discount_percent || 0,
         updated_at: new Date().toISOString(),
       };
 
@@ -360,6 +364,30 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
                 <strong>Importante:</strong> Ao salvar, o App Max será ativado e outras integrações de pagamento serão desativadas.
               </AlertDescription>
             </Alert>
+
+            {/* Desconto PIX */}
+            <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+              <h4 className="font-medium flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Desconto PIX
+              </h4>
+              <div className="space-y-2">
+                <Label htmlFor="appmax_pix_discount_percent">Desconto PIX (%)</Label>
+                <Input
+                  id="appmax_pix_discount_percent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={formData.pix_discount_percent}
+                  onChange={(e) => setFormData({ ...formData, pix_discount_percent: parseFloat(e.target.value) || 0 })}
+                  placeholder="Ex: 5"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Percentual de desconto aplicado automaticamente quando o cliente escolher PIX no checkout. 0 = sem desconto.
+                </p>
+              </div>
+            </div>
 
             <div className="flex gap-2">
               <Button
