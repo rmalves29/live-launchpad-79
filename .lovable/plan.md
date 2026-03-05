@@ -1,153 +1,62 @@
 
-# Plano: Exportar Produtos do Sistema para o Bling ERP
 
-## Objetivo
-Implementar a funcionalidade de enviar produtos cadastrados no sistema para o Bling ERP via API v3, seguindo o mesmo padrão já utilizado para sincronização de pedidos.
+## Plano: Desconto PIX configurável para todas as integrações de pagamento
 
-## Arquitetura da Solução
+### Visão Geral
+Adicionar um campo configurável de desconto PIX em cada integração de pagamento (Mercado Pago, Pagar.me, App Max), um seletor de forma de pagamento (PIX ou Cartão) no checkout público, e aplicar o desconto automaticamente sobre o subtotal dos produtos quando PIX for selecionado.
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                    Frontend (React)                             │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  BlingProductsSyncPanel.tsx                              │   │
-│  │  - Botão "Exportar Produtos para Bling"                  │   │
-│  │  - Contagem de produtos pendentes/sincronizados          │   │
-│  │  - Feedback visual de progresso                          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Supabase Edge Function                             │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  bling-sync-products/index.ts                            │   │
-│  │  - Ações: send_product, sync_all, fetch_products         │   │
-│  │  - Valida token OAuth (refresh automático)               │   │
-│  │  - Envia POST /produtos para Bling API v3                │   │
-│  │  - Atualiza bling_product_id na tabela products          │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Bling API v3                                       │
-│  - POST https://www.bling.com.br/Api/v3/produtos                │
-│  - Campos: nome, codigo, tipo, situacao, formato, preco         │
-└─────────────────────────────────────────────────────────────────┘
-```
+### 1. Banco de Dados — Adicionar coluna `pix_discount_percent`
 
-## Etapas de Implementação
-
-### 1. Migração de Banco de Dados
-Adicionar coluna `bling_product_id` na tabela `products` para rastrear produtos já exportados:
+Criar migration para adicionar o campo nas 3 tabelas de integração:
 
 ```sql
-ALTER TABLE public.products 
-ADD COLUMN IF NOT EXISTS bling_product_id BIGINT DEFAULT NULL;
-
-COMMENT ON COLUMN public.products.bling_product_id IS 'ID do produto no Bling ERP após sincronização';
+ALTER TABLE integration_pagarme ADD COLUMN pix_discount_percent numeric DEFAULT 0;
+ALTER TABLE integration_mp ADD COLUMN pix_discount_percent numeric DEFAULT 0;
+ALTER TABLE integration_appmax ADD COLUMN pix_discount_percent numeric DEFAULT 0;
 ```
 
-### 2. Criar Edge Function `bling-sync-products`
-Nova função em `supabase/functions/bling-sync-products/index.ts`:
+Também atualizar a trigger `validate_order_total_on_payment` para reconhecer a tag `[PIX_DISCOUNT]` nas observações e não corrigir indevidamente o total quando houver desconto PIX.
 
-**Funcionalidades:**
-- `send_product`: Envia um produto específico para o Bling
-- `sync_all`: Envia todos os produtos ativos que ainda não têm `bling_product_id`
-- `fetch_products`: Busca produtos do Bling (para referência)
+### 2. Telas de Integração — Campo de configuração
 
-**Payload para Bling API v3:**
-```json
-{
-  "nome": "Nome do Produto",
-  "codigo": "SKU-001",
-  "tipo": "P",
-  "situacao": "A",
-  "formato": "S",
-  "preco": 99.90
-}
-```
+Adicionar input numérico "Desconto PIX (%)" nos 3 componentes:
+- `PagarMeIntegration.tsx` — campo `pix_discount_percent`
+- `PaymentIntegrations.tsx` (Mercado Pago) — campo `pix_discount_percent`
+- `AppmaxIntegration.tsx` — campo `pix_discount_percent`
 
-**Mapeamento de campos:**
-| Sistema Local | Bling API v3 |
-|---------------|--------------|
-| `name` | `nome` |
-| `code` | `codigo` |
-| `price` | `preco` |
-| `is_active` | `situacao` (A/I) |
-| - | `tipo` = "P" (Produto) |
-| - | `formato` = "S" (Simples) |
+Cada um salva/carrega o valor da respectiva tabela.
 
-### 3. Criar Componente `BlingProductsSyncPanel`
-Novo componente em `src/components/integrations/BlingProductsSyncPanel.tsx`:
+### 3. Checkout Público (`PublicCheckout.tsx`)
 
-**Interface:**
-- Exibe contagem de produtos pendentes de sincronização
-- Exibe contagem de produtos já sincronizados
-- Botão "Exportar para Bling" que envia produtos em lote
-- Feedback visual com toast de sucesso/erro
-- Tratamento de erros de escopo OAuth
+**Buscar config de desconto PIX**: Ao carregar o tenant, consultar as 3 tabelas de integração ativas para obter o `pix_discount_percent` configurado (usa a mesma lógica de prioridade: AppMax > Pagar.me > MP).
 
-### 4. Integrar Painel na Página de Integrações Bling
-Atualizar `src/components/integrations/BlingIntegration.tsx`:
+**Seletor de forma de pagamento**: Após as opções de frete e antes do resumo, exibir um radio group com:
+- PIX (com badge mostrando "X% OFF" se configurado)
+- Cartão de Crédito
 
-- Adicionar condição para exibir `BlingProductsSyncPanel` quando:
-  - `sync_products` estiver habilitado
-  - Integração estiver autorizada (OAuth válido)
+**Cálculo do desconto**: Quando PIX for selecionado, aplicar `pix_discount_percent` sobre o subtotal dos produtos (excluindo frete e cupom). Exibir o valor original riscado e o valor com desconto.
 
-### 5. Atualizar Tipos TypeScript
-Atualizar `src/integrations/supabase/types.ts` não é necessário (gerado automaticamente pela API do Supabase).
+**Enviar ao backend**: Incluir `payment_method` e `pix_discount` no payload enviado ao `create-payment`.
 
----
+### 4. Edge Function `create-payment`
 
-## Detalhes Técnicos
+- Receber `payment_method` e `pix_discount` no payload
+- Recalcular total: `productsTotal - pixDiscount - couponDiscount + shippingCost`
+- Adicionar tag `[PIX_DISCOUNT] R$ X.XX` na observação do pedido
+- Passar o total correto para o gateway de pagamento
 
-### Edge Function: Estrutura Principal
+### 5. Trigger `validate_order_total_on_payment`
 
-```typescript
-// Ações suportadas
-switch (action) {
-  case 'send_product':
-    // Envia produto específico por ID
-    break;
-  case 'sync_all':
-    // Busca produtos sem bling_product_id e envia em lote
-    break;
-  case 'fetch_products':
-    // Busca produtos do Bling (GET /produtos)
-    break;
-}
-```
+Atualizar para extrair `[PIX_DISCOUNT]` da observação via regex, subtraindo do total esperado para evitar "correções" indevidas.
 
-### Tratamento de Erros
-- Token expirado: refresh automático antes de enviar
-- Produto duplicado: buscar ID existente no Bling pelo código
-- Escopo insuficiente: retornar mensagem clara para o usuário
+### Resumo de arquivos afetados
 
-### Rate Limiting
-- Bling limita a 3 requisições por segundo
-- Usar delay de 350ms entre requisições (mesmo padrão dos pedidos)
+| Arquivo | Alteração |
+|---|---|
+| Migration SQL | Adicionar `pix_discount_percent` em 3 tabelas + atualizar trigger |
+| `PagarMeIntegration.tsx` | Campo de config desconto PIX |
+| `PaymentIntegrations.tsx` | Campo de config desconto PIX |
+| `AppmaxIntegration.tsx` | Campo de config desconto PIX |
+| `PublicCheckout.tsx` | Seletor PIX/Cartão + cálculo desconto + UI |
+| `create-payment/index.ts` | Receber/processar desconto PIX |
 
----
-
-## Arquivos a Serem Criados/Modificados
-
-| Arquivo | Ação |
-|---------|------|
-| `supabase/functions/bling-sync-products/index.ts` | Criar |
-| `src/components/integrations/BlingProductsSyncPanel.tsx` | Criar |
-| `src/components/integrations/BlingIntegration.tsx` | Modificar |
-| Migração SQL (via ferramenta) | Executar |
-
----
-
-## Fluxo de Uso
-
-1. Usuário acessa **Integrações > Bling ERP**
-2. Ativa o toggle **"Produtos"** nos módulos de sincronização
-3. Novo painel **"Sincronização de Produtos"** aparece
-4. Usuário clica em **"Exportar para Bling"**
-5. Sistema envia produtos ativos sem `bling_product_id`
-6. Após sucesso, coluna `bling_product_id` é atualizada
-7. Na próxima exportação, apenas produtos novos são enviados
