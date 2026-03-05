@@ -187,8 +187,10 @@ serve(async (req) => {
     return new Response(JSON.stringify({ success: true, shipping_options: shippingOptions, provider: "correios" }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
-    console.error("[correios-shipping] Error:", error);
-    return new Response(JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error("[correios-shipping] Error:", errMsg);
+    console.error("[correios-shipping] Stack:", error instanceof Error ? error.stack : "no stack");
+    return new Response(JSON.stringify({ success: false, error: errMsg }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
