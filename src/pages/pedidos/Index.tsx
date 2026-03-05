@@ -1314,10 +1314,11 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
     // Filtrar pedidos por telefone, nome, CPF, Instagram ou número do pedido
     const filteredOrders = orders.filter(order => {
-      if (!searchTerm) return true;
-      
       const search = searchTerm.trim().toLowerCase();
-      
+      if (!search) return true;
+
+      const numericSearch = search.replace(/\D/g, '');
+
       // Buscar por número do pedido (com ou sem #)
       const orderNumber = search.replace('#', '');
       if (orderNumber && !isNaN(Number(orderNumber))) {
@@ -1328,38 +1329,43 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         }
       }
 
-      // Buscar por nome do cliente (campo do pedido ou cadastro do cliente)
-      const customerName = (order.customer_name || order.customer?.name || '').toLowerCase();
-      if (customerName.includes(search)) {
+      // Buscar por nome do cliente (campo do pedido e/ou cadastro do cliente)
+      const customerNames = [order.customer_name, order.customer?.name]
+        .filter(Boolean)
+        .map(name => String(name).toLowerCase());
+
+      if (customerNames.some(name => name.includes(search))) {
         return true;
       }
 
-      // Buscar por @ do Instagram
-      if (search.startsWith('@') || !search.match(/^\d/)) {
-        const instagramHandle = order.customer?.instagram?.toLowerCase()?.replace(/^@/, '') || '';
-        const searchHandle = search.replace(/^@/, '');
-        if (instagramHandle && instagramHandle.includes(searchHandle)) {
+      // Buscar por @ do Instagram (com ou sem @)
+      const instagramHandle = (order.customer?.instagram || '').toLowerCase().replace(/^@/, '');
+      const searchHandle = search.replace(/^@/, '');
+      if (searchHandle && instagramHandle.includes(searchHandle)) {
+        return true;
+      }
+
+      // Buscar por CPF (somente quando busca contém dígitos)
+      if (numericSearch.length > 0 && order.customer?.cpf) {
+        const cleanCpf = order.customer.cpf.replace(/\D/g, '');
+        if (cleanCpf.includes(numericSearch) || order.customer.cpf.toLowerCase().includes(search)) {
           return true;
         }
       }
 
-      // Buscar por CPF (somente quando busca contém dígitos)
-      if (order.customer?.cpf) {
-        const cleanCpf = order.customer.cpf.replace(/\D/g, '');
-        const cleanSearch = search.replace(/\D/g, '');
-        if (cleanSearch.length > 0 && (cleanCpf.includes(cleanSearch) || order.customer.cpf.toLowerCase().includes(search))) {
-          return true;
-        }
+      // Buscar por telefone (somente quando busca contém dígitos)
+      if (numericSearch.length > 0) {
+        const normalizedSearch = normalizeForStorage(numericSearch);
+        const normalizedPhone = normalizeForStorage(order.customer_phone);
+
+        return (
+          normalizedPhone.includes(normalizedSearch) ||
+          order.customer_phone.includes(searchTerm) ||
+          formatPhoneForDisplay(order.customer_phone).includes(searchTerm)
+        );
       }
-      
-      // Normalizar o termo de busca e o telefone do pedido
-      const normalizedSearch = normalizeForStorage(searchTerm);
-      const normalizedPhone = normalizeForStorage(order.customer_phone);
-      
-      // Buscar também sem normalização (para busca parcial)
-      return normalizedPhone.includes(normalizedSearch) || 
-            order.customer_phone.includes(searchTerm) ||
-            formatPhoneForDisplay(order.customer_phone).includes(searchTerm);
+
+      return false;
     });
 
     // Contar pedidos por telefone para identificar clientes com múltiplos pedidos
