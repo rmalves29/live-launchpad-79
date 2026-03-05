@@ -149,7 +149,7 @@ const PublicCheckout = () => {
 
   // Frete
   const [shippingOptions, setShippingOptions] = useState<any[]>([]);
-  const [selectedShipping, setSelectedShipping] = useState('retirada');
+  const [selectedShipping, setSelectedShipping] = useState('');
   const [selectedShippingData, setSelectedShippingData] = useState<any>(null);
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [handlingDays, setHandlingDays] = useState<number>(3);
@@ -642,6 +642,26 @@ const PublicCheckout = () => {
     toast({ title: 'Cupom Removido', description: 'O cupom foi removido do pedido' });
   };
 
+  const isValidCPF = (cpf: string): boolean => {
+    const digits = cpf.replace(/\D/g, '');
+    if (digits.length !== 11) return false;
+    // Rejeitar CPFs com todos os dígitos iguais
+    if (digits.split('').every(d => d === digits[0])) return false;
+    // Validar primeiro dígito verificador
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += parseInt(digits[i]) * (10 - i);
+    let d1 = 11 - (sum % 11);
+    if (d1 >= 10) d1 = 0;
+    if (d1 !== parseInt(digits[9])) return false;
+    // Validar segundo dígito verificador
+    sum = 0;
+    for (let i = 0; i < 10; i++) sum += parseInt(digits[i]) * (11 - i);
+    let d2 = 11 - (sum % 11);
+    if (d2 >= 10) d2 = 0;
+    if (d2 !== parseInt(digits[10])) return false;
+    return true;
+  };
+
   const processMultipleOrdersPayment = async (ordersToProcess: Order[]) => {
     if (!tenant) {
       toast({ title: 'Erro', description: 'Loja não identificada', variant: 'destructive' });
@@ -655,7 +675,18 @@ const PublicCheckout = () => {
       toast({ title: 'CPF obrigatório', description: 'Informe um CPF válido (11 dígitos) para finalizar o pedido', variant: 'destructive' });
       return;
     }
+    if (!isValidCPF(cpfDigits)) {
+      setCpfError(true);
+      toast({ title: 'CPF inválido', description: 'O CPF informado não é válido. Verifique os números digitados.', variant: 'destructive' });
+      return;
+    }
     setCpfError(false);
+
+    // Validação: frete deve ser selecionado (não pode ficar sem seleção)
+    if (!selectedShipping || selectedShipping === '') {
+      toast({ title: 'Selecione o frete', description: 'Escolha uma opção de frete antes de prosseguir com o pagamento.', variant: 'destructive' });
+      return;
+    }
 
     // Validação dos outros campos obrigatórios
     const missingFields: string[] = [];
@@ -676,7 +707,7 @@ const PublicCheckout = () => {
 
     try {
       let shippingCost = 0;
-      if (selectedShipping !== 'retirada') {
+      if (selectedShipping && selectedShipping !== 'retirada') {
         const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
         shippingCost = selectedOption ? parseFloat(selectedOption.custom_price || selectedOption.price) : 0;
       }
@@ -695,7 +726,7 @@ const PublicCheckout = () => {
       }
 
       let shippingData = null;
-      if (selectedShipping !== 'retirada') {
+      if (selectedShipping && selectedShipping !== 'retirada') {
         const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
         if (selectedOption) {
           shippingData = {
@@ -1371,11 +1402,23 @@ const PublicCheckout = () => {
                             setCustomerData({...customerData, cpf: formatCPF(e.target.value)});
                             if (cpfError) setCpfError(false);
                           }}
+                          onBlur={() => {
+                            const digits = (customerData.cpf || '').replace(/\D/g, '');
+                            if (digits.length === 11 && !isValidCPF(digits)) {
+                              setCpfError(true);
+                            } else if (digits.length > 0 && digits.length < 11) {
+                              setCpfError(true);
+                            }
+                          }}
                           maxLength={14}
                           className={cpfError ? 'border-red-500 focus-visible:ring-red-500' : ''}
                         />
                         {cpfError && (
-                          <p className="text-xs text-red-500 mt-1">CPF obrigatório para gerar etiqueta de envio</p>
+                          <p className="text-xs text-red-500 mt-1">
+                            {(customerData.cpf?.replace(/\D/g, '') || '').length === 11
+                              ? 'CPF inválido. Verifique os números digitados.'
+                              : 'CPF obrigatório (11 dígitos) para gerar etiqueta de envio'}
+                          </p>
                         )}
                       </div>
                       <div>
@@ -1479,8 +1522,11 @@ const PublicCheckout = () => {
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
                       <Truck className="h-4 w-4" />
-                      Opções de Frete
+                      Opções de Frete *
                     </h4>
+                    {!selectedShipping && (
+                      <p className="text-xs text-red-500 mb-2">Selecione uma opção de frete para continuar</p>
+                    )}
                     <div className="space-y-2">
                       {shippingOptions.map((option) => (
                         <div key={option.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
@@ -1598,7 +1644,7 @@ const PublicCheckout = () => {
                       <span className="text-green-600">
                         {formatCurrency(
                           Math.max(0, combinedSubtotal - couponDiscount) +
-                          (selectedShipping !== 'retirada' ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || '0') : 0)
+                          (selectedShipping && selectedShipping !== 'retirada' ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || shippingOptions.find(opt => opt.id === selectedShipping)?.price || '0') : 0)
                         )}
                       </span>
                     </div>
