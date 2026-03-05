@@ -26,6 +26,7 @@ interface IntegrationData {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  pix_discount_percent: number | null;
 }
 
 export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsProps) {
@@ -38,6 +39,7 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
     client_secret: '',
     webhook_secret: '',
     environment: 'production' as 'sandbox' | 'production',
+    pix_discount_percent: 0,
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -70,6 +72,7 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
         client_secret: integration.client_secret || '',
         webhook_secret: integration.webhook_secret || '',
         environment: integration.environment as 'sandbox' | 'production',
+        pix_discount_percent: integration.pix_discount_percent || 0,
       });
     }
   }, [integration]);
@@ -94,6 +97,7 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
         webhook_secret: formData.webhook_secret || null,
         environment: formData.environment,
         is_active: true,
+        pix_discount_percent: formData.pix_discount_percent || 0,
         updated_at: new Date().toISOString(),
       };
 
@@ -358,6 +362,30 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
                 No modo Sandbox, os pagamentos são simulados e não há cobrança real.
               </AlertDescription>
             </Alert>
+
+            {/* Desconto PIX */}
+            <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+              <h4 className="font-medium flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Desconto PIX
+              </h4>
+              <div className="space-y-2">
+                <Label htmlFor="mp_pix_discount_percent">Desconto PIX (%)</Label>
+                <Input
+                  id="mp_pix_discount_percent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={formData.pix_discount_percent}
+                  onChange={(e) => setFormData({ ...formData, pix_discount_percent: parseFloat(e.target.value) || 0 })}
+                  placeholder="Ex: 5"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Percentual de desconto aplicado automaticamente quando o cliente escolher PIX no checkout. 0 = sem desconto.
+                </p>
+              </div>
+            </div>
 
             <div className="flex gap-2">
               <Button

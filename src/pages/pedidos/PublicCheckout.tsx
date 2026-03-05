@@ -156,6 +156,9 @@ const PublicCheckout = () => {
 
   // Pagamento
   const [loadingPayment, setLoadingPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
+  const [pixDiscountPercent, setPixDiscountPercent] = useState(0);
+  const [pixDiscountValue, setPixDiscountValue] = useState(0);
 
   // Cupom
   const [couponCode, setCouponCode] = useState('');
@@ -257,6 +260,36 @@ const PublicCheckout = () => {
     };
     loadHandlingDays();
   }, []);
+
+  // Carregar configuração de desconto PIX da integração de pagamento ativa
+  useEffect(() => {
+    const loadPixDiscount = async () => {
+      if (!tenant?.id) return;
+      try {
+        // Ordem de prioridade: AppMax > Pagar.me > Mercado Pago
+        const [appmaxRes, pagarmeRes, mpRes] = await Promise.all([
+          supabase.from('integration_appmax').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_pagarme').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_mp').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+        ]);
+
+        let discount = 0;
+        if (appmaxRes.data?.is_active && appmaxRes.data?.pix_discount_percent) {
+          discount = appmaxRes.data.pix_discount_percent;
+        } else if (pagarmeRes.data?.is_active && pagarmeRes.data?.pix_discount_percent) {
+          discount = pagarmeRes.data.pix_discount_percent;
+        } else if (mpRes.data?.is_active && mpRes.data?.pix_discount_percent) {
+          discount = mpRes.data.pix_discount_percent;
+        }
+        
+        console.log('[PublicCheckout] Desconto PIX configurado:', discount + '%');
+        setPixDiscountPercent(discount);
+      } catch (error) {
+        console.error('Erro ao carregar desconto PIX:', error);
+      }
+    };
+    loadPixDiscount();
+  }, [tenant?.id]);
 
   // Calcular brinde elegível quando pedidos selecionados mudam
   const selectedOrders = orders.filter(o => selectedOrderIds.includes(o.id));
@@ -715,7 +748,10 @@ const PublicCheckout = () => {
       // Calcular total combinado de todos os pedidos
       const allItems = ordersToProcess.flatMap(order => order.items);
       const productsTotal = allItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
-      const totalWithDiscount = Math.max(0, productsTotal - couponDiscount);
+      const pixDiscount = paymentMethod === 'pix' && pixDiscountPercent > 0
+        ? Math.round((productsTotal * pixDiscountPercent / 100) * 100) / 100
+        : 0;
+      const totalWithDiscount = Math.max(0, productsTotal - couponDiscount - pixDiscount);
       const totalAmount = totalWithDiscount + shippingCost;
 
       if (appliedCoupon) {
@@ -774,7 +810,9 @@ const PublicCheckout = () => {
         coupon_discount: couponDiscount,
         coupon_code: appliedCoupon?.code || null,
         tenant_id: tenant.id,
-        merge_observation: mergeObservation
+        merge_observation: mergeObservation,
+        payment_method: paymentMethod,
+        pix_discount: pixDiscount,
       };
 
       const { data, error } = await supabase.functions.invoke('create-payment', {
@@ -1054,6 +1092,11 @@ const PublicCheckout = () => {
   }, 0);
   
   const allSelectedItems = selectedOrders.flatMap(order => order.items);
+
+  // Recalcular desconto PIX quando método de pagamento ou subtotal mudam
+  const currentPixDiscount = paymentMethod === 'pix' && pixDiscountPercent > 0
+    ? Math.round((combinedSubtotal * pixDiscountPercent / 100) * 100) / 100
+    : 0;
 
   // Função para formatar telefone com máscara
   const formatPhoneMask = (value: string) => {
@@ -1555,6 +1598,52 @@ const PublicCheckout = () => {
 
                   <Separator />
 
+                  {/* Forma de Pagamento */}
+                  {pixDiscountPercent > 0 && (
+                    <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <h4 className="font-medium mb-3 flex items-center gap-2">
+                        <CreditCard className="h-4 w-4 text-blue-600" />
+                        Forma de Pagamento
+                      </h4>
+                      <div className="space-y-2">
+                        <div 
+                          className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                            paymentMethod === 'pix' 
+                              ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
+                              : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                          }`}
+                          onClick={() => setPaymentMethod('pix')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input type="radio" checked={paymentMethod === 'pix'} onChange={() => setPaymentMethod('pix')} className="w-4 h-4" />
+                            <div>
+                              <span className="font-medium">PIX</span>
+                              <Badge className="ml-2 bg-emerald-500 text-white text-xs">{pixDiscountPercent}% OFF</Badge>
+                            </div>
+                          </div>
+                          {currentPixDiscount > 0 && (
+                            <span className="text-emerald-600 font-semibold text-sm">- {formatCurrency(currentPixDiscount)}</span>
+                          )}
+                        </div>
+                        <div 
+                          className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                            paymentMethod === 'card' 
+                              ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20' 
+                              : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                          }`}
+                          onClick={() => setPaymentMethod('card')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input type="radio" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="w-4 h-4" />
+                            <span className="font-medium">Cartão de Crédito</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <Separator />
+
                   {/* Cupom de Desconto ou Brinde */}
                   <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
                     <h4 className="font-medium mb-3 flex items-center gap-2">
@@ -1622,6 +1711,13 @@ const PublicCheckout = () => {
                       <span className="text-muted-foreground">Subtotal ({allSelectedItems.length} itens):</span>
                       <span>{formatCurrency(combinedSubtotal)}</span>
                     </div>
+
+                    {currentPixDiscount > 0 && (
+                      <div className="flex justify-between items-center text-emerald-600">
+                        <span>Desconto PIX ({pixDiscountPercent}%):</span>
+                        <span>- {formatCurrency(currentPixDiscount)}</span>
+                      </div>
+                    )}
                     
                     {selectedShipping !== 'retirada' && (
                       <div className="flex justify-between items-center">
@@ -1632,7 +1728,7 @@ const PublicCheckout = () => {
                     
                     {couponDiscount > 0 && (
                       <div className="flex justify-between items-center text-green-600">
-                        <span>Desconto:</span>
+                        <span>Desconto Cupom:</span>
                         <span>- {formatCurrency(couponDiscount)}</span>
                       </div>
                     )}
@@ -1643,7 +1739,7 @@ const PublicCheckout = () => {
                       <span>Total:</span>
                       <span className="text-green-600">
                         {formatCurrency(
-                          Math.max(0, combinedSubtotal - couponDiscount) +
+                          Math.max(0, combinedSubtotal - currentPixDiscount - couponDiscount) +
                           (selectedShipping && selectedShipping !== 'retirada' ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || shippingOptions.find(opt => opt.id === selectedShipping)?.price || '0') : 0)
                         )}
                       </span>

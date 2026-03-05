@@ -28,6 +28,7 @@ interface IntegrationData {
   // Configurações de parcelamento
   min_installment_value: number | null;
   max_installments_without_interest: number | null;
+  pix_discount_percent: number | null;
 }
 
 export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps) {
@@ -41,6 +42,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
     environment: 'production' as 'sandbox' | 'production',
     min_installment_value: 0,
     max_installments_without_interest: 1,
+    pix_discount_percent: 0,
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -89,6 +91,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         environment: integration.environment as 'sandbox' | 'production',
         min_installment_value: integration.min_installment_value || 0,
         max_installments_without_interest: integration.max_installments_without_interest || 1,
+        pix_discount_percent: integration.pix_discount_percent || 0,
       });
     }
   }, [integration]);
@@ -108,6 +111,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         is_active: true,
         min_installment_value: formData.min_installment_value || 0,
         max_installments_without_interest: formData.max_installments_without_interest || 1,
+        pix_discount_percent: formData.pix_discount_percent || 0,
         updated_at: new Date().toISOString(),
       };
 
@@ -420,6 +424,30 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
                     Quantidade máxima de parcelas sem juros (1 a 12).
                   </p>
                 </div>
+              </div>
+            </div>
+
+            {/* Desconto PIX */}
+            <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+              <h4 className="font-medium flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Desconto PIX
+              </h4>
+              <div className="space-y-2">
+                <Label htmlFor="pix_discount_percent">Desconto PIX (%)</Label>
+                <Input
+                  id="pix_discount_percent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={formData.pix_discount_percent}
+                  onChange={(e) => setFormData({ ...formData, pix_discount_percent: parseFloat(e.target.value) || 0 })}
+                  placeholder="Ex: 5"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Percentual de desconto aplicado automaticamente quando o cliente escolher PIX no checkout. 0 = sem desconto.
+                </p>
               </div>
             </div>
 

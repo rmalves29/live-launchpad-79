@@ -49,6 +49,8 @@ type CreatePaymentRequest = {
   coupon_discount?: number;
   coupon_code?: string | null;
   merge_observation?: string | null;
+  payment_method?: string | null;
+  pix_discount?: number;
 };
 
 function isUuid(v: string) {
@@ -174,6 +176,8 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
       coupon_discount: toNumber(body.coupon_discount, 0),
       coupon_code: body.coupon_code ? String(body.coupon_code).slice(0, 50) : null,
       merge_observation: body.merge_observation ? String(body.merge_observation).slice(0, 255) : null,
+      payment_method: body.payment_method ? String(body.payment_method).slice(0, 20) : null,
+      pix_discount: toNumber(body.pix_discount, 0),
     },
   };
 }
@@ -239,25 +243,41 @@ serve(async (req) => {
         .single();
 
       if (existingOrder) {
-        // Montar observação com frete e merge (se aplicável)
+        // Montar observação com frete, PIX discount e merge (se aplicável)
         let obs = (existingOrder.observation ?? "").toString();
-        const cleaned = obs.replace(/\n?\[FRETE\][^\n]*/g, "").trim();
+        const cleaned = obs
+          .replace(/\n?\[FRETE\][^\n]*/g, "")
+          .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
+          .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
+          .trim();
         
         // Adicionar observação de merge se existir
         let mergeNote = "";
         if (payload.merge_observation) {
           mergeNote = `[MERGE] ${payload.merge_observation}`;
         }
+
+        // Nota de desconto PIX
+        const pixDiscountValue = toNumber(payload.pix_discount, 0);
+        let pixNote = "";
+        if (pixDiscountValue > 0) {
+          pixNote = `[PIX_DISCOUNT] R$ ${pixDiscountValue.toFixed(2)}`;
+        }
+
+        // Nota de desconto cupom
+        const couponDiscountValue = toNumber(payload.coupon_discount, 0);
+        let couponNote = "";
+        if (couponDiscountValue > 0) {
+          couponNote = `[COUPON_DISCOUNT] R$ ${couponDiscountValue.toFixed(2)}${payload.coupon_code ? ` (${payload.coupon_code})` : ""}`;
+        }
         
-        const parts = [cleaned, freightNote, mergeNote].filter(Boolean);
+        const parts = [cleaned, freightNote, pixNote, couponNote, mergeNote].filter(Boolean);
         const nextObs = parts.join("\n");
 
-        // CORREÇÃO: Calcular total a partir dos PRODUTOS (cart_items) + frete
-        // Isso evita somar o frete múltiplas vezes se o cliente tentar pagar novamente
+        // CORREÇÃO: Calcular total a partir dos PRODUTOS (cart_items) + frete - descontos
         let productsTotal = 0;
         
         if (existingOrder.cart_id) {
-          // Buscar subtotal real dos itens do carrinho
           const { data: cartItems } = await sb
             .from("cart_items")
             .select("unit_price, qty")
@@ -268,17 +288,15 @@ serve(async (req) => {
           }
         }
         
-        // Se não conseguiu calcular do carrinho, usa o que foi enviado no payload
         if (productsTotal === 0) {
           productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
         }
         
         const shippingValue = toNumber(payload.shippingCost, 0);
-        const newTotal = productsTotal + shippingValue;
+        const newTotal = Math.max(0, productsTotal - pixDiscountValue - couponDiscountValue) + shippingValue;
 
-        console.log(`[create-payment] Order ${orderId}: products=${productsTotal.toFixed(2)}, shipping=${shippingValue.toFixed(2)}, new total=${newTotal.toFixed(2)}`);
+        console.log(`[create-payment] Order ${orderId}: products=${productsTotal.toFixed(2)}, pixDiscount=${pixDiscountValue.toFixed(2)}, couponDiscount=${couponDiscountValue.toFixed(2)}, shipping=${shippingValue.toFixed(2)}, total=${newTotal.toFixed(2)}`);
 
-        // Extrair service_id do shippingData se disponível
         const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
 
         const { error: updateError } = await sb
@@ -294,14 +312,14 @@ serve(async (req) => {
             customer_state: payload.addressData.state,
             observation: nextObs,
             total_amount: newTotal,
-            shipping_service_id: shippingServiceId, // Salva a transportadora selecionada
+            shipping_service_id: shippingServiceId,
           })
           .eq("id", orderId);
 
         if (updateError) {
           console.log(`[create-payment] Error updating order ${orderId}:`, updateError);
         } else {
-          console.log(`[create-payment] Order ${orderId} updated - products: ${productsTotal.toFixed(2)}, shipping: ${shippingValue.toFixed(2)}, total: ${newTotal.toFixed(2)}`);
+          console.log(`[create-payment] Order ${orderId} updated - total: ${newTotal.toFixed(2)}`);
         }
       }
     }
