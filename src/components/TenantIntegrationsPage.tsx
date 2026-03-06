@@ -9,7 +9,7 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer, MessageSquare } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
@@ -19,6 +19,7 @@ import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
+import WhatsAppCloudIntegration from '@/components/integrations/WhatsAppCloudIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -161,6 +162,11 @@ export default function TenantIntegrationsPage() {
 
       <Tabs defaultValue="bling" className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1 w-full">
+          <TabsTrigger value="whatsapp-cloud" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            <span className="hidden sm:inline">WhatsApp API</span>
+            <span className="sm:hidden">WA</span>
+          </TabsTrigger>
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
@@ -217,6 +223,9 @@ export default function TenantIntegrationsPage() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="whatsapp-cloud" className="mt-6">
+          <WhatsAppCloudIntegration tenantId={tenantId} />
+        </TabsContent>
         <TabsContent value="instagram" className="mt-6">
           <InstagramIntegration tenantId={tenantId} />
         </TabsContent>
