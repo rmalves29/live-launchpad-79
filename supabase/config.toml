@@ -137,3 +137,9 @@ verify_jwt = false
 
 [functions.appmax-webhook]
 verify_jwt = false
+
+[functions.whatsapp-cloud-send]
+verify_jwt = false
+
+[functions.whatsapp-cloud-webhook]
+verify_jwt = false
