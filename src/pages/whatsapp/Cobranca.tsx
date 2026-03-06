@@ -377,8 +377,8 @@ export default function Cobranca() {
       // Criar job agendado na tabela sending_jobs
       const { error } = await supabaseTenant.from('sending_jobs').insert({
         tenant_id: tenant.id,
-        job_type: 'scheduled_mass_message',
-        status: 'scheduled',
+        job_type: 'mass_message',
+        status: 'running',
         total_items: customers.length,
         processed_items: 0,
         current_index: 0,
