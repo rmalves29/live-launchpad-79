@@ -225,7 +225,9 @@ export default function Cobranca() {
       }
 
       // Aplicar filtro de tipo de evento
-      if (filters.eventType !== 'all') {
+      if (filters.eventType === 'bazar') {
+        query = query.in('event_type', ['BAZAR', 'MANUAL']);
+      } else if (filters.eventType !== 'all') {
         query = query.eq('event_type', filters.eventType.toUpperCase());
       }
 
@@ -667,7 +669,6 @@ export default function Cobranca() {
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="bazar">Bazar</SelectItem>
                   <SelectItem value="live">Live</SelectItem>
-                  <SelectItem value="manual">Manual</SelectItem>
                 </SelectContent>
               </Select>
             </div>
