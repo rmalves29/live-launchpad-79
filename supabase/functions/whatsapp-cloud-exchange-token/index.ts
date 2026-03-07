@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const payload = await req.json();
-    const { code, tenant_id, waba_id, phone_number_id } = payload;
+    const { code, tenant_id, waba_id, phone_number_id, redirect_uri } = payload;
 
     if (!code || !tenant_id) {
       return new Response(
@@ -36,9 +36,11 @@ Deno.serve(async (req) => {
       );
     }
 
+    const resolvedRedirectUri = redirect_uri || `${SUPABASE_URL}/functions/v1/whatsapp-cloud-exchange-token`;
+
     // 1. Trocar o code por um short-lived token
     console.log("🔄 Trocando code por access token...");
-    const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${FACEBOOK_APP_ID}&client_secret=${FACEBOOK_APP_SECRET}&code=${code}`;
+    const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${FACEBOOK_APP_ID}&client_secret=${FACEBOOK_APP_SECRET}&redirect_uri=${encodeURIComponent(resolvedRedirectUri)}&code=${code}`;
 
     const tokenResponse = await fetch(tokenUrl);
     const tokenData = await tokenResponse.json();
