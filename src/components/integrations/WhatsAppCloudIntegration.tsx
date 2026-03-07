@@ -28,6 +28,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const [testPhone, setTestPhone] = useState('');
   const [phoneInfo, setPhoneInfo] = useState<any>(null);
   const [loadingPhone, setLoadingPhone] = useState(false);
+  const OAUTH_REDIRECT_URI = 'https://live-launchpad-79.lovable.app/auth';
 
   // Load Facebook SDK
   useEffect(() => {
