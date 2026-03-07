@@ -146,6 +146,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         config_id: FB_CONFIG_ID,
         response_type: 'code',
         override_default_response_type: true,
+        redirect_uri: EMBEDDED_REDIRECT_URI,
         extras: {
           setup: {},
           featureType: '',
@@ -163,6 +164,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           tenant_id: tenantId,
           waba_id: wabaId || undefined,
           phone_number_id: phoneNumberId || undefined,
+          redirect_uri: EMBEDDED_REDIRECT_URI,
         },
       });
 
