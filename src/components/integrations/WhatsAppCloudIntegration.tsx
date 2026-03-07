@@ -4,9 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MessageSquare, Save, CheckCircle2, AlertCircle, Loader2, ExternalLink, Eye, EyeOff, Send, HelpCircle, Zap } from 'lucide-react';
+import { MessageSquare, CheckCircle2, AlertCircle, Loader2, Send, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { SUPABASE_URL } from '@/lib/supabasePublic';
@@ -27,14 +25,11 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const [testing, setTesting] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [config, setConfig] = useState<any>(null);
-  const [showToken, setShowToken] = useState(false);
   const [fbSdkReady, setFbSdkReady] = useState(false);
 
   // Form fields
-  const [accessToken, setAccessToken] = useState('');
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [wabaId, setWabaId] = useState('');
-  const [businessName, setBusinessName] = useState('');
   const [testPhone, setTestPhone] = useState('');
 
   // Load Facebook SDK
@@ -108,10 +103,8 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
 
       if (data) {
         setConfig(data);
-        setAccessToken((data as any).access_token || '');
         setPhoneNumberId((data as any).phone_number_id || '');
         setWabaId((data as any).waba_id || '');
-        setBusinessName((data as any).business_name || '');
       }
     } catch (error: any) {
       console.error('Erro ao carregar config:', error);
@@ -185,46 +178,6 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     }
   };
 
-  const handleConnect = async () => {
-    if (!accessToken.trim() || !phoneNumberId.trim()) {
-      toast({ title: 'Erro', description: 'Access Token e Phone Number ID são obrigatórios', variant: 'destructive' });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const payload = {
-        tenant_id: tenantId,
-        access_token: accessToken,
-        phone_number_id: phoneNumberId,
-        waba_id: wabaId,
-        business_name: businessName,
-        is_active: true,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (config?.id) {
-        const { error } = await supabase
-          .from('integration_whatsapp_cloud' as any)
-          .update(payload)
-          .eq('id', (config as any).id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('integration_whatsapp_cloud' as any)
-          .insert(payload);
-        if (error) throw error;
-      }
-
-      toast({ title: 'Sucesso', description: 'WhatsApp Cloud API conectada!' });
-      loadConfig();
-    } catch (error: any) {
-      console.error('Erro ao salvar:', error);
-      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleDisconnect = async () => {
     if (!config?.id) return;
@@ -323,180 +276,29 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         </Card>
       )}
 
-      {/* Guia Passo a Passo - Modo Manual */}
-      {!isConnected && (
+      {/* Status card when connected */}
+      {isConnected && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <HelpCircle className="h-5 w-5" />
-              Conexão Manual (Alternativa)
-            </CardTitle>
-            <CardDescription>Se a conexão rápida não funcionar, siga o passo a passo abaixo</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="step1">
-                <AccordionTrigger className="text-sm font-medium">
-                  1️⃣ Criar App no Meta for Developers
-                </AccordionTrigger>
-                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                  <p>Acesse <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-primary underline">developers.facebook.com/apps</a> e clique em <strong>"Criar App"</strong>.</p>
-                  <p>Selecione: Tipo → <strong>"Outro"</strong>, Categoria → <strong>"Negócio"</strong>.</p>
-                  <p>Após criar, no painel lateral, clique em <strong>"Adicionar Produto"</strong> e escolha <strong>WhatsApp</strong>.</p>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="step2">
-                <AccordionTrigger className="text-sm font-medium">
-                  2️⃣ Obter o Phone Number ID
-                </AccordionTrigger>
-                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                  <p>No menu lateral, vá em <strong>WhatsApp → API Setup</strong>.</p>
-                  <p>Você verá o <strong>Phone Number ID</strong> logo abaixo do número de teste.</p>
-                  <p>Para usar seu próprio número, clique em <strong>"Add phone number"</strong> e siga a verificação por SMS/ligação.</p>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="step3">
-                <AccordionTrigger className="text-sm font-medium">
-                  3️⃣ Gerar o Access Token (Permanente)
-                </AccordionTrigger>
-                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                  <p><strong>Token temporário (para teste):</strong> Na página API Setup, clique em "Generate" — válido por 24h.</p>
-                  <Separator className="my-2" />
-                  <p><strong>Token permanente (recomendado):</strong></p>
-                  <ol className="list-decimal ml-4 space-y-1">
-                    <li>Acesse <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer" className="text-primary underline">Business Settings → System Users</a></li>
-                    <li>Crie um <strong>System User</strong> com role "Admin"</li>
-                    <li>Clique em <strong>"Generate Token"</strong></li>
-                    <li>Selecione o App criado no passo 1</li>
-                    <li>Marque as permissões: <code className="bg-muted px-1 rounded text-xs">whatsapp_business_management</code> e <code className="bg-muted px-1 rounded text-xs">whatsapp_business_messaging</code></li>
-                    <li>Copie o token gerado — ele <strong>não expira</strong></li>
-                  </ol>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="step4">
-                <AccordionTrigger className="text-sm font-medium">
-                  4️⃣ Obter o WABA ID (opcional)
-                </AccordionTrigger>
-                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                  <p>Acesse <a href="https://business.facebook.com/settings/whatsapp-business-accounts" target="_blank" rel="noopener noreferrer" className="text-primary underline">Business Settings → WhatsApp Accounts</a>.</p>
-                  <p>Clique na conta desejada — o <strong>WABA ID</strong> aparece na URL e nos detalhes.</p>
-                </AccordionContent>
-              </AccordionItem>
-
-              <AccordionItem value="step5">
-                <AccordionTrigger className="text-sm font-medium">
-                  5️⃣ Preencher os campos abaixo e conectar
-                </AccordionTrigger>
-                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                  <p>Cole o <strong>Access Token</strong>, <strong>Phone Number ID</strong> e <strong>WABA ID</strong> nos campos abaixo.</p>
-                  <p>Clique em <strong>"Conectar"</strong> e depois teste com o botão de envio.</p>
-                  <p>Por último, configure o <strong>Webhook</strong> no Meta (instruções aparecem após conectar).</p>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MessageSquare className="h-5 w-5" />
-            WhatsApp Cloud API (Oficial)
-            {isConnected ? (
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              WhatsApp Cloud API (Oficial)
               <Badge variant="default" className="ml-2">
                 <CheckCircle2 className="h-3 w-3 mr-1" /> Conectado
               </Badge>
-            ) : (
-              <Badge variant="secondary" className="ml-2">
-                <AlertCircle className="h-3 w-3 mr-1" /> Desconectado
-              </Badge>
-            )}
-          </CardTitle>
-          <CardDescription>
-            Integração com a API oficial do WhatsApp Business (Meta Cloud API) para envio de templates e recebimento de status.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Credenciais */}
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="access-token">Access Token (Permanente)</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="access-token"
-                  type={showToken ? 'text' : 'password'}
-                  placeholder="EAAxxxxxxx..."
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                />
-                <Button variant="outline" size="icon" onClick={() => setShowToken(!showToken)}>
-                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="phone-number-id">Phone Number ID</Label>
-              <Input
-                id="phone-number-id"
-                placeholder="Ex: 123456789012345"
-                value={phoneNumberId}
-                onChange={(e) => setPhoneNumberId(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="waba-id">WABA ID (opcional)</Label>
-              <Input
-                id="waba-id"
-                placeholder="Ex: 123456789012345"
-                value={wabaId}
-                onChange={(e) => setWabaId(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="business-name">Nome do Negócio (opcional)</Label>
-              <Input
-                id="business-name"
-                placeholder="Ex: Minha Loja"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            {isConnected ? (
-              <Button variant="destructive" onClick={handleDisconnect} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Desconectar
-              </Button>
-            ) : (
-              <Button onClick={handleConnect} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                Conectar Manualmente
-              </Button>
-            )}
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            <a
-              href="https://developers.facebook.com/apps/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-primary hover:underline"
-            >
-              <ExternalLink className="h-3 w-3" />
-              Obter credenciais no Meta for Developers
-            </a>
-          </div>
-        </CardContent>
-      </Card>
+            </CardTitle>
+            <CardDescription>
+              Integração com a API oficial do WhatsApp Business (Meta Cloud API) para envio de templates e recebimento de status.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="destructive" onClick={handleDisconnect} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Desconectar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Teste de envio */}
       {isConnected && (
