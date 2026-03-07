@@ -51,14 +51,43 @@ Deno.serve(async (req) => {
       );
     }
 
-    const resolvedRedirectUri = redirect_uri || `${SUPABASE_URL}/functions/v1/whatsapp-cloud-exchange-token`;
+    const resolvedRedirectUri = typeof redirect_uri === "string" && redirect_uri.trim().length > 0
+      ? redirect_uri.trim()
+      : "";
+
+    const buildTokenUrl = (redirectUriValue?: string) => {
+      const params = new URLSearchParams({
+        client_id: FACEBOOK_APP_ID,
+        client_secret: FACEBOOK_APP_SECRET,
+        code,
+      });
+
+      if (redirectUriValue) {
+        params.set("redirect_uri", redirectUriValue);
+      }
+
+      return `https://graph.facebook.com/v21.0/oauth/access_token?${params.toString()}`;
+    };
+
+    const exchangeCodeRequest = async (redirectUriValue?: string) => {
+      const response = await fetch(buildTokenUrl(redirectUriValue));
+      const data = await response.json();
+      return { response, data };
+    };
 
     // 1. Trocar o code por um short-lived token
     console.log("🔄 Trocando code por access token...");
-    const tokenUrl = `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${FACEBOOK_APP_ID}&client_secret=${FACEBOOK_APP_SECRET}&redirect_uri=${encodeURIComponent(resolvedRedirectUri)}&code=${code}`;
+    let { response: tokenResponse, data: tokenData } = await exchangeCodeRequest(resolvedRedirectUri || undefined);
 
-    const tokenResponse = await fetch(tokenUrl);
-    const tokenData = await tokenResponse.json();
+    const isRedirectUriMismatch =
+      tokenData?.error?.code === 100 && tokenData?.error?.error_subcode === 36008;
+
+    if ((!tokenResponse.ok || tokenData.error) && isRedirectUriMismatch && resolvedRedirectUri) {
+      console.warn("⚠️ redirect_uri mismatch, tentando novamente sem redirect_uri...");
+      const retry = await exchangeCodeRequest();
+      tokenResponse = retry.response;
+      tokenData = retry.data;
+    }
 
     if (!tokenResponse.ok || tokenData.error) {
       console.error("❌ Erro ao trocar code:", JSON.stringify(tokenData));

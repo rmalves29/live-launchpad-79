@@ -7,14 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { MessageSquare, CheckCircle2, AlertCircle, Loader2, Send, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { SUPABASE_URL } from '@/lib/supabasePublic';
 
 interface Props {
   tenantId: string;
 }
 
-// Redirect URI do Embedded Signup (deve bater com a configuração da Meta)
-const EMBEDDED_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/whatsapp-cloud-exchange-token`;
+const getEmbeddedRedirectUri = () => `${window.location.origin}/`;
 
 export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const { toast } = useToast();
@@ -152,6 +150,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     }
 
     setConnecting(true);
+    const redirectUri = getEmbeddedRedirectUri();
 
     (window as any).FB.login(
       (response: any) => {
@@ -171,7 +170,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         config_id: fbConfigId,
         response_type: 'code',
         override_default_response_type: true,
-        redirect_uri: EMBEDDED_REDIRECT_URI,
+        redirect_uri: redirectUri,
         extras: {
           setup: {},
           featureType: '',
@@ -182,6 +181,8 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   };
 
   const exchangeCodeForToken = async (code: string) => {
+    const redirectUri = getEmbeddedRedirectUri();
+
     try {
       const { data, error } = await supabase.functions.invoke('whatsapp-cloud-exchange-token', {
         body: {
@@ -189,7 +190,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           tenant_id: tenantId,
           waba_id: wabaId || undefined,
           phone_number_id: phoneNumberId || undefined,
-          redirect_uri: EMBEDDED_REDIRECT_URI,
+          redirect_uri: redirectUri,
         },
       });
 
