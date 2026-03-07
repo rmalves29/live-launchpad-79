@@ -13,9 +13,7 @@ interface Props {
   tenantId: string;
 }
 
-// Facebook App ID (publishable, safe to use client-side)
-const FB_APP_ID = "1833875230349524";
-const FB_CONFIG_ID = "2178957892873201";
+// Redirect URI do Embedded Signup (deve bater com a configuração da Meta)
 const EMBEDDED_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/whatsapp-cloud-exchange-token`;
 
 export default function WhatsAppCloudIntegration({ tenantId }: Props) {
@@ -26,22 +24,22 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const [connecting, setConnecting] = useState(false);
   const [config, setConfig] = useState<any>(null);
   const [fbSdkReady, setFbSdkReady] = useState(false);
+  const [fbAppId, setFbAppId] = useState('');
+  const [fbConfigId, setFbConfigId] = useState('');
 
   // Form fields
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [wabaId, setWabaId] = useState('');
   const [testPhone, setTestPhone] = useState('');
 
-  // Load Facebook SDK
+  // Load Facebook SDK (somente após obter app_id do servidor)
   useEffect(() => {
-    if (document.getElementById('facebook-jssdk')) {
-      setFbSdkReady(true);
-      return;
-    }
+    if (!fbAppId) return;
 
-    (window as any).fbAsyncInit = function () {
+    const initializeSdk = () => {
+      if (!(window as any).FB) return;
       (window as any).FB.init({
-        appId: FB_APP_ID,
+        appId: fbAppId,
         cookie: true,
         xfbml: true,
         version: 'v21.0',
@@ -49,20 +47,25 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
       setFbSdkReady(true);
     };
 
+    if (document.getElementById('facebook-jssdk')) {
+      initializeSdk();
+      return;
+    }
+
+    (window as any).fbAsyncInit = initializeSdk;
+
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
     script.src = 'https://connect.facebook.net/pt_BR/sdk.js';
     script.async = true;
     script.defer = true;
     document.body.appendChild(script);
-
-    return () => {
-      // Cleanup not needed for SDK
-    };
-  }, []);
+  }, [fbAppId]);
 
   useEffect(() => {
-    if (tenantId) loadConfig();
+    if (!tenantId) return;
+    loadEmbeddedConfig();
+    loadConfig();
   }, [tenantId]);
 
   // Listen for Embedded Signup messages
@@ -90,6 +93,30 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     return () => window.removeEventListener('message', handleMessage);
   }, [handleMessage]);
 
+  const loadEmbeddedConfig = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-cloud-exchange-token', {
+        body: { request_type: 'get_embedded_config' },
+      });
+
+      if (error) throw error;
+
+      if (!data?.success || !data?.app_id || !data?.config_id) {
+        throw new Error(data?.error || 'Configuração do Embedded Signup inválida');
+      }
+
+      setFbAppId(data.app_id);
+      setFbConfigId(data.config_id);
+    } catch (error: any) {
+      console.error('Erro ao carregar config do Embedded Signup:', error);
+      toast({
+        title: 'Erro na configuração da Meta',
+        description: error.message || 'Não foi possível carregar App ID/Config ID',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const loadConfig = async () => {
     setLoading(true);
     try {
@@ -114,6 +141,11 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   };
 
   const handleEmbeddedSignup = () => {
+    if (!fbAppId || !fbConfigId) {
+      toast({ title: 'Aguarde', description: 'Carregando configuração da Meta...', variant: 'destructive' });
+      return;
+    }
+
     if (!fbSdkReady || !(window as any).FB) {
       toast({ title: 'Aguarde', description: 'SDK do Facebook ainda carregando...', variant: 'destructive' });
       return;
@@ -136,7 +168,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         }
       },
       {
-        config_id: FB_CONFIG_ID,
+        config_id: fbConfigId,
         response_type: 'code',
         override_default_response_type: true,
         redirect_uri: EMBEDDED_REDIRECT_URI,
