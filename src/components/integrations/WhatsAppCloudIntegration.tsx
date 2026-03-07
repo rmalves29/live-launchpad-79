@@ -141,6 +141,11 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   };
 
   const handleEmbeddedSignup = () => {
+    if (!fbAppId || !fbConfigId) {
+      toast({ title: 'Aguarde', description: 'Carregando configuração da Meta...', variant: 'destructive' });
+      return;
+    }
+
     if (!fbSdkReady || !(window as any).FB) {
       toast({ title: 'Aguarde', description: 'SDK do Facebook ainda carregando...', variant: 'destructive' });
       return;
@@ -163,7 +168,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         }
       },
       {
-        config_id: FB_CONFIG_ID,
+        config_id: fbConfigId,
         response_type: 'code',
         override_default_response_type: true,
         redirect_uri: EMBEDDED_REDIRECT_URI,
