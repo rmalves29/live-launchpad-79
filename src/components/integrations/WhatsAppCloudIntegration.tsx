@@ -152,6 +152,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
       },
       {
         config_id: fbConfigId,
+        redirect_uri: OAUTH_REDIRECT_URI,
         response_type: 'code',
         override_default_response_type: true,
         extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },
