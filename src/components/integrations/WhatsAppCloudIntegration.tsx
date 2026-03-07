@@ -9,6 +9,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { MessageSquare, Save, CheckCircle2, AlertCircle, Loader2, ExternalLink, Eye, EyeOff, Send, HelpCircle, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { SUPABASE_URL } from '@/lib/supabasePublic';
 
 interface Props {
   tenantId: string;
@@ -17,6 +18,7 @@ interface Props {
 // Facebook App ID (publishable, safe to use client-side)
 const FB_APP_ID = "1833875230349524";
 const FB_CONFIG_ID = "2178957892873201";
+const EMBEDDED_REDIRECT_URI = `${SUPABASE_URL}/functions/v1/whatsapp-cloud-exchange-token`;
 
 export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const { toast } = useToast();
@@ -144,6 +146,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         config_id: FB_CONFIG_ID,
         response_type: 'code',
         override_default_response_type: true,
+        redirect_uri: EMBEDDED_REDIRECT_URI,
         extras: {
           setup: {},
           featureType: '',
@@ -161,6 +164,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           tenant_id: tenantId,
           waba_id: wabaId || undefined,
           phone_number_id: phoneNumberId || undefined,
+          redirect_uri: EMBEDDED_REDIRECT_URI,
         },
       });
 
