@@ -93,6 +93,30 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     return () => window.removeEventListener('message', handleMessage);
   }, [handleMessage]);
 
+  const loadEmbeddedConfig = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-cloud-exchange-token', {
+        body: { request_type: 'get_embedded_config' },
+      });
+
+      if (error) throw error;
+
+      if (!data?.success || !data?.app_id || !data?.config_id) {
+        throw new Error(data?.error || 'Configuração do Embedded Signup inválida');
+      }
+
+      setFbAppId(data.app_id);
+      setFbConfigId(data.config_id);
+    } catch (error: any) {
+      console.error('Erro ao carregar config do Embedded Signup:', error);
+      toast({
+        title: 'Erro na configuração da Meta',
+        description: error.message || 'Não foi possível carregar App ID/Config ID',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const loadConfig = async () => {
     setLoading(true);
     try {
