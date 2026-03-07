@@ -103,10 +103,8 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
 
       if (data) {
         setConfig(data);
-        setAccessToken((data as any).access_token || '');
         setPhoneNumberId((data as any).phone_number_id || '');
         setWabaId((data as any).waba_id || '');
-        setBusinessName((data as any).business_name || '');
       }
     } catch (error: any) {
       console.error('Erro ao carregar config:', error);
@@ -180,46 +178,6 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     }
   };
 
-  const handleConnect = async () => {
-    if (!accessToken.trim() || !phoneNumberId.trim()) {
-      toast({ title: 'Erro', description: 'Access Token e Phone Number ID são obrigatórios', variant: 'destructive' });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const payload = {
-        tenant_id: tenantId,
-        access_token: accessToken,
-        phone_number_id: phoneNumberId,
-        waba_id: wabaId,
-        business_name: businessName,
-        is_active: true,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (config?.id) {
-        const { error } = await supabase
-          .from('integration_whatsapp_cloud' as any)
-          .update(payload)
-          .eq('id', (config as any).id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('integration_whatsapp_cloud' as any)
-          .insert(payload);
-        if (error) throw error;
-      }
-
-      toast({ title: 'Sucesso', description: 'WhatsApp Cloud API conectada!' });
-      loadConfig();
-    } catch (error: any) {
-      console.error('Erro ao salvar:', error);
-      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleDisconnect = async () => {
     if (!config?.id) return;
