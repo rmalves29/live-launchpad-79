@@ -143,3 +143,6 @@ verify_jwt = false
 
 [functions.whatsapp-cloud-webhook]
 verify_jwt = false
+
+[functions.whatsapp-cloud-exchange-token]
+verify_jwt = false
