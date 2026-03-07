@@ -16,7 +16,25 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const payload = await req.json();
-    const { code, tenant_id, waba_id, phone_number_id, redirect_uri } = payload;
+    const { code, tenant_id, waba_id, phone_number_id, redirect_uri, request_type } = payload;
+
+    const FACEBOOK_APP_ID = Deno.env.get("FACEBOOK_APP_ID");
+    const FACEBOOK_APP_SECRET = Deno.env.get("FACEBOOK_APP_SECRET");
+    const WHATSAPP_EMBEDDED_CONFIG_ID = Deno.env.get("WHATSAPP_EMBEDDED_CONFIG_ID");
+
+    if (request_type === "get_embedded_config") {
+      if (!FACEBOOK_APP_ID || !WHATSAPP_EMBEDDED_CONFIG_ID) {
+        return new Response(
+          JSON.stringify({ success: false, error: "FACEBOOK_APP_ID ou WHATSAPP_EMBEDDED_CONFIG_ID não configurados" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, app_id: FACEBOOK_APP_ID, config_id: WHATSAPP_EMBEDDED_CONFIG_ID }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!code || !tenant_id) {
       return new Response(
@@ -24,9 +42,6 @@ Deno.serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const FACEBOOK_APP_ID = Deno.env.get("FACEBOOK_APP_ID");
-    const FACEBOOK_APP_SECRET = Deno.env.get("FACEBOOK_APP_SECRET");
 
     if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
       console.error("❌ FACEBOOK_APP_ID ou FACEBOOK_APP_SECRET não configurados");
