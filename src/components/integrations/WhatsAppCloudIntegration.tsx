@@ -4,15 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { MessageSquare, CheckCircle2, AlertCircle, Loader2, Send, Zap } from 'lucide-react';
+import { MessageSquare, CheckCircle2, Loader2, Send, Zap, Phone, FileText, Plus, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import WhatsAppCloudTemplates from './WhatsAppCloudTemplates';
 
 interface Props {
   tenantId: string;
 }
-
-
 
 export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const { toast } = useToast();
@@ -24,34 +23,22 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const [fbSdkReady, setFbSdkReady] = useState(false);
   const [fbAppId, setFbAppId] = useState('');
   const [fbConfigId, setFbConfigId] = useState('');
-
-  // Form fields
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [wabaId, setWabaId] = useState('');
   const [testPhone, setTestPhone] = useState('');
+  const [phoneInfo, setPhoneInfo] = useState<any>(null);
+  const [loadingPhone, setLoadingPhone] = useState(false);
 
-  // Load Facebook SDK (somente após obter app_id do servidor)
+  // Load Facebook SDK
   useEffect(() => {
     if (!fbAppId) return;
-
     const initializeSdk = () => {
       if (!(window as any).FB) return;
-      (window as any).FB.init({
-        appId: fbAppId,
-        cookie: true,
-        xfbml: true,
-        version: 'v21.0',
-      });
+      (window as any).FB.init({ appId: fbAppId, cookie: true, xfbml: true, version: 'v21.0' });
       setFbSdkReady(true);
     };
-
-    if (document.getElementById('facebook-jssdk')) {
-      initializeSdk();
-      return;
-    }
-
+    if (document.getElementById('facebook-jssdk')) { initializeSdk(); return; }
     (window as any).fbAsyncInit = initializeSdk;
-
     const script = document.createElement('script');
     script.id = 'facebook-jssdk';
     script.src = 'https://connect.facebook.net/pt_BR/sdk.js';
@@ -66,24 +53,18 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     loadConfig();
   }, [tenantId]);
 
-  // Listen for Embedded Signup messages
   const handleMessage = useCallback(async (event: MessageEvent) => {
     if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
-
     try {
       if (typeof event.data === 'string') {
         const data = JSON.parse(event.data);
         if (data.type === 'WA_EMBEDDED_SIGNUP') {
           const { phone_number_id: pnId, waba_id: wId } = data.data || {};
-          console.log('📱 Embedded Signup data:', data.data);
-
           if (pnId) setPhoneNumberId(pnId);
           if (wId) setWabaId(wId);
         }
       }
-    } catch {
-      // Not a JSON message, ignore
-    }
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -96,22 +77,12 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
       const { data, error } = await supabase.functions.invoke('whatsapp-cloud-exchange-token', {
         body: { request_type: 'get_embedded_config' },
       });
-
       if (error) throw error;
-
-      if (!data?.success || !data?.app_id || !data?.config_id) {
-        throw new Error(data?.error || 'Configuração do Embedded Signup inválida');
-      }
-
+      if (!data?.success || !data?.app_id || !data?.config_id) throw new Error(data?.error || 'Configuração inválida');
       setFbAppId(data.app_id);
       setFbConfigId(data.config_id);
     } catch (error: any) {
-      console.error('Erro ao carregar config do Embedded Signup:', error);
-      toast({
-        title: 'Erro na configuração da Meta',
-        description: error.message || 'Não foi possível carregar App ID/Config ID',
-        variant: 'destructive',
-      });
+      console.error('Erro ao carregar config:', error);
     }
   };
 
@@ -123,9 +94,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         .select('*')
         .eq('tenant_id', tenantId)
         .maybeSingle();
-
       if (error && error.code !== 'PGRST116') throw error;
-
       if (data) {
         setConfig(data);
         setPhoneNumberId((data as any).phone_number_id || '');
@@ -138,29 +107,44 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     }
   };
 
+  // Load phone info when connected
+  useEffect(() => {
+    if (config?.is_active && config?.phone_number_id) {
+      loadPhoneInfo();
+    }
+  }, [config?.is_active, config?.phone_number_id]);
+
+  const loadPhoneInfo = async () => {
+    setLoadingPhone(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-cloud-templates', {
+        body: { tenant_id: tenantId, action: 'get_phone_info' },
+      });
+      if (error) throw error;
+      if (data?.success) setPhoneInfo(data.phone);
+    } catch (error: any) {
+      console.error('Erro ao carregar info do telefone:', error);
+    } finally {
+      setLoadingPhone(false);
+    }
+  };
+
   const handleEmbeddedSignup = () => {
     if (!fbAppId || !fbConfigId) {
       toast({ title: 'Aguarde', description: 'Carregando configuração da Meta...', variant: 'destructive' });
       return;
     }
-
     if (!fbSdkReady || !(window as any).FB) {
       toast({ title: 'Aguarde', description: 'SDK do Facebook ainda carregando...', variant: 'destructive' });
       return;
     }
-
     setConnecting(true);
-
     (window as any).FB.login(
       (response: any) => {
         if (response.authResponse) {
           const code = response.authResponse.code;
-          console.log('✅ Code obtido do Embedded Signup:', code);
-
-          // Enviar code para a Edge Function trocar por token
           exchangeCodeForToken(code, 'https://live-launchpad-79.lovable.app/auth');
         } else {
-          console.log('❌ Login cancelado pelo usuário');
           setConnecting(false);
           toast({ title: 'Cancelado', description: 'Processo de conexão cancelado', variant: 'destructive' });
         }
@@ -169,11 +153,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         config_id: fbConfigId,
         response_type: 'code',
         override_default_response_type: true,
-        extras: {
-          setup: {},
-          featureType: '',
-          sessionInfoVersion: '3',
-        },
+        extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },
       }
     );
   };
@@ -189,24 +169,19 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           redirect_uri: redirectUri || undefined,
         },
       });
-
       if (error) throw error;
-
       if (data?.success) {
-        toast({ title: '🎉 Conectado!', description: 'WhatsApp Cloud API conectada com sucesso via Embedded Signup!' });
-        // Reload config
+        toast({ title: '🎉 Conectado!', description: 'WhatsApp Cloud API conectada com sucesso!' });
         await loadConfig();
       } else {
         toast({ title: 'Erro', description: data?.error || 'Falha na troca do token', variant: 'destructive' });
       }
     } catch (error: any) {
-      console.error('Erro ao trocar code:', error);
       toast({ title: 'Erro', description: error.message || 'Erro ao conectar', variant: 'destructive' });
     } finally {
       setConnecting(false);
     }
   };
-
 
   const handleDisconnect = async () => {
     if (!config?.id) return;
@@ -217,9 +192,9 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('id', (config as any).id);
       if (error) throw error;
-
       toast({ title: 'Desconectado', description: 'WhatsApp Cloud API desconectada' });
       setConfig({ ...config, is_active: false });
+      setPhoneInfo(null);
     } catch (error: any) {
       toast({ title: 'Erro', description: error.message, variant: 'destructive' });
     } finally {
@@ -232,20 +207,12 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
       toast({ title: 'Erro', description: 'Informe um número para teste', variant: 'destructive' });
       return;
     }
-
     setTesting(true);
     try {
       const { data, error } = await supabase.functions.invoke('whatsapp-cloud-send', {
-        body: {
-          tenant_id: tenantId,
-          template_name: 'hello_world',
-          language_code: 'en_US',
-          to_phone: testPhone,
-        },
+        body: { tenant_id: tenantId, template_name: 'hello_world', language_code: 'en_US', to_phone: testPhone },
       });
-
       if (error) throw error;
-
       if (data?.success) {
         toast({ title: 'Sucesso!', description: `Mensagem de teste enviada! ID: ${data.message_id}` });
       } else {
@@ -272,7 +239,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Conexão Rápida - Embedded Signup */}
+      {/* Conexão Rápida */}
       {!isConnected && (
         <Card className="border-primary/30 bg-primary/5">
           <CardHeader>
@@ -281,31 +248,20 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
               Conexão Rápida (Recomendado)
             </CardTitle>
             <CardDescription>
-              Conecte automaticamente sua conta WhatsApp Business com um clique. O sistema obterá as credenciais automaticamente.
+              Conecte automaticamente sua conta WhatsApp Business com um clique.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button
-              onClick={handleEmbeddedSignup}
-              disabled={connecting || !fbSdkReady}
-              size="lg"
-              className="w-full sm:w-auto"
-            >
-              {connecting ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <MessageSquare className="h-4 w-4 mr-2" />
-              )}
+            <Button onClick={handleEmbeddedSignup} disabled={connecting || !fbSdkReady} size="lg" className="w-full sm:w-auto">
+              {connecting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <MessageSquare className="h-4 w-4 mr-2" />}
               {connecting ? 'Conectando...' : 'Conectar WhatsApp'}
             </Button>
-            {!fbSdkReady && (
-              <p className="text-xs text-muted-foreground mt-2">Carregando SDK do Facebook...</p>
-            )}
+            {!fbSdkReady && <p className="text-xs text-muted-foreground mt-2">Carregando SDK do Facebook...</p>}
           </CardContent>
         </Card>
       )}
 
-      {/* Status card when connected */}
+      {/* Status + Phone Info */}
       {isConnected && (
         <Card>
           <CardHeader>
@@ -317,10 +273,51 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
               </Badge>
             </CardTitle>
             <CardDescription>
-              Integração com a API oficial do WhatsApp Business (Meta Cloud API) para envio de templates e recebimento de status.
+              Integração com a API oficial do WhatsApp Business (Meta Cloud API).
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* Phone Info */}
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <Phone className="h-4 w-4" />
+                  Número Conectado
+                </h4>
+                <Button variant="ghost" size="sm" onClick={loadPhoneInfo} disabled={loadingPhone}>
+                  <RefreshCw className={`h-3 w-3 ${loadingPhone ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+              {loadingPhone ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Carregando...
+                </div>
+              ) : phoneInfo ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Telefone:</span>{' '}
+                    <span className="font-medium">{phoneInfo.display_phone_number || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Nome Verificado:</span>{' '}
+                    <span className="font-medium">{phoneInfo.verified_name || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Qualidade:</span>{' '}
+                    <Badge variant={phoneInfo.quality_rating === 'GREEN' ? 'default' : 'destructive'} className="ml-1">
+                      {phoneInfo.quality_rating || 'N/A'}
+                    </Badge>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Phone ID:</span>{' '}
+                    <span className="font-mono text-xs">{config.phone_number_id}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Não foi possível carregar informações do telefone.</p>
+              )}
+            </div>
+
             <Button variant="destructive" onClick={handleDisconnect} disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Desconectar
@@ -328,6 +325,9 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           </CardContent>
         </Card>
       )}
+
+      {/* Templates Section */}
+      {isConnected && <WhatsAppCloudTemplates tenantId={tenantId} />}
 
       {/* Teste de envio */}
       {isConnected && (
@@ -338,11 +338,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
-              <Input
-                placeholder="Telefone (ex: 5511999998888)"
-                value={testPhone}
-                onChange={(e) => setTestPhone(e.target.value)}
-              />
+              <Input placeholder="Telefone (ex: 5511999998888)" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
               <Button onClick={handleTestSend} disabled={testing}>
                 {testing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
                 Testar
@@ -369,7 +365,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
                 onClick={(e) => {
                   (e.target as HTMLInputElement).select();
                   navigator.clipboard.writeText("https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-cloud-webhook");
-                  toast({ title: 'Copiado!', description: 'URL copiada para a área de transferência' });
+                  toast({ title: 'Copiado!' });
                 }}
               />
             </div>
