@@ -25,14 +25,11 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const [testing, setTesting] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [config, setConfig] = useState<any>(null);
-  const [showToken, setShowToken] = useState(false);
   const [fbSdkReady, setFbSdkReady] = useState(false);
 
   // Form fields
-  const [accessToken, setAccessToken] = useState('');
   const [phoneNumberId, setPhoneNumberId] = useState('');
   const [wabaId, setWabaId] = useState('');
-  const [businessName, setBusinessName] = useState('');
   const [testPhone, setTestPhone] = useState('');
 
   // Load Facebook SDK
