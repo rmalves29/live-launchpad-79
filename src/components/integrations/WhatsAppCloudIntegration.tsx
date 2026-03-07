@@ -12,7 +12,7 @@ interface Props {
   tenantId: string;
 }
 
-const getEmbeddedRedirectUri = () => `${window.location.origin}/`;
+
 
 export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const { toast } = useToast();
@@ -150,7 +150,6 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     }
 
     setConnecting(true);
-    const redirectUri = getEmbeddedRedirectUri();
 
     (window as any).FB.login(
       (response: any) => {
@@ -170,7 +169,6 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
         config_id: fbConfigId,
         response_type: 'code',
         override_default_response_type: true,
-        redirect_uri: redirectUri,
         extras: {
           setup: {},
           featureType: '',
@@ -181,8 +179,6 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   };
 
   const exchangeCodeForToken = async (code: string) => {
-    const redirectUri = getEmbeddedRedirectUri();
-
     try {
       const { data, error } = await supabase.functions.invoke('whatsapp-cloud-exchange-token', {
         body: {
@@ -190,7 +186,6 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           tenant_id: tenantId,
           waba_id: wabaId || undefined,
           phone_number_id: phoneNumberId || undefined,
-          redirect_uri: redirectUri,
         },
       });
 
