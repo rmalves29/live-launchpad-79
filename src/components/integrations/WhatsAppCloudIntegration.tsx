@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { MessageSquare, Save, CheckCircle2, AlertCircle, Loader2, ExternalLink, Eye, EyeOff, Send, HelpCircle } from 'lucide-react';
+import { MessageSquare, Save, CheckCircle2, AlertCircle, Loader2, ExternalLink, Eye, EyeOff, Send, HelpCircle, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -14,13 +14,19 @@ interface Props {
   tenantId: string;
 }
 
+// Facebook App ID (publishable, safe to use client-side)
+const FB_APP_ID = "1833875230349524";
+const FB_CONFIG_ID = "2178957892873201";
+
 export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [config, setConfig] = useState<any>(null);
   const [showToken, setShowToken] = useState(false);
+  const [fbSdkReady, setFbSdkReady] = useState(false);
 
   // Form fields
   const [accessToken, setAccessToken] = useState('');
@@ -29,9 +35,63 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const [businessName, setBusinessName] = useState('');
   const [testPhone, setTestPhone] = useState('');
 
+  // Load Facebook SDK
+  useEffect(() => {
+    if (document.getElementById('facebook-jssdk')) {
+      setFbSdkReady(true);
+      return;
+    }
+
+    (window as any).fbAsyncInit = function () {
+      (window as any).FB.init({
+        appId: FB_APP_ID,
+        cookie: true,
+        xfbml: true,
+        version: 'v21.0',
+      });
+      setFbSdkReady(true);
+    };
+
+    const script = document.createElement('script');
+    script.id = 'facebook-jssdk';
+    script.src = 'https://connect.facebook.net/pt_BR/sdk.js';
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+
+    return () => {
+      // Cleanup not needed for SDK
+    };
+  }, []);
+
   useEffect(() => {
     if (tenantId) loadConfig();
   }, [tenantId]);
+
+  // Listen for Embedded Signup messages
+  const handleMessage = useCallback(async (event: MessageEvent) => {
+    if (event.origin !== 'https://www.facebook.com' && event.origin !== 'https://web.facebook.com') return;
+
+    try {
+      if (typeof event.data === 'string') {
+        const data = JSON.parse(event.data);
+        if (data.type === 'WA_EMBEDDED_SIGNUP') {
+          const { phone_number_id: pnId, waba_id: wId } = data.data || {};
+          console.log('📱 Embedded Signup data:', data.data);
+
+          if (pnId) setPhoneNumberId(pnId);
+          if (wId) setWabaId(wId);
+        }
+      }
+    } catch {
+      // Not a JSON message, ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [handleMessage]);
 
   const loadConfig = async () => {
     setLoading(true);
@@ -55,6 +115,69 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
       console.error('Erro ao carregar config:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEmbeddedSignup = () => {
+    if (!fbSdkReady || !(window as any).FB) {
+      toast({ title: 'Aguarde', description: 'SDK do Facebook ainda carregando...', variant: 'destructive' });
+      return;
+    }
+
+    setConnecting(true);
+
+    (window as any).FB.login(
+      (response: any) => {
+        if (response.authResponse) {
+          const code = response.authResponse.code;
+          console.log('✅ Code obtido do Embedded Signup:', code);
+
+          // Enviar code para a Edge Function trocar por token
+          exchangeCodeForToken(code);
+        } else {
+          console.log('❌ Login cancelado pelo usuário');
+          setConnecting(false);
+          toast({ title: 'Cancelado', description: 'Processo de conexão cancelado', variant: 'destructive' });
+        }
+      },
+      {
+        config_id: FB_CONFIG_ID,
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: {
+          setup: {},
+          featureType: '',
+          sessionInfoVersion: '3',
+        },
+      }
+    );
+  };
+
+  const exchangeCodeForToken = async (code: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-cloud-exchange-token', {
+        body: {
+          code,
+          tenant_id: tenantId,
+          waba_id: wabaId || undefined,
+          phone_number_id: phoneNumberId || undefined,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast({ title: '🎉 Conectado!', description: 'WhatsApp Cloud API conectada com sucesso via Embedded Signup!' });
+        // Reload config
+        await loadConfig();
+      } else {
+        toast({ title: 'Erro', description: data?.error || 'Falha na troca do token', variant: 'destructive' });
+      }
+    } catch (error: any) {
+      console.error('Erro ao trocar code:', error);
+      toast({ title: 'Erro', description: error.message || 'Erro ao conectar', variant: 'destructive' });
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -163,81 +286,116 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
 
   return (
     <div className="space-y-4">
-      {/* Guia Passo a Passo */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <HelpCircle className="h-5 w-5" />
-            Como obter as credenciais?
-          </CardTitle>
-          <CardDescription>Siga o passo a passo abaixo para configurar a API oficial do WhatsApp</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Accordion type="single" collapsible className="w-full">
-            <AccordionItem value="step1">
-              <AccordionTrigger className="text-sm font-medium">
-                1️⃣ Criar App no Meta for Developers
-              </AccordionTrigger>
-              <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                <p>Acesse <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-primary underline">developers.facebook.com/apps</a> e clique em <strong>"Criar App"</strong>.</p>
-                <p>Selecione: Tipo → <strong>"Outro"</strong>, Categoria → <strong>"Negócio"</strong>.</p>
-                <p>Após criar, no painel lateral, clique em <strong>"Adicionar Produto"</strong> e escolha <strong>WhatsApp</strong>.</p>
-              </AccordionContent>
-            </AccordionItem>
+      {/* Conexão Rápida - Embedded Signup */}
+      {!isConnected && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Zap className="h-5 w-5 text-primary" />
+              Conexão Rápida (Recomendado)
+            </CardTitle>
+            <CardDescription>
+              Conecte automaticamente sua conta WhatsApp Business com um clique. O sistema obterá as credenciais automaticamente.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              onClick={handleEmbeddedSignup}
+              disabled={connecting || !fbSdkReady}
+              size="lg"
+              className="w-full sm:w-auto"
+            >
+              {connecting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <MessageSquare className="h-4 w-4 mr-2" />
+              )}
+              {connecting ? 'Conectando...' : 'Conectar WhatsApp'}
+            </Button>
+            {!fbSdkReady && (
+              <p className="text-xs text-muted-foreground mt-2">Carregando SDK do Facebook...</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-            <AccordionItem value="step2">
-              <AccordionTrigger className="text-sm font-medium">
-                2️⃣ Obter o Phone Number ID
-              </AccordionTrigger>
-              <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                <p>No menu lateral, vá em <strong>WhatsApp → API Setup</strong>.</p>
-                <p>Você verá o <strong>Phone Number ID</strong> logo abaixo do número de teste.</p>
-                <p>Para usar seu próprio número, clique em <strong>"Add phone number"</strong> e siga a verificação por SMS/ligação.</p>
-              </AccordionContent>
-            </AccordionItem>
+      {/* Guia Passo a Passo - Modo Manual */}
+      {!isConnected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <HelpCircle className="h-5 w-5" />
+              Conexão Manual (Alternativa)
+            </CardTitle>
+            <CardDescription>Se a conexão rápida não funcionar, siga o passo a passo abaixo</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="step1">
+                <AccordionTrigger className="text-sm font-medium">
+                  1️⃣ Criar App no Meta for Developers
+                </AccordionTrigger>
+                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
+                  <p>Acesse <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer" className="text-primary underline">developers.facebook.com/apps</a> e clique em <strong>"Criar App"</strong>.</p>
+                  <p>Selecione: Tipo → <strong>"Outro"</strong>, Categoria → <strong>"Negócio"</strong>.</p>
+                  <p>Após criar, no painel lateral, clique em <strong>"Adicionar Produto"</strong> e escolha <strong>WhatsApp</strong>.</p>
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem value="step3">
-              <AccordionTrigger className="text-sm font-medium">
-                3️⃣ Gerar o Access Token (Permanente)
-              </AccordionTrigger>
-              <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                <p><strong>Token temporário (para teste):</strong> Na página API Setup, clique em "Generate" — válido por 24h.</p>
-                <Separator className="my-2" />
-                <p><strong>Token permanente (recomendado):</strong></p>
-                <ol className="list-decimal ml-4 space-y-1">
-                  <li>Acesse <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer" className="text-primary underline">Business Settings → System Users</a></li>
-                  <li>Crie um <strong>System User</strong> com role "Admin"</li>
-                  <li>Clique em <strong>"Generate Token"</strong></li>
-                  <li>Selecione o App criado no passo 1</li>
-                  <li>Marque as permissões: <code className="bg-muted px-1 rounded text-xs">whatsapp_business_management</code> e <code className="bg-muted px-1 rounded text-xs">whatsapp_business_messaging</code></li>
-                  <li>Copie o token gerado — ele <strong>não expira</strong></li>
-                </ol>
-              </AccordionContent>
-            </AccordionItem>
+              <AccordionItem value="step2">
+                <AccordionTrigger className="text-sm font-medium">
+                  2️⃣ Obter o Phone Number ID
+                </AccordionTrigger>
+                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
+                  <p>No menu lateral, vá em <strong>WhatsApp → API Setup</strong>.</p>
+                  <p>Você verá o <strong>Phone Number ID</strong> logo abaixo do número de teste.</p>
+                  <p>Para usar seu próprio número, clique em <strong>"Add phone number"</strong> e siga a verificação por SMS/ligação.</p>
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem value="step4">
-              <AccordionTrigger className="text-sm font-medium">
-                4️⃣ Obter o WABA ID (opcional)
-              </AccordionTrigger>
-              <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                <p>Acesse <a href="https://business.facebook.com/settings/whatsapp-business-accounts" target="_blank" rel="noopener noreferrer" className="text-primary underline">Business Settings → WhatsApp Accounts</a>.</p>
-                <p>Clique na conta desejada — o <strong>WABA ID</strong> aparece na URL e nos detalhes.</p>
-              </AccordionContent>
-            </AccordionItem>
+              <AccordionItem value="step3">
+                <AccordionTrigger className="text-sm font-medium">
+                  3️⃣ Gerar o Access Token (Permanente)
+                </AccordionTrigger>
+                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
+                  <p><strong>Token temporário (para teste):</strong> Na página API Setup, clique em "Generate" — válido por 24h.</p>
+                  <Separator className="my-2" />
+                  <p><strong>Token permanente (recomendado):</strong></p>
+                  <ol className="list-decimal ml-4 space-y-1">
+                    <li>Acesse <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer" className="text-primary underline">Business Settings → System Users</a></li>
+                    <li>Crie um <strong>System User</strong> com role "Admin"</li>
+                    <li>Clique em <strong>"Generate Token"</strong></li>
+                    <li>Selecione o App criado no passo 1</li>
+                    <li>Marque as permissões: <code className="bg-muted px-1 rounded text-xs">whatsapp_business_management</code> e <code className="bg-muted px-1 rounded text-xs">whatsapp_business_messaging</code></li>
+                    <li>Copie o token gerado — ele <strong>não expira</strong></li>
+                  </ol>
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem value="step5">
-              <AccordionTrigger className="text-sm font-medium">
-                5️⃣ Preencher os campos abaixo e conectar
-              </AccordionTrigger>
-              <AccordionContent className="text-sm space-y-2 text-muted-foreground">
-                <p>Cole o <strong>Access Token</strong>, <strong>Phone Number ID</strong> e <strong>WABA ID</strong> nos campos abaixo.</p>
-                <p>Clique em <strong>"Conectar"</strong> e depois teste com o botão de envio.</p>
-                <p>Por último, configure o <strong>Webhook</strong> no Meta (instruções aparecem após conectar).</p>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </CardContent>
-      </Card>
+              <AccordionItem value="step4">
+                <AccordionTrigger className="text-sm font-medium">
+                  4️⃣ Obter o WABA ID (opcional)
+                </AccordionTrigger>
+                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
+                  <p>Acesse <a href="https://business.facebook.com/settings/whatsapp-business-accounts" target="_blank" rel="noopener noreferrer" className="text-primary underline">Business Settings → WhatsApp Accounts</a>.</p>
+                  <p>Clique na conta desejada — o <strong>WABA ID</strong> aparece na URL e nos detalhes.</p>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="step5">
+                <AccordionTrigger className="text-sm font-medium">
+                  5️⃣ Preencher os campos abaixo e conectar
+                </AccordionTrigger>
+                <AccordionContent className="text-sm space-y-2 text-muted-foreground">
+                  <p>Cole o <strong>Access Token</strong>, <strong>Phone Number ID</strong> e <strong>WABA ID</strong> nos campos abaixo.</p>
+                  <p>Clique em <strong>"Conectar"</strong> e depois teste com o botão de envio.</p>
+                  <p>Por último, configure o <strong>Webhook</strong> no Meta (instruções aparecem após conectar).</p>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -317,7 +475,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
             ) : (
               <Button onClick={handleConnect} disabled={saving}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                Conectar
+                Conectar Manualmente
               </Button>
             )}
           </div>
