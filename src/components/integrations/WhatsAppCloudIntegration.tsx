@@ -144,7 +144,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
       (response: any) => {
         if (response.authResponse) {
           const code = response.authResponse.code;
-          exchangeCodeForToken(code, 'https://live-launchpad-79.lovable.app/auth');
+          exchangeCodeForToken(code, OAUTH_REDIRECT_URI);
         } else {
           setConnecting(false);
           toast({ title: 'Cancelado', description: 'Processo de conexão cancelado', variant: 'destructive' });
