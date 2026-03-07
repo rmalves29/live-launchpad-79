@@ -28,6 +28,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
   const [testPhone, setTestPhone] = useState('');
   const [phoneInfo, setPhoneInfo] = useState<any>(null);
   const [loadingPhone, setLoadingPhone] = useState(false);
+  const OAUTH_REDIRECT_URI = 'https://live-launchpad-79.lovable.app/auth';
 
   // Load Facebook SDK
   useEffect(() => {
@@ -143,7 +144,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
       (response: any) => {
         if (response.authResponse) {
           const code = response.authResponse.code;
-          exchangeCodeForToken(code, 'https://live-launchpad-79.lovable.app/auth');
+          exchangeCodeForToken(code, OAUTH_REDIRECT_URI);
         } else {
           setConnecting(false);
           toast({ title: 'Cancelado', description: 'Processo de conexão cancelado', variant: 'destructive' });
@@ -151,6 +152,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
       },
       {
         config_id: fbConfigId,
+        redirect_uri: OAUTH_REDIRECT_URI,
         response_type: 'code',
         override_default_response_type: true,
         extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },
