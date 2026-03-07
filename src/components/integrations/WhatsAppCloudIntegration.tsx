@@ -178,7 +178,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
     );
   };
 
-  const exchangeCodeForToken = async (code: string) => {
+  const exchangeCodeForToken = async (code: string, redirectUri?: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('whatsapp-cloud-exchange-token', {
         body: {
@@ -186,6 +186,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           tenant_id: tenantId,
           waba_id: wabaId || undefined,
           phone_number_id: phoneNumberId || undefined,
+          redirect_uri: redirectUri || undefined,
         },
       });
 
