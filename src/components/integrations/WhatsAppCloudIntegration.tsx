@@ -158,7 +158,7 @@ export default function WhatsAppCloudIntegration({ tenantId }: Props) {
           console.log('✅ Code obtido do Embedded Signup:', code);
 
           // Enviar code para a Edge Function trocar por token
-          exchangeCodeForToken(code);
+          exchangeCodeForToken(code, 'https://live-launchpad-79.lovable.app/auth');
         } else {
           console.log('❌ Login cancelado pelo usuário');
           setConnecting(false);
