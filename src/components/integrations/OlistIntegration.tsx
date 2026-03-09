@@ -30,7 +30,10 @@ import {
   Info,
   Key,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Upload,
+  Download,
+  ArrowUpDown
 } from 'lucide-react';
 
 interface OlistIntegrationProps {
@@ -359,6 +362,66 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
     },
   });
 
+  // Mutation para exportar produtos para o Olist
+  const exportProductsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/olist-export-products`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({ tenant_id: tenantId }),
+        }
+      );
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Falha ao exportar produtos');
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['olist-integration', tenantId] });
+      toast.success(`Exportação concluída! ${data.exported || 0} produto(s) enviado(s) ao Olist.`);
+      if (data.errors > 0) {
+        toast.warning(`${data.errors} produto(s) com erro.`);
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Erro ao exportar produtos');
+    },
+  });
+
+  // Mutation para exportar pedidos para o Olist
+  const exportOrdersMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/olist-export-orders`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({ tenant_id: tenantId }),
+        }
+      );
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Falha ao exportar pedidos');
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['olist-integration', tenantId] });
+      toast.success(`Exportação concluída! ${data.exported || 0} pedido(s) enviado(s) ao Olist.`);
+      if (data.errors > 0) {
+        toast.warning(`${data.errors} pedido(s) com erro.`);
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Erro ao exportar pedidos');
+    },
+  });
+
   const toggleModule = (key: string) => {
     setModules(prev => ({ ...prev, [key]: !prev[key] }));
   };
@@ -642,36 +705,87 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
               Sincronize pedidos e produtos manualmente com o Olist ERP
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-3">
-              {modules.sync_orders && (
-                <Button
-                  onClick={() => syncOrdersMutation.mutate()}
-                  disabled={syncOrdersMutation.isPending}
-                  variant="outline"
-                >
-                  {syncOrdersMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <ShoppingCart className="h-4 w-4 mr-2" />
-                  )}
-                  Sincronizar Pedidos
-                </Button>
-              )}
-              {modules.sync_products && (
-                <Button
-                  onClick={() => syncProductsMutation.mutate()}
-                  disabled={syncProductsMutation.isPending}
-                  variant="outline"
-                >
-                  {syncProductsMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Package className="h-4 w-4 mr-2" />
-                  )}
-                  Sincronizar Produtos
-                </Button>
-              )}
+          <CardContent className="space-y-6">
+            {/* Importar do Olist → OrderZap */}
+            <div>
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                Importar do Olist → OrderZap
+              </h4>
+              <div className="flex flex-wrap gap-3">
+                {modules.sync_orders && (
+                  <Button
+                    onClick={() => syncOrdersMutation.mutate()}
+                    disabled={syncOrdersMutation.isPending}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {syncOrdersMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="h-4 w-4 mr-2" />
+                    )}
+                    Importar Pedidos
+                  </Button>
+                )}
+                {modules.sync_products && (
+                  <Button
+                    onClick={() => syncProductsMutation.mutate()}
+                    disabled={syncProductsMutation.isPending}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {syncProductsMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Package className="h-4 w-4 mr-2" />
+                    )}
+                    Importar Produtos
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Exportar do OrderZap → Olist */}
+            <div>
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Upload className="h-4 w-4" />
+                Exportar do OrderZap → Olist
+              </h4>
+              <div className="flex flex-wrap gap-3">
+                {modules.sync_orders && (
+                  <Button
+                    onClick={() => exportOrdersMutation.mutate()}
+                    disabled={exportOrdersMutation.isPending}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {exportOrdersMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="h-4 w-4 mr-2" />
+                    )}
+                    Exportar Pedidos
+                  </Button>
+                )}
+                {modules.sync_products && (
+                  <Button
+                    onClick={() => exportProductsMutation.mutate()}
+                    disabled={exportProductsMutation.isPending}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {exportProductsMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Package className="h-4 w-4 mr-2" />
+                    )}
+                    Exportar Produtos
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
