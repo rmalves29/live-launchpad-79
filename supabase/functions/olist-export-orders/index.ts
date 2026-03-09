@@ -105,7 +105,7 @@ serve(async (req) => {
           // Tentar criar contato
           const contactPayload = {
             nome: customerName,
-            tipo: 'F', // Pessoa Física
+            tipoPessoa: 'F', // Pessoa Física
             celular: phone,
             situacao: 'A',
           };
@@ -182,7 +182,7 @@ serve(async (req) => {
             itensOlist = cartItems.map(item => ({
               produto: {
                 // Sem ID no Olist, usar descrição
-                tipo: 'P',
+                tipo: 'S',
               },
               descricao: item.product_name || 'Produto',
               quantidade: item.qty || 1,
@@ -194,7 +194,7 @@ serve(async (req) => {
         // Se não tem itens do carrinho, criar item genérico
         if (itensOlist.length === 0) {
           itensOlist = [{
-            produto: { tipo: 'P' },
+            produto: { tipo: 'S' },
             descricao: `Pedido #${order.id}`,
             quantidade: 1,
             valorUnitario: order.total_amount || 0,

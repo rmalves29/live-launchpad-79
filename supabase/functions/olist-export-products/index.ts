@@ -85,7 +85,7 @@ serve(async (req) => {
         const olistProduct: Record<string, any> = {
           sku: product.code || `OZ-${product.id}`,
           descricao: product.name,
-          tipo: 'P', // Produto
+          tipo: 'S', // Simples
           unidade: 'UN',
           precos: {
             preco: product.price || 0,
