@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -97,6 +98,7 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [modules, setModules] = useState<Record<string, boolean>>({
     sync_orders: true,
     sync_products: true,
@@ -470,13 +472,23 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="olist_client_secret">Client Secret</Label>
-              <Input
-                id="olist_client_secret"
-                type="password"
-                placeholder="Seu Client Secret do Olist"
-                value={clientSecret}
-                onChange={(e) => setClientSecret(e.target.value)}
-              />
+              <div className="relative">
+                <Input
+                  id="olist_client_secret"
+                  type={showSecret ? 'text' : 'password'}
+                  placeholder="Seu Client Secret do Olist"
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowSecret(!showSecret)}
+                >
+                  {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
           </div>
 
