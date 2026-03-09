@@ -130,7 +130,7 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
-  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || shippingLoading || blingLoading || instagramLoading;
+  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || shippingLoading || blingLoading || olistLoading || instagramLoading;
 
   // Contagem de módulos ativos do Bling
   const blingActiveModules = blingIntegration ? [
