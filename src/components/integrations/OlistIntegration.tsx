@@ -30,7 +30,10 @@ import {
   Info,
   Key,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Upload,
+  Download,
+  ArrowUpDown
 } from 'lucide-react';
 
 interface OlistIntegrationProps {
