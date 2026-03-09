@@ -705,36 +705,87 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
               Sincronize pedidos e produtos manualmente com o Olist ERP
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-3">
-              {modules.sync_orders && (
-                <Button
-                  onClick={() => syncOrdersMutation.mutate()}
-                  disabled={syncOrdersMutation.isPending}
-                  variant="outline"
-                >
-                  {syncOrdersMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <ShoppingCart className="h-4 w-4 mr-2" />
-                  )}
-                  Sincronizar Pedidos
-                </Button>
-              )}
-              {modules.sync_products && (
-                <Button
-                  onClick={() => syncProductsMutation.mutate()}
-                  disabled={syncProductsMutation.isPending}
-                  variant="outline"
-                >
-                  {syncProductsMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Package className="h-4 w-4 mr-2" />
-                  )}
-                  Sincronizar Produtos
-                </Button>
-              )}
+          <CardContent className="space-y-6">
+            {/* Importar do Olist → OrderZap */}
+            <div>
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                Importar do Olist → OrderZap
+              </h4>
+              <div className="flex flex-wrap gap-3">
+                {modules.sync_orders && (
+                  <Button
+                    onClick={() => syncOrdersMutation.mutate()}
+                    disabled={syncOrdersMutation.isPending}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {syncOrdersMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="h-4 w-4 mr-2" />
+                    )}
+                    Importar Pedidos
+                  </Button>
+                )}
+                {modules.sync_products && (
+                  <Button
+                    onClick={() => syncProductsMutation.mutate()}
+                    disabled={syncProductsMutation.isPending}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {syncProductsMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Package className="h-4 w-4 mr-2" />
+                    )}
+                    Importar Produtos
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Exportar do OrderZap → Olist */}
+            <div>
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Upload className="h-4 w-4" />
+                Exportar do OrderZap → Olist
+              </h4>
+              <div className="flex flex-wrap gap-3">
+                {modules.sync_orders && (
+                  <Button
+                    onClick={() => exportOrdersMutation.mutate()}
+                    disabled={exportOrdersMutation.isPending}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {exportOrdersMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="h-4 w-4 mr-2" />
+                    )}
+                    Exportar Pedidos
+                  </Button>
+                )}
+                {modules.sync_products && (
+                  <Button
+                    onClick={() => exportProductsMutation.mutate()}
+                    disabled={exportProductsMutation.isPending}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {exportProductsMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Package className="h-4 w-4 mr-2" />
+                    )}
+                    Exportar Produtos
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
