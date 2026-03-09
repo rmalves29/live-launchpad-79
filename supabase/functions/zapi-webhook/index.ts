@@ -396,6 +396,35 @@ serve(async (req) => {
       });
     }
 
+    // ==========================================
+    // ALLOWED GROUPS FILTER - Prevent cross-tenant leakage
+    // If tenant has configured allowed groups, only process messages from those groups.
+    // If no groups are configured, all groups are allowed (backwards compatible).
+    // ==========================================
+    if (isGroup && groupName && tenantId) {
+      const { data: allowedGroups, error: agErr } = await supabase
+        .from('whatsapp_allowed_groups')
+        .select('group_name')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true);
+
+      if (!agErr && allowedGroups && allowedGroups.length > 0) {
+        const isAllowed = allowedGroups.some(
+          (ag: { group_name: string }) => groupName.toLowerCase().includes(ag.group_name.toLowerCase()) || ag.group_name.toLowerCase().includes(groupName.toLowerCase())
+        );
+
+        if (!isAllowed) {
+          console.log(`[zapi-webhook] ⛔ Group "${groupName}" is NOT in allowed groups for tenant ${tenantId}. Ignoring message.`);
+          return new Response(JSON.stringify({ success: true, skipped: 'group_not_allowed', group: groupName, tenant: tenantId }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        console.log(`[zapi-webhook] ✅ Group "${groupName}" is allowed for tenant ${tenantId}`);
+      } else {
+        console.log(`[zapi-webhook] ℹ️ No allowed groups configured for tenant ${tenantId} - processing all groups`);
+      }
+    }
+
     // EARLY LOG: Insert webhook log BEFORE processing items
     // This ensures deduplication works across multiple Edge Function instances
     // ALWAYS insert - even without messageId - to enable DB-level dedup
