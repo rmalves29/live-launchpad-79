@@ -248,6 +248,9 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="bling" className="mt-6">
           <BlingIntegration tenantId={tenantId} />
         </TabsContent>
+        <TabsContent value="olist" className="mt-6">
+          <OlistIntegration tenantId={tenantId} />
+        </TabsContent>
         <TabsContent value="mercadopago" className="mt-6">
           <PaymentIntegrations tenantId={tenantId} />
         </TabsContent>
