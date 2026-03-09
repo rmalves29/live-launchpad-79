@@ -98,6 +98,7 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
   const [modules, setModules] = useState<Record<string, boolean>>({
     sync_orders: true,
     sync_products: true,
