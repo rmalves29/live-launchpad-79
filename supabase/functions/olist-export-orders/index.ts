@@ -182,7 +182,7 @@ serve(async (req) => {
             itensOlist = cartItems.map(item => ({
               produto: {
                 // Sem ID no Olist, usar descrição
-                tipo: 'P',
+                tipo: 'S',
               },
               descricao: item.product_name || 'Produto',
               quantidade: item.qty || 1,
