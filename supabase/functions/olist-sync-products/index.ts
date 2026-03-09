@@ -58,9 +58,10 @@ serve(async (req) => {
     const limit = 100;
 
     while (true) {
-      const productsResponse = await fetch(
-        `${OLIST_API_URL}/produtos?limit=${limit}&offset=${offset}`,
-        {
+      const apiUrl = `${OLIST_API_URL}/produtos?limit=${limit}&offset=${offset}`;
+      console.log(`[olist-sync-products] Chamando API: ${apiUrl}`);
+
+      const productsResponse = await fetch(apiUrl, {
           headers: {
             'Authorization': `Bearer ${integration.access_token}`,
             'Accept': 'application/json',
@@ -70,7 +71,7 @@ serve(async (req) => {
 
       if (!productsResponse.ok) {
         const errorText = await productsResponse.text();
-        console.error('[olist-sync-products] Erro ao buscar produtos:', productsResponse.status, errorText);
+        console.error(`[olist-sync-products] Erro HTTP ${productsResponse.status}:`, errorText);
 
         if (productsResponse.status === 401) {
           return new Response(
@@ -82,8 +83,25 @@ serve(async (req) => {
         break;
       }
 
-      const productsData = await productsResponse.json();
-      const products = productsData.itens || [];
+      const rawText = await productsResponse.text();
+      console.log(`[olist-sync-products] Resposta bruta (primeiros 500 chars): ${rawText.substring(0, 500)}`);
+
+      let productsData: any;
+      try {
+        productsData = JSON.parse(rawText);
+      } catch (e) {
+        console.error('[olist-sync-products] Erro ao parsear JSON:', e);
+        break;
+      }
+
+      // Log de todas as chaves do response para debug
+      console.log(`[olist-sync-products] Chaves do response: ${Object.keys(productsData).join(', ')}`);
+
+      // A API v3 do Olist retorna "itens" como array de produtos
+      // Mas pode também retornar "data" ou o array diretamente
+      const products = productsData.itens || productsData.data || productsData.produtos || (Array.isArray(productsData) ? productsData : []);
+
+      console.log(`[olist-sync-products] Produtos nesta página: ${products.length}`);
 
       if (products.length === 0) break;
 
