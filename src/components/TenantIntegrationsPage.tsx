@@ -18,6 +18,7 @@ import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
+import OlistIntegration from '@/components/integrations/OlistIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 import WhatsAppCloudIntegration from '@/components/integrations/WhatsAppCloudIntegration';
 import { useQuery } from '@tanstack/react-query';
