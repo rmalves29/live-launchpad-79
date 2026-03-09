@@ -1,1 +1,13 @@
 project_id = "hxtbsieodbtzgcvvkeqx"
+
+[functions.olist-oauth]
+verify_jwt = false
+
+[functions.olist-oauth-callback]
+verify_jwt = false
+
+[functions.olist-sync-orders]
+verify_jwt = false
+
+[functions.olist-sync-products]
+verify_jwt = false
