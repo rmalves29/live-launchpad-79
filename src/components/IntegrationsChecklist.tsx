@@ -143,6 +143,14 @@ export default function IntegrationsChecklist() {
     blingIntegration.sync_logistics,
   ].filter(Boolean).length : 0;
 
+  // Contagem de módulos ativos do Olist
+  const olistActiveModules = olistIntegration ? [
+    olistIntegration.sync_orders,
+    olistIntegration.sync_products,
+    olistIntegration.sync_stock,
+    olistIntegration.sync_invoices,
+  ].filter(Boolean).length : 0;
+
   // Determinar qual integração de pagamento está ativa
   const activePaymentProvider = appmaxIntegration?.is_active 
     ? 'appmax'
