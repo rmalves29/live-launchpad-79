@@ -397,9 +397,66 @@ serve(async (req) => {
     }
 
     // ==========================================
-    // ALLOWED GROUPS FILTER - Prevent cross-tenant leakage
-    // If tenant has configured allowed groups, only process messages from those groups.
-    // If no groups are configured, all groups are allowed (backwards compatible).
+    // AUTO-VINCULAÇÃO DE GRUPO (GROUP OWNERSHIP)
+    // Previne vazamento cross-tenant automaticamente.
+    // O primeiro tenant a processar um comando válido em um grupo torna-se "dono".
+    // Mensagens de outros tenants para o mesmo grupo são descartadas.
+    // ==========================================
+    if (isGroup && groupId && tenantId) {
+      const { data: ownership, error: owErr } = await supabase
+        .from('whatsapp_group_ownership')
+        .select('owner_tenant_id')
+        .eq('group_id', groupId)
+        .maybeSingle();
+
+      if (!owErr && ownership) {
+        // Grupo já tem dono
+        if (ownership.owner_tenant_id !== tenantId) {
+          console.log(`[zapi-webhook] ⛔ Group "${groupName}" (${groupId}) pertence ao tenant ${ownership.owner_tenant_id}, mas a instância é do tenant ${tenantId}. DESCARTANDO.`);
+          return new Response(JSON.stringify({
+            success: true,
+            skipped: 'group_owned_by_another_tenant',
+            group: groupName,
+            owner: ownership.owner_tenant_id,
+            requester: tenantId
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        console.log(`[zapi-webhook] ✅ Group "${groupName}" pertence ao tenant ${tenantId} (confirmado)`);
+      } else if (!owErr && !ownership) {
+        // Grupo novo — registrar ownership para este tenant (first-come-first-served)
+        const { error: insertErr } = await supabase
+          .from('whatsapp_group_ownership')
+          .insert({
+            group_id: groupId,
+            group_name: groupName || null,
+            owner_tenant_id: tenantId,
+            instance_id: payload.instanceId || null,
+          });
+
+        if (insertErr) {
+          // Conflito de UNIQUE = outro tenant registrou primeiro (race condition)
+          if (insertErr.code === '23505') {
+            console.log(`[zapi-webhook] ⛔ Race condition: group "${groupName}" foi registrado por outro tenant. DESCARTANDO.`);
+            return new Response(JSON.stringify({
+              success: true,
+              skipped: 'group_ownership_race_lost',
+              group: groupName
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          console.warn(`[zapi-webhook] Erro ao registrar ownership do grupo: ${insertErr.message}`);
+        } else {
+          console.log(`[zapi-webhook] 🆕 Group "${groupName}" (${groupId}) registrado como propriedade do tenant ${tenantId}`);
+        }
+      }
+    }
+
+    // ==========================================
+    // ALLOWED GROUPS FILTER (complementar ao ownership)
+    // Se o tenant configurou grupos permitidos, filtra adicionalmente.
     // ==========================================
     if (isGroup && groupName && tenantId) {
       const { data: allowedGroups, error: agErr } = await supabase
@@ -419,9 +476,6 @@ serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         }
-        console.log(`[zapi-webhook] ✅ Group "${groupName}" is allowed for tenant ${tenantId}`);
-      } else {
-        console.log(`[zapi-webhook] ℹ️ No allowed groups configured for tenant ${tenantId} - processing all groups`);
       }
     }
 
