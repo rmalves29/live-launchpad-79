@@ -362,6 +362,66 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
     },
   });
 
+  // Mutation para exportar produtos para o Olist
+  const exportProductsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/olist-export-products`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({ tenant_id: tenantId }),
+        }
+      );
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Falha ao exportar produtos');
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['olist-integration', tenantId] });
+      toast.success(`Exportação concluída! ${data.exported || 0} produto(s) enviado(s) ao Olist.`);
+      if (data.errors > 0) {
+        toast.warning(`${data.errors} produto(s) com erro.`);
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Erro ao exportar produtos');
+    },
+  });
+
+  // Mutation para exportar pedidos para o Olist
+  const exportOrdersMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/olist-export-orders`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+          body: JSON.stringify({ tenant_id: tenantId }),
+        }
+      );
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Falha ao exportar pedidos');
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['olist-integration', tenantId] });
+      toast.success(`Exportação concluída! ${data.exported || 0} pedido(s) enviado(s) ao Olist.`);
+      if (data.errors > 0) {
+        toast.warning(`${data.errors} pedido(s) com erro.`);
+      }
+    },
+    onError: (error) => {
+      toast.error(error.message || 'Erro ao exportar pedidos');
+    },
+  });
+
   const toggleModule = (key: string) => {
     setModules(prev => ({ ...prev, [key]: !prev[key] }));
   };
