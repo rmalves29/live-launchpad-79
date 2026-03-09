@@ -105,7 +105,7 @@ serve(async (req) => {
           // Tentar criar contato
           const contactPayload = {
             nome: customerName,
-            tipo: 'F', // Pessoa Física
+            tipoPessoa: 'F', // Pessoa Física
             celular: phone,
             situacao: 'A',
           };
