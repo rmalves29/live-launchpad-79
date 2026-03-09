@@ -787,6 +787,71 @@ export type Database = {
           },
         ]
       }
+      integration_olist: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          environment: string
+          id: string
+          is_active: boolean
+          last_sync_at: string | null
+          refresh_token: string | null
+          sync_invoices: boolean
+          sync_orders: boolean
+          sync_products: boolean
+          sync_stock: boolean
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          refresh_token?: string | null
+          sync_invoices?: boolean
+          sync_orders?: boolean
+          sync_products?: boolean
+          sync_stock?: boolean
+          tenant_id: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          refresh_token?: string | null
+          sync_invoices?: boolean
+          sync_orders?: boolean
+          sync_products?: boolean
+          sync_stock?: boolean
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_olist_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_pagarme: {
         Row: {
           api_key: string | null
