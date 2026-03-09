@@ -177,28 +177,86 @@ serve(async (req) => {
             .eq('cart_id', order.cart_id);
 
           if (cartItems && cartItems.length > 0) {
-            // Para cada item, precisamos do ID do produto no Olist
-            // Como pode não existir, usamos descricao como fallback
-            itensOlist = cartItems.map(item => ({
-              produto: {
-                // Sem ID no Olist, usar descrição
-                tipo: 'S',
-              },
-              descricao: item.product_name || 'Produto',
-              quantidade: item.qty || 1,
-              valorUnitario: item.unit_price || 0,
-            }));
+            for (const item of cartItems) {
+              // Buscar produto no Olist pelo SKU (code)
+              let olistProductId: number | null = null;
+              const sku = item.product_code || '';
+
+              if (sku) {
+                try {
+                  const searchResp = await fetch(`${OLIST_API_URL}/produtos?sku=${encodeURIComponent(sku)}&limit=1`, {
+                    headers: {
+                      'Authorization': `Bearer ${integration.access_token}`,
+                      'Accept': 'application/json',
+                    },
+                  });
+                  if (searchResp.ok) {
+                    const searchData = await searchResp.json();
+                    const found = searchData.itens || searchData.data || [];
+                    if (Array.isArray(found) && found.length > 0) {
+                      olistProductId = found[0].id;
+                      console.log(`[olist-export-orders] Produto SKU ${sku} encontrado no Olist: ID ${olistProductId}`);
+                    }
+                  }
+                  await delay(1000);
+                } catch (e) {
+                  console.error(`[olist-export-orders] Erro ao buscar produto SKU ${sku}:`, e);
+                }
+              }
+
+              // Se não encontrou pelo SKU, buscar pelo product_id local na tabela products
+              if (!olistProductId && item.product_id) {
+                const { data: localProduct } = await supabase
+                  .from('products')
+                  .select('code')
+                  .eq('id', item.product_id)
+                  .single();
+
+                if (localProduct?.code) {
+                  try {
+                    const searchResp2 = await fetch(`${OLIST_API_URL}/produtos?sku=${encodeURIComponent(localProduct.code)}&limit=1`, {
+                      headers: {
+                        'Authorization': `Bearer ${integration.access_token}`,
+                        'Accept': 'application/json',
+                      },
+                    });
+                    if (searchResp2.ok) {
+                      const searchData2 = await searchResp2.json();
+                      const found2 = searchData2.itens || searchData2.data || [];
+                      if (Array.isArray(found2) && found2.length > 0) {
+                        olistProductId = found2[0].id;
+                        console.log(`[olist-export-orders] Produto code ${localProduct.code} encontrado no Olist: ID ${olistProductId}`);
+                      }
+                    }
+                    await delay(1000);
+                  } catch (e) {
+                    console.error(`[olist-export-orders] Erro ao buscar produto code:`, e);
+                  }
+                }
+              }
+
+              if (!olistProductId) {
+                console.error(`[olist-export-orders] Produto não encontrado no Olist para item: ${item.product_name}. Exporte os produtos primeiro.`);
+                // Pular este item — não pode enviar sem ID
+                continue;
+              }
+
+              itensOlist.push({
+                produto: { id: olistProductId },
+                descricao: item.product_name || 'Produto',
+                quantidade: item.qty || 1,
+                valorUnitario: item.unit_price || 0,
+              });
+            }
           }
         }
 
-        // Se não tem itens do carrinho, criar item genérico
+        // Se não tem itens válidos, tentar buscar um produto genérico ou pular
         if (itensOlist.length === 0) {
-          itensOlist = [{
-            produto: { tipo: 'S' },
-            descricao: `Pedido #${order.id}`,
-            quantidade: 1,
-            valorUnitario: order.total_amount || 0,
-          }];
+          console.error(`[olist-export-orders] Pedido #${order.id} sem itens válidos no Olist. Exporte os produtos primeiro.`);
+          errors++;
+          errorDetails.push(`Pedido #${order.id}: Nenhum produto encontrado no Olist. Exporte os produtos antes.`);
+          continue;
         }
 
         // Montar pedido Olist
