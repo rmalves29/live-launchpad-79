@@ -1,58 +1,62 @@
 
 
-## Plano: Integração com Olist ERP (similar ao Bling)
+## Plano: Desconto PIX configurável para todas as integrações de pagamento
 
 ### Visão Geral
-Criar uma integração completa com o Olist (antigo Tiny ERP) seguindo exatamente o mesmo padrão da integração Bling existente: tabela no banco, componente de configuração com OAuth, módulos de sincronização, e Edge Functions para sync de pedidos e produtos.
+Adicionar um campo configurável de desconto PIX em cada integração de pagamento (Mercado Pago, Pagar.me, App Max), um seletor de forma de pagamento (PIX ou Cartão) no checkout público, e aplicar o desconto automaticamente sobre o subtotal dos produtos quando PIX for selecionado.
 
-### 1. Banco de Dados — Nova tabela `integration_olist`
+### 1. Banco de Dados — Adicionar coluna `pix_discount_percent`
 
-Criar via migration uma tabela espelhando a estrutura do `integration_bling`:
+Criar migration para adicionar o campo nas 3 tabelas de integração:
 
-- `id`, `tenant_id`, `client_id`, `client_secret`, `access_token`, `refresh_token`, `token_expires_at`
-- Módulos: `sync_orders`, `sync_products`, `sync_stock`, `sync_invoices`
-- `environment`, `is_active`, `last_sync_at`, `created_at`, `updated_at`
-- RLS policies idênticas às do Bling (tenant + super_admin)
+```sql
+ALTER TABLE integration_pagarme ADD COLUMN pix_discount_percent numeric DEFAULT 0;
+ALTER TABLE integration_mp ADD COLUMN pix_discount_percent numeric DEFAULT 0;
+ALTER TABLE integration_appmax ADD COLUMN pix_discount_percent numeric DEFAULT 0;
+```
 
-### 2. Frontend — Componente `OlistIntegration.tsx`
+Também atualizar a trigger `validate_order_total_on_payment` para reconhecer a tag `[PIX_DISCOUNT]` nas observações e não corrigir indevidamente o total quando houver desconto PIX.
 
-Novo componente em `src/components/integrations/` seguindo o padrão do `BlingIntegration.tsx`:
-- Campos para Client ID e Client Secret (API Token do Olist)
-- Botão de autorização OAuth (Olist usa OAuth2)
-- Toggle de módulos (Pedidos, Produtos, Estoque, NF-e)
-- Status de conexão com badge ativo/inativo
-- Painel de sincronização manual
+### 2. Telas de Integração — Campo de configuração
 
-### 3. Edge Functions
+Adicionar input numérico "Desconto PIX (%)" nos 3 componentes:
+- `PagarMeIntegration.tsx` — campo `pix_discount_percent`
+- `PaymentIntegrations.tsx` (Mercado Pago) — campo `pix_discount_percent`
+- `AppmaxIntegration.tsx` — campo `pix_discount_percent`
 
-Criar 3 Edge Functions:
+Cada um salva/carrega o valor da respectiva tabela.
 
-- **`olist-oauth`** — Inicia fluxo OAuth com redirect
-- **`olist-oauth-callback`** — Troca code por token e salva no banco
-- **`olist-sync-orders`** — Busca pedidos do Olist e sincroniza com tabela `orders` (mesmo padrão do `bling-sync-orders`)
-- **`olist-sync-products`** — Sincroniza produtos do Olist com tabela `products`
+### 3. Checkout Público (`PublicCheckout.tsx`)
 
-### 4. Página de Integrações
+**Buscar config de desconto PIX**: Ao carregar o tenant, consultar as 3 tabelas de integração ativas para obter o `pix_discount_percent` configurado (usa a mesma lógica de prioridade: AppMax > Pagar.me > MP).
 
-Adicionar nova aba "Olist" no `TenantIntegrationsPage.tsx` e item no `IntegrationsChecklist.tsx`.
+**Seletor de forma de pagamento**: Após as opções de frete e antes do resumo, exibir um radio group com:
+- PIX (com badge mostrando "X% OFF" se configurado)
+- Cartão de Crédito
 
-### 5. Secrets Necessários
+**Cálculo do desconto**: Quando PIX for selecionado, aplicar `pix_discount_percent` sobre o subtotal dos produtos (excluindo frete e cupom). Exibir o valor original riscado e o valor com desconto.
 
-- `OLIST_CLIENT_ID` e `OLIST_CLIENT_SECRET` — credenciais do app OAuth do Olist
+**Enviar ao backend**: Incluir `payment_method` e `pix_discount` no payload enviado ao `create-payment`.
 
-### Detalhes Técnicos
+### 4. Edge Function `create-payment`
 
-- A API do Olist (Tiny) usa REST com autenticação via token de API ou OAuth2
-- Base URL da API: `https://api.tiny.com.br/api2/`
-- Rate limit: ~30 req/min — implementar delay similar ao Bling
-- Endpoints principais: `pedidos.pesquisa`, `produtos.pesquisa`, `nota.fiscal.obter`
-- O formato de resposta é XML por padrão, mas suporta JSON via parâmetro `formato=json`
+- Receber `payment_method` e `pix_discount` no payload
+- Recalcular total: `productsTotal - pixDiscount - couponDiscount + shippingCost`
+- Adicionar tag `[PIX_DISCOUNT] R$ X.XX` na observação do pedido
+- Passar o total correto para o gateway de pagamento
 
-### Ordem de Implementação
+### 5. Trigger `validate_order_total_on_payment`
 
-1. Migration da tabela `integration_olist` + RLS
-2. Componente `OlistIntegration.tsx`
-3. Aba na página de integrações
-4. Edge Functions (OAuth + Sync)
-5. Solicitar secrets ao usuário
+Atualizar para extrair `[PIX_DISCOUNT]` da observação via regex, subtraindo do total esperado para evitar "correções" indevidas.
+
+### Resumo de arquivos afetados
+
+| Arquivo | Alteração |
+|---|---|
+| Migration SQL | Adicionar `pix_discount_percent` em 3 tabelas + atualizar trigger |
+| `PagarMeIntegration.tsx` | Campo de config desconto PIX |
+| `PaymentIntegrations.tsx` | Campo de config desconto PIX |
+| `AppmaxIntegration.tsx` | Campo de config desconto PIX |
+| `PublicCheckout.tsx` | Seletor PIX/Cartão + cálculo desconto + UI |
+| `create-payment/index.ts` | Receber/processar desconto PIX |
 

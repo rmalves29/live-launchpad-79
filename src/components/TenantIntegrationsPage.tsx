@@ -18,6 +18,7 @@ import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
+import OlistIntegration from '@/components/integrations/OlistIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 import WhatsAppCloudIntegration from '@/components/integrations/WhatsAppCloudIntegration';
 import { useQuery } from '@tanstack/react-query';
@@ -120,6 +121,15 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
+  const { data: olistIntegration } = useQuery({
+    queryKey: ['olist-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('integration_olist' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
+      return data as { is_active: boolean } | null;
+    },
+    enabled: !!tenantId,
+  });
+
   if (authLoading || tenantLoading) {
     return (
       <div className="container mx-auto p-6 flex items-center justify-center h-64">
@@ -179,6 +189,12 @@ export default function TenantIntegrationsPage() {
             <span className="sm:hidden">Bling</span>
             {blingIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          <TabsTrigger value="olist" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Olist ERP</span>
+            <span className="sm:hidden">Olist</span>
+            {olistIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
           <TabsTrigger value="mercadopago" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Mercado Pago</span>
@@ -231,6 +247,9 @@ export default function TenantIntegrationsPage() {
         </TabsContent>
         <TabsContent value="bling" className="mt-6">
           <BlingIntegration tenantId={tenantId} />
+        </TabsContent>
+        <TabsContent value="olist" className="mt-6">
+          <OlistIntegration tenantId={tenantId} />
         </TabsContent>
         <TabsContent value="mercadopago" className="mt-6">
           <PaymentIntegrations tenantId={tenantId} />

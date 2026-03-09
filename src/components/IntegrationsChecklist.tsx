@@ -102,6 +102,20 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
+  // Olist ERP Status
+  const { data: olistIntegration, isLoading: olistLoading } = useQuery({
+    queryKey: ['olist-checklist-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_olist' as any)
+        .select('is_active, sync_orders, sync_products, sync_stock, sync_invoices')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data as { is_active: boolean; sync_orders: boolean; sync_products: boolean; sync_stock: boolean; sync_invoices: boolean } | null;
+    },
+    enabled: !!tenantId,
+  });
+
   // Instagram Live Status
   const { data: instagramIntegration, isLoading: instagramLoading } = useQuery({
     queryKey: ['instagram-checklist-status', tenantId],
@@ -116,7 +130,7 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
-  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || shippingLoading || blingLoading || instagramLoading;
+  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || shippingLoading || blingLoading || olistLoading || instagramLoading;
 
   // Contagem de módulos ativos do Bling
   const blingActiveModules = blingIntegration ? [
@@ -127,6 +141,14 @@ export default function IntegrationsChecklist() {
     blingIntegration.sync_marketplaces,
     blingIntegration.sync_ecommerce,
     blingIntegration.sync_logistics,
+  ].filter(Boolean).length : 0;
+
+  // Contagem de módulos ativos do Olist
+  const olistActiveModules = olistIntegration ? [
+    olistIntegration.sync_orders,
+    olistIntegration.sync_products,
+    olistIntegration.sync_stock,
+    olistIntegration.sync_invoices,
   ].filter(Boolean).length : 0;
 
   // Determinar qual integração de pagamento está ativa
@@ -170,8 +192,16 @@ export default function IntegrationsChecklist() {
       name: 'Bling ERP',
       icon: <Building2 className="h-5 w-5" />,
       isActive: blingIntegration?.is_active || false,
-      details: blingIntegration?.is_active 
-        ? `${blingActiveModules} módulo(s) ativo(s)` 
+      details: blingIntegration?.is_active
+        ? `${blingActiveModules} módulo(s) ativo(s)`
+        : 'Não configurado',
+    },
+    {
+      name: 'Olist ERP',
+      icon: <Building2 className="h-5 w-5" />,
+      isActive: olistIntegration?.is_active || false,
+      details: olistIntegration?.is_active
+        ? `${olistActiveModules} módulo(s) ativo(s)`
         : 'Não configurado',
     },
     {
