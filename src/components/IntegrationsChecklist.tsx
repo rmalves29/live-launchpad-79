@@ -102,6 +102,20 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
+  // Olist ERP Status
+  const { data: olistIntegration, isLoading: olistLoading } = useQuery({
+    queryKey: ['olist-checklist-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_olist' as any)
+        .select('is_active, sync_orders, sync_products, sync_stock, sync_invoices')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data as { is_active: boolean; sync_orders: boolean; sync_products: boolean; sync_stock: boolean; sync_invoices: boolean } | null;
+    },
+    enabled: !!tenantId,
+  });
+
   // Instagram Live Status
   const { data: instagramIntegration, isLoading: instagramLoading } = useQuery({
     queryKey: ['instagram-checklist-status', tenantId],
