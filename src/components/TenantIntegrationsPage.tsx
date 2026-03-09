@@ -189,6 +189,12 @@ export default function TenantIntegrationsPage() {
             <span className="sm:hidden">Bling</span>
             {blingIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          <TabsTrigger value="olist" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Olist ERP</span>
+            <span className="sm:hidden">Olist</span>
+            {olistIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
           <TabsTrigger value="mercadopago" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Mercado Pago</span>
