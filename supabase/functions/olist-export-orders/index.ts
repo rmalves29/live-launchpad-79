@@ -194,7 +194,7 @@ serve(async (req) => {
         // Se não tem itens do carrinho, criar item genérico
         if (itensOlist.length === 0) {
           itensOlist = [{
-            produto: { tipo: 'P' },
+            produto: { tipo: 'S' },
             descricao: `Pedido #${order.id}`,
             quantidade: 1,
             valorUnitario: order.total_amount || 0,
