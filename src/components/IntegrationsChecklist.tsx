@@ -192,8 +192,16 @@ export default function IntegrationsChecklist() {
       name: 'Bling ERP',
       icon: <Building2 className="h-5 w-5" />,
       isActive: blingIntegration?.is_active || false,
-      details: blingIntegration?.is_active 
-        ? `${blingActiveModules} módulo(s) ativo(s)` 
+      details: blingIntegration?.is_active
+        ? `${blingActiveModules} módulo(s) ativo(s)`
+        : 'Não configurado',
+    },
+    {
+      name: 'Olist ERP',
+      icon: <Building2 className="h-5 w-5" />,
+      isActive: olistIntegration?.is_active || false,
+      details: olistIntegration?.is_active
+        ? `${olistActiveModules} módulo(s) ativo(s)`
         : 'Não configurado',
     },
     {
