@@ -235,7 +235,7 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
       toast.info('Buscando códigos de rastreio do Bling...');
       const session = await supabase.auth.getSession();
       const response = await fetch(
-        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-sync-orders',
+        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/sync-bling-tracking',
         {
           method: 'POST',
           headers: {
@@ -243,7 +243,6 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
             'Authorization': `Bearer ${session.data.session?.access_token}`,
           },
           body: JSON.stringify({
-            action: 'sync_tracking',
             tenant_id: tenantId,
           }),
         }
@@ -256,13 +255,11 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
       }
       
       if (result.success) {
-        const data = result.data;
-        if (data.synced === 0) {
-          toast.info(`Verificados ${data.total_checked} pedido(s). Nenhum código de rastreio novo encontrado.`);
+        if (result.synced === 0) {
+          toast.info(`Nenhum código de rastreio novo encontrado.`);
         } else {
-          toast.success(`${data.synced} código(s) de rastreio atualizado(s) de ${data.total_checked} pedido(s) verificados!`);
+          toast.success(`${result.synced} código(s) de rastreio atualizado(s)! ${result.messagesSent} mensagem(ns) WhatsApp enviada(s).`);
         }
-        console.log('Resultado sync tracking:', data);
         queryClient.invalidateQueries({ queryKey: ['orders'] });
       } else {
         throw new Error(result.error || 'Erro desconhecido');
