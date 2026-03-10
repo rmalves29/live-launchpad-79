@@ -135,30 +135,9 @@ serve(async (req) => {
       response: JSON.stringify(payload).substring(0, 5000)
     });
 
-    // Se recebemos um tracking code novo, enviar notificação via WhatsApp
+    // WhatsApp será enviado automaticamente pelo trigger trg_send_tracking_whatsapp
     if (trackingCode && trackingCode !== order.melhor_envio_tracking_code) {
-      console.log(`[mandae-webhook] Enviando notificação de tracking para pedido ${order.id}`);
-      
-      try {
-        const trackingResponse = await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabaseKey}`
-          },
-          body: JSON.stringify({
-            order_id: order.id,
-            tenant_id: order.tenant_id,
-            tracking_code: trackingCode,
-            tracking_url: `https://rastreae.com.br/${trackingCode}`
-          })
-        });
-
-        const trackingResult = await trackingResponse.json();
-        console.log(`[mandae-webhook] Resposta do zapi-send-tracking:`, trackingResult);
-      } catch (trackingError) {
-        console.error("[mandae-webhook] Erro ao enviar tracking:", trackingError);
-      }
+      console.log(`[mandae-webhook] Rastreio ${trackingCode} salvo para pedido ${order.id}, trigger automático enviará WhatsApp`);
     }
 
     console.log(`[mandae-webhook] Webhook processado com sucesso para pedido ${order.id}`);

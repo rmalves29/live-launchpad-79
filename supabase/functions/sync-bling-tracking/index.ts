@@ -195,43 +195,14 @@ serve(async (req: Request) => {
 
           console.log(`✅ [sync-bling-tracking] Rastreio encontrado para pedido ${order.id}: ${trackingCode}`);
 
-          // Update tracking code
+          // Update tracking code (trigger trg_send_tracking_whatsapp will auto-send WhatsApp)
           await supabase
             .from("orders")
             .update({ melhor_envio_tracking_code: trackingCode })
             .eq("id", order.id);
 
           syncedCount++;
-
-          // Send WhatsApp notification
-          if (zapiIntegration && order.customer_phone) {
-            try {
-              const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-              const res = await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${supabaseAnonKey}`,
-                },
-                body: JSON.stringify({
-                  order_id: order.id,
-                  tenant_id: tenantId,
-                  tracking_code: trackingCode,
-                  shipped_at: new Date().toISOString(),
-                }),
-              });
-
-              if (res.ok) {
-                console.log(`📱 [sync-bling-tracking] WhatsApp enviado para pedido ${order.id}`);
-                messagesCount++;
-              } else {
-                const errText = await res.text();
-                console.error(`❌ [sync-bling-tracking] Erro WhatsApp pedido ${order.id}: ${errText}`);
-              }
-            } catch (whatsappError) {
-              console.error(`❌ [sync-bling-tracking] Erro ao enviar WhatsApp pedido ${order.id}:`, whatsappError);
-            }
-          }
+          console.log(`📱 [sync-bling-tracking] Rastreio salvo, trigger automático enviará WhatsApp para pedido ${order.id}`);
         } catch (orderError) {
           console.error(`❌ [sync-bling-tracking] Erro ao processar pedido ${order.id}:`, orderError);
         }
