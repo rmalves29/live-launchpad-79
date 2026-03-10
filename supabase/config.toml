@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.olist-sync-products]
 verify_jwt = false
+
+[functions.sync-bling-tracking]
+verify_jwt = false
