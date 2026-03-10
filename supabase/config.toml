@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.sync-bling-tracking]
 verify_jwt = false
+
+[functions.sync-tracking-codes]
+verify_jwt = false
+
+[functions.zapi-send-tracking]
+verify_jwt = false
