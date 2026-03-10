@@ -106,93 +106,14 @@ serve(async (req: Request) => {
           if (shipmentData?.tracking) {
             console.log(`✅ [SYNC-TRACKING] Tracking encontrado para pedido ${order.id}: ${shipmentData.tracking}`);
 
-            // Atualizar tracking no pedido
+            // Atualizar tracking no pedido (trigger trg_send_tracking_whatsapp enviará WhatsApp automaticamente)
             await supabase
               .from("orders")
               .update({ melhor_envio_tracking_code: shipmentData.tracking })
               .eq("id", order.id);
 
             syncedCount++;
-
-            // Enviar WhatsApp se tiver integração Z-API
-            if (zapiIntegration) {
-              try {
-                // Buscar template de rastreio
-                const { data: template } = await supabase
-                  .from("whatsapp_templates")
-                  .select("content")
-                  .eq("tenant_id", tenantId)
-                  .eq("type", "TRACKING")
-                  .maybeSingle();
-
-                const defaultTemplate = `📦 *Pedido Enviado!*
-
-Olá{{customer_name}}! 🎉
-
-Seu pedido *#{{order_id}}* foi enviado!
-
-🚚 *Código de Rastreio:* {{tracking_code}}
-
-🔗 *Rastreie seu pedido:*
-https://www.melhorrastreio.com.br/rastreio/{{tracking_code}}
-
-⏳ _O rastreio pode demorar até 2 dias úteis para aparecer no sistema._
-
-Obrigado pela preferência! 💚`;
-
-                let messageContent = template?.content || defaultTemplate;
-
-                const customerName = order.customer_name ? `, ${order.customer_name}` : '';
-                messageContent = messageContent
-                  .replace(/\{\{customer_name\}\}/g, customerName)
-                  .replace(/\{\{order_id\}\}/g, String(order.id))
-                  .replace(/\{\{tracking_code\}\}/g, shipmentData.tracking)
-                  .replace(/\{\{shipped_at\}\}/g, new Date().toLocaleDateString('pt-BR'));
-
-                // Normalizar telefone
-                let phone = order.customer_phone.replace(/\D/g, "");
-                if (!phone.startsWith("55")) {
-                  phone = "55" + phone;
-                }
-
-                // Enviar via Z-API
-                const zapiUrl = `https://api.z-api.io/instances/${zapiIntegration.zapi_instance_id}/token/${zapiIntegration.zapi_token}/send-text`;
-                
-                const headers: Record<string, string> = {
-                  "Content-Type": "application/json",
-                };
-                
-                if (zapiIntegration.zapi_client_token) {
-                  headers["Client-Token"] = zapiIntegration.zapi_client_token;
-                }
-
-                const zapiResponse = await fetch(zapiUrl, {
-                  method: "POST",
-                  headers,
-                  body: JSON.stringify({ phone, message: messageContent }),
-                });
-
-                if (zapiResponse.ok) {
-                  const zapiResult = await zapiResponse.json();
-                  console.log(`📱 [SYNC-TRACKING] WhatsApp enviado para pedido ${order.id}`);
-
-                  // Registrar mensagem
-                  await supabase.from("whatsapp_messages").insert({
-                    tenant_id: tenantId,
-                    phone: order.customer_phone,
-                    message: messageContent,
-                    type: "outgoing",
-                    order_id: order.id,
-                    sent_at: new Date().toISOString(),
-                    zapi_message_id: zapiResult.messageId || null,
-                  });
-
-                  messagesCount++;
-                }
-              } catch (whatsappError) {
-                console.error(`❌ [SYNC-TRACKING] Erro ao enviar WhatsApp para pedido ${order.id}:`, whatsappError);
-              }
-            }
+            console.log(`📱 [SYNC-TRACKING] Rastreio salvo, trigger automático enviará WhatsApp para pedido ${order.id}`);
           } else {
             console.log(`⏳ [SYNC-TRACKING] Pedido ${order.id} ainda sem tracking (status: ${shipmentData?.status || 'unknown'})`);
           }

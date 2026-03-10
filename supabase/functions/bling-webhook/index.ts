@@ -328,16 +328,9 @@ serve(async (req) => {
           } else {
             console.log(`[bling-webhook] Updated order ${localOrder.id}:`, updates);
 
-            // Send WhatsApp tracking notification if new tracking code was added
-            if (
-              updates.melhor_envio_tracking_code && 
-              !localOrder.melhor_envio_tracking_code
-            ) {
-              await sendTrackingWhatsApp(
-                localOrder.id,
-                localOrder.tenant_id,
-                updates.melhor_envio_tracking_code
-              );
+            // WhatsApp será enviado automaticamente pelo trigger trg_send_tracking_whatsapp
+            if (updates.melhor_envio_tracking_code && !localOrder.melhor_envio_tracking_code) {
+              console.log(`[bling-webhook] Rastreio salvo, trigger automático enviará WhatsApp para pedido ${localOrder.id}`);
             }
           }
         }

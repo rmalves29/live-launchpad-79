@@ -143,31 +143,9 @@ serve(async (req) => {
       response: JSON.stringify(data).substring(0, 5000)
     });
 
-    // Se o evento for de postagem (order.posted), enviar notificação de tracking
-    if (event === "order.posted" && data.tracking) {
-      console.log(`[melhor-envio-webhook] Enviando notificação de tracking para pedido ${order.id}`);
-      
-      try {
-        // Chamar edge function de envio de tracking
-        const trackingResponse = await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${supabaseKey}`
-          },
-          body: JSON.stringify({
-            order_id: order.id,
-            tenant_id: order.tenant_id,
-            tracking_code: data.tracking,
-            tracking_url: data.tracking_url
-          })
-        });
-
-        const trackingResult = await trackingResponse.json();
-        console.log(`[melhor-envio-webhook] Resposta do zapi-send-tracking:`, trackingResult);
-      } catch (trackingError) {
-        console.error("[melhor-envio-webhook] Erro ao enviar tracking:", trackingError);
-      }
+    // WhatsApp será enviado automaticamente pelo trigger trg_send_tracking_whatsapp
+    if (data.tracking) {
+      console.log(`[melhor-envio-webhook] Rastreio ${data.tracking} salvo para pedido ${order.id}, trigger automático enviará WhatsApp`);
     }
 
     console.log(`[melhor-envio-webhook] Webhook processado com sucesso para pedido ${order.id}`);
