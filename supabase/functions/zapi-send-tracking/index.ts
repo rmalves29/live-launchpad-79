@@ -154,13 +154,24 @@ Obrigado pela preferência! 💚`;
 
     if (!zapiResponse.ok) {
       console.error("❌ [TRACKING] Erro Z-API:", zapiResult);
+
+      // Log de falha
+      await supabase.from("whatsapp_messages").insert({
+        tenant_id,
+        phone: order.customer_phone,
+        message: `❌ FALHA ao enviar rastreio ${tracking_code} - Erro: ${JSON.stringify(zapiResult).substring(0, 300)}`,
+        type: "system_log",
+        order_id: order.id,
+        created_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({ success: false, error: "Erro ao enviar mensagem", details: zapiResult }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Registrar mensagem enviada
+    // Log de sucesso
     await supabase.from("whatsapp_messages").insert({
       tenant_id,
       phone: order.customer_phone,
