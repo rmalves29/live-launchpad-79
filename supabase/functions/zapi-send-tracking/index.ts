@@ -59,6 +59,17 @@ serve(async (req: Request) => {
 
     if (integrationError || !integration) {
       console.error("❌ [TRACKING] Integração Z-API não encontrada:", integrationError);
+
+      // Log de falha - sem integração
+      await supabase.from("whatsapp_messages").insert({
+        tenant_id,
+        phone: order.customer_phone,
+        message: `❌ FALHA ao enviar rastreio ${tracking_code} - Integração Z-API não configurada para este tenant`,
+        type: "system_log",
+        order_id: order.id,
+        created_at: new Date().toISOString(),
+      });
+
       return new Response(
         JSON.stringify({ success: false, error: "Integração Z-API não configurada" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
