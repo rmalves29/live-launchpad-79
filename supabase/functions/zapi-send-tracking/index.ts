@@ -163,6 +163,7 @@ Obrigado pela preferência! 💚`;
     const zapiResponse = await fetch(zapiUrl, {
       method: "POST",
       headers,
+      signal: AbortSignal.timeout(isDbTriggerCall ? 4000 : 15000),
       body: JSON.stringify({
         phone,
         message: messageContent,
