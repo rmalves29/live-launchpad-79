@@ -57,6 +57,7 @@ type CreatePaymentRequest = {
   merge_observation?: string | null;
   payment_method?: PaymentMethod;
   payment_data?: Record<string, unknown>;
+  pix_discount?: number;
 };
 
 function isUuid(v: string) {
@@ -139,6 +140,7 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
       merge_observation: body.merge_observation ? String(body.merge_observation).slice(0, 255) : null,
       payment_method: body.payment_method || "pix",
       payment_data: body.payment_data || {},
+      pix_discount: toNumber(body.pix_discount, 0),
     },
   };
 }
@@ -289,14 +291,32 @@ Deno.serve(async (req) => {
 
       if (existingOrder) {
         let obs = (existingOrder.observation ?? "").toString();
-        const cleaned = obs.replace(/\n?\[FRETE\][^\n]*/g, "").trim();
+        const cleaned = obs
+          .replace(/\n?\[FRETE\][^\n]*/g, "")
+          .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
+          .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
+          .trim();
 
         let mergeNote = "";
         if (payload.merge_observation) {
           mergeNote = `[MERGE] ${payload.merge_observation}`;
         }
 
-        const parts = [cleaned, freightNote, mergeNote].filter(Boolean);
+        // Nota de desconto PIX
+        const pixDiscountValue = toNumber(payload.pix_discount, 0);
+        let pixNote = "";
+        if (pixDiscountValue > 0) {
+          pixNote = `[PIX_DISCOUNT] R$ ${pixDiscountValue.toFixed(2)}`;
+        }
+
+        // Nota de desconto cupom
+        const couponDiscountValue = toNumber(payload.coupon_discount, 0);
+        let couponNote = "";
+        if (couponDiscountValue > 0) {
+          couponNote = `[COUPON_DISCOUNT] R$ ${couponDiscountValue.toFixed(2)}${payload.coupon_code ? ` (${payload.coupon_code})` : ""}`;
+        }
+
+        const parts = [cleaned, freightNote, pixNote, couponNote, mergeNote].filter(Boolean);
         const nextObs = parts.join("\n");
 
         let productsTotal = 0;
@@ -316,7 +336,9 @@ Deno.serve(async (req) => {
         }
 
         const shippingValue = toNumber(payload.shippingCost, 0);
-        const newTotal = productsTotal + shippingValue;
+        const newTotal = Math.max(0, productsTotal - pixDiscountValue - couponDiscountValue) + shippingValue;
+        
+        console.log(`[appmax] Order ${orderId}: products=${productsTotal.toFixed(2)}, pixDiscount=${pixDiscountValue.toFixed(2)}, couponDiscount=${couponDiscountValue.toFixed(2)}, shipping=${shippingValue.toFixed(2)}, total=${newTotal.toFixed(2)}`);
         const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
 
         await sb
@@ -386,7 +408,9 @@ Deno.serve(async (req) => {
     // ─── 5) APPMAX STEP 2: Criar Pedido ─────────────────────────
     const productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
     const totalWithShipping = productsTotal + payload.shippingCost;
-    const discount = toNumber(payload.coupon_discount, 0);
+    const couponDiscount = toNumber(payload.coupon_discount, 0);
+    const pixDiscount = toNumber(payload.pix_discount, 0);
+    const discount = couponDiscount + pixDiscount;
 
     const orderBody: Record<string, unknown> = {
       customer_id: appmaxCustomerId,
