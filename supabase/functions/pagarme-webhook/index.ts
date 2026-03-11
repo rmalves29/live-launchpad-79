@@ -186,12 +186,11 @@ serve(async (req) => {
     }
 
     // Processar eventos de cancelamento/estorno
+    // NOTA: order.closed NÃO é cancelamento — significa que o checkout foi finalizado/concluído
+    // charge.payment_failed e charge.underpaid também NÃO devem cancelar — são apenas tentativas falhas
     const isCancelEvent = eventType === "charge.refunded" ||
                           eventType === "charge.chargedback" ||
                           eventType === "order.canceled" ||
-                          eventType === "order.closed" ||
-                          eventType === "charge.underpaid" ||
-                          eventType === "charge.payment_failed" ||
                           body.status === 'canceled' ||
                           body.status === 'refunded' ||
                           body.status === 'chargedback' ||
