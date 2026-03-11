@@ -3,13 +3,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatBrasiliaDate, formatBrasiliaDateTime } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, MapPin, Printer } from 'lucide-react';
+import { Loader2, MapPin, Printer, Percent, Gift, X } from 'lucide-react';
 import { printThermalReceipt } from '@/components/ThermalReceipt';
 
 interface Order {
