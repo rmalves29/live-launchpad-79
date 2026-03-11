@@ -473,36 +473,27 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         if (!order) return;
 
         // Salvar código de rastreio no banco
-        const { error: updateError } = await supabaseTenant
+        // O trigger trg_send_tracking_whatsapp dispara automaticamente o envio via WhatsApp
+        const { error: updateError } = await supabase
           .from('orders')
           .update({ melhor_envio_tracking_code: trackingText.trim() })
-          .eq('id', orderId);
+          .eq('id', orderId)
+          .eq('tenant_id', order.tenant_id);
 
-        if (updateError) throw updateError;
-
-        // Enviar WhatsApp com código de rastreio
-        const { error: whatsappError } = await supabase.functions.invoke('zapi-send-tracking', {
-          body: {
-            order_id: orderId,
-            tenant_id: order.tenant_id,
-            tracking_code: trackingText.trim(),
-            shipped_at: getBrasiliaDateTimeISO()
-          }
-        });
-
-        if (whatsappError) {
-          console.error('Erro ao enviar WhatsApp:', whatsappError);
+        if (updateError) {
+          console.error('Erro ao salvar rastreio:', updateError);
           toast({
-            title: 'Rastreio Salvo',
-            description: 'Código salvo, mas houve erro ao enviar WhatsApp',
+            title: 'Erro',
+            description: `Erro ao salvar código de rastreio: ${updateError.message}`,
             variant: 'destructive'
           });
-        } else {
-          toast({
-            title: 'Sucesso',
-            description: 'Código de rastreio salvo e WhatsApp enviado ao cliente!'
-          });
+          return;
         }
+
+        toast({
+          title: 'Sucesso',
+          description: 'Código de rastreio salvo! O WhatsApp será enviado automaticamente.'
+        });
 
         // Atualizar estado local
         setOrders(prev => prev.map(o => 
@@ -513,11 +504,11 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
         setEditingTracking(null);
         setTrackingText('');
-      } catch (error) {
+      } catch (error: any) {
         console.error('Erro ao salvar rastreio:', error);
         toast({
           title: 'Erro',
-          description: 'Erro ao salvar código de rastreio',
+          description: `Erro ao salvar código de rastreio: ${error?.message || 'Erro desconhecido'}`,
           variant: 'destructive'
         });
       } finally {
