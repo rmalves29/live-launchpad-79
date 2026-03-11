@@ -25,6 +25,10 @@ interface Order {
   observation?: string;
   bling_order_id?: number;
   tenant_id?: string;
+  cart_id?: number;
+  coupon_code?: string;
+  coupon_discount?: number;
+  gift_name?: string;
   customer?: {
     name?: string;
     cpf?: string;
