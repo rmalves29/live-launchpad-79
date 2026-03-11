@@ -20,3 +20,12 @@ verify_jwt = false
 
 [functions.zapi-send-tracking]
 verify_jwt = false
+
+[functions.omie-test-connection]
+verify_jwt = false
+
+[functions.omie-sync-orders]
+verify_jwt = false
+
+[functions.omie-sync-products]
+verify_jwt = false

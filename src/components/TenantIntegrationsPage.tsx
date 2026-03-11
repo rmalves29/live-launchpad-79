@@ -267,6 +267,9 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="olist" className="mt-6">
           <OlistIntegration tenantId={tenantId} />
         </TabsContent>
+        <TabsContent value="omie" className="mt-6">
+          <OmieIntegration tenantId={tenantId} />
+        </TabsContent>
         <TabsContent value="mercadopago" className="mt-6">
           <PaymentIntegrations tenantId={tenantId} />
         </TabsContent>
