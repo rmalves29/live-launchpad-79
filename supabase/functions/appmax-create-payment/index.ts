@@ -140,6 +140,7 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
       merge_observation: body.merge_observation ? String(body.merge_observation).slice(0, 255) : null,
       payment_method: body.payment_method || "pix",
       payment_data: body.payment_data || {},
+      pix_discount: toNumber(body.pix_discount, 0),
     },
   };
 }
