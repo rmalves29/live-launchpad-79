@@ -107,8 +107,12 @@ serve(async (req: Request) => {
       query = query.eq("tenant_id", filterTenantId);
     }
 
-    // Process newest orders first and limit to avoid timeout
-    query = query.order("id", { ascending: false }).limit(50);
+    // Process specific order when requested; otherwise process a larger batch to avoid starvation
+    if (filterOrderId) {
+      query = query.eq("id", filterOrderId).limit(1);
+    } else {
+      query = query.order("id", { ascending: false }).limit(SYNC_BATCH_LIMIT);
+    }
 
     const { data: orders, error: ordersError } = await query;
 
