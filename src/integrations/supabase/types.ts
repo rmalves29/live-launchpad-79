@@ -1098,6 +1098,8 @@ export type Database = {
           bling_order_id: number | null
           bling_sync_status: string | null
           cart_id: number | null
+          coupon_code: string | null
+          coupon_discount: number | null
           created_at: string | null
           customer_cep: string | null
           customer_city: string | null
@@ -1110,6 +1112,7 @@ export type Database = {
           customer_street: string | null
           event_date: string
           event_type: string
+          gift_name: string | null
           group_name: string | null
           id: number
           is_cancelled: boolean | null
@@ -1135,6 +1138,8 @@ export type Database = {
           bling_order_id?: number | null
           bling_sync_status?: string | null
           cart_id?: number | null
+          coupon_code?: string | null
+          coupon_discount?: number | null
           created_at?: string | null
           customer_cep?: string | null
           customer_city?: string | null
@@ -1147,6 +1152,7 @@ export type Database = {
           customer_street?: string | null
           event_date: string
           event_type: string
+          gift_name?: string | null
           group_name?: string | null
           id?: number
           is_cancelled?: boolean | null
@@ -1172,6 +1178,8 @@ export type Database = {
           bling_order_id?: number | null
           bling_sync_status?: string | null
           cart_id?: number | null
+          coupon_code?: string | null
+          coupon_discount?: number | null
           created_at?: string | null
           customer_cep?: string | null
           customer_city?: string | null
@@ -1184,6 +1192,7 @@ export type Database = {
           customer_street?: string | null
           event_date?: string
           event_type?: string
+          gift_name?: string | null
           group_name?: string | null
           id?: number
           is_cancelled?: boolean | null
