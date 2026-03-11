@@ -66,11 +66,16 @@ interface ViewOrderDialogProps {
   onOrderUpdated?: () => void;
 }
 
-export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogProps) => {
+export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: ViewOrderDialogProps) => {
   const { toast } = useToast();
   const [syncingAddress, setSyncingAddress] = useState(false);
+  const [couponInput, setCouponInput] = useState('');
+  const [loadingCoupon, setLoadingCoupon] = useState(false);
 
   if (!order) return null;
+
+  const hasAppliedCoupon = !!(order.coupon_code && order.coupon_discount && order.coupon_discount > 0);
+  const hasAppliedGift = !!order.gift_name;
 
   // Mostrar botão de sincronização de endereço sempre que o pedido tiver endereço preenchido
   // (independente de já ter sido sincronizado com o Bling)
