@@ -57,6 +57,7 @@ type CreatePaymentRequest = {
   merge_observation?: string | null;
   payment_method?: PaymentMethod;
   payment_data?: Record<string, unknown>;
+  pix_discount?: number;
 };
 
 function isUuid(v: string) {
