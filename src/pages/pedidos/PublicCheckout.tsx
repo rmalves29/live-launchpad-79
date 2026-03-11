@@ -168,7 +168,7 @@ const PublicCheckout = () => {
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [loadingCoupon, setLoadingCoupon] = useState(false);
   const [couponDiscount, setCouponDiscount] = useState(0);
-
+  const [couponPreApplied, setCouponPreApplied] = useState(false);
   // Brindes
   const [activeGifts, setActiveGifts] = useState<any[]>([]);
   const [eligibleGift, setEligibleGift] = useState<any>(null);
