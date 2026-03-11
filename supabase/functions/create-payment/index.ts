@@ -601,15 +601,18 @@ serve(async (req) => {
         });
       }
 
-      // Aplicar desconto PIX distribuindo proporcionalmente entre os itens de produto
+      // Aplicar descontos de PIX + CUPOM distribuindo proporcionalmente entre os itens de produto
       const pixDiscountCents = Math.round(toNumber(payload.pix_discount, 0) * 100);
-      if (pixDiscountCents > 0) {
+      const couponDiscountCents = Math.round(toNumber(payload.coupon_discount, 0) * 100);
+      const totalProductDiscountCents = pixDiscountCents + couponDiscountCents;
+
+      if (totalProductDiscountCents > 0) {
         // Calcular total dos produtos (sem frete)
         const productItems = items.filter(it => it.code !== "FRETE");
         const productsTotalCents = productItems.reduce((s, it) => s + (it.amount * it.quantity), 0);
-        
+
         if (productsTotalCents > 0) {
-          let remainingDiscount = pixDiscountCents;
+          let remainingDiscount = totalProductDiscountCents;
           for (let i = 0; i < productItems.length; i++) {
             const item = productItems[i];
             const itemTotal = item.amount * item.quantity;
@@ -617,8 +620,8 @@ serve(async (req) => {
             const isLast = i === productItems.length - 1;
             const itemDiscount = isLast
               ? remainingDiscount
-              : Math.round((itemTotal / productsTotalCents) * pixDiscountCents);
-            
+              : Math.round((itemTotal / productsTotalCents) * totalProductDiscountCents);
+
             // Reduzir o amount por unidade (arredondado)
             const discountPerUnit = Math.floor(itemDiscount / item.quantity);
             item.amount = Math.max(1, item.amount - discountPerUnit); // mínimo 1 centavo
