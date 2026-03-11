@@ -173,6 +173,9 @@ export default function TenantIntegrationsPage() {
     );
   }
 
+  const ALLOWED_ADVANCED_SLUGS = ['orderzap', 'app'];
+  const showAdvancedIntegrations = ALLOWED_ADVANCED_SLUGS.includes(tenant.slug || '');
+
   return (
     <div className="container mx-auto p-6 max-w-7xl">
       <h1 className="text-3xl font-bold mb-2">Integrações</h1>
@@ -182,17 +185,21 @@ export default function TenantIntegrationsPage() {
 
       <Tabs defaultValue="bling" className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1 w-full">
-          <TabsTrigger value="whatsapp-cloud" className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            <span className="hidden sm:inline">WhatsApp API</span>
-            <span className="sm:hidden">WA</span>
-          </TabsTrigger>
-          <TabsTrigger value="instagram" className="flex items-center gap-2">
-            <Instagram className="h-4 w-4" />
-            <span className="hidden sm:inline">Instagram</span>
-            <span className="sm:hidden">IG</span>
-            {instagramIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
-          </TabsTrigger>
+          {showAdvancedIntegrations && (
+            <TabsTrigger value="whatsapp-cloud" className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              <span className="hidden sm:inline">WhatsApp API</span>
+              <span className="sm:hidden">WA</span>
+            </TabsTrigger>
+          )}
+          {showAdvancedIntegrations && (
+            <TabsTrigger value="instagram" className="flex items-center gap-2">
+              <Instagram className="h-4 w-4" />
+              <span className="hidden sm:inline">Instagram</span>
+              <span className="sm:hidden">IG</span>
+              {instagramIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="bling" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Bling ERP</span>
@@ -255,12 +262,16 @@ export default function TenantIntegrationsPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="whatsapp-cloud" className="mt-6">
-          <WhatsAppCloudIntegration tenantId={tenantId} />
-        </TabsContent>
-        <TabsContent value="instagram" className="mt-6">
-          <InstagramIntegration tenantId={tenantId} />
-        </TabsContent>
+        {showAdvancedIntegrations && (
+          <TabsContent value="whatsapp-cloud" className="mt-6">
+            <WhatsAppCloudIntegration tenantId={tenantId} />
+          </TabsContent>
+        )}
+        {showAdvancedIntegrations && (
+          <TabsContent value="instagram" className="mt-6">
+            <InstagramIntegration tenantId={tenantId} />
+          </TabsContent>
+        )}
         <TabsContent value="bling" className="mt-6">
           <BlingIntegration tenantId={tenantId} />
         </TabsContent>
