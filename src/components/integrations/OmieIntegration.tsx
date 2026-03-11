@@ -1,10 +1,10 @@
 /**
  * Componente de integração com Omie ERP
  * Autenticação via App Key + App Secret (sem OAuth)
- * Permite configurar credenciais, testar conexão e selecionar módulos
+ * Permite configurar credenciais, testar conexão, selecionar empresa e módulos
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,6 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
   Loader2,
@@ -33,6 +34,8 @@ import {
   Download,
   Wifi,
   WifiOff,
+  Building2,
+  Store,
 } from 'lucide-react';
 
 interface OmieIntegrationProps {
@@ -51,8 +54,19 @@ interface OmieIntegrationData {
   environment: string;
   is_active: boolean;
   last_sync_at: string | null;
+  omie_empresa_id: number | null;
+  omie_empresa_nome: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface OmieEmpresa {
+  codigo_empresa: number;
+  razao_social: string;
+  nome_fantasia: string;
+  cnpj: string;
+  cidade: string;
+  estado: string;
 }
 
 const SYNC_MODULES = [
@@ -91,6 +105,9 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
   const [showSecret, setShowSecret] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [loadingStores, setLoadingStores] = useState(false);
+  const [empresas, setEmpresas] = useState<OmieEmpresa[]>([]);
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<string>('');
   const [modules, setModules] = useState<Record<string, boolean>>({
     sync_orders: true,
     sync_products: true,
@@ -111,13 +128,15 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
       if (error) throw error;
 
       if (data) {
-        setAppKey((data as any).app_key || '');
-        setAppSecret((data as any).app_secret || '');
+        const d = data as any;
+        setAppKey(d.app_key || '');
+        setAppSecret(d.app_secret || '');
+        setSelectedEmpresaId(d.omie_empresa_id?.toString() || '');
         setModules({
-          sync_orders: (data as any).sync_orders,
-          sync_products: (data as any).sync_products,
-          sync_stock: (data as any).sync_stock,
-          sync_invoices: (data as any).sync_invoices,
+          sync_orders: d.sync_orders,
+          sync_products: d.sync_products,
+          sync_stock: d.sync_stock,
+          sync_invoices: d.sync_invoices,
         });
       }
 
@@ -126,10 +145,53 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
     enabled: !!tenantId,
   });
 
+  // Carregar lojas quando tiver credenciais e integração
+  const loadStores = async () => {
+    if (!appKey || !appSecret) {
+      toast.error('Preencha App Key e App Secret antes de buscar empresas');
+      return;
+    }
+
+    setLoadingStores(true);
+    try {
+      const session = await supabase.auth.getSession();
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/omie-list-stores`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({ tenant_id: tenantId, app_key: appKey, app_secret: appSecret }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success && data.empresas) {
+        setEmpresas(data.empresas);
+        if (data.empresas.length === 0) {
+          toast.info('Nenhuma empresa encontrada no Omie');
+        } else {
+          toast.success(`${data.empresas.length} empresa(s) encontrada(s)`);
+        }
+      } else {
+        toast.error(data.error || 'Erro ao buscar empresas');
+      }
+    } catch (error) {
+      toast.error('Erro ao buscar empresas do Omie');
+    } finally {
+      setLoadingStores(false);
+    }
+  };
+
   // Salvar credenciais
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const selectedEmpresa = empresas.find(e => e.codigo_empresa.toString() === selectedEmpresaId);
+      
+      const payload: any = {
         tenant_id: tenantId,
         app_key: appKey || null,
         app_secret: appSecret || null,
@@ -137,6 +199,10 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
         sync_products: modules.sync_products,
         sync_stock: modules.sync_stock,
         sync_invoices: modules.sync_invoices,
+        omie_empresa_id: selectedEmpresaId ? parseInt(selectedEmpresaId) : null,
+        omie_empresa_nome: selectedEmpresa 
+          ? (selectedEmpresa.nome_fantasia || selectedEmpresa.razao_social) 
+          : (integration as any)?.omie_empresa_nome || null,
         updated_at: new Date().toISOString(),
       };
 
@@ -193,6 +259,8 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
       if (data.success) {
         setConnectionStatus('success');
         toast.success(`Conexão OK! Empresa: ${data.company_name || 'Identificada'}`);
+        // Auto-carregar empresas após teste bem sucedido
+        loadStores();
       } else {
         setConnectionStatus('error');
         toast.error(data.error || 'Falha na conexão com Omie');
@@ -287,6 +355,8 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
 
   const activeModulesCount = Object.values(modules).filter(Boolean).length;
   const hasCredentials = !!(appKey && appSecret);
+  const selectedEmpresaNome = integration?.omie_empresa_nome || 
+    empresas.find(e => e.codigo_empresa.toString() === selectedEmpresaId)?.nome_fantasia || '';
 
   if (isLoading) {
     return (
@@ -328,6 +398,11 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
                 </CardTitle>
                 <CardDescription>
                   Sistema ERP completo — Autenticação por App Key + App Secret
+                  {selectedEmpresaNome && (
+                    <span className="ml-2 text-primary font-medium">
+                      • Empresa: {selectedEmpresaNome}
+                    </span>
+                  )}
                 </CardDescription>
               </div>
             </div>
@@ -456,6 +531,91 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
         </CardContent>
       </Card>
 
+      {/* Seleção de Empresa */}
+      {hasCredentials && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Store className="h-5 w-5" />
+              Empresa / Loja
+            </CardTitle>
+            <CardDescription>
+              Selecione para qual empresa do Omie os pedidos e produtos serão sincronizados
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                onClick={loadStores}
+                disabled={loadingStores}
+              >
+                {loadingStores ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Building2 className="h-4 w-4 mr-2" />
+                )}
+                Buscar Empresas do Omie
+              </Button>
+            </div>
+
+            {empresas.length > 0 && (
+              <div className="space-y-3">
+                <Label>Selecione a empresa</Label>
+                <Select
+                  value={selectedEmpresaId}
+                  onValueChange={setSelectedEmpresaId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma empresa..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {empresas.map((emp) => (
+                      <SelectItem key={emp.codigo_empresa} value={emp.codigo_empresa.toString()}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">
+                            {emp.nome_fantasia || emp.razao_social}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {emp.cnpj && `CNPJ: ${emp.cnpj}`}
+                            {emp.cidade && ` • ${emp.cidade}/${emp.estado}`}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {selectedEmpresaId && (
+                  <Button
+                    onClick={() => saveMutation.mutate()}
+                    disabled={saveMutation.isPending}
+                    size="sm"
+                  >
+                    {saveMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4 mr-2" />
+                    )}
+                    Salvar Empresa Selecionada
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {integration?.omie_empresa_nome && !empresas.length && (
+              <Alert>
+                <Building2 className="h-4 w-4" />
+                <AlertDescription>
+                  Empresa selecionada: <strong>{integration.omie_empresa_nome}</strong>
+                  {integration.omie_empresa_id && ` (ID: ${integration.omie_empresa_id})`}
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Módulos de sincronização */}
       <Card>
         <CardHeader>
@@ -519,6 +679,11 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
             </CardTitle>
             <CardDescription>
               Execute a sincronização manualmente quando necessário
+              {integration.omie_empresa_nome && (
+                <span className="ml-1">
+                  — enviando para <strong>{integration.omie_empresa_nome}</strong>
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -579,7 +744,7 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
             Portal de API do Omie
           </a>
           , crie um aplicativo e copie a <strong>App Key</strong> e <strong>App Secret</strong> geradas.
-          Não é necessário autorização OAuth — basta informar as credenciais acima.
+          Após salvar, clique em <strong>Buscar Empresas</strong> para selecionar a loja desejada.
         </AlertDescription>
       </Alert>
     </div>
