@@ -19,8 +19,14 @@ serve(async (req: Request) => {
 
   try {
     const { order_id, tenant_id, tracking_code, shipped_at } = await req.json();
+    const isDbTriggerCall = !req.headers.get("authorization");
     
-    console.log("📦 [TRACKING] Iniciando envio de rastreio:", { order_id, tenant_id, tracking_code });
+    console.log("📦 [TRACKING] Iniciando envio de rastreio:", {
+      order_id,
+      tenant_id,
+      tracking_code,
+      mode: isDbTriggerCall ? "db_trigger_fast_path" : "interactive"
+    });
 
     if (!order_id || !tenant_id || !tracking_code) {
       return new Response(
