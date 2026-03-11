@@ -408,7 +408,9 @@ Deno.serve(async (req) => {
     // ─── 5) APPMAX STEP 2: Criar Pedido ─────────────────────────
     const productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
     const totalWithShipping = productsTotal + payload.shippingCost;
-    const discount = toNumber(payload.coupon_discount, 0);
+    const couponDiscount = toNumber(payload.coupon_discount, 0);
+    const pixDiscount = toNumber(payload.pix_discount, 0);
+    const discount = couponDiscount + pixDiscount;
 
     const orderBody: Record<string, unknown> = {
       customer_id: appmaxCustomerId,
