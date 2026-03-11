@@ -915,7 +915,31 @@ const PublicCheckout = () => {
 
       setOrders(ordersWithItems);
 
-      // Carregar dados do cliente
+      // Pré-carregar cupom/brinde aplicado pelo vendedor
+      const orderWithCoupon = ordersWithItems.find((o: any) => o.coupon_code && o.coupon_discount > 0);
+      const orderWithGift = ordersWithItems.find((o: any) => o.gift_name);
+
+      if (orderWithCoupon) {
+        setAppliedCoupon({
+          code: orderWithCoupon.coupon_code,
+          appliedType: 'coupon',
+          discount_value: orderWithCoupon.coupon_discount,
+          discount_type: 'fixed',
+        });
+        setCouponDiscount(orderWithCoupon.coupon_discount);
+        setCouponCode(orderWithCoupon.coupon_code);
+        setCouponPreApplied(true);
+      } else if (orderWithGift) {
+        setAppliedCoupon({
+          code: orderWithGift.gift_name.toUpperCase(),
+          name: orderWithGift.gift_name,
+          appliedType: 'gift',
+        });
+        setCouponDiscount(0);
+        setCouponCode(orderWithGift.gift_name.toUpperCase());
+        setCouponPreApplied(true);
+      }
+
       const { data: customer } = await supabase
         .from('customers')
         .select('*')
