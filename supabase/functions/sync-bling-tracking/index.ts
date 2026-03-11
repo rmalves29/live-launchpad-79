@@ -174,8 +174,8 @@ serve(async (req: Request) => {
         try {
           console.log(`🔍 [sync-bling-tracking] Verificando pedido ${order.id} (Bling ID: ${order.bling_order_id})`);
 
-          // Add delay between API calls to avoid rate limiting
-          await delay(500);
+          // Add a small delay between API calls to reduce rate-limit errors
+          await delay(REQUEST_DELAY_MS);
 
           const { response, text } = await blingFetchWithRetry(
             `${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`,
