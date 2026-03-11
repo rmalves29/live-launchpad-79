@@ -75,14 +75,20 @@ serve(async (req: Request) => {
   }
 
   try {
-    // Accept optional tenant_id filter
+    // Accept optional filters
     let filterTenantId: string | null = null;
+    let filterOrderId: number | null = null;
     try {
       const body = await req.json();
       filterTenantId = body?.tenant_id || null;
+      filterOrderId = Number.isFinite(Number(body?.order_id)) ? Number(body.order_id) : null;
     } catch { /* no body */ }
 
-    console.log("🔄 [sync-bling-tracking] Iniciando sincronização de rastreios do Bling...", filterTenantId ? `Tenant: ${filterTenantId}` : "Todos os tenants");
+    console.log(
+      "🔄 [sync-bling-tracking] Iniciando sincronização de rastreios do Bling...",
+      filterTenantId ? `Tenant: ${filterTenantId}` : "Todos os tenants",
+      filterOrderId ? `Pedido: ${filterOrderId}` : ""
+    );
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
