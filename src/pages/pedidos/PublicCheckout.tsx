@@ -51,6 +51,9 @@ interface Order {
   payment_link: string | null;
   cart_id: number | null;
   items: OrderItem[];
+  coupon_code?: string;
+  coupon_discount?: number;
+  gift_name?: string;
 }
 
 async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
