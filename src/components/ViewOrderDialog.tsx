@@ -381,6 +381,65 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
             </CardContent>
           </Card>
 
+          {/* Cupom / Brinde */}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Percent className="h-5 w-5 text-green-600" />
+                Cupom de Desconto / Brinde
+              </h3>
+
+              {(hasAppliedCoupon || hasAppliedGift) ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      {hasAppliedGift ? (
+                        <Gift className="h-5 w-5 text-purple-600" />
+                      ) : (
+                        <Percent className="h-5 w-5 text-green-600" />
+                      )}
+                      <div>
+                        <Badge className={hasAppliedGift ? 'bg-purple-600' : 'bg-green-600'}>
+                          {hasAppliedGift ? `🎁 ${order.gift_name}` : order.coupon_code}
+                        </Badge>
+                        {hasAppliedCoupon && (
+                          <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                            Desconto: {formatCurrency(order.coupon_discount!)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {!order.is_paid && (
+                      <Button variant="outline" size="sm" onClick={removeCouponFromOrder} disabled={loadingCoupon} className="text-red-600">
+                        {loadingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                        <span className="ml-1">Remover</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : !order.is_paid ? (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Código do cupom ou nome do brinde"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    onKeyPress={(e) => e.key === 'Enter' && applyCouponToOrder()}
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={applyCouponToOrder}
+                    disabled={loadingCoupon || !couponInput.trim()}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {loadingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aplicar'}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhum cupom ou brinde aplicado</p>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Shipping Info */}
           <Card>
             <CardContent className="p-4">
