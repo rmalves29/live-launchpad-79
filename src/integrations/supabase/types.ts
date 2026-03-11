@@ -852,6 +852,62 @@ export type Database = {
           },
         ]
       }
+      integration_omie: {
+        Row: {
+          app_key: string | null
+          app_secret: string | null
+          created_at: string
+          environment: string
+          id: string
+          is_active: boolean
+          last_sync_at: string | null
+          sync_invoices: boolean
+          sync_orders: boolean
+          sync_products: boolean
+          sync_stock: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          app_key?: string | null
+          app_secret?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          sync_invoices?: boolean
+          sync_orders?: boolean
+          sync_products?: boolean
+          sync_stock?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          app_key?: string | null
+          app_secret?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          sync_invoices?: boolean
+          sync_orders?: boolean
+          sync_products?: boolean
+          sync_stock?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_omie_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_pagarme: {
         Row: {
           api_key: string | null
@@ -1122,6 +1178,8 @@ export type Database = {
           melhor_envio_shipment_id: string | null
           melhor_envio_tracking_code: string | null
           observation: string | null
+          omie_order_id: number | null
+          omie_sync_status: string | null
           payment_confirmation_delivered: boolean | null
           payment_confirmation_sent: boolean | null
           payment_link: string | null
@@ -1162,6 +1220,8 @@ export type Database = {
           melhor_envio_shipment_id?: string | null
           melhor_envio_tracking_code?: string | null
           observation?: string | null
+          omie_order_id?: number | null
+          omie_sync_status?: string | null
           payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
@@ -1202,6 +1262,8 @@ export type Database = {
           melhor_envio_shipment_id?: string | null
           melhor_envio_tracking_code?: string | null
           observation?: string | null
+          omie_order_id?: number | null
+          omie_sync_status?: string | null
           payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
           payment_link?: string | null
