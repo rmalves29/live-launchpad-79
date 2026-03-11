@@ -131,6 +131,15 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
+  const { data: omieIntegration } = useQuery({
+    queryKey: ['omie-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('integration_omie' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
+      return data as { is_active: boolean } | null;
+    },
+    enabled: !!tenantId,
+  });
+
   if (authLoading || tenantLoading) {
     return (
       <div className="container mx-auto p-6 flex items-center justify-center h-64">
