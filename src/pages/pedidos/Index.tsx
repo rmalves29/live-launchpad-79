@@ -1983,6 +1983,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           open={viewOrderOpen}
           onOpenChange={setViewOrderOpen}
           order={viewingOrder}
+          onOrderUpdated={loadOrders}
         />
 
         {/* Diálogo de confirmação de pagamento */}

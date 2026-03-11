@@ -51,6 +51,9 @@ interface Order {
   payment_link: string | null;
   cart_id: number | null;
   items: OrderItem[];
+  coupon_code?: string;
+  coupon_discount?: number;
+  gift_name?: string;
 }
 
 async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
@@ -165,7 +168,7 @@ const PublicCheckout = () => {
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [loadingCoupon, setLoadingCoupon] = useState(false);
   const [couponDiscount, setCouponDiscount] = useState(0);
-
+  const [couponPreApplied, setCouponPreApplied] = useState(false);
   // Brindes
   const [activeGifts, setActiveGifts] = useState<any[]>([]);
   const [eligibleGift, setEligibleGift] = useState<any>(null);
@@ -912,7 +915,31 @@ const PublicCheckout = () => {
 
       setOrders(ordersWithItems);
 
-      // Carregar dados do cliente
+      // Pré-carregar cupom/brinde aplicado pelo vendedor
+      const orderWithCoupon = ordersWithItems.find((o: any) => o.coupon_code && o.coupon_discount > 0);
+      const orderWithGift = ordersWithItems.find((o: any) => o.gift_name);
+
+      if (orderWithCoupon) {
+        setAppliedCoupon({
+          code: orderWithCoupon.coupon_code,
+          appliedType: 'coupon',
+          discount_value: orderWithCoupon.coupon_discount,
+          discount_type: 'fixed',
+        });
+        setCouponDiscount(orderWithCoupon.coupon_discount);
+        setCouponCode(orderWithCoupon.coupon_code);
+        setCouponPreApplied(true);
+      } else if (orderWithGift) {
+        setAppliedCoupon({
+          code: orderWithGift.gift_name.toUpperCase(),
+          name: orderWithGift.gift_name,
+          appliedType: 'gift',
+        });
+        setCouponDiscount(0);
+        setCouponCode(orderWithGift.gift_name.toUpperCase());
+        setCouponPreApplied(true);
+      }
+
       const { data: customer } = await supabase
         .from('customers')
         .select('*')
@@ -1689,9 +1716,14 @@ const PublicCheckout = () => {
                               </p>
                             </div>
                           </div>
-                          <Button variant="outline" size="sm" onClick={removeCoupon} className="text-red-600">
-                            Remover
-                          </Button>
+                          {!couponPreApplied && (
+                            <Button variant="outline" size="sm" onClick={removeCoupon} className="text-red-600">
+                              Remover
+                            </Button>
+                          )}
+                          {couponPreApplied && (
+                            <Badge variant="outline" className="text-xs">Aplicado pelo vendedor</Badge>
+                          )}
                         </div>
                         {couponDiscount > 0 && (
                           <div className="flex justify-between items-center text-green-700 font-semibold">

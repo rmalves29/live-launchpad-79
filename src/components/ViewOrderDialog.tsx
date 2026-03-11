@@ -3,13 +3,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatBrasiliaDate, formatBrasiliaDateTime } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, MapPin, Printer } from 'lucide-react';
+import { Loader2, MapPin, Printer, Percent, Gift, X } from 'lucide-react';
 import { printThermalReceipt } from '@/components/ThermalReceipt';
 
 interface Order {
@@ -24,6 +25,10 @@ interface Order {
   observation?: string;
   bling_order_id?: number;
   tenant_id?: string;
+  cart_id?: number;
+  coupon_code?: string;
+  coupon_discount?: number;
+  gift_name?: string;
   customer?: {
     name?: string;
     cpf?: string;
@@ -53,18 +58,173 @@ interface Order {
   }[];
 }
 
-
 interface ViewOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: Order | null;
+  onOrderUpdated?: () => void;
 }
 
-export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogProps) => {
+export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: ViewOrderDialogProps) => {
   const { toast } = useToast();
   const [syncingAddress, setSyncingAddress] = useState(false);
+  const [couponInput, setCouponInput] = useState('');
+  const [loadingCoupon, setLoadingCoupon] = useState(false);
 
   if (!order) return null;
+
+  const hasAppliedCoupon = !!(order.coupon_code && order.coupon_discount && order.coupon_discount > 0);
+  const hasAppliedGift = !!order.gift_name;
+
+  const applyCouponToOrder = async () => {
+    if (!couponInput.trim() || !order.tenant_id) return;
+    setLoadingCoupon(true);
+    try {
+      const codeToSearch = couponInput.toUpperCase().trim();
+      const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + item.qty * item.unit_price, 0) || 0;
+
+      // Buscar cupom
+      const { data: coupon } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('tenant_id', order.tenant_id)
+        .eq('code', codeToSearch)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (coupon) {
+        if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+          toast({ title: 'Cupom Expirado', description: 'Este cupom já expirou', variant: 'destructive' });
+          return;
+        }
+        if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) {
+          toast({ title: 'Cupom Esgotado', description: 'Limite de uso atingido', variant: 'destructive' });
+          return;
+        }
+
+        let discount = 0;
+        if (coupon.discount_type === 'progressive') {
+          const tiers = coupon.progressive_tiers as Array<{min_value: number, max_value: number | null, discount: number}>;
+          const tier = tiers?.find(t => t.max_value === null ? productsSubtotal >= t.min_value : productsSubtotal >= t.min_value && productsSubtotal <= t.max_value);
+          if (tier) discount = (productsSubtotal * tier.discount) / 100;
+        } else if (coupon.discount_type === 'percentage') {
+          discount = (productsSubtotal * coupon.discount_value) / 100;
+        } else if (coupon.discount_type === 'fixed') {
+          discount = Math.min(coupon.discount_value, productsSubtotal);
+        }
+
+        const currentFreight = Math.max(0, order.total_amount - productsSubtotal);
+        const newTotal = Math.max(0, productsSubtotal - discount) + currentFreight;
+
+        let newObs = order.observation || '';
+        newObs = newObs.replace(/\[COUPON_DISCOUNT\][^\n]*/g, '').trim();
+        newObs += `\n[COUPON_DISCOUNT] R$ ${discount.toFixed(2)}`;
+
+        const { error } = await supabase
+          .from('orders')
+          .update({
+            coupon_code: codeToSearch,
+            coupon_discount: discount,
+            total_amount: newTotal,
+            observation: newObs.trim()
+          })
+          .eq('id', order.id);
+
+        if (error) throw error;
+
+        await supabase.from('coupons').update({ used_count: coupon.used_count + 1 }).eq('id', coupon.id);
+
+        toast({ title: 'Cupom Aplicado!', description: `Desconto de ${formatCurrency(discount)} aplicado ao pedido` });
+        setCouponInput('');
+        onOrderUpdated?.();
+        return;
+      }
+
+      // Buscar brinde
+      const { data: gifts } = await supabase
+        .from('gifts')
+        .select('*')
+        .eq('tenant_id', order.tenant_id)
+        .eq('is_active', true);
+
+      const gift = gifts?.find(g =>
+        g.name.toUpperCase().replace(/\s+/g, '') === codeToSearch.replace(/\s+/g, '') ||
+        g.name.toUpperCase() === codeToSearch
+      );
+
+      if (gift) {
+        if (productsSubtotal < gift.minimum_purchase_amount) {
+          toast({
+            title: 'Valor Mínimo',
+            description: `Precisa de ${formatCurrency(gift.minimum_purchase_amount)} em compras. Faltam ${formatCurrency(gift.minimum_purchase_amount - productsSubtotal)}`,
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        let newObs = order.observation || '';
+        newObs = newObs.replace(/\[BRINDE\][^\n]*/g, '').trim();
+        newObs += `\n[BRINDE] ${gift.name}`;
+
+        const { error } = await supabase
+          .from('orders')
+          .update({
+            gift_name: gift.name,
+            observation: newObs.trim()
+          })
+          .eq('id', order.id);
+
+        if (error) throw error;
+
+        toast({ title: 'Brinde Aplicado! 🎁', description: `Brinde "${gift.name}" adicionado ao pedido` });
+        setCouponInput('');
+        onOrderUpdated?.();
+        return;
+      }
+
+      toast({ title: 'Código Inválido', description: 'Cupom ou brinde não encontrado', variant: 'destructive' });
+    } catch (error: any) {
+      console.error('Erro ao aplicar código:', error);
+      toast({ title: 'Erro', description: error?.message || 'Erro ao aplicar código', variant: 'destructive' });
+    } finally {
+      setLoadingCoupon(false);
+    }
+  };
+
+  const removeCouponFromOrder = async () => {
+    if (!order.tenant_id) return;
+    setLoadingCoupon(true);
+    try {
+      const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + item.qty * item.unit_price, 0) || 0;
+      const discount = order.coupon_discount || 0;
+      const currentFreight = Math.max(0, order.total_amount - (productsSubtotal - discount));
+      const newTotal = productsSubtotal + currentFreight;
+
+      let newObs = (order.observation || '')
+        .replace(/\[COUPON_DISCOUNT\][^\n]*/g, '')
+        .replace(/\[BRINDE\][^\n]*/g, '')
+        .trim();
+
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          coupon_code: null,
+          coupon_discount: 0,
+          gift_name: null,
+          total_amount: hasAppliedCoupon ? newTotal : order.total_amount,
+          observation: newObs || null
+        })
+        .eq('id', order.id);
+
+      if (error) throw error;
+      toast({ title: 'Removido', description: 'Cupom/brinde removido do pedido' });
+      onOrderUpdated?.();
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error?.message || 'Erro ao remover', variant: 'destructive' });
+    } finally {
+      setLoadingCoupon(false);
+    }
+  };
 
   // Mostrar botão de sincronização de endereço sempre que o pedido tiver endereço preenchido
   // (independente de já ter sido sincronizado com o Bling)
@@ -218,6 +378,65 @@ export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogPr
                   <strong>Data:</strong> {formatBrasiliaDate(order.created_at)}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Cupom / Brinde */}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Percent className="h-5 w-5 text-green-600" />
+                Cupom de Desconto / Brinde
+              </h3>
+
+              {(hasAppliedCoupon || hasAppliedGift) ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      {hasAppliedGift ? (
+                        <Gift className="h-5 w-5 text-purple-600" />
+                      ) : (
+                        <Percent className="h-5 w-5 text-green-600" />
+                      )}
+                      <div>
+                        <Badge className={hasAppliedGift ? 'bg-purple-600' : 'bg-green-600'}>
+                          {hasAppliedGift ? `🎁 ${order.gift_name}` : order.coupon_code}
+                        </Badge>
+                        {hasAppliedCoupon && (
+                          <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                            Desconto: {formatCurrency(order.coupon_discount!)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {!order.is_paid && (
+                      <Button variant="outline" size="sm" onClick={removeCouponFromOrder} disabled={loadingCoupon} className="text-red-600">
+                        {loadingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                        <span className="ml-1">Remover</span>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : !order.is_paid ? (
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Código do cupom ou nome do brinde"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    onKeyPress={(e) => e.key === 'Enter' && applyCouponToOrder()}
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={applyCouponToOrder}
+                    disabled={loadingCoupon || !couponInput.trim()}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {loadingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aplicar'}
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhum cupom ou brinde aplicado</p>
+              )}
             </CardContent>
           </Card>
 
