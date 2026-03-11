@@ -58,6 +58,24 @@ interface Order {
   }[];
 }
 
+interface ViewOrderDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  order: Order | null;
+  onOrderUpdated?: () => void;
+}
+
+export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: ViewOrderDialogProps) => {
+  const { toast } = useToast();
+  const [syncingAddress, setSyncingAddress] = useState(false);
+  const [couponInput, setCouponInput] = useState('');
+  const [loadingCoupon, setLoadingCoupon] = useState(false);
+
+  if (!order) return null;
+
+  const hasAppliedCoupon = !!(order.coupon_code && order.coupon_discount && order.coupon_discount > 0);
+  const hasAppliedGift = !!order.gift_name;
+
   const applyCouponToOrder = async () => {
     if (!couponInput.trim() || !order.tenant_id) return;
     setLoadingCoupon(true);
@@ -95,16 +113,13 @@ interface Order {
           discount = Math.min(coupon.discount_value, productsSubtotal);
         }
 
-        // Calcular novo total (total original - desconto do cupom)
         const currentFreight = Math.max(0, order.total_amount - productsSubtotal);
         const newTotal = Math.max(0, productsSubtotal - discount) + currentFreight;
 
-        // Preparar observation com tag
         let newObs = order.observation || '';
         newObs = newObs.replace(/\[COUPON_DISCOUNT\][^\n]*/g, '').trim();
         newObs += `\n[COUPON_DISCOUNT] R$ ${discount.toFixed(2)}`;
 
-        // Atualizar pedido
         const { error } = await supabase
           .from('orders')
           .update({
@@ -117,7 +132,6 @@ interface Order {
 
         if (error) throw error;
 
-        // Incrementar used_count
         await supabase.from('coupons').update({ used_count: coupon.used_count + 1 }).eq('id', coupon.id);
 
         toast({ title: 'Cupom Aplicado!', description: `Desconto de ${formatCurrency(discount)} aplicado ao pedido` });
@@ -211,24 +225,6 @@ interface Order {
       setLoadingCoupon(false);
     }
   };
-
-interface ViewOrderDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  order: Order | null;
-  onOrderUpdated?: () => void;
-}
-
-export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: ViewOrderDialogProps) => {
-  const { toast } = useToast();
-  const [syncingAddress, setSyncingAddress] = useState(false);
-  const [couponInput, setCouponInput] = useState('');
-  const [loadingCoupon, setLoadingCoupon] = useState(false);
-
-  if (!order) return null;
-
-  const hasAppliedCoupon = !!(order.coupon_code && order.coupon_discount && order.coupon_discount > 0);
-  const hasAppliedGift = !!order.gift_name;
 
   // Mostrar botão de sincronização de endereço sempre que o pedido tiver endereço preenchido
   // (independente de já ter sido sincronizado com o Bling)
