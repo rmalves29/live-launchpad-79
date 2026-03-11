@@ -58,6 +58,159 @@ interface Order {
   }[];
 }
 
+  const applyCouponToOrder = async () => {
+    if (!couponInput.trim() || !order.tenant_id) return;
+    setLoadingCoupon(true);
+    try {
+      const codeToSearch = couponInput.toUpperCase().trim();
+      const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + item.qty * item.unit_price, 0) || 0;
+
+      // Buscar cupom
+      const { data: coupon } = await supabase
+        .from('coupons')
+        .select('*')
+        .eq('tenant_id', order.tenant_id)
+        .eq('code', codeToSearch)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (coupon) {
+        if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+          toast({ title: 'Cupom Expirado', description: 'Este cupom já expirou', variant: 'destructive' });
+          return;
+        }
+        if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) {
+          toast({ title: 'Cupom Esgotado', description: 'Limite de uso atingido', variant: 'destructive' });
+          return;
+        }
+
+        let discount = 0;
+        if (coupon.discount_type === 'progressive') {
+          const tiers = coupon.progressive_tiers as Array<{min_value: number, max_value: number | null, discount: number}>;
+          const tier = tiers?.find(t => t.max_value === null ? productsSubtotal >= t.min_value : productsSubtotal >= t.min_value && productsSubtotal <= t.max_value);
+          if (tier) discount = (productsSubtotal * tier.discount) / 100;
+        } else if (coupon.discount_type === 'percentage') {
+          discount = (productsSubtotal * coupon.discount_value) / 100;
+        } else if (coupon.discount_type === 'fixed') {
+          discount = Math.min(coupon.discount_value, productsSubtotal);
+        }
+
+        // Calcular novo total (total original - desconto do cupom)
+        const currentFreight = Math.max(0, order.total_amount - productsSubtotal);
+        const newTotal = Math.max(0, productsSubtotal - discount) + currentFreight;
+
+        // Preparar observation com tag
+        let newObs = order.observation || '';
+        newObs = newObs.replace(/\[COUPON_DISCOUNT\][^\n]*/g, '').trim();
+        newObs += `\n[COUPON_DISCOUNT] R$ ${discount.toFixed(2)}`;
+
+        // Atualizar pedido
+        const { error } = await supabase
+          .from('orders')
+          .update({
+            coupon_code: codeToSearch,
+            coupon_discount: discount,
+            total_amount: newTotal,
+            observation: newObs.trim()
+          })
+          .eq('id', order.id);
+
+        if (error) throw error;
+
+        // Incrementar used_count
+        await supabase.from('coupons').update({ used_count: coupon.used_count + 1 }).eq('id', coupon.id);
+
+        toast({ title: 'Cupom Aplicado!', description: `Desconto de ${formatCurrency(discount)} aplicado ao pedido` });
+        setCouponInput('');
+        onOrderUpdated?.();
+        return;
+      }
+
+      // Buscar brinde
+      const { data: gifts } = await supabase
+        .from('gifts')
+        .select('*')
+        .eq('tenant_id', order.tenant_id)
+        .eq('is_active', true);
+
+      const gift = gifts?.find(g =>
+        g.name.toUpperCase().replace(/\s+/g, '') === codeToSearch.replace(/\s+/g, '') ||
+        g.name.toUpperCase() === codeToSearch
+      );
+
+      if (gift) {
+        if (productsSubtotal < gift.minimum_purchase_amount) {
+          toast({
+            title: 'Valor Mínimo',
+            description: `Precisa de ${formatCurrency(gift.minimum_purchase_amount)} em compras. Faltam ${formatCurrency(gift.minimum_purchase_amount - productsSubtotal)}`,
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        let newObs = order.observation || '';
+        newObs = newObs.replace(/\[BRINDE\][^\n]*/g, '').trim();
+        newObs += `\n[BRINDE] ${gift.name}`;
+
+        const { error } = await supabase
+          .from('orders')
+          .update({
+            gift_name: gift.name,
+            observation: newObs.trim()
+          })
+          .eq('id', order.id);
+
+        if (error) throw error;
+
+        toast({ title: 'Brinde Aplicado! 🎁', description: `Brinde "${gift.name}" adicionado ao pedido` });
+        setCouponInput('');
+        onOrderUpdated?.();
+        return;
+      }
+
+      toast({ title: 'Código Inválido', description: 'Cupom ou brinde não encontrado', variant: 'destructive' });
+    } catch (error: any) {
+      console.error('Erro ao aplicar código:', error);
+      toast({ title: 'Erro', description: error?.message || 'Erro ao aplicar código', variant: 'destructive' });
+    } finally {
+      setLoadingCoupon(false);
+    }
+  };
+
+  const removeCouponFromOrder = async () => {
+    if (!order.tenant_id) return;
+    setLoadingCoupon(true);
+    try {
+      const productsSubtotal = order.cart_items?.reduce((sum, item) => sum + item.qty * item.unit_price, 0) || 0;
+      const discount = order.coupon_discount || 0;
+      const currentFreight = Math.max(0, order.total_amount - (productsSubtotal - discount));
+      const newTotal = productsSubtotal + currentFreight;
+
+      let newObs = (order.observation || '')
+        .replace(/\[COUPON_DISCOUNT\][^\n]*/g, '')
+        .replace(/\[BRINDE\][^\n]*/g, '')
+        .trim();
+
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          coupon_code: null,
+          coupon_discount: 0,
+          gift_name: null,
+          total_amount: hasAppliedCoupon ? newTotal : order.total_amount,
+          observation: newObs || null
+        })
+        .eq('id', order.id);
+
+      if (error) throw error;
+      toast({ title: 'Removido', description: 'Cupom/brinde removido do pedido' });
+      onOrderUpdated?.();
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error?.message || 'Erro ao remover', variant: 'destructive' });
+    } finally {
+      setLoadingCoupon(false);
+    }
+  };
 
 interface ViewOrderDialogProps {
   open: boolean;
