@@ -8,6 +8,9 @@ const corsHeaders = {
 
 const BLING_API_URL = "https://www.bling.com.br/Api/v3";
 
+const SYNC_BATCH_LIMIT = 120;
+const REQUEST_DELAY_MS = 150;
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function blingFetchWithRetry(
