@@ -63,6 +63,7 @@ interface ViewOrderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   order: Order | null;
+  onOrderUpdated?: () => void;
 }
 
 export const ViewOrderDialog = ({ open, onOpenChange, order }: ViewOrderDialogProps) => {
