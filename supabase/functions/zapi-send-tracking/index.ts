@@ -130,21 +130,24 @@ Obrigado pela preferência! 💚`;
 
     console.log("📱 [TRACKING] Enviando mensagem para:", phone);
 
-    // Simulate typing indicator (3-5 seconds)
-    console.log("⌨️ [TRACKING] Simulating typing...");
-    await simulateTyping(
-      integration.zapi_instance_id,
-      integration.zapi_token,
-      integration.zapi_client_token,
-      phone
-    );
+    if (!isDbTriggerCall) {
+      // Simulate typing indicator + anti-block delay only for interactive/manual calls
+      console.log("⌨️ [TRACKING] Simulating typing...");
+      await simulateTyping(
+        integration.zapi_instance_id,
+        integration.zapi_token,
+        integration.zapi_client_token,
+        phone
+      );
 
-    // Apply anti-block delay
-    const delayMs = await antiBlockDelayLive();
-    logAntiBlockDelay('zapi-send-tracking', delayMs);
+      const delayMs = await antiBlockDelayLive();
+      logAntiBlockDelay('zapi-send-tracking', delayMs);
 
-    // Add message variation
-    messageContent = addMessageVariation(messageContent);
+      // Add message variation in interactive mode
+      messageContent = addMessageVariation(messageContent);
+    } else {
+      console.log("⚡ [TRACKING] Fast path para trigger do banco (sem typing/delay)");
+    }
 
     // Enviar mensagem via Z-API
     const zapiUrl = `https://api.z-api.io/instances/${integration.zapi_instance_id}/token/${integration.zapi_token}/send-text`;
