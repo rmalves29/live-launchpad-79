@@ -8,6 +8,9 @@ const corsHeaders = {
 
 const BLING_API_URL = "https://www.bling.com.br/Api/v3";
 
+const SYNC_BATCH_LIMIT = 120;
+const REQUEST_DELAY_MS = 150;
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function blingFetchWithRetry(
@@ -72,14 +75,20 @@ serve(async (req: Request) => {
   }
 
   try {
-    // Accept optional tenant_id filter
+    // Accept optional filters
     let filterTenantId: string | null = null;
+    let filterOrderId: number | null = null;
     try {
       const body = await req.json();
       filterTenantId = body?.tenant_id || null;
+      filterOrderId = Number.isFinite(Number(body?.order_id)) ? Number(body.order_id) : null;
     } catch { /* no body */ }
 
-    console.log("🔄 [sync-bling-tracking] Iniciando sincronização de rastreios do Bling...", filterTenantId ? `Tenant: ${filterTenantId}` : "Todos os tenants");
+    console.log(
+      "🔄 [sync-bling-tracking] Iniciando sincronização de rastreios do Bling...",
+      filterTenantId ? `Tenant: ${filterTenantId}` : "Todos os tenants",
+      filterOrderId ? `Pedido: ${filterOrderId}` : ""
+    );
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -98,8 +107,12 @@ serve(async (req: Request) => {
       query = query.eq("tenant_id", filterTenantId);
     }
 
-    // Process newest orders first and limit to avoid timeout
-    query = query.order("id", { ascending: false }).limit(50);
+    // Process specific order when requested; otherwise process a larger batch to avoid starvation
+    if (filterOrderId) {
+      query = query.eq("id", filterOrderId).limit(1);
+    } else {
+      query = query.order("id", { ascending: false }).limit(SYNC_BATCH_LIMIT);
+    }
 
     const { data: orders, error: ordersError } = await query;
 
@@ -161,8 +174,8 @@ serve(async (req: Request) => {
         try {
           console.log(`🔍 [sync-bling-tracking] Verificando pedido ${order.id} (Bling ID: ${order.bling_order_id})`);
 
-          // Add delay between API calls to avoid rate limiting
-          await delay(500);
+          // Add a small delay between API calls to reduce rate-limit errors
+          await delay(REQUEST_DELAY_MS);
 
           const { response, text } = await blingFetchWithRetry(
             `${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`,
@@ -199,10 +212,23 @@ serve(async (req: Request) => {
           console.log(`✅ [sync-bling-tracking] Rastreio encontrado para pedido ${order.id}: ${trackingCode}`);
 
           // Update tracking code (trigger trg_send_tracking_whatsapp will auto-send WhatsApp)
-          await supabase
+          const { data: updatedOrder, error: updateError } = await supabase
             .from("orders")
             .update({ melhor_envio_tracking_code: trackingCode })
-            .eq("id", order.id);
+            .eq("id", order.id)
+            .eq("tenant_id", order.tenant_id)
+            .select("id, melhor_envio_tracking_code")
+            .maybeSingle();
+
+          if (updateError) {
+            console.error(`❌ [sync-bling-tracking] Erro ao salvar rastreio no pedido ${order.id}:`, updateError);
+            continue;
+          }
+
+          if (!updatedOrder) {
+            console.error(`❌ [sync-bling-tracking] Nenhuma linha atualizada para o pedido ${order.id}`);
+            continue;
+          }
 
           syncedCount++;
           console.log(`📱 [sync-bling-tracking] Rastreio salvo, trigger automático enviará WhatsApp para pedido ${order.id}`);
