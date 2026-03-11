@@ -1716,9 +1716,14 @@ const PublicCheckout = () => {
                               </p>
                             </div>
                           </div>
-                          <Button variant="outline" size="sm" onClick={removeCoupon} className="text-red-600">
-                            Remover
-                          </Button>
+                          {!couponPreApplied && (
+                            <Button variant="outline" size="sm" onClick={removeCoupon} className="text-red-600">
+                              Remover
+                            </Button>
+                          )}
+                          {couponPreApplied && (
+                            <Badge variant="outline" className="text-xs">Aplicado pelo vendedor</Badge>
+                          )}
                         </div>
                         {couponDiscount > 0 && (
                           <div className="flex justify-between items-center text-green-700 font-semibold">
