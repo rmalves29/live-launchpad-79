@@ -1346,6 +1346,7 @@ const Pedidos = () => {
         open={viewOrderOpen}
         onOpenChange={setViewOrderOpen}
         order={viewingOrder}
+        onOrderUpdated={loadOrders}
       />
       {confirmDialogElement}
         </div>
