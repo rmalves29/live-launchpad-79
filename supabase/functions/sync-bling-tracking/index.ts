@@ -212,10 +212,23 @@ serve(async (req: Request) => {
           console.log(`✅ [sync-bling-tracking] Rastreio encontrado para pedido ${order.id}: ${trackingCode}`);
 
           // Update tracking code (trigger trg_send_tracking_whatsapp will auto-send WhatsApp)
-          await supabase
+          const { data: updatedOrder, error: updateError } = await supabase
             .from("orders")
             .update({ melhor_envio_tracking_code: trackingCode })
-            .eq("id", order.id);
+            .eq("id", order.id)
+            .eq("tenant_id", order.tenant_id)
+            .select("id, melhor_envio_tracking_code")
+            .maybeSingle();
+
+          if (updateError) {
+            console.error(`❌ [sync-bling-tracking] Erro ao salvar rastreio no pedido ${order.id}:`, updateError);
+            continue;
+          }
+
+          if (!updatedOrder) {
+            console.error(`❌ [sync-bling-tracking] Nenhuma linha atualizada para o pedido ${order.id}`);
+            continue;
+          }
 
           syncedCount++;
           console.log(`📱 [sync-bling-tracking] Rastreio salvo, trigger automático enviará WhatsApp para pedido ${order.id}`);
