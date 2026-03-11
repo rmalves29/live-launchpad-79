@@ -29,3 +29,7 @@ verify_jwt = false
 
 [functions.omie-sync-products]
 verify_jwt = false
+
+[functions.omie-list-stores]
+verify_jwt = false
+verify_jwt = false

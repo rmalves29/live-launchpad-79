@@ -22,10 +22,8 @@ async function omieCall(appKey: string, appSecret: string, endpoint: string, cal
 }
 
 async function findOrCreateOmieClient(appKey: string, appSecret: string, order: any) {
-  // Buscar cliente pelo telefone
   const phone = order.customer_phone?.replace(/\D/g, '') || '';
   
-  // Tentar incluir/atualizar cliente
   const clientData: any = {
     razao_social: order.customer_name || `Cliente ${phone}`,
     nome_fantasia: order.customer_name || `Cliente ${phone}`,
@@ -45,7 +43,6 @@ async function findOrCreateOmieClient(appKey: string, appSecret: string, order: 
   
   if (result.faultstring) {
     console.error('[omie-sync-orders] Erro ao criar cliente:', result.faultstring);
-    // Tentar buscar pelo código de integração
     const searchResult = await omieCall(appKey, appSecret, 'geral/clientes/', 'ConsultarCliente', {
       codigo_cliente_integracao: clientData.codigo_cliente_integracao,
     });
@@ -91,7 +88,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { app_key, app_secret } = integration;
+    const { app_key, app_secret, omie_empresa_id } = integration;
     if (!app_key || !app_secret) {
       return new Response(
         JSON.stringify({ success: false, error: 'Credenciais Omie não configuradas' }),
@@ -126,22 +123,18 @@ Deno.serve(async (req) => {
 
     for (const order of orders) {
       try {
-        // Marcar como em sincronização
         await supabase
           .from('orders')
           .update({ omie_sync_status: 'syncing' })
           .eq('id', order.id);
 
-        // Criar/buscar cliente no Omie
         const omieClientId = await findOrCreateOmieClient(app_key, app_secret, order);
 
-        // Buscar itens do carrinho
         const { data: cartItems } = await supabase
           .from('cart_items')
           .select('*')
           .eq('cart_id', order.cart_id);
 
-        // Montar itens do pedido
         const det = (cartItems || []).map((item: any, idx: number) => ({
           ide: { codigo_item_integracao: `orderzap_${order.id}_${idx + 1}` },
           inf_adic: { peso_bruto: 0.3, peso_liquido: 0.3 },
@@ -155,21 +148,25 @@ Deno.serve(async (req) => {
           },
         }));
 
-        // Criar pedido no Omie
-        const orderPayload = {
+        const orderPayload: any = {
           cabecalho: {
             codigo_pedido_integracao: `orderzap_${order.id}`,
             codigo_cliente: omieClientId,
             data_previsao: new Date().toLocaleDateString('pt-BR'),
             quantidade_itens: det.length,
-            etapa: '10', // Pedido de Venda
+            etapa: '10',
           },
           det,
           informacoes_adicionais: {
-            codigo_categoria: '', // Pode ser configurado depois
+            codigo_categoria: '',
             numero_pedido: order.id?.toString(),
           },
         };
+
+        // Se tiver empresa selecionada, incluir no payload
+        if (omie_empresa_id) {
+          orderPayload.cabecalho.codigo_empresa = omie_empresa_id;
+        }
 
         const omieResult = await omieCall(
           app_key,
@@ -180,7 +177,6 @@ Deno.serve(async (req) => {
         );
 
         if (omieResult.faultstring) {
-          // Se o pedido já existe, marcar como sincronizado
           if (omieResult.faultstring.includes('já cadastrado') || omieResult.faultstring.includes('duplicado')) {
             console.log(`[omie-sync-orders] Pedido #${order.id} já existe no Omie`);
             await supabase
@@ -193,7 +189,6 @@ Deno.serve(async (req) => {
           throw new Error(omieResult.faultstring);
         }
 
-        // Atualizar pedido com ID do Omie
         await supabase
           .from('orders')
           .update({
@@ -214,7 +209,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Atualizar last_sync_at
     await supabase
       .from('integration_omie')
       .update({ last_sync_at: new Date().toISOString() })

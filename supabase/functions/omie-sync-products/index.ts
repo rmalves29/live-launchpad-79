@@ -25,7 +25,6 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Buscar credenciais
     const { data: integration, error: intError } = await supabase
       .from('integration_omie')
       .select('*')
@@ -40,7 +39,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { app_key, app_secret } = integration;
+    const { app_key, app_secret, omie_empresa_id } = integration;
     if (!app_key || !app_secret) {
       return new Response(
         JSON.stringify({ success: false, error: 'Credenciais Omie não configuradas' }),
@@ -54,6 +53,17 @@ Deno.serve(async (req) => {
     const pageSize = 50;
 
     while (page <= totalPages) {
+      const params: any = { 
+        pagina: page, 
+        registros_por_pagina: pageSize, 
+        apenas_importado_api: 'N' 
+      };
+
+      // Filtrar por empresa se selecionada
+      if (omie_empresa_id) {
+        params.filtrar_por_empresa = omie_empresa_id;
+      }
+
       const omieResponse = await fetch(`${OMIE_API_URL}/geral/produtos/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -61,7 +71,7 @@ Deno.serve(async (req) => {
           call: 'ListarProdutos',
           app_key,
           app_secret,
-          param: [{ pagina: page, registros_por_pagina: pageSize, apenas_importado_api: 'N' }],
+          param: [params],
         }),
       });
 
@@ -81,7 +91,6 @@ Deno.serve(async (req) => {
         const stock = Number(prod.quantidade_estoque) || 0;
         const isActive = prod.inativo !== 'S';
 
-        // Upsert no products por code + tenant_id
         const { data: existing } = await supabase
           .from('products')
           .select('id')
@@ -120,7 +129,6 @@ Deno.serve(async (req) => {
       page++;
     }
 
-    // Atualizar last_sync_at
     await supabase
       .from('integration_omie')
       .update({ last_sync_at: new Date().toISOString() })
