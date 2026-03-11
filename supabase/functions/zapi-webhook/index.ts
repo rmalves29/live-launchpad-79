@@ -471,10 +471,7 @@ serve(async (req) => {
         );
 
         if (!isAllowed) {
-          console.log(`[zapi-webhook] ⛔ Group "${groupName}" is NOT in allowed groups for tenant ${tenantId}. Ignoring message.`);
-          return new Response(JSON.stringify({ success: true, skipped: 'group_not_allowed', group: groupName, tenant: tenantId }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
+          console.log(`[zapi-webhook] ℹ️ Group "${groupName}" is NOT in allowed groups for tenant ${tenantId}, but processing anyway (non-blocking).`);
         }
       }
     }
