@@ -683,14 +683,36 @@ export default function Cobranca() {
 
             {/* Filtro de Data do Pedido */}
             <div className="space-y-2">
-              <Label htmlFor="orderDate">Data do Pedido</Label>
-              <Input
-                id="orderDate"
-                type="date"
-                value={filters.orderDate}
-                onChange={(e) => setFilters({ ...filters, orderDate: e.target.value })}
-                disabled={useAllCustomers}
-              />
+              <Label>Data do Pedido</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !filters.orderDate?.from && "text-muted-foreground"
+                    )}
+                    disabled={useAllCustomers}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {filters.orderDate?.from ? (
+                      filters.orderDate.to
+                        ? `${format(filters.orderDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filters.orderDate.to, "dd/MM/yy", { locale: ptBR })}`
+                        : format(filters.orderDate.from, "PPP", { locale: ptBR })
+                    ) : "Selecionar data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={filters.orderDate}
+                    onSelect={(range) => setFilters({ ...filters, orderDate: range })}
+                    initialFocus
+                    numberOfMonths={1}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </CardContent>
