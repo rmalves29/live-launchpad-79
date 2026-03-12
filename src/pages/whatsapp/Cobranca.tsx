@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { DateRange } from 'react-day-picker';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/hooks/useTenant';
@@ -21,7 +22,7 @@ import { cn } from '@/lib/utils';
 interface FilterCriteria {
   isPaid: string;
   eventType: string;
-  orderDate: string;
+  orderDate: DateRange | undefined;
 }
 
 interface Customer {
@@ -70,7 +71,7 @@ export default function Cobranca() {
   const [filters, setFilters] = useState<FilterCriteria>({
     isPaid: 'all',
     eventType: 'all',
-    orderDate: ''
+    orderDate: undefined
   });
   
   const [messageTemplate, setMessageTemplate] = useState('');
@@ -204,7 +205,7 @@ export default function Cobranca() {
       return;
     }
 
-    if (!filters.orderDate) {
+    if (!filters.orderDate?.from) {
       setCustomers([]);
       return;
     }
@@ -212,10 +213,17 @@ export default function Cobranca() {
     try {
       setLoading(true);
       
+      const fromStr = format(filters.orderDate.from, 'yyyy-MM-dd');
       let query = supabaseTenant
         .from('orders')
-        .select('customer_phone, customer_name, event_type, event_date, total_amount, is_paid')
-        .eq('event_date', filters.orderDate);
+        .select('customer_phone, customer_name, event_type, event_date, total_amount, is_paid');
+
+      if (filters.orderDate.to) {
+        const toStr = format(filters.orderDate.to, 'yyyy-MM-dd');
+        query = query.gte('event_date', fromStr).lte('event_date', toStr);
+      } else {
+        query = query.eq('event_date', fromStr);
+      }
 
       // Aplicar filtro de pagamento
       if (filters.isPaid === 'paid') {
@@ -315,7 +323,7 @@ export default function Cobranca() {
   useEffect(() => {
     if (useAllCustomers) {
       loadAllCustomers();
-    } else if (filters.orderDate) {
+    } else if (filters.orderDate?.from) {
       loadCustomers();
     } else {
       setCustomers([]);
@@ -399,7 +407,8 @@ export default function Cobranca() {
           filters: {
             is_paid: filters.isPaid,
             event_type: filters.eventType,
-            order_date: filters.orderDate,
+            order_date: filters.orderDate?.from ? format(filters.orderDate.from, 'yyyy-MM-dd') : '',
+            order_date_to: filters.orderDate?.to ? format(filters.orderDate.to, 'yyyy-MM-dd') : '',
             use_all_customers: useAllCustomers
           }
         }
@@ -675,14 +684,36 @@ export default function Cobranca() {
 
             {/* Filtro de Data do Pedido */}
             <div className="space-y-2">
-              <Label htmlFor="orderDate">Data do Pedido</Label>
-              <Input
-                id="orderDate"
-                type="date"
-                value={filters.orderDate}
-                onChange={(e) => setFilters({ ...filters, orderDate: e.target.value })}
-                disabled={useAllCustomers}
-              />
+              <Label>Data do Pedido</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !filters.orderDate?.from && "text-muted-foreground"
+                    )}
+                    disabled={useAllCustomers}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {filters.orderDate?.from ? (
+                      filters.orderDate.to
+                        ? `${format(filters.orderDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filters.orderDate.to, "dd/MM/yy", { locale: ptBR })}`
+                        : format(filters.orderDate.from, "PPP", { locale: ptBR })
+                    ) : "Selecionar data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={filters.orderDate}
+                    onSelect={(range) => setFilters({ ...filters, orderDate: range })}
+                    initialFocus
+                    numberOfMonths={1}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
         </CardContent>
