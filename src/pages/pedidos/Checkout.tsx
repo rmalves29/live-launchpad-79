@@ -2017,7 +2017,7 @@ const Checkout = () => {
                       {!appliedCoupon ? (
                         <div className="flex gap-2">
                           <Input
-                            placeholder="Digite o código do cupom ou nome do brinde"
+                            placeholder="Digite o código do cupom ou nome do presente"
                             value={couponCode}
                             onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                             className="flex-1"
