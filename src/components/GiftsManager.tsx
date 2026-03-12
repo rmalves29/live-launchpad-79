@@ -219,11 +219,11 @@ export const GiftsManager = () => {
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center">
             <Gift className="h-5 w-5 mr-2" />
-            Gerenciar Brindes por Valor de Compra
+            Gerenciar Presentes por Valor de Compra
           </div>
           <Button onClick={() => setIsAddingGift(true)} size="sm">
             <Plus className="h-4 w-4 mr-2" />
-            Novo Brinde
+            Novo Presente
           </Button>
         </CardTitle>
       </CardHeader>
