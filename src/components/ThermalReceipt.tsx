@@ -99,7 +99,10 @@ const buildReceiptHtml = (order: ReceiptOrder, companyName?: string): string => 
   const cpfFormatted = customer?.cpf ? formatCPF(customer.cpf.replace(/\D/g, '')) : null;
 
   const obsText = order.observation
-    ? order.observation.replace(/\[FRETE\].*/, '').replace(/Frete:.*/, '').trim()
+    ? order.observation
+        .replace(/\[FRETE\]\s*.+?\|.*$/gm, '')
+        .replace(/^Frete:\s*(?:Melhor Envio|Correios|PAC|SEDEX|Mandaê|Jadlog).*$/gim, '')
+        .trim()
     : '';
 
   return `
