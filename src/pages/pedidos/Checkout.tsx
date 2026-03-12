@@ -2049,7 +2049,7 @@ const Checkout = () => {
                                 </Badge>
                                 <p className="text-sm text-muted-foreground mt-1">
                                   {appliedCoupon.appliedType === 'gift' ? (
-                                    `Brinde: ${appliedCoupon.name}`
+                                    `Presente: ${appliedCoupon.name}`
                                   ) : appliedCoupon.discount_type === 'progressive' ? 'Desconto Progressivo' :
                                    appliedCoupon.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% de desconto` :
                                    `R$ ${appliedCoupon.discount_value?.toFixed(2)} de desconto`}
