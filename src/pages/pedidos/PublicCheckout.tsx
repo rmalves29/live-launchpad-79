@@ -1424,7 +1424,7 @@ const PublicCheckout = () => {
                         </div>
                         <div>
                           <h4 className="font-semibold text-green-700 dark:text-green-400">
-                            🎉 Parabéns! Você ganhou um brinde
+                            🎉 Parabéns! Você ganhou um presente
                           </h4>
                           <p className="text-sm font-medium text-green-900 dark:text-green-300">{eligibleGift.name}</p>
                         </div>
