@@ -1109,7 +1109,7 @@ const Checkout = () => {
         setCouponDiscount(0);
 
         toast({
-          title: 'Brinde Aplicado! 🎁',
+          title: 'Presente Aplicado! 🎁',
           description: `Você ganhou: ${gift.name}`,
         });
         return;
