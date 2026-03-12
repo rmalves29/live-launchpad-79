@@ -1712,7 +1712,7 @@ const Checkout = () => {
                         </div>
                       )}
 
-                      {/* Progresso para Próximo Brinde */}
+                      {/* Progresso para Próximo Presente */}
                       {progressGift && (
                         <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border border-purple-200 dark:border-purple-800 rounded-lg animate-fade-in">
                           <div className="flex items-center gap-3 mb-3">
