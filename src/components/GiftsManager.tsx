@@ -241,7 +241,7 @@ export const GiftsManager = () => {
           <Card className="p-4 border-2 border-dashed">
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name">Nome do Brinde</Label>
+                <Label htmlFor="name">Nome do Presente</Label>
                 <Input
                   id="name"
                   value={newGift.name}
