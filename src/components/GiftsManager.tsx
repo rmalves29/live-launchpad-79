@@ -171,7 +171,7 @@ export const GiftsManager = () => {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: error?.message || "Erro ao excluir brinde"
+        description: error?.message || "Erro ao excluir presente"
       });
     }
   };
