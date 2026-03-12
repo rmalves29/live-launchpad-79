@@ -71,7 +71,7 @@ export default function Cobranca() {
   const [filters, setFilters] = useState<FilterCriteria>({
     isPaid: 'all',
     eventType: 'all',
-    orderDate: ''
+    orderDate: undefined
   });
   
   const [messageTemplate, setMessageTemplate] = useState('');
