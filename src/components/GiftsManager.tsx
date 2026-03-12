@@ -205,7 +205,7 @@ export const GiftsManager = () => {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Selecione uma empresa para gerenciar brindes
+              Selecione uma empresa para gerenciar presentes
             </AlertDescription>
           </Alert>
         </CardContent>
