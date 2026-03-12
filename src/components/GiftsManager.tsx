@@ -163,7 +163,7 @@ export const GiftsManager = () => {
       
       toast({
         title: "Sucesso",
-        description: "Brinde excluído com sucesso"
+        description: "Presente excluído com sucesso"
       });
       loadGifts();
     } catch (error: any) {
