@@ -186,9 +186,14 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           query = query.eq('event_type', filterEventType);
         }
 
-        if (filterDate) {
-          const dateStr = format(filterDate, 'yyyy-MM-dd');
-          query = query.eq('event_date', dateStr);
+        if (filterDate?.from) {
+          const fromStr = format(filterDate.from, 'yyyy-MM-dd');
+          if (filterDate.to) {
+            const toStr = format(filterDate.to, 'yyyy-MM-dd');
+            query = query.gte('event_date', fromStr).lte('event_date', toStr);
+          } else {
+            query = query.eq('event_date', fromStr);
+          }
         }
 
         const { data: orderData, error: orderError } = await query;
