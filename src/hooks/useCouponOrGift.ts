@@ -150,7 +150,7 @@ export const useCouponOrGift = (tenantId?: string) => {
       // Não encontrou nem cupom nem brinde
       toast({
         title: 'Código Inválido',
-        description: 'Cupom ou brinde não encontrado',
+        description: 'Cupom ou presente não encontrado',
         variant: 'destructive'
       });
 
