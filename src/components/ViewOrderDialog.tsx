@@ -217,7 +217,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
         .eq('id', order.id);
 
       if (error) throw error;
-      toast({ title: 'Removido', description: 'Cupom/brinde removido do pedido' });
+      toast({ title: 'Removido', description: 'Cupom/presente removido do pedido' });
       onOrderUpdated?.();
     } catch (error: any) {
       toast({ title: 'Erro', description: error?.message || 'Erro ao remover', variant: 'destructive' });
