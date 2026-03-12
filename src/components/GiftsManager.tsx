@@ -256,7 +256,7 @@ export const GiftsManager = () => {
                   id="description"
                   value={newGift.description}
                   onChange={(e) => setNewGift({ ...newGift, description: e.target.value })}
-                  placeholder="Descrição detalhada do brinde..."
+                  placeholder="Descrição detalhada do presente..."
                 />
               </div>
 
