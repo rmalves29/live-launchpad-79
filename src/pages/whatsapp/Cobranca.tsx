@@ -205,7 +205,7 @@ export default function Cobranca() {
       return;
     }
 
-    if (!filters.orderDate) {
+    if (!filters.orderDate?.from) {
       setCustomers([]);
       return;
     }
@@ -213,10 +213,17 @@ export default function Cobranca() {
     try {
       setLoading(true);
       
+      const fromStr = format(filters.orderDate.from, 'yyyy-MM-dd');
       let query = supabaseTenant
         .from('orders')
-        .select('customer_phone, customer_name, event_type, event_date, total_amount, is_paid')
-        .eq('event_date', filters.orderDate);
+        .select('customer_phone, customer_name, event_type, event_date, total_amount, is_paid');
+
+      if (filters.orderDate.to) {
+        const toStr = format(filters.orderDate.to, 'yyyy-MM-dd');
+        query = query.gte('event_date', fromStr).lte('event_date', toStr);
+      } else {
+        query = query.eq('event_date', fromStr);
+      }
 
       // Aplicar filtro de pagamento
       if (filters.isPaid === 'paid') {
