@@ -1575,19 +1575,24 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !filterDate && "text-muted-foreground"
+                        !filterDate?.from && "text-muted-foreground"
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filterDate ? format(filterDate, "PPP", { locale: ptBR }) : "Selecionar data"}
+                      {filterDate?.from ? (
+                        filterDate.to
+                          ? `${format(filterDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterDate.to, "dd/MM/yy", { locale: ptBR })}`
+                          : format(filterDate.from, "PPP", { locale: ptBR })
+                      ) : "Selecionar data"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
-                      mode="single"
+                      mode="range"
                       selected={filterDate}
                       onSelect={setFilterDate}
                       initialFocus
+                      numberOfMonths={1}
                       className="pointer-events-auto"
                     />
                   </PopoverContent>
