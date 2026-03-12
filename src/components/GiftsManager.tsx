@@ -126,7 +126,7 @@ export const GiftsManager = () => {
         if (error) throw error;
         toast({
           title: "Sucesso",
-          description: "Brinde atualizado com sucesso"
+          description: "Presente atualizado com sucesso"
         });
       } else {
         const { error } = await supabaseTenant
