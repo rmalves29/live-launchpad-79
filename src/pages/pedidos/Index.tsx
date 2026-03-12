@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { DateRange } from 'react-day-picker';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -85,7 +86,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     const [loading, setLoading] = useState(true);
     const [filterPaid, setFilterPaid] = useState<string>('all'); // 'all' | 'paid' | 'unpaid' | 'cancelled'
     const [filterEventType, setFilterEventType] = useState<string>('all');
-    const [filterDate, setFilterDate] = useState<Date | undefined>();
+    const [filterDate, setFilterDate] = useState<DateRange | undefined>();
     const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
     const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
     const [editingObservation, setEditingObservation] = useState<number | null>(null);
@@ -185,9 +186,14 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           query = query.eq('event_type', filterEventType);
         }
 
-        if (filterDate) {
-          const dateStr = format(filterDate, 'yyyy-MM-dd');
-          query = query.eq('event_date', dateStr);
+        if (filterDate?.from) {
+          const fromStr = format(filterDate.from, 'yyyy-MM-dd');
+          if (filterDate.to) {
+            const toStr = format(filterDate.to, 'yyyy-MM-dd');
+            query = query.gte('event_date', fromStr).lte('event_date', toStr);
+          } else {
+            query = query.eq('event_date', fromStr);
+          }
         }
 
         const { data: orderData, error: orderError } = await query;
@@ -1569,19 +1575,24 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       variant="outline"
                       className={cn(
                         "w-full justify-start text-left font-normal",
-                        !filterDate && "text-muted-foreground"
+                        !filterDate?.from && "text-muted-foreground"
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filterDate ? format(filterDate, "PPP", { locale: ptBR }) : "Selecionar data"}
+                      {filterDate?.from ? (
+                        filterDate.to
+                          ? `${format(filterDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterDate.to, "dd/MM/yy", { locale: ptBR })}`
+                          : format(filterDate.from, "PPP", { locale: ptBR })
+                      ) : "Selecionar data"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
-                      mode="single"
+                      mode="range"
                       selected={filterDate}
                       onSelect={setFilterDate}
                       initialFocus
+                      numberOfMonths={1}
                       className="pointer-events-auto"
                     />
                   </PopoverContent>
