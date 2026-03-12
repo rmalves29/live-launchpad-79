@@ -323,7 +323,7 @@ export default function Cobranca() {
   useEffect(() => {
     if (useAllCustomers) {
       loadAllCustomers();
-    } else if (filters.orderDate) {
+    } else if (filters.orderDate?.from) {
       loadCustomers();
     } else {
       setCustomers([]);
