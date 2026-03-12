@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 interface FilterCriteria {
   isPaid: string;
   eventType: string;
-  orderDate: string;
+  orderDate: DateRange | undefined;
 }
 
 interface Customer {
