@@ -420,7 +420,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
               ) : !order.is_paid ? (
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Código do cupom ou nome do brinde"
+                    placeholder="Código do cupom ou nome do presente"
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
                     onKeyPress={(e) => e.key === 'Enter' && applyCouponToOrder()}
