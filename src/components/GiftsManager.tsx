@@ -287,7 +287,7 @@ export const GiftsManager = () => {
                 Cancelar
               </Button>
               <Button onClick={saveGift}>
-                {editingGift ? 'Atualizar' : 'Criar'} Brinde
+                {editingGift ? 'Atualizar' : 'Criar'} Presente
               </Button>
             </div>
           </Card>
