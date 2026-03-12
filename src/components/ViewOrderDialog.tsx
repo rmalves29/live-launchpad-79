@@ -182,7 +182,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
         return;
       }
 
-      toast({ title: 'Código Inválido', description: 'Cupom ou brinde não encontrado', variant: 'destructive' });
+      toast({ title: 'Código Inválido', description: 'Cupom ou presente não encontrado', variant: 'destructive' });
     } catch (error: any) {
       console.error('Erro ao aplicar código:', error);
       toast({ title: 'Erro', description: error?.message || 'Erro ao aplicar código', variant: 'destructive' });
