@@ -295,9 +295,9 @@ export const GiftsManager = () => {
 
         <div className="space-y-2">
           {loading ? (
-            <p>Carregando brindes...</p>
+            <p>Carregando presentes...</p>
           ) : gifts.length === 0 ? (
-            <p className="text-muted-foreground">Nenhum brinde cadastrado</p>
+            <p className="text-muted-foreground">Nenhum presente cadastrado</p>
           ) : (
             gifts.map((gift) => (
               <div key={gift.id} className="flex items-center justify-between p-3 border rounded">
