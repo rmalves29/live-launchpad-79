@@ -407,7 +407,8 @@ export default function Cobranca() {
           filters: {
             is_paid: filters.isPaid,
             event_type: filters.eventType,
-            order_date: filters.orderDate,
+            order_date: filters.orderDate?.from ? format(filters.orderDate.from, 'yyyy-MM-dd') : '',
+            order_date_to: filters.orderDate?.to ? format(filters.orderDate.to, 'yyyy-MM-dd') : '',
             use_all_customers: useAllCustomers
           }
         }
