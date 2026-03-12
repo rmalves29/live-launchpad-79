@@ -435,7 +435,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
                   </Button>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Nenhum cupom ou brinde aplicado</p>
+                <p className="text-sm text-muted-foreground">Nenhum cupom ou presente aplicado</p>
               )}
             </CardContent>
           </Card>

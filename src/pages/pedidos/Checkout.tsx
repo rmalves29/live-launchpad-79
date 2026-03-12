@@ -1683,7 +1683,7 @@ const Checkout = () => {
                         ))}
                       </div>
 
-                      {/* Brinde Elegível */}
+                      {/* Presente Elegível */}
                       {eligibleGift && (
                         <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-2 border-green-500 rounded-lg animate-fade-in">
                           <div className="flex items-center gap-3">

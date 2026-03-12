@@ -172,7 +172,7 @@ export const useCouponOrGift = (tenantId?: string) => {
     setCouponCode('');
     toast({
       title: 'Código Removido',
-      description: 'O cupom ou brinde foi removido',
+      description: 'O cupom ou presente foi removido',
     });
   };
 

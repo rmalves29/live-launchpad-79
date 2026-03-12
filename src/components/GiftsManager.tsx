@@ -78,7 +78,7 @@ export const GiftsManager = () => {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: error?.message || "Erro ao carregar brindes"
+        description: error?.message || "Erro ao carregar presentes"
       });
     } finally {
       setLoading(false);
