@@ -136,7 +136,7 @@ export const GiftsManager = () => {
         if (error) throw error;
         toast({
           title: "Sucesso",
-          description: "Brinde criado com sucesso"
+          description: "Presente criado com sucesso"
         });
       }
 
