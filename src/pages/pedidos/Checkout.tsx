@@ -2007,11 +2007,11 @@ const Checkout = () => {
                       </div>
                     )}
 
-                    {/* Campo de Cupom de Desconto ou Brinde */}
+                    {/* Campo de Cupom de Desconto ou Presente */}
                     <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                       <h4 className="font-medium mb-3 flex items-center">
                         <Percent className="h-4 w-4 mr-2 text-green-600" />
-                        Cupom de Desconto ou Brinde
+                        Cupom de Desconto ou Presente
                       </h4>
                       
                       {!appliedCoupon ? (
