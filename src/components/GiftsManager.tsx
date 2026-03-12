@@ -278,7 +278,7 @@ export const GiftsManager = () => {
                   checked={newGift.is_active}
                   onCheckedChange={(checked) => setNewGift({ ...newGift, is_active: checked })}
                 />
-                <Label htmlFor="is_active">Brinde Ativo</Label>
+                <Label htmlFor="is_active">Presente Ativo</Label>
               </div>
             </div>
 
