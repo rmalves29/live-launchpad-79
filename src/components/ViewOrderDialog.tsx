@@ -176,7 +176,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
 
         if (error) throw error;
 
-        toast({ title: 'Brinde Aplicado! 🎁', description: `Brinde "${gift.name}" adicionado ao pedido` });
+        toast({ title: 'Presente Aplicado! 🎁', description: `Presente "${gift.name}" adicionado ao pedido` });
         setCouponInput('');
         onOrderUpdated?.();
         return;
