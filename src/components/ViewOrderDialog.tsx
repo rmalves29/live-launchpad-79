@@ -386,7 +386,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
             <CardContent className="p-4">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                 <Percent className="h-5 w-5 text-green-600" />
-                Cupom de Desconto / Brinde
+                Cupom de Desconto / Presente
               </h3>
 
               {(hasAppliedCoupon || hasAppliedGift) ? (
