@@ -35,7 +35,7 @@ export const useCouponOrGift = (tenantId?: string) => {
     if (!couponCode.trim()) {
       toast({
         title: 'Erro',
-        description: 'Digite um código de cupom ou brinde',
+        description: 'Digite um código de cupom ou presente',
         variant: 'destructive'
       });
       return;
