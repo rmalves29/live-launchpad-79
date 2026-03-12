@@ -1693,7 +1693,7 @@ const Checkout = () => {
                             <div className="flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h4 className="font-semibold text-green-700 dark:text-green-400">
-                                  🎉 Parabéns! Você ganhou um brinde
+                                  🎉 Parabéns! Você ganhou um presente
                                 </h4>
                                 <Badge variant="secondary" className="bg-green-600 text-white">
                                   GRÁTIS
