@@ -996,7 +996,7 @@ const Checkout = () => {
     if (!couponCode.trim()) {
       toast({
         title: 'Erro',
-        description: 'Digite um código de cupom ou brinde',
+        description: 'Digite um código de cupom ou presente',
         variant: 'destructive'
       });
       return;
@@ -1109,7 +1109,7 @@ const Checkout = () => {
         setCouponDiscount(0);
 
         toast({
-          title: 'Brinde Aplicado! 🎁',
+          title: 'Presente Aplicado! 🎁',
           description: `Você ganhou: ${gift.name}`,
         });
         return;
@@ -1118,7 +1118,7 @@ const Checkout = () => {
       // Não encontrou nem cupom nem brinde
       toast({
         title: 'Código Inválido',
-        description: 'Cupom ou brinde não encontrado',
+        description: 'Cupom ou presente não encontrado',
         variant: 'destructive'
       });
 
@@ -1683,7 +1683,7 @@ const Checkout = () => {
                         ))}
                       </div>
 
-                      {/* Brinde Elegível */}
+                      {/* Presente Elegível */}
                       {eligibleGift && (
                         <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-2 border-green-500 rounded-lg animate-fade-in">
                           <div className="flex items-center gap-3">
@@ -1693,7 +1693,7 @@ const Checkout = () => {
                             <div className="flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h4 className="font-semibold text-green-700 dark:text-green-400">
-                                  🎉 Parabéns! Você ganhou um brinde
+                                  🎉 Parabéns! Você ganhou um presente
                                 </h4>
                                 <Badge variant="secondary" className="bg-green-600 text-white">
                                   GRÁTIS
@@ -1712,7 +1712,7 @@ const Checkout = () => {
                         </div>
                       )}
 
-                      {/* Progresso para Próximo Brinde */}
+                      {/* Progresso para Próximo Presente */}
                       {progressGift && (
                         <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border border-purple-200 dark:border-purple-800 rounded-lg animate-fade-in">
                           <div className="flex items-center gap-3 mb-3">
@@ -2007,17 +2007,17 @@ const Checkout = () => {
                       </div>
                     )}
 
-                    {/* Campo de Cupom de Desconto ou Brinde */}
+                    {/* Campo de Cupom de Desconto ou Presente */}
                     <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                       <h4 className="font-medium mb-3 flex items-center">
                         <Percent className="h-4 w-4 mr-2 text-green-600" />
-                        Cupom de Desconto ou Brinde
+                        Cupom de Desconto ou Presente
                       </h4>
                       
                       {!appliedCoupon ? (
                         <div className="flex gap-2">
                           <Input
-                            placeholder="Digite o código do cupom ou nome do brinde"
+                            placeholder="Digite o código do cupom ou nome do presente"
                             value={couponCode}
                             onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                             className="flex-1"
@@ -2049,7 +2049,7 @@ const Checkout = () => {
                                 </Badge>
                                 <p className="text-sm text-muted-foreground mt-1">
                                   {appliedCoupon.appliedType === 'gift' ? (
-                                    `Brinde: ${appliedCoupon.name}`
+                                    `Presente: ${appliedCoupon.name}`
                                   ) : appliedCoupon.discount_type === 'progressive' ? 'Desconto Progressivo' :
                                    appliedCoupon.discount_type === 'percentage' ? `${appliedCoupon.discount_value}% de desconto` :
                                    `R$ ${appliedCoupon.discount_value?.toFixed(2)} de desconto`}

@@ -1424,7 +1424,7 @@ const PublicCheckout = () => {
                         </div>
                         <div>
                           <h4 className="font-semibold text-green-700 dark:text-green-400">
-                            🎉 Parabéns! Você ganhou um brinde
+                            🎉 Parabéns! Você ganhou um presente
                           </h4>
                           <p className="text-sm font-medium text-green-900 dark:text-green-300">{eligibleGift.name}</p>
                         </div>
@@ -1432,7 +1432,7 @@ const PublicCheckout = () => {
                     </div>
                   )}
 
-                  {/* Progresso para Próximo Brinde */}
+                  {/* Progresso para Próximo Presente */}
                   {progressGift && (
                     <div className="p-4 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-lg">
                       <div className="flex items-center gap-3 mb-3">

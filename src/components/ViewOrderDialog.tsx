@@ -176,13 +176,13 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
 
         if (error) throw error;
 
-        toast({ title: 'Brinde Aplicado! 🎁', description: `Brinde "${gift.name}" adicionado ao pedido` });
+        toast({ title: 'Presente Aplicado! 🎁', description: `Presente "${gift.name}" adicionado ao pedido` });
         setCouponInput('');
         onOrderUpdated?.();
         return;
       }
 
-      toast({ title: 'Código Inválido', description: 'Cupom ou brinde não encontrado', variant: 'destructive' });
+      toast({ title: 'Código Inválido', description: 'Cupom ou presente não encontrado', variant: 'destructive' });
     } catch (error: any) {
       console.error('Erro ao aplicar código:', error);
       toast({ title: 'Erro', description: error?.message || 'Erro ao aplicar código', variant: 'destructive' });
@@ -217,7 +217,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
         .eq('id', order.id);
 
       if (error) throw error;
-      toast({ title: 'Removido', description: 'Cupom/brinde removido do pedido' });
+      toast({ title: 'Removido', description: 'Cupom/presente removido do pedido' });
       onOrderUpdated?.();
     } catch (error: any) {
       toast({ title: 'Erro', description: error?.message || 'Erro ao remover', variant: 'destructive' });
@@ -386,7 +386,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
             <CardContent className="p-4">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                 <Percent className="h-5 w-5 text-green-600" />
-                Cupom de Desconto / Brinde
+                Cupom de Desconto / Presente
               </h3>
 
               {(hasAppliedCoupon || hasAppliedGift) ? (
@@ -420,7 +420,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
               ) : !order.is_paid ? (
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Código do cupom ou nome do brinde"
+                    placeholder="Código do cupom ou nome do presente"
                     value={couponInput}
                     onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
                     onKeyPress={(e) => e.key === 'Enter' && applyCouponToOrder()}
@@ -435,7 +435,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
                   </Button>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Nenhum cupom ou brinde aplicado</p>
+                <p className="text-sm text-muted-foreground">Nenhum cupom ou presente aplicado</p>
               )}
             </CardContent>
           </Card>

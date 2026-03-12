@@ -78,7 +78,7 @@ export const GiftsManager = () => {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: error?.message || "Erro ao carregar brindes"
+        description: error?.message || "Erro ao carregar presentes"
       });
     } finally {
       setLoading(false);
@@ -126,7 +126,7 @@ export const GiftsManager = () => {
         if (error) throw error;
         toast({
           title: "Sucesso",
-          description: "Brinde atualizado com sucesso"
+          description: "Presente atualizado com sucesso"
         });
       } else {
         const { error } = await supabaseTenant
@@ -136,7 +136,7 @@ export const GiftsManager = () => {
         if (error) throw error;
         toast({
           title: "Sucesso",
-          description: "Brinde criado com sucesso"
+          description: "Presente criado com sucesso"
         });
       }
 
@@ -147,7 +147,7 @@ export const GiftsManager = () => {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: error.message || "Erro ao salvar brinde"
+        description: error.message || "Erro ao salvar presente"
       });
     }
   };
@@ -163,7 +163,7 @@ export const GiftsManager = () => {
       
       toast({
         title: "Sucesso",
-        description: "Brinde excluído com sucesso"
+        description: "Presente excluído com sucesso"
       });
       loadGifts();
     } catch (error: any) {
@@ -171,7 +171,7 @@ export const GiftsManager = () => {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: error?.message || "Erro ao excluir brinde"
+        description: error?.message || "Erro ao excluir presente"
       });
     }
   };
@@ -205,7 +205,7 @@ export const GiftsManager = () => {
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Selecione uma empresa para gerenciar brindes
+              Selecione uma empresa para gerenciar presentes
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -219,11 +219,11 @@ export const GiftsManager = () => {
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center">
             <Gift className="h-5 w-5 mr-2" />
-            Gerenciar Brindes por Valor de Compra
+            Gerenciar Presentes por Valor de Compra
           </div>
           <Button onClick={() => setIsAddingGift(true)} size="sm">
             <Plus className="h-4 w-4 mr-2" />
-            Novo Brinde
+            Novo Presente
           </Button>
         </CardTitle>
       </CardHeader>
@@ -241,7 +241,7 @@ export const GiftsManager = () => {
           <Card className="p-4 border-2 border-dashed">
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name">Nome do Brinde</Label>
+                <Label htmlFor="name">Nome do Presente</Label>
                 <Input
                   id="name"
                   value={newGift.name}
@@ -256,7 +256,7 @@ export const GiftsManager = () => {
                   id="description"
                   value={newGift.description}
                   onChange={(e) => setNewGift({ ...newGift, description: e.target.value })}
-                  placeholder="Descrição detalhada do brinde..."
+                  placeholder="Descrição detalhada do presente..."
                 />
               </div>
 
@@ -278,7 +278,7 @@ export const GiftsManager = () => {
                   checked={newGift.is_active}
                   onCheckedChange={(checked) => setNewGift({ ...newGift, is_active: checked })}
                 />
-                <Label htmlFor="is_active">Brinde Ativo</Label>
+                <Label htmlFor="is_active">Presente Ativo</Label>
               </div>
             </div>
 
@@ -287,7 +287,7 @@ export const GiftsManager = () => {
                 Cancelar
               </Button>
               <Button onClick={saveGift}>
-                {editingGift ? 'Atualizar' : 'Criar'} Brinde
+                {editingGift ? 'Atualizar' : 'Criar'} Presente
               </Button>
             </div>
           </Card>
@@ -295,9 +295,9 @@ export const GiftsManager = () => {
 
         <div className="space-y-2">
           {loading ? (
-            <p>Carregando brindes...</p>
+            <p>Carregando presentes...</p>
           ) : gifts.length === 0 ? (
-            <p className="text-muted-foreground">Nenhum brinde cadastrado</p>
+            <p className="text-muted-foreground">Nenhum presente cadastrado</p>
           ) : (
             gifts.map((gift) => (
               <div key={gift.id} className="flex items-center justify-between p-3 border rounded">
