@@ -199,10 +199,6 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
         sync_products: modules.sync_products,
         sync_stock: modules.sync_stock,
         sync_invoices: modules.sync_invoices,
-        omie_empresa_id: selectedEmpresaId ? parseInt(selectedEmpresaId) : null,
-        omie_empresa_nome: selectedEmpresa 
-          ? (selectedEmpresa.nome_fantasia || selectedEmpresa.razao_social) 
-          : (integration as any)?.omie_empresa_nome || null,
         updated_at: new Date().toISOString(),
       };
 
