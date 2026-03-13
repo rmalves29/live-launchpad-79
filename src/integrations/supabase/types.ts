@@ -861,6 +861,8 @@ export type Database = {
           id: string
           is_active: boolean
           last_sync_at: string | null
+          omie_empresa_id: number | null
+          omie_empresa_nome: string | null
           sync_invoices: boolean
           sync_orders: boolean
           sync_products: boolean
@@ -876,6 +878,8 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_sync_at?: string | null
+          omie_empresa_id?: number | null
+          omie_empresa_nome?: string | null
           sync_invoices?: boolean
           sync_orders?: boolean
           sync_products?: boolean
@@ -891,6 +895,8 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_sync_at?: string | null
+          omie_empresa_id?: number | null
+          omie_empresa_nome?: string | null
           sync_invoices?: boolean
           sync_orders?: boolean
           sync_products?: boolean
