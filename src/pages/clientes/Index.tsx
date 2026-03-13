@@ -237,10 +237,10 @@ const Clientes = () => {
   };
 
   const createCustomer = async () => {
-    if (!newCustomer.phone || !newCustomer.name) {
+    if (!newCustomer.phone) {
       toast({
         title: 'Erro',
-        description: 'Informe telefone e nome completo',
+        description: 'Informe o telefone',
         variant: 'destructive'
       });
       return;
@@ -993,7 +993,7 @@ const Clientes = () => {
                   onChange={(e) => setNewCustomer(prev => ({ ...prev, phone: e.target.value }))}
                 />
                 <Input
-                  placeholder="Nome completo (obrigatório)"
+                  placeholder="Nome completo (opcional)"
                   value={newCustomer.name}
                   onChange={(e) => setNewCustomer(prev => ({ ...prev, name: e.target.value }))}
                 />
