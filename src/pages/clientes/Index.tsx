@@ -237,10 +237,10 @@ const Clientes = () => {
   };
 
   const createCustomer = async () => {
-    if (!newCustomer.phone || !newCustomer.name) {
+    if (!newCustomer.phone) {
       toast({
         title: 'Erro',
-        description: 'Informe telefone e nome completo',
+        description: 'Informe o telefone',
         variant: 'destructive'
       });
       return;
