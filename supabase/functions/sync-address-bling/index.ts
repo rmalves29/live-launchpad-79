@@ -36,7 +36,7 @@ serve(async (req) => {
     // 1. Buscar pedido — prioridade máxima nos campos customer_* do pedido
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, tenant_id, customer_phone, customer_name, customer_street, customer_number, customer_complement, customer_neighborhood, customer_cep, customer_city, customer_state')
+      .select('id, tenant_id, customer_phone, customer_name, customer_street, customer_number, customer_complement, customer_neighborhood, customer_cep, customer_city, customer_state, bling_order_id')
       .eq('id', order_id)
       .eq('tenant_id', tenant_id)
       .single();
