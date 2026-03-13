@@ -993,7 +993,7 @@ const Clientes = () => {
                   onChange={(e) => setNewCustomer(prev => ({ ...prev, phone: e.target.value }))}
                 />
                 <Input
-                  placeholder="Nome completo (obrigatório)"
+                  placeholder="Nome completo (opcional)"
                   value={newCustomer.name}
                   onChange={(e) => setNewCustomer(prev => ({ ...prev, name: e.target.value }))}
                 />
