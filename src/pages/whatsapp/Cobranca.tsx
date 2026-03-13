@@ -903,10 +903,12 @@ export default function Cobranca() {
                   <Users className="w-4 h-4 mr-2" />
                   {customers.length} cliente(s)
                 </Badge>
-                {!useAllCustomers && filters.orderDate && (
+                {!useAllCustomers && filters.orderDate?.from && (
                   <Badge variant="outline" className="text-sm px-3 py-1">
                     <CalendarIcon className="w-3 h-3 mr-2" />
-                    {filters.orderDate}
+                    {filters.orderDate.to
+                      ? `${format(filters.orderDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filters.orderDate.to, "dd/MM/yy", { locale: ptBR })}`
+                      : format(filters.orderDate.from, "dd/MM/yy", { locale: ptBR })}
                   </Badge>
                 )}
               </div>
