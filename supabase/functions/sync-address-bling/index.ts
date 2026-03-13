@@ -247,11 +247,52 @@ serve(async (req) => {
 
       if (putRes.status >= 200 && putRes.status < 300) {
         log(`✅ Contato ${blingContactId} atualizado com endereço do pedido`);
+        
+        // Também atualizar o endereço de entrega no PEDIDO do Bling (transporte)
+        let orderUpdateMsg = '';
+        if (order.bling_order_id) {
+          log(`PUT /pedidos/vendas/${order.bling_order_id} — atualizando transporte com endereço do pedido`);
+          try {
+            const transporteBody = {
+              transporte: {
+                contato: {
+                  nome: customerName,
+                  endereco: street,
+                  numero: number,
+                  complemento: complement,
+                  bairro: neighborhood,
+                  cep,
+                  municipio: city,
+                  uf: state,
+                },
+              },
+            };
+            const orderPutRes = await fetch(`${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`, {
+              method: 'PUT',
+              headers: blingHeaders,
+              body: JSON.stringify(transporteBody),
+              signal: AbortSignal.timeout(12000),
+            });
+            const orderPutBody = await orderPutRes.text();
+            if (orderPutRes.status >= 200 && orderPutRes.status < 300) {
+              log(`✅ Pedido Bling ${order.bling_order_id} — transporte atualizado`);
+              orderUpdateMsg = ' e endereço de entrega do pedido atualizado no Bling';
+            } else {
+              log(`⚠️ Falha ao atualizar transporte do pedido Bling: HTTP ${orderPutRes.status} — ${orderPutBody.slice(0, 200)}`);
+              orderUpdateMsg = ` (contato OK, mas falha ao atualizar pedido: HTTP ${orderPutRes.status})`;
+            }
+          } catch (e) {
+            log(`⚠️ Erro ao atualizar transporte do pedido: ${(e as Error).message}`);
+            orderUpdateMsg = ` (contato OK, erro ao atualizar pedido: ${(e as Error).message})`;
+          }
+        }
+
         return new Response(
           JSON.stringify({
             success: true,
-            message: 'Endereço do pedido sincronizado no contato do Bling com sucesso!',
+            message: `Endereço do pedido sincronizado no contato do Bling com sucesso!${orderUpdateMsg}`,
             bling_contact_id: blingContactId,
+            bling_order_id: order.bling_order_id || null,
             address_used: { street, number, complement, neighborhood, cep, city, state }
           }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
