@@ -858,12 +858,18 @@ serve(async (req) => {
       // Uses PostgreSQL's ON CONFLICT to handle concurrent inserts safely
       
       // First, check if product already exists in cart
-      const { data: existingItem } = await supabase
+      // IMPORTANT: Use .order + .limit(1) instead of .maybeSingle() to avoid error
+      // when duplicate rows already exist (maybeSingle fails with multiple rows,
+      // causing existingItem=null, which creates MORE duplicates — cascading bug)
+      const { data: existingItems } = await supabase
         .from('cart_items')
         .select('id, qty, created_at')
         .eq('cart_id', cart.id)
         .eq('product_id', product.id)
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      const existingItem = existingItems && existingItems.length > 0 ? existingItems[0] : null;
 
       let cartItem;
       let wasSkipped = false;
