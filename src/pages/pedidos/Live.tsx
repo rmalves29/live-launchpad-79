@@ -104,8 +104,8 @@ const Live = () => {
   const [savingClient, setSavingClient] = useState(false);
 
   const handleCreateClient = async () => {
-    if (!newClientPhone.trim() || !newClientName.trim()) {
-      toast({ title: 'Preencha telefone e nome', variant: 'destructive' });
+    if (!newClientPhone.trim()) {
+      toast({ title: 'Informe o telefone', variant: 'destructive' });
       return;
     }
 
@@ -1260,7 +1260,7 @@ const Live = () => {
                       onChange={(e) => setNewClientPhone(e.target.value)}
                     />
                     <Input
-                      placeholder="Nome completo (obrigatório)"
+                      placeholder="Nome completo (opcional)"
                       value={newClientName}
                       onChange={(e) => setNewClientName(e.target.value)}
                     />
