@@ -104,8 +104,8 @@ const Live = () => {
   const [savingClient, setSavingClient] = useState(false);
 
   const handleCreateClient = async () => {
-    if (!newClientPhone.trim() || !newClientName.trim()) {
-      toast({ title: 'Preencha telefone e nome', variant: 'destructive' });
+    if (!newClientPhone.trim()) {
+      toast({ title: 'Informe o telefone', variant: 'destructive' });
       return;
     }
 
