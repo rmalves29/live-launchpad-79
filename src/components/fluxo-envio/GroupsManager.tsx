@@ -36,6 +36,7 @@ export default function GroupsManager() {
   const [groups, setGroups] = useState<FeGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [adminOnly, setAdminOnly] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [newGroup, setNewGroup] = useState({ group_jid: '', group_name: '', invite_link: '' });
 
