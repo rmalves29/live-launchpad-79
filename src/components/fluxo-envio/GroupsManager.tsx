@@ -40,6 +40,7 @@ export default function GroupsManager() {
   const [adminOnly, setAdminOnly] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [newGroup, setNewGroup] = useState({ group_jid: '', group_name: '', invite_link: '' });
+  const [search, setSearch] = useState('');
 
   const fetchGroups = useCallback(async () => {
     if (!tenant) return;
