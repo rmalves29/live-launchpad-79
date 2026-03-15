@@ -81,7 +81,7 @@ async function sendToGroup(
       const res = await fetch(`${baseUrl}/send-ptv`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ phone, video: mediaUrl }),
+        body: JSON.stringify({ phone, ptv: mediaUrl }),
       });
       return res;
     }
