@@ -57,45 +57,18 @@ export default function GroupsManager() {
     if (!tenant) return;
     setSyncing(true);
     try {
-      // Call Z-API to list groups
-      const { data: waConfig } = await supabase
-        .from('integration_whatsapp')
-        .select('zapi_instance_id, zapi_token')
-        .eq('tenant_id', tenant.id)
-        .eq('is_active', true)
-        .maybeSingle();
+      const { data, error } = await supabase.functions.invoke('fe-list-groups', {
+        body: { tenant_id: tenant.id },
+      });
 
-      if (!waConfig?.zapi_instance_id || !waConfig?.zapi_token) {
-        toast({ title: 'WhatsApp Z-API não configurado', variant: 'destructive' });
-        setSyncing(false);
-        return;
+      if (error) {
+        toast({ title: 'Erro ao sincronizar', description: error.message, variant: 'destructive' });
+      } else if (data?.error) {
+        toast({ title: 'Erro ao sincronizar', description: data.error, variant: 'destructive' });
+      } else {
+        toast({ title: `${data.added} grupos sincronizados do WhatsApp` });
+        fetchGroups();
       }
-
-      const response = await fetch(
-        `https://api.z-api.io/instances/${waConfig.zapi_instance_id}/token/${waConfig.zapi_token}/chats`,
-        { headers: { 'Content-Type': 'application/json' } }
-      );
-
-      if (!response.ok) throw new Error('Erro ao buscar grupos do WhatsApp');
-
-      const chats = await response.json();
-      const groupChats = (chats || []).filter((c: any) => c.isGroup);
-
-      let added = 0;
-      for (const g of groupChats) {
-        const { error } = await supabase
-          .from('fe_groups' as any)
-          .upsert({
-            tenant_id: tenant.id,
-            group_jid: g.phone,
-            group_name: g.name || g.phone,
-            participant_count: g.participantsCount || 0,
-          } as any, { onConflict: 'tenant_id,group_jid' });
-        if (!error) added++;
-      }
-
-      toast({ title: `${added} grupos sincronizados do WhatsApp` });
-      fetchGroups();
     } catch (err: any) {
       toast({ title: 'Erro ao sincronizar', description: err.message, variant: 'destructive' });
     }
