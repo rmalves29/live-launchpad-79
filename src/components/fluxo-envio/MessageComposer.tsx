@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X, Ban, Eye } from 'lucide-react';
+import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X, Ban, Eye, Circle, Pencil } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -34,7 +34,8 @@ export default function MessageComposer() {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [contentType, setContentType] = useState<'text' | 'image' | 'audio' | 'video'>('text');
+  const [contentType, setContentType] = useState<'text' | 'image' | 'audio' | 'video' | 'video_note'>('text');
+  const [editingMessage, setEditingMessage] = useState<any>(null);
   const [contentText, setContentText] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
@@ -72,6 +73,7 @@ export default function MessageComposer() {
     image: 'image/*',
     audio: 'audio/*',
     video: 'video/*',
+    video_note: 'video/*',
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,11 +232,49 @@ export default function MessageComposer() {
     setSending(false);
   };
 
-  const contentTypeIcon = {
+  const contentTypeIcon: Record<string, React.ReactNode> = {
     text: <FileText className="h-4 w-4" />,
     image: <Image className="h-4 w-4" />,
     audio: <Music className="h-4 w-4" />,
     video: <Video className="h-4 w-4" />,
+    video_note: <Circle className="h-4 w-4" />,
+  };
+
+  const startEditMessage = (m: any) => {
+    setEditingMessage(m);
+    setContentType(m.content_type);
+    setContentText(m.content_text || '');
+    setMediaUrl(m.media_url || '');
+    setSendMode(m.scheduled_at ? 'scheduled' : 'instant');
+    if (m.scheduled_at) {
+      const d = new Date(m.scheduled_at);
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      setScheduledAt(local);
+    }
+    toast({ title: 'Editando mensagem pendente' });
+  };
+
+  const saveEditMessage = async () => {
+    if (!editingMessage) return;
+    setSending(true);
+    try {
+      const updateData: any = {
+        content_type: contentType,
+        content_text: contentText || null,
+        media_url: mediaUrl || null,
+        scheduled_at: sendMode === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      };
+      const { error } = await supabase.from('fe_messages' as any).update(updateData).eq('id', editingMessage.id).eq('status', 'pending');
+      if (error) throw error;
+      toast({ title: 'Mensagem atualizada!' });
+      setEditingMessage(null);
+      setContentText('');
+      clearMedia();
+      fetchData();
+    } catch (err: any) {
+      toast({ title: 'Erro ao salvar', description: err.message, variant: 'destructive' });
+    }
+    setSending(false);
   };
 
   const statusColors: Record<string, string> = {
@@ -254,12 +294,18 @@ export default function MessageComposer() {
             {/* Content type */}
             <div>
               <Label>Tipo de conteúdo</Label>
-              <div className="flex gap-2 mt-1">
-                {(['text', 'image', 'audio', 'video'] as const).map(t => (
-                  <Button key={t} variant={contentType === t ? 'default' : 'outline'} size="sm"
-                    onClick={() => { setContentType(t); clearMedia(); }}>
-                    {contentTypeIcon[t]}
-                    <span className="ml-1 capitalize">{t === 'text' ? 'Texto' : t === 'image' ? 'Imagem' : t === 'audio' ? 'Áudio' : 'Vídeo'}</span>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {([
+                  { key: 'text', label: 'Texto' },
+                  { key: 'image', label: 'Imagem' },
+                  { key: 'audio', label: 'Áudio' },
+                  { key: 'video', label: 'Vídeo' },
+                  { key: 'video_note', label: 'Vídeo Redondo' },
+                ] as const).map(t => (
+                  <Button key={t.key} variant={contentType === t.key ? 'default' : 'outline'} size="sm"
+                    onClick={() => { setContentType(t.key); clearMedia(); }}>
+                    {contentTypeIcon[t.key]}
+                    <span className="ml-1">{t.label}</span>
                   </Button>
                 ))}
               </div>
@@ -275,7 +321,7 @@ export default function MessageComposer() {
             {/* File upload for media */}
             {contentType !== 'text' && (
               <div>
-                <Label>{contentType === 'image' ? 'Imagem' : contentType === 'audio' ? 'Áudio' : 'Vídeo'}</Label>
+                <Label>{contentType === 'image' ? 'Imagem' : contentType === 'audio' ? 'Áudio' : contentType === 'video_note' ? 'Vídeo (será enviado redondo)' : 'Vídeo'}</Label>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -357,10 +403,22 @@ export default function MessageComposer() {
               </div>
             )}
 
-            <Button onClick={handleSend} disabled={sending || uploading} className="w-full">
-              {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-              {sendMode === 'instant' ? 'Enviar Agora' : 'Agendar Envio'}
-            </Button>
+            {editingMessage ? (
+              <div className="flex gap-2">
+                <Button onClick={saveEditMessage} disabled={sending || uploading} className="flex-1">
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Pencil className="h-4 w-4 mr-1" />}
+                  Salvar Edição
+                </Button>
+                <Button variant="outline" onClick={() => { setEditingMessage(null); setContentText(''); clearMedia(); }}>
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleSend} disabled={sending || uploading} className="w-full">
+                {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                {sendMode === 'instant' ? 'Enviar Agora' : 'Agendar Envio'}
+              </Button>
+            )}
           </CardContent>
         </Card>
 
@@ -393,14 +451,24 @@ export default function MessageComposer() {
                         <Eye className="h-3 w-3 mr-1" />Ver
                       </Button>
                       {m.status === 'pending' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs text-destructive hover:text-destructive"
-                          onClick={() => cancelPendingMessage(m.id)}
-                        >
-                          <Ban className="h-3 w-3 mr-1" />Cancelar
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-primary hover:text-primary"
+                            onClick={() => startEditMessage(m)}
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />Editar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-destructive hover:text-destructive"
+                            onClick={() => cancelPendingMessage(m.id)}
+                          >
+                            <Ban className="h-3 w-3 mr-1" />Cancelar
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
