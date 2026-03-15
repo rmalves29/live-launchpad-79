@@ -78,12 +78,22 @@ async function sendToGroup(
       return res;
     }
     case "video_note": {
-      const res = await fetch(`${baseUrl}/send-ptv`, {
+      // Send PTV (circular video)
+      const ptvRes = await fetch(`${baseUrl}/send-ptv`, {
         method: "POST",
         headers,
         body: JSON.stringify({ phone, ptv: mediaUrl }),
       });
-      return res;
+      // If there's text, send it as a separate message after the PTV
+      if (contentText && contentText.trim()) {
+        await new Promise((r) => setTimeout(r, 800));
+        await fetch(`${baseUrl}/send-text`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ phone, message: contentText }),
+        });
+      }
+      return ptvRes;
     }
     default:
       throw new Error(`Tipo de conteúdo não suportado: ${contentType}`);
