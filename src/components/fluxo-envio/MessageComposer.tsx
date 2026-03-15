@@ -380,12 +380,13 @@ export default function MessageComposer() {
                       <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setViewMessage(m)}>
                         <Eye className="h-3 w-3 mr-1" />Ver
                       </Button>
-                      {(m.status === 'pending' || m.status === 'sending') && (
-                        <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={async () => {
-                          await supabase.from('fe_messages' as any).update({ status: 'cancelled' } as any).eq('id', m.id);
-                          toast({ title: 'Envio cancelado' });
-                          fetchData();
-                        }}>
+                      {m.status === 'pending' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-destructive hover:text-destructive"
+                          onClick={() => cancelPendingMessage(m.id)}
+                        >
                           <Ban className="h-3 w-3 mr-1" />Cancelar
                         </Button>
                       )}
