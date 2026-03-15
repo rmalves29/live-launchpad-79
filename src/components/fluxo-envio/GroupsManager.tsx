@@ -126,7 +126,12 @@ export default function GroupsManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+            <Checkbox checked={adminOnly} onCheckedChange={(v) => setAdminOnly(!!v)} />
+            <ShieldCheck className="h-4 w-4" />
+            Somente grupos que sou admin
+          </label>
           <Button variant="outline" size="sm" onClick={syncFromWhatsApp} disabled={syncing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
             Buscar do WhatsApp
