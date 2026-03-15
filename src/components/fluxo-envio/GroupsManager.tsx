@@ -67,7 +67,7 @@ export default function GroupsManager() {
       } else if (data?.error) {
         toast({ title: 'Erro ao sincronizar', description: data.error, variant: 'destructive' });
       } else {
-        toast({ title: `${data.added} grupos sincronizados do WhatsApp` });
+        toast({ title: `${data.synced} grupos sincronizados (${data.total_found} encontrados no WhatsApp)` });
         fetchGroups();
       }
     } catch (err: any) {
