@@ -100,11 +100,18 @@ serve(async (req) => {
 
       for (const g of allGroups) {
         try {
-          // Use light-group-metadata (faster, no invite link fetch)
-          const metaRes = await fetch(
-            `${baseUrl}/light-group-metadata/${g.phone}`,
+          // Prefer full metadata (includes participants/admin), fallback to light metadata
+          let metaRes = await fetch(
+            `${baseUrl}/group-metadata/${g.phone}`,
             { headers }
           );
+
+          if (!metaRes.ok) {
+            metaRes = await fetch(
+              `${baseUrl}/light-group-metadata/${g.phone}`,
+              { headers }
+            );
+          }
 
           if (metaRes.ok) {
             const meta = await metaRes.json();
