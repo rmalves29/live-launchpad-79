@@ -77,6 +77,14 @@ async function sendToGroup(
       });
       return res;
     }
+    case "video_note": {
+      const res = await fetch(`${baseUrl}/send-ptv`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ phone, ptv: mediaUrl }),
+      });
+      return res;
+    }
     default:
       throw new Error(`Tipo de conteúdo não suportado: ${contentType}`);
   }
