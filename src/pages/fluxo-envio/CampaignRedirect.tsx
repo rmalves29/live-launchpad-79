@@ -14,8 +14,8 @@ export default function CampaignRedirect() {
       return;
     }
 
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const redirectUrl = `https://${projectId}.supabase.co/functions/v1/fe-campaign-redirect?slug=${encodeURIComponent(campaignSlug)}`;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || `https://hxtbsieodbtzgcvvkeqx.supabase.co`;
+    const redirectUrl = `${supabaseUrl}/functions/v1/fe-campaign-redirect?slug=${encodeURIComponent(campaignSlug)}`;
     
     // Redirect to edge function which handles balancing
     window.location.href = redirectUrl;

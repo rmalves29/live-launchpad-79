@@ -196,8 +196,7 @@ export default function CampaignsManager() {
   };
 
   const getCampaignLink = (slug: string) => {
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    return `https://${projectId}.supabase.co/functions/v1/fe-campaign-redirect?slug=${slug}`;
+    return `https://app.orderzaps.com/fluxo/${slug}`;
   };
 
   const copyLink = (slug: string) => {
