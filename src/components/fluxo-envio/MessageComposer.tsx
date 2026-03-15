@@ -403,10 +403,22 @@ export default function MessageComposer() {
               </div>
             )}
 
-            <Button onClick={handleSend} disabled={sending || uploading} className="w-full">
-              {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-              {sendMode === 'instant' ? 'Enviar Agora' : 'Agendar Envio'}
-            </Button>
+            {editingMessage ? (
+              <div className="flex gap-2">
+                <Button onClick={saveEditMessage} disabled={sending || uploading} className="flex-1">
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Pencil className="h-4 w-4 mr-1" />}
+                  Salvar Edição
+                </Button>
+                <Button variant="outline" onClick={() => { setEditingMessage(null); setContentText(''); clearMedia(); }}>
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={handleSend} disabled={sending || uploading} className="w-full">
+                {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                {sendMode === 'instant' ? 'Enviar Agora' : 'Agendar Envio'}
+              </Button>
+            )}
           </CardContent>
         </Card>
 
