@@ -205,6 +205,18 @@ export default function MessageComposer() {
           },
         });
         if (fnError) throw fnError;
+      } else {
+        // Trigger scheduled processor immediately so messages don't wait for cron
+        const scheduledTime = new Date(scheduledAt).getTime();
+        const now = Date.now();
+        if (scheduledTime <= now + 60000) {
+          // If scheduled within the next minute, trigger processor right away
+          setTimeout(async () => {
+            try {
+              await supabase.functions.invoke('fe-process-scheduled', { body: {} });
+            } catch (e) { console.warn('Auto-trigger fe-process-scheduled failed:', e); }
+          }, Math.max(0, scheduledTime - now));
+        }
       }
 
       toast({ title: sendMode === 'instant' ? 'Mensagens enviadas!' : 'Mensagens agendadas!' });
