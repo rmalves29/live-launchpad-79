@@ -84,10 +84,10 @@ serve(async (req) => {
     // Get connected phone to check admin status
     const connectedPhone = waConfig.connected_phone?.replace(/\D/g, "") || "";
 
-    // If admin_only, fetch metadata for each group to check admin status
+    // Fetch metadata for all groups (to get participant count and admin status)
     let filteredGroups = allGroups;
 
-    if (admin_only && connectedPhone) {
+    if (connectedPhone) {
       console.log(`[fe-list-groups] Filtering admin-only groups for phone ${connectedPhone}`);
       const adminGroups: any[] = [];
 
