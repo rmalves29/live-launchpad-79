@@ -32,6 +32,7 @@ import Relatorios from "./pages/relatorios/Index";
 import SendFlow from "./pages/sendflow/Index";
 import Etiquetas from "./pages/etiquetas/Index";
 import FluxoEnvio from "./pages/fluxo-envio/Index";
+import CampaignRedirect from "./pages/fluxo-envio/CampaignRedirect";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
 
@@ -223,6 +224,9 @@ const AppContent = () => {
         
         {/* Rota de debug */}
         <Route path="/debug" element={<Debug />} />
+        
+        {/* Redirect público de campanha do Fluxo de Envio */}
+        <Route path="/fluxo/:campaignSlug" element={<CampaignRedirect />} />
         
         {/* Rotas públicas da loja por slug (path-based) - prefixo /t/ para evitar conflitos */}
         <Route path="/t/:slug" element={<TenantStorefront />} />
