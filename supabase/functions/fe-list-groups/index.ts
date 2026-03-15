@@ -172,8 +172,6 @@ serve(async (req) => {
             });
           }
 
-          // Small delay to avoid rate limiting
-          await new Promise((r) => setTimeout(r, 200));
         } catch (err: any) {
           console.warn(`[fe-list-groups] Metadata error for ${g.phone}: ${err.message}`);
           if (!admin_only) {
