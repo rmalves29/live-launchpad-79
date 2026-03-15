@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw, Plus, Users, Link2, Trash2, ExternalLink } from 'lucide-react';
+import { RefreshCw, Plus, Users, Link2, Trash2, ExternalLink, ShieldCheck } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
