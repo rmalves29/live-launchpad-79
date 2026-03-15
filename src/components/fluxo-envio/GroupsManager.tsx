@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw, Plus, Users, Link2, Trash2, ExternalLink } from 'lucide-react';
+import { RefreshCw, Plus, Users, Link2, Trash2, ExternalLink, ShieldCheck } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -36,6 +37,7 @@ export default function GroupsManager() {
   const [groups, setGroups] = useState<FeGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [adminOnly, setAdminOnly] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [newGroup, setNewGroup] = useState({ group_jid: '', group_name: '', invite_link: '' });
 
@@ -58,7 +60,7 @@ export default function GroupsManager() {
     setSyncing(true);
     try {
       const { data, error } = await supabase.functions.invoke('fe-list-groups', {
-        body: { tenant_id: tenant.id },
+        body: { tenant_id: tenant.id, admin_only: adminOnly },
       });
 
       if (error) {
@@ -66,7 +68,7 @@ export default function GroupsManager() {
       } else if (data?.error) {
         toast({ title: 'Erro ao sincronizar', description: data.error, variant: 'destructive' });
       } else {
-        toast({ title: `${data.added} grupos sincronizados do WhatsApp` });
+        toast({ title: `${data.synced} grupos sincronizados (${data.total_found} encontrados no WhatsApp)` });
         fetchGroups();
       }
     } catch (err: any) {
@@ -124,7 +126,12 @@ export default function GroupsManager() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+            <Checkbox checked={adminOnly} onCheckedChange={(v) => setAdminOnly(!!v)} />
+            <ShieldCheck className="h-4 w-4" />
+            Somente grupos que sou admin
+          </label>
           <Button variant="outline" size="sm" onClick={syncFromWhatsApp} disabled={syncing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
             Buscar do WhatsApp
