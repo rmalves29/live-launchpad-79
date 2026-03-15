@@ -116,11 +116,14 @@ serve(async (req) => {
           if (metaRes.ok) {
             const meta = await metaRes.json();
             const participants = Array.isArray(meta.participants) ? meta.participants : [];
+            const rawCount =
+              meta.participantsCount ??
+              meta.participants_count ??
+              meta.participantsSize ??
+              meta.size;
             const participantsCount =
-              typeof meta.participantsCount === "number"
-                ? meta.participantsCount
-                : typeof meta.size === "number"
-                ? meta.size
+              rawCount !== undefined && rawCount !== null && !Number.isNaN(Number(rawCount))
+                ? Number(rawCount)
                 : participants.length;
 
             const isAdmin = !!connectedPhone && participants.some(
