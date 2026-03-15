@@ -73,6 +73,7 @@ export default function MessageComposer() {
     image: 'image/*',
     audio: 'audio/*',
     video: 'video/*',
+    video_note: 'video/*',
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
