@@ -196,7 +196,7 @@ export default function GroupsManager() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {groups.map(g => (
+                {groups.filter(g => g.group_name.toLowerCase().includes(search.toLowerCase())).map(g => (
                   <TableRow key={g.id}>
                     <TableCell>
                       <div>

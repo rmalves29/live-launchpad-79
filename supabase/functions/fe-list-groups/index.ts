@@ -109,13 +109,17 @@ serve(async (req) => {
                 p.isAdmin === true
             );
 
-            if (isAdmin) {
-              // Also grab invite link and participant count from metadata
-              adminGroups.push({
-                ...g,
-                participantsCount: participants.length,
-                invitationLink: meta.invitationLink || null,
-              });
+            const enriched = {
+              ...g,
+              participantsCount: participants.length,
+              invitationLink: meta.invitationLink || null,
+              _isAdmin: isAdmin,
+            };
+
+            if (admin_only) {
+              if (isAdmin) adminGroups.push(enriched);
+            } else {
+              adminGroups.push(enriched);
             }
           }
 
@@ -123,11 +127,14 @@ serve(async (req) => {
           await new Promise((r) => setTimeout(r, 200));
         } catch (err: any) {
           console.warn(`[fe-list-groups] Metadata error for ${g.phone}: ${err.message}`);
+          if (!admin_only) {
+            adminGroups.push(g);
+          }
         }
       }
 
       filteredGroups = adminGroups;
-      console.log(`[fe-list-groups] ${adminGroups.length}/${allGroups.length} groups where we are admin`);
+      console.log(`[fe-list-groups] ${adminGroups.length}/${allGroups.length} groups after filter (admin_only=${admin_only})`);
     }
 
     // Upsert into fe_groups
