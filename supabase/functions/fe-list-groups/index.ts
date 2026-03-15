@@ -99,6 +99,21 @@ serve(async (req) => {
       const adminGroups: any[] = [];
 
       for (const g of allGroups) {
+        const baseCountRaw = g.participantsCount ?? g.participants_count ?? g.participantsSize ?? g.size;
+        const baseCount =
+          baseCountRaw !== undefined && baseCountRaw !== null && !Number.isNaN(Number(baseCountRaw))
+            ? Number(baseCountRaw)
+            : 0;
+
+        if (!admin_only && baseCount > 0) {
+          adminGroups.push({
+            ...g,
+            participantsCount: baseCount,
+            invitationLink: g.invitationLink || g.inviteLink || null,
+          });
+          continue;
+        }
+
         try {
           // Prefer full metadata (includes participants/admin), fallback to light metadata
           let metaRes = await fetch(
