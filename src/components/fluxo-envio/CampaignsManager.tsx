@@ -58,6 +58,7 @@ export default function CampaignsManager() {
   const [newCampaign, setNewCampaign] = useState({ name: '', slug: '', description: '' });
   const [campaignStats, setCampaignStats] = useState<Record<string, CampaignStats>>({});
   const [campaignGroupCounts, setCampaignGroupCounts] = useState<Record<string, number>>({});
+  const [groupSearch, setGroupSearch] = useState('');
 
   const fetchCampaigns = useCallback(async () => {
     if (!tenant) return;
