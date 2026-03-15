@@ -451,14 +451,24 @@ export default function MessageComposer() {
                         <Eye className="h-3 w-3 mr-1" />Ver
                       </Button>
                       {m.status === 'pending' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs text-destructive hover:text-destructive"
-                          onClick={() => cancelPendingMessage(m.id)}
-                        >
-                          <Ban className="h-3 w-3 mr-1" />Cancelar
-                        </Button>
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-primary hover:text-primary"
+                            onClick={() => startEditMessage(m)}
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />Editar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-destructive hover:text-destructive"
+                            onClick={() => cancelPendingMessage(m.id)}
+                          >
+                            <Ban className="h-3 w-3 mr-1" />Cancelar
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
