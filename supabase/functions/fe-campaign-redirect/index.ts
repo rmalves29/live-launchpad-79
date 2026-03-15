@@ -18,19 +18,33 @@ serve(async (req) => {
 
     const url = new URL(req.url);
     const slug = url.searchParams.get("slug");
+    const tenantSlug = url.searchParams.get("tenant");
 
-    if (!slug) {
+    if (!slug || !tenantSlug) {
       return new Response("<h1>Link inválido</h1>", {
         status: 400,
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
 
-    // Fetch campaign
+    // Fetch tenant by slug
+    const { data: tenantData } = await supabase
+      .rpc("get_tenant_by_slug", { slug_param: tenantSlug });
+
+    const tenant = tenantData?.[0] || tenantData;
+    if (!tenant) {
+      return new Response("<h1>Empresa não encontrada</h1>", {
+        status: 404,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
+    // Fetch campaign scoped to tenant
     const { data: campaign, error: campErr } = await supabase
       .from("fe_campaigns")
       .select("id, tenant_id, name, is_entry_open, is_active")
       .eq("slug", slug)
+      .eq("tenant_id", tenant.id)
       .eq("is_active", true)
       .maybeSingle();
 
@@ -51,7 +65,7 @@ serve(async (req) => {
       );
     }
 
-    // Fetch campaign groups with their group details, ordered by participant_count ASC
+    // Fetch campaign groups with their group details
     const { data: campaignGroups } = await supabase
       .from("fe_campaign_groups")
       .select("group_id, fe_groups!inner(id, group_name, invite_link, participant_count, max_participants, is_entry_open, is_active)")
@@ -87,7 +101,6 @@ serve(async (req) => {
     // Record click
     const userAgent = req.headers.get("user-agent") || "";
     const forwarded = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
-    // Hash IP for privacy
     const encoder = new TextEncoder();
     const data = encoder.encode(forwarded + "salt_fe_clicks");
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);

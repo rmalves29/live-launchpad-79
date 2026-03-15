@@ -3,31 +3,29 @@ import { useParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 
 export default function CampaignRedirect() {
-  const { campaignSlug } = useParams();
+  const { tenantSlug, campaignSlug } = useParams();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!campaignSlug) {
+    if (!campaignSlug || !tenantSlug) {
       setError('Link inválido');
       setLoading(false);
       return;
     }
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || `https://hxtbsieodbtzgcvvkeqx.supabase.co`;
-    const redirectUrl = `${supabaseUrl}/functions/v1/fe-campaign-redirect?slug=${encodeURIComponent(campaignSlug)}`;
+    const redirectUrl = `${supabaseUrl}/functions/v1/fe-campaign-redirect?slug=${encodeURIComponent(campaignSlug)}&tenant=${encodeURIComponent(tenantSlug)}`;
     
-    // Redirect to edge function which handles balancing
     window.location.href = redirectUrl;
 
-    // Fallback timeout
     const timer = setTimeout(() => {
       setError('Tempo esgotado. Tente novamente.');
       setLoading(false);
     }, 10000);
 
     return () => clearTimeout(timer);
-  }, [campaignSlug]);
+  }, [tenantSlug, campaignSlug]);
 
   if (error) {
     return (
