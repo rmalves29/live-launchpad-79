@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Send, Clock, Image, Music, Video, FileText, Loader2 } from 'lucide-react';
+import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -29,18 +29,19 @@ export default function MessageComposer() {
   const [groups, setGroups] = useState<FeGroup[]>([]);
   const [campaigns, setCampaigns] = useState<FeCampaign[]>([]);
   const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [contentType, setContentType] = useState<'text' | 'image' | 'audio' | 'video'>('text');
   const [contentText, setContentText] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [sendMode, setSendMode] = useState<'instant' | 'scheduled'>('instant');
   const [scheduledAt, setScheduledAt] = useState('');
   const [targetType, setTargetType] = useState<'groups' | 'campaign'>('groups');
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
-
-  // Messages history
   const [messages, setMessages] = useState<any[]>([]);
 
   const fetchData = useCallback(async () => {
@@ -63,6 +64,48 @@ export default function MessageComposer() {
     setSelectedGroupIds(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]);
   };
 
+  const acceptMap: Record<string, string> = {
+    image: 'image/*',
+    audio: 'audio/*',
+    video: 'video/*',
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !tenant) return;
+
+    setMediaFile(file);
+    setUploading(true);
+
+    try {
+      const ext = file.name.split('.').pop() || 'bin';
+      const path = `${tenant.id}/${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('product-images')
+        .upload(path, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(path);
+
+      setMediaUrl(urlData.publicUrl);
+      toast({ title: 'Arquivo enviado com sucesso' });
+    } catch (err: any) {
+      toast({ title: 'Erro ao enviar arquivo', description: err.message, variant: 'destructive' });
+      setMediaFile(null);
+    }
+    setUploading(false);
+  };
+
+  const clearMedia = () => {
+    setMediaFile(null);
+    setMediaUrl('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSend = async () => {
     if (!tenant) return;
     if (!contentText && !mediaUrl) {
@@ -83,7 +126,6 @@ export default function MessageComposer() {
         toast({ title: 'Selecione uma campanha', variant: 'destructive' });
         return;
       }
-      // Fetch campaign groups
       const { data: cgs } = await supabase
         .from('fe_campaign_groups' as any)
         .select('group_id')
@@ -103,7 +145,6 @@ export default function MessageComposer() {
     setSending(true);
 
     try {
-      // Create message records
       const messagesToInsert = targetGroupIds.map(gid => ({
         tenant_id: tenant.id,
         group_id: gid,
@@ -119,24 +160,21 @@ export default function MessageComposer() {
       if (error) throw error;
 
       if (sendMode === 'instant') {
-        // Call edge function to send immediately
-        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-        await fetch(`https://${projectId}.supabase.co/functions/v1/fe-send-message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` },
-          body: JSON.stringify({
+        const { error: fnError } = await supabase.functions.invoke('fe-send-message', {
+          body: {
             tenant_id: tenant.id,
             group_ids: targetGroupIds,
             content_type: contentType,
             content_text: contentText,
             media_url: mediaUrl,
-          }),
+          },
         });
+        if (fnError) throw fnError;
       }
 
       toast({ title: sendMode === 'instant' ? 'Mensagens enviadas!' : 'Mensagens agendadas!' });
       setContentText('');
-      setMediaUrl('');
+      clearMedia();
       setSelectedGroupIds([]);
       fetchData();
     } catch (err: any) {
@@ -164,7 +202,6 @@ export default function MessageComposer() {
       <h3 className="text-lg font-semibold text-foreground">Envio de Mensagens</h3>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Composer */}
         <Card>
           <CardContent className="pt-6 space-y-4">
             {/* Content type */}
@@ -173,7 +210,7 @@ export default function MessageComposer() {
               <div className="flex gap-2 mt-1">
                 {(['text', 'image', 'audio', 'video'] as const).map(t => (
                   <Button key={t} variant={contentType === t ? 'default' : 'outline'} size="sm"
-                    onClick={() => setContentType(t)}>
+                    onClick={() => { setContentType(t); clearMedia(); }}>
                     {contentTypeIcon[t]}
                     <span className="ml-1 capitalize">{t === 'text' ? 'Texto' : t === 'image' ? 'Imagem' : t === 'audio' ? 'Áudio' : 'Vídeo'}</span>
                   </Button>
@@ -188,12 +225,35 @@ export default function MessageComposer() {
                 onChange={(e) => setContentText(e.target.value)} rows={4} />
             </div>
 
-            {/* Media URL */}
+            {/* File upload for media */}
             {contentType !== 'text' && (
               <div>
-                <Label>URL da mídia</Label>
-                <Input placeholder="https://..." value={mediaUrl}
-                  onChange={(e) => setMediaUrl(e.target.value)} />
+                <Label>{contentType === 'image' ? 'Imagem' : contentType === 'audio' ? 'Áudio' : 'Vídeo'}</Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={acceptMap[contentType]}
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                {mediaFile ? (
+                  <div className="flex items-center gap-2 mt-1 p-3 rounded-lg border border-border bg-muted/30">
+                    {contentTypeIcon[contentType]}
+                    <span className="text-sm text-foreground truncate flex-1">{mediaFile.name}</span>
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    ) : (
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={clearMedia}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <Button variant="outline" className="w-full mt-1" onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Selecionar {contentType === 'image' ? 'imagem' : contentType === 'audio' ? 'áudio' : 'vídeo'}
+                  </Button>
+                )}
               </div>
             )}
 
@@ -250,7 +310,7 @@ export default function MessageComposer() {
               </div>
             )}
 
-            <Button onClick={handleSend} disabled={sending} className="w-full">
+            <Button onClick={handleSend} disabled={sending || uploading} className="w-full">
               {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
               {sendMode === 'instant' ? 'Enviar Agora' : 'Agendar Envio'}
             </Button>
