@@ -321,7 +321,7 @@ export default function MessageComposer() {
             {/* File upload for media */}
             {contentType !== 'text' && (
               <div>
-                <Label>{contentType === 'image' ? 'Imagem' : contentType === 'audio' ? 'Áudio' : 'Vídeo'}</Label>
+                <Label>{contentType === 'image' ? 'Imagem' : contentType === 'audio' ? 'Áudio' : contentType === 'video_note' ? 'Vídeo (será enviado redondo)' : 'Vídeo'}</Label>
                 <input
                   ref={fileInputRef}
                   type="file"
