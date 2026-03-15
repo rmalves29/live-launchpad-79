@@ -127,6 +127,12 @@ export default function GroupsManager() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
         <div className="flex items-center gap-3">
+          <Input
+            placeholder="Buscar grupo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-48"
+          />
           <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
             <Checkbox checked={adminOnly} onCheckedChange={(v) => setAdminOnly(!!v)} />
             <ShieldCheck className="h-4 w-4" />
