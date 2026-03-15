@@ -11,6 +11,7 @@ const ZAPI_BASE_URL = "https://api.z-api.io";
 interface SendRequest {
   tenant_id: string;
   group_ids: string[];
+  message_ids?: string[];
   content_type: "text" | "image" | "audio" | "video";
   content_text?: string;
   media_url?: string;

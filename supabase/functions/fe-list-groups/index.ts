@@ -84,10 +84,17 @@ serve(async (req) => {
     // Get connected phone to check admin status
     const connectedPhone = waConfig.connected_phone?.replace(/\D/g, "") || "";
 
+    if (admin_only && !connectedPhone) {
+      return new Response(JSON.stringify({ error: "Não foi possível identificar o número conectado para filtrar grupos de admin" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Fetch metadata for all groups (to get participant count and admin status)
     let filteredGroups = allGroups;
 
-    if (connectedPhone) {
+    if (allGroups.length > 0) {
       console.log(`[fe-list-groups] Filtering admin-only groups for phone ${connectedPhone}`);
       const adminGroups: any[] = [];
 
