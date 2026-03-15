@@ -31,6 +31,7 @@ import Clientes from "./pages/clientes/Index";
 import Relatorios from "./pages/relatorios/Index";
 import SendFlow from "./pages/sendflow/Index";
 import Etiquetas from "./pages/etiquetas/Index";
+import FluxoEnvio from "./pages/fluxo-envio/Index";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
 
