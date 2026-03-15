@@ -155,6 +155,123 @@ serve(async (req) => {
       return await handleMessageStatusCallback(supabase, payload);
     }
 
+    // ─── FLUXO DE ENVIO: Captura eventos de grupo (join/leave) ───────────
+    // Z-API envia payloads com type "GroupParticipantsUpdate" ou similar
+    // quando alguém entra ou sai de um grupo
+    const eventType = payload.type;
+    if (
+      eventType === 'GroupParticipantsUpdate' ||
+      eventType === 'group-participants.update' ||
+      eventType === 'onGroupParticipantsUpdate'
+    ) {
+      const action = (payload as any).action || (payload as any).event; // "add", "remove", "leave"
+      const groupJid = payload.chatId || (payload as any).groupId || '';
+      const participants: string[] = (payload as any).participants || [(payload as any).participantPhone || payload.phone].filter(Boolean);
+      const instanceId = payload.instanceId || '';
+
+      // Identify tenant by instance
+      let eventTenantId: string | null = null;
+      if (instanceId) {
+        const { data: integ } = await supabase
+          .from('integration_whatsapp')
+          .select('tenant_id')
+          .eq('zapi_instance_id', instanceId)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (integ) eventTenantId = integ.tenant_id;
+      }
+
+      if (eventTenantId && groupJid) {
+        const feEventType = (action === 'add' || action === 'join') ? 'join' : 'leave';
+
+        for (const phone of participants) {
+          const normalizedPhone = phone.replace(/\D/g, '').replace(/^55/, '');
+
+          // Record event in fe_group_events
+          await supabase.from('fe_group_events').insert({
+            tenant_id: eventTenantId,
+            group_jid: groupJid,
+            phone: normalizedPhone,
+            event_type: feEventType,
+          });
+
+          // Update participant_count on fe_groups
+          const { data: feGroup } = await supabase
+            .from('fe_groups')
+            .select('id, participant_count')
+            .eq('tenant_id', eventTenantId)
+            .eq('group_jid', groupJid)
+            .maybeSingle();
+
+          if (feGroup) {
+            const newCount = Math.max(0, (feGroup.participant_count || 0) + (feEventType === 'join' ? 1 : -1));
+            await supabase.from('fe_groups').update({ participant_count: newCount }).eq('id', feGroup.id);
+
+            // Check for auto-messages
+            const { data: autoMsgs } = await supabase
+              .from('fe_auto_messages')
+              .select('*')
+              .eq('tenant_id', eventTenantId)
+              .eq('event_type', feEventType)
+              .eq('is_active', true)
+              .or(`group_id.eq.${feGroup.id},group_id.is.null`);
+
+            if (autoMsgs && autoMsgs.length > 0) {
+              // Get Z-API credentials
+              const { data: creds } = await supabase
+                .from('integration_whatsapp')
+                .select('zapi_instance_id, zapi_token, zapi_client_token')
+                .eq('tenant_id', eventTenantId)
+                .eq('provider', 'zapi')
+                .eq('is_active', true)
+                .maybeSingle();
+
+              if (creds?.zapi_instance_id && creds?.zapi_token) {
+                const baseUrl = `https://api.z-api.io/instances/${creds.zapi_instance_id}/token/${creds.zapi_token}`;
+                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                if (creds.zapi_client_token) headers['Client-Token'] = creds.zapi_client_token;
+
+                for (const autoMsg of autoMsgs) {
+                  try {
+                    let text = autoMsg.content_text || '';
+                    text = text.replace('{{phone}}', normalizedPhone).replace('{{group}}', groupJid);
+
+                    if (autoMsg.content_type === 'text' && text) {
+                      await fetch(`${baseUrl}/send-text`, {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({ phone: groupJid, message: text }),
+                      });
+                    } else if (autoMsg.content_type === 'image' && autoMsg.media_url) {
+                      await fetch(`${baseUrl}/send-image`, {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({ phone: groupJid, image: autoMsg.media_url, caption: text }),
+                      });
+                    }
+                    console.log(`[zapi-webhook] Auto-message sent for ${feEventType} in group ${groupJid}`);
+                  } catch (amErr: any) {
+                    console.error(`[zapi-webhook] Auto-message error:`, amErr.message);
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        console.log(`[zapi-webhook] Group event processed: ${feEventType} in ${groupJid} (${participants.length} participants)`);
+        return new Response(JSON.stringify({ success: true, event: feEventType, group: groupJid }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log('[zapi-webhook] Group event ignored (no tenant or group_jid)');
+      return new Response(JSON.stringify({ success: true, skipped: 'group_event_no_tenant' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    // ─── FIM: Captura eventos de grupo ───────────────────────────────────
+
     // Extract message text
     const messageText = payload.text?.message || payload.message || '';
     const isGroup = payload.isGroup || payload.chatId?.includes('@g.us') || false;

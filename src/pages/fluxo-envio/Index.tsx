@@ -1,9 +1,10 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Megaphone, Send, BarChart3 } from 'lucide-react';
+import { Users, Megaphone, Send, BarChart3, Bot } from 'lucide-react';
 import GroupsManager from '@/components/fluxo-envio/GroupsManager';
 import CampaignsManager from '@/components/fluxo-envio/CampaignsManager';
 import MessageComposer from '@/components/fluxo-envio/MessageComposer';
 import ReportsPanel from '@/components/fluxo-envio/ReportsPanel';
+import AutoMessagesManager from '@/components/fluxo-envio/AutoMessagesManager';
 
 export default function FluxoEnvioIndex() {
   return (
@@ -14,7 +15,7 @@ export default function FluxoEnvioIndex() {
       </div>
 
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="w-full sm:w-auto grid grid-cols-4 sm:inline-flex">
+        <TabsList className="w-full sm:w-auto grid grid-cols-5 sm:inline-flex">
           <TabsTrigger value="grupos" className="gap-1">
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">Grupos</span>
@@ -27,6 +28,10 @@ export default function FluxoEnvioIndex() {
             <Send className="h-4 w-4" />
             <span className="hidden sm:inline">Envios</span>
           </TabsTrigger>
+          <TabsTrigger value="automacoes" className="gap-1">
+            <Bot className="h-4 w-4" />
+            <span className="hidden sm:inline">Automações</span>
+          </TabsTrigger>
           <TabsTrigger value="relatorios" className="gap-1">
             <BarChart3 className="h-4 w-4" />
             <span className="hidden sm:inline">Relatórios</span>
@@ -36,6 +41,7 @@ export default function FluxoEnvioIndex() {
         <TabsContent value="grupos"><GroupsManager /></TabsContent>
         <TabsContent value="campanhas"><CampaignsManager /></TabsContent>
         <TabsContent value="envios"><MessageComposer /></TabsContent>
+        <TabsContent value="automacoes"><AutoMessagesManager /></TabsContent>
         <TabsContent value="relatorios"><ReportsPanel /></TabsContent>
       </Tabs>
     </div>
