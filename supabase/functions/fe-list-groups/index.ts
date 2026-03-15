@@ -145,6 +145,16 @@ serve(async (req) => {
             } else {
               adminGroups.push(enriched);
             }
+          } else if (!admin_only) {
+            const fallbackCount = !Number.isNaN(Number(g.participantsCount ?? g.participants_count ?? g.size))
+              ? Number(g.participantsCount ?? g.participants_count ?? g.size)
+              : 0;
+
+            adminGroups.push({
+              ...g,
+              participantsCount: fallbackCount,
+              invitationLink: null,
+            });
           }
 
           // Small delay to avoid rate limiting
