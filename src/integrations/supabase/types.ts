@@ -445,6 +445,347 @@ export type Database = {
           },
         ]
       }
+      fe_auto_messages: {
+        Row: {
+          content_text: string | null
+          content_type: string
+          created_at: string | null
+          event_type: string
+          group_id: string | null
+          id: string
+          is_active: boolean | null
+          media_url: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          content_text?: string | null
+          content_type?: string
+          created_at?: string | null
+          event_type: string
+          group_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          media_url?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          content_text?: string | null
+          content_type?: string
+          created_at?: string | null
+          event_type?: string
+          group_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          media_url?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_auto_messages_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "fe_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_auto_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fe_campaign_groups: {
+        Row: {
+          campaign_id: string
+          created_at: string | null
+          group_id: string
+          id: string
+          sort_order: number | null
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string | null
+          group_id: string
+          id?: string
+          sort_order?: number | null
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string | null
+          group_id?: string
+          id?: string
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "fe_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_campaign_groups_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "fe_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fe_campaigns: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_entry_open: boolean | null
+          name: string
+          slug: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_entry_open?: boolean | null
+          name: string
+          slug: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_entry_open?: boolean | null
+          name?: string
+          slug?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_campaigns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fe_group_events: {
+        Row: {
+          created_at: string | null
+          event_type: string
+          group_id: string | null
+          group_jid: string | null
+          id: string
+          phone: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          event_type: string
+          group_id?: string | null
+          group_jid?: string | null
+          id?: string
+          phone?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          event_type?: string
+          group_id?: string | null
+          group_jid?: string | null
+          id?: string
+          phone?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_group_events_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "fe_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_group_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fe_groups: {
+        Row: {
+          created_at: string | null
+          group_jid: string
+          group_name: string
+          id: string
+          invite_link: string | null
+          is_active: boolean | null
+          is_entry_open: boolean | null
+          max_participants: number | null
+          participant_count: number | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          group_jid: string
+          group_name: string
+          id?: string
+          invite_link?: string | null
+          is_active?: boolean | null
+          is_entry_open?: boolean | null
+          max_participants?: number | null
+          participant_count?: number | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          group_jid?: string
+          group_name?: string
+          id?: string
+          invite_link?: string | null
+          is_active?: boolean | null
+          is_entry_open?: boolean | null
+          max_participants?: number | null
+          participant_count?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_groups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fe_link_clicks: {
+        Row: {
+          campaign_id: string
+          clicked_at: string | null
+          id: string
+          ip_hash: string | null
+          redirected_group_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          campaign_id: string
+          clicked_at?: string | null
+          id?: string
+          ip_hash?: string | null
+          redirected_group_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          clicked_at?: string | null
+          id?: string
+          ip_hash?: string | null
+          redirected_group_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_link_clicks_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "fe_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_link_clicks_redirected_group_id_fkey"
+            columns: ["redirected_group_id"]
+            isOneToOne: false
+            referencedRelation: "fe_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fe_messages: {
+        Row: {
+          campaign_id: string | null
+          content_text: string | null
+          content_type: string
+          created_at: string | null
+          group_id: string | null
+          id: string
+          media_url: string | null
+          scheduled_at: string | null
+          sent_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          content_text?: string | null
+          content_type?: string
+          created_at?: string | null
+          group_id?: string | null
+          id?: string
+          media_url?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          campaign_id?: string | null
+          content_text?: string | null
+          content_type?: string
+          created_at?: string | null
+          group_id?: string | null
+          id?: string
+          media_url?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_messages_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "fe_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_messages_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "fe_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gifts: {
         Row: {
           created_at: string
