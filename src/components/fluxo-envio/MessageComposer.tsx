@@ -110,10 +110,41 @@ export default function MessageComposer() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const cancelPendingMessage = async (messageId: string) => {
+    const { error, count } = await supabase
+      .from('fe_messages' as any)
+      .delete({ count: 'exact' } as any)
+      .eq('id', messageId)
+      .eq('status', 'pending');
+
+    if (error) {
+      toast({ title: 'Erro ao cancelar', description: error.message, variant: 'destructive' });
+      return;
+    }
+
+    if (!count) {
+      toast({ title: 'A mensagem já começou a ser enviada', variant: 'destructive' });
+      fetchData();
+      return;
+    }
+
+    if (viewMessage?.id === messageId) {
+      setViewMessage(null);
+    }
+
+    toast({ title: 'Envio cancelado' });
+    fetchData();
+  };
+
   const handleSend = async () => {
     if (!tenant) return;
-    if (!contentText && !mediaUrl) {
-      toast({ title: 'Escreva uma mensagem ou adicione uma mídia', variant: 'destructive' });
+    if (contentType === 'text' && !contentText.trim()) {
+      toast({ title: 'Escreva uma mensagem', variant: 'destructive' });
+      return;
+    }
+
+    if (contentType !== 'text' && !mediaUrl) {
+      toast({ title: 'Anexe um arquivo para enviar', variant: 'destructive' });
       return;
     }
 
@@ -349,12 +380,13 @@ export default function MessageComposer() {
                       <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setViewMessage(m)}>
                         <Eye className="h-3 w-3 mr-1" />Ver
                       </Button>
-                      {(m.status === 'pending' || m.status === 'sending') && (
-                        <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={async () => {
-                          await supabase.from('fe_messages' as any).update({ status: 'cancelled' } as any).eq('id', m.id);
-                          toast({ title: 'Envio cancelado' });
-                          fetchData();
-                        }}>
+                      {m.status === 'pending' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-destructive hover:text-destructive"
+                          onClick={() => cancelPendingMessage(m.id)}
+                        >
                           <Ban className="h-3 w-3 mr-1" />Cancelar
                         </Button>
                       )}

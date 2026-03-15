@@ -11,6 +11,7 @@ const ZAPI_BASE_URL = "https://api.z-api.io";
 interface SendRequest {
   tenant_id: string;
   group_ids: string[];
+  message_ids?: string[];
   content_type: "text" | "image" | "audio" | "video";
   content_text?: string;
   media_url?: string;
@@ -92,10 +93,17 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: SendRequest = await req.json();
-    const { tenant_id, group_ids, content_type, content_text, media_url } = body;
+    const { tenant_id, group_ids, message_ids, content_type, content_text, media_url } = body;
 
     if (!tenant_id || !group_ids?.length) {
       return new Response(JSON.stringify({ error: "tenant_id e group_ids são obrigatórios" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (content_type !== "text" && !media_url) {
+      return new Response(JSON.stringify({ error: "media_url é obrigatório para imagem, áudio e vídeo" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -125,6 +133,14 @@ serve(async (req) => {
       });
     }
 
+    const groupToMessageId = new Map<string, string>();
+    if (Array.isArray(message_ids)) {
+      group_ids.forEach((gid, idx) => {
+        const mid = message_ids[idx];
+        if (gid && mid) groupToMessageId.set(gid, mid);
+      });
+    }
+
     const results: Array<{ group_id: string; group_name: string; success: boolean; error?: string }> = [];
 
     for (const group of groups) {
@@ -136,27 +152,48 @@ serve(async (req) => {
 
         const res = await sendToGroup(baseUrl, creds.clientToken, group.group_jid, content_type, content_text, media_url);
         const resText = await res.text();
+        const sent = res.status >= 200 && res.status < 300;
         console.log(`[fe-send-message] Group ${group.group_name}: status=${res.status}, response=${resText.substring(0, 200)}`);
 
-        results.push({ group_id: group.id, group_name: group.group_name, success: res.status >= 200 && res.status < 300 });
+        results.push({
+          group_id: group.id,
+          group_name: group.group_name,
+          success: sent,
+          error: sent ? undefined : resText.substring(0, 300),
+        });
 
-        // Update message status
-        await supabase
+        const messageId = groupToMessageId.get(group.id);
+        let statusUpdate = supabase
           .from("fe_messages")
-          .update({ status: res.status >= 200 && res.status < 300 ? "sent" : "failed", sent_at: new Date().toISOString() })
-          .eq("tenant_id", tenant_id)
-          .eq("group_id", group.id)
-          .eq("status", "sending");
+          .update({ status: sent ? "sent" : "failed", sent_at: new Date().toISOString() });
+
+        if (messageId) {
+          statusUpdate = statusUpdate.eq("id", messageId).eq("status", "sending");
+        } else {
+          statusUpdate = statusUpdate
+            .eq("tenant_id", tenant_id)
+            .eq("group_id", group.id)
+            .eq("status", "sending");
+        }
+
+        await statusUpdate;
       } catch (err: any) {
         console.error(`[fe-send-message] Error sending to ${group.group_name}:`, err.message);
         results.push({ group_id: group.id, group_name: group.group_name, success: false, error: err.message });
 
-        await supabase
-          .from("fe_messages")
-          .update({ status: "failed" })
-          .eq("tenant_id", tenant_id)
-          .eq("group_id", group.id)
-          .eq("status", "sending");
+        const messageId = groupToMessageId.get(group.id);
+        let failUpdate = supabase.from("fe_messages").update({ status: "failed" });
+
+        if (messageId) {
+          failUpdate = failUpdate.eq("id", messageId).eq("status", "sending");
+        } else {
+          failUpdate = failUpdate
+            .eq("tenant_id", tenant_id)
+            .eq("group_id", group.id)
+            .eq("status", "sending");
+        }
+
+        await failUpdate;
       }
     }
 

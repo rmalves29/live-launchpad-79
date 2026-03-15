@@ -84,25 +84,64 @@ serve(async (req) => {
     // Get connected phone to check admin status
     const connectedPhone = waConfig.connected_phone?.replace(/\D/g, "") || "";
 
+    if (admin_only && !connectedPhone) {
+      return new Response(JSON.stringify({ error: "Não foi possível identificar o número conectado para filtrar grupos de admin" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Fetch metadata for all groups (to get participant count and admin status)
     let filteredGroups = allGroups;
 
-    if (connectedPhone) {
+    if (allGroups.length > 0) {
       console.log(`[fe-list-groups] Filtering admin-only groups for phone ${connectedPhone}`);
       const adminGroups: any[] = [];
 
       for (const g of allGroups) {
+        const baseCountRaw = g.participantsCount ?? g.participants_count ?? g.participantsSize ?? g.size;
+        const baseCount =
+          baseCountRaw !== undefined && baseCountRaw !== null && !Number.isNaN(Number(baseCountRaw))
+            ? Number(baseCountRaw)
+            : 0;
+
+        if (!admin_only && baseCount > 0) {
+          adminGroups.push({
+            ...g,
+            participantsCount: baseCount,
+            invitationLink: g.invitationLink || g.inviteLink || null,
+          });
+          continue;
+        }
+
         try {
-          // Use light-group-metadata (faster, no invite link fetch)
-          const metaRes = await fetch(
-            `${baseUrl}/light-group-metadata/${g.phone}`,
+          // Prefer full metadata (includes participants/admin), fallback to light metadata
+          let metaRes = await fetch(
+            `${baseUrl}/group-metadata/${g.phone}`,
             { headers }
           );
 
+          if (!metaRes.ok) {
+            metaRes = await fetch(
+              `${baseUrl}/light-group-metadata/${g.phone}`,
+              { headers }
+            );
+          }
+
           if (metaRes.ok) {
             const meta = await metaRes.json();
-            const participants = meta.participants || [];
-            const isAdmin = participants.some(
+            const participants = Array.isArray(meta.participants) ? meta.participants : [];
+            const rawCount =
+              meta.participantsCount ??
+              meta.participants_count ??
+              meta.participantsSize ??
+              meta.size;
+            const participantsCount =
+              rawCount !== undefined && rawCount !== null && !Number.isNaN(Number(rawCount))
+                ? Number(rawCount)
+                : participants.length;
+
+            const isAdmin = !!connectedPhone && participants.some(
               (p: any) =>
                 (p.phone?.replace(/\D/g, "") === connectedPhone ||
                   p.phone?.includes(connectedPhone)) &&
@@ -111,8 +150,8 @@ serve(async (req) => {
 
             const enriched = {
               ...g,
-              participantsCount: participants.length,
-              invitationLink: meta.invitationLink || null,
+              participantsCount: participantsCount || g.size || 0,
+              invitationLink: meta.invitationLink || meta.inviteLink || null,
               _isAdmin: isAdmin,
             };
 
@@ -121,14 +160,29 @@ serve(async (req) => {
             } else {
               adminGroups.push(enriched);
             }
+          } else if (!admin_only) {
+            const fallbackCount = !Number.isNaN(Number(g.participantsCount ?? g.participants_count ?? g.size))
+              ? Number(g.participantsCount ?? g.participants_count ?? g.size)
+              : 0;
+
+            adminGroups.push({
+              ...g,
+              participantsCount: fallbackCount,
+              invitationLink: null,
+            });
           }
 
-          // Small delay to avoid rate limiting
-          await new Promise((r) => setTimeout(r, 200));
         } catch (err: any) {
           console.warn(`[fe-list-groups] Metadata error for ${g.phone}: ${err.message}`);
           if (!admin_only) {
-            adminGroups.push(g);
+            const fallbackCount = !Number.isNaN(Number(g.participantsCount ?? g.participants_count ?? g.size))
+              ? Number(g.participantsCount ?? g.participants_count ?? g.size)
+              : 0;
+
+            adminGroups.push({
+              ...g,
+              participantsCount: fallbackCount,
+            });
           }
         }
       }

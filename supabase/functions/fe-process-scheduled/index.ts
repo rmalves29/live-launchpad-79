@@ -20,7 +20,7 @@ serve(async (req) => {
     const now = new Date().toISOString();
     const { data: messages, error } = await supabase
       .from("fe_messages")
-      .select("*, fe_groups!inner(group_jid, group_name)")
+      .select("id, tenant_id, group_id, content_type, content_text, media_url")
       .eq("status", "pending")
       .not("scheduled_at", "is", null)
       .lte("scheduled_at", now)
@@ -43,25 +43,39 @@ serve(async (req) => {
 
     console.log(`[fe-process-scheduled] Processing ${messages.length} scheduled messages`);
 
-    // Group by tenant to reuse Z-API credentials
-    const byTenant: Record<string, any[]> = {};
-    for (const msg of messages) {
-      if (!byTenant[msg.tenant_id]) byTenant[msg.tenant_id] = [];
-      byTenant[msg.tenant_id].push(msg);
-    }
-
     let processed = 0;
     let failed = 0;
+    let skipped = 0;
 
-    for (const [tenantId, tenantMsgs] of Object.entries(byTenant)) {
-      // Call fe-send-message for each batch
-      const groupIds = tenantMsgs.map((m: any) => m.group_id);
+    for (const msg of messages) {
+      if (!msg.group_id) {
+        failed += 1;
+        await supabase
+          .from("fe_messages")
+          .update({ status: "failed" })
+          .eq("id", msg.id)
+          .eq("status", "pending");
+        continue;
+      }
 
-      // Mark as sending
-      await supabase
+      const { data: lockedMessage, error: lockError } = await supabase
         .from("fe_messages")
         .update({ status: "sending" })
-        .in("id", tenantMsgs.map((m: any) => m.id));
+        .eq("id", msg.id)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+
+      if (lockError) {
+        console.error(`[fe-process-scheduled] Lock error for message ${msg.id}: ${lockError.message}`);
+        failed += 1;
+        continue;
+      }
+
+      if (!lockedMessage) {
+        skipped += 1;
+        continue;
+      }
 
       try {
         const sendRes = await fetch(`${supabaseUrl}/functions/v1/fe-send-message`, {
@@ -71,33 +85,43 @@ serve(async (req) => {
             Authorization: `Bearer ${supabaseKey}`,
           },
           body: JSON.stringify({
-            tenant_id: tenantId,
-            group_ids: [...new Set(groupIds)],
-            content_type: tenantMsgs[0].content_type,
-            content_text: tenantMsgs[0].content_text,
-            media_url: tenantMsgs[0].media_url,
+            tenant_id: msg.tenant_id,
+            group_ids: [msg.group_id],
+            message_ids: [msg.id],
+            content_type: msg.content_type,
+            content_text: msg.content_text,
+            media_url: msg.media_url,
           }),
         });
 
-        if (sendRes.ok) {
-          processed += tenantMsgs.length;
+        const payload = await sendRes.json().catch(() => null);
+
+        if (!sendRes.ok || !payload?.sent) {
+          failed += 1;
+          const errText = payload?.error || payload?.message || JSON.stringify(payload || {});
+          console.error(`[fe-process-scheduled] Send failed for message ${msg.id}: ${errText}`);
+
+          await supabase
+            .from("fe_messages")
+            .update({ status: "failed" })
+            .eq("id", msg.id)
+            .eq("status", "sending");
         } else {
-          failed += tenantMsgs.length;
-          const errText = await sendRes.text();
-          console.error(`[fe-process-scheduled] Send failed for tenant ${tenantId}: ${errText}`);
+          processed += 1;
         }
       } catch (err: any) {
-        failed += tenantMsgs.length;
-        console.error(`[fe-process-scheduled] Error for tenant ${tenantId}:`, err.message);
+        failed += 1;
+        console.error(`[fe-process-scheduled] Error for message ${msg.id}:`, err.message);
 
         await supabase
           .from("fe_messages")
           .update({ status: "failed" })
-          .in("id", tenantMsgs.map((m: any) => m.id));
+          .eq("id", msg.id)
+          .eq("status", "sending");
       }
     }
 
-    return new Response(JSON.stringify({ processed, failed, total: messages.length }), {
+    return new Response(JSON.stringify({ processed, failed, skipped, total: messages.length }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: any) {
