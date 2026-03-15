@@ -12,7 +12,7 @@ interface SendRequest {
   tenant_id: string;
   group_ids: string[];
   message_ids?: string[];
-  content_type: "text" | "image" | "audio" | "video";
+  content_type: "text" | "image" | "audio" | "video" | "video_note";
   content_text?: string;
   media_url?: string;
 }
