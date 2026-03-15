@@ -207,7 +207,7 @@ export default function GroupsManager() {
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="secondary">
-                        <Users className="h-3 w-3 mr-1" />{g.participant_count}
+                        <Users className="h-3 w-3 mr-1" />{g.participant_count || 0}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
