@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.fe-process-scheduled]
 verify_jwt = false
+
+[functions.fe-list-groups]
+verify_jwt = false
