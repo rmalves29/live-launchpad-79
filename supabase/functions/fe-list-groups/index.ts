@@ -162,7 +162,14 @@ serve(async (req) => {
         } catch (err: any) {
           console.warn(`[fe-list-groups] Metadata error for ${g.phone}: ${err.message}`);
           if (!admin_only) {
-            adminGroups.push(g);
+            const fallbackCount = !Number.isNaN(Number(g.participantsCount ?? g.participants_count ?? g.size))
+              ? Number(g.participantsCount ?? g.participants_count ?? g.size)
+              : 0;
+
+            adminGroups.push({
+              ...g,
+              participantsCount: fallbackCount,
+            });
           }
         }
       }
