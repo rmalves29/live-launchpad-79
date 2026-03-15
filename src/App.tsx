@@ -166,6 +166,11 @@ const AppContent = () => {
           <RequireTenantAuth><Etiquetas /></RequireTenantAuth>
         } />
         
+        {/* Fluxo de Envio - gerenciamento de grupos WhatsApp */}
+        <Route path="/fluxo-envio" element={
+          <RequireTenantAuth><FluxoEnvio /></RequireTenantAuth>
+        } />
+        
         {/* Rota para templates de WhatsApp */}
         <Route path="/whatsapp/templates" element={
           <RequireTenantAuth><WhatsappTemplates /></RequireTenantAuth>
