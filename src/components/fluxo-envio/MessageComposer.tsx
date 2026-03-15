@@ -294,12 +294,18 @@ export default function MessageComposer() {
             {/* Content type */}
             <div>
               <Label>Tipo de conteúdo</Label>
-              <div className="flex gap-2 mt-1">
-                {(['text', 'image', 'audio', 'video'] as const).map(t => (
-                  <Button key={t} variant={contentType === t ? 'default' : 'outline'} size="sm"
-                    onClick={() => { setContentType(t); clearMedia(); }}>
-                    {contentTypeIcon[t]}
-                    <span className="ml-1 capitalize">{t === 'text' ? 'Texto' : t === 'image' ? 'Imagem' : t === 'audio' ? 'Áudio' : 'Vídeo'}</span>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {([
+                  { key: 'text', label: 'Texto' },
+                  { key: 'image', label: 'Imagem' },
+                  { key: 'audio', label: 'Áudio' },
+                  { key: 'video', label: 'Vídeo' },
+                  { key: 'video_note', label: 'Vídeo Redondo' },
+                ] as const).map(t => (
+                  <Button key={t.key} variant={contentType === t.key ? 'default' : 'outline'} size="sm"
+                    onClick={() => { setContentType(t.key); clearMedia(); }}>
+                    {contentTypeIcon[t.key]}
+                    <span className="ml-1">{t.label}</span>
                   </Button>
                 ))}
               </div>
