@@ -46,6 +46,7 @@ export default function MessageComposer() {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
+  const [viewMessage, setViewMessage] = useState<any>(null);
 
   const fetchData = useCallback(async () => {
     if (!tenant) return;
