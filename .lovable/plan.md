@@ -1,62 +1,45 @@
 
 
-## Plano: Desconto PIX configurável para todas as integrações de pagamento
+## Plan: Restrict Fluxo de Envio + Fix Vídeo Redondo (PTV)
 
-### Visão Geral
-Adicionar um campo configurável de desconto PIX em cada integração de pagamento (Mercado Pago, Pagar.me, App Max), um seletor de forma de pagamento (PIX ou Cartão) no checkout público, e aplicar o desconto automaticamente sobre o subtotal dos produtos quando PIX for selecionado.
+### Current State
+- **Navbar**: Already hides "Fluxo de Envio" for non-`app` tenants (line 33), but the **route itself is still accessible** by typing `/fluxo-envio` directly.
+- **PTV**: The `fe-send-message` function already calls Z-API's `/send-ptv` endpoint, but the payload format may need adjustment for proper circular video delivery.
 
-### 1. Banco de Dados — Adicionar coluna `pix_discount_percent`
+### Changes
 
-Criar migration para adicionar o campo nas 3 tabelas de integração:
+**1. Route-level restriction** (`src/App.tsx`)
+- Wrap the `/fluxo-envio` route with a conditional that checks tenant slug is `app` or user is super_admin. Redirect others to `/pedidos`.
 
-```sql
-ALTER TABLE integration_pagarme ADD COLUMN pix_discount_percent numeric DEFAULT 0;
-ALTER TABLE integration_mp ADD COLUMN pix_discount_percent numeric DEFAULT 0;
-ALTER TABLE integration_appmax ADD COLUMN pix_discount_percent numeric DEFAULT 0;
+**2. Verify and fix PTV payload** (`supabase/functions/fe-send-message/index.ts`)
+- Z-API's `/send-ptv` endpoint expects `{ phone, video: mediaUrl }` — not `{ phone, ptv: mediaUrl }`. The field name `ptv` is the endpoint path, but the body field should be `video`. This is likely why the circular video isn't being delivered correctly.
+- Update the `video_note` case to use the correct body format.
+
+### Technical Details
+
+**Route guard** — Add slug check inside the `RequireTenantAuth` wrapper or create an inline guard:
+```tsx
+<Route path="/fluxo-envio" element={
+  <RequireTenantAuth allowedSlugs={['app']}>
+    <FluxoEnvio />
+  </RequireTenantAuth>
+} />
+```
+Alternatively, a simpler approach: add a check inside `FluxoEnvioIndex` itself that redirects if tenant slug isn't `app` and user isn't super_admin.
+
+**PTV fix** — Change the edge function payload:
+```typescript
+case "video_note": {
+  const res = await fetch(`${baseUrl}/send-ptv`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ phone, video: mediaUrl }),
+  });
+  return res;
+}
 ```
 
-Também atualizar a trigger `validate_order_total_on_payment` para reconhecer a tag `[PIX_DISCOUNT]` nas observações e não corrigir indevidamente o total quando houver desconto PIX.
-
-### 2. Telas de Integração — Campo de configuração
-
-Adicionar input numérico "Desconto PIX (%)" nos 3 componentes:
-- `PagarMeIntegration.tsx` — campo `pix_discount_percent`
-- `PaymentIntegrations.tsx` (Mercado Pago) — campo `pix_discount_percent`
-- `AppmaxIntegration.tsx` — campo `pix_discount_percent`
-
-Cada um salva/carrega o valor da respectiva tabela.
-
-### 3. Checkout Público (`PublicCheckout.tsx`)
-
-**Buscar config de desconto PIX**: Ao carregar o tenant, consultar as 3 tabelas de integração ativas para obter o `pix_discount_percent` configurado (usa a mesma lógica de prioridade: AppMax > Pagar.me > MP).
-
-**Seletor de forma de pagamento**: Após as opções de frete e antes do resumo, exibir um radio group com:
-- PIX (com badge mostrando "X% OFF" se configurado)
-- Cartão de Crédito
-
-**Cálculo do desconto**: Quando PIX for selecionado, aplicar `pix_discount_percent` sobre o subtotal dos produtos (excluindo frete e cupom). Exibir o valor original riscado e o valor com desconto.
-
-**Enviar ao backend**: Incluir `payment_method` e `pix_discount` no payload enviado ao `create-payment`.
-
-### 4. Edge Function `create-payment`
-
-- Receber `payment_method` e `pix_discount` no payload
-- Recalcular total: `productsTotal - pixDiscount - couponDiscount + shippingCost`
-- Adicionar tag `[PIX_DISCOUNT] R$ X.XX` na observação do pedido
-- Passar o total correto para o gateway de pagamento
-
-### 5. Trigger `validate_order_total_on_payment`
-
-Atualizar para extrair `[PIX_DISCOUNT]` da observação via regex, subtraindo do total esperado para evitar "correções" indevidas.
-
-### Resumo de arquivos afetados
-
-| Arquivo | Alteração |
-|---|---|
-| Migration SQL | Adicionar `pix_discount_percent` em 3 tabelas + atualizar trigger |
-| `PagarMeIntegration.tsx` | Campo de config desconto PIX |
-| `PaymentIntegrations.tsx` | Campo de config desconto PIX |
-| `AppmaxIntegration.tsx` | Campo de config desconto PIX |
-| `PublicCheckout.tsx` | Seletor PIX/Cartão + cálculo desconto + UI |
-| `create-payment/index.ts` | Receber/processar desconto PIX |
+### Files to modify
+- `src/pages/fluxo-envio/Index.tsx` — Add tenant/role guard with redirect
+- `supabase/functions/fe-send-message/index.ts` — Fix PTV payload field name
 
