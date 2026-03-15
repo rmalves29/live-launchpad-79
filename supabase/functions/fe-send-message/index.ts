@@ -145,9 +145,9 @@ serve(async (req) => {
 
     for (const group of groups) {
       try {
-        // Add delay between groups to avoid rate limiting
+        // Small delay between groups to avoid rate limiting
         if (results.length > 0) {
-          await new Promise((r) => setTimeout(r, 2000 + Math.random() * 3000));
+          await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
         }
 
         const res = await sendToGroup(baseUrl, creds.clientToken, group.group_jid, content_type, content_text, media_url);
