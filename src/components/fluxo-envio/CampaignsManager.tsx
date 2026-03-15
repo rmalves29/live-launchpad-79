@@ -58,6 +58,7 @@ export default function CampaignsManager() {
   const [newCampaign, setNewCampaign] = useState({ name: '', slug: '', description: '' });
   const [campaignStats, setCampaignStats] = useState<Record<string, CampaignStats>>({});
   const [campaignGroupCounts, setCampaignGroupCounts] = useState<Record<string, number>>({});
+  const [groupSearch, setGroupSearch] = useState('');
 
   const fetchCampaigns = useCallback(async () => {
     if (!tenant) return;
@@ -239,11 +240,19 @@ export default function CampaignsManager() {
       </div>
 
       {/* Manage Groups Dialog */}
-      <Dialog open={!!manageGroupsOpen} onOpenChange={() => setManageGroupsOpen(null)}>
+      <Dialog open={!!manageGroupsOpen} onOpenChange={() => { setManageGroupsOpen(null); setGroupSearch(''); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Grupos da Campanha</DialogTitle></DialogHeader>
+          <Input
+            placeholder="Buscar grupo por nome..."
+            value={groupSearch}
+            onChange={(e) => setGroupSearch(e.target.value)}
+            className="mb-2"
+          />
           <div className="space-y-2 max-h-[400px] overflow-y-auto">
-            {allGroups.map(g => (
+            {allGroups
+              .filter(g => g.group_name.toLowerCase().includes(groupSearch.toLowerCase()))
+              .map(g => (
               <div key={g.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
                 <Checkbox
                   checked={campaignGroups.some(cg => cg.group_id === g.id)}
@@ -255,8 +264,8 @@ export default function CampaignsManager() {
                 </div>
               </div>
             ))}
-            {allGroups.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhum grupo cadastrado</p>
+            {allGroups.filter(g => g.group_name.toLowerCase().includes(groupSearch.toLowerCase())).length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhum grupo encontrado</p>
             )}
           </div>
         </DialogContent>
