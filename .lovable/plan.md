@@ -1,62 +1,97 @@
 
 
-## Plano: Desconto PIX configurável para todas as integrações de pagamento
+## Plano: Sistema "Fluxo de Envio" - Gerenciamento de Grupos WhatsApp
 
-### Visão Geral
-Adicionar um campo configurável de desconto PIX em cada integração de pagamento (Mercado Pago, Pagar.me, App Max), um seletor de forma de pagamento (PIX ou Cartão) no checkout público, e aplicar o desconto automaticamente sobre o subtotal dos produtos quando PIX for selecionado.
+Este é um módulo complexo com múltiplas funcionalidades. Proponho uma implementação faseada.
 
-### 1. Banco de Dados — Adicionar coluna `pix_discount_percent`
+### Visão Geral da Arquitetura
 
-Criar migration para adicionar o campo nas 3 tabelas de integração:
-
-```sql
-ALTER TABLE integration_pagarme ADD COLUMN pix_discount_percent numeric DEFAULT 0;
-ALTER TABLE integration_mp ADD COLUMN pix_discount_percent numeric DEFAULT 0;
-ALTER TABLE integration_appmax ADD COLUMN pix_discount_percent numeric DEFAULT 0;
+```text
+┌─────────────────────────────────────────────┐
+│              Fluxo de Envio                 │
+│  /fluxo-envio (rota principal)              │
+├─────────┬──────────┬──────────┬─────────────┤
+│ Grupos  │Campanhas │ Envios   │ Relatórios  │
+│  (tab)  │  (tab)   │  (tab)   │   (tab)     │
+└─────────┴──────────┴──────────┴─────────────┘
 ```
 
-Também atualizar a trigger `validate_order_total_on_payment` para reconhecer a tag `[PIX_DISCOUNT]` nas observações e não corrigir indevidamente o total quando houver desconto PIX.
+### Fase 1 - Tabelas no Supabase (6 migrações)
 
-### 2. Telas de Integração — Campo de configuração
+1. **`fe_groups`** - Grupos gerenciados
+   - `id`, `tenant_id`, `group_id` (WhatsApp JID), `group_name`, `invite_link`, `participant_count`, `max_participants`, `is_entry_open` (controle de entrada), `is_active`, timestamps
 
-Adicionar input numérico "Desconto PIX (%)" nos 3 componentes:
-- `PagarMeIntegration.tsx` — campo `pix_discount_percent`
-- `PaymentIntegrations.tsx` (Mercado Pago) — campo `pix_discount_percent`
-- `AppmaxIntegration.tsx` — campo `pix_discount_percent`
+2. **`fe_campaigns`** - Campanhas (agrupamento de grupos)
+   - `id`, `tenant_id`, `name`, `slug` (link único), `is_entry_open`, `is_active`, `description`, timestamps
 
-Cada um salva/carrega o valor da respectiva tabela.
+3. **`fe_campaign_groups`** - Relação campanha ↔ grupos
+   - `id`, `campaign_id`, `group_id`, `sort_order`, timestamps
 
-### 3. Checkout Público (`PublicCheckout.tsx`)
+4. **`fe_messages`** - Mensagens enviadas/agendadas
+   - `id`, `tenant_id`, `campaign_id` (nullable), `group_id` (nullable), `content_type` (text/image/audio/video), `content_text`, `media_url`, `status` (pending/sent/failed), `scheduled_at`, `sent_at`, timestamps
 
-**Buscar config de desconto PIX**: Ao carregar o tenant, consultar as 3 tabelas de integração ativas para obter o `pix_discount_percent` configurado (usa a mesma lógica de prioridade: AppMax > Pagar.me > MP).
+5. **`fe_link_clicks`** - Rastreamento de clicks nos links de campanha
+   - `id`, `campaign_id`, `ip_hash`, `user_agent`, `clicked_at`
 
-**Seletor de forma de pagamento**: Após as opções de frete e antes do resumo, exibir um radio group com:
-- PIX (com badge mostrando "X% OFF" se configurado)
-- Cartão de Crédito
+6. **`fe_group_events`** - Entrada/saída de pessoas
+   - `id`, `tenant_id`, `group_id`, `phone`, `event_type` (join/leave), `created_at`
 
-**Cálculo do desconto**: Quando PIX for selecionado, aplicar `pix_discount_percent` sobre o subtotal dos produtos (excluindo frete e cupom). Exibir o valor original riscado e o valor com desconto.
+7. **`fe_auto_messages`** - Mensagens automáticas de entrada/saída
+   - `id`, `tenant_id`, `group_id` (nullable = aplica a todos), `event_type` (join/leave), `content_type`, `content_text`, `media_url`, `is_active`, timestamps
 
-**Enviar ao backend**: Incluir `payment_method` e `pix_discount` no payload enviado ao `create-payment`.
+RLS: todas com `tenant_id = get_current_tenant_id() OR is_super_admin()` + `service_role` full access.
 
-### 4. Edge Function `create-payment`
+### Fase 2 - Frontend (4 arquivos principais)
 
-- Receber `payment_method` e `pix_discount` no payload
-- Recalcular total: `productsTotal - pixDiscount - couponDiscount + shippingCost`
-- Adicionar tag `[PIX_DISCOUNT] R$ X.XX` na observação do pedido
-- Passar o total correto para o gateway de pagamento
+1. **`src/pages/fluxo-envio/Index.tsx`** - Página principal com 4 abas (Tabs):
+   - **Grupos**: Lista grupos, botão "Buscar do WhatsApp" (via Z-API `list-groups`), toggle entrada aberta/fechada, link de convite
+   - **Campanhas**: CRUD de campanhas, associar grupos, link público de entrada, toggle habilitar/desabilitar entrada
+   - **Envios**: Compor mensagem (texto/imagem/audio/video), selecionar grupos ou campanha, envio imediato ou agendado (date picker + time)
+   - **Relatórios**: Clicks por campanha, entradas/saídas por grupo, gráfico temporal
 
-### 5. Trigger `validate_order_total_on_payment`
+2. **`src/components/fluxo-envio/GroupsManager.tsx`** - CRUD de grupos
+3. **`src/components/fluxo-envio/CampaignsManager.tsx`** - CRUD de campanhas com balanceamento
+4. **`src/components/fluxo-envio/MessageComposer.tsx`** - Compositor de mensagens com upload de mídia
 
-Atualizar para extrair `[PIX_DISCOUNT]` da observação via regex, subtraindo do total esperado para evitar "correções" indevidas.
+### Fase 3 - Edge Functions (3 funções)
 
-### Resumo de arquivos afetados
+1. **`fe-send-message`** - Envia mensagem (texto/imagem/audio/video) para grupos via Z-API
+2. **`fe-campaign-redirect`** - Rota pública que recebe click do link de campanha, registra click, balanceia e redireciona ao grupo com menos participantes (que tenha entrada aberta)
+3. **`fe-process-scheduled`** - Processa mensagens agendadas (cron job)
 
-| Arquivo | Alteração |
-|---|---|
-| Migration SQL | Adicionar `pix_discount_percent` em 3 tabelas + atualizar trigger |
-| `PagarMeIntegration.tsx` | Campo de config desconto PIX |
-| `PaymentIntegrations.tsx` | Campo de config desconto PIX |
-| `AppmaxIntegration.tsx` | Campo de config desconto PIX |
-| `PublicCheckout.tsx` | Seletor PIX/Cartão + cálculo desconto + UI |
-| `create-payment/index.ts` | Receber/processar desconto PIX |
+### Fase 4 - Rota e Navegação
+
+- Rota `/fluxo-envio` no `App.tsx`
+- Item "Fluxo de Envio" na `Navbar.tsx`
+- Visibilidade restrita: `tenant.slug === 'app'` (Mania de Mulher) ou `isSuperAdmin`
+
+### Fase 5 - Webhook de eventos de grupo
+
+- Estender `zapi-webhook/index.ts` para capturar eventos de entrada/saída de grupo e gravar em `fe_group_events`
+- Disparar mensagens automáticas configuradas em `fe_auto_messages`
+
+### Detalhes do Balanceamento de Campanhas
+
+Quando alguém clica no link de uma campanha (`/t/fluxo/{campaign_slug}`):
+1. Busca todos os grupos da campanha com `is_entry_open = true`
+2. Ordena por `participant_count ASC`
+3. Redireciona para o `invite_link` do grupo com menos participantes
+4. Registra o click em `fe_link_clicks`
+
+### Restrição de Acesso
+
+No `Navbar.tsx` e `App.tsx`, o módulo só aparece se:
+```typescript
+const showFluxoEnvio = tenant?.slug === 'app' || isSuperAdmin;
+```
+
+### Estimativa
+
+Este é um módulo grande. Recomendo implementar em etapas:
+1. Primeiro: tabelas + página com aba Grupos (funcional)
+2. Segundo: Campanhas + link de balanceamento
+3. Terceiro: Envios com agendamento
+4. Quarto: Relatórios + mensagens automáticas
+
+Posso começar pela etapa 1?
 
