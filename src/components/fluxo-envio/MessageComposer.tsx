@@ -34,7 +34,8 @@ export default function MessageComposer() {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [contentType, setContentType] = useState<'text' | 'image' | 'audio' | 'video'>('text');
+  const [contentType, setContentType] = useState<'text' | 'image' | 'audio' | 'video' | 'video_note'>('text');
+  const [editingMessage, setEditingMessage] = useState<any>(null);
   const [contentText, setContentText] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
