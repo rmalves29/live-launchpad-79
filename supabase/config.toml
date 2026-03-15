@@ -32,4 +32,12 @@ verify_jwt = false
 
 [functions.omie-list-stores]
 verify_jwt = false
+
+[functions.fe-send-message]
+verify_jwt = false
+
+[functions.fe-campaign-redirect]
+verify_jwt = false
+
+[functions.fe-process-scheduled]
 verify_jwt = false
