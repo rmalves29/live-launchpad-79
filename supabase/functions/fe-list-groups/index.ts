@@ -108,8 +108,15 @@ serve(async (req) => {
 
           if (metaRes.ok) {
             const meta = await metaRes.json();
-            const participants = meta.participants || [];
-            const isAdmin = participants.some(
+            const participants = Array.isArray(meta.participants) ? meta.participants : [];
+            const participantsCount =
+              typeof meta.participantsCount === "number"
+                ? meta.participantsCount
+                : typeof meta.size === "number"
+                ? meta.size
+                : participants.length;
+
+            const isAdmin = !!connectedPhone && participants.some(
               (p: any) =>
                 (p.phone?.replace(/\D/g, "") === connectedPhone ||
                   p.phone?.includes(connectedPhone)) &&
@@ -118,8 +125,8 @@ serve(async (req) => {
 
             const enriched = {
               ...g,
-              participantsCount: participants.length,
-              invitationLink: meta.invitationLink || null,
+              participantsCount: participantsCount || g.size || 0,
+              invitationLink: meta.invitationLink || meta.inviteLink || null,
               _isAdmin: isAdmin,
             };
 

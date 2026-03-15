@@ -93,10 +93,17 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: SendRequest = await req.json();
-    const { tenant_id, group_ids, content_type, content_text, media_url } = body;
+    const { tenant_id, group_ids, message_ids, content_type, content_text, media_url } = body;
 
     if (!tenant_id || !group_ids?.length) {
       return new Response(JSON.stringify({ error: "tenant_id e group_ids são obrigatórios" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (content_type !== "text" && !media_url) {
+      return new Response(JSON.stringify({ error: "media_url é obrigatório para imagem, áudio e vídeo" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
