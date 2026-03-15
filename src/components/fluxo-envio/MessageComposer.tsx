@@ -232,11 +232,49 @@ export default function MessageComposer() {
     setSending(false);
   };
 
-  const contentTypeIcon = {
+  const contentTypeIcon: Record<string, React.ReactNode> = {
     text: <FileText className="h-4 w-4" />,
     image: <Image className="h-4 w-4" />,
     audio: <Music className="h-4 w-4" />,
     video: <Video className="h-4 w-4" />,
+    video_note: <Circle className="h-4 w-4" />,
+  };
+
+  const startEditMessage = (m: any) => {
+    setEditingMessage(m);
+    setContentType(m.content_type);
+    setContentText(m.content_text || '');
+    setMediaUrl(m.media_url || '');
+    setSendMode(m.scheduled_at ? 'scheduled' : 'instant');
+    if (m.scheduled_at) {
+      const d = new Date(m.scheduled_at);
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      setScheduledAt(local);
+    }
+    toast({ title: 'Editando mensagem pendente' });
+  };
+
+  const saveEditMessage = async () => {
+    if (!editingMessage) return;
+    setSending(true);
+    try {
+      const updateData: any = {
+        content_type: contentType,
+        content_text: contentText || null,
+        media_url: mediaUrl || null,
+        scheduled_at: sendMode === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      };
+      const { error } = await supabase.from('fe_messages' as any).update(updateData).eq('id', editingMessage.id).eq('status', 'pending');
+      if (error) throw error;
+      toast({ title: 'Mensagem atualizada!' });
+      setEditingMessage(null);
+      setContentText('');
+      clearMedia();
+      fetchData();
+    } catch (err: any) {
+      toast({ title: 'Erro ao salvar', description: err.message, variant: 'destructive' });
+    }
+    setSending(false);
   };
 
   const statusColors: Record<string, string> = {
