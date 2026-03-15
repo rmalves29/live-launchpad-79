@@ -7,10 +7,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X } from 'lucide-react';
+import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X, Ban, Eye } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 
 interface FeGroup {
   id: string;
@@ -43,6 +46,7 @@ export default function MessageComposer() {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
+  const [viewMessage, setViewMessage] = useState<any>(null);
 
   const fetchData = useCallback(async () => {
     if (!tenant) return;
@@ -341,12 +345,74 @@ export default function MessageComposer() {
                         Agendado: {new Date(m.scheduled_at).toLocaleString('pt-BR')}
                       </p>
                     )}
+                    <div className="flex gap-1 mt-2">
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setViewMessage(m)}>
+                        <Eye className="h-3 w-3 mr-1" />Ver
+                      </Button>
+                      {(m.status === 'pending' || m.status === 'sending') && (
+                        <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={async () => {
+                          await supabase.from('fe_messages' as any).update({ status: 'cancelled' } as any).eq('id', m.id);
+                          toast({ title: 'Envio cancelado' });
+                          fetchData();
+                        }}>
+                          <Ban className="h-3 w-3 mr-1" />Cancelar
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* View message dialog */}
+        <Dialog open={!!viewMessage} onOpenChange={() => setViewMessage(null)}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Detalhes da Mensagem</DialogTitle></DialogHeader>
+            {viewMessage && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  {contentTypeIcon[viewMessage.content_type as keyof typeof contentTypeIcon]}
+                  <Badge className={statusColors[viewMessage.status] || ''}>{viewMessage.status}</Badge>
+                  <span className="text-xs text-muted-foreground">{new Date(viewMessage.created_at).toLocaleString('pt-BR')}</span>
+                </div>
+                {viewMessage.content_text && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Mensagem</Label>
+                    <p className="text-sm text-foreground whitespace-pre-wrap bg-muted/30 p-3 rounded-lg mt-1">{viewMessage.content_text}</p>
+                  </div>
+                )}
+                {viewMessage.media_url && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Mídia</Label>
+                    {viewMessage.content_type === 'image' ? (
+                      <img src={viewMessage.media_url} alt="Mídia" className="mt-1 rounded-lg max-h-64 object-contain" />
+                    ) : viewMessage.content_type === 'video' ? (
+                      <video src={viewMessage.media_url} controls className="mt-1 rounded-lg max-h-64" />
+                    ) : viewMessage.content_type === 'audio' ? (
+                      <audio src={viewMessage.media_url} controls className="mt-1 w-full" />
+                    ) : (
+                      <a href={viewMessage.media_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline mt-1 block">{viewMessage.media_url}</a>
+                    )}
+                  </div>
+                )}
+                {viewMessage.scheduled_at && (
+                  <p className="text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3 inline mr-1" />
+                    Agendado: {new Date(viewMessage.scheduled_at).toLocaleString('pt-BR')}
+                  </p>
+                )}
+                {viewMessage.sent_at && (
+                  <p className="text-xs text-muted-foreground">
+                    <Send className="h-3 w-3 inline mr-1" />
+                    Enviado: {new Date(viewMessage.sent_at).toLocaleString('pt-BR')}
+                  </p>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
