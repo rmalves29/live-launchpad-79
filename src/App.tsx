@@ -226,7 +226,7 @@ const AppContent = () => {
         <Route path="/debug" element={<Debug />} />
         
         {/* Redirect público de campanha do Fluxo de Envio */}
-        <Route path="/fluxo/:campaignSlug" element={<CampaignRedirect />} />
+        <Route path="/fluxo/:tenantSlug/:campaignSlug" element={<CampaignRedirect />} />
         
         {/* Rotas públicas da loja por slug (path-based) - prefixo /t/ para evitar conflitos */}
         <Route path="/t/:slug" element={<TenantStorefront />} />
