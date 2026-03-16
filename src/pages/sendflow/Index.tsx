@@ -529,30 +529,31 @@ export default function SendFlow() {
   // Handler principal para iniciar envio (processado no backend)
   const handleSendMessages = async () => {
     if (selectedProducts.size === 0) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione pelo menos um produto',
-        variant: 'destructive'
-      });
+      toast({ title: 'Erro', description: 'Selecione pelo menos um produto', variant: 'destructive' });
       return;
     }
-
     if (selectedGroups.size === 0) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione pelo menos um grupo',
-        variant: 'destructive'
-      });
+      toast({ title: 'Erro', description: 'Selecione pelo menos um grupo', variant: 'destructive' });
       return;
     }
-
     if (!messageTemplate.trim()) {
-      toast({
-        title: 'Erro',
-        description: 'Digite um template de mensagem',
-        variant: 'destructive'
-      });
+      toast({ title: 'Erro', description: 'Digite um template de mensagem', variant: 'destructive' });
       return;
+    }
+    if (scheduleEnabled && (!scheduleDate || !scheduleTime)) {
+      toast({ title: 'Erro', description: 'Defina a data e hora do agendamento', variant: 'destructive' });
+      return;
+    }
+    
+    // Build scheduled ISO string in Brasilia timezone
+    let scheduledAt: string | null = null;
+    if (scheduleEnabled && scheduleDate && scheduleTime) {
+      scheduledAt = `${scheduleDate}T${scheduleTime}:00-03:00`;
+      const scheduledDate = new Date(scheduledAt);
+      if (scheduledDate <= new Date()) {
+        toast({ title: 'Erro', description: 'A data/hora do agendamento deve ser no futuro', variant: 'destructive' });
+        return;
+      }
     }
 
     setSending(true);
