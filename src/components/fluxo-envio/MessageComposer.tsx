@@ -205,6 +205,7 @@ export default function MessageComposer() {
             content_type: contentType,
             content_text: contentText,
             media_url: mediaUrl,
+            mention_all: mentionAll,
           },
         });
         if (fnError) throw fnError;
