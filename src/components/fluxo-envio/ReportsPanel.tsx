@@ -68,13 +68,29 @@ export default function ReportsPanel() {
           .then((res: any) => res),
       ]);
 
+      // Only consider groups that belong to at least one campaign
+      const campaignGroupIds = new Set(((campaignGroups?.data || campaignGroups || []) as any[]).map((cg: any) => cg.group_id));
+      const campaignGroupJids = new Set(
+        ((feGroups || []) as any[])
+          .filter((g: any) => campaignGroupIds.has(g.id))
+          .map((g: any) => g.group_jid)
+      );
+
       const campaignIds = (campaigns || []).map((c: any) => c.id);
       const events = allEventsResult || [];
-      const summary = summarizeFlowEvents(events);
+
+      // Filter events to only groups in campaigns
+      const filteredEvents = events.filter((e) => {
+        const matchId = !!e.group_id && campaignGroupIds.has(e.group_id);
+        const matchJid = !!e.group_jid && campaignGroupJids.has(e.group_jid);
+        return matchId || matchJid;
+      });
+
+      const summary = summarizeFlowEvents(filteredEvents);
 
       setJoinsCount(summary.entries);
       setLeavesCount(summary.exits);
-      setRecentEvents(events.slice(0, 30));
+      setRecentEvents(filteredEvents.slice(0, 30));
 
       if (campaignIds.length > 0) {
         const { data: clicks, count } = await supabase
