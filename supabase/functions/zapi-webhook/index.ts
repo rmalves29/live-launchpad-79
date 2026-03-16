@@ -176,10 +176,41 @@ serve(async (req) => {
   try {
     const payload: ZAPIWebhookPayload = await req.json();
     
-    console.log('[zapi-webhook] Received payload:', JSON.stringify(payload, null, 2));
+    // ─── LOG RESUMIDO DE TODA MOVIMENTAÇÃO ───────────────────────────────
+    const evtType = payload.type || 'unknown';
+    const evtNotif = payload.notification || '';
+    const evtPhone = payload.phone || payload.chatId || '';
+    const evtIsGroup = payload.isGroup || false;
+    const evtAction = payload.action || payload.event || payload.data?.action || payload.data?.event || '';
+    const evtParticipant = payload.participantPhone || payload.participant || payload.data?.participantPhone || payload.data?.participant || '';
+    const evtParticipants = payload.participants || payload.data?.participants || [];
+    
+    // Log compacto para TODOS os eventos (exceto status callbacks de leitura)
+    const isStatusCb = evtType === 'MessageStatusCallback';
+    const isReadStatus = isStatusCb && ['READ', 'READ_BY_ME', 'PLAYED', 'DELIVERED'].includes(payload.status || '');
+    
+    if (!isReadStatus) {
+      console.log(`[zapi-webhook] 📋 EVENT type=${evtType} notification=${evtNotif} action=${evtAction} phone=${evtPhone} isGroup=${evtIsGroup} participant=${evtParticipant} participants=${JSON.stringify(evtParticipants)} instanceId=${payload.instanceId || ''}`);
+    }
+    
+    // Log detalhado APENAS para eventos de grupo (participantes)
+    const isGroupParticipantEvent = 
+      evtType === 'GroupParticipantsUpdate' ||
+      evtType === 'group-participants.update' ||
+      evtType === 'onGroupParticipantsUpdate' ||
+      evtNotif.includes('GROUP_PARTICIPANT') ||
+      evtAction.includes('add') || evtAction.includes('remove') || evtAction.includes('leave') || evtAction.includes('join');
+    
+    if (isGroupParticipantEvent) {
+      console.log(`[zapi-webhook] 🚨 GROUP PARTICIPANT EVENT DETECTED! Full payload:`, JSON.stringify(payload, null, 2));
+    } else if (!isReadStatus) {
+      // Log full payload only for non-read-status, non-group events for debugging
+      console.log('[zapi-webhook] Received payload:', JSON.stringify(payload, null, 2));
+    }
+    // ─── FIM LOG RESUMIDO ────────────────────────────────────────────────
 
     // Check if this is a message status callback
-    if (payload.type === 'MessageStatusCallback' && payload.status && payload.ids) {
+    if (isStatusCb && payload.status && payload.ids) {
       return await handleMessageStatusCallback(supabase, payload);
     }
 
