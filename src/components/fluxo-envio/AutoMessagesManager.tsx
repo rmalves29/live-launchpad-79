@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, UserPlus, UserMinus, MessageSquare } from 'lucide-react';
+import { Plus, Trash2, UserPlus, UserMinus, MessageSquare, Upload, X, Image } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -31,6 +31,11 @@ interface AutoMessage {
 interface FeGroup {
   id: string;
   group_name: string;
+}
+
+interface FeCampaign {
+  id: string;
+  name: string;
 }
 
 export default function AutoMessagesManager() {
