@@ -583,13 +583,14 @@ export default function SendFlow() {
           groupIds: selectedGroupArray,
           messageTemplate,
           perGroupDelaySeconds,
-          perProductDelayMinutes: perProductDelayMinutes || 3, // Padrão 3 minutos
+          perProductDelayMinutes: perProductDelayMinutes || 3,
           useRandomDelay,
           minGroupDelaySeconds,
           maxGroupDelaySeconds
         },
         selectedProductList,
-        selectedGroupList
+        selectedGroupList,
+        scheduledAt
       );
 
       if (jobId) {
