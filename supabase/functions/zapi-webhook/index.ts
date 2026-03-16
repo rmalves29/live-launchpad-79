@@ -430,6 +430,11 @@ serve(async (req) => {
           const normalizedPhone = normalizeParticipantPhone(rawPhone);
           if (!normalizedPhone || isLid(normalizedPhone)) continue;
 
+          if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
+            console.warn(`[zapi-webhook] Invalid participant phone resolved from ${rawPhone}: ${normalizedPhone}`);
+            continue;
+          }
+
           const dedupeKey = `${eventTenantId}:${groupJid}:${normalizedPhone}:${feEventType}:${eventTimestamp}`;
           if (isDuplicateGroupEvent(dedupeKey)) {
             continue;
