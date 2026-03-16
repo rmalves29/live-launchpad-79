@@ -124,6 +124,17 @@ export default function GroupsManager() {
     fetchGroups();
   };
 
+  const saveInviteLink = async () => {
+    if (!editingLink) return;
+    await supabase
+      .from('fe_groups' as any)
+      .update({ invite_link: editingLink.invite_link || null } as any)
+      .eq('id', editingLink.id);
+    toast({ title: 'Link atualizado' });
+    setEditingLink(null);
+    fetchGroups();
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
