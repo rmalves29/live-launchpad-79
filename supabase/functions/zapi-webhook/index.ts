@@ -29,6 +29,11 @@ interface ZAPIWebhookPayload {
   senderPhone?: string;
   senderName?: string;
   participantPhone?: string;
+  participant?: string;
+  participants?: string[];
+  groupId?: string;
+  action?: string;
+  event?: string;
   text?: {
     message?: string;
   };
@@ -38,25 +43,31 @@ interface ZAPIWebhookPayload {
   momment?: number;
   timestamp?: number;
   type?: string;
-  // Message status callback fields
   status?: string;
   ids?: string[];
   instanceId?: string;
-  // Message ID for deduplication
   messageId?: string;
   zapiMessageId?: string;
+  data?: {
+    action?: string;
+    event?: string;
+    participants?: string[];
+    participant?: string;
+    participantPhone?: string;
+    phone?: string;
+    groupId?: string;
+    chatId?: string;
+    timestamp?: number;
+  };
 }
 
-// Cache to prevent duplicate message processing (in-memory, per instance)
 const processedMessages = new Map<string, number>();
-const MESSAGE_CACHE_TTL_MS = 60000; // 60 seconds TTL
-
-// Cache to track which products were processed for each message (prevents duplicates within same message)
-// Key format: "messageId:productCode" or "phone:messageHash:productCode"
+const MESSAGE_CACHE_TTL_MS = 60000;
 const processedProductsInMessage = new Map<string, number>();
-const PRODUCT_CACHE_TTL_MS = 30000; // 30 seconds TTL
+const PRODUCT_CACHE_TTL_MS = 30000;
+const processedGroupEvents = new Map<string, number>();
+const GROUP_EVENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
-// Clean old entries from cache periodically
 function cleanMessageCache() {
   const now = Date.now();
   for (const [key, timestamp] of processedMessages.entries()) {
@@ -64,51 +75,68 @@ function cleanMessageCache() {
       processedMessages.delete(key);
     }
   }
-  // Also clean product cache
   for (const [key, timestamp] of processedProductsInMessage.entries()) {
     if (now - timestamp > PRODUCT_CACHE_TTL_MS) {
       processedProductsInMessage.delete(key);
     }
   }
-}
-
-// Check if a specific product was already processed for a given message context
-// This prevents duplicates when Z-API sends the same webhook multiple times
-function isProductAlreadyProcessedForMessage(
-  messageId: string | undefined, 
-  phone: string, 
-  messageText: string,
-  productCode: string
-): boolean {
-  const messageKey = messageId || `${phone}:${hashMessage(messageText)}`;
-  const productKey = `${messageKey}:${productCode}`;
-  
-  if (processedProductsInMessage.has(productKey)) {
-    console.log(`[zapi-webhook] 🔄 DUPLICATE product ${productCode} for message already processed`);
-    return true;
+  for (const [key, timestamp] of processedGroupEvents.entries()) {
+    if (now - timestamp > GROUP_EVENT_CACHE_TTL_MS) {
+      processedGroupEvents.delete(key);
+    }
   }
-  
-  processedProductsInMessage.set(productKey, Date.now());
-  return false;
 }
 
-// Simple hash function for message deduplication when no messageId is available
+function normalizeDigits(value?: string | null): string {
+  return (value || '').replace(/\D/g, '');
+}
+
+function normalizeParticipantPhone(value?: string | null): string {
+  const digits = normalizeDigits(value);
+  return digits.startsWith('55') ? digits.slice(2) : digits;
+}
+
 function hashMessage(text: string): string {
   let hash = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash = hash & hash;
   }
   return hash.toString(36);
 }
 
-// Check if message was already processed (returns true if duplicate)
-function isDuplicateMessage(messageId: string | undefined, phone: string, messageText: string): boolean {
-  // Clean cache first
+function isDuplicateGroupEvent(key: string): boolean {
   cleanMessageCache();
-  
-  // If we have a messageId, use it (most reliable)
+  if (processedGroupEvents.has(key)) {
+    console.log(`[zapi-webhook] 🔄 DUPLICATE group event ignored: ${key}`);
+    return true;
+  }
+  processedGroupEvents.set(key, Date.now());
+  return false;
+}
+
+function isProductAlreadyProcessedForMessage(
+  messageId: string | undefined,
+  phone: string,
+  messageText: string,
+  productCode: string
+): boolean {
+  const messageKey = messageId || `${phone}:${hashMessage(messageText)}`;
+  const productKey = `${messageKey}:${productCode}`;
+
+  if (processedProductsInMessage.has(productKey)) {
+    console.log(`[zapi-webhook] 🔄 DUPLICATE product ${productCode} for message already processed`);
+    return true;
+  }
+
+  processedProductsInMessage.set(productKey, Date.now());
+  return false;
+}
+
+function isDuplicateMessage(messageId: string | undefined, phone: string, messageText: string): boolean {
+  cleanMessageCache();
+
   if (messageId) {
     if (processedMessages.has(messageId)) {
       console.log(`[zapi-webhook] 🔄 DUPLICATE detected by messageId: ${messageId}`);
@@ -117,20 +145,18 @@ function isDuplicateMessage(messageId: string | undefined, phone: string, messag
     processedMessages.set(messageId, Date.now());
     return false;
   }
-  
-  // Fallback: create a composite key from phone + message content + timestamp window
-  // This handles cases where Z-API sends the same message twice within 10 seconds
+
   const compositeKey = `${phone}:${messageText}`;
   const existingTimestamp = processedMessages.get(compositeKey);
-  
+
   if (existingTimestamp) {
     const timeDiff = Date.now() - existingTimestamp;
-    if (timeDiff < 10000) { // 10 second window
+    if (timeDiff < 10000) {
       console.log(`[zapi-webhook] 🔄 DUPLICATE detected by content (within ${timeDiff}ms): ${compositeKey.substring(0, 50)}...`);
       return true;
     }
   }
-  
+
   processedMessages.set(compositeKey, Date.now());
   return false;
 }
