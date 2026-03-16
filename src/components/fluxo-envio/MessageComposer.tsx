@@ -225,6 +225,7 @@ export default function MessageComposer() {
 
       toast({ title: sendMode === 'instant' ? 'Mensagens enviadas!' : 'Mensagens agendadas!' });
       setContentText('');
+      setMentionAll(false);
       clearMedia();
       setSelectedGroupIds([]);
       fetchData();
