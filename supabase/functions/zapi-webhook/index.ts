@@ -247,14 +247,19 @@ serve(async (req) => {
       }
 
       let eventTenantId: string | null = null;
+      let zapiCreds: { zapi_instance_id: string | null; zapi_token: string | null; zapi_client_token: string | null } | null = null;
+
       if (instanceId) {
         const { data: integ } = await supabase
           .from('integration_whatsapp')
-          .select('tenant_id')
+          .select('tenant_id, zapi_instance_id, zapi_token, zapi_client_token')
           .eq('zapi_instance_id', instanceId)
           .eq('is_active', true)
           .maybeSingle();
-        if (integ) eventTenantId = integ.tenant_id;
+        if (integ) {
+          eventTenantId = integ.tenant_id;
+          zapiCreds = { zapi_instance_id: integ.zapi_instance_id, zapi_token: integ.zapi_token, zapi_client_token: integ.zapi_client_token };
+        }
       }
 
       const isJoinEvent = ['add', 'join', 'invite', 'introduced'].includes(normalizedAction);
@@ -262,6 +267,113 @@ serve(async (req) => {
 
       if (eventTenantId && groupJid && (isJoinEvent || isLeaveEvent)) {
         const feEventType = isJoinEvent ? 'join' : 'leave';
+
+        // ─── LID Resolution: detect if participants are LIDs (not real phones) ───
+        // WhatsApp LIDs are internal identifiers (15+ digits), not phone numbers.
+        // Brazilian phones max out at 13 digits (55 + 2 DDD + 9 number).
+        const isLid = (val: string): boolean => {
+          const digits = normalizeDigits(val);
+          return digits.length > 13;
+        };
+
+        const hasLidOnly = participants.length > 0 && participants.every(p => isLid(p));
+
+        if (hasLidOnly && zapiCreds?.zapi_instance_id && zapiCreds?.zapi_token) {
+          console.log(`[zapi-webhook] 🔍 Participants are LIDs, resolving via group-metadata...`);
+          const baseUrlMeta = `https://api.z-api.io/instances/${zapiCreds.zapi_instance_id}/token/${zapiCreds.zapi_token}`;
+          const headersMeta: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (zapiCreds.zapi_client_token) headersMeta['Client-Token'] = zapiCreds.zapi_client_token;
+
+          try {
+            const metaRes = await fetch(`${baseUrlMeta}/group-metadata/${groupJid}`, { method: 'GET', headers: headersMeta });
+            const metadata = await metaRes.json();
+            console.log(`[zapi-webhook] group-metadata response status=${metaRes.status}, participants count=${metadata?.participants?.length || 0}`);
+
+            if (metadata?.participants && Array.isArray(metadata.participants)) {
+              // Get all real phone numbers currently in the group
+              const currentGroupPhones = metadata.participants
+                .map((p: any) => normalizeParticipantPhone(p.phone))
+                .filter((p: string) => p && !isLid(p));
+
+              if (isJoinEvent) {
+                // For JOIN: find phones in group that DON'T have a recent join event
+                const recentWindow = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+                const { data: recentJoins } = await supabase
+                  .from('fe_group_events')
+                  .select('phone')
+                  .eq('tenant_id', eventTenantId)
+                  .eq('group_jid', groupJid)
+                  .eq('event_type', 'join')
+                  .gte('created_at', recentWindow);
+
+                const recentJoinPhones = new Set((recentJoins || []).map((e: any) => e.phone));
+                // Also check which phones already had a join event ever (to compare)
+                const { data: allKnownEvents } = await supabase
+                  .from('fe_group_events')
+                  .select('phone, event_type')
+                  .eq('tenant_id', eventTenantId)
+                  .eq('group_jid', groupJid)
+                  .order('created_at', { ascending: false });
+
+                // Build a set of phones that are "known members" (last event was join)
+                const knownMembers = new Set<string>();
+                const seenPhones = new Set<string>();
+                for (const ev of (allKnownEvents || [])) {
+                  if (!seenPhones.has(ev.phone)) {
+                    seenPhones.add(ev.phone);
+                    if (ev.event_type === 'join') knownMembers.add(ev.phone);
+                  }
+                }
+
+                // New participants = in group now but not known members and not recently joined
+                const newPhones = currentGroupPhones.filter((p: string) =>
+                  !knownMembers.has(p) && !recentJoinPhones.has(p)
+                );
+
+                if (newPhones.length > 0) {
+                  participants = newPhones;
+                  console.log(`[zapi-webhook] ✅ Resolved LID → real phones for JOIN: ${JSON.stringify(newPhones)}`);
+                } else {
+                  // Fallback: couldn't determine who's new, skip
+                  console.warn(`[zapi-webhook] ⚠️ Could not resolve new participants from LID. Group has ${currentGroupPhones.length} members, ${knownMembers.size} known.`);
+                  participants = [];
+                }
+              } else {
+                // For LEAVE: find phones we know as members but NOT in current group
+                const { data: allKnownEvents } = await supabase
+                  .from('fe_group_events')
+                  .select('phone, event_type')
+                  .eq('tenant_id', eventTenantId)
+                  .eq('group_jid', groupJid)
+                  .order('created_at', { ascending: false });
+
+                const knownMembers = new Set<string>();
+                const seenPhones = new Set<string>();
+                for (const ev of (allKnownEvents || [])) {
+                  if (!seenPhones.has(ev.phone)) {
+                    seenPhones.add(ev.phone);
+                    if (ev.event_type === 'join') knownMembers.add(ev.phone);
+                  }
+                }
+
+                const currentSet = new Set(currentGroupPhones);
+                const leftPhones = Array.from(knownMembers).filter(p => !currentSet.has(p));
+
+                if (leftPhones.length > 0) {
+                  participants = leftPhones;
+                  console.log(`[zapi-webhook] ✅ Resolved LID → real phones for LEAVE: ${JSON.stringify(leftPhones)}`);
+                } else {
+                  console.warn(`[zapi-webhook] ⚠️ Could not resolve departed participants from LID.`);
+                  participants = [];
+                }
+              }
+            }
+          } catch (metaErr: any) {
+            console.error(`[zapi-webhook] group-metadata call failed: ${metaErr.message}`);
+            participants = []; // Don't process with invalid LID phones
+          }
+        }
+        // ─── FIM LID Resolution ───
 
         const { data: feGroup } = await supabase
           .from('fe_groups')
@@ -272,7 +384,7 @@ serve(async (req) => {
 
         for (const rawPhone of participants) {
           const normalizedPhone = normalizeParticipantPhone(rawPhone);
-          if (!normalizedPhone) continue;
+          if (!normalizedPhone || isLid(normalizedPhone)) continue;
 
           const dedupeKey = `${eventTenantId}:${groupJid}:${normalizedPhone}:${feEventType}:${eventTimestamp}`;
           if (isDuplicateGroupEvent(dedupeKey)) {
@@ -321,13 +433,8 @@ serve(async (req) => {
               .or(`group_id.eq.${feGroup.id},group_id.is.null`);
 
             if (autoMsgs && autoMsgs.length > 0) {
-              const { data: creds } = await supabase
-                .from('integration_whatsapp')
-                .select('zapi_instance_id, zapi_token, zapi_client_token')
-                .eq('tenant_id', eventTenantId)
-                .eq('provider', 'zapi')
-                .eq('is_active', true)
-                .maybeSingle();
+              // Use already-fetched creds or fetch if not available
+              const creds = zapiCreds;
 
               if (creds?.zapi_instance_id && creds?.zapi_token) {
                 const baseUrl = `https://api.z-api.io/instances/${creds.zapi_instance_id}/token/${creds.zapi_token}`;
