@@ -182,6 +182,11 @@ export default function SendFlow() {
   const [minGroupDelaySeconds, setMinGroupDelaySeconds] = useState(3);
   const [maxGroupDelaySeconds, setMaxGroupDelaySeconds] = useState(15);
   
+  // Estados de agendamento
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  
   // Estados de controle
   const [loading, setLoading] = useState(false);
   const [loadingGroups, setLoadingGroups] = useState(false);
