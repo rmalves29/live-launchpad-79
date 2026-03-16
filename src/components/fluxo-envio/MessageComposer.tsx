@@ -319,6 +319,16 @@ export default function MessageComposer() {
                 onChange={(e) => setContentText(e.target.value)} rows={4} />
             </div>
 
+            {/* Mention all toggle */}
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
+              <Checkbox checked={mentionAll} onCheckedChange={(v) => setMentionAll(!!v)} id="mention-all" />
+              <label htmlFor="mention-all" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
+                <AtSign className="h-4 w-4 text-primary" />
+                Mencionar todos os participantes
+              </label>
+              <span className="text-xs text-muted-foreground ml-auto">Marca todos com @</span>
+            </div>
+
             {/* File upload for media */}
             {contentType !== 'text' && (
               <div>
