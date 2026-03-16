@@ -41,7 +41,8 @@ export default function SendingControl({ jobType, onResume }: SendingControlProp
     if (!tenant?.id) return;
 
     try {
-      const { data, error } = await supabase
+      // Check for paused jobs
+      const { data: pausedData, error: pausedError } = await supabase
         .from('sending_jobs')
         .select('*')
         .eq('tenant_id', tenant.id)
@@ -51,8 +52,26 @@ export default function SendingControl({ jobType, onResume }: SendingControlProp
         .limit(1)
         .maybeSingle();
 
-      if (error) throw error;
-      setPendingJob(data as SendingJob | null);
+      if (pausedError) throw pausedError;
+      
+      if (pausedData) {
+        setPendingJob(pausedData as SendingJob);
+        return;
+      }
+
+      // Check for scheduled jobs
+      const { data: scheduledData, error: scheduledError } = await supabase
+        .from('sending_jobs')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .eq('job_type', jobType)
+        .eq('status', 'scheduled')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (scheduledError) throw scheduledError;
+      setPendingJob(scheduledData as SendingJob | null);
     } catch (error) {
       console.error('Erro ao verificar jobs pendentes:', error);
     }
