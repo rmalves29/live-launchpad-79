@@ -155,7 +155,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: SendRequest = await req.json();
-    const { tenant_id, group_ids, message_ids, content_type, content_text, media_url } = body;
+    const { tenant_id, group_ids, message_ids, content_type, content_text, media_url, mention_all } = body;
 
     if (!tenant_id || !group_ids?.length) {
       return new Response(JSON.stringify({ error: "tenant_id e group_ids são obrigatórios" }), {
