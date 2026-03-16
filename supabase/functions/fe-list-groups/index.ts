@@ -191,9 +191,30 @@ serve(async (req) => {
       console.log(`[fe-list-groups] ${adminGroups.length}/${allGroups.length} groups after filter (admin_only=${admin_only})`);
     }
 
-    // Upsert into fe_groups
+    // Upsert into fe_groups, fetching invite links when missing
     let added = 0;
     for (const g of filteredGroups) {
+      let inviteLink = g.invitationLink || null;
+
+      // If no invite link from metadata, try dedicated endpoint
+      if (!inviteLink && g.phone) {
+        try {
+          const linkRes = await fetch(
+            `${baseUrl}/invite-link/${g.phone}`,
+            { headers }
+          );
+          if (linkRes.ok) {
+            const linkData = await linkRes.json();
+            inviteLink = linkData.invitationLink || linkData.inviteLink || linkData.link || null;
+            if (inviteLink) {
+              console.log(`[fe-list-groups] Got invite link for ${g.phone}: ${inviteLink}`);
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[fe-list-groups] invite-link error for ${g.phone}: ${err.message}`);
+        }
+      }
+
       const upsertData: any = {
         tenant_id,
         group_jid: g.phone,
@@ -201,9 +222,8 @@ serve(async (req) => {
         participant_count: g.participantsCount || g.size || 0,
       };
 
-      // Save invite link if available
-      if (g.invitationLink) {
-        upsertData.invite_link = g.invitationLink;
+      if (inviteLink) {
+        upsertData.invite_link = inviteLink;
       }
 
       const { error } = await supabase
