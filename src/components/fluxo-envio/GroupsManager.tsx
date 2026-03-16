@@ -229,13 +229,20 @@ export default function GroupsManager() {
                       <Switch checked={g.is_active} onCheckedChange={() => toggleActive(g)} />
                     </TableCell>
                     <TableCell className="text-center">
-                      {g.invite_link ? (
-                        <a href={g.invite_link} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-4 w-4 text-primary inline" />
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
+                      <div className="flex items-center justify-center gap-1">
+                        {g.invite_link ? (
+                          <a href={g.invite_link} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-4 w-4 text-primary inline" />
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7"
+                          onClick={() => setEditingLink({ id: g.id, invite_link: g.invite_link || '' })}
+                          title="Editar link">
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" onClick={() => deleteGroup(g.id)}>
