@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
+import { fetchAllTenantGroupEvents, summarizeFlowEvents } from '@/lib/fluxo-envio-metrics';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -56,30 +57,41 @@ export default function CampaignsManager() {
 
   const fetchStats = useCallback(async () => {
     if (!tenant || campaigns.length === 0) return;
-    const stats: Record<string, CampaignStats> = {};
 
-    for (const c of campaigns) {
-      const { count: clickCount } = await supabase
-        .from('fe_link_clicks' as any)
-        .select('id', { count: 'exact', head: true })
-        .eq('campaign_id', c.id);
+    const tenantEvents = await fetchAllTenantGroupEvents(tenant.id);
+    const statsEntries = await Promise.all(campaigns.map(async (campaign) => {
+      const [{ count: clickCount }, { count: gCount }, { data: campaignGroups }] = await Promise.all([
+        supabase
+          .from('fe_link_clicks' as any)
+          .select('id', { count: 'exact', head: true })
+          .eq('campaign_id', campaign.id),
+        supabase
+          .from('fe_campaign_groups' as any)
+          .select('id', { count: 'exact', head: true })
+          .eq('campaign_id', campaign.id),
+        supabase
+          .from('fe_campaign_groups' as any)
+          .select('group_id, fe_groups!inner(id, group_jid)')
+          .eq('campaign_id', campaign.id),
+      ]);
 
-      const { count: entryCount } = await supabase
-        .from('fe_link_clicks' as any)
-        .select('id', { count: 'exact', head: true })
-        .eq('campaign_id', c.id)
-        .not('redirected_group_id', 'is', null);
+      const linkedGroups = ((campaignGroups || []) as any[])
+        .map((item) => ({ id: item.group_id, group_jid: item.fe_groups?.group_jid }))
+        .filter((item) => item.group_jid);
 
-      const { count: gCount } = await supabase
-        .from('fe_campaign_groups' as any)
-        .select('id', { count: 'exact', head: true })
-        .eq('campaign_id', c.id);
-
+      const eventSummary = summarizeFlowEvents(tenantEvents, linkedGroups as any);
       const clicks = clickCount || 0;
-      const entries = entryCount || 0;
-      stats[c.id] = { clicks, entries, entryRate: clicks > 0 ? (entries / clicks) * 100 : 0, groupCount: gCount || 0 };
-    }
-    setCampaignStats(stats);
+      const entries = eventSummary.entries || 0;
+
+      return [campaign.id, {
+        clicks,
+        entries,
+        entryRate: clicks > 0 ? (entries / clicks) * 100 : 0,
+        groupCount: gCount || 0,
+      }] as const;
+    }));
+
+    setCampaignStats(Object.fromEntries(statsEntries));
   }, [tenant, campaigns]);
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
