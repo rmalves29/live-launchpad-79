@@ -98,7 +98,8 @@ export const useBackendSendFlow = () => {
   const startSendFlowJob = useCallback(async (
     jobData: SendFlowJobData,
     products: TaskGenerationProduct[],
-    groups: TaskGenerationGroup[]
+    groups: TaskGenerationGroup[],
+    scheduledAt?: string | null
   ): Promise<string | null> => {
     if (!tenant?.id) {
       toast({ title: 'Erro', description: 'Tenant não encontrado', variant: 'destructive' });
