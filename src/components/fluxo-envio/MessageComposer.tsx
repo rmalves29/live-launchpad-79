@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X, Ban, Eye, Circle, Pencil } from 'lucide-react';
+import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X, Ban, Eye, Circle, Pencil, AtSign } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -46,6 +46,7 @@ export default function MessageComposer() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
+  const [mentionAll, setMentionAll] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [viewMessage, setViewMessage] = useState<any>(null);
 
@@ -204,6 +205,7 @@ export default function MessageComposer() {
             content_type: contentType,
             content_text: contentText,
             media_url: mediaUrl,
+            mention_all: mentionAll,
           },
         });
         if (fnError) throw fnError;
@@ -223,6 +225,7 @@ export default function MessageComposer() {
 
       toast({ title: sendMode === 'instant' ? 'Mensagens enviadas!' : 'Mensagens agendadas!' });
       setContentText('');
+      setMentionAll(false);
       clearMedia();
       setSelectedGroupIds([]);
       fetchData();
@@ -316,6 +319,16 @@ export default function MessageComposer() {
               <Label>Mensagem</Label>
               <Textarea placeholder="Digite sua mensagem..." value={contentText}
                 onChange={(e) => setContentText(e.target.value)} rows={4} />
+            </div>
+
+            {/* Mention all toggle */}
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
+              <Checkbox checked={mentionAll} onCheckedChange={(v) => setMentionAll(!!v)} id="mention-all" />
+              <label htmlFor="mention-all" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
+                <AtSign className="h-4 w-4 text-primary" />
+                Mencionar todos os participantes
+              </label>
+              <span className="text-xs text-muted-foreground ml-auto">Marca todos com @</span>
             </div>
 
             {/* File upload for media */}
