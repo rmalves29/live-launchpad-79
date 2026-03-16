@@ -52,7 +52,7 @@ export default function ReportsPanel() {
     try {
       const since = getPeriodDate();
 
-      const [{ data: campaigns }, allEventsResult, { data: feGroups }] = await Promise.all([
+      const [{ data: campaigns }, allEventsResult, { data: feGroups }, { data: campaignGroups }] = await Promise.all([
         supabase
           .from('fe_campaigns' as any)
           .select('id, name, slug')
@@ -62,15 +62,35 @@ export default function ReportsPanel() {
           .from('fe_groups' as any)
           .select('id, group_jid, group_name')
           .eq('tenant_id', tenant.id),
+        supabase
+          .from('fe_campaign_groups' as any)
+          .select('group_id')
+          .then((res: any) => res),
       ]);
+
+      // Only consider groups that belong to at least one campaign
+      const campaignGroupIds = new Set(((campaignGroups?.data || campaignGroups || []) as any[]).map((cg: any) => cg.group_id));
+      const campaignGroupJids = new Set(
+        ((feGroups || []) as any[])
+          .filter((g: any) => campaignGroupIds.has(g.id))
+          .map((g: any) => g.group_jid)
+      );
 
       const campaignIds = (campaigns || []).map((c: any) => c.id);
       const events = allEventsResult || [];
-      const summary = summarizeFlowEvents(events);
+
+      // Filter events to only groups in campaigns
+      const filteredEvents = events.filter((e) => {
+        const matchId = !!e.group_id && campaignGroupIds.has(e.group_id);
+        const matchJid = !!e.group_jid && campaignGroupJids.has(e.group_jid);
+        return matchId || matchJid;
+      });
+
+      const summary = summarizeFlowEvents(filteredEvents);
 
       setJoinsCount(summary.entries);
       setLeavesCount(summary.exits);
-      setRecentEvents(events.slice(0, 30));
+      setRecentEvents(filteredEvents.slice(0, 30));
 
       if (campaignIds.length > 0) {
         const { data: clicks, count } = await supabase
@@ -95,11 +115,11 @@ export default function ReportsPanel() {
         setCampaignStats([]);
       }
 
-      const groupJids = [...new Set(events.map((event) => event.group_jid).filter(Boolean))] as string[];
+      const groupJids = [...new Set(filteredEvents.map((event) => event.group_jid).filter(Boolean))] as string[];
       const gStats = groupJids.map((jid) => {
         const grp = ((feGroups || []) as any[]).find((group) => group.group_jid === jid);
-        const gJoins = events.filter((event) => event.group_jid === jid && event.event_type === 'join').length;
-        const gLeaves = events.filter((event) => event.group_jid === jid && event.event_type === 'leave').length;
+        const gJoins = filteredEvents.filter((event) => event.group_jid === jid && event.event_type === 'join').length;
+        const gLeaves = filteredEvents.filter((event) => event.group_jid === jid && event.event_type === 'leave').length;
         return { jid, name: grp?.group_name || jid, joins: gJoins, leaves: gLeaves, net: gJoins - gLeaves };
       }).sort((a, b) => b.net - a.net);
 
