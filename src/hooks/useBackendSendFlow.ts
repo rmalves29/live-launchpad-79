@@ -124,23 +124,26 @@ export const useBackendSendFlow = () => {
 
       // 2. Create job
       const totalItems = jobData.productIds.length * jobData.groupIds.length;
+      const isScheduled = !!scheduledAt;
 
       const { data: job, error: jobError } = await supabase
         .from('sending_jobs')
         .insert({
           tenant_id: tenant.id,
           job_type: 'sendflow',
-          status: 'running',
+          status: isScheduled ? 'scheduled' : 'running',
           job_data: {
             ...jobData,
             sentMessages: 0,
-            errorMessages: 0
+            errorMessages: 0,
+            ...(isScheduled ? { scheduled_at: scheduledAt } : {})
           } as any,
           total_items: totalItems,
           processed_items: 0,
           current_index: 0,
-          started_at: new Date().toISOString()
-        })
+          started_at: new Date().toISOString(),
+          scheduled_at: isScheduled ? scheduledAt : null
+        } as any)
         .select('id')
         .single();
 
