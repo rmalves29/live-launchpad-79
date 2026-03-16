@@ -52,7 +52,7 @@ export default function ReportsPanel() {
     try {
       const since = getPeriodDate();
 
-      const [{ data: campaigns }, allEventsResult, { data: feGroups }] = await Promise.all([
+      const [{ data: campaigns }, allEventsResult, { data: feGroups }, { data: campaignGroups }] = await Promise.all([
         supabase
           .from('fe_campaigns' as any)
           .select('id, name, slug')
@@ -62,6 +62,10 @@ export default function ReportsPanel() {
           .from('fe_groups' as any)
           .select('id, group_jid, group_name')
           .eq('tenant_id', tenant.id),
+        supabase
+          .from('fe_campaign_groups' as any)
+          .select('group_id')
+          .then((res: any) => res),
       ]);
 
       const campaignIds = (campaigns || []).map((c: any) => c.id);
