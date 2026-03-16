@@ -1,62 +1,51 @@
 
 
-## Plano: Desconto PIX configurável para todas as integrações de pagamento
+# Agendamento de Postagem no SendFlow
 
-### Visão Geral
-Adicionar um campo configurável de desconto PIX em cada integração de pagamento (Mercado Pago, Pagar.me, App Max), um seletor de forma de pagamento (PIX ou Cartão) no checkout público, e aplicar o desconto automaticamente sobre o subtotal dos produtos quando PIX for selecionado.
+## Resumo
 
-### 1. Banco de Dados — Adicionar coluna `pix_discount_percent`
+Adicionar um campo de data/hora de agendamento na página SendFlow. Quando o usuário define um horário futuro, o job é criado com status `scheduled` e um campo `scheduled_at`. Um cron job (já existente para `fe-process-scheduled`) ou lógica no `sendflow-process` verifica se o horário chegou antes de iniciar o processamento.
 
-Criar migration para adicionar o campo nas 3 tabelas de integração:
+## Como vai funcionar
 
-```sql
-ALTER TABLE integration_pagarme ADD COLUMN pix_discount_percent numeric DEFAULT 0;
-ALTER TABLE integration_mp ADD COLUMN pix_discount_percent numeric DEFAULT 0;
-ALTER TABLE integration_appmax ADD COLUMN pix_discount_percent numeric DEFAULT 0;
-```
+1. O usuário seleciona produtos, grupos, configura delays normalmente
+2. Opcionalmente define uma data/hora para início do envio
+3. Se agendado: job é criado com status `scheduled` e `scheduled_at` no `job_data`. O backend **não** processa até o horário chegar
+4. Se imediato (sem agendamento): comportamento atual, sem mudanças
 
-Também atualizar a trigger `validate_order_total_on_payment` para reconhecer a tag `[PIX_DISCOUNT]` nas observações e não corrigir indevidamente o total quando houver desconto PIX.
+## Alterações
 
-### 2. Telas de Integração — Campo de configuração
+### 1. Frontend - `src/pages/sendflow/Index.tsx`
+- Adicionar estado `scheduledAt` (string ISO ou null)
+- Adicionar UI com date/time picker antes do botão de envio: campo de data e hora (inputs nativos `date` e `time`)
+- Switch/checkbox "Agendar envio" que revela os campos
+- Quando agendado, o botão muda para "Agendar Envio" com ícone de relógio
+- Passar `scheduledAt` para o hook `useBackendSendFlow`
 
-Adicionar input numérico "Desconto PIX (%)" nos 3 componentes:
-- `PagarMeIntegration.tsx` — campo `pix_discount_percent`
-- `PaymentIntegrations.tsx` (Mercado Pago) — campo `pix_discount_percent`
-- `AppmaxIntegration.tsx` — campo `pix_discount_percent`
+### 2. Hook - `src/hooks/useBackendSendFlow.ts`
+- Aceitar `scheduledAt?: string` no `startSendFlowJob`
+- Se `scheduledAt` definido: criar job com status `scheduled` em vez de `running`, incluir `scheduled_at` no `job_data`
+- **Não** invocar `sendflow-process` imediatamente quando agendado
+- Toast: "Envio agendado para DD/MM/YYYY HH:mm"
 
-Cada um salva/carrega o valor da respectiva tabela.
+### 3. Edge Function - `supabase/functions/sendflow-process/index.ts`
+- Ao receber um job com status `scheduled`: verificar se `scheduled_at` já passou
+  - Se sim: mudar para `running` e processar
+  - Se não: retornar sem processar (o cron vai tentar novamente)
 
-### 3. Checkout Público (`PublicCheckout.tsx`)
+### 4. Cron Job - Nova Edge Function `sendflow-check-scheduled`
+- Roda a cada minuto via pg_cron
+- Busca jobs com status `scheduled` e `scheduled_at <= now()`
+- Para cada um: muda status para `running` e invoca `sendflow-process`
+- SQL do cron a ser executado no Supabase
 
-**Buscar config de desconto PIX**: Ao carregar o tenant, consultar as 3 tabelas de integração ativas para obter o `pix_discount_percent` configurado (usa a mesma lógica de prioridade: AppMax > Pagar.me > MP).
+### 5. Coluna no banco
+- Adicionar coluna `scheduled_at` (timestamptz, nullable) na tabela `sending_jobs` via query SQL
 
-**Seletor de forma de pagamento**: Após as opções de frete e antes do resumo, exibir um radio group com:
-- PIX (com badge mostrando "X% OFF" se configurado)
-- Cartão de Crédito
+### 6. UI de jobs agendados
+- No `SendingProgressLive` ou `SendingControl`, mostrar jobs agendados com horário previsto e opção de cancelar
 
-**Cálculo do desconto**: Quando PIX for selecionado, aplicar `pix_discount_percent` sobre o subtotal dos produtos (excluindo frete e cupom). Exibir o valor original riscado e o valor com desconto.
-
-**Enviar ao backend**: Incluir `payment_method` e `pix_discount` no payload enviado ao `create-payment`.
-
-### 4. Edge Function `create-payment`
-
-- Receber `payment_method` e `pix_discount` no payload
-- Recalcular total: `productsTotal - pixDiscount - couponDiscount + shippingCost`
-- Adicionar tag `[PIX_DISCOUNT] R$ X.XX` na observação do pedido
-- Passar o total correto para o gateway de pagamento
-
-### 5. Trigger `validate_order_total_on_payment`
-
-Atualizar para extrair `[PIX_DISCOUNT]` da observação via regex, subtraindo do total esperado para evitar "correções" indevidas.
-
-### Resumo de arquivos afetados
-
-| Arquivo | Alteração |
-|---|---|
-| Migration SQL | Adicionar `pix_discount_percent` em 3 tabelas + atualizar trigger |
-| `PagarMeIntegration.tsx` | Campo de config desconto PIX |
-| `PaymentIntegrations.tsx` | Campo de config desconto PIX |
-| `AppmaxIntegration.tsx` | Campo de config desconto PIX |
-| `PublicCheckout.tsx` | Seletor PIX/Cartão + cálculo desconto + UI |
-| `create-payment/index.ts` | Receber/processar desconto PIX |
+## Regras mantidas
+- Todas as configurações de envio (anti-bloqueio, delays entre grupos/produtos, random delay) são salvas no `job_data` e respeitadas normalmente quando o processamento começa
+- A única diferença é **quando** o processamento inicia
 
