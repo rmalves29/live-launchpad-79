@@ -473,13 +473,26 @@ serve(async (req) => {
             feGroup.participant_count = newCount;
             await supabase.from('fe_groups').update({ participant_count: newCount }).eq('id', feGroup.id);
 
+            // Find campaigns this group belongs to
+            const { data: campaignLinks } = await supabase
+              .from('fe_campaign_groups')
+              .select('campaign_id')
+              .eq('group_id', feGroup.id);
+            const campaignIds = (campaignLinks || []).map((cl: any) => cl.campaign_id);
+
+            // Build OR filter: group_id matches OR group_id is null (all groups) OR campaign_id matches
+            let orFilter = `group_id.eq.${feGroup.id},group_id.is.null`;
+            if (campaignIds.length > 0) {
+              orFilter += `,campaign_id.in.(${campaignIds.join(',')})`;
+            }
+
             const { data: autoMsgs } = await supabase
               .from('fe_auto_messages')
               .select('*')
               .eq('tenant_id', eventTenantId)
               .eq('event_type', feEventType)
               .eq('is_active', true)
-              .or(`group_id.eq.${feGroup.id},group_id.is.null`);
+              .or(orFilter);
 
             if (autoMsgs && autoMsgs.length > 0) {
               // Use already-fetched creds or fetch if not available
