@@ -492,6 +492,7 @@ serve(async (req) => {
 
                 for (const autoMsg of autoMsgs) {
                   try {
+                    const phoneForSend = `55${normalizedPhone}`;
                     let text = autoMsg.content_text || '';
                     text = text.replace(/\{\{phone\}\}/g, normalizedPhone).replace(/\{\{group\}\}/g, feGroup.group_name || groupJid);
 
@@ -499,16 +500,18 @@ serve(async (req) => {
                       const sendResult = await fetch(`${baseUrl}/send-text`, {
                         method: 'POST',
                         headers,
-                        body: JSON.stringify({ phone: `55${normalizedPhone}`, message: text }),
+                        body: JSON.stringify({ phone: phoneForSend, message: text }),
                       });
-                      console.log(`[zapi-webhook] Auto-message text sent for ${feEventType} to 55${normalizedPhone}, status=${sendResult.status}`);
+                      const sendBody = await sendResult.text();
+                      console.log(`[zapi-webhook] Auto-message text result for ${feEventType} to ${phoneForSend}: status=${sendResult.status} body=${sendBody.substring(0, 300)}`);
                     } else if (autoMsg.content_type === 'image' && autoMsg.media_url) {
                       const sendResult = await fetch(`${baseUrl}/send-image`, {
                         method: 'POST',
                         headers,
-                        body: JSON.stringify({ phone: `55${normalizedPhone}`, image: autoMsg.media_url, caption: text }),
+                        body: JSON.stringify({ phone: phoneForSend, image: autoMsg.media_url, caption: text }),
                       });
-                      console.log(`[zapi-webhook] Auto-message image sent for ${feEventType} to 55${normalizedPhone}, status=${sendResult.status}`);
+                      const sendBody = await sendResult.text();
+                      console.log(`[zapi-webhook] Auto-message image result for ${feEventType} to ${phoneForSend}: status=${sendResult.status} body=${sendBody.substring(0, 300)}`);
                     }
                   } catch (amErr: any) {
                     console.error('[zapi-webhook] Auto-message error:', amErr.message);
