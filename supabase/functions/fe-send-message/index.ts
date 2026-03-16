@@ -31,34 +31,75 @@ async function getZAPICredentials(supabase: any, tenantId: string) {
   return { instanceId: data.zapi_instance_id, token: data.zapi_token, clientToken: data.zapi_client_token || "" };
 }
 
+async function getGroupParticipants(
+  baseUrl: string,
+  clientToken: string,
+  groupJid: string
+): Promise<string[]> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (clientToken) headers["Client-Token"] = clientToken;
+
+    const phone = groupJid.replace("@g.us", "");
+    const res = await fetch(`${baseUrl}/group-metadata/${phone}`, { method: "GET", headers });
+    if (!res.ok) {
+      console.log(`[fe-send-message] Failed to get group metadata: ${res.status}`);
+      return [];
+    }
+    const data = await res.json();
+    const participants: string[] = (data.participants || [])
+      .map((p: any) => (p.phone || p.id || "").replace("@c.us", "").replace(/\D/g, ""))
+      .filter((p: string) => p.length > 0);
+    console.log(`[fe-send-message] Group ${groupJid}: ${participants.length} participants for mention`);
+    return participants;
+  } catch (err: any) {
+    console.error(`[fe-send-message] Error fetching participants for mention:`, err.message);
+    return [];
+  }
+}
+
 async function sendToGroup(
   baseUrl: string,
   clientToken: string,
   groupJid: string,
   contentType: string,
   contentText?: string,
-  mediaUrl?: string
+  mediaUrl?: string,
+  mentionAll?: boolean
 ) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (clientToken) headers["Client-Token"] = clientToken;
 
-  // Z-API uses the group JID as the "phone" parameter for group messages
   const phone = groupJid;
+
+  // Get participants for mention if requested
+  let mentioned: string[] | undefined;
+  if (mentionAll) {
+    mentioned = await getGroupParticipants(baseUrl, clientToken, groupJid);
+    if (mentioned.length === 0) {
+      console.log(`[fe-send-message] No participants found for mention, sending without mention`);
+      mentioned = undefined;
+    }
+  }
 
   switch (contentType) {
     case "text": {
+      const body: any = { phone, message: contentText };
+      if (mentioned) body.mentioned = mentioned;
       const res = await fetch(`${baseUrl}/send-text`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ phone, message: contentText }),
+        body: JSON.stringify(body),
       });
       return res;
     }
     case "image": {
+      const body: any = { phone, image: mediaUrl, caption: contentText || "" };
+      if (mentioned) body.mentioned = mentioned;
       const res = await fetch(`${baseUrl}/send-image`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ phone, image: mediaUrl, caption: contentText || "" }),
+        body: JSON.stringify(body),
       });
       return res;
     }
@@ -71,27 +112,29 @@ async function sendToGroup(
       return res;
     }
     case "video": {
+      const body: any = { phone, video: mediaUrl, caption: contentText || "" };
+      if (mentioned) body.mentioned = mentioned;
       const res = await fetch(`${baseUrl}/send-video`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ phone, video: mediaUrl, caption: contentText || "" }),
+        body: JSON.stringify(body),
       });
       return res;
     }
     case "video_note": {
-      // Send PTV (circular video)
       const ptvRes = await fetch(`${baseUrl}/send-ptv`, {
         method: "POST",
         headers,
         body: JSON.stringify({ phone, ptv: mediaUrl }),
       });
-      // If there's text, send it as a separate message after the PTV
       if (contentText && contentText.trim()) {
         await new Promise((r) => setTimeout(r, 800));
+        const body: any = { phone, message: contentText };
+        if (mentioned) body.mentioned = mentioned;
         await fetch(`${baseUrl}/send-text`, {
           method: "POST",
           headers,
-          body: JSON.stringify({ phone, message: contentText }),
+          body: JSON.stringify(body),
         });
       }
       return ptvRes;
