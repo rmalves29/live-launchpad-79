@@ -169,30 +169,40 @@ export const useBackendSendFlow = () => {
         return null;
       }
 
-      // 4. Trigger edge function
-      const { error: invokeError } = await supabase.functions.invoke('sendflow-process', {
-        body: { job_id: job.id, tenant_id: tenant.id }
-      });
+      // 4. Trigger edge function (skip if scheduled)
+      if (!isScheduled) {
+        const { error: invokeError } = await supabase.functions.invoke('sendflow-process', {
+          body: { job_id: job.id, tenant_id: tenant.id }
+        });
 
-      if (invokeError) {
-        await supabase
-          .from('sending_jobs')
-          .update({
-            status: 'error',
-            error_message: `Falha ao disparar processamento: ${invokeError.message}`,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', job.id);
+        if (invokeError) {
+          await supabase
+            .from('sending_jobs')
+            .update({
+              status: 'error',
+              error_message: `Falha ao disparar processamento: ${invokeError.message}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', job.id);
 
-        toast({ title: 'Erro ao iniciar envio', description: invokeError.message, variant: 'destructive', duration: 8000 });
-        return null;
+          toast({ title: 'Erro ao iniciar envio', description: invokeError.message, variant: 'destructive', duration: 8000 });
+          return null;
+        }
+
+        toast({
+          title: '🚀 Envio iniciado!',
+          description: `${totalItems} tarefas na fila. Processamento em background.`,
+          duration: 8000
+        });
+      } else {
+        const scheduledDate = new Date(scheduledAt!);
+        const formatted = scheduledDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        toast({
+          title: '📅 Envio agendado!',
+          description: `${totalItems} tarefas serão enviadas em ${formatted}`,
+          duration: 8000
+        });
       }
-
-      toast({
-        title: '🚀 Envio iniciado!',
-        description: `${totalItems} tarefas na fila. Processamento em background.`,
-        duration: 8000
-      });
 
       return job.id;
     } catch (error: any) {
