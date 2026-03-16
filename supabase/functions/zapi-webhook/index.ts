@@ -48,6 +48,8 @@ interface ZAPIWebhookPayload {
   instanceId?: string;
   messageId?: string;
   zapiMessageId?: string;
+  notification?: string;
+  notificationParameters?: string[];
   data?: {
     action?: string;
     event?: string;
