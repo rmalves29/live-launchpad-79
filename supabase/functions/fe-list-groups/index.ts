@@ -13,7 +13,6 @@ async function parallelLimit<T, R>(
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let currentIndex = 0;
-
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
     while (true) {
       const index = currentIndex++;
@@ -21,16 +20,15 @@ async function parallelLimit<T, R>(
       results[index] = await fn(items[index]);
     }
   });
-
   await Promise.all(workers);
   return results;
 }
 
 const normalizePhone = (value?: string | null) => value?.replace(/\D/g, "") || "";
 
-const parseParticipantsCount = (source: any) => {
+const parseCount = (source: any) => {
   const raw = source?.participantsCount ?? source?.participants_count ?? source?.participantsSize ?? source?.size;
-  return raw !== undefined && raw !== null && !Number.isNaN(Number(raw)) ? Number(raw) : 0;
+  return raw != null && !isNaN(Number(raw)) ? Number(raw) : 0;
 };
 
 serve(async (req) => {
@@ -47,8 +45,7 @@ serve(async (req) => {
 
     if (!tenant_id) {
       return new Response(JSON.stringify({ error: "tenant_id obrigatório" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -62,65 +59,65 @@ serve(async (req) => {
 
     if (!waConfig?.zapi_instance_id || !waConfig?.zapi_token) {
       return new Response(JSON.stringify({ error: "Z-API não configurada para este tenant" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const baseUrl = `https://api.z-api.io/instances/${waConfig.zapi_instance_id}/token/${waConfig.zapi_token}`;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (waConfig.zapi_client_token) headers["Client-Token"] = waConfig.zapi_client_token;
+    const zapiHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (waConfig.zapi_client_token) zapiHeaders["Client-Token"] = waConfig.zapi_client_token;
 
+    // --- Resolve connected phone ---
     let connectedPhone = normalizePhone(waConfig.connected_phone);
 
-    if (admin_only && !connectedPhone) {
+    if (!connectedPhone) {
       try {
-        const statusRes = await fetch(`${baseUrl}/status`, { headers });
+        const statusRes = await fetch(`${baseUrl}/status`, { headers: zapiHeaders });
         if (statusRes.ok) {
           const statusData = await statusRes.json();
-          connectedPhone = normalizePhone(statusData?.phoneConnected);
+          console.log(`[fe-list-groups] /status response: ${JSON.stringify(statusData)}`);
+          const rawPhone = statusData?.phoneConnected || statusData?.phone || statusData?.number || "";
+          connectedPhone = normalizePhone(rawPhone);
 
           if (connectedPhone) {
             await supabase
               .from("integration_whatsapp")
-              .update({ connected_phone: statusData.phoneConnected, last_status_check: new Date().toISOString() })
+              .update({ connected_phone: rawPhone, last_status_check: new Date().toISOString() })
               .eq("tenant_id", tenant_id)
               .eq("provider", "zapi");
+            console.log(`[fe-list-groups] Saved connected_phone: ${rawPhone}`);
           }
+        } else {
+          const errText = await statusRes.text();
+          console.warn(`[fe-list-groups] /status failed: ${statusRes.status} ${errText}`);
         }
-      } catch (error: any) {
-        console.warn(`[fe-list-groups] Status lookup failed: ${error.message}`);
+      } catch (err: any) {
+        console.warn(`[fe-list-groups] /status exception: ${err.message}`);
       }
     }
 
+    // If admin_only requested but no phone found, fall back to ALL groups with a warning
+    const effectiveAdminOnly = admin_only && !!connectedPhone;
     if (admin_only && !connectedPhone) {
-      return new Response(JSON.stringify({
-        error: "Não foi possível identificar o número conectado para filtrar grupos de admin. Desative o filtro ou atualize a conexão do WhatsApp.",
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.warn("[fe-list-groups] admin_only requested but no connected phone found, syncing ALL groups");
     }
 
+    // --- Fetch groups ---
     let allGroups: any[] = [];
     let page = 1;
     const pageSize = 100;
 
     while (true) {
-      const response = await fetch(`${baseUrl}/groups?page=${page}&pageSize=${pageSize}`, { headers });
-
+      const response = await fetch(`${baseUrl}/groups?page=${page}&pageSize=${pageSize}`, { headers: zapiHeaders });
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`[fe-list-groups] Z-API /groups error: ${response.status} ${errText}`);
+        console.error(`[fe-list-groups] /groups error: ${response.status} ${errText}`);
         return new Response(JSON.stringify({ error: `Z-API retornou ${response.status}` }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
       const pageGroups = await response.json();
       if (!Array.isArray(pageGroups) || pageGroups.length === 0) break;
-
       allGroups = allGroups.concat(pageGroups);
       if (pageGroups.length < pageSize) break;
       page++;
@@ -128,96 +125,106 @@ serve(async (req) => {
 
     console.log(`[fe-list-groups] Fetched ${allGroups.length} groups from Z-API`);
 
-    let filteredGroups: any[] = [];
+    // --- Enrich groups with metadata (parallel, concurrency 15) ---
+    const enrichedGroups = await parallelLimit(allGroups, 15, async (group: any) => {
+      const baseCount = parseCount(group);
 
-    if (admin_only) {
-      const enrichedGroups = await parallelLimit(allGroups, 20, async (group: any) => {
-        try {
-          let metadataResponse = await fetch(`${baseUrl}/group-metadata/${group.phone}`, { headers });
-          if (!metadataResponse.ok) {
-            metadataResponse = await fetch(`${baseUrl}/light-group-metadata/${group.phone}`, { headers });
+      try {
+        let metaRes = await fetch(`${baseUrl}/group-metadata/${group.phone}`, { headers: zapiHeaders });
+        if (!metaRes.ok) {
+          metaRes = await fetch(`${baseUrl}/light-group-metadata/${group.phone}`, { headers: zapiHeaders });
+        }
+
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          const participants = Array.isArray(meta.participants) ? meta.participants : [];
+          const count = parseCount(meta) || participants.length || baseCount;
+
+          let isAdmin = false;
+          if (connectedPhone && participants.length > 0) {
+            isAdmin = participants.some((p: any) => {
+              const pPhone = normalizePhone(p.phone);
+              return (pPhone === connectedPhone || pPhone.endsWith(connectedPhone) || connectedPhone.endsWith(pPhone)) && p.isAdmin === true;
+            });
           }
-
-          if (!metadataResponse.ok) return null;
-
-          const metadata = await metadataResponse.json();
-          const participants = Array.isArray(metadata.participants) ? metadata.participants : [];
-          const participantsCount = parseParticipantsCount(metadata) || participants.length || parseParticipantsCount(group);
-
-          const isAdmin = participants.some((participant: any) => {
-            const participantPhone = normalizePhone(participant.phone);
-            return participantPhone === connectedPhone && participant.isAdmin === true;
-          });
-
-          if (!isAdmin) return null;
 
           return {
             group_jid: group.phone,
             group_name: group.name || group.subject || group.phone,
-            participant_count: participantsCount,
-            invite_link: metadata.invitationLink || metadata.inviteLink || null,
+            participant_count: count,
+            invite_link: meta.invitationLink || meta.inviteLink || group.invitationLink || group.inviteLink || null,
+            _isAdmin: isAdmin,
+            _include: effectiveAdminOnly ? isAdmin : true,
           };
-        } catch (error: any) {
-          console.warn(`[fe-list-groups] Metadata error for ${group.phone}: ${error.message}`);
-          return null;
         }
-      });
+      } catch (err: any) {
+        console.warn(`[fe-list-groups] Metadata error ${group.phone}: ${err.message}`);
+      }
 
-      filteredGroups = enrichedGroups.filter(Boolean);
-    } else {
-      filteredGroups = allGroups.map((group: any) => ({
+      // Fallback: no metadata available
+      return {
         group_jid: group.phone,
         group_name: group.name || group.subject || group.phone,
-        participant_count: parseParticipantsCount(group),
+        participant_count: baseCount,
         invite_link: group.invitationLink || group.inviteLink || null,
-      }));
-    }
+        _isAdmin: false,
+        _include: !effectiveAdminOnly,
+      };
+    });
 
-    console.log(`[fe-list-groups] ${filteredGroups.length}/${allGroups.length} groups after filter (admin_only=${admin_only})`);
+    const filteredGroups = enrichedGroups.filter((g) => g._include);
+    console.log(`[fe-list-groups] ${filteredGroups.length}/${allGroups.length} groups after filter (admin_only=${effectiveAdminOnly})`);
 
+    // --- Preserve existing invite links ---
     const { data: existingGroups } = await supabase
       .from("fe_groups")
       .select("group_jid, invite_link")
       .eq("tenant_id", tenant_id);
 
-    const existingInviteLinks = new Map((existingGroups || []).map((group) => [group.group_jid, group.invite_link]));
+    const existingLinks = new Map((existingGroups || []).map((g) => [g.group_jid, g.invite_link]));
 
-    const upsertPayload = filteredGroups.map((group) => ({
+    // --- Upsert in batch ---
+    const upsertPayload = filteredGroups.map((g) => ({
       tenant_id,
-      group_jid: group.group_jid,
-      group_name: group.group_name,
-      participant_count: group.participant_count || 0,
-      invite_link: group.invite_link || existingInviteLinks.get(group.group_jid) || null,
+      group_jid: g.group_jid,
+      group_name: g.group_name,
+      participant_count: g.participant_count || 0,
+      invite_link: g.invite_link || existingLinks.get(g.group_jid) || null,
     }));
 
     let added = 0;
     if (upsertPayload.length > 0) {
-      const { error } = await supabase
-        .from("fe_groups")
-        .upsert(upsertPayload, { onConflict: "tenant_id,group_jid" });
-
-      if (error) {
-        console.error("[fe-list-groups] Upsert error:", error.message);
-        return new Response(JSON.stringify({ error: `Erro ao salvar grupos: ${error.message}` }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      // Batch in chunks of 50 to avoid payload limits
+      for (let i = 0; i < upsertPayload.length; i += 50) {
+        const chunk = upsertPayload.slice(i, i + 50);
+        const { error } = await supabase
+          .from("fe_groups")
+          .upsert(chunk, { onConflict: "tenant_id,group_jid" });
+        if (error) {
+          console.error(`[fe-list-groups] Upsert chunk error: ${error.message}`);
+        } else {
+          added += chunk.length;
+        }
       }
-
-      added = upsertPayload.length;
     }
 
+    // --- Return updated list ---
     const { data: groups } = await supabase
       .from("fe_groups")
       .select("*")
       .eq("tenant_id", tenant_id)
       .order("group_name");
 
+    const warningMsg = (admin_only && !connectedPhone)
+      ? "Número conectado não encontrado. Todos os grupos foram sincronizados sem filtro de admin."
+      : undefined;
+
     return new Response(JSON.stringify({
       added,
       total_found: allGroups.length,
       synced: filteredGroups.length,
-      admin_only: !!admin_only,
+      admin_only: effectiveAdminOnly,
+      warning: warningMsg,
       groups,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -225,8 +232,7 @@ serve(async (req) => {
   } catch (error: any) {
     console.error("[fe-list-groups] Error:", error.message);
     return new Response(JSON.stringify({ error: error.message }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
