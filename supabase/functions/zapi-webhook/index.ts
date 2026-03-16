@@ -48,6 +48,8 @@ interface ZAPIWebhookPayload {
   instanceId?: string;
   messageId?: string;
   zapiMessageId?: string;
+  notification?: string;
+  notificationParameters?: string[];
   data?: {
     action?: string;
     event?: string;
@@ -182,26 +184,67 @@ serve(async (req) => {
     }
 
     // ─── FLUXO DE ENVIO: Captura eventos de grupo (join/leave) ───────────
+    // Detect group participant events from TWO Z-API formats:
+    // 1) type = GroupParticipantsUpdate / group-participants.update / onGroupParticipantsUpdate
+    // 2) type = ReceivedCallback with notification = GROUP_PARTICIPANT_ADD / GROUP_PARTICIPANT_LEAVE / GROUP_PARTICIPANT_REMOVE
     const eventType = payload.type;
-    if (
+    const notification = payload.notification || '';
+
+    const isGroupParticipantsUpdateType =
       eventType === 'GroupParticipantsUpdate' ||
       eventType === 'group-participants.update' ||
-      eventType === 'onGroupParticipantsUpdate'
-    ) {
-      const eventPayload = payload.data || payload;
-      const action = eventPayload.action || eventPayload.event || '';
-      const normalizedAction = String(action).toLowerCase();
-      const groupJid = eventPayload.chatId || eventPayload.groupId || payload.chatId || payload.groupId || '';
-      const participantsRaw = eventPayload.participants || payload.participants || [
-        eventPayload.participantPhone,
-        eventPayload.participant,
-        payload.participantPhone,
-        payload.participant,
-        payload.phone,
-      ].filter(Boolean);
-      const participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw];
+      eventType === 'onGroupParticipantsUpdate';
+
+    const isReceivedCallbackGroupEvent =
+      eventType === 'ReceivedCallback' &&
+      (notification === 'GROUP_PARTICIPANT_ADD' ||
+       notification === 'GROUP_PARTICIPANT_LEAVE' ||
+       notification === 'GROUP_PARTICIPANT_REMOVE' ||
+       notification === 'GROUP_PARTICIPANT_INVITE' ||
+       notification === 'GROUP_PARTICIPANT_JOIN');
+
+    if (isGroupParticipantsUpdateType || isReceivedCallbackGroupEvent) {
+      let normalizedAction: string;
+      let groupJid: string;
+      let participants: string[];
       const instanceId = payload.instanceId || '';
-      const eventTimestamp = eventPayload.timestamp || payload.timestamp || payload.momment || Date.now();
+      const eventTimestamp = payload.momment || payload.timestamp || Date.now();
+
+      if (isReceivedCallbackGroupEvent) {
+        // Format 2: ReceivedCallback with notification field
+        // notification: GROUP_PARTICIPANT_ADD | GROUP_PARTICIPANT_LEAVE | GROUP_PARTICIPANT_REMOVE
+        const notifAction = notification.replace('GROUP_PARTICIPANT_', '').toLowerCase();
+        normalizedAction = notifAction;
+        groupJid = payload.phone || payload.chatId || '';
+        // Participant comes from participantPhone, notificationParameters (strip @lid), or participant
+        const rawParticipants: string[] = [];
+        if (payload.participantPhone) rawParticipants.push(payload.participantPhone);
+        if (payload.notificationParameters && payload.notificationParameters.length > 0) {
+          for (const param of payload.notificationParameters) {
+            const cleaned = param.replace(/@lid$/i, '').replace(/@s\.whatsapp\.net$/i, '');
+            if (cleaned && !rawParticipants.includes(cleaned)) rawParticipants.push(cleaned);
+          }
+        }
+        if (payload.participant && !rawParticipants.includes(payload.participant)) {
+          rawParticipants.push(payload.participant);
+        }
+        participants = rawParticipants.filter(Boolean);
+        console.log(`[zapi-webhook] 📥 ReceivedCallback group event: notification=${notification}, group=${groupJid}, participants=${JSON.stringify(participants)}`);
+      } else {
+        // Format 1: Dedicated GroupParticipantsUpdate type
+        const eventPayload = payload.data || payload;
+        const action = eventPayload.action || eventPayload.event || '';
+        normalizedAction = String(action).toLowerCase();
+        groupJid = eventPayload.chatId || eventPayload.groupId || payload.chatId || payload.groupId || '';
+        const participantsRaw = eventPayload.participants || payload.participants || [
+          eventPayload.participantPhone,
+          eventPayload.participant,
+          payload.participantPhone,
+          payload.participant,
+          payload.phone,
+        ].filter(Boolean);
+        participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw];
+      }
 
       let eventTenantId: string | null = null;
       if (instanceId) {
@@ -262,6 +305,8 @@ serve(async (req) => {
             event_type: feEventType,
           });
 
+          console.log(`[zapi-webhook] ✅ Group event recorded: ${feEventType} phone=${normalizedPhone} group=${groupJid}`);
+
           if (feGroup) {
             const newCount = Math.max(0, (feGroup.participant_count || 0) + (feEventType === 'join' ? 1 : -1));
             feGroup.participant_count = newCount;
@@ -295,25 +340,30 @@ serve(async (req) => {
                     text = text.replace(/\{\{phone\}\}/g, normalizedPhone).replace(/\{\{group\}\}/g, feGroup.group_name || groupJid);
 
                     if (autoMsg.content_type === 'text' && text) {
-                      await fetch(`${baseUrl}/send-text`, {
+                      const sendResult = await fetch(`${baseUrl}/send-text`, {
                         method: 'POST',
                         headers,
                         body: JSON.stringify({ phone: `55${normalizedPhone}`, message: text }),
                       });
+                      console.log(`[zapi-webhook] Auto-message text sent for ${feEventType} to 55${normalizedPhone}, status=${sendResult.status}`);
                     } else if (autoMsg.content_type === 'image' && autoMsg.media_url) {
-                      await fetch(`${baseUrl}/send-image`, {
+                      const sendResult = await fetch(`${baseUrl}/send-image`, {
                         method: 'POST',
                         headers,
                         body: JSON.stringify({ phone: `55${normalizedPhone}`, image: autoMsg.media_url, caption: text }),
                       });
+                      console.log(`[zapi-webhook] Auto-message image sent for ${feEventType} to 55${normalizedPhone}, status=${sendResult.status}`);
                     }
-                    console.log(`[zapi-webhook] Auto-message sent for ${feEventType} to ${normalizedPhone}`);
                   } catch (amErr: any) {
                     console.error('[zapi-webhook] Auto-message error:', amErr.message);
                   }
                 }
+              } else {
+                console.warn(`[zapi-webhook] No Z-API credentials found for tenant ${eventTenantId} to send auto-message`);
               }
             }
+          } else {
+            console.log(`[zapi-webhook] Group ${groupJid} not registered in fe_groups for tenant ${eventTenantId}, event recorded without auto-message`);
           }
         }
 
