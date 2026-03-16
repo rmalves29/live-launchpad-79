@@ -70,7 +70,12 @@ export default function GroupsManager() {
       } else if (data?.error) {
         toast({ title: 'Erro ao sincronizar', description: data.error, variant: 'destructive' });
       } else {
-        toast({ title: `${data.synced} grupos sincronizados (${data.total_found} encontrados no WhatsApp)` });
+        const msg = `${data.synced} grupos sincronizados (${data.total_found} encontrados no WhatsApp)`;
+        if (data.warning) {
+          toast({ title: msg, description: data.warning });
+        } else {
+          toast({ title: msg });
+        }
         fetchGroups();
       }
     } catch (err: any) {
