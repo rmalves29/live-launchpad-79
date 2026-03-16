@@ -115,11 +115,11 @@ export default function ReportsPanel() {
         setCampaignStats([]);
       }
 
-      const groupJids = [...new Set(events.map((event) => event.group_jid).filter(Boolean))] as string[];
+      const groupJids = [...new Set(filteredEvents.map((event) => event.group_jid).filter(Boolean))] as string[];
       const gStats = groupJids.map((jid) => {
         const grp = ((feGroups || []) as any[]).find((group) => group.group_jid === jid);
-        const gJoins = events.filter((event) => event.group_jid === jid && event.event_type === 'join').length;
-        const gLeaves = events.filter((event) => event.group_jid === jid && event.event_type === 'leave').length;
+        const gJoins = filteredEvents.filter((event) => event.group_jid === jid && event.event_type === 'join').length;
+        const gLeaves = filteredEvents.filter((event) => event.group_jid === jid && event.event_type === 'leave').length;
         return { jid, name: grp?.group_name || jid, joins: gJoins, leaves: gLeaves, net: gJoins - gLeaves };
       }).sort((a, b) => b.net - a.net);
 
