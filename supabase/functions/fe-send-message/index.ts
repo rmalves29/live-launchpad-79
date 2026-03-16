@@ -212,7 +212,7 @@ serve(async (req) => {
           await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
         }
 
-        const res = await sendToGroup(baseUrl, creds.clientToken, group.group_jid, content_type, content_text, media_url);
+        const res = await sendToGroup(baseUrl, creds.clientToken, group.group_jid, content_type, content_text, media_url, mention_all);
         const resText = await res.text();
         const sent = res.status >= 200 && res.status < 300;
         console.log(`[fe-send-message] Group ${group.group_name}: status=${res.status}, response=${resText.substring(0, 200)}`);
