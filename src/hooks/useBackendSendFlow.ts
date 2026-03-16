@@ -98,7 +98,8 @@ export const useBackendSendFlow = () => {
   const startSendFlowJob = useCallback(async (
     jobData: SendFlowJobData,
     products: TaskGenerationProduct[],
-    groups: TaskGenerationGroup[]
+    groups: TaskGenerationGroup[],
+    scheduledAt?: string | null
   ): Promise<string | null> => {
     if (!tenant?.id) {
       toast({ title: 'Erro', description: 'Tenant não encontrado', variant: 'destructive' });
@@ -123,23 +124,26 @@ export const useBackendSendFlow = () => {
 
       // 2. Create job
       const totalItems = jobData.productIds.length * jobData.groupIds.length;
+      const isScheduled = !!scheduledAt;
 
       const { data: job, error: jobError } = await supabase
         .from('sending_jobs')
         .insert({
           tenant_id: tenant.id,
           job_type: 'sendflow',
-          status: 'running',
+          status: isScheduled ? 'scheduled' : 'running',
           job_data: {
             ...jobData,
             sentMessages: 0,
-            errorMessages: 0
+            errorMessages: 0,
+            ...(isScheduled ? { scheduled_at: scheduledAt } : {})
           } as any,
           total_items: totalItems,
           processed_items: 0,
           current_index: 0,
-          started_at: new Date().toISOString()
-        })
+          started_at: new Date().toISOString(),
+          scheduled_at: isScheduled ? scheduledAt : null
+        } as any)
         .select('id')
         .single();
 
@@ -165,30 +169,40 @@ export const useBackendSendFlow = () => {
         return null;
       }
 
-      // 4. Trigger edge function
-      const { error: invokeError } = await supabase.functions.invoke('sendflow-process', {
-        body: { job_id: job.id, tenant_id: tenant.id }
-      });
+      // 4. Trigger edge function (skip if scheduled)
+      if (!isScheduled) {
+        const { error: invokeError } = await supabase.functions.invoke('sendflow-process', {
+          body: { job_id: job.id, tenant_id: tenant.id }
+        });
 
-      if (invokeError) {
-        await supabase
-          .from('sending_jobs')
-          .update({
-            status: 'error',
-            error_message: `Falha ao disparar processamento: ${invokeError.message}`,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', job.id);
+        if (invokeError) {
+          await supabase
+            .from('sending_jobs')
+            .update({
+              status: 'error',
+              error_message: `Falha ao disparar processamento: ${invokeError.message}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', job.id);
 
-        toast({ title: 'Erro ao iniciar envio', description: invokeError.message, variant: 'destructive', duration: 8000 });
-        return null;
+          toast({ title: 'Erro ao iniciar envio', description: invokeError.message, variant: 'destructive', duration: 8000 });
+          return null;
+        }
+
+        toast({
+          title: '🚀 Envio iniciado!',
+          description: `${totalItems} tarefas na fila. Processamento em background.`,
+          duration: 8000
+        });
+      } else {
+        const scheduledDate = new Date(scheduledAt!);
+        const formatted = scheduledDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        toast({
+          title: '📅 Envio agendado!',
+          description: `${totalItems} tarefas serão enviadas em ${formatted}`,
+          duration: 8000
+        });
       }
-
-      toast({
-        title: '🚀 Envio iniciado!',
-        description: `${totalItems} tarefas na fila. Processamento em background.`,
-        duration: 8000
-      });
 
       return job.id;
     } catch (error: any) {

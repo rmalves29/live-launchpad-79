@@ -15,9 +15,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square, GripVertical } from 'lucide-react';
+import { Loader2, Send, Save, Users, Package, Clock, RefreshCw, CheckCircle2, XCircle, Search, Pause, Play, Square, GripVertical, CalendarClock } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import {
   DndContext,
@@ -180,6 +181,11 @@ export default function SendFlow() {
   const [useRandomDelay, setUseRandomDelay] = useState(true); // Ativado por padrão
   const [minGroupDelaySeconds, setMinGroupDelaySeconds] = useState(3);
   const [maxGroupDelaySeconds, setMaxGroupDelaySeconds] = useState(15);
+  
+  // Estados de agendamento
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
   
   // Estados de controle
   const [loading, setLoading] = useState(false);
@@ -523,30 +529,31 @@ export default function SendFlow() {
   // Handler principal para iniciar envio (processado no backend)
   const handleSendMessages = async () => {
     if (selectedProducts.size === 0) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione pelo menos um produto',
-        variant: 'destructive'
-      });
+      toast({ title: 'Erro', description: 'Selecione pelo menos um produto', variant: 'destructive' });
       return;
     }
-
     if (selectedGroups.size === 0) {
-      toast({
-        title: 'Erro',
-        description: 'Selecione pelo menos um grupo',
-        variant: 'destructive'
-      });
+      toast({ title: 'Erro', description: 'Selecione pelo menos um grupo', variant: 'destructive' });
       return;
     }
-
     if (!messageTemplate.trim()) {
-      toast({
-        title: 'Erro',
-        description: 'Digite um template de mensagem',
-        variant: 'destructive'
-      });
+      toast({ title: 'Erro', description: 'Digite um template de mensagem', variant: 'destructive' });
       return;
+    }
+    if (scheduleEnabled && (!scheduleDate || !scheduleTime)) {
+      toast({ title: 'Erro', description: 'Defina a data e hora do agendamento', variant: 'destructive' });
+      return;
+    }
+    
+    // Build scheduled ISO string in Brasilia timezone
+    let scheduledAt: string | null = null;
+    if (scheduleEnabled && scheduleDate && scheduleTime) {
+      scheduledAt = `${scheduleDate}T${scheduleTime}:00-03:00`;
+      const scheduledDate = new Date(scheduledAt);
+      if (scheduledDate <= new Date()) {
+        toast({ title: 'Erro', description: 'A data/hora do agendamento deve ser no futuro', variant: 'destructive' });
+        return;
+      }
     }
 
     setSending(true);
@@ -576,13 +583,14 @@ export default function SendFlow() {
           groupIds: selectedGroupArray,
           messageTemplate,
           perGroupDelaySeconds,
-          perProductDelayMinutes: perProductDelayMinutes || 3, // Padrão 3 minutos
+          perProductDelayMinutes: perProductDelayMinutes || 3,
           useRandomDelay,
           minGroupDelaySeconds,
           maxGroupDelaySeconds
         },
         selectedProductList,
-        selectedGroupList
+        selectedGroupList,
+        scheduledAt
       );
 
       if (jobId) {
@@ -1038,65 +1046,107 @@ export default function SendFlow() {
 
       {/* Status do Envio - Gerenciado pelo SendingProgressLive acima */}
 
-      {/* Botão de Envio */}
-      <div className="flex flex-col items-center gap-3">
-        {selectedProducts.size > 0 && selectedGroups.size > 0 && (
-          <div className="text-center text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-lg">
-            <Clock className="inline h-4 w-4 mr-1" />
-            <span>
-              Tempo estimado: {(() => {
-                const numProducts = selectedProducts.size;
-                const numGroups = selectedGroups.size;
-                // Tempo para enviar todos os grupos de um produto (em segundos)
-                const timePerProduct = numGroups * perGroupDelaySeconds;
-                // Tempo total: (tempo por produto * produtos) + delays entre produtos
-                const totalSeconds = (timePerProduct * numProducts) + ((numProducts - 1) * perProductDelayMinutes * 60);
-                
-                const hours = Math.floor(totalSeconds / 3600);
-                const minutes = Math.floor((totalSeconds % 3600) / 60);
-                const seconds = totalSeconds % 60;
-                
-                if (hours > 0) {
-                  return `${hours}h ${minutes}min ${seconds}s`;
-                } else if (minutes > 0) {
-                  return `${minutes}min ${seconds}s`;
-                } else {
-                  return `${seconds}s`;
-                }
-              })()}
-            </span>
-            <span className="ml-2 text-xs opacity-70">
-              ({selectedProducts.size} produtos × {selectedGroups.size} grupos)
-            </span>
+      {/* Agendamento + Botão de Envio */}
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          {/* Toggle de agendamento */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CalendarClock className="h-5 w-5 text-muted-foreground" />
+              <Label htmlFor="schedule-toggle" className="font-medium">Agendar envio</Label>
+            </div>
+            <Switch
+              id="schedule-toggle"
+              checked={scheduleEnabled}
+              onCheckedChange={setScheduleEnabled}
+            />
           </div>
-        )}
-        <Button
-          onClick={() => handleSendMessages()}
-          disabled={
-            sending ||
-            selectedProducts.size === 0 ||
-            selectedGroups.size === 0 ||
-            !messageTemplate.trim() ||
-            !whatsappConnected
-          }
-          size="lg"
-          className="w-full max-w-md"
-        >
-          {sending ? (
-            <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Enviando...
-            </>
-          ) : (
-            <>
-              <Send className="mr-2 h-5 w-5" />
-              Enviar {selectedProducts.size > 0 && selectedGroups.size > 0 
-                ? `${selectedProducts.size * selectedGroups.size} mensagens`
-                : 'Mensagens'}
-            </>
+
+          {scheduleEnabled && (
+            <div className="flex gap-3 items-end p-3 rounded-lg border bg-muted/30">
+              <div className="flex-1">
+                <Label htmlFor="schedule-date" className="text-sm">Data</Label>
+                <Input
+                  id="schedule-date"
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex-1">
+                <Label htmlFor="schedule-time" className="text-sm">Hora</Label>
+                <Input
+                  id="schedule-time"
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(e) => setScheduleTime(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
           )}
-        </Button>
-      </div>
+
+          {selectedProducts.size > 0 && selectedGroups.size > 0 && (
+            <div className="text-center text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-lg">
+              <Clock className="inline h-4 w-4 mr-1" />
+              <span>
+                Tempo estimado: {(() => {
+                  const numProducts = selectedProducts.size;
+                  const numGroups = selectedGroups.size;
+                  const timePerProduct = numGroups * perGroupDelaySeconds;
+                  const totalSeconds = (timePerProduct * numProducts) + ((numProducts - 1) * perProductDelayMinutes * 60);
+                  const hours = Math.floor(totalSeconds / 3600);
+                  const minutes = Math.floor((totalSeconds % 3600) / 60);
+                  const seconds = totalSeconds % 60;
+                  if (hours > 0) return `${hours}h ${minutes}min ${seconds}s`;
+                  if (minutes > 0) return `${minutes}min ${seconds}s`;
+                  return `${seconds}s`;
+                })()}
+              </span>
+              <span className="ml-2 text-xs opacity-70">
+                ({selectedProducts.size} produtos × {selectedGroups.size} grupos)
+              </span>
+            </div>
+          )}
+
+          <Button
+            onClick={() => handleSendMessages()}
+            disabled={
+              sending ||
+              selectedProducts.size === 0 ||
+              selectedGroups.size === 0 ||
+              !messageTemplate.trim() ||
+              !whatsappConnected ||
+              (scheduleEnabled && (!scheduleDate || !scheduleTime))
+            }
+            size="lg"
+            className="w-full"
+          >
+            {sending ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                {scheduleEnabled ? 'Agendando...' : 'Enviando...'}
+              </>
+            ) : scheduleEnabled ? (
+              <>
+                <CalendarClock className="mr-2 h-5 w-5" />
+                Agendar Envio {selectedProducts.size > 0 && selectedGroups.size > 0 
+                  ? `(${selectedProducts.size * selectedGroups.size} mensagens)`
+                  : ''}
+              </>
+            ) : (
+              <>
+                <Send className="mr-2 h-5 w-5" />
+                Enviar {selectedProducts.size > 0 && selectedGroups.size > 0 
+                  ? `${selectedProducts.size * selectedGroups.size} mensagens`
+                  : 'Mensagens'}
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -1,51 +1,17 @@
 
 
-# Agendamento de Postagem no SendFlow
+## Plano: Agendamento de Postagem no SendFlow — ✅ IMPLEMENTADO
 
-## Resumo
+### Resumo
+Sistema de agendamento que permite definir data/hora para início do envio no SendFlow. Jobs agendados ficam com status `scheduled` até que um cron job (`sendflow-check-scheduled`) detecte que o horário chegou e dispare o processamento.
 
-Adicionar um campo de data/hora de agendamento na página SendFlow. Quando o usuário define um horário futuro, o job é criado com status `scheduled` e um campo `scheduled_at`. Um cron job (já existente para `fe-process-scheduled`) ou lógica no `sendflow-process` verifica se o horário chegou antes de iniciar o processamento.
+### Arquivos alterados
+- `src/pages/sendflow/Index.tsx` — UI de agendamento (switch + date/time inputs)
+- `src/hooks/useBackendSendFlow.ts` — Aceita `scheduledAt`, cria job com status `scheduled`
+- `src/components/SendingControl.tsx` — Mostra jobs agendados com opção de cancelar
+- `supabase/functions/sendflow-check-scheduled/index.ts` — Cron function que dispara jobs no horário
+- `supabase/config.toml` — Config da nova edge function
+- `docs/SQL_SENDFLOW_SCHEDULING.sql` — SQL para rodar no Supabase (coluna + constraint + cron)
 
-## Como vai funcionar
-
-1. O usuário seleciona produtos, grupos, configura delays normalmente
-2. Opcionalmente define uma data/hora para início do envio
-3. Se agendado: job é criado com status `scheduled` e `scheduled_at` no `job_data`. O backend **não** processa até o horário chegar
-4. Se imediato (sem agendamento): comportamento atual, sem mudanças
-
-## Alterações
-
-### 1. Frontend - `src/pages/sendflow/Index.tsx`
-- Adicionar estado `scheduledAt` (string ISO ou null)
-- Adicionar UI com date/time picker antes do botão de envio: campo de data e hora (inputs nativos `date` e `time`)
-- Switch/checkbox "Agendar envio" que revela os campos
-- Quando agendado, o botão muda para "Agendar Envio" com ícone de relógio
-- Passar `scheduledAt` para o hook `useBackendSendFlow`
-
-### 2. Hook - `src/hooks/useBackendSendFlow.ts`
-- Aceitar `scheduledAt?: string` no `startSendFlowJob`
-- Se `scheduledAt` definido: criar job com status `scheduled` em vez de `running`, incluir `scheduled_at` no `job_data`
-- **Não** invocar `sendflow-process` imediatamente quando agendado
-- Toast: "Envio agendado para DD/MM/YYYY HH:mm"
-
-### 3. Edge Function - `supabase/functions/sendflow-process/index.ts`
-- Ao receber um job com status `scheduled`: verificar se `scheduled_at` já passou
-  - Se sim: mudar para `running` e processar
-  - Se não: retornar sem processar (o cron vai tentar novamente)
-
-### 4. Cron Job - Nova Edge Function `sendflow-check-scheduled`
-- Roda a cada minuto via pg_cron
-- Busca jobs com status `scheduled` e `scheduled_at <= now()`
-- Para cada um: muda status para `running` e invoca `sendflow-process`
-- SQL do cron a ser executado no Supabase
-
-### 5. Coluna no banco
-- Adicionar coluna `scheduled_at` (timestamptz, nullable) na tabela `sending_jobs` via query SQL
-
-### 6. UI de jobs agendados
-- No `SendingProgressLive` ou `SendingControl`, mostrar jobs agendados com horário previsto e opção de cancelar
-
-## Regras mantidas
-- Todas as configurações de envio (anti-bloqueio, delays entre grupos/produtos, random delay) são salvas no `job_data` e respeitadas normalmente quando o processamento começa
-- A única diferença é **quando** o processamento inicia
-
+### SQL pendente (rodar no Supabase SQL Editor)
+Ver `docs/SQL_SENDFLOW_SCHEDULING.sql`
