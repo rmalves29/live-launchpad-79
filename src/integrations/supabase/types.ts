@@ -447,6 +447,7 @@ export type Database = {
       }
       fe_auto_messages: {
         Row: {
+          campaign_id: string | null
           content_text: string | null
           content_type: string
           created_at: string | null
@@ -459,6 +460,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          campaign_id?: string | null
           content_text?: string | null
           content_type?: string
           created_at?: string | null
@@ -471,6 +473,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          campaign_id?: string | null
           content_text?: string | null
           content_type?: string
           created_at?: string | null
@@ -483,6 +486,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fe_auto_messages_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "fe_campaigns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fe_auto_messages_group_id_fkey"
             columns: ["group_id"]
