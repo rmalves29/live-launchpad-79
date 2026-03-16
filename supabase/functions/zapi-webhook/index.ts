@@ -480,8 +480,11 @@ serve(async (req) => {
               .eq('group_id', feGroup.id);
             const campaignIds = (campaignLinks || []).map((cl: any) => cl.campaign_id);
 
-            // Build OR filter: group_id matches OR group_id is null (all groups) OR campaign_id matches
-            let orFilter = `group_id.eq.${feGroup.id},group_id.is.null`;
+            // Build OR filter: 
+            // 1) group_id matches this specific group
+            // 2) group_id is null AND campaign_id is null → "all groups" scope
+            // 3) campaign_id matches one of the campaigns this group belongs to
+            let orFilter = `group_id.eq.${feGroup.id},and(group_id.is.null,campaign_id.is.null)`;
             if (campaignIds.length > 0) {
               orFilter += `,campaign_id.in.(${campaignIds.join(',')})`;
             }
