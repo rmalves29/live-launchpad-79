@@ -256,6 +256,24 @@ export default function GroupsManager() {
           </CardContent>
         </Card>
       )}
+
+      {/* Edit Link Dialog */}
+      <Dialog open={!!editingLink} onOpenChange={(open) => !open && setEditingLink(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar Link de Convite</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Link de Convite do WhatsApp</Label>
+              <Input
+                placeholder="https://chat.whatsapp.com/..."
+                value={editingLink?.invite_link || ''}
+                onChange={(e) => setEditingLink(prev => prev ? { ...prev, invite_link: e.target.value } : null)}
+              />
+            </div>
+            <Button onClick={saveInviteLink} className="w-full">Salvar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
