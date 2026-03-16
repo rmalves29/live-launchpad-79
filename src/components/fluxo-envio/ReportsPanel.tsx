@@ -70,7 +70,20 @@ export default function ReportsPanel() {
       setCampaignStats([]);
     }
 
-    // Group events
+    // Entries = clicks that resulted in a redirect (redirected_group_id not null)
+    if (campaignIds.length > 0) {
+      const { count: entriesCount } = await supabase
+        .from('fe_link_clicks' as any)
+        .select('id', { count: 'exact', head: true })
+        .in('campaign_id', campaignIds)
+        .not('redirected_group_id', 'is', null)
+        .gte('clicked_at', since);
+      setJoinsCount(entriesCount || 0);
+    } else {
+      setJoinsCount(0);
+    }
+
+    // Group events (leaves)
     const { data: events } = await supabase
       .from('fe_group_events' as any)
       .select('*')
@@ -80,9 +93,7 @@ export default function ReportsPanel() {
       .limit(200);
 
     const evts = (events || []) as any[];
-    const joins = evts.filter(e => e.event_type === 'join');
     const leaves = evts.filter(e => e.event_type === 'leave');
-    setJoinsCount(joins.length);
     setLeavesCount(leaves.length);
     setRecentEvents(evts.slice(0, 30));
 

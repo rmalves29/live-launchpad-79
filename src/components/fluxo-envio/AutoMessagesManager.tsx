@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, UserPlus, UserMinus, MessageSquare } from 'lucide-react';
+import { Plus, Trash2, UserPlus, UserMinus, MessageSquare, Upload, X, Image } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -33,26 +33,35 @@ interface FeGroup {
   group_name: string;
 }
 
+interface FeCampaign {
+  id: string;
+  name: string;
+}
+
 export default function AutoMessagesManager() {
   const { tenant } = useTenant();
   const { toast } = useToast();
   const [autoMessages, setAutoMessages] = useState<AutoMessage[]>([]);
   const [groups, setGroups] = useState<FeGroup[]>([]);
+  const [campaigns, setCampaigns] = useState<FeCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     event_type: 'join',
     content_type: 'text',
     content_text: '',
     media_url: '',
-    group_id: 'all',
+    scope_type: 'all' as 'all' | 'group' | 'campaign',
+    scope_id: '',
   });
 
   const fetchData = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
 
-    const [{ data: msgs }, { data: grps }] = await Promise.all([
+    const [{ data: msgs }, { data: grps }, { data: camps }] = await Promise.all([
       supabase
         .from('fe_auto_messages' as any)
         .select('*')
@@ -64,18 +73,63 @@ export default function AutoMessagesManager() {
         .eq('tenant_id', tenant.id)
         .eq('is_active', true)
         .order('group_name'),
+      supabase
+        .from('fe_campaigns' as any)
+        .select('id, name')
+        .eq('tenant_id', tenant.id)
+        .order('name'),
     ]);
 
     if (msgs) setAutoMessages(msgs as any);
     if (grps) setGroups(grps as any);
+    if (camps) setCampaigns(camps as any);
     setLoading(false);
   }, [tenant]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !tenant) return;
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ title: 'Formato inválido', description: 'Use JPG, PNG, WebP ou GIF', variant: 'destructive' });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'Arquivo muito grande', description: 'Máximo 5MB', variant: 'destructive' });
+      return;
+    }
+
+    setUploading(true);
+    const ext = file.name.split('.').pop();
+    const path = `${tenant.id}/auto-messages/${Date.now()}.${ext}`;
+
+    const { data, error } = await supabase.storage
+      .from('product-images')
+      .upload(path, file, { upsert: true });
+
+    if (error) {
+      toast({ title: 'Erro no upload', description: error.message, variant: 'destructive' });
+    } else {
+      const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(path);
+      setForm(p => ({ ...p, media_url: urlData.publicUrl }));
+      toast({ title: 'Imagem enviada!' });
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const addAutoMessage = async () => {
     if (!tenant || !form.content_text.trim()) {
       toast({ title: 'Preencha o texto da mensagem', variant: 'destructive' });
+      return;
+    }
+
+    if (form.content_type === 'image' && !form.media_url) {
+      toast({ title: 'Anexe uma imagem', variant: 'destructive' });
       return;
     }
 
@@ -85,7 +139,7 @@ export default function AutoMessagesManager() {
       content_type: form.content_type,
       content_text: form.content_text,
       media_url: form.media_url || null,
-      group_id: form.group_id === 'all' ? null : form.group_id,
+      group_id: form.scope_type === 'group' ? form.scope_id : null,
       is_active: true,
     } as any);
 
@@ -93,7 +147,7 @@ export default function AutoMessagesManager() {
       toast({ title: 'Erro ao criar', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Mensagem automática criada' });
-      setForm({ event_type: 'join', content_type: 'text', content_text: '', media_url: '', group_id: 'all' });
+      setForm({ event_type: 'join', content_type: 'text', content_text: '', media_url: '', scope_type: 'all', scope_id: '' });
       setAddOpen(false);
       fetchData();
     }
@@ -144,17 +198,44 @@ export default function AutoMessagesManager() {
               </div>
 
               <div>
-                <Label>Grupo</Label>
-                <Select value={form.group_id} onValueChange={v => setForm(p => ({ ...p, group_id: v }))}>
+                <Label>Escopo</Label>
+                <Select value={form.scope_type} onValueChange={v => setForm(p => ({ ...p, scope_type: v as any, scope_id: '' }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os grupos</SelectItem>
-                    {groups.map(g => (
-                      <SelectItem key={g.id} value={g.id}>{g.group_name}</SelectItem>
-                    ))}
+                    <SelectItem value="group">Grupo específico</SelectItem>
+                    <SelectItem value="campaign">Campanha específica</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {form.scope_type === 'group' && (
+                <div>
+                  <Label>Grupo</Label>
+                  <Select value={form.scope_id} onValueChange={v => setForm(p => ({ ...p, scope_id: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecione um grupo" /></SelectTrigger>
+                    <SelectContent>
+                      {groups.map(g => (
+                        <SelectItem key={g.id} value={g.id}>{g.group_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {form.scope_type === 'campaign' && (
+                <div>
+                  <Label>Campanha</Label>
+                  <Select value={form.scope_id} onValueChange={v => setForm(p => ({ ...p, scope_id: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecione uma campanha" /></SelectTrigger>
+                    <SelectContent>
+                      {campaigns.map(c => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div>
                 <Label>Tipo de conteúdo</Label>
@@ -179,17 +260,49 @@ export default function AutoMessagesManager() {
               </div>
 
               {form.content_type === 'image' && (
-                <div>
-                  <Label>URL da imagem</Label>
-                  <Input
-                    placeholder="https://..."
-                    value={form.media_url}
-                    onChange={e => setForm(p => ({ ...p, media_url: e.target.value }))}
+                <div className="space-y-2">
+                  <Label>Imagem</Label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleFileUpload}
                   />
+                  {form.media_url ? (
+                    <div className="relative rounded-lg border border-border overflow-hidden">
+                      <img src={form.media_url} alt="Preview" className="w-full h-32 object-cover" />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2 h-7 w-7"
+                        onClick={() => setForm(p => ({ ...p, media_url: '' }))}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      className="w-full h-24 border-dashed flex flex-col gap-1"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? (
+                        <span className="text-sm text-muted-foreground">Enviando...</span>
+                      ) : (
+                        <>
+                          <Upload className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Clique para enviar imagem</span>
+                          <span className="text-xs text-muted-foreground">JPG, PNG, WebP ou GIF (max 5MB)</span>
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               )}
 
-              <Button onClick={addAutoMessage} className="w-full">Criar</Button>
+              <Button onClick={addAutoMessage} className="w-full" disabled={uploading}>Criar</Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -216,7 +329,7 @@ export default function AutoMessagesManager() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <Badge variant={msg.event_type === 'join' ? 'default' : 'destructive'}>
                       {msg.event_type === 'join' ? 'Entrada' : 'Saída'}
                     </Badge>
@@ -225,7 +338,10 @@ export default function AutoMessagesManager() {
                   </div>
                   <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-3">{msg.content_text}</p>
                   {msg.media_url && (
-                    <p className="text-xs text-muted-foreground mt-1 truncate">📎 {msg.media_url}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <img src={msg.media_url} alt="" className="h-10 w-10 rounded object-cover border border-border" />
+                      <span className="text-xs text-muted-foreground">Imagem anexada</span>
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
