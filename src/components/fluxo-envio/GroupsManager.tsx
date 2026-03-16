@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw, Plus, Users, Link2, Trash2, ExternalLink, ShieldCheck } from 'lucide-react';
+import { RefreshCw, Plus, Users, Link2, Trash2, ExternalLink, ShieldCheck, Pencil } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -41,6 +41,7 @@ export default function GroupsManager() {
   const [addOpen, setAddOpen] = useState(false);
   const [newGroup, setNewGroup] = useState({ group_jid: '', group_name: '', invite_link: '' });
   const [search, setSearch] = useState('');
+  const [editingLink, setEditingLink] = useState<{ id: string; invite_link: string } | null>(null);
 
   const fetchGroups = useCallback(async () => {
     if (!tenant) return;
@@ -120,6 +121,17 @@ export default function GroupsManager() {
   const deleteGroup = async (id: string) => {
     if (!confirm('Remover este grupo do gerenciamento?')) return;
     await supabase.from('fe_groups' as any).delete().eq('id', id);
+    fetchGroups();
+  };
+
+  const saveInviteLink = async () => {
+    if (!editingLink) return;
+    await supabase
+      .from('fe_groups' as any)
+      .update({ invite_link: editingLink.invite_link || null } as any)
+      .eq('id', editingLink.id);
+    toast({ title: 'Link atualizado' });
+    setEditingLink(null);
     fetchGroups();
   };
 
@@ -217,13 +229,20 @@ export default function GroupsManager() {
                       <Switch checked={g.is_active} onCheckedChange={() => toggleActive(g)} />
                     </TableCell>
                     <TableCell className="text-center">
-                      {g.invite_link ? (
-                        <a href={g.invite_link} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-4 w-4 text-primary inline" />
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
+                      <div className="flex items-center justify-center gap-1">
+                        {g.invite_link ? (
+                          <a href={g.invite_link} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-4 w-4 text-primary inline" />
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7"
+                          onClick={() => setEditingLink({ id: g.id, invite_link: g.invite_link || '' })}
+                          title="Editar link">
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" onClick={() => deleteGroup(g.id)}>
@@ -237,6 +256,24 @@ export default function GroupsManager() {
           </CardContent>
         </Card>
       )}
+
+      {/* Edit Link Dialog */}
+      <Dialog open={!!editingLink} onOpenChange={(open) => !open && setEditingLink(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar Link de Convite</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Link de Convite do WhatsApp</Label>
+              <Input
+                placeholder="https://chat.whatsapp.com/..."
+                value={editingLink?.invite_link || ''}
+                onChange={(e) => setEditingLink(prev => prev ? { ...prev, invite_link: e.target.value } : null)}
+              />
+            </div>
+            <Button onClick={saveInviteLink} className="w-full">Salvar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
