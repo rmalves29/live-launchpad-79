@@ -6,6 +6,24 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Process items in parallel with concurrency limit
+async function parallelLimit<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  let index = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -45,18 +63,14 @@ serve(async (req) => {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (waConfig.zapi_client_token) headers["Client-Token"] = waConfig.zapi_client_token;
 
-    // Fetch ALL groups using the /groups endpoint with pagination
+    // Fetch ALL groups with pagination
     let allGroups: any[] = [];
     let page = 1;
     const pageSize = 100;
     let hasMore = true;
 
     while (hasMore) {
-      const response = await fetch(
-        `${baseUrl}/groups?page=${page}&pageSize=${pageSize}`,
-        { headers }
-      );
-
+      const response = await fetch(`${baseUrl}/groups?page=${page}&pageSize=${pageSize}`, { headers });
       if (!response.ok) {
         const errText = await response.text();
         console.error(`[fe-list-groups] Z-API /groups error: ${response.status} ${errText}`);
@@ -65,23 +79,18 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-
       const pageGroups = await response.json();
       if (!Array.isArray(pageGroups) || pageGroups.length === 0) {
         hasMore = false;
       } else {
         allGroups = allGroups.concat(pageGroups);
-        if (pageGroups.length < pageSize) {
-          hasMore = false;
-        } else {
-          page++;
-        }
+        hasMore = pageGroups.length >= pageSize;
+        page++;
       }
     }
 
     console.log(`[fe-list-groups] Fetched ${allGroups.length} groups from Z-API`);
 
-    // Get connected phone to check admin status
     const connectedPhone = waConfig.connected_phone?.replace(/\D/g, "") || "";
 
     if (admin_only && !connectedPhone) {
@@ -91,139 +100,96 @@ serve(async (req) => {
       });
     }
 
-    // Fetch metadata for all groups (to get participant count and admin status)
-    let filteredGroups = allGroups;
+    // Process groups in parallel with concurrency of 10
+    const processedGroups = await parallelLimit(allGroups, 10, async (g: any) => {
+      const baseCount = Number(g.participantsCount ?? g.participants_count ?? g.participantsSize ?? g.size ?? 0) || 0;
 
-    if (allGroups.length > 0) {
-      console.log(`[fe-list-groups] Filtering admin-only groups for phone ${connectedPhone}`);
-      const adminGroups: any[] = [];
-
-      for (const g of allGroups) {
-        const baseCountRaw = g.participantsCount ?? g.participants_count ?? g.participantsSize ?? g.size;
-        const baseCount =
-          baseCountRaw !== undefined && baseCountRaw !== null && !Number.isNaN(Number(baseCountRaw))
-            ? Number(baseCountRaw)
-            : 0;
-
-        if (!admin_only && baseCount > 0) {
-          adminGroups.push({
-            ...g,
-            participantsCount: baseCount,
-            invitationLink: g.invitationLink || g.inviteLink || null,
-          });
-          continue;
-        }
-
-        try {
-          // Prefer full metadata (includes participants/admin), fallback to light metadata
-          let metaRes = await fetch(
-            `${baseUrl}/group-metadata/${g.phone}`,
-            { headers }
-          );
-
-          if (!metaRes.ok) {
-            metaRes = await fetch(
-              `${baseUrl}/light-group-metadata/${g.phone}`,
-              { headers }
-            );
-          }
-
-          if (metaRes.ok) {
-            const meta = await metaRes.json();
-            const participants = Array.isArray(meta.participants) ? meta.participants : [];
-            const rawCount =
-              meta.participantsCount ??
-              meta.participants_count ??
-              meta.participantsSize ??
-              meta.size;
-            const participantsCount =
-              rawCount !== undefined && rawCount !== null && !Number.isNaN(Number(rawCount))
-                ? Number(rawCount)
-                : participants.length;
-
-            const isAdmin = !!connectedPhone && participants.some(
-              (p: any) =>
-                (p.phone?.replace(/\D/g, "") === connectedPhone ||
-                  p.phone?.includes(connectedPhone)) &&
-                p.isAdmin === true
-            );
-
-            const enriched = {
-              ...g,
-              participantsCount: participantsCount || g.size || 0,
-              invitationLink: meta.invitationLink || meta.inviteLink || null,
-              _isAdmin: isAdmin,
-            };
-
-            if (admin_only) {
-              if (isAdmin) adminGroups.push(enriched);
-            } else {
-              adminGroups.push(enriched);
-            }
-          } else if (!admin_only) {
-            const fallbackCount = !Number.isNaN(Number(g.participantsCount ?? g.participants_count ?? g.size))
-              ? Number(g.participantsCount ?? g.participants_count ?? g.size)
-              : 0;
-
-            adminGroups.push({
-              ...g,
-              participantsCount: fallbackCount,
-              invitationLink: null,
-            });
-          }
-
-        } catch (err: any) {
-          console.warn(`[fe-list-groups] Metadata error for ${g.phone}: ${err.message}`);
-          if (!admin_only) {
-            const fallbackCount = !Number.isNaN(Number(g.participantsCount ?? g.participants_count ?? g.size))
-              ? Number(g.participantsCount ?? g.participants_count ?? g.size)
-              : 0;
-
-            adminGroups.push({
-              ...g,
-              participantsCount: fallbackCount,
-            });
-          }
-        }
+      // If not filtering by admin and we already have a count, skip metadata
+      if (!admin_only && baseCount > 0) {
+        return {
+          ...g,
+          participantsCount: baseCount,
+          invitationLink: g.invitationLink || g.inviteLink || null,
+          _include: true,
+        };
       }
 
-      filteredGroups = adminGroups;
-      console.log(`[fe-list-groups] ${adminGroups.length}/${allGroups.length} groups after filter (admin_only=${admin_only})`);
-    }
+      // Need metadata for admin check or participant count
+      try {
+        let metaRes = await fetch(`${baseUrl}/group-metadata/${g.phone}`, { headers });
+        if (!metaRes.ok) {
+          metaRes = await fetch(`${baseUrl}/light-group-metadata/${g.phone}`, { headers });
+        }
 
-    // Upsert into fe_groups, fetching invite links when missing
-    let added = 0;
-    for (const g of filteredGroups) {
-      let inviteLink = g.invitationLink || null;
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          const participants = Array.isArray(meta.participants) ? meta.participants : [];
+          const rawCount = meta.participantsCount ?? meta.participants_count ?? meta.participantsSize ?? meta.size;
+          const participantsCount = (rawCount != null && !isNaN(Number(rawCount))) ? Number(rawCount) : participants.length;
 
-      // If no invite link from metadata, try dedicated endpoint
-      if (!inviteLink && g.phone) {
-        try {
-          const linkRes = await fetch(
-            `${baseUrl}/invite-link/${g.phone}`,
-            { headers }
+          const isAdmin = !!connectedPhone && participants.some(
+            (p: any) =>
+              (p.phone?.replace(/\D/g, "") === connectedPhone || p.phone?.includes(connectedPhone)) &&
+              p.isAdmin === true
           );
+
+          if (admin_only && !isAdmin) {
+            return { _include: false };
+          }
+
+          return {
+            ...g,
+            participantsCount: participantsCount || g.size || 0,
+            invitationLink: meta.invitationLink || meta.inviteLink || g.invitationLink || g.inviteLink || null,
+            _include: true,
+          };
+        }
+
+        if (admin_only) return { _include: false };
+
+        return {
+          ...g,
+          participantsCount: baseCount,
+          invitationLink: null,
+          _include: true,
+        };
+      } catch (err: any) {
+        console.warn(`[fe-list-groups] Metadata error for ${g.phone}: ${err.message}`);
+        if (admin_only) return { _include: false };
+        return { ...g, participantsCount: baseCount, _include: true };
+      }
+    });
+
+    const filteredGroups = processedGroups.filter((g: any) => g._include);
+    console.log(`[fe-list-groups] ${filteredGroups.length}/${allGroups.length} groups after filter (admin_only=${admin_only})`);
+
+    // Upsert into fe_groups — fetch invite links in parallel for those missing
+    const groupsNeedingLink = filteredGroups.filter((g: any) => !g.invitationLink && g.phone);
+
+    if (groupsNeedingLink.length > 0) {
+      console.log(`[fe-list-groups] Fetching invite links for ${groupsNeedingLink.length} groups`);
+      await parallelLimit(groupsNeedingLink, 10, async (g: any) => {
+        try {
+          const linkRes = await fetch(`${baseUrl}/invite-link/${g.phone}`, { headers });
           if (linkRes.ok) {
             const linkData = await linkRes.json();
-            inviteLink = linkData.invitationLink || linkData.inviteLink || linkData.link || null;
-            if (inviteLink) {
-              console.log(`[fe-list-groups] Got invite link for ${g.phone}: ${inviteLink}`);
-            }
+            g.invitationLink = linkData.invitationLink || linkData.inviteLink || linkData.link || null;
           }
-        } catch (err: any) {
-          console.warn(`[fe-list-groups] invite-link error for ${g.phone}: ${err.message}`);
-        }
-      }
+        } catch (_) { /* ignore */ }
+      });
+    }
 
+    // Upsert all
+    let added = 0;
+    for (const g of filteredGroups) {
       const upsertData: any = {
         tenant_id,
         group_jid: g.phone,
         group_name: g.name || g.subject || g.phone,
         participant_count: g.participantsCount || g.size || 0,
       };
-
-      if (inviteLink) {
-        upsertData.invite_link = inviteLink;
+      if (g.invitationLink) {
+        upsertData.invite_link = g.invitationLink;
       }
 
       const { error } = await supabase
@@ -240,13 +206,7 @@ serve(async (req) => {
       .order("group_name");
 
     return new Response(
-      JSON.stringify({
-        added,
-        total_found: allGroups.length,
-        synced: filteredGroups.length,
-        admin_only: !!admin_only,
-        groups,
-      }),
+      JSON.stringify({ added, total_found: allGroups.length, synced: filteredGroups.length, admin_only: !!admin_only, groups }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
