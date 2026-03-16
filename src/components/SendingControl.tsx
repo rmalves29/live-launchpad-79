@@ -12,7 +12,7 @@ import { formatBrasiliaDateTime } from '@/lib/date-utils';
 interface SendingJob {
   id: string;
   job_type: 'sendflow' | 'mass_message';
-  status: 'running' | 'paused' | 'completed' | 'cancelled' | 'error';
+  status: 'running' | 'paused' | 'completed' | 'cancelled' | 'error' | 'scheduled';
   total_items: number;
   processed_items: number;
   current_index: number;
@@ -20,6 +20,7 @@ interface SendingJob {
   error_message?: string;
   started_at: string;
   paused_at?: string;
+  scheduled_at?: string;
 }
 
 interface SendingControlProps {
