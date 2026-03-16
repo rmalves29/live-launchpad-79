@@ -95,7 +95,20 @@ function normalizeDigits(value?: string | null): string {
 
 function normalizeParticipantPhone(value?: string | null): string {
   const digits = normalizeDigits(value);
-  return digits.startsWith('55') ? digits.slice(2) : digits;
+
+  if (!digits) return '';
+
+  // Telefones BR reais têm 10-11 dígitos sem DDI e 12-13 com DDI.
+  // Identificadores maiores costumam ser LIDs do WhatsApp e não devem ser truncados.
+  if (digits.length > 13) {
+    return digits;
+  }
+
+  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
+    return digits.slice(2);
+  }
+
+  return digits;
 }
 
 function hashMessage(text: string): string {
