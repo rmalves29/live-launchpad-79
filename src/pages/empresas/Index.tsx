@@ -1258,6 +1258,8 @@ export default function EmpresasIndex() {
           )}
         </CardContent>
       </Card>
+
+      {confirmDialogElement}
     </div>
   );
 }
