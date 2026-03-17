@@ -88,6 +88,7 @@ const PLAN_DAYS: Record<string, number> = {
 
 export default function EmpresasIndex() {
   const { profile } = useAuth();
+  const { confirm, confirmDialogElement } = useConfirmDialog();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [credentials, setCredentials] = useState<TenantCredential[]>([]);
   const [loading, setLoading] = useState(true);
