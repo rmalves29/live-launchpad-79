@@ -1,17 +1,22 @@
 
 
-## Plano: Agendamento de Postagem no SendFlow — ✅ IMPLEMENTADO
+# Adicionar botão de excluir empresa na página Empresas
 
-### Resumo
-Sistema de agendamento que permite definir data/hora para início do envio no SendFlow. Jobs agendados ficam com status `scheduled` até que um cron job (`sendflow-check-scheduled`) detecte que o horário chegou e dispare o processamento.
+## Resumo
+Adicionar um botão de exclusão (Trash2) ao lado dos botões de editar e bloquear na tabela de empresas, com diálogo de confirmação para evitar exclusões acidentais.
 
-### Arquivos alterados
-- `src/pages/sendflow/Index.tsx` — UI de agendamento (switch + date/time inputs)
-- `src/hooks/useBackendSendFlow.ts` — Aceita `scheduledAt`, cria job com status `scheduled`
-- `src/components/SendingControl.tsx` — Mostra jobs agendados com opção de cancelar
-- `supabase/functions/sendflow-check-scheduled/index.ts` — Cron function que dispara jobs no horário
-- `supabase/config.toml` — Config da nova edge function
-- `docs/SQL_SENDFLOW_SCHEDULING.sql` — SQL para rodar no Supabase (coluna + constraint + cron)
+## Alterações em `src/pages/empresas/Index.tsx`
 
-### SQL pendente (rodar no Supabase SQL Editor)
-Ver `docs/SQL_SENDFLOW_SCHEDULING.sql`
+1. **Importar `useConfirmDialog`** e adicionar o hook no componente
+2. **Criar função `handleDeleteTenant`** que:
+   - Exibe diálogo de confirmação com nome da empresa
+   - Deleta `tenant_credentials` do tenant (FK)
+   - Deleta `profiles` associados ao tenant
+   - Deleta o tenant
+   - Limpa `localStorage` se era o tenant preview ativo
+   - Recarrega a lista
+3. **Adicionar botão Trash2** na coluna de ações, entre o botão de editar e o de bloquear
+4. **Renderizar `{confirmDialogElement}`** no JSX
+
+O fluxo é idêntico ao que já existe no `TenantsManager.tsx`, adaptado para o layout de tabela da página `/empresas`.
+
