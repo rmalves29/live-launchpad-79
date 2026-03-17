@@ -2172,6 +2172,7 @@ export type Database = {
           job_type: string
           paused_at: string | null
           processed_items: number
+          scheduled_at: string | null
           started_at: string
           status: string
           tenant_id: string
@@ -2188,6 +2189,7 @@ export type Database = {
           job_type: string
           paused_at?: string | null
           processed_items?: number
+          scheduled_at?: string | null
           started_at?: string
           status?: string
           tenant_id: string
@@ -2204,6 +2206,7 @@ export type Database = {
           job_type?: string
           paused_at?: string | null
           processed_items?: number
+          scheduled_at?: string | null
           started_at?: string
           status?: string
           tenant_id?: string
