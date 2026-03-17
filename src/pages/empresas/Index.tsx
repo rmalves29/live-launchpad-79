@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -87,6 +88,7 @@ const PLAN_DAYS: Record<string, number> = {
 
 export default function EmpresasIndex() {
   const { profile } = useAuth();
+  const { confirm, confirmDialogElement } = useConfirmDialog();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [credentials, setCredentials] = useState<TenantCredential[]>([]);
   const [loading, setLoading] = useState(true);
@@ -454,6 +456,56 @@ export default function EmpresasIndex() {
     } catch (err: any) {
       console.error('Erro ao bloquear/desbloquear tenant:', err);
       setError(err.message);
+    }
+  };
+
+  const handleDeleteTenant = async (tenant: Tenant) => {
+    const confirmed = await confirm({
+      title: 'Excluir Empresa',
+      description: `Tem certeza que deseja excluir a empresa "${tenant.name}"? Esta ação é irreversível e todos os dados associados serão perdidos.`,
+      confirmText: 'Excluir',
+      cancelText: 'Cancelar',
+      variant: 'destructive',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // 1. Deletar credenciais do tenant
+      await supabase
+        .from('tenant_credentials')
+        .delete()
+        .eq('tenant_id', tenant.id);
+
+      // 2. Deletar profiles associados
+      await supabase
+        .from('profiles')
+        .delete()
+        .eq('tenant_id', tenant.id);
+
+      // 3. Deletar o tenant
+      const { error: deleteError } = await supabase
+        .from('tenants')
+        .delete()
+        .eq('id', tenant.id);
+
+      if (deleteError) throw deleteError;
+
+      // Limpar localStorage se era o tenant preview ativo
+      const previewTenantId = localStorage.getItem('previewTenantId');
+      if (previewTenantId === tenant.id) {
+        localStorage.removeItem('previewTenantId');
+      }
+
+      await loadTenants();
+    } catch (err: any) {
+      console.error('Erro ao excluir tenant:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1187,6 +1239,14 @@ export default function EmpresasIndex() {
                                 <Ban className="h-3 w-3" />
                               )}
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteTenant(tenant)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1198,6 +1258,8 @@ export default function EmpresasIndex() {
           )}
         </CardContent>
       </Card>
+
+      {confirmDialogElement}
     </div>
   );
 }
