@@ -1239,6 +1239,14 @@ export default function EmpresasIndex() {
                                 <Ban className="h-3 w-3" />
                               )}
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteTenant(tenant)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
