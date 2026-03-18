@@ -5,11 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff, Settings, Tag } from 'lucide-react';
 import ShippingServiceSelector from './ShippingServiceSelector';
+import CorreiosCWSLabels from './CorreiosCWSLabels';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
@@ -201,71 +203,96 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Credenciais do Contrato</h3>
-              <Button variant="ghost" size="sm" onClick={() => setShowSecrets(!showSecrets)}>
-                {showSecrets ? <><EyeOff className="h-4 w-4 mr-2" />Ocultar</> : <><Eye className="h-4 w-4 mr-2" />Mostrar</>}
-              </Button>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="client_id">Client ID</Label>
-                <Input id="client_id" type={showSecrets ? 'text' : 'password'} value={formData.client_id} onChange={(e) => setFormData({ ...formData, client_id: e.target.value })} placeholder="Seu Client ID dos Correios" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="client_secret">Client Secret</Label>
-                <Input id="client_secret" type={showSecrets ? 'text' : 'password'} value={formData.client_secret} onChange={(e) => setFormData({ ...formData, client_secret: e.target.value })} placeholder="Seu Client Secret" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="contrato">Número do Contrato</Label>
-                <Input id="contrato" type={showSecrets ? 'text' : 'password'} value={formData.contrato} onChange={(e) => setFormData({ ...formData, contrato: e.target.value })} placeholder="Número do contrato (opcional)" />
-                <p className="text-xs text-muted-foreground">Opcional - usado para algumas consultas</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cartao_postagem">Cartão de Postagem</Label>
-                <Input id="cartao_postagem" type={showSecrets ? 'text' : 'password'} value={formData.cartao_postagem} onChange={(e) => setFormData({ ...formData, cartao_postagem: e.target.value })} placeholder="Número do cartão de postagem" />
-                <p className="text-xs text-muted-foreground">Obrigatório para autenticação</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="from_cep">CEP de Origem</Label>
-            <Input id="from_cep" value={formData.from_cep} onChange={(e) => setFormData({ ...formData, from_cep: formatCEP(e.target.value) })} placeholder="00000-000" maxLength={9} />
-            <p className="text-xs text-muted-foreground">CEP do seu centro de distribuição para cálculo do frete</p>
-          </div>
-
-          <div className="flex gap-2">
-            <Button onClick={() => saveMutation.mutate(formData)} disabled={saveMutation.isPending || !isFormValid}>
-              {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Salvar Configuração
-            </Button>
-            <Button variant="outline" onClick={handleTest} disabled={isTesting || !isFormValid}>
-              {isTesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube className="mr-2 h-4 w-4" />}
-              Testar Conexão
-            </Button>
-          </div>
-
-          {testResult && (
-            <Alert variant={testResult.success ? 'default' : 'destructive'}>
-              {testResult.success ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-              <AlertDescription>{testResult.message}</AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
       </Card>
 
-      <ShippingServiceSelector
-        services={CORREIOS_SERVICES}
-        enabledServices={formData.enabled_services}
-        onToggle={(key, enabled) => {
-          const updated = { ...formData.enabled_services, [key]: enabled };
-          setFormData({ ...formData, enabled_services: updated });
-        }}
-      />
+      <Tabs defaultValue="config">
+        <TabsList>
+          <TabsTrigger value="config" className="gap-2"><Settings className="h-4 w-4" />Configuração</TabsTrigger>
+          {formData.is_active && (
+            <TabsTrigger value="etiquetas" className="gap-2"><Tag className="h-4 w-4" />Etiquetas</TabsTrigger>
+          )}
+        </TabsList>
+
+        <TabsContent value="config" className="space-y-4">
+          <Card>
+            <CardContent className="space-y-6 pt-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium">Credenciais do Contrato</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setShowSecrets(!showSecrets)}>
+                    {showSecrets ? <><EyeOff className="h-4 w-4 mr-2" />Ocultar</> : <><Eye className="h-4 w-4 mr-2" />Mostrar</>}
+                  </Button>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="client_id">Client ID</Label>
+                    <Input id="client_id" type={showSecrets ? 'text' : 'password'} value={formData.client_id} onChange={(e) => setFormData({ ...formData, client_id: e.target.value })} placeholder="Seu Client ID dos Correios" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="client_secret">Client Secret</Label>
+                    <Input id="client_secret" type={showSecrets ? 'text' : 'password'} value={formData.client_secret} onChange={(e) => setFormData({ ...formData, client_secret: e.target.value })} placeholder="Seu Client Secret" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="contrato">Número do Contrato</Label>
+                    <Input id="contrato" type={showSecrets ? 'text' : 'password'} value={formData.contrato} onChange={(e) => setFormData({ ...formData, contrato: e.target.value })} placeholder="Número do contrato (opcional)" />
+                    <p className="text-xs text-muted-foreground">Opcional - usado para algumas consultas</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cartao_postagem">Cartão de Postagem</Label>
+                    <Input id="cartao_postagem" type={showSecrets ? 'text' : 'password'} value={formData.cartao_postagem} onChange={(e) => setFormData({ ...formData, cartao_postagem: e.target.value })} placeholder="Número do cartão de postagem" />
+                    <p className="text-xs text-muted-foreground">Obrigatório para autenticação</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="from_cep">CEP de Origem</Label>
+                <Input id="from_cep" value={formData.from_cep} onChange={(e) => setFormData({ ...formData, from_cep: formatCEP(e.target.value) })} placeholder="00000-000" maxLength={9} />
+                <p className="text-xs text-muted-foreground">CEP do seu centro de distribuição para cálculo do frete</p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={() => saveMutation.mutate(formData)} disabled={saveMutation.isPending || !isFormValid}>
+                  {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Salvar Configuração
+                </Button>
+                <Button variant="outline" onClick={handleTest} disabled={isTesting || !isFormValid}>
+                  {isTesting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TestTube className="mr-2 h-4 w-4" />}
+                  Testar Conexão
+                </Button>
+              </div>
+
+              {testResult && (
+                <Alert variant={testResult.success ? 'default' : 'destructive'}>
+                  {testResult.success ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                  <AlertDescription>{testResult.message}</AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+
+          <ShippingServiceSelector
+            services={CORREIOS_SERVICES}
+            enabledServices={formData.enabled_services}
+            onToggle={(key, enabled) => {
+              const updated = { ...formData.enabled_services, [key]: enabled };
+              setFormData({ ...formData, enabled_services: updated });
+            }}
+          />
+        </TabsContent>
+
+        {formData.is_active && (
+          <TabsContent value="etiquetas">
+            <CorreiosCWSLabels
+              tenantId={tenantId}
+              integrationId={formData.id || ''}
+              fromCep={formData.from_cep}
+              senderJsonRaw={integration?.webhook_secret as string}
+            />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }
