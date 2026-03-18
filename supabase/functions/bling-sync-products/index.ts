@@ -84,7 +84,8 @@ async function updateExistingBlingProduct(
  * Find existing Bling product by code
  */
 async function findExistingBlingProductByCodigo(accessToken: string, codigo: string): Promise<number | null> {
-  const res = await fetch(`${BLING_API_URL}/produtos?pagina=1&limite=1&codigo=${encodeURIComponent(codigo)}`, {
+  // Try exact code search first
+  const res = await fetch(`${BLING_API_URL}/produtos?pagina=1&limite=5&codigo=${encodeURIComponent(codigo)}`, {
     headers: {
       'Authorization': `Bearer ${accessToken}`,
       'Accept': 'application/json',
@@ -94,12 +95,31 @@ async function findExistingBlingProductByCodigo(accessToken: string, codigo: str
   const text = await res.text();
   if (!res.ok) {
     console.log('[bling-sync-products] Could not search existing product in Bling:', res.status, text);
-    return null;
+    // Try without filter as fallback - search by criterio (name/code)
+    const res2 = await fetch(`${BLING_API_URL}/produtos?pagina=1&limite=5&criterio=${encodeURIComponent(codigo)}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
+    });
+    const text2 = await res2.text();
+    if (!res2.ok) {
+      console.log('[bling-sync-products] Fallback search also failed:', res2.status, text2);
+      return null;
+    }
+    return extractBlingIdFromSearch(text2, codigo);
   }
 
+  return extractBlingIdFromSearch(text, codigo);
+}
+
+function extractBlingIdFromSearch(text: string, codigo: string): number | null {
   try {
     const parsed = JSON.parse(text);
-    const first = parsed?.data?.[0] || parsed?.data?.produtos?.[0] || parsed?.[0];
+    const items = parsed?.data || [];
+    // Try exact match first
+    const exact = items.find((p: any) => p.codigo === codigo);
+    const first = exact || items[0];
     const id = first?.id;
     if (typeof id === 'number') return id;
     if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
