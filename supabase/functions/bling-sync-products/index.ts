@@ -398,8 +398,11 @@ async function sendProductToBling(
       );
     }
 
-    // Check if product already exists by code
-    if (response.status === 400 && isDuplicateCodigoError(responseText)) {
+    // Check if product already exists by code (handle unicode escapes too)
+    const decodedText = responseText.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    if (response.status === 400 && (isDuplicateCodigoError(responseText) || isDuplicateCodigoError(decodedText))) {
+      console.log(`[bling-sync-products] Duplicate code detected for "${blingProduct.codigo}", searching existing...`);
+      await delay(350);
       const existingId = await findExistingBlingProductByCodigo(accessToken, blingProduct.codigo);
       if (existingId) {
         blingProductId = existingId;
@@ -408,10 +411,26 @@ async function sendProductToBling(
         await delay(350);
         await updateExistingBlingProduct(existingId, blingProduct, accessToken);
       } else {
-        throw new Error(`Bling API error: ${response.status} - ${responseText}`);
+        // Product exists in Bling but we couldn't find it via search
+        // Try to extract the ID from error message or just log and skip gracefully
+        console.log(`[bling-sync-products] Could not find existing product by code "${blingProduct.codigo}" in Bling search. Marking as needs manual check.`);
+        throw new Error(`Produto com código "${blingProduct.codigo}" já existe no Bling, mas não foi encontrado via busca. Verifique manualmente no Bling e remova o duplicado.`);
       }
     } else {
-      throw new Error(`Bling API error: ${response.status} - ${responseText}`);
+      // Extract a friendlier error message from Bling response
+      let friendlyError = `Bling API error: ${response.status}`;
+      try {
+        const parsed = JSON.parse(responseText);
+        const fields = parsed?.error?.fields;
+        if (Array.isArray(fields) && fields.length > 0) {
+          friendlyError = fields.map((f: any) => f.msg || f.message).filter(Boolean).join('; ') || friendlyError;
+        } else if (parsed?.error?.description) {
+          friendlyError = parsed.error.description;
+        } else if (parsed?.error?.message) {
+          friendlyError = parsed.error.message;
+        }
+      } catch {}
+      throw new Error(friendlyError);
     }
   } else {
     const parsed = JSON.parse(responseText);
