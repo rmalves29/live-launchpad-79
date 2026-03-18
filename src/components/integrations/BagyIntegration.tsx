@@ -1,6 +1,7 @@
 /**
  * Componente de integração com Bagy (Dooca Commerce)
- * Permite configurar Bearer Token, testar conexão, exportar pedidos e sincronizar estoque
+ * Permite configurar Bearer Token, testar conexão, exportar pedidos,
+ * importar produtos e sincronizar estoque
  */
 
 import { useState } from 'react';
@@ -14,7 +15,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import {
   Loader2,
@@ -27,6 +27,7 @@ import {
   ShoppingCart,
   Package,
   Wifi,
+  Download,
 } from 'lucide-react';
 
 interface BagyIntegrationProps {
@@ -47,6 +48,21 @@ interface BagyIntegrationData {
 
 const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 
+async function callBagySync(tenantId: string, action: string) {
+  const session = await supabase.auth.getSession();
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/bagy-sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.data.session?.access_token}`,
+    },
+    body: JSON.stringify({ tenant_id: tenantId, action }),
+  });
+  const data = await response.json();
+  if (!data.success) throw new Error(data.error || 'Falha na operação');
+  return data;
+}
+
 export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
   const queryClient = useQueryClient();
   const [accessToken, setAccessToken] = useState('');
@@ -54,7 +70,6 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
   const [syncOrdersOut, setSyncOrdersOut] = useState(true);
   const [syncStock, setSyncStock] = useState(true);
 
-  // Buscar integração existente
   const { data: integration, isLoading } = useQuery({
     queryKey: ['bagy-integration', tenantId],
     queryFn: async () => {
@@ -63,21 +78,17 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
         .select('*')
         .eq('tenant_id', tenantId)
         .maybeSingle();
-
       if (error) throw error;
-
       if (data) {
         setAccessToken((data as any).access_token || '');
         setSyncOrdersOut((data as any).sync_orders_out ?? true);
         setSyncStock((data as any).sync_stock ?? true);
       }
-
       return data as BagyIntegrationData | null;
     },
     enabled: !!tenantId,
   });
 
-  // Salvar configuração
   const saveMutation = useMutation({
     mutationFn: async () => {
       const payload = {
@@ -87,7 +98,6 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
         sync_stock: syncStock,
         updated_at: new Date().toISOString(),
       };
-
       if (integration?.id) {
         const { error } = await supabase
           .from('integration_bagy' as any)
@@ -112,31 +122,12 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
     },
   });
 
-  // Testar conexão
   const testMutation = useMutation({
-    mutationFn: async () => {
-      const session = await supabase.auth.getSession();
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/bagy-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.data.session?.access_token}`,
-        },
-        body: JSON.stringify({ tenant_id: tenantId, action: 'test_connection' }),
-      });
-      const data = await response.json();
-      if (!data.success) throw new Error(data.error || 'Falha na conexão');
-      return data;
-    },
-    onSuccess: (data) => {
-      toast.success(data.message || 'Conexão estabelecida!');
-    },
-    onError: (error) => {
-      toast.error(error.message || 'Erro ao testar conexão');
-    },
+    mutationFn: () => callBagySync(tenantId, 'test_connection'),
+    onSuccess: (data) => toast.success(data.message || 'Conexão estabelecida!'),
+    onError: (error) => toast.error(error.message || 'Erro ao testar conexão'),
   });
 
-  // Ativar/desativar
   const toggleActiveMutation = useMutation({
     mutationFn: async (newActive: boolean) => {
       if (!integration?.id) return;
@@ -154,29 +145,22 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
     onError: () => toast.error('Erro ao alterar status'),
   });
 
-  // Sincronizar estoque
   const syncStockMutation = useMutation({
-    mutationFn: async () => {
-      const session = await supabase.auth.getSession();
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/bagy-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.data.session?.access_token}`,
-        },
-        body: JSON.stringify({ tenant_id: tenantId, action: 'sync_stock' }),
-      });
-      const data = await response.json();
-      if (!data.success) throw new Error(data.error || 'Falha ao sincronizar estoque');
-      return data;
-    },
+    mutationFn: () => callBagySync(tenantId, 'sync_stock'),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['bagy-integration', tenantId] });
       toast.success(data.message || 'Estoque sincronizado!');
     },
-    onError: (error) => {
-      toast.error(error.message || 'Erro ao sincronizar estoque');
+    onError: (error) => toast.error(error.message || 'Erro ao sincronizar estoque'),
+  });
+
+  const syncProductsMutation = useMutation({
+    mutationFn: () => callBagySync(tenantId, 'sync_products'),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['bagy-integration', tenantId] });
+      toast.success(data.message || 'Produtos importados!');
     },
+    onError: (error) => toast.error(error.message || 'Erro ao importar produtos'),
   });
 
   if (isLoading) {
@@ -213,7 +197,7 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
                   )}
                 </CardTitle>
                 <CardDescription>
-                  Exporte pedidos e sincronize estoque com sua loja Bagy
+                  Exporte pedidos automaticamente ao pagar, importe produtos e sincronize estoque
                 </CardDescription>
               </div>
             </div>
@@ -274,7 +258,6 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
               </Button>
             </div>
           </div>
-
           <div className="flex gap-2">
             <Button
               onClick={() => saveMutation.mutate()}
@@ -316,9 +299,9 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
             <div className="flex items-center gap-3">
               <ShoppingCart className="h-5 w-5 text-muted-foreground" />
               <div>
-                <p className="font-medium">Exportar Pedidos</p>
+                <p className="font-medium">Exportar Pedidos Automaticamente</p>
                 <p className="text-sm text-muted-foreground">
-                  Enviar pedidos pagos do OrderZap para a Bagy
+                  Ao marcar um pedido como pago no OrderZap, ele é enviado automaticamente para a Bagy
                 </p>
               </div>
             </div>
@@ -358,6 +341,18 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => syncProductsMutation.mutate()}
+              disabled={syncProductsMutation.isPending || !integration?.is_active}
+            >
+              {syncProductsMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Importar Produtos da Bagy
+            </Button>
             <Button
               variant="outline"
               onClick={() => syncStockMutation.mutate()}

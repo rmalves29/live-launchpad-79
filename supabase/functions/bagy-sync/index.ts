@@ -30,6 +30,18 @@ async function bagyFetch(
   return data;
 }
 
+async function getIntegration(supabase: any, tenant_id: string) {
+  const { data: integration, error } = await supabase
+    .from("integration_bagy")
+    .select("*")
+    .eq("tenant_id", tenant_id)
+    .maybeSingle();
+
+  if (error || !integration) return null;
+  if (!integration.access_token) return null;
+  return integration;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -49,23 +61,10 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Buscar integração
-    const { data: integration, error: intError } = await supabase
-      .from("integration_bagy")
-      .select("*")
-      .eq("tenant_id", tenant_id)
-      .maybeSingle();
-
-    if (intError || !integration) {
+    const integration = await getIntegration(supabase, tenant_id);
+    if (!integration) {
       return new Response(
-        JSON.stringify({ success: false, error: "Integração Bagy não encontrada" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!integration.access_token) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Token de acesso não configurado" }),
+        JSON.stringify({ success: false, error: "Integração Bagy não encontrada ou token não configurado" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -101,7 +100,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Buscar pedido
       const { data: order, error: orderErr } = await supabase
         .from("orders")
         .select("*")
@@ -123,7 +121,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Buscar itens do carrinho
       let items: any[] = [];
       if (order.cart_id) {
         const { data: cartItems } = await supabase
@@ -140,7 +137,6 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Montar itens para a Bagy
       const bagyItems = items.map((item: any) => ({
         name: item.product_name || item.products?.name || "Produto",
         reference: item.product_code || item.products?.code || "",
@@ -148,7 +144,6 @@ Deno.serve(async (req) => {
         price: item.unit_price || 0,
       }));
 
-      // Montar pedido para a Bagy
       const bagyOrder: any = {
         customer: {
           name: order.customer_name || "Cliente",
@@ -159,7 +154,6 @@ Deno.serve(async (req) => {
         status: order.is_paid ? "paid" : "pending",
       };
 
-      // Adicionar endereço se disponível
       if (order.customer_cep) {
         bagyOrder.shipping_address = {
           zip_code: order.customer_cep,
@@ -182,7 +176,6 @@ Deno.serve(async (req) => {
 
         const bagyOrderId = bagyResponse?.data?.id || bagyResponse?.id;
 
-        // Salvar bagy_order_id
         if (bagyOrderId) {
           await supabase
             .from("orders")
@@ -190,12 +183,10 @@ Deno.serve(async (req) => {
             .eq("id", order_id);
         }
 
-        // Abater estoque se habilitado
         if (integration.sync_stock && items.length > 0) {
           await syncStockForItems(items, token);
         }
 
-        // Atualizar last_sync_at
         await supabase
           .from("integration_bagy")
           .update({ last_sync_at: new Date().toISOString() })
@@ -221,7 +212,6 @@ Deno.serve(async (req) => {
     // ===================== SYNC STOCK =====================
     if (action === "sync_stock") {
       try {
-        // Buscar todos os produtos do tenant
         const { data: products } = await supabase
           .from("products")
           .select("id, code, name, stock")
@@ -235,41 +225,10 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Buscar produtos na Bagy para mapear por SKU/reference
-        let bagyProducts: any[] = [];
-        let page = 1;
-        let hasMore = true;
+        const bagyProducts = await fetchAllBagyProducts(token);
 
-        while (hasMore && page <= 20) {
-          const res = await bagyFetch(`/products?limit=50&page=${page}`, token);
-          const pageData = res?.data || [];
-          bagyProducts = bagyProducts.concat(pageData);
-          hasMore = pageData.length === 50;
-          page++;
-        }
+        const bagySkuMap = buildBagySkuMap(bagyProducts);
 
-        // Criar mapa de SKU -> variation_id na Bagy
-        const bagySkuMap = new Map<string, { variation_id: number; current_balance: number }>();
-        for (const bp of bagyProducts) {
-          if (bp.variations) {
-            for (const v of bp.variations) {
-              if (v.reference) {
-                bagySkuMap.set(v.reference, {
-                  variation_id: v.id,
-                  current_balance: v.balance || 0,
-                });
-              }
-            }
-          }
-          if (bp.reference) {
-            bagySkuMap.set(bp.reference, {
-              variation_id: bp.variations?.[0]?.id || bp.id,
-              current_balance: bp.variations?.[0]?.balance || 0,
-            });
-          }
-        }
-
-        // Montar payload de estoque
         const stockUpdates: { variation_id: number; balance: number }[] = [];
         let matched = 0;
         let unmatched = 0;
@@ -277,10 +236,7 @@ Deno.serve(async (req) => {
         for (const product of products) {
           const bagy = bagySkuMap.get(product.code);
           if (bagy) {
-            stockUpdates.push({
-              variation_id: bagy.variation_id,
-              balance: product.stock ?? 0,
-            });
+            stockUpdates.push({ variation_id: bagy.variation_id, balance: product.stock ?? 0 });
             matched++;
           } else {
             unmatched++;
@@ -297,17 +253,12 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Enviar em lotes de 150
         const batchSize = 150;
         for (let i = 0; i < stockUpdates.length; i += batchSize) {
           const batch = stockUpdates.slice(i, i + batchSize);
-          await bagyFetch("/stocks", token, {
-            method: "PUT",
-            body: JSON.stringify(batch),
-          });
+          await bagyFetch("/stocks", token, { method: "PUT", body: JSON.stringify(batch) });
         }
 
-        // Atualizar last_sync_at
         await supabase
           .from("integration_bagy")
           .update({ last_sync_at: new Date().toISOString() })
@@ -331,6 +282,96 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ===================== SYNC PRODUCTS (Bagy → OrderZap) =====================
+    if (action === "sync_products") {
+      try {
+        const bagyProducts = await fetchAllBagyProducts(token);
+
+        if (bagyProducts.length === 0) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Nenhum produto encontrado na Bagy" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        let imported = 0;
+        let updated = 0;
+        let skipped = 0;
+
+        for (const bp of bagyProducts) {
+          const sku = bp.reference || bp.variations?.[0]?.reference;
+          if (!sku) {
+            skipped++;
+            continue;
+          }
+
+          const name = bp.name || "Produto Bagy";
+          const price = bp.price ?? bp.variations?.[0]?.price ?? 0;
+          const stock = bp.variations?.[0]?.balance ?? 0;
+          const imageUrl = bp.images?.[0]?.src || bp.image?.src || null;
+
+          // Check if product already exists by code
+          const { data: existing } = await supabase
+            .from("products")
+            .select("id")
+            .eq("tenant_id", tenant_id)
+            .eq("code", sku)
+            .maybeSingle();
+
+          if (existing) {
+            // Update existing product
+            await supabase
+              .from("products")
+              .update({
+                name,
+                price,
+                stock,
+                image_url: imageUrl,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", existing.id);
+            updated++;
+          } else {
+            // Insert new product
+            await supabase
+              .from("products")
+              .insert({
+                tenant_id,
+                code: sku,
+                name,
+                price,
+                stock,
+                image_url: imageUrl,
+                is_active: true,
+              });
+            imported++;
+          }
+        }
+
+        await supabase
+          .from("integration_bagy")
+          .update({ last_sync_at: new Date().toISOString() })
+          .eq("tenant_id", tenant_id);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Produtos importados! ${imported} novo(s), ${updated} atualizado(s), ${skipped} ignorado(s) (sem SKU).`,
+            imported,
+            updated,
+            skipped,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (e: any) {
+        console.error("[bagy-sync] Erro ao importar produtos:", e.message);
+        return new Response(
+          JSON.stringify({ success: false, error: `Erro ao importar produtos: ${e.message}` }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: false, error: `Ação desconhecida: ${action}` }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -344,32 +385,52 @@ Deno.serve(async (req) => {
   }
 });
 
-// Função auxiliar para abater estoque após exportar pedido
-async function syncStockForItems(items: any[], token: string) {
-  try {
-    // Buscar todos os produtos na Bagy
-    const res = await bagyFetch("/products?limit=250", token);
-    const bagyProducts = res?.data || [];
+// ===================== Helper functions =====================
 
-    const bagySkuMap = new Map<string, { variation_id: number; current_balance: number }>();
-    for (const bp of bagyProducts) {
-      if (bp.variations) {
-        for (const v of bp.variations) {
-          if (v.reference) {
-            bagySkuMap.set(v.reference, {
-              variation_id: v.id,
-              current_balance: v.balance || 0,
-            });
-          }
+async function fetchAllBagyProducts(token: string) {
+  let bagyProducts: any[] = [];
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore && page <= 20) {
+    const res = await bagyFetch(`/products?limit=50&page=${page}`, token);
+    const pageData = res?.data || [];
+    bagyProducts = bagyProducts.concat(pageData);
+    hasMore = pageData.length === 50;
+    page++;
+  }
+
+  return bagyProducts;
+}
+
+function buildBagySkuMap(bagyProducts: any[]) {
+  const bagySkuMap = new Map<string, { variation_id: number; current_balance: number }>();
+  for (const bp of bagyProducts) {
+    if (bp.variations) {
+      for (const v of bp.variations) {
+        if (v.reference) {
+          bagySkuMap.set(v.reference, {
+            variation_id: v.id,
+            current_balance: v.balance || 0,
+          });
         }
       }
-      if (bp.reference) {
-        bagySkuMap.set(bp.reference, {
-          variation_id: bp.variations?.[0]?.id || bp.id,
-          current_balance: bp.variations?.[0]?.balance || 0,
-        });
-      }
     }
+    if (bp.reference) {
+      bagySkuMap.set(bp.reference, {
+        variation_id: bp.variations?.[0]?.id || bp.id,
+        current_balance: bp.variations?.[0]?.balance || 0,
+      });
+    }
+  }
+  return bagySkuMap;
+}
+
+async function syncStockForItems(items: any[], token: string) {
+  try {
+    const res = await bagyFetch("/products?limit=250", token);
+    const bagyProducts = res?.data || [];
+    const bagySkuMap = buildBagySkuMap(bagyProducts);
 
     const stockUpdates: { variation_id: number; balance: number }[] = [];
     for (const item of items) {
