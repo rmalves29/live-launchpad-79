@@ -229,6 +229,11 @@ export default function BlingProductsSyncPanel({ tenantId }: BlingProductsSyncPa
                         <Badge variant="destructive">Erro</Badge>
                       )}
                       <span className="truncate">{detail.product_name}</span>
+                      {!detail.success && detail.error && (
+                        <span className="text-xs text-destructive block truncate max-w-[300px]" title={detail.error}>
+                          ({detail.error})
+                        </span>
+                      )}
                     </div>
                   ))}
                   {lastSyncResult.details.length > 5 && (
