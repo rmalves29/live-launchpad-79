@@ -141,6 +141,15 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
+  const { data: bagyIntegration } = useQuery({
+    queryKey: ['bagy-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('integration_bagy' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
+      return data as { is_active: boolean } | null;
+    },
+    enabled: !!tenantId,
+  });
+
   if (authLoading || tenantLoading) {
     return (
       <div className="container mx-auto p-6 flex items-center justify-center h-64">
