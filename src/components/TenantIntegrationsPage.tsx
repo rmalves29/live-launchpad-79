@@ -210,6 +210,14 @@ export default function TenantIntegrationsPage() {
               {instagramIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
             </TabsTrigger>
           )}
+          {showAdvancedIntegrations && (
+            <TabsTrigger value="bagy" className="flex items-center gap-2">
+              <ShoppingBag className="h-4 w-4" />
+              <span className="hidden sm:inline">Bagy</span>
+              <span className="sm:hidden">BG</span>
+              {bagyIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="bling" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Bling ERP</span>
