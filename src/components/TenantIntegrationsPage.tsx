@@ -22,6 +22,7 @@ import OlistIntegration from '@/components/integrations/OlistIntegration';
 import OmieIntegration from '@/components/integrations/OmieIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 import WhatsAppCloudIntegration from '@/components/integrations/WhatsAppCloudIntegration';
+import BagyIntegration from '@/components/integrations/BagyIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
