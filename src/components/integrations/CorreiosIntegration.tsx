@@ -5,11 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff, Settings, Tag } from 'lucide-react';
 import ShippingServiceSelector from './ShippingServiceSelector';
+import CorreiosCWSLabels from './CorreiosCWSLabels';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
