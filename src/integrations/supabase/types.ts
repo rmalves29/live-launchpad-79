@@ -881,6 +881,50 @@ export type Database = {
           },
         ]
       }
+      integration_bagy: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          last_sync_at: string | null
+          sync_orders_out: boolean
+          sync_stock: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          sync_orders_out?: boolean
+          sync_stock?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          sync_orders_out?: boolean
+          sync_stock?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_bagy_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_bling: {
         Row: {
           access_token: string | null
@@ -1508,6 +1552,7 @@ export type Database = {
       }
       orders: {
         Row: {
+          bagy_order_id: number | null
           bling_order_id: number | null
           bling_sync_status: string | null
           cart_id: number | null
@@ -1550,6 +1595,7 @@ export type Database = {
           whatsapp_group_name: string | null
         }
         Insert: {
+          bagy_order_id?: number | null
           bling_order_id?: number | null
           bling_sync_status?: string | null
           cart_id?: number | null
@@ -1592,6 +1638,7 @@ export type Database = {
           whatsapp_group_name?: string | null
         }
         Update: {
+          bagy_order_id?: number | null
           bling_order_id?: number | null
           bling_sync_status?: string | null
           cart_id?: number | null
