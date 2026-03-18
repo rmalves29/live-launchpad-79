@@ -17,12 +17,15 @@ interface CorreiosCredentials {
 async function getCorreiosToken(credentials: CorreiosCredentials, tenantId: string): Promise<string> {
   const cached = tokenCacheMap.get(tenantId);
   if (cached && new Date(cached.expiresAt) > new Date(Date.now() + 5 * 60 * 1000)) {
+    console.log("[correios-labels] Using cached token for tenant:", tenantId);
     return cached.token;
   }
 
   const { clientId, clientSecret, cartaoPostagem } = credentials;
-  if (!clientId || !clientSecret) throw new Error("Credenciais dos Correios não configuradas.");
-  if (!cartaoPostagem) throw new Error("Cartão de Postagem não configurado.");
+  if (!clientId || !clientSecret) throw new Error("Credenciais dos Correios não configuradas (client_id/client_secret).");
+  if (!cartaoPostagem) throw new Error("Cartão de Postagem não configurado (refresh_token).");
+
+  console.log("[correios-labels] Authenticating with Correios API. clientId:", clientId, "cartao:", cartaoPostagem);
 
   const authUrl = "https://api.correios.com.br/token/v1/autentica/cartaopostagem";
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
@@ -34,9 +37,17 @@ async function getCorreiosToken(credentials: CorreiosCredentials, tenantId: stri
   });
 
   const responseText = await authResponse.text();
+  console.log("[correios-labels] Auth response status:", authResponse.status, "body length:", responseText.length);
+
   if (!authResponse.ok) {
     let errorMessage = `Falha na autenticação Correios (${authResponse.status})`;
-    try { const d = JSON.parse(responseText); errorMessage = d.msgs?.[0]?.texto || d.message || errorMessage; } catch {}
+    try {
+      const d = JSON.parse(responseText);
+      errorMessage = d.msgs?.[0]?.texto || d.message || errorMessage;
+      console.error("[correios-labels] Auth error details:", JSON.stringify(d));
+    } catch {
+      console.error("[correios-labels] Auth error raw:", responseText.substring(0, 500));
+    }
     throw new Error(errorMessage);
   }
 
@@ -45,10 +56,10 @@ async function getCorreiosToken(credentials: CorreiosCredentials, tenantId: stri
 
   const expiresAt = tokenData.expiraEm ? new Date(tokenData.expiraEm) : new Date(Date.now() + 55 * 60 * 1000);
   tokenCacheMap.set(tenantId, { token: tokenData.token, expiresAt });
+  console.log("[correios-labels] Token obtained successfully, expires:", expiresAt.toISOString());
   return tokenData.token;
 }
 
-// Service code mapping for contract services
 const SERVICE_CODES: Record<string, string> = {
   PAC: "03298",
   SEDEX: "03220",
@@ -108,9 +119,9 @@ async function createPrePostagem(
       celular: order.customer_phone?.replace(/\D/g, "") || "",
     },
     codigoServico: serviceCode,
-    pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)), // grams, minimum 300g
+    pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
     objetoPostal: {
-      tipo: "2", // package
+      tipo: "2",
       peso: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
       comprimento: 20,
       largura: 16,
@@ -121,6 +132,7 @@ async function createPrePostagem(
   };
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
+  console.log("[correios-labels] Payload:", JSON.stringify(payload));
 
   const response = await fetch("https://api.correios.com.br/prepostagem/v2/prepostagens", {
     method: "POST",
@@ -133,7 +145,7 @@ async function createPrePostagem(
   });
 
   const responseText = await response.text();
-  console.log("[correios-labels] Pre-postagem response status:", response.status);
+  console.log("[correios-labels] Pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
 
   if (!response.ok) {
     let errorMsg = `Erro na pré-postagem (${response.status})`;
@@ -149,6 +161,7 @@ async function createPrePostagem(
   const codigoObjeto = data.codigoObjeto || data.objetoPostal?.codigoObjeto;
 
   if (!idPrePostagem || !codigoObjeto) {
+    console.error("[correios-labels] Missing ID/tracking in response:", JSON.stringify(data));
     throw new Error("Resposta da API não contém ID ou código de rastreio");
   }
 
@@ -156,6 +169,7 @@ async function createPrePostagem(
 }
 
 async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<string> {
+  console.log("[correios-labels] Fetching label PDF for:", idPrePostagem);
   const response = await fetch(
     `https://api.correios.com.br/prepostagem/v2/prepostagens/${idPrePostagem}/etiqueta`,
     {
@@ -167,7 +181,8 @@ async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<stri
   );
 
   if (!response.ok) {
-    console.error("[correios-labels] Label PDF error:", response.status);
+    const errText = await response.text();
+    console.error("[correios-labels] Label PDF error:", response.status, errText.substring(0, 500));
     throw new Error(`Erro ao gerar etiqueta PDF (${response.status})`);
   }
 
@@ -186,6 +201,7 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const { action, tenant_id } = body;
+    console.log("[correios-labels] Action:", action, "Tenant:", tenant_id);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -201,9 +217,41 @@ serve(async (req) => {
       .eq("is_active", true)
       .maybeSingle();
 
-    if (intError || !integration) {
+    if (intError) {
+      console.error("[correios-labels] DB error fetching integration:", intError.message);
+      return new Response(
+        JSON.stringify({ success: false, error: "Erro ao buscar integração: " + intError.message }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    if (!integration) {
+      console.error("[correios-labels] No active correios integration found for tenant:", tenant_id);
       return new Response(
         JSON.stringify({ success: false, error: "Integração Correios não configurada ou inativa" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    console.log("[correios-labels] Integration found:", integration.id, "client_id:", integration.client_id);
+
+    // Handle save_sender FIRST (before authentication)
+    if (action === "save_sender") {
+      const { sender } = body;
+      console.log("[correios-labels] Saving sender data:", JSON.stringify(sender));
+      const { error: updateError } = await supabase
+        .from("shipping_integrations")
+        .update({ webhook_secret: JSON.stringify(sender) })
+        .eq("id", integration.id);
+
+      if (updateError) {
+        console.error("[correios-labels] Save sender error:", updateError.message);
+        throw updateError;
+      }
+
+      console.log("[correios-labels] Sender saved successfully for integration:", integration.id);
+      return new Response(
+        JSON.stringify({ success: true }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -224,8 +272,9 @@ serve(async (req) => {
       senderInfo = { ...senderInfo, ...parsed, cep: integration.from_cep || parsed.cep || "" };
     } catch {}
 
+    console.log("[correios-labels] Sender info loaded:", JSON.stringify({ nome: senderInfo.nome, cidade: senderInfo.cidade, uf: senderInfo.uf }));
+
     if (!senderInfo.nome || !senderInfo.logradouro || !senderInfo.cidade || !senderInfo.uf) {
-      // Try to get from tenant
       const { data: tenant } = await supabase
         .from("tenants")
         .select("name")
@@ -233,6 +282,7 @@ serve(async (req) => {
         .maybeSingle();
       if (!senderInfo.nome && tenant?.name) senderInfo.nome = tenant.name;
       if (!senderInfo.logradouro) {
+        console.error("[correios-labels] Sender address incomplete");
         return new Response(
           JSON.stringify({ success: false, error: "Configure o endereço do remetente antes de gerar etiquetas" }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -244,6 +294,8 @@ serve(async (req) => {
 
     if (action === "create_prepostagem") {
       const { order_ids, service_overrides } = body;
+      console.log("[correios-labels] Creating pre-postagens for orders:", order_ids);
+
       if (!order_ids || order_ids.length === 0) {
         return new Response(
           JSON.stringify({ success: false, error: "Nenhum pedido selecionado" }),
@@ -251,7 +303,6 @@ serve(async (req) => {
         );
       }
 
-      // Fetch orders
       const { data: orders, error: ordersError } = await supabase
         .from("orders")
         .select("*")
@@ -259,21 +310,22 @@ serve(async (req) => {
         .eq("tenant_id", tenant_id);
 
       if (ordersError || !orders || orders.length === 0) {
+        console.error("[correios-labels] Orders fetch error:", ordersError?.message);
         return new Response(
           JSON.stringify({ success: false, error: "Pedidos não encontrados" }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
+      console.log("[correios-labels] Found", orders.length, "orders to process");
+
       const results: PrePostagemResult[] = [];
 
       for (const order of orders) {
         try {
-          // Determine service code
           const serviceKey = service_overrides?.[String(order.id)] || "PAC";
           const serviceCode = SERVICE_CODES[serviceKey] || SERVICE_CODES.PAC;
 
-          // Validate destination address
           if (!order.customer_cep || !order.customer_street) {
             results.push({
               orderId: order.id,
@@ -283,12 +335,10 @@ serve(async (req) => {
             continue;
           }
 
-          // Create pre-postagem
           const { idPrePostagem, codigoObjeto } = await createPrePostagem(
             token, credentials.cartaoPostagem, senderInfo, order, serviceCode,
           );
 
-          // Try to get label PDF
           let labelPdfBase64: string | undefined;
           try {
             labelPdfBase64 = await fetchLabelPdf(token, idPrePostagem);
@@ -296,7 +346,6 @@ serve(async (req) => {
             console.error("[correios-labels] PDF fetch failed for order", order.id, pdfErr);
           }
 
-          // Update order with tracking code
           await supabase
             .from("orders")
             .update({ melhor_envio_tracking_code: codigoObjeto })
@@ -310,15 +359,16 @@ serve(async (req) => {
             labelPdfBase64,
           });
 
-          console.log("[correios-labels] Success for order", order.id, "tracking:", codigoObjeto);
+          console.log("[correios-labels] ✅ Success for order", order.id, "tracking:", codigoObjeto);
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          console.error("[correios-labels] Error for order", order.id, errMsg);
+          console.error("[correios-labels] ❌ Error for order", order.id, errMsg);
           results.push({ orderId: order.id, success: false, error: errMsg });
         }
       }
 
       const successCount = results.filter((r) => r.success).length;
+      console.log("[correios-labels] Completed:", successCount, "/", results.length, "successful");
 
       return new Response(
         JSON.stringify({
@@ -330,29 +380,13 @@ serve(async (req) => {
       );
     }
 
-    if (action === "save_sender") {
-      const { sender } = body;
-      // Save sender info as JSON in webhook_secret field
-      const { error: updateError } = await supabase
-        .from("shipping_integrations")
-        .update({ webhook_secret: JSON.stringify(sender) })
-        .eq("id", integration.id);
-
-      if (updateError) throw updateError;
-
-      return new Response(
-        JSON.stringify({ success: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
     return new Response(
       JSON.stringify({ success: false, error: `Ação desconhecida: ${action}` }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error("[correios-labels] Error:", errMsg);
+    console.error("[correios-labels] ❌ Top-level error:", errMsg);
     return new Response(
       JSON.stringify({ success: false, error: errMsg }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

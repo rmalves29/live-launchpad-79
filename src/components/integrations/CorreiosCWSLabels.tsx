@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,6 +57,36 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
     } catch { return { ...DEFAULT_SENDER }; }
   });
   const [savingSender, setSavingSender] = useState(false);
+  const [senderLoaded, setSenderLoaded] = useState(false);
+
+  // Load sender from DB (persisted in webhook_secret)
+  const { data: savedSenderData } = useQuery({
+    queryKey: ['correios-sender', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('shipping_integrations')
+        .select('webhook_secret')
+        .eq('tenant_id', tenantId)
+        .eq('provider', 'correios')
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.webhook_secret) {
+        try {
+          return JSON.parse(data.webhook_secret as string) as SenderInfo;
+        } catch { return null; }
+      }
+      return null;
+    },
+    enabled: !!tenantId,
+  });
+
+  // Sync DB sender data into state once
+  useEffect(() => {
+    if (savedSenderData && !senderLoaded) {
+      setSender(prev => ({ ...DEFAULT_SENDER, ...savedSenderData }));
+      setSenderLoaded(true);
+    }
+  }, [savedSenderData, senderLoaded]);
 
   // Order selection
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
@@ -111,6 +141,9 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao salvar');
       toast({ title: 'Sucesso', description: 'Dados do remetente salvos!' });
+      // Invalidate queries so data persists across navigations
+      queryClient.invalidateQueries({ queryKey: ['correios-sender', tenantId] });
+      queryClient.invalidateQueries({ queryKey: ['correios-integration', tenantId] });
     } catch (err: any) {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     } finally {
