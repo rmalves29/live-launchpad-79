@@ -1,15 +1,12 @@
 /**
  * Componente de Integração com Instagram Live
- * Permite configurar Instagram Account ID e Page Access Token
- * para receber comentários de Lives via Webhook oficial
+ * Conexão via OAuth (botão "Conectar Instagram")
  */
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Instagram, CheckCircle2, AlertTriangle, Copy, ExternalLink, Link2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,31 +18,11 @@ interface InstagramIntegrationProps {
   tenantId: string;
 }
 
-interface InstagramConfig {
-  id: string;
-  tenant_id: string;
-  instagram_account_id: string | null;
-  page_access_token: string | null;
-  page_id: string | null;
-  webhook_verify_token: string | null;
-  is_active: boolean;
-  environment: string;
-}
-
-// A URL do OAuth é obtida via edge function para não expor o App ID no frontend
-
 export default function InstagramIntegration({ tenantId }: InstagramIntegrationProps) {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [instagramAccountId, setInstagramAccountId] = useState('');
-  const [pageAccessToken, setPageAccessToken] = useState('');
-  const [pageId, setPageId] = useState('');
-  const [webhookVerifyToken, setWebhookVerifyToken] = useState('');
-  const [isActive, setIsActive] = useState(false);
 
-  // URL do Webhook
   const webhookUrl = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/instagram-webhook';
-  const redirectUri = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/instagram-auth-callback';
 
   // Verificar parâmetros de sucesso/erro do OAuth
   useEffect(() => {
@@ -55,7 +32,6 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
     if (instagramSuccess === 'true') {
       toast.success('Instagram conectado com sucesso!');
       queryClient.invalidateQueries({ queryKey: ['instagram-integration', tenantId] });
-      // Limpar parâmetros da URL
       searchParams.delete('instagram_success');
       setSearchParams(searchParams, { replace: true });
     }
@@ -70,7 +46,6 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
         'erro_inesperado': 'Erro inesperado durante a conexão',
       };
       toast.error(errorMessages[instagramError] || `Erro: ${instagramError}`);
-      // Limpar parâmetros da URL
       searchParams.delete('instagram_error');
       setSearchParams(searchParams, { replace: true });
     }
@@ -87,23 +62,14 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
         .maybeSingle();
 
       if (error) throw error;
-      return data as InstagramConfig | null;
+      return data;
     },
     enabled: !!tenantId,
   });
 
-  // Preencher formulário com dados existentes
-  useEffect(() => {
-    if (config) {
-      setInstagramAccountId(config.instagram_account_id || '');
-      setPageAccessToken(config.page_access_token || '');
-      setPageId(config.page_id || '');
-      setWebhookVerifyToken(config.webhook_verify_token || '');
-      setIsActive(config.is_active);
-    }
-  }, [config]);
+  const isConnected = !!(config?.is_active && config?.page_access_token);
 
-  // Função para iniciar OAuth do Instagram/Facebook
+  // Iniciar OAuth
   const handleConnectInstagram = async () => {
     try {
       const { data, error } = await supabase.functions.invoke('instagram-oauth-url', {
@@ -112,7 +78,6 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
 
       if (error || !data?.url) {
         toast.error('Erro ao gerar URL de autorização');
-        console.error('Erro OAuth URL:', error);
         return;
       }
 
@@ -123,7 +88,7 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
     }
   };
 
-  // Função para desconectar
+  // Desconectar
   const disconnectMutation = useMutation({
     mutationFn: async () => {
       const { error } = await supabase
@@ -142,55 +107,14 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
       toast.success('Instagram desconectado');
       queryClient.invalidateQueries({ queryKey: ['instagram-integration', tenantId] });
     },
-    onError: (error) => {
-      console.error('Erro ao desconectar:', error);
+    onError: () => {
       toast.error('Erro ao desconectar Instagram');
-    },
-  });
-
-  // Salvar configuração
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const payload = {
-        tenant_id: tenantId,
-        instagram_account_id: instagramAccountId || null,
-        page_access_token: pageAccessToken || null,
-        page_id: pageId || null,
-        webhook_verify_token: webhookVerifyToken || null,
-        is_active: isActive,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (config?.id) {
-        // Atualizar
-        const { error } = await supabase
-          .from('integration_instagram')
-          .update(payload)
-          .eq('id', config.id);
-
-        if (error) throw error;
-      } else {
-        // Criar novo
-        const { error } = await supabase
-          .from('integration_instagram')
-          .insert(payload);
-
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => {
-      toast.success('Configuração do Instagram salva com sucesso!');
-      queryClient.invalidateQueries({ queryKey: ['instagram-integration', tenantId] });
-    },
-    onError: (error) => {
-      console.error('Erro ao salvar integração Instagram:', error);
-      toast.error('Erro ao salvar configuração');
     },
   });
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
-    toast.success(`${label} copiado para a área de transferência`);
+    toast.success(`${label} copiado!`);
   };
 
   if (isLoading) {
@@ -203,7 +127,7 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
 
   return (
     <div className="space-y-6">
-      {/* Status Card */}
+      {/* Status & Conexão */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -218,7 +142,7 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
                 </CardDescription>
               </div>
             </div>
-            {config?.is_active && config?.page_access_token ? (
+            {isConnected ? (
               <div className="flex items-center gap-2 text-primary">
                 <CheckCircle2 className="h-5 w-5" />
                 <span className="text-sm font-medium">Conectado</span>
@@ -232,14 +156,14 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
           </div>
         </CardHeader>
         <CardContent>
-          {config?.is_active && config?.page_access_token ? (
+          {isConnected ? (
             <div className="flex items-center gap-4">
-              <div className="flex-1">
+              <div className="flex-1 space-y-1">
                 <p className="text-sm text-muted-foreground">
-                  Conta conectada: <span className="font-medium text-foreground">{config.instagram_account_id}</span>
+                  Instagram Account: <span className="font-medium text-foreground">{config?.instagram_account_id}</span>
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Page ID: {config.page_id}
+                <p className="text-xs text-muted-foreground">
+                  Page ID: {config?.page_id}
                 </p>
               </div>
               <Button
@@ -252,131 +176,58 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
               </Button>
             </div>
           ) : (
-            <Button
-              onClick={handleConnectInstagram}
-              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
-            >
-              <Link2 className="h-4 w-4 mr-2" />
-              Conectar Instagram
-            </Button>
+            <div className="space-y-4">
+              <Button
+                onClick={handleConnectInstagram}
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+              >
+                <Link2 className="h-4 w-4 mr-2" />
+                Conectar Instagram
+              </Button>
+              <p className="text-xs text-center text-muted-foreground">
+                Você será redirecionado para o Facebook para autorizar o acesso à sua conta Business do Instagram
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Webhook URL */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">URL do Webhook</CardTitle>
-          <CardDescription>
-            Use esta URL para configurar o Webhook no Meta for Developers
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <Input value={webhookUrl} readOnly className="font-mono text-sm" />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => copyToClipboard(webhookUrl, 'URL do Webhook')}
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Configure esta URL em{' '}
-            <a
-              href="https://developers.facebook.com/apps"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-1"
-            >
-              Meta for Developers <ExternalLink className="h-3 w-3" />
-            </a>
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Configuração */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Credenciais do Instagram</CardTitle>
-          <CardDescription>
-            Obtenha essas informações no Meta for Developers após criar seu App
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="instagram-account-id">Instagram Account ID</Label>
-              <Input
-                id="instagram-account-id"
-                placeholder="17841400123456789"
-                value={instagramAccountId}
-                onChange={(e) => setInstagramAccountId(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                ID da conta Business do Instagram
-              </p>
+      {/* Webhook URL — só mostra quando conectado */}
+      {isConnected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">URL do Webhook</CardTitle>
+            <CardDescription>
+              Configure esta URL no Meta for Developers para receber comentários das Lives
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <Input value={webhookUrl} readOnly className="font-mono text-sm" />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => copyToClipboard(webhookUrl, 'URL do Webhook')}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="page-id">Page ID (Facebook)</Label>
-              <Input
-                id="page-id"
-                placeholder="123456789012345"
-                value={pageId}
-                onChange={(e) => setPageId(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                ID da Página do Facebook vinculada
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="page-access-token">Page Access Token</Label>
-            <Input
-              id="page-access-token"
-              type="password"
-              placeholder="EAAxxxxxxx..."
-              value={pageAccessToken}
-              onChange={(e) => setPageAccessToken(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Token de acesso permanente da Página (obtenha um token de longa duração)
+            <p className="text-xs text-muted-foreground mt-2">
+              Configure em{' '}
+              <a
+                href="https://developers.facebook.com/apps"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline inline-flex items-center gap-1"
+              >
+                Meta for Developers <ExternalLink className="h-3 w-3" />
+              </a>
             </p>
-          </div>
+          </CardContent>
+        </Card>
+      )}
 
-          <div className="space-y-2">
-            <Label htmlFor="webhook-verify-token">Webhook Verify Token</Label>
-            <Input
-              id="webhook-verify-token"
-              placeholder="meu_token_secreto"
-              value={webhookVerifyToken}
-              onChange={(e) => setWebhookVerifyToken(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Token personalizado para verificação do Webhook (você define)
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t">
-            <div className="space-y-0.5">
-              <Label htmlFor="is-active">Integração Ativa</Label>
-              <p className="text-xs text-muted-foreground">
-                Ative para começar a receber comentários das Lives
-              </p>
-            </div>
-            <Switch
-              id="is-active"
-              checked={isActive}
-              onCheckedChange={setIsActive}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Instruções */}
+      {/* Como funciona */}
       <Alert>
         <Instagram className="h-4 w-4" />
         <AlertDescription>
@@ -385,29 +236,6 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
           automaticamente adiciona ao carrinho e envia uma DM com o link de checkout.
         </AlertDescription>
       </Alert>
-
-      {/* Botão Salvar */}
-      <div className="flex justify-end">
-        <Button
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-        >
-          {saveMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Salvar Configurações
-        </Button>
-      </div>
-
-      {/* Link para documentação */}
-      <div className="text-center">
-        <a
-          href="/docs/INTEGRACAO_INSTAGRAM_LIVE.md"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-        >
-          Ver documentação completa de configuração <ExternalLink className="h-3 w-3" />
-        </a>
-      </div>
     </div>
   );
 }
