@@ -141,6 +141,9 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao salvar');
       toast({ title: 'Sucesso', description: 'Dados do remetente salvos!' });
+      // Invalidate queries so data persists across navigations
+      queryClient.invalidateQueries({ queryKey: ['correios-sender', tenantId] });
+      queryClient.invalidateQueries({ queryKey: ['correios-integration', tenantId] });
     } catch (err: any) {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     } finally {
