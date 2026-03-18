@@ -57,6 +57,7 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
     } catch { return { ...DEFAULT_SENDER }; }
   });
   const [savingSender, setSavingSender] = useState(false);
+  const [senderLoaded, setSenderLoaded] = useState(false);
 
   // Load sender from DB (persisted in webhook_secret)
   const { data: savedSenderData } = useQuery({
@@ -79,18 +80,13 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
     enabled: !!tenantId,
   });
 
-  // Update sender state when DB data loads
-  useState(() => {});
-  if (savedSenderData && !savingSender && sender.nome === '' && savedSenderData.nome) {
-    // Only auto-fill if current state is empty
-  }
-  
-  // Use effect to sync DB data
-  const [senderLoaded, setSenderLoaded] = useState(false);
-  if (savedSenderData && !senderLoaded) {
-    setSender(prev => ({ ...DEFAULT_SENDER, ...prev, ...savedSenderData }));
-    setSenderLoaded(true);
-  }
+  // Sync DB sender data into state once
+  useEffect(() => {
+    if (savedSenderData && !senderLoaded) {
+      setSender(prev => ({ ...DEFAULT_SENDER, ...savedSenderData }));
+      setSenderLoaded(true);
+    }
+  }, [savedSenderData, senderLoaded]);
 
   // Order selection
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
