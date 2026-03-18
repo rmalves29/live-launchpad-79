@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.correios-labels]
 verify_jwt = false
+
+[functions.bagy-sync]
+verify_jwt = false

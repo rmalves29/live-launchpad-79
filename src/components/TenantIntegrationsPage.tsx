@@ -9,7 +9,7 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer, MessageSquare } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer, MessageSquare, ShoppingBag } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
@@ -22,6 +22,7 @@ import OlistIntegration from '@/components/integrations/OlistIntegration';
 import OmieIntegration from '@/components/integrations/OmieIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 import WhatsAppCloudIntegration from '@/components/integrations/WhatsAppCloudIntegration';
+import BagyIntegration from '@/components/integrations/BagyIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -140,6 +141,15 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
+  const { data: bagyIntegration } = useQuery({
+    queryKey: ['bagy-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('integration_bagy' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
+      return data as { is_active: boolean } | null;
+    },
+    enabled: !!tenantId,
+  });
+
   if (authLoading || tenantLoading) {
     return (
       <div className="container mx-auto p-6 flex items-center justify-center h-64">
@@ -198,6 +208,14 @@ export default function TenantIntegrationsPage() {
               <span className="hidden sm:inline">Instagram</span>
               <span className="sm:hidden">IG</span>
               {instagramIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+            </TabsTrigger>
+          )}
+          {showAdvancedIntegrations && (
+            <TabsTrigger value="bagy" className="flex items-center gap-2">
+              <ShoppingBag className="h-4 w-4" />
+              <span className="hidden sm:inline">Bagy</span>
+              <span className="sm:hidden">BG</span>
+              {bagyIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
             </TabsTrigger>
           )}
           <TabsTrigger value="bling" className="flex items-center gap-2">
@@ -270,6 +288,11 @@ export default function TenantIntegrationsPage() {
         {showAdvancedIntegrations && (
           <TabsContent value="instagram" className="mt-6">
             <InstagramIntegration tenantId={tenantId} />
+          </TabsContent>
+        )}
+        {showAdvancedIntegrations && (
+          <TabsContent value="bagy" className="mt-6">
+            <BagyIntegration tenantId={tenantId} />
           </TabsContent>
         )}
         <TabsContent value="bling" className="mt-6">
