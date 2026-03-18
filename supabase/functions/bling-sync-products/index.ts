@@ -84,33 +84,62 @@ async function updateExistingBlingProduct(
  * Find existing Bling product by code
  */
 async function findExistingBlingProductByCodigo(accessToken: string, codigo: string): Promise<number | null> {
-  // Try exact code search first
-  const res = await fetch(`${BLING_API_URL}/produtos?pagina=1&limite=5&codigo=${encodeURIComponent(codigo)}`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Accept': 'application/json',
-    },
-  });
+  // Strategy 1: search by codigo param
+  const trySearch = async (url: string): Promise<number | null> => {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Accept': 'application/json',
+        },
+      });
+      const text = await res.text();
+      console.log(`[bling-sync-products] Search ${url} -> ${res.status}, items: ${text.substring(0, 200)}`);
+      if (!res.ok) return null;
+      return extractBlingIdFromSearch(text, codigo);
+    } catch (e) {
+      console.error('[bling-sync-products] Search error:', e);
+      return null;
+    }
+  };
 
-  const text = await res.text();
-  if (!res.ok) {
-    console.log('[bling-sync-products] Could not search existing product in Bling:', res.status, text);
-    // Try without filter as fallback - search by criterio (name/code)
-    const res2 = await fetch(`${BLING_API_URL}/produtos?pagina=1&limite=5&criterio=${encodeURIComponent(codigo)}`, {
+  // Try exact code filter
+  let id = await trySearch(`${BLING_API_URL}/produtos?pagina=1&limite=5&codigo=${encodeURIComponent(codigo)}`);
+  if (id) return id;
+
+  await delay(350);
+
+  // Try criterio search (searches name and code)
+  id = await trySearch(`${BLING_API_URL}/produtos?pagina=1&limite=10&criterio=${encodeURIComponent(codigo)}`);
+  if (id) return id;
+
+  await delay(350);
+
+  // Try searching without any filter and paginating to find it
+  // Some Bling accounts have issues with the codigo filter
+  for (let page = 1; page <= 5; page++) {
+    const res = await fetch(`${BLING_API_URL}/produtos?pagina=${page}&limite=100`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
     });
-    const text2 = await res2.text();
-    if (!res2.ok) {
-      console.log('[bling-sync-products] Fallback search also failed:', res2.status, text2);
-      return null;
-    }
-    return extractBlingIdFromSearch(text2, codigo);
+    if (!res.ok) break;
+    const text = await res.text();
+    try {
+      const parsed = JSON.parse(text);
+      const items = parsed?.data || [];
+      if (items.length === 0) break;
+      const match = items.find((p: any) => String(p.codigo) === String(codigo));
+      if (match?.id) {
+        console.log(`[bling-sync-products] Found product by pagination scan on page ${page}: ${match.id}`);
+        return typeof match.id === 'number' ? match.id : Number(match.id);
+      }
+    } catch { break; }
+    await delay(350);
   }
 
-  return extractBlingIdFromSearch(text, codigo);
+  return null;
 }
 
 function extractBlingIdFromSearch(text: string, codigo: string): number | null {
@@ -118,7 +147,7 @@ function extractBlingIdFromSearch(text: string, codigo: string): number | null {
     const parsed = JSON.parse(text);
     const items = parsed?.data || [];
     // Try exact match first
-    const exact = items.find((p: any) => p.codigo === codigo);
+    const exact = items.find((p: any) => String(p.codigo) === String(codigo));
     const first = exact || items[0];
     const id = first?.id;
     if (typeof id === 'number') return id;
