@@ -58,6 +58,40 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
   });
   const [savingSender, setSavingSender] = useState(false);
 
+  // Load sender from DB (persisted in webhook_secret)
+  const { data: savedSenderData } = useQuery({
+    queryKey: ['correios-sender', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('shipping_integrations')
+        .select('webhook_secret')
+        .eq('tenant_id', tenantId)
+        .eq('provider', 'correios')
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.webhook_secret) {
+        try {
+          return JSON.parse(data.webhook_secret as string) as SenderInfo;
+        } catch { return null; }
+      }
+      return null;
+    },
+    enabled: !!tenantId,
+  });
+
+  // Update sender state when DB data loads
+  useState(() => {});
+  if (savedSenderData && !savingSender && sender.nome === '' && savedSenderData.nome) {
+    // Only auto-fill if current state is empty
+  }
+  
+  // Use effect to sync DB data
+  const [senderLoaded, setSenderLoaded] = useState(false);
+  if (savedSenderData && !senderLoaded) {
+    setSender(prev => ({ ...DEFAULT_SENDER, ...prev, ...savedSenderData }));
+    setSenderLoaded(true);
+  }
+
   // Order selection
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
   const [serviceOverrides, setServiceOverrides] = useState<Record<string, string>>({});
