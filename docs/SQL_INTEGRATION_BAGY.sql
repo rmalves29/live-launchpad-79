@@ -1,5 +1,6 @@
 -- =============================================================
 -- Migration: integration_bagy table + bagy_order_id column + RLS
+-- + Trigger para exportação automática ao pagar
 -- Execute this in the Supabase SQL Editor
 -- =============================================================
 
@@ -40,3 +41,63 @@ CREATE TRIGGER set_integration_bagy_updated_at
 
 -- Coluna bagy_order_id na tabela orders
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS bagy_order_id bigint;
+
+-- =============================================================
+-- Trigger: auto-exportar pedido para Bagy quando pago
+-- =============================================================
+
+CREATE OR REPLACE FUNCTION public.export_paid_order_to_bagy()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_integration RECORD;
+  v_supabase_url TEXT;
+  v_response http_response;
+BEGIN
+  -- Só processar quando is_paid muda para true
+  IF NEW.is_paid = true AND (OLD.is_paid = false OR OLD.is_paid IS NULL) THEN
+
+    -- Verificar se tenant tem integração Bagy ativa com sync_orders_out habilitado
+    SELECT * INTO v_integration
+    FROM public.integration_bagy
+    WHERE tenant_id = NEW.tenant_id
+      AND is_active = true
+      AND sync_orders_out = true;
+
+    IF NOT FOUND THEN
+      RETURN NEW;
+    END IF;
+
+    v_supabase_url := 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+
+    BEGIN
+      SELECT * INTO v_response FROM http_post(
+        v_supabase_url || '/functions/v1/bagy-sync',
+        jsonb_build_object(
+          'tenant_id', NEW.tenant_id,
+          'action', 'export_order',
+          'order_id', NEW.id
+        )::text,
+        'application/json'
+      );
+
+      RAISE LOG '[bagy-auto-export] Pedido #% exportado para Bagy - Status: %', NEW.id, v_response.status;
+
+    EXCEPTION WHEN OTHERS THEN
+      RAISE LOG '[bagy-auto-export] Erro ao exportar pedido #% para Bagy: %', NEW.id, SQLERRM;
+    END;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
+-- Trigger na tabela orders
+CREATE TRIGGER trigger_export_paid_order_to_bagy
+  AFTER UPDATE OF is_paid ON public.orders
+  FOR EACH ROW
+  WHEN (NEW.is_paid = true AND (OLD.is_paid = false OR OLD.is_paid IS NULL))
+  EXECUTE FUNCTION public.export_paid_order_to_bagy();
