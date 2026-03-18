@@ -290,6 +290,11 @@ export default function TenantIntegrationsPage() {
             <InstagramIntegration tenantId={tenantId} />
           </TabsContent>
         )}
+        {showAdvancedIntegrations && (
+          <TabsContent value="bagy" className="mt-6">
+            <BagyIntegration tenantId={tenantId} />
+          </TabsContent>
+        )}
         <TabsContent value="bling" className="mt-6">
           <BlingIntegration tenantId={tenantId} />
         </TabsContent>
