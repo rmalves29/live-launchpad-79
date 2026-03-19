@@ -18,6 +18,7 @@ import InstagramLiveComments from './InstagramLiveComments';
 
 interface InstagramIntegrationProps {
   tenantId: string;
+  tenantSlug?: string;
 }
 
 export default function InstagramIntegration({ tenantId }: InstagramIntegrationProps) {
