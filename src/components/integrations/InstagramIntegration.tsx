@@ -21,7 +21,7 @@ interface InstagramIntegrationProps {
   tenantSlug?: string;
 }
 
-export default function InstagramIntegration({ tenantId }: InstagramIntegrationProps) {
+export default function InstagramIntegration({ tenantId, tenantSlug }: InstagramIntegrationProps) {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
