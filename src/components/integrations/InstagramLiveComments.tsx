@@ -87,6 +87,22 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
     }
   };
 
+  const handleSave = () => {
+    if (comments.length === 0) {
+      toast.error('Nenhum comentário para salvar');
+      return;
+    }
+    const lines = comments.map(c => `@${c.username || 'desconhecido'}: ${c.comment_text}`);
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `comentarios-live-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Arquivo salvo!');
+  };
+
   const formatTime = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
