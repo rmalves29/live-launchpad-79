@@ -76,11 +76,19 @@ export function useConfirmDialog() {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>
+          <AlertDialogCancel
+            onClick={(event) => {
+              event.preventDefault();
+              handleCancel();
+            }}
+          >
             {options.cancelText || 'Cancelar'}
           </AlertDialogCancel>
           <AlertDialogAction
-            onClick={handleConfirm}
+            onClick={(event) => {
+              event.preventDefault();
+              handleConfirm();
+            }}
             className={options.variant === 'destructive' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : ''}
           >
             {options.confirmText || 'Confirmar'}
