@@ -121,10 +121,16 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
           </div>
         </div>
         {comments.length > 0 && (
-          <Button variant="ghost" size="sm" onClick={handleClear}>
-            <Trash2 className="h-4 w-4 mr-1" />
-            Limpar
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleSave}>
+              <Download className="h-4 w-4 mr-1" />
+              Salvar
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleClear}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Limpar
+            </Button>
+          </div>
         )}
       </CardHeader>
       <CardContent>
