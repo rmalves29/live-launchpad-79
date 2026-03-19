@@ -837,6 +837,56 @@ export type Database = {
           },
         ]
       }
+      instagram_live_comments: {
+        Row: {
+          comment_id: string | null
+          comment_text: string
+          created_at: string | null
+          id: string
+          instagram_user_id: string
+          is_live: boolean | null
+          media_id: string | null
+          product_code: string | null
+          product_found: boolean | null
+          tenant_id: string
+          username: string | null
+        }
+        Insert: {
+          comment_id?: string | null
+          comment_text: string
+          created_at?: string | null
+          id?: string
+          instagram_user_id: string
+          is_live?: boolean | null
+          media_id?: string | null
+          product_code?: string | null
+          product_found?: boolean | null
+          tenant_id: string
+          username?: string | null
+        }
+        Update: {
+          comment_id?: string | null
+          comment_text?: string
+          created_at?: string | null
+          id?: string
+          instagram_user_id?: string
+          is_live?: boolean | null
+          media_id?: string | null
+          product_code?: string | null
+          product_found?: boolean | null
+          tenant_id?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_live_comments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_appmax: {
         Row: {
           access_token: string | null
@@ -1042,6 +1092,7 @@ export type Database = {
           environment: string
           id: string
           instagram_account_id: string | null
+          instagram_username: string | null
           is_active: boolean
           page_access_token: string | null
           page_id: string | null
@@ -1055,6 +1106,7 @@ export type Database = {
           environment?: string
           id?: string
           instagram_account_id?: string | null
+          instagram_username?: string | null
           is_active?: boolean
           page_access_token?: string | null
           page_id?: string | null
@@ -1068,6 +1120,7 @@ export type Database = {
           environment?: string
           id?: string
           instagram_account_id?: string | null
+          instagram_username?: string | null
           is_active?: boolean
           page_access_token?: string | null
           page_id?: string | null

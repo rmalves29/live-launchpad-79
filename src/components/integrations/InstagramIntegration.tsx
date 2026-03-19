@@ -8,11 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Instagram, CheckCircle2, AlertTriangle, Copy, ExternalLink, Link2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, Instagram, CheckCircle2, AlertTriangle, Copy, ExternalLink, Link2, Radio } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
+import InstagramLiveComments from './InstagramLiveComments';
 
 interface InstagramIntegrationProps {
   tenantId: string;
@@ -125,7 +127,8 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
     );
   }
 
-  return (
+  // Conteúdo de configuração (existente)
+  const configContent = (
     <div className="space-y-6">
       {/* Status & Conexão */}
       <Card>
@@ -238,5 +241,31 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
         </AlertDescription>
       </Alert>
     </div>
+  );
+
+  // Se não estiver conectado, mostra apenas a configuração sem tabs
+  if (!isConnected) {
+    return configContent;
+  }
+
+  // Conectado: mostra tabs com Configuração + LIVE
+  return (
+    <Tabs defaultValue="config" className="space-y-4">
+      <TabsList>
+        <TabsTrigger value="config">Configuração</TabsTrigger>
+        <TabsTrigger value="live" className="flex items-center gap-1.5">
+          <Radio className="h-3.5 w-3.5" />
+          LIVE
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="config">
+        {configContent}
+      </TabsContent>
+
+      <TabsContent value="live">
+        <InstagramLiveComments tenantId={tenantId} />
+      </TabsContent>
+    </Tabs>
   );
 }
