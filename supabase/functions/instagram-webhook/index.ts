@@ -415,6 +415,11 @@ Deno.serve(async (req) => {
         } else {
           console.log(`[${timestamp}] [instagram-webhook] No page_access_token, skipping DM`);
         }
+
+        // Disparar WhatsApp se cliente cadastrado com telefone real
+        if (customerData?.phone && order) {
+          await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp);
+        }
       }
     }
 
