@@ -18,9 +18,10 @@ import InstagramLiveComments from './InstagramLiveComments';
 
 interface InstagramIntegrationProps {
   tenantId: string;
+  tenantSlug?: string;
 }
 
-export default function InstagramIntegration({ tenantId }: InstagramIntegrationProps) {
+export default function InstagramIntegration({ tenantId, tenantSlug }: InstagramIntegrationProps) {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -227,6 +228,34 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
                 Meta for Developers <ExternalLink className="h-3 w-3" />
               </a>
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Link de Cadastro de Clientes */}
+      {isConnected && tenantSlug && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Link de Cadastro de Clientes</CardTitle>
+            <CardDescription>
+              Compartilhe este link para que seus clientes vinculem o @ do Instagram ao telefone
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <Input
+                value={`${window.location.origin}/t/${tenantSlug}/cadastro-instagram`}
+                readOnly
+                className="font-mono text-sm"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => copyToClipboard(`${window.location.origin}/t/${tenantSlug}/cadastro-instagram`, 'Link de cadastro')}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

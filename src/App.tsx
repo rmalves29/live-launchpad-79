@@ -35,6 +35,7 @@ import FluxoEnvio from "./pages/fluxo-envio/Index";
 import CampaignRedirect from "./pages/fluxo-envio/CampaignRedirect";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
+import CadastroInstagram from "./pages/tenant/CadastroInstagram";
 
 import EmpresasIndex from "./pages/empresas/Index";
 import Debug from "./pages/Debug";
@@ -227,6 +228,9 @@ const AppContent = () => {
         
         {/* Redirect público de campanha do Fluxo de Envio */}
         <Route path="/fluxo/:tenantSlug/:campaignSlug" element={<CampaignRedirect />} />
+        
+        {/* Cadastro público Instagram */}
+        <Route path="/t/:slug/cadastro-instagram" element={<CadastroInstagram />} />
         
         {/* Rotas públicas da loja por slug (path-based) - prefixo /t/ para evitar conflitos */}
         <Route path="/t/:slug" element={<TenantStorefront />} />

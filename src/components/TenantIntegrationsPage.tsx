@@ -287,7 +287,7 @@ export default function TenantIntegrationsPage() {
         )}
         {showAdvancedIntegrations && (
           <TabsContent value="instagram" className="mt-6">
-            <InstagramIntegration tenantId={tenantId} />
+            <InstagramIntegration tenantId={tenantId} tenantSlug={tenant?.slug} />
           </TabsContent>
         )}
         {showAdvancedIntegrations && (
