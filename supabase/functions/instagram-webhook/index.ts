@@ -234,6 +234,15 @@ Deno.serve(async (req) => {
 
         console.log(`[${timestamp}] [instagram-webhook] Product found: ${product.name} (${product.code})`);
 
+        // Atualizar product_found no comentário da live
+        if (earlyProductCode) {
+          await supabase.from('instagram_live_comments')
+            .update({ product_found: true })
+            .eq('tenant_id', tenantId)
+            .eq('comment_id', commentId)
+            .catch(() => {});
+        }
+
         // Verificar estoque
         if (product.stock <= 0) {
           console.log(`[${timestamp}] [instagram-webhook] Product out of stock: ${product.code}`);
