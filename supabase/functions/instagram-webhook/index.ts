@@ -1,8 +1,8 @@
 /**
  * Instagram Graph API Webhook Handler
- * 
+ *
  * Recebe notificações oficiais do Instagram para Live Commerce multitenant.
- * 
+ *
  * Fluxo:
  * 1. GET: Validação do webhook pela Meta (hub.mode, hub.verify_token, hub.challenge)
  * 2. POST: Processa comentários de lives
@@ -23,11 +23,11 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const WEBHOOK_VERIFY_TOKEN = Deno.env.get('INSTAGRAM_WEBHOOK_VERIFY_TOKEN') || 'orderzap_instagram_verify';
 
-// Regex para extrair códigos de produto (ex: ABC123, MM-456, C001)
 const PRODUCT_CODE_REGEX = /\b([A-Za-z]{1,4}[-]?[0-9]{1,6})\b/i;
+const COMMENT_FIELDS = new Set(['comments', 'live_comments']);
 
 interface InstagramWebhookEntry {
-  id: string; // Page/Account ID
+  id: string;
   time: number;
   changes?: Array<{
     field: string;
@@ -35,12 +35,13 @@ interface InstagramWebhookEntry {
       from: {
         id: string;
         username?: string;
+        self_ig_scoped_id?: string;
       };
       media?: {
         id: string;
         media_product_type?: string;
       };
-      id: string; // Comment ID
+      id: string;
       text: string;
       timestamp?: string;
     };
@@ -52,13 +53,20 @@ interface InstagramWebhookPayload {
   entry: InstagramWebhookEntry[];
 }
 
+interface InstagramIntegrationRecord {
+  id: string;
+  tenant_id: string;
+  instagram_account_id: string | null;
+  instagram_username: string | null;
+  page_access_token: string | null;
+  page_id: string | null;
+  tenants?: { slug?: string | null; name?: string | null } | Array<{ slug?: string | null; name?: string | null }>;
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const timestamp = new Date().toISOString();
 
-  // ========================
-  // GET: Validação do Webhook
-  // ========================
   if (req.method === 'GET') {
     const hubMode = url.searchParams.get('hub.mode');
     const hubVerifyToken = url.searchParams.get('hub.verify_token');
@@ -80,14 +88,10 @@ Deno.serve(async (req) => {
     return new Response('Forbidden', { status: 403 });
   }
 
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // ========================
-  // POST: Processar Eventos
-  // ========================
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405, headers: corsHeaders });
   }
@@ -97,15 +101,8 @@ Deno.serve(async (req) => {
     console.log(`[${timestamp}] [instagram-webhook] POST received:`, JSON.stringify(body, null, 2));
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    await insertWebhookLog(supabase, body, timestamp);
 
-    // Log do webhook recebido
-    await supabase.from('webhook_logs').insert({
-      webhook_type: 'instagram_graph_api',
-      payload: body,
-      status_code: 200,
-    }).catch(() => {}); // Ignorar erro se tabela não existir
-
-    // Verificar se é um evento do Instagram
     if (body.object !== 'instagram') {
       console.log(`[${timestamp}] [instagram-webhook] Ignoring non-instagram object: ${body.object}`);
       return new Response(JSON.stringify({ received: true }), {
@@ -114,40 +111,28 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Processar cada entry
     for (const entry of body.entry) {
-      const pageId = entry.id;
-      console.log(`[${timestamp}] [instagram-webhook] Processing entry for page: ${pageId}`);
+      const sourceId = entry.id;
+      console.log(`[${timestamp}] [instagram-webhook] Processing entry for source: ${sourceId}`);
 
-      // Buscar tenant pelo page_id ou instagram_account_id
-      const { data: integration, error: integrationError } = await supabase
-        .from('integration_instagram')
-        .select('*, tenants!inner(id, slug, name)')
-        .or(`page_id.eq.${pageId},instagram_account_id.eq.${pageId}`)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (integrationError) {
-        console.error(`[${timestamp}] [instagram-webhook] Error fetching integration:`, integrationError);
-        continue;
-      }
-
+      const integration = await findIntegrationForEntry(supabase, entry, timestamp);
       if (!integration) {
-        console.log(`[${timestamp}] [instagram-webhook] No active integration found for page: ${pageId}`);
+        console.log(`[${timestamp}] [instagram-webhook] No active integration found for source: ${sourceId}`);
         continue;
       }
+
+      await syncWebhookSourceId(supabase, integration, sourceId, timestamp);
 
       const tenantId = integration.tenant_id;
-      const tenantSlug = (integration.tenants as any)?.slug || '';
+      const tenantSlug = getTenantSlug(integration.tenants);
       const pageAccessToken = integration.page_access_token;
 
       console.log(`[${timestamp}] [instagram-webhook] Found tenant: ${tenantId} (${tenantSlug})`);
 
-      // Processar cada change (comentário)
       if (!entry.changes) continue;
 
       for (const change of entry.changes) {
-        if (change.field !== 'comments') {
+        if (!COMMENT_FIELDS.has(change.field)) {
           console.log(`[${timestamp}] [instagram-webhook] Ignoring field: ${change.field}`);
           continue;
         }
@@ -158,41 +143,34 @@ Deno.serve(async (req) => {
         const commentId = value.id;
         const commentText = value.text;
         const mediaId = value.media?.id;
-        const isLiveComment = value.media?.media_product_type === 'LIVE';
+        const extractedCode = extractProductCode(commentText);
+        const earlyProductCode = extractedCode?.normalized ?? null;
+        const isLiveComment = change.field === 'live_comments' || value.media?.media_product_type === 'LIVE';
 
-        console.log(`[${timestamp}] [instagram-webhook] Comment from @${buyerUsername} (${buyerId}): "${commentText}"`);
+        console.log(`[${timestamp}] [instagram-webhook] Comment from @${buyerUsername} (${buyerId}) [${change.field}]: "${commentText}"`);
 
-        // Extrair código do produto para logging
-        const earlyCodeMatch = commentText.match(PRODUCT_CODE_REGEX);
-        const earlyProductCode = earlyCodeMatch ? earlyCodeMatch[1].toUpperCase().replace(/-/g, '') : null;
-
-        // Salvar comentário na tabela de live comments (para exibição em tempo real)
-        await supabase.from('instagram_live_comments').insert({
+        await insertLiveComment(supabase, {
           tenant_id: tenantId,
           instagram_user_id: buyerId,
           username: buyerUsername || null,
           comment_text: commentText,
           comment_id: commentId,
           media_id: mediaId || null,
-          is_live: isLiveComment || false,
+          is_live: isLiveComment,
           product_code: earlyProductCode,
-          product_found: false, // será atualizado abaixo se produto for encontrado
-        }).catch(e => console.error(`[${timestamp}] [instagram-webhook] Error saving live comment:`, e));
+          product_found: false,
+        }, timestamp);
 
-        // Extrair código do produto
-        const codeMatch = commentText.match(PRODUCT_CODE_REGEX);
-        if (!codeMatch) {
+        if (!extractedCode) {
           console.log(`[${timestamp}] [instagram-webhook] No product code found in comment`);
           continue;
         }
 
-        const productCode = codeMatch[1].toUpperCase().replace(/-/g, '');
+        const productCode = extractedCode.normalized;
         console.log(`[${timestamp}] [instagram-webhook] Extracted product code: ${productCode}`);
 
-        // Buscar produto
         let product = null;
-        
-        // Busca exata primeiro
+
         const { data: exactProduct, error: exactError } = await supabase
           .from('products')
           .select('*')
@@ -204,7 +182,6 @@ Deno.serve(async (req) => {
         if (!exactError && exactProduct) {
           product = exactProduct;
         } else {
-          // Busca parcial
           const { data: fuzzyProduct } = await supabase
             .from('products')
             .select('*')
@@ -220,48 +197,37 @@ Deno.serve(async (req) => {
 
         if (!product) {
           console.log(`[${timestamp}] [instagram-webhook] Product not found: ${productCode}`);
-          
-          // Enviar DM informando que produto não foi encontrado
+
           if (pageAccessToken) {
             await sendInstagramDM(
               buyerId,
               pageAccessToken,
-              `❌ Produto "${codeMatch[1]}" não encontrado. Verifique o código e tente novamente!`
-            ).catch(e => console.error(`[${timestamp}] [instagram-webhook] DM error:`, e));
+              `❌ Produto "${extractedCode.raw}" não encontrado. Verifique o código e tente novamente!`
+            ).catch((e) => console.error(`[${timestamp}] [instagram-webhook] DM error:`, e));
           }
           continue;
         }
 
         console.log(`[${timestamp}] [instagram-webhook] Product found: ${product.name} (${product.code})`);
 
-        // Atualizar product_found no comentário da live
-        if (earlyProductCode) {
-          await supabase.from('instagram_live_comments')
-            .update({ product_found: true })
-            .eq('tenant_id', tenantId)
-            .eq('comment_id', commentId)
-            .catch(() => {});
-        }
+        await markLiveCommentProductFound(supabase, tenantId, commentId, timestamp);
 
-        // Verificar estoque
         if (product.stock <= 0) {
           console.log(`[${timestamp}] [instagram-webhook] Product out of stock: ${product.code}`);
-          
+
           if (pageAccessToken) {
             await sendInstagramDM(
               buyerId,
               pageAccessToken,
               `😔 O produto "${product.name}" está esgotado. Fique de olho nas próximas lives!`
-            ).catch(e => console.error(`[${timestamp}] [instagram-webhook] DM error:`, e));
+            ).catch((e) => console.error(`[${timestamp}] [instagram-webhook] DM error:`, e));
           }
           continue;
         }
 
-        // Identificador do cliente: usar Instagram ID
         const customerIdentifier = `ig_${buyerId}`;
         const today = new Date().toISOString().split('T')[0];
 
-        // Buscar ou criar carrinho
         let { data: cart } = await supabase
           .from('carts')
           .select('*')
@@ -288,11 +254,11 @@ Deno.serve(async (req) => {
             console.error(`[${timestamp}] [instagram-webhook] Cart creation error:`, cartError);
             continue;
           }
+
           cart = newCart;
           console.log(`[${timestamp}] [instagram-webhook] New cart created: ${cart.id}`);
         }
 
-        // STOCK VALIDATION: Check current stock before adding to cart
         const { data: freshProduct } = await supabase
           .from('products')
           .select('stock')
@@ -304,7 +270,6 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Verificar se item já existe no carrinho
         const { data: existingItem } = await supabase
           .from('cart_items')
           .select('*')
@@ -319,10 +284,12 @@ Deno.serve(async (req) => {
             console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${itemQty} (stock=${freshProduct.stock})`);
             continue;
           }
+
           await supabase
             .from('cart_items')
             .update({ qty: itemQty })
             .eq('id', existingItem.id);
+
           console.log(`[${timestamp}] [instagram-webhook] Item quantity updated: ${product.code} qty=${itemQty}`);
         } else {
           await supabase
@@ -337,10 +304,10 @@ Deno.serve(async (req) => {
               unit_price: product.price,
               qty: 1,
             });
+
           console.log(`[${timestamp}] [instagram-webhook] New item added: ${product.code}`);
         }
 
-        // ATOMIC stock decrement
         const { error: stockDecErr } = await supabase
           .from('products')
           .update({ stock: freshProduct.stock - itemQty + (existingItem ? existingItem.qty : 0) })
@@ -349,7 +316,6 @@ Deno.serve(async (req) => {
 
         if (stockDecErr) {
           console.log(`[${timestamp}] [instagram-webhook] ❌ Stock decrement failed for ${product.code}:`, stockDecErr);
-          // Rollback cart item
           if (existingItem) {
             await supabase.from('cart_items').update({ qty: existingItem.qty }).eq('id', existingItem.id);
           } else {
@@ -358,7 +324,6 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Calcular total do carrinho
         const { data: cartItems } = await supabase
           .from('cart_items')
           .select('unit_price, qty, product_name')
@@ -366,7 +331,6 @@ Deno.serve(async (req) => {
 
         const total = cartItems?.reduce((sum, item) => sum + (item.unit_price * item.qty), 0) || 0;
 
-        // Criar ou atualizar pedido
         const { data: existingOrder } = await supabase
           .from('orders')
           .select('*')
@@ -414,20 +378,19 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Enviar DM de confirmação
         if (pageAccessToken) {
           const checkoutUrl = `https://app.orderzaps.com/t/${tenantSlug}/checkout`;
           const priceFormatted = `R$ ${product.price.toFixed(2).replace('.', ',')}`;
           const totalFormatted = `R$ ${total.toFixed(2).replace('.', ',')}`;
 
-          const dmMessage = 
+          const dmMessage =
             `✅ *${product.name}* adicionado!\n\n` +
             `💰 Valor: ${priceFormatted}\n` +
             `🛒 Total do carrinho: ${totalFormatted}\n\n` +
             `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
 
           const dmResult = await sendInstagramDM(buyerId, pageAccessToken, dmMessage);
-          
+
           if (dmResult.success) {
             console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${buyerId}`);
           } else {
@@ -443,16 +406,161 @@ Deno.serve(async (req) => {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-
   } catch (error: any) {
     console.error(`[${timestamp}] [instagram-webhook] Error:`, error.message || error);
-    
+
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
+
+function extractProductCode(commentText: string) {
+  const match = commentText.match(PRODUCT_CODE_REGEX);
+  if (!match) return null;
+
+  return {
+    raw: match[1],
+    normalized: match[1].toUpperCase().replace(/-/g, ''),
+  };
+}
+
+function getTenantSlug(tenants: InstagramIntegrationRecord['tenants']) {
+  if (!tenants) return '';
+  if (Array.isArray(tenants)) return tenants[0]?.slug || '';
+  return tenants.slug || '';
+}
+
+async function insertWebhookLog(supabase: ReturnType<typeof createClient>, body: InstagramWebhookPayload, timestamp: string) {
+  try {
+    const { error } = await supabase.from('webhook_logs').insert({
+      webhook_type: 'instagram_graph_api',
+      payload: body,
+      status_code: 200,
+    });
+
+    if (error) {
+      console.warn(`[${timestamp}] [instagram-webhook] webhook_logs insert skipped: ${error.message}`);
+    }
+  } catch (error: any) {
+    console.warn(`[${timestamp}] [instagram-webhook] webhook_logs unavailable: ${error.message || error}`);
+  }
+}
+
+async function insertLiveComment(
+  supabase: ReturnType<typeof createClient>,
+  payload: {
+    tenant_id: string;
+    instagram_user_id: string;
+    username: string | null;
+    comment_text: string;
+    comment_id: string;
+    media_id: string | null;
+    is_live: boolean;
+    product_code: string | null;
+    product_found: boolean;
+  },
+  timestamp: string,
+) {
+  const { error } = await supabase.from('instagram_live_comments').insert(payload);
+
+  if (error) {
+    console.error(`[${timestamp}] [instagram-webhook] Error saving live comment:`, error);
+  }
+}
+
+async function markLiveCommentProductFound(
+  supabase: ReturnType<typeof createClient>,
+  tenantId: string,
+  commentId: string,
+  timestamp: string,
+) {
+  const { error } = await supabase
+    .from('instagram_live_comments')
+    .update({ product_found: true })
+    .eq('tenant_id', tenantId)
+    .eq('comment_id', commentId);
+
+  if (error) {
+    console.warn(`[${timestamp}] [instagram-webhook] Error updating product_found:`, error);
+  }
+}
+
+async function findIntegrationForEntry(
+  supabase: ReturnType<typeof createClient>,
+  entry: InstagramWebhookEntry,
+  timestamp: string,
+): Promise<InstagramIntegrationRecord | null> {
+  const { data: integration, error } = await supabase
+    .from('integration_instagram')
+    .select('*, tenants!inner(id, slug, name)')
+    .or(`page_id.eq.${entry.id},instagram_account_id.eq.${entry.id}`)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) {
+    console.error(`[${timestamp}] [instagram-webhook] Error fetching integration by source id:`, error);
+    return null;
+  }
+
+  if (integration) {
+    return integration as InstagramIntegrationRecord;
+  }
+
+  const ownerComment = (entry.changes || []).find((change) => {
+    if (!COMMENT_FIELDS.has(change.field)) return false;
+    return change.value?.from?.id === entry.id && !!change.value?.from?.username;
+  });
+
+  const ownerUsername = ownerComment?.value?.from?.username;
+  if (!ownerUsername) {
+    return null;
+  }
+
+  const { data: fallbackIntegration, error: fallbackError } = await supabase
+    .from('integration_instagram')
+    .select('*, tenants!inner(id, slug, name)')
+    .eq('instagram_username', ownerUsername)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (fallbackError) {
+    console.error(`[${timestamp}] [instagram-webhook] Error fetching integration by username fallback:`, fallbackError);
+    return null;
+  }
+
+  if (fallbackIntegration) {
+    console.log(`[${timestamp}] [instagram-webhook] Fallback match by username @${ownerUsername}`);
+    return fallbackIntegration as InstagramIntegrationRecord;
+  }
+
+  return null;
+}
+
+async function syncWebhookSourceId(
+  supabase: ReturnType<typeof createClient>,
+  integration: InstagramIntegrationRecord,
+  sourceId: string,
+  timestamp: string,
+) {
+  if (integration.page_id === sourceId) return;
+
+  const { error } = await supabase
+    .from('integration_instagram')
+    .update({
+      page_id: sourceId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', integration.id);
+
+  if (error) {
+    console.warn(`[${timestamp}] [instagram-webhook] Could not persist webhook source id ${sourceId}: ${error.message}`);
+    return;
+  }
+
+  console.log(`[${timestamp}] [instagram-webhook] Synced webhook source id ${sourceId} to integration ${integration.id}`);
+}
 
 /**
  * Envia mensagem direta via Instagram Graph API
@@ -481,8 +589,7 @@ async function sendInstagramDM(
 
     const errorData = await response.json().catch(() => ({}));
     const errorMsg = errorData?.error?.message || `HTTP ${response.status}`;
-    
-    // Verificar se é erro de token expirado
+
     if (errorData?.error?.code === 190) {
       console.error('[instagram-webhook] Token expired or invalid');
       return { success: false, error: 'Token expirado ou inválido' };
