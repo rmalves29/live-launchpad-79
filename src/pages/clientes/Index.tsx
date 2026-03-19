@@ -322,15 +322,28 @@ const Clientes = () => {
   };
 
   const deleteCustomer = async (id: number) => {
+    console.log('[deleteCustomer] Called with ID:', id);
     // Find the customer to get their phone for order check
     const customer = customers.find(c => c.id === id);
-    if (!customer) return;
+    if (!customer) {
+      console.log('[deleteCustomer] Customer not found in state');
+      return;
+    }
 
-    // Check if customer has orders
-    if (customer.total_orders > 0) {
+    // Check if customer has non-cancelled orders
+    const { count, error: countError } = await supabaseTenant
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('customer_phone', customer.phone)
+      .or('is_cancelled.is.null,is_cancelled.eq.false');
+
+    console.log('[deleteCustomer] Order count:', count, 'Error:', countError);
+    const activeOrders = count || 0;
+
+    if (activeOrders > 0) {
       toast({
         title: '⚠️ Exclusão não permitida',
-        description: `Não é possível excluir "${customer.name}" pois possui ${customer.total_orders} pedido(s) vinculado(s).`,
+        description: `Não é possível excluir "${customer.name}" pois possui ${activeOrders} pedido(s) vinculado(s).`,
         variant: 'destructive'
       });
       return;
