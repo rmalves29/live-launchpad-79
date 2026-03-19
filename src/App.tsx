@@ -35,6 +35,7 @@ import FluxoEnvio from "./pages/fluxo-envio/Index";
 import CampaignRedirect from "./pages/fluxo-envio/CampaignRedirect";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
+import CadastroInstagram from "./pages/tenant/CadastroInstagram";
 
 import EmpresasIndex from "./pages/empresas/Index";
 import Debug from "./pages/Debug";
