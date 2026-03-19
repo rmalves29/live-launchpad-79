@@ -701,4 +701,3 @@ async function triggerWhatsAppItemAdded(
     console.error(`[${timestamp}] [instagram-webhook] WhatsApp item-added error:`, e.message);
   }
 }
-}
