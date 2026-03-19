@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +22,14 @@ export function useConfirmDialog() {
   const [isOpen, setIsOpen] = useState(false);
   const [options, setOptions] = useState<ConfirmDialogOptions>({ description: '' });
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
+  const closeSourceRef = useRef<'confirm' | 'cancel' | null>(null);
+
+  const resolveDialog = useCallback((value: boolean, source: 'confirm' | 'cancel') => {
+    closeSourceRef.current = source;
+    setIsOpen(false);
+    resolveRef.current?.(value);
+    resolveRef.current = null;
+  }, []);
 
   const confirm = useCallback((opts: ConfirmDialogOptions): Promise<boolean> => {
     setOptions(opts);
@@ -33,20 +41,33 @@ export function useConfirmDialog() {
   }, []);
 
   const handleConfirm = useCallback(() => {
-    setIsOpen(false);
-    resolveRef.current?.(true);
-    resolveRef.current = null;
-  }, []);
+    resolveDialog(true, 'confirm');
+  }, [resolveDialog]);
 
   const handleCancel = useCallback(() => {
-    setIsOpen(false);
-    resolveRef.current?.(false);
-    resolveRef.current = null;
-  }, []);
+    resolveDialog(false, 'cancel');
+  }, [resolveDialog]);
 
-  // useMemo ensures the element re-renders when state changes
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      setIsOpen(true);
+      return;
+    }
+
+    if (closeSourceRef.current) {
+      closeSourceRef.current = null;
+      return;
+    }
+
+    if (resolveRef.current) {
+      resolveDialog(false, 'cancel');
+    } else {
+      setIsOpen(false);
+    }
+  }, [resolveDialog]);
+
   const confirmDialogElement = useMemo(() => (
-    <AlertDialog open={isOpen} onOpenChange={(open) => { if (!open) handleCancel(); }}>
+    <AlertDialog open={isOpen} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{options.title || 'Confirmar'}</AlertDialogTitle>
@@ -67,7 +88,7 @@ export function useConfirmDialog() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  ), [isOpen, options, handleConfirm, handleCancel]);
+  ), [handleCancel, handleConfirm, handleOpenChange, isOpen, options]);
 
   return { confirm, confirmDialogElement };
 }
