@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
             .from('carts')
             .insert({
               tenant_id: tenantId,
-              customer_phone: customerIdentifier,
+              customer_phone: customerCartPhone,
               customer_instagram: buyerId,
               event_date: today,
               event_type: isLiveComment ? 'INSTAGRAM_LIVE' : 'INSTAGRAM_COMMENT',
