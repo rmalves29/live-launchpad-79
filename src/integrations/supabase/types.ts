@@ -3226,6 +3226,15 @@ export type Database = {
       }
       normalize_bazar_phone: { Args: { phone: string }; Returns: string }
       normalize_phone_regional: { Args: { phone: string }; Returns: string }
+      public_register_instagram: {
+        Args: {
+          p_instagram: string
+          p_name?: string
+          p_phone: string
+          p_tenant_slug: string
+        }
+        Returns: Json
+      }
       tenant_has_access: { Args: { tenant_uuid: string }; Returns: boolean }
       text_to_bytea: { Args: { data: string }; Returns: string }
       urlencode:
