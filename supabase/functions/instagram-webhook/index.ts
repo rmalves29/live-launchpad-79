@@ -365,8 +365,8 @@ Deno.serve(async (req) => {
             .insert({
               tenant_id: tenantId,
               cart_id: cart.id,
-              customer_phone: customerIdentifier,
-              customer_name: buyerUsername ? `@${buyerUsername}` : 'Instagram',
+              customer_phone: customerPhone,
+              customer_name: customerName,
               event_date: today,
               event_type: isLiveComment ? 'INSTAGRAM_LIVE' : 'INSTAGRAM_COMMENT',
               total_amount: total,
@@ -375,6 +375,15 @@ Deno.serve(async (req) => {
               item_added_message_sent: false,
               payment_confirmation_sent: false,
               is_cancelled: false,
+              ...(customerData ? {
+                customer_cep: customerData.cep || null,
+                customer_street: customerData.street || null,
+                customer_number: customerData.number || null,
+                customer_neighborhood: customerData.neighborhood || null,
+                customer_city: customerData.city || null,
+                customer_state: customerData.state || null,
+                customer_complement: customerData.complement || null,
+              } : {}),
             })
             .select()
             .single();
