@@ -67,7 +67,7 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
     enabled: !!tenantId,
   });
 
-  const isConnected = !!(config?.is_active && config?.page_access_token);
+  const isConnected = !!(config?.is_active && (config?.access_token || config?.page_access_token));
 
   // Iniciar OAuth
   const handleConnectInstagram = async () => {
