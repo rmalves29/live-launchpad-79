@@ -171,27 +171,39 @@ Deno.serve(async (req) => {
 
         let product = null;
 
-        const { data: exactProduct, error: exactError } = await supabase
+        // Para comentários de live, filtrar apenas produtos com sale_type LIVE ou AMBOS
+        const saleTypeFilter = isLiveComment ? ['LIVE', 'AMBOS'] : undefined;
+
+        let exactQuery = supabase
           .from('products')
           .select('*')
           .eq('tenant_id', tenantId)
           .eq('is_active', true)
-          .ilike('code', productCode)
-          .maybeSingle();
+          .ilike('code', productCode);
+
+        if (saleTypeFilter) {
+          exactQuery = exactQuery.in('sale_type', saleTypeFilter);
+        }
+
+        const { data: exactProduct, error: exactError } = await exactQuery.maybeSingle();
 
         if (!exactError && exactProduct) {
           product = exactProduct;
         } else {
-          const { data: fuzzyProduct } = await supabase
+          let fuzzyQuery = supabase
             .from('products')
             .select('*')
             .eq('tenant_id', tenantId)
             .eq('is_active', true)
             .ilike('code', `%${productCode}%`)
             .order('id', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
 
+          if (saleTypeFilter) {
+            fuzzyQuery = fuzzyQuery.in('sale_type', saleTypeFilter);
+          }
+
+          const { data: fuzzyProduct } = await fuzzyQuery.maybeSingle();
           product = fuzzyProduct;
         }
 
