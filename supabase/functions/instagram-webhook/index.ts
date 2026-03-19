@@ -225,8 +225,15 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const customerIdentifier = `ig_${buyerId}`;
         const today = new Date().toISOString().split('T')[0];
+
+        // Buscar cliente cadastrado pelo @instagram
+        const customerData = await resolveCustomerByInstagram(supabase, tenantId, buyerUsername, timestamp);
+        const customerPhone = customerData?.phone || `@${buyerUsername || buyerId}`;
+        const customerName = customerData?.name || (buyerUsername ? `@${buyerUsername}` : 'Instagram');
+        const customerCartPhone = customerData?.phone || `@${buyerUsername || buyerId}`;
+
+        console.log(`[${timestamp}] [instagram-webhook] Customer resolved: phone=${customerPhone}, name=${customerName}, registered=${!!customerData}`);
 
         let { data: cart } = await supabase
           .from('carts')
@@ -241,7 +248,7 @@ Deno.serve(async (req) => {
             .from('carts')
             .insert({
               tenant_id: tenantId,
-              customer_phone: customerIdentifier,
+              customer_phone: customerCartPhone,
               customer_instagram: buyerId,
               event_date: today,
               event_type: isLiveComment ? 'INSTAGRAM_LIVE' : 'INSTAGRAM_COMMENT',
@@ -358,8 +365,8 @@ Deno.serve(async (req) => {
             .insert({
               tenant_id: tenantId,
               cart_id: cart.id,
-              customer_phone: customerIdentifier,
-              customer_name: buyerUsername ? `@${buyerUsername}` : 'Instagram',
+              customer_phone: customerPhone,
+              customer_name: customerName,
               event_date: today,
               event_type: isLiveComment ? 'INSTAGRAM_LIVE' : 'INSTAGRAM_COMMENT',
               total_amount: total,
@@ -368,6 +375,15 @@ Deno.serve(async (req) => {
               item_added_message_sent: false,
               payment_confirmation_sent: false,
               is_cancelled: false,
+              ...(customerData ? {
+                customer_cep: customerData.cep || null,
+                customer_street: customerData.street || null,
+                customer_number: customerData.number || null,
+                customer_neighborhood: customerData.neighborhood || null,
+                customer_city: customerData.city || null,
+                customer_state: customerData.state || null,
+                customer_complement: customerData.complement || null,
+              } : {}),
             })
             .select()
             .single();
@@ -398,6 +414,11 @@ Deno.serve(async (req) => {
           }
         } else {
           console.log(`[${timestamp}] [instagram-webhook] No page_access_token, skipping DM`);
+        }
+
+        // Disparar WhatsApp se cliente cadastrado com telefone real
+        if (customerData?.phone && order) {
+          await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp);
         }
       }
     }
@@ -598,5 +619,85 @@ async function sendInstagramDM(
     return { success: false, error: errorMsg };
   } catch (error: any) {
     return { success: false, error: error.message };
+  }
+}
+
+interface ResolvedCustomer {
+  phone: string;
+  name: string;
+  cep?: string | null;
+  street?: string | null;
+  number?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+  complement?: string | null;
+}
+
+async function resolveCustomerByInstagram(
+  supabase: ReturnType<typeof createClient>,
+  tenantId: string,
+  username: string,
+  timestamp: string,
+): Promise<ResolvedCustomer | null> {
+  if (!username) return null;
+
+  // Buscar por username (com ou sem @)
+  const cleanUsername = username.replace(/^@/, '');
+
+  const { data: customer, error } = await supabase
+    .from('customers')
+    .select('name, phone, cep, street, number, neighborhood, city, state, complement')
+    .eq('tenant_id', tenantId)
+    .ilike('instagram', cleanUsername)
+    .maybeSingle();
+
+  if (error) {
+    console.warn(`[${timestamp}] [instagram-webhook] Error looking up customer by instagram @${cleanUsername}:`, error);
+    return null;
+  }
+
+  if (!customer) {
+    console.log(`[${timestamp}] [instagram-webhook] No registered customer found for @${cleanUsername}`);
+    return null;
+  }
+
+  console.log(`[${timestamp}] [instagram-webhook] Found registered customer: ${customer.name} (${customer.phone}) for @${cleanUsername}`);
+  return customer as ResolvedCustomer;
+}
+
+async function triggerWhatsAppItemAdded(
+  supabase: ReturnType<typeof createClient>,
+  tenantId: string,
+  customerPhone: string,
+  product: any,
+  order: any,
+  timestamp: string,
+) {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/zapi-send-item-added`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          customer_phone: customerPhone,
+          product_name: product.name,
+          product_code: product.code,
+          quantity: 1,
+          unit_price: product.price,
+        }),
+      }
+    );
+
+    const responseText = await response.text();
+    console.log(`[${timestamp}] [instagram-webhook] WhatsApp item-added sent to ${customerPhone}: status=${response.status}`);
+  } catch (e: any) {
+    console.error(`[${timestamp}] [instagram-webhook] WhatsApp item-added error:`, e.message);
   }
 }
