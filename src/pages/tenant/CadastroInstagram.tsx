@@ -76,16 +76,40 @@ export default function CadastroInstagram() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.functions.invoke('instagram-register', {
-        body: {
-          tenantSlug: slug,
-          instagram: cleanInstagram,
-          phone: cleanPhone,
-          name: name.trim() || null,
-        },
-      });
+      if (!tenant) throw new Error('Tenant não encontrado');
 
-      if (error) throw error;
+      // Check if customer with this instagram already exists for this tenant
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('tenant_id', tenant.id)
+        .ilike('instagram', cleanInstagram)
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing customer
+        const updateData: Record<string, any> = { phone: cleanPhone, updated_at: new Date().toISOString() };
+        if (name.trim()) updateData.name = name.trim();
+
+        const { error: updateError } = await supabase
+          .from('customers')
+          .update(updateData)
+          .eq('id', existing.id);
+
+        if (updateError) throw updateError;
+      } else {
+        // Insert new customer
+        const { error: insertError } = await supabase
+          .from('customers')
+          .insert({
+            tenant_id: tenant.id,
+            instagram: cleanInstagram,
+            phone: cleanPhone,
+            name: name.trim() || cleanInstagram,
+          });
+
+        if (insertError) throw insertError;
+      }
       setSuccess(true);
       toast.success('Cadastro realizado com sucesso!');
     } catch (err: any) {
