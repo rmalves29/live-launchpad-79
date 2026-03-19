@@ -225,8 +225,15 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const customerIdentifier = `ig_${buyerId}`;
         const today = new Date().toISOString().split('T')[0];
+
+        // Buscar cliente cadastrado pelo @instagram
+        const customerData = await resolveCustomerByInstagram(supabase, tenantId, buyerUsername, timestamp);
+        const customerPhone = customerData?.phone || `@${buyerUsername || buyerId}`;
+        const customerName = customerData?.name || (buyerUsername ? `@${buyerUsername}` : 'Instagram');
+        const customerCartPhone = customerData?.phone || `@${buyerUsername || buyerId}`;
+
+        console.log(`[${timestamp}] [instagram-webhook] Customer resolved: phone=${customerPhone}, name=${customerName}, registered=${!!customerData}`);
 
         let { data: cart } = await supabase
           .from('carts')
