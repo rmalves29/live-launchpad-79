@@ -162,6 +162,23 @@ Deno.serve(async (req) => {
 
         console.log(`[${timestamp}] [instagram-webhook] Comment from @${buyerUsername} (${buyerId}): "${commentText}"`);
 
+        // Extrair código do produto para logging
+        const earlyCodeMatch = commentText.match(PRODUCT_CODE_REGEX);
+        const earlyProductCode = earlyCodeMatch ? earlyCodeMatch[1].toUpperCase().replace(/-/g, '') : null;
+
+        // Salvar comentário na tabela de live comments (para exibição em tempo real)
+        await supabase.from('instagram_live_comments').insert({
+          tenant_id: tenantId,
+          instagram_user_id: buyerId,
+          username: buyerUsername || null,
+          comment_text: commentText,
+          comment_id: commentId,
+          media_id: mediaId || null,
+          is_live: isLiveComment || false,
+          product_code: earlyProductCode,
+          product_found: false, // será atualizado abaixo se produto for encontrado
+        }).catch(e => console.error(`[${timestamp}] [instagram-webhook] Error saving live comment:`, e));
+
         // Extrair código do produto
         const codeMatch = commentText.match(PRODUCT_CODE_REGEX);
         if (!codeMatch) {
