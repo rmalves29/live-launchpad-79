@@ -183,7 +183,7 @@ export default function TenantIntegrationsPage() {
     );
   }
 
-  const ALLOWED_ADVANCED_SLUGS = ['orderzap', 'app'];
+  const ALLOWED_ADVANCED_SLUGS = ['orderzap', 'app', 'franciscajoias'];
   const showAdvancedIntegrations = ALLOWED_ADVANCED_SLUGS.includes(tenant.slug || '');
 
   return (
