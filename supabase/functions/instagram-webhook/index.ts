@@ -619,6 +619,7 @@ async function sendInstagramDM(
     return { success: false, error: errorMsg };
   } catch (error: any) {
     return { success: false, error: error.message };
+  }
 }
 
 interface ResolvedCustomer {
