@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
-import { Trash2, Radio } from 'lucide-react';
+import { Trash2, Radio, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LiveComment {
