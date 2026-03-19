@@ -76,45 +76,25 @@ export default function CadastroInstagram() {
 
     setSubmitting(true);
     try {
-      if (!tenant) throw new Error('Tenant não encontrado');
+      const { data, error } = await supabase.rpc('public_register_instagram' as any, {
+        p_tenant_slug: slug,
+        p_instagram: cleanInstagram,
+        p_phone: cleanPhone,
+        p_name: name.trim() || null,
+      });
 
-      // Check if customer with this instagram already exists for this tenant
-      const { data: existing } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('tenant_id', tenant.id)
-        .ilike('instagram', cleanInstagram)
-        .maybeSingle();
+      if (error) throw error;
 
-      if (existing) {
-        // Update existing customer
-        const updateData: Record<string, any> = { phone: cleanPhone, updated_at: new Date().toISOString() };
-        if (name.trim()) updateData.name = name.trim();
-
-        const { error: updateError } = await supabase
-          .from('customers')
-          .update(updateData)
-          .eq('id', existing.id);
-
-        if (updateError) throw updateError;
-      } else {
-        // Insert new customer
-        const { error: insertError } = await supabase
-          .from('customers')
-          .insert({
-            tenant_id: tenant.id,
-            instagram: cleanInstagram,
-            phone: cleanPhone,
-            name: name.trim() || cleanInstagram,
-          });
-
-        if (insertError) throw insertError;
+      const result = data as any;
+      if (result && !result.success) {
+        throw new Error(result.error || 'Erro ao cadastrar');
       }
+
       setSuccess(true);
       toast.success('Cadastro realizado com sucesso!');
     } catch (err: any) {
       console.error('Erro ao cadastrar:', err);
-      toast.error('Erro ao realizar cadastro. Tente novamente.');
+      toast.error(err?.message || 'Erro ao realizar cadastro. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
@@ -140,7 +120,6 @@ export default function CadastroInstagram() {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
       <Sonner />
       <div className="w-full max-w-md space-y-6">
-        {/* Logo */}
         {tenant.logo_url && (
           <div className="flex justify-center">
             <img
