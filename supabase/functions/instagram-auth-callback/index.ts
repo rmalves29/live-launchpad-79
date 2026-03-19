@@ -63,6 +63,19 @@ serve(async (req) => {
 
     const longLivedToken = longLivedData.access_token;
 
+    // Buscar username do Instagram
+    let instagramUsername = '';
+    try {
+      const profileRes = await fetch(`https://graph.instagram.com/v21.0/me?fields=username&access_token=${longLivedToken}`);
+      const profileData = await profileRes.json();
+      if (profileData.username) {
+        instagramUsername = profileData.username;
+      }
+      console.log('[Instagram Callback] Username:', instagramUsername);
+    } catch (profileErr) {
+      console.error('[Instagram Callback] Erro ao buscar username:', profileErr);
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -73,6 +86,7 @@ serve(async (req) => {
         tenant_id: state,
         instagram_account_id: instagramUserId.toString(),
         access_token: longLivedToken,
+        instagram_username: instagramUsername || null,
         is_active: true,
         environment: 'production',
         updated_at: new Date().toISOString(),

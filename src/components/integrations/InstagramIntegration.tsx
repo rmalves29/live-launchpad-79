@@ -160,10 +160,11 @@ export default function InstagramIntegration({ tenantId }: InstagramIntegrationP
             <div className="flex items-center gap-4">
               <div className="flex-1 space-y-1">
                 <p className="text-sm text-muted-foreground">
-                  Instagram Account: <span className="font-medium text-foreground">{config?.instagram_account_id}</span>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Page ID: {config?.page_id}
+                  Conta conectada: <span className="font-medium text-foreground">
+                    {(config as any)?.instagram_username 
+                      ? `@${(config as any).instagram_username}` 
+                      : config?.instagram_account_id}
+                  </span>
                 </p>
               </div>
               <Button
