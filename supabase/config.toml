@@ -48,6 +48,9 @@ verify_jwt = false
 [functions.sendflow-check-scheduled]
 verify_jwt = false
 
+[functions.instagram-register]
+verify_jwt = false
+
 [functions.correios-labels]
 verify_jwt = false
 

@@ -229,6 +229,9 @@ const AppContent = () => {
         {/* Redirect público de campanha do Fluxo de Envio */}
         <Route path="/fluxo/:tenantSlug/:campaignSlug" element={<CampaignRedirect />} />
         
+        {/* Cadastro público Instagram */}
+        <Route path="/t/:slug/cadastro-instagram" element={<CadastroInstagram />} />
+        
         {/* Rotas públicas da loja por slug (path-based) - prefixo /t/ para evitar conflitos */}
         <Route path="/t/:slug" element={<TenantStorefront />} />
         <Route path="/t/:slug/checkout" element={<PublicCheckout />} />
