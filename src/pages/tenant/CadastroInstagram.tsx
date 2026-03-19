@@ -76,21 +76,25 @@ export default function CadastroInstagram() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.functions.invoke('instagram-register', {
-        body: {
-          tenantSlug: slug,
-          instagram: cleanInstagram,
-          phone: cleanPhone,
-          name: name.trim() || null,
-        },
+      const { data, error } = await supabase.rpc('public_register_instagram' as any, {
+        p_tenant_slug: slug,
+        p_instagram: cleanInstagram,
+        p_phone: cleanPhone,
+        p_name: name.trim() || null,
       });
 
       if (error) throw error;
+
+      const result = data as any;
+      if (result && !result.success) {
+        throw new Error(result.error || 'Erro ao cadastrar');
+      }
+
       setSuccess(true);
       toast.success('Cadastro realizado com sucesso!');
     } catch (err: any) {
       console.error('Erro ao cadastrar:', err);
-      toast.error('Erro ao realizar cadastro. Tente novamente.');
+      toast.error(err?.message || 'Erro ao realizar cadastro. Tente novamente.');
     } finally {
       setSubmitting(false);
     }
@@ -116,7 +120,6 @@ export default function CadastroInstagram() {
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
       <Sonner />
       <div className="w-full max-w-md space-y-6">
-        {/* Logo */}
         {tenant.logo_url && (
           <div className="flex justify-center">
             <img
