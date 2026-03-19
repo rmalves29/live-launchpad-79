@@ -90,8 +90,13 @@ export default function CadastroInstagram() {
         throw new Error(result.error || 'Erro ao cadastrar');
       }
 
-      setSuccess(true);
-      toast.success('Cadastro realizado com sucesso!');
+      if (result?.updated) {
+        setSuccess(true);
+        toast.success('Cadastro atualizado!');
+      } else {
+        setSuccess(true);
+        toast.success('Cadastro realizado com sucesso!');
+      }
     } catch (err: any) {
       console.error('Erro ao cadastrar:', err);
       toast.error(err?.message || 'Erro ao realizar cadastro. Tente novamente.');
