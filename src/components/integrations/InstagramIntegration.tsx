@@ -284,6 +284,31 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
         </Card>
       )}
 
+      {/* DM Instagram Cadastro */}
+      {isConnected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">DM Instagram Cadastro</CardTitle>
+            <CardDescription>
+              Quando ativado, clientes não cadastrados receberão uma DM pedindo para se cadastrar antes de receber o link de checkout
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="send-cadastro-dm" className="text-sm">
+                Enviar DM de cadastro para clientes não registrados
+              </Label>
+              <Switch
+                id="send-cadastro-dm"
+                checked={!!(config as any)?.send_cadastro_dm}
+                onCheckedChange={(checked) => toggleCadastroDm.mutate(checked)}
+                disabled={toggleCadastroDm.isPending}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Como funciona */}
       <Alert>
         <Instagram className="h-4 w-4" />
