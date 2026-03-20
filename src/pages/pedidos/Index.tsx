@@ -88,7 +88,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     const [filterEventType, setFilterEventType] = useState<string>('all');
     const [filterDate, setFilterDate] = useState<DateRange | undefined>();
     const [filterPrinted, setFilterPrinted] = useState<string>('all'); // 'all' | 'not_printed' | 'printed'
-    const [filterPaymentDate, setFilterPaymentDate] = useState<DateRange | undefined>();
+    
     const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
     const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
     const [editingObservation, setEditingObservation] = useState<number | null>(null);
@@ -292,7 +292,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
     useEffect(() => {
       loadOrders();
-    }, [filterPaid, filterEventType, filterDate, filterPrinted, filterPaymentDate]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted]);
 
     const togglePaidStatus = async (orderId: number, currentStatus: boolean) => {
       // Se está DESMARCANDO como pago, apenas faz o update sem confirmação
@@ -1315,27 +1315,11 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
       setFilterEventType('all');
       setFilterDate(undefined);
       setFilterPrinted('all');
-      setFilterPaymentDate(undefined);
       setSearchTerm('');
     };
 
     // Filtrar pedidos por telefone, nome, CPF, Instagram ou número do pedido
-    // + filtro de data de pagamento (client-side, usa created_at de pedidos pagos)
     const filteredOrders = orders.filter(order => {
-      // Filtro de data de pagamento
-      if (filterPaymentDate?.from && order.is_paid && order.created_at) {
-        const orderDate = format(new Date(order.created_at), 'yyyy-MM-dd');
-        const fromStr = format(filterPaymentDate.from, 'yyyy-MM-dd');
-        if (filterPaymentDate.to) {
-          const toStr = format(filterPaymentDate.to, 'yyyy-MM-dd');
-          if (orderDate < fromStr || orderDate > toStr) return false;
-        } else {
-          if (orderDate !== fromStr) return false;
-        }
-      } else if (filterPaymentDate?.from && !order.is_paid) {
-        return false; // Se filtrando por data de pagamento, exclui não pagos
-      }
-
       const search = searchTerm.trim().toLowerCase();
       if (!search) return true;
 
@@ -1464,7 +1448,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     // Reset página quando filtros mudam
     useEffect(() => {
       setCurrentPage(1);
-    }, [filterPaid, filterEventType, filterDate, filterPrinted, filterPaymentDate, searchTerm]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted, searchTerm]);
 
     const formatCurrencyLocal = (value: number) => {
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -1559,7 +1543,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
               <Separator />
 
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Status</label>
                   <Select 
@@ -1638,37 +1622,6 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                   </Popover>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Data do Pagamento</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !filterPaymentDate?.from && "text-muted-foreground"
-                        )}
-                      >
-                        <DollarSign className="mr-2 h-4 w-4" />
-                        {filterPaymentDate?.from ? (
-                          filterPaymentDate.to
-                            ? `${format(filterPaymentDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterPaymentDate.to, "dd/MM/yy", { locale: ptBR })}`
-                            : format(filterPaymentDate.from, "PPP", { locale: ptBR })
-                        ) : "Selecionar data"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="range"
-                        selected={filterPaymentDate}
-                        onSelect={setFilterPaymentDate}
-                        initialFocus
-                        numberOfMonths={1}
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium invisible">Ações</label>
