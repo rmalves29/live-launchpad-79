@@ -1622,37 +1622,6 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                   </Popover>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Data do Pagamento</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !filterPaymentDate?.from && "text-muted-foreground"
-                        )}
-                      >
-                        <DollarSign className="mr-2 h-4 w-4" />
-                        {filterPaymentDate?.from ? (
-                          filterPaymentDate.to
-                            ? `${format(filterPaymentDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterPaymentDate.to, "dd/MM/yy", { locale: ptBR })}`
-                            : format(filterPaymentDate.from, "PPP", { locale: ptBR })
-                        ) : "Selecionar data"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="range"
-                        selected={filterPaymentDate}
-                        onSelect={setFilterPaymentDate}
-                        initialFocus
-                        numberOfMonths={1}
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium invisible">Ações</label>
