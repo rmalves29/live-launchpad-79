@@ -23,7 +23,9 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const WEBHOOK_VERIFY_TOKEN = Deno.env.get('INSTAGRAM_WEBHOOK_VERIFY_TOKEN') || 'orderzap_instagram_verify';
 
-const PRODUCT_CODE_REGEX = /\b([A-Za-z]{1,4}[-]?[0-9]{1,6})\b/i;
+// Regex para capturar código do produto com quantidade opcional
+// Formatos: "C517 2x", "2x C517", "C5172x", "2xC517", "C517" (default qty=1)
+const PRODUCT_WITH_QTY_REGEX = /\b(\d{1,3})\s*[xX]\s*([A-Za-z]{1,4}[-]?[0-9]{1,6})\b|\b([A-Za-z]{1,4}[-]?[0-9]{1,6})\s*(\d{1,3})\s*[xX]\b|\b([A-Za-z]{1,4}[-]?[0-9]{1,6})\b/i;
 const COMMENT_FIELDS = new Set(['comments', 'live_comments']);
 
 interface InstagramWebhookEntry {
