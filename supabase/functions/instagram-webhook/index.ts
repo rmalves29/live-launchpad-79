@@ -147,6 +147,7 @@ Deno.serve(async (req) => {
         const mediaId = value.media?.id;
         const extractedCode = extractProductCode(commentText);
         const earlyProductCode = extractedCode?.normalized ?? null;
+        const requestedQty = extractedCode?.qty ?? 1;
         const isLiveComment = change.field === 'live_comments' || value.media?.media_product_type === 'LIVE';
 
         console.log(`[${timestamp}] [instagram-webhook] Comment from @${buyerUsername} (${buyerId}) [${change.field}]: "${commentText}"`);
