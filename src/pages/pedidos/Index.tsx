@@ -286,7 +286,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
     useEffect(() => {
       loadOrders();
-    }, [filterPaid, filterEventType, filterDate]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted, filterPaymentDate]);
 
     const togglePaidStatus = async (orderId: number, currentStatus: boolean) => {
       // Se está DESMARCANDO como pago, apenas faz o update sem confirmação
