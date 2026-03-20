@@ -120,6 +120,25 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
     },
   });
 
+  // Toggle DM Cadastro
+  const toggleCadastroDm = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const { error } = await supabase
+        .from('integration_instagram')
+        .update({
+          send_cadastro_dm: enabled,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['instagram-integration', tenantId] });
+      toast.success('Configuração atualizada');
+    },
+    onError: () => toast.error('Erro ao atualizar configuração'),
+  });
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copiado!`);
