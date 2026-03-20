@@ -87,6 +87,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     const [filterPaid, setFilterPaid] = useState<string>('all'); // 'all' | 'paid' | 'unpaid' | 'cancelled'
     const [filterEventType, setFilterEventType] = useState<string>('all');
     const [filterDate, setFilterDate] = useState<DateRange | undefined>();
+    const [filterPrinted, setFilterPrinted] = useState<string>('all'); // 'all' | 'not_printed' | 'printed'
+    const [filterPaymentDate, setFilterPaymentDate] = useState<DateRange | undefined>();
     const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
     const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
     const [editingObservation, setEditingObservation] = useState<number | null>(null);
@@ -196,6 +198,12 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           }
         }
 
+        if (filterPrinted === 'not_printed') {
+          query = query.or('printed.is.null,printed.eq.false');
+        } else if (filterPrinted === 'printed') {
+          query = query.eq('printed', true);
+        }
+
         const { data: orderData, error: orderError } = await query;
 
         if (orderError) throw orderError;
@@ -284,7 +292,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
     useEffect(() => {
       loadOrders();
-    }, [filterPaid, filterEventType, filterDate]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted, filterPaymentDate]);
 
     const togglePaidStatus = async (orderId: number, currentStatus: boolean) => {
       // Se está DESMARCANDO como pago, apenas faz o update sem confirmação
@@ -1303,14 +1311,31 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     };
 
     const clearFilters = () => {
-      setFilterPaid(null);
+      setFilterPaid('all');
       setFilterEventType('all');
       setFilterDate(undefined);
+      setFilterPrinted('all');
+      setFilterPaymentDate(undefined);
       setSearchTerm('');
     };
 
     // Filtrar pedidos por telefone, nome, CPF, Instagram ou número do pedido
+    // + filtro de data de pagamento (client-side, usa created_at de pedidos pagos)
     const filteredOrders = orders.filter(order => {
+      // Filtro de data de pagamento
+      if (filterPaymentDate?.from && order.is_paid && order.created_at) {
+        const orderDate = format(new Date(order.created_at), 'yyyy-MM-dd');
+        const fromStr = format(filterPaymentDate.from, 'yyyy-MM-dd');
+        if (filterPaymentDate.to) {
+          const toStr = format(filterPaymentDate.to, 'yyyy-MM-dd');
+          if (orderDate < fromStr || orderDate > toStr) return false;
+        } else {
+          if (orderDate !== fromStr) return false;
+        }
+      } else if (filterPaymentDate?.from && !order.is_paid) {
+        return false; // Se filtrando por data de pagamento, exclui não pagos
+      }
+
       const search = searchTerm.trim().toLowerCase();
       if (!search) return true;
 
@@ -1439,7 +1464,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     // Reset página quando filtros mudam
     useEffect(() => {
       setCurrentPage(1);
-    }, [filterPaid, filterEventType, filterDate, searchTerm]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted, filterPaymentDate, searchTerm]);
 
     const formatCurrencyLocal = (value: number) => {
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -1534,77 +1559,123 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
               <Separator />
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Status</label>
-                <Select 
-                  value={filterPaid} 
-                  onValueChange={(value) => setFilterPaid(value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="paid">Pagos</SelectItem>
-                    <SelectItem value="unpaid">Não pagos</SelectItem>
-                    <SelectItem value="cancelled">Cancelados</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  <Select 
+                    value={filterPaid} 
+                    onValueChange={(value) => setFilterPaid(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="paid">Pagos</SelectItem>
+                      <SelectItem value="unpaid">Não pagos</SelectItem>
+                      <SelectItem value="cancelled">Cancelados</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Tipo do Evento</label>
-                <Select value={filterEventType} onValueChange={setFilterEventType}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos os tipos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="BAZAR">BAZAR</SelectItem>
-                    <SelectItem value="LIVE">LIVE</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Impressão</label>
+                  <Select value={filterPrinted} onValueChange={setFilterPrinted}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="not_printed">Não impressos</SelectItem>
+                      <SelectItem value="printed">Impressos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Data do Evento</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !filterDate?.from && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filterDate?.from ? (
-                        filterDate.to
-                          ? `${format(filterDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterDate.to, "dd/MM/yy", { locale: ptBR })}`
-                          : format(filterDate.from, "PPP", { locale: ptBR })
-                      ) : "Selecionar data"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="range"
-                      selected={filterDate}
-                      onSelect={setFilterDate}
-                      initialFocus
-                      numberOfMonths={1}
-                      className="pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Tipo do Evento</label>
+                  <Select value={filterEventType} onValueChange={setFilterEventType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos os tipos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="BAZAR">BAZAR</SelectItem>
+                      <SelectItem value="LIVE">LIVE</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium invisible">Ações</label>
-                <Button onClick={clearFilters} variant="outline" className="w-full">
-                  Limpar Filtros
-                </Button>
-              </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Data do Evento</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !filterDate?.from && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {filterDate?.from ? (
+                          filterDate.to
+                            ? `${format(filterDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterDate.to, "dd/MM/yy", { locale: ptBR })}`
+                            : format(filterDate.from, "PPP", { locale: ptBR })
+                        ) : "Selecionar data"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={filterDate}
+                        onSelect={setFilterDate}
+                        initialFocus
+                        numberOfMonths={1}
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Data do Pagamento</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !filterPaymentDate?.from && "text-muted-foreground"
+                        )}
+                      >
+                        <DollarSign className="mr-2 h-4 w-4" />
+                        {filterPaymentDate?.from ? (
+                          filterPaymentDate.to
+                            ? `${format(filterPaymentDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterPaymentDate.to, "dd/MM/yy", { locale: ptBR })}`
+                            : format(filterPaymentDate.from, "PPP", { locale: ptBR })
+                        ) : "Selecionar data"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={filterPaymentDate}
+                        onSelect={setFilterPaymentDate}
+                        initialFocus
+                        numberOfMonths={1}
+                        className="pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium invisible">Ações</label>
+                  <Button onClick={clearFilters} variant="outline" className="w-full">
+                    Limpar Filtros
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
