@@ -840,6 +840,7 @@ export type Database = {
       instagram_live_comments: {
         Row: {
           comment_id: string | null
+          comment_status: string | null
           comment_text: string
           created_at: string | null
           id: string
@@ -853,6 +854,7 @@ export type Database = {
         }
         Insert: {
           comment_id?: string | null
+          comment_status?: string | null
           comment_text: string
           created_at?: string | null
           id?: string
@@ -866,6 +868,7 @@ export type Database = {
         }
         Update: {
           comment_id?: string | null
+          comment_status?: string | null
           comment_text?: string
           created_at?: string | null
           id?: string
