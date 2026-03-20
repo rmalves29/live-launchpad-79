@@ -722,6 +722,7 @@ async function triggerWhatsAppItemAdded(
   product: any,
   order: any,
   timestamp: string,
+  qty: number = 1,
 ) {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -738,7 +739,7 @@ async function triggerWhatsAppItemAdded(
           customer_phone: customerPhone,
           product_name: product.name,
           product_code: product.code,
-          quantity: 1,
+          quantity: qty,
           unit_price: product.price,
         }),
       }
