@@ -29,8 +29,7 @@ serve(async (req) => {
       );
     }
 
-    // Usar Facebook Login para obter permissões de página + Instagram
-    // Isso permite obter o page_access_token necessário para enviar DMs
+    // Usar Instagram Login (api.instagram.com)
     const scopes = [
       'instagram_basic',
       'instagram_manage_comments',
@@ -41,7 +40,7 @@ serve(async (req) => {
       'pages_read_engagement'
     ].join(',');
 
-    const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}&state=${tenantId}&response_type=code`;
+    const oauthUrl = `https://api.instagram.com/oauth/authorize?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}&state=${tenantId}&response_type=code`;
 
     return new Response(
       JSON.stringify({ url: oauthUrl }),
