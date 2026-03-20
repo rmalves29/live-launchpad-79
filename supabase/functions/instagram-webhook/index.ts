@@ -23,7 +23,9 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const WEBHOOK_VERIFY_TOKEN = Deno.env.get('INSTAGRAM_WEBHOOK_VERIFY_TOKEN') || 'orderzap_instagram_verify';
 
-const PRODUCT_CODE_REGEX = /\b([A-Za-z]{1,4}[-]?[0-9]{1,6})\b/i;
+// Regex para capturar código do produto com quantidade opcional
+// Formatos: "C517 2x", "2x C517", "C5172x", "2xC517", "C517" (default qty=1)
+const PRODUCT_WITH_QTY_REGEX = /\b(\d{1,3})\s*[xX]\s*([A-Za-z]{1,4}[-]?[0-9]{1,6})\b|\b([A-Za-z]{1,4}[-]?[0-9]{1,6})\s*(\d{1,3})\s*[xX]\b|\b([A-Za-z]{1,4}[-]?[0-9]{1,6})\b/i;
 const COMMENT_FIELDS = new Set(['comments', 'live_comments']);
 
 interface InstagramWebhookEntry {
@@ -145,6 +147,7 @@ Deno.serve(async (req) => {
         const mediaId = value.media?.id;
         const extractedCode = extractProductCode(commentText);
         const earlyProductCode = extractedCode?.normalized ?? null;
+        const requestedQty = extractedCode?.qty ?? 1;
         const isLiveComment = change.field === 'live_comments' || value.media?.media_product_type === 'LIVE';
 
         console.log(`[${timestamp}] [instagram-webhook] Comment from @${buyerUsername} (${buyerId}) [${change.field}]: "${commentText}"`);
@@ -237,7 +240,11 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const today = new Date().toISOString().split('T')[0];
+        // Usar horário de Brasília (UTC-3) para a data do evento
+        const brasiliaOffset = -3;
+        const nowUtc = new Date();
+        const brasiliaTime = new Date(nowUtc.getTime() + brasiliaOffset * 60 * 60 * 1000);
+        const today = brasiliaTime.toISOString().split('T')[0];
 
         // Buscar cliente cadastrado pelo @instagram
         const customerData = await resolveCustomerByInstagram(supabase, tenantId, buyerUsername, timestamp);
@@ -296,11 +303,18 @@ Deno.serve(async (req) => {
           .eq('product_id', product.id)
           .maybeSingle();
 
-        let itemQty = 1;
+        let itemQty = requestedQty;
         if (existingItem) {
-          itemQty = existingItem.qty + 1;
+          itemQty = existingItem.qty + requestedQty;
           if (itemQty > freshProduct.stock) {
             console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${itemQty} (stock=${freshProduct.stock})`);
+            if (pageAccessToken) {
+              await sendInstagramDM(
+                buyerId,
+                pageAccessToken,
+                `😔 Estoque insuficiente para ${product.name}. Disponível: ${freshProduct.stock}, solicitado: ${itemQty}`
+              ).catch(() => {});
+            }
             continue;
           }
 
@@ -311,6 +325,18 @@ Deno.serve(async (req) => {
 
           console.log(`[${timestamp}] [instagram-webhook] Item quantity updated: ${product.code} qty=${itemQty}`);
         } else {
+          if (requestedQty > freshProduct.stock) {
+            console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${requestedQty} (stock=${freshProduct.stock})`);
+            if (pageAccessToken) {
+              await sendInstagramDM(
+                buyerId,
+                pageAccessToken,
+                `😔 Estoque insuficiente para ${product.name}. Disponível: ${freshProduct.stock}`
+              ).catch(() => {});
+            }
+            continue;
+          }
+
           await supabase
             .from('cart_items')
             .insert({
@@ -321,10 +347,10 @@ Deno.serve(async (req) => {
               product_name: product.name,
               product_image_url: product.image_url,
               unit_price: product.price,
-              qty: 1,
+              qty: requestedQty,
             });
 
-          console.log(`[${timestamp}] [instagram-webhook] New item added: ${product.code}`);
+          console.log(`[${timestamp}] [instagram-webhook] New item added: ${product.code} qty=${requestedQty}`);
         }
 
         const { error: stockDecErr } = await supabase
@@ -411,9 +437,10 @@ Deno.serve(async (req) => {
           const priceFormatted = `R$ ${product.price.toFixed(2).replace('.', ',')}`;
           const totalFormatted = `R$ ${total.toFixed(2).replace('.', ',')}`;
 
+          const qtyLabel = requestedQty > 1 ? ` (${requestedQty}x)` : '';
           const dmMessage =
-            `✅ *${product.name}* adicionado!\n\n` +
-            `💰 Valor: ${priceFormatted}\n` +
+            `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
+            `💰 Valor unitário: ${priceFormatted}\n` +
             `🛒 Total do carrinho: ${totalFormatted}\n\n` +
             `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
 
@@ -430,7 +457,7 @@ Deno.serve(async (req) => {
 
         // Disparar WhatsApp se cliente cadastrado com telefone real
         if (customerData?.phone && order) {
-          await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp);
+          await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp, requestedQty);
         }
       }
     }
@@ -450,12 +477,22 @@ Deno.serve(async (req) => {
 });
 
 function extractProductCode(commentText: string) {
-  const match = commentText.match(PRODUCT_CODE_REGEX);
+  const match = commentText.match(PRODUCT_WITH_QTY_REGEX);
   if (!match) return null;
 
+  // Group 1+2: "2x C517" => qty=group1, code=group2
+  // Group 3+4: "C517 2x" => code=group3, qty=group4
+  // Group 5: "C517" => code=group5, qty=1
+  const rawCode = match[2] || match[3] || match[5];
+  const rawQty = match[1] || match[4];
+  const qty = rawQty ? Math.min(parseInt(rawQty, 10), 99) : 1;
+
+  if (!rawCode) return null;
+
   return {
-    raw: match[1],
-    normalized: match[1].toUpperCase().replace(/-/g, ''),
+    raw: rawCode,
+    normalized: rawCode.toUpperCase().replace(/-/g, ''),
+    qty: qty < 1 ? 1 : qty,
   };
 }
 
@@ -685,6 +722,7 @@ async function triggerWhatsAppItemAdded(
   product: any,
   order: any,
   timestamp: string,
+  qty: number = 1,
 ) {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -701,7 +739,7 @@ async function triggerWhatsAppItemAdded(
           customer_phone: customerPhone,
           product_name: product.name,
           product_code: product.code,
-          quantity: 1,
+          quantity: qty,
           unit_price: product.price,
         }),
       }
