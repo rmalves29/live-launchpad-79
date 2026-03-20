@@ -1320,7 +1320,22 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     };
 
     // Filtrar pedidos por telefone, nome, CPF, Instagram ou número do pedido
+    // + filtro de data de pagamento (client-side, usa created_at de pedidos pagos)
     const filteredOrders = orders.filter(order => {
+      // Filtro de data de pagamento
+      if (filterPaymentDate?.from && order.is_paid && order.created_at) {
+        const orderDate = format(new Date(order.created_at), 'yyyy-MM-dd');
+        const fromStr = format(filterPaymentDate.from, 'yyyy-MM-dd');
+        if (filterPaymentDate.to) {
+          const toStr = format(filterPaymentDate.to, 'yyyy-MM-dd');
+          if (orderDate < fromStr || orderDate > toStr) return false;
+        } else {
+          if (orderDate !== fromStr) return false;
+        }
+      } else if (filterPaymentDate?.from && !order.is_paid) {
+        return false; // Se filtrando por data de pagamento, exclui não pagos
+      }
+
       const search = searchTerm.trim().toLowerCase();
       if (!search) return true;
 
