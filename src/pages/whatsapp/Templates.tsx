@@ -84,9 +84,42 @@ export default function WhatsappTemplates() {
     content: ''
   });
 
+  const [sendCadastroDm, setSendCadastroDm] = useState(false);
+  const [loadingFlag, setLoadingFlag] = useState(false);
+
   useEffect(() => {
     initializeTemplates();
+    loadCadastroDmFlag();
   }, []);
+
+  const loadCadastroDmFlag = async () => {
+    try {
+      const { data } = await supabaseTenant
+        .from('integration_instagram')
+        .select('send_cadastro_dm')
+        .maybeSingle();
+      if (data) setSendCadastroDm(!!data.send_cadastro_dm);
+    } catch (e) {
+      console.error('Erro ao carregar flag DM cadastro:', e);
+    }
+  };
+
+  const toggleCadastroDm = async (value: boolean) => {
+    setLoadingFlag(true);
+    try {
+      const { error } = await supabaseTenant
+        .from('integration_instagram')
+        .update({ send_cadastro_dm: value });
+      if (error) throw error;
+      setSendCadastroDm(value);
+      toast.success(value ? 'DM Instagram Cadastro ativada' : 'DM Instagram Cadastro desativada');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao atualizar flag');
+    } finally {
+      setLoadingFlag(false);
+    }
+  };
+
 
   // Templates padrão que serão criados automaticamente
   const DEFAULT_TEMPLATES = [
