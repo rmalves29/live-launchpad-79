@@ -152,6 +152,9 @@ Deno.serve(async (req) => {
 
         console.log(`[${timestamp}] [instagram-webhook] Comment from @${buyerUsername} (${buyerId}) [${change.field}]: "${commentText}"`);
 
+        // Insert comment initially with no_code status
+        const initialStatus = extractedCode ? 'not_found' : 'no_code';
+
         await insertLiveComment(supabase, {
           tenant_id: tenantId,
           instagram_user_id: buyerId,
@@ -162,6 +165,7 @@ Deno.serve(async (req) => {
           is_live: isLiveComment,
           product_code: earlyProductCode,
           product_found: false,
+          comment_status: initialStatus,
         }, timestamp);
 
         if (!extractedCode) {
@@ -211,32 +215,35 @@ Deno.serve(async (req) => {
         }
 
         if (!product) {
-          console.log(`[${timestamp}] [instagram-webhook] Product not found: ${productCode}`);
+          // Check if product exists but is not for LIVE (sale_type mismatch)
+          if (isLiveComment) {
+            const { data: anyProduct } = await supabase
+              .from('products')
+              .select('id')
+              .eq('tenant_id', tenantId)
+              .eq('is_active', true)
+              .ilike('code', productCode)
+              .maybeSingle();
 
-          if (pageAccessToken) {
-            await sendInstagramDM(
-              buyerId,
-              pageAccessToken,
-              `❌ Produto "${extractedCode.raw}" não encontrado. Verifique o código e tente novamente!`
-            ).catch((e) => console.error(`[${timestamp}] [instagram-webhook] DM error:`, e));
+            if (anyProduct) {
+              // Product exists but not registered for LIVE → lilás
+              console.log(`[${timestamp}] [instagram-webhook] Product ${productCode} exists but not for LIVE`);
+              await updateLiveCommentStatus(supabase, tenantId, commentId, 'not_for_live', timestamp);
+              continue;
+            }
           }
+
+          console.log(`[${timestamp}] [instagram-webhook] Product not found: ${productCode}`);
+          // Status stays 'not_found' (already set on insert)
           continue;
         }
 
         console.log(`[${timestamp}] [instagram-webhook] Product found: ${product.name} (${product.code})`);
 
-        await markLiveCommentProductFound(supabase, tenantId, commentId, timestamp);
-
         if (product.stock <= 0) {
           console.log(`[${timestamp}] [instagram-webhook] Product out of stock: ${product.code}`);
-
-          if (pageAccessToken) {
-            await sendInstagramDM(
-              buyerId,
-              pageAccessToken,
-              `😔 O produto "${product.name}" está esgotado. Fique de olho nas próximas lives!`
-            ).catch((e) => console.error(`[${timestamp}] [instagram-webhook] DM error:`, e));
-          }
+          await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
+          // Não envia DM de estoque esgotado
           continue;
         }
 
@@ -262,6 +269,9 @@ Deno.serve(async (req) => {
           .eq('status', 'OPEN')
           .maybeSingle();
 
+        // Check if customer already has items (for "repeat_added" status)
+        let isRepeatBuyer = false;
+
         if (!cart) {
           const { data: newCart, error: cartError } = await supabase
             .from('carts')
@@ -283,6 +293,16 @@ Deno.serve(async (req) => {
 
           cart = newCart;
           console.log(`[${timestamp}] [instagram-webhook] New cart created: ${cart.id}`);
+        } else {
+          // Cart already exists → customer already has items
+          const { data: existingItems } = await supabase
+            .from('cart_items')
+            .select('id')
+            .eq('cart_id', cart.id)
+            .limit(1);
+          if (existingItems && existingItems.length > 0) {
+            isRepeatBuyer = true;
+          }
         }
 
         const { data: freshProduct } = await supabase
@@ -293,6 +313,7 @@ Deno.serve(async (req) => {
 
         if (!freshProduct || freshProduct.stock < 1) {
           console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} out of stock (stock=${freshProduct?.stock || 0})`);
+          await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
           continue;
         }
 
@@ -305,16 +326,12 @@ Deno.serve(async (req) => {
 
         let itemQty = requestedQty;
         if (existingItem) {
+          // Already has this specific product → also repeat
+          isRepeatBuyer = true;
           itemQty = existingItem.qty + requestedQty;
           if (itemQty > freshProduct.stock) {
             console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${itemQty} (stock=${freshProduct.stock})`);
-            if (pageAccessToken) {
-              await sendInstagramDM(
-                buyerId,
-                pageAccessToken,
-                `😔 Estoque insuficiente para ${product.name}. Disponível: ${freshProduct.stock}, solicitado: ${itemQty}`
-              ).catch(() => {});
-            }
+            await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
             continue;
           }
 
@@ -327,13 +344,7 @@ Deno.serve(async (req) => {
         } else {
           if (requestedQty > freshProduct.stock) {
             console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${requestedQty} (stock=${freshProduct.stock})`);
-            if (pageAccessToken) {
-              await sendInstagramDM(
-                buyerId,
-                pageAccessToken,
-                `😔 Estoque insuficiente para ${product.name}. Disponível: ${freshProduct.stock}`
-              ).catch(() => {});
-            }
+            await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
             continue;
           }
 
@@ -368,6 +379,10 @@ Deno.serve(async (req) => {
           }
           continue;
         }
+
+        // Mark comment as product found with appropriate status
+        const commentStatus = isRepeatBuyer ? 'repeat_added' : 'added';
+        await updateLiveCommentStatus(supabase, tenantId, commentId, commentStatus, timestamp, true);
 
         const { data: cartItems } = await supabase
           .from('cart_items')
@@ -480,9 +495,6 @@ function extractProductCode(commentText: string) {
   const match = commentText.match(PRODUCT_WITH_QTY_REGEX);
   if (!match) return null;
 
-  // Group 1+2: "2x C517" => qty=group1, code=group2
-  // Group 3+4: "C517 2x" => code=group3, qty=group4
-  // Group 5: "C517" => code=group5, qty=1
   const rawCode = match[2] || match[3] || match[5];
   const rawQty = match[1] || match[4];
   const qty = rawQty ? Math.min(parseInt(rawQty, 10), 99) : 1;
@@ -530,6 +542,7 @@ async function insertLiveComment(
     is_live: boolean;
     product_code: string | null;
     product_found: boolean;
+    comment_status: string;
   },
   timestamp: string,
 ) {
@@ -540,20 +553,22 @@ async function insertLiveComment(
   }
 }
 
-async function markLiveCommentProductFound(
+async function updateLiveCommentStatus(
   supabase: ReturnType<typeof createClient>,
   tenantId: string,
   commentId: string,
+  status: string,
   timestamp: string,
+  productFound: boolean = false,
 ) {
   const { error } = await supabase
     .from('instagram_live_comments')
-    .update({ product_found: true })
+    .update({ comment_status: status, product_found: productFound })
     .eq('tenant_id', tenantId)
     .eq('comment_id', commentId);
 
   if (error) {
-    console.warn(`[${timestamp}] [instagram-webhook] Error updating product_found:`, error);
+    console.warn(`[${timestamp}] [instagram-webhook] Error updating comment_status:`, error);
   }
 }
 
@@ -632,9 +647,6 @@ async function syncWebhookSourceId(
   console.log(`[${timestamp}] [instagram-webhook] Synced webhook source id ${sourceId} to integration ${integration.id}`);
 }
 
-/**
- * Envia mensagem direta via Instagram Graph API
- */
 async function sendInstagramDM(
   recipientId: string,
   accessToken: string,
@@ -691,7 +703,6 @@ async function resolveCustomerByInstagram(
 ): Promise<ResolvedCustomer | null> {
   if (!username) return null;
 
-  // Buscar por username (com ou sem @)
   const cleanUsername = username.replace(/^@/, '');
 
   const { data: customer, error } = await supabase

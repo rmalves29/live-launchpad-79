@@ -13,12 +13,53 @@ interface LiveComment {
   comment_text: string;
   product_code: string | null;
   product_found: boolean | null;
+  comment_status: string | null;
   is_live: boolean | null;
   created_at: string;
 }
 
 interface InstagramLiveCommentsProps {
   tenantId: string;
+}
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; bgClass: string; textClass: string }> = {
+  added: {
+    label: 'Adicionado',
+    color: '🟢',
+    bgClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    textClass: 'text-emerald-600',
+  },
+  repeat_added: {
+    label: 'Comprou outro produto',
+    color: '🔵',
+    bgClass: 'bg-blue-100 text-blue-800 border-blue-200',
+    textClass: 'text-blue-600',
+  },
+  not_for_live: {
+    label: 'Não cadastrado p/ Live',
+    color: '🟣',
+    bgClass: 'bg-purple-100 text-purple-800 border-purple-200',
+    textClass: 'text-purple-600',
+  },
+  out_of_stock: {
+    label: 'Estoque esgotado',
+    color: '🔴',
+    bgClass: 'bg-red-100 text-red-800 border-red-200',
+    textClass: 'text-red-600',
+  },
+  not_found: {
+    label: 'Não encontrado',
+    color: '⚪',
+    bgClass: 'bg-gray-100 text-gray-600 border-gray-200',
+    textClass: 'text-gray-500',
+  },
+};
+
+function getStatusConfig(status: string | null, productFound: boolean | null) {
+  if (status && STATUS_CONFIG[status]) return STATUS_CONFIG[status];
+  // Fallback for old records without comment_status
+  if (productFound) return STATUS_CONFIG.added;
+  return STATUS_CONFIG.not_found;
 }
 
 export default function InstagramLiveComments({ tenantId }: InstagramLiveCommentsProps) {
@@ -31,11 +72,11 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
     const fetchRecent = async () => {
       const { data } = await supabase
         .from('instagram_live_comments')
-        .select('id, username, comment_text, product_code, product_found, is_live, created_at')
+        .select('id, username, comment_text, product_code, product_found, comment_status, is_live, created_at')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: true })
         .limit(50);
-      if (data) setComments(data);
+      if (data) setComments(data as LiveComment[]);
     };
     fetchRecent();
   }, [tenantId]);
@@ -47,17 +88,24 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'instagram_live_comments',
           filter: `tenant_id=eq.${tenantId}`,
         },
         (payload) => {
-          const newComment = payload.new as LiveComment;
-          setComments((prev) => {
-            const updated = [...prev, newComment];
-            return updated.slice(-100);
-          });
+          if (payload.eventType === 'INSERT') {
+            const newComment = payload.new as LiveComment;
+            setComments((prev) => {
+              const updated = [...prev, newComment];
+              return updated.slice(-100);
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as LiveComment;
+            setComments((prev) =>
+              prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
+            );
+          }
         }
       )
       .subscribe((status) => {
@@ -134,6 +182,17 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
         )}
       </CardHeader>
       <CardContent>
+        {/* Legenda de cores */}
+        <div className="flex flex-wrap gap-3 mb-4 p-3 rounded-lg bg-muted/50 border">
+          <span className="text-xs font-medium text-muted-foreground mr-1">Legenda:</span>
+          {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+            <div key={key} className="flex items-center gap-1.5">
+              <span className="text-xs">{config.color}</span>
+              <span className="text-xs text-muted-foreground">{config.label}</span>
+            </div>
+          ))}
+        </div>
+
         <ScrollArea className="h-[420px] pr-3">
           {comments.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-16 text-muted-foreground">
@@ -143,29 +202,37 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
             </div>
           ) : (
             <div className="space-y-2">
-              {comments.map((c) => (
-                <div key={c.id} className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                  <div className="h-7 w-7 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                    {(c.username || '?')[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">
-                        @{c.username || 'desconhecido'}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {formatTime(c.created_at)}
-                      </span>
-                      {c.product_code && (
-                        <Badge variant={c.product_found ? 'default' : 'destructive'} className="text-[10px] px-1.5 py-0">
-                          {c.product_code}
-                        </Badge>
-                      )}
+              {comments.map((c) => {
+                const statusCfg = c.product_code
+                  ? getStatusConfig(c.comment_status, c.product_found)
+                  : null;
+
+                return (
+                  <div key={c.id} className="flex items-start gap-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                    <div className="h-7 w-7 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                      {(c.username || '?')[0].toUpperCase()}
                     </div>
-                    <p className="text-sm text-foreground/80 break-words">{c.comment_text}</p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate">
+                          @{c.username || 'desconhecido'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatTime(c.created_at)}
+                        </span>
+                        {c.product_code && statusCfg && (
+                          <Badge
+                            className={`text-[10px] px-1.5 py-0 border ${statusCfg.bgClass}`}
+                          >
+                            {c.product_code}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-foreground/80 break-words">{c.comment_text}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={bottomRef} />
             </div>
           )}
