@@ -1305,9 +1305,11 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     };
 
     const clearFilters = () => {
-      setFilterPaid(null);
+      setFilterPaid('all');
       setFilterEventType('all');
       setFilterDate(undefined);
+      setFilterPrinted('all');
+      setFilterPaymentDate(undefined);
       setSearchTerm('');
     };
 
