@@ -240,7 +240,11 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const today = new Date().toISOString().split('T')[0];
+        // Usar horário de Brasília (UTC-3) para a data do evento
+        const brasiliaOffset = -3;
+        const nowUtc = new Date();
+        const brasiliaTime = new Date(nowUtc.getTime() + brasiliaOffset * 60 * 60 * 1000);
+        const today = brasiliaTime.toISOString().split('T')[0];
 
         // Buscar cliente cadastrado pelo @instagram
         const customerData = await resolveCustomerByInstagram(supabase, tenantId, buyerUsername, timestamp);
