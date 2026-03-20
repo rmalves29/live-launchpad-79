@@ -88,7 +88,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     const [filterEventType, setFilterEventType] = useState<string>('all');
     const [filterDate, setFilterDate] = useState<DateRange | undefined>();
     const [filterPrinted, setFilterPrinted] = useState<string>('all'); // 'all' | 'not_printed' | 'printed'
-    const [filterPaymentDate, setFilterPaymentDate] = useState<DateRange | undefined>();
+    
     const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
     const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
     const [editingObservation, setEditingObservation] = useState<number | null>(null);
