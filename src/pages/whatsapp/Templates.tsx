@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabaseTenant } from "@/lib/supabase-tenant";
@@ -83,9 +84,42 @@ export default function WhatsappTemplates() {
     content: ''
   });
 
+  const [sendCadastroDm, setSendCadastroDm] = useState(false);
+  const [loadingFlag, setLoadingFlag] = useState(false);
+
   useEffect(() => {
     initializeTemplates();
+    loadCadastroDmFlag();
   }, []);
+
+  const loadCadastroDmFlag = async () => {
+    try {
+      const { data } = await supabaseTenant
+        .from('integration_instagram')
+        .select('send_cadastro_dm')
+        .maybeSingle();
+      if (data) setSendCadastroDm(!!data.send_cadastro_dm);
+    } catch (e) {
+      console.error('Erro ao carregar flag DM cadastro:', e);
+    }
+  };
+
+  const toggleCadastroDm = async (value: boolean) => {
+    setLoadingFlag(true);
+    try {
+      const { error } = await supabaseTenant
+        .from('integration_instagram')
+        .update({ send_cadastro_dm: value });
+      if (error) throw error;
+      setSendCadastroDm(value);
+      toast.success(value ? 'DM Instagram Cadastro ativada' : 'DM Instagram Cadastro desativada');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao atualizar flag');
+    } finally {
+      setLoadingFlag(false);
+    }
+  };
+
 
   // Templates padrão que serão criados automaticamente
   const DEFAULT_TEMPLATES = [
@@ -419,6 +453,18 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
                       {getTemplateTypeLabel(template.type)}
                     </span>
                     <h3 className="text-lg font-semibold">{template.title}</h3>
+                    {template.type === 'DM_INSTAGRAM_CADASTRO' && (
+                      <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-xs text-muted-foreground">
+                          {sendCadastroDm ? 'Ativo' : 'Inativo'}
+                        </span>
+                        <Switch
+                          checked={sendCadastroDm}
+                          onCheckedChange={toggleCadastroDm}
+                          disabled={loadingFlag}
+                        />
+                      </div>
+                    )}
                   </div>
                   <p className="text-muted-foreground whitespace-pre-wrap mt-2">
                     {template.content}

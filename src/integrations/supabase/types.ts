@@ -3281,6 +3281,7 @@ export type Database = {
         | "SENDFLOW"
         | "TRACKING"
         | "BLOCKED_CUSTOMER"
+        | "DM_INSTAGRAM_CADASTRO"
     }
     CompositeTypes: {
       http_header: {
@@ -3447,6 +3448,7 @@ export const Constants = {
         "SENDFLOW",
         "TRACKING",
         "BLOCKED_CUSTOMER",
+        "DM_INSTAGRAM_CADASTRO",
       ],
     },
   },
