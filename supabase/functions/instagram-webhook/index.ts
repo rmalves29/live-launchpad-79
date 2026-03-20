@@ -303,11 +303,18 @@ Deno.serve(async (req) => {
           .eq('product_id', product.id)
           .maybeSingle();
 
-        let itemQty = 1;
+        let itemQty = requestedQty;
         if (existingItem) {
-          itemQty = existingItem.qty + 1;
+          itemQty = existingItem.qty + requestedQty;
           if (itemQty > freshProduct.stock) {
             console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${itemQty} (stock=${freshProduct.stock})`);
+            if (pageAccessToken) {
+              await sendInstagramDM(
+                buyerId,
+                pageAccessToken,
+                `😔 Estoque insuficiente para ${product.name}. Disponível: ${freshProduct.stock}, solicitado: ${itemQty}`
+              ).catch(() => {});
+            }
             continue;
           }
 
@@ -318,6 +325,18 @@ Deno.serve(async (req) => {
 
           console.log(`[${timestamp}] [instagram-webhook] Item quantity updated: ${product.code} qty=${itemQty}`);
         } else {
+          if (requestedQty > freshProduct.stock) {
+            console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${requestedQty} (stock=${freshProduct.stock})`);
+            if (pageAccessToken) {
+              await sendInstagramDM(
+                buyerId,
+                pageAccessToken,
+                `😔 Estoque insuficiente para ${product.name}. Disponível: ${freshProduct.stock}`
+              ).catch(() => {});
+            }
+            continue;
+          }
+
           await supabase
             .from('cart_items')
             .insert({
@@ -328,10 +347,10 @@ Deno.serve(async (req) => {
               product_name: product.name,
               product_image_url: product.image_url,
               unit_price: product.price,
-              qty: 1,
+              qty: requestedQty,
             });
 
-          console.log(`[${timestamp}] [instagram-webhook] New item added: ${product.code}`);
+          console.log(`[${timestamp}] [instagram-webhook] New item added: ${product.code} qty=${requestedQty}`);
         }
 
         const { error: stockDecErr } = await supabase
