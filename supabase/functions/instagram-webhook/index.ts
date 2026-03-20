@@ -457,7 +457,7 @@ Deno.serve(async (req) => {
 
         // Disparar WhatsApp se cliente cadastrado com telefone real
         if (customerData?.phone && order) {
-          await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp);
+          await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp, requestedQty);
         }
       }
     }
