@@ -76,21 +76,69 @@ serve(async (req) => {
       console.error('[Instagram Callback] Erro ao buscar username:', profileErr);
     }
 
+    // Buscar Page Access Token via Facebook Graph API
+    // O token do Instagram Login pode ser usado para buscar as páginas vinculadas
+    let pageAccessToken = '';
+    let pageId = '';
+    try {
+      // Primeiro, buscar o Instagram Business Account ID vinculado
+      // Usar o user token para buscar as páginas do Facebook do usuário
+      const pagesRes = await fetch(
+        `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${longLivedToken}`
+      );
+      const pagesData = await pagesRes.json();
+      console.log('[Instagram Callback] Pages response:', JSON.stringify(pagesData).substring(0, 500));
+
+      if (pagesData.data && pagesData.data.length > 0) {
+        // Procurar a página que tem o Instagram Business Account vinculado
+        for (const page of pagesData.data) {
+          if (page.instagram_business_account) {
+            pageAccessToken = page.access_token;
+            pageId = page.id;
+            console.log(`[Instagram Callback] Found page with IG account: pageId=${pageId}, igAccount=${page.instagram_business_account.id}`);
+            break;
+          }
+        }
+        // Se nenhuma página tem IG Business Account, usar a primeira página
+        if (!pageAccessToken && pagesData.data[0]?.access_token) {
+          pageAccessToken = pagesData.data[0].access_token;
+          pageId = pagesData.data[0].id;
+          console.log(`[Instagram Callback] Using first page as fallback: pageId=${pageId}`);
+        }
+      } else {
+        console.log('[Instagram Callback] No Facebook pages found for this user');
+      }
+    } catch (pageErr) {
+      console.error('[Instagram Callback] Erro ao buscar page_access_token:', pageErr);
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    const upsertData: Record<string, any> = {
+      tenant_id: state,
+      instagram_account_id: instagramUserId.toString(),
+      access_token: longLivedToken,
+      instagram_username: instagramUsername || null,
+      is_active: true,
+      environment: 'production',
+      updated_at: new Date().toISOString(),
+    };
+
+    // Salvar page_access_token e page_id se obtidos
+    if (pageAccessToken) {
+      upsertData.page_access_token = pageAccessToken;
+      console.log('[Instagram Callback] Saving page_access_token');
+    }
+    if (pageId) {
+      upsertData.page_id = pageId;
+      console.log('[Instagram Callback] Saving page_id:', pageId);
+    }
+
     const { error: upsertError } = await supabase
       .from('integration_instagram')
-      .upsert({
-        tenant_id: state,
-        instagram_account_id: instagramUserId.toString(),
-        access_token: longLivedToken,
-        instagram_username: instagramUsername || null,
-        is_active: true,
-        environment: 'production',
-        updated_at: new Date().toISOString(),
-      }, {
+      .upsert(upsertData, {
         onConflict: 'tenant_id'
       });
 
