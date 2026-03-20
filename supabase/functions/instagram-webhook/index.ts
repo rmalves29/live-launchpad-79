@@ -448,6 +448,9 @@ Deno.serve(async (req) => {
           }
         }
 
+        const hasRegistration = !!customerData;
+        const hasPhone = !!customerData?.phone;
+
         if (pageAccessToken) {
           const checkoutUrl = `https://app.orderzaps.com/t/${tenantSlug}/checkout`;
           const cadastroUrl = `https://app.orderzaps.com/t/${tenantSlug}/cadastro-instagram`;
@@ -456,8 +459,8 @@ Deno.serve(async (req) => {
 
           const qtyLabel = requestedQty > 1 ? ` (${requestedQty}x)` : '';
 
-          if (!customerData && integration.send_cadastro_dm) {
-            // Cliente NÃO cadastrado e flag ativo → envia DM de cadastro
+          if ((!hasRegistration || !hasPhone) && integration.send_cadastro_dm) {
+            // Sem cadastro OU sem telefone + flag ativo → DM de cadastro
             const cadastroDmMessage =
               `✅ *${product.name}*${qtyLabel} foi adicionado ao seu pedido!\n\n` +
               `💰 Valor: ${priceFormatted}\n` +
@@ -471,8 +474,8 @@ Deno.serve(async (req) => {
             } else {
               console.error(`[${timestamp}] [instagram-webhook] DM Cadastro failed:`, dmResult.error);
             }
-          } else {
-            // Cliente cadastrado OU flag desativado → DM padrão com checkout
+          } else if (!hasPhone) {
+            // Flag desativado mas sem telefone → DM checkout padrão
             const dmMessage =
               `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
               `💰 Valor unitário: ${priceFormatted}\n` +
@@ -486,12 +489,13 @@ Deno.serve(async (req) => {
               console.error(`[${timestamp}] [instagram-webhook] DM failed:`, dmResult.error);
             }
           }
+          // Se tem cadastro COM telefone → não envia DM nenhuma
         } else {
           console.log(`[${timestamp}] [instagram-webhook] No page_access_token, skipping DM`);
         }
 
-        // Disparar WhatsApp se cliente cadastrado com telefone real
-        if (customerData?.phone && order) {
+        // WhatsApp direto se tem telefone
+        if (hasPhone && order) {
           await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp, requestedQty);
         }
       }
