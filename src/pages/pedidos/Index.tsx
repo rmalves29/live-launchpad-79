@@ -198,6 +198,12 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           }
         }
 
+        if (filterPrinted === 'not_printed') {
+          query = query.or('printed.is.null,printed.eq.false');
+        } else if (filterPrinted === 'printed') {
+          query = query.eq('printed', true);
+        }
+
         const { data: orderData, error: orderError } = await query;
 
         if (orderError) throw orderError;
