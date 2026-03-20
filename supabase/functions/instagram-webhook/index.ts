@@ -62,6 +62,7 @@ interface InstagramIntegrationRecord {
   instagram_username: string | null;
   page_access_token: string | null;
   page_id: string | null;
+  send_cadastro_dm: boolean;
   tenants?: { slug?: string | null; name?: string | null } | Array<{ slug?: string | null; name?: string | null }>;
 }
 
