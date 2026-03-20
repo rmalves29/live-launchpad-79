@@ -461,13 +461,33 @@ Deno.serve(async (req) => {
 
           if ((!hasRegistration || !hasPhone) && integration.send_cadastro_dm) {
             // Sem cadastro OU sem telefone + flag ativo → DM de cadastro
-            const cadastroDmMessage =
-              `✅ *${product.name}*${qtyLabel} foi adicionado ao seu pedido!\n\n` +
-              `💰 Valor: ${priceFormatted}\n` +
-              `🛒 Total: ${totalFormatted}\n\n` +
-              `📋 Para confirmar seu produto, faça seu cadastro:\n${cadastroUrl}\n\n` +
-              `Após o cadastro, você receberá o link para finalizar o pedido. ✨`;
+            // Buscar template do banco
+            let cadastroDmMessage = '';
+            const { data: dmTemplate } = await supabase
+              .from('whatsapp_templates')
+              .select('content')
+              .eq('tenant_id', tenantId)
+              .eq('type', 'DM_INSTAGRAM_CADASTRO')
+              .maybeSingle();
 
+            if (dmTemplate?.content) {
+              cadastroDmMessage = dmTemplate.content
+                .replace(/\{\{produto\}\}/g, product.name)
+                .replace(/\{\{quantidade\}\}/g, String(requestedQty))
+                .replace(/\{\{valor_unitario\}\}/g, priceFormatted)
+                .replace(/\{\{total\}\}/g, totalFormatted)
+                .replace(/\{\{link_cadastro\}\}/g, cadastroUrl);
+            } else {
+              // Fallback hardcoded
+              cadastroDmMessage =
+                `✅ *${product.name}*${qtyLabel} foi adicionado ao seu pedido!\n\n` +
+                `💰 Valor: ${priceFormatted}\n` +
+                `🛒 Total: ${totalFormatted}\n\n` +
+                `📋 Para confirmar seu produto, faça seu cadastro:\n${cadastroUrl}\n\n` +
+                `Após o cadastro, você receberá o link para finalizar o pedido. ✨`;
+            }
+
+            console.log(`[${timestamp}] [instagram-webhook] Sending DM Cadastro to ${buyerId}, template found: ${!!dmTemplate?.content}`);
             const dmResult = await sendInstagramDM(buyerId, pageAccessToken, cadastroDmMessage);
             if (dmResult.success) {
               console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${buyerId}`);

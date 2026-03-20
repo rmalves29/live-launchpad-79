@@ -62,6 +62,12 @@ const TEMPLATE_TYPES = [
     label: 'Cliente Bloqueado',
     description: 'Enviado automaticamente quando um cliente bloqueado tenta fazer pedido',
     variables: ['{{customer_name}}']
+  },
+  { 
+    value: 'DM_INSTAGRAM_CADASTRO', 
+    label: 'DM Instagram Cadastro',
+    description: 'DM enviada no Instagram quando o cliente não tem cadastro ou telefone. Ative/desative a flag na integração Instagram.',
+    variables: ['{{produto}}', '{{quantidade}}', '{{valor_unitario}}', '{{total}}', '{{link_cadastro}}']
   }
 ];
 
@@ -120,6 +126,11 @@ Obrigado pela preferência! 💚`
       content: `Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔
 
 Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.`
+    },
+    {
+      type: 'DM_INSTAGRAM_CADASTRO',
+      title: 'DM Instagram - Solicitação de Cadastro',
+      content: `✅ *{{produto}}* ({{quantidade}}x) foi adicionado ao seu pedido!\n\n💰 Valor: {{valor_unitario}}\n🛒 Total: {{total}}\n\n📋 Para confirmar seu produto, faça seu cadastro:\n{{link_cadastro}}\n\nApós o cadastro, você receberá o link para finalizar o pedido. ✨`
     }
   ];
 
