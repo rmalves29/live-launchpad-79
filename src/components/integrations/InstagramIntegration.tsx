@@ -9,6 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Instagram, CheckCircle2, AlertTriangle, Copy, ExternalLink, Link2, Radio } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -113,6 +118,25 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
     onError: () => {
       toast.error('Erro ao desconectar Instagram');
     },
+  });
+
+  // Toggle DM Cadastro
+  const toggleCadastroDm = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const { error } = await supabase
+        .from('integration_instagram')
+        .update({
+          send_cadastro_dm: enabled,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['instagram-integration', tenantId] });
+      toast.success('Configuração atualizada');
+    },
+    onError: () => toast.error('Erro ao atualizar configuração'),
   });
 
   const copyToClipboard = (text: string, label: string) => {
@@ -255,6 +279,31 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
               >
                 <Copy className="h-4 w-4" />
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* DM Instagram Cadastro */}
+      {isConnected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">DM Instagram Cadastro</CardTitle>
+            <CardDescription>
+              Quando ativado, clientes não cadastrados receberão uma DM pedindo para se cadastrar antes de receber o link de checkout
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="send-cadastro-dm" className="text-sm">
+                Enviar DM de cadastro para clientes não registrados
+              </Label>
+              <Switch
+                id="send-cadastro-dm"
+                checked={!!(config as any)?.send_cadastro_dm}
+                onCheckedChange={(checked) => toggleCadastroDm.mutate(checked)}
+                disabled={toggleCadastroDm.isPending}
+              />
             </div>
           </CardContent>
         </Card>

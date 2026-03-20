@@ -62,6 +62,7 @@ interface InstagramIntegrationRecord {
   instagram_username: string | null;
   page_access_token: string | null;
   page_id: string | null;
+  send_cadastro_dm: boolean;
   tenants?: { slug?: string | null; name?: string | null } | Array<{ slug?: string | null; name?: string | null }>;
 }
 
@@ -449,22 +450,41 @@ Deno.serve(async (req) => {
 
         if (pageAccessToken) {
           const checkoutUrl = `https://app.orderzaps.com/t/${tenantSlug}/checkout`;
+          const cadastroUrl = `https://app.orderzaps.com/t/${tenantSlug}/cadastro-instagram`;
           const priceFormatted = `R$ ${product.price.toFixed(2).replace('.', ',')}`;
           const totalFormatted = `R$ ${total.toFixed(2).replace('.', ',')}`;
 
           const qtyLabel = requestedQty > 1 ? ` (${requestedQty}x)` : '';
-          const dmMessage =
-            `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
-            `💰 Valor unitário: ${priceFormatted}\n` +
-            `🛒 Total do carrinho: ${totalFormatted}\n\n` +
-            `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
 
-          const dmResult = await sendInstagramDM(buyerId, pageAccessToken, dmMessage);
+          if (!customerData && integration.send_cadastro_dm) {
+            // Cliente NÃO cadastrado e flag ativo → envia DM de cadastro
+            const cadastroDmMessage =
+              `✅ *${product.name}*${qtyLabel} foi adicionado ao seu pedido!\n\n` +
+              `💰 Valor: ${priceFormatted}\n` +
+              `🛒 Total: ${totalFormatted}\n\n` +
+              `📋 Para confirmar seu produto, faça seu cadastro:\n${cadastroUrl}\n\n` +
+              `Após o cadastro, você receberá o link para finalizar o pedido. ✨`;
 
-          if (dmResult.success) {
-            console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${buyerId}`);
+            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, cadastroDmMessage);
+            if (dmResult.success) {
+              console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${buyerId}`);
+            } else {
+              console.error(`[${timestamp}] [instagram-webhook] DM Cadastro failed:`, dmResult.error);
+            }
           } else {
-            console.error(`[${timestamp}] [instagram-webhook] DM failed:`, dmResult.error);
+            // Cliente cadastrado OU flag desativado → DM padrão com checkout
+            const dmMessage =
+              `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
+              `💰 Valor unitário: ${priceFormatted}\n` +
+              `🛒 Total do carrinho: ${totalFormatted}\n\n` +
+              `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
+
+            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, dmMessage);
+            if (dmResult.success) {
+              console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${buyerId}`);
+            } else {
+              console.error(`[${timestamp}] [instagram-webhook] DM failed:`, dmResult.error);
+            }
           }
         } else {
           console.log(`[${timestamp}] [instagram-webhook] No page_access_token, skipping DM`);
