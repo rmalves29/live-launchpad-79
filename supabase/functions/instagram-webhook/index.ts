@@ -476,12 +476,22 @@ Deno.serve(async (req) => {
 });
 
 function extractProductCode(commentText: string) {
-  const match = commentText.match(PRODUCT_CODE_REGEX);
+  const match = commentText.match(PRODUCT_WITH_QTY_REGEX);
   if (!match) return null;
 
+  // Group 1+2: "2x C517" => qty=group1, code=group2
+  // Group 3+4: "C517 2x" => code=group3, qty=group4
+  // Group 5: "C517" => code=group5, qty=1
+  const rawCode = match[2] || match[3] || match[5];
+  const rawQty = match[1] || match[4];
+  const qty = rawQty ? Math.min(parseInt(rawQty, 10), 99) : 1;
+
+  if (!rawCode) return null;
+
   return {
-    raw: match[1],
-    normalized: match[1].toUpperCase().replace(/-/g, ''),
+    raw: rawCode,
+    normalized: rawCode.toUpperCase().replace(/-/g, ''),
+    qty: qty < 1 ? 1 : qty,
   };
 }
 
