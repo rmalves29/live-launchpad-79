@@ -437,9 +437,10 @@ Deno.serve(async (req) => {
           const priceFormatted = `R$ ${product.price.toFixed(2).replace('.', ',')}`;
           const totalFormatted = `R$ ${total.toFixed(2).replace('.', ',')}`;
 
+          const qtyLabel = requestedQty > 1 ? ` (${requestedQty}x)` : '';
           const dmMessage =
-            `✅ *${product.name}* adicionado!\n\n` +
-            `💰 Valor: ${priceFormatted}\n` +
+            `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
+            `💰 Valor unitário: ${priceFormatted}\n` +
             `🛒 Total do carrinho: ${totalFormatted}\n\n` +
             `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
 
