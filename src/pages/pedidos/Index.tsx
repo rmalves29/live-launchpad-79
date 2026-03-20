@@ -1443,7 +1443,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     // Reset página quando filtros mudam
     useEffect(() => {
       setCurrentPage(1);
-    }, [filterPaid, filterEventType, filterDate, searchTerm]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted, filterPaymentDate, searchTerm]);
 
     const formatCurrencyLocal = (value: number) => {
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
