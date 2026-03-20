@@ -62,6 +62,12 @@ const TEMPLATE_TYPES = [
     label: 'Cliente Bloqueado',
     description: 'Enviado automaticamente quando um cliente bloqueado tenta fazer pedido',
     variables: ['{{customer_name}}']
+  },
+  { 
+    value: 'DM_INSTAGRAM_CADASTRO', 
+    label: 'DM Instagram Cadastro',
+    description: 'DM enviada no Instagram quando o cliente não tem cadastro ou telefone. Ative/desative a flag na integração Instagram.',
+    variables: ['{{produto}}', '{{quantidade}}', '{{valor_unitario}}', '{{total}}', '{{link_cadastro}}']
   }
 ];
 
