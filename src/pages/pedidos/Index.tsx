@@ -1315,7 +1315,6 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
       setFilterEventType('all');
       setFilterDate(undefined);
       setFilterPrinted('all');
-      setFilterPaymentDate(undefined);
       setSearchTerm('');
     };
 
