@@ -453,6 +453,18 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
                       {getTemplateTypeLabel(template.type)}
                     </span>
                     <h3 className="text-lg font-semibold">{template.title}</h3>
+                    {template.type === 'DM_INSTAGRAM_CADASTRO' && (
+                      <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-xs text-muted-foreground">
+                          {sendCadastroDm ? 'Ativo' : 'Inativo'}
+                        </span>
+                        <Switch
+                          checked={sendCadastroDm}
+                          onCheckedChange={toggleCadastroDm}
+                          disabled={loadingFlag}
+                        />
+                      </div>
+                    )}
                   </div>
                   <p className="text-muted-foreground whitespace-pre-wrap mt-2">
                     {template.content}
