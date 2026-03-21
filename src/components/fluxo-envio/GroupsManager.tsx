@@ -57,6 +57,23 @@ export default function GroupsManager() {
 
   useEffect(() => { fetchGroups(); }, [fetchGroups]);
 
+  // Realtime sync for is_entry_open changes from other views
+  useEffect(() => {
+    if (!tenant) return;
+    const channel = supabase
+      .channel('fe_groups_changes')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'fe_groups',
+        filter: `tenant_id=eq.${tenant.id}`,
+      }, () => {
+        fetchGroups();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [tenant, fetchGroups]);
+
   const syncFromWhatsApp = async () => {
     if (!tenant) return;
     setSyncing(true);
