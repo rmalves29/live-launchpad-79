@@ -222,11 +222,12 @@ serve(async (req) => {
           if (connectedPhone && participants.length > 0) {
             isAdmin = participants.some((p: any) => {
               const pPhone = normalizePhone(p.phone);
-              const phoneMatch = pPhone === connectedPhone || pPhone.endsWith(connectedPhone) || connectedPhone.endsWith(pPhone);
-              return phoneMatch && (p.isAdmin === true || p.isSuperAdmin === true);
+              return phonesMatch(pPhone, connectedPhone) && (p.isAdmin === true || p.isSuperAdmin === true);
             });
             if (!isAdmin) {
-              console.log(`[fe-list-groups] ${group.phone}: NOT admin. connectedPhone=${connectedPhone}, participants sample=${JSON.stringify(participants.slice(0, 3).map((p: any) => ({ phone: normalizePhone(p.phone), isAdmin: p.isAdmin, isSuperAdmin: p.isSuperAdmin })))}`);
+              // Log ALL admin participants for debugging
+              const admins = participants.filter((p: any) => p.isAdmin || p.isSuperAdmin).map((p: any) => normalizePhone(p.phone));
+              console.log(`[fe-list-groups] ${group.phone}: NOT admin. connectedPhone=${connectedPhone}, core=${coreNumber(connectedPhone)}, adminPhones=[${admins.join(",")}]`);
             }
           }
 
