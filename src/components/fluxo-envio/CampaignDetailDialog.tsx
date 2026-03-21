@@ -38,6 +38,7 @@ interface FeGroup {
   max_participants: number | null;
   is_entry_open: boolean;
   is_active: boolean;
+  invite_link: string | null;
 }
 
 interface Stats {
