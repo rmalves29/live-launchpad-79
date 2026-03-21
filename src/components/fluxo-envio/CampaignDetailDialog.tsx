@@ -175,6 +175,17 @@ export default function CampaignDetailDialog({
     }
   };
 
+  const savePixelId = async () => {
+    if (!campaignId) return;
+    setSavingPixel(true);
+    await supabase
+      .from('fe_campaigns' as any)
+      .update({ facebook_pixel_id: facebookPixelId.trim() || null } as any)
+      .eq('id', campaignId);
+    toast({ title: 'Pixel do Facebook salvo!' });
+    setSavingPixel(false);
+  };
+
   const toggleEntryOpen = async (group: FeGroup) => {
     const newValue = !group.is_entry_open;
     await supabase
