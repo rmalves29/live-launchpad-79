@@ -216,7 +216,8 @@ serve(async (req) => {
         if (metaRes.ok) {
           const meta = await metaRes.json();
           const participants = Array.isArray(meta.participants) ? meta.participants : [];
-          const count = parseCount(meta) || participants.length || baseCount;
+          // Prefer actual participants array length over metadata count fields (which can be stale/inflated)
+          const count = participants.length > 0 ? participants.length : (parseCount(meta) || baseCount);
 
           let isAdmin = false;
           if (connectedPhone && participants.length > 0) {
