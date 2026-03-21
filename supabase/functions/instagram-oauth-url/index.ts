@@ -29,18 +29,13 @@ serve(async (req) => {
       );
     }
 
-    // Facebook Login for Business — necessário para obter page_access_token
     const scopes = [
-      'instagram_basic',
-      'instagram_manage_comments',
-      'instagram_manage_messages',
-      'pages_show_list',
-      'pages_messaging',
-      'pages_manage_metadata',
-      'pages_read_engagement'
+      'instagram_business_basic',
+      'instagram_business_manage_messages',
+      'instagram_business_manage_comments'
     ].join(',');
 
-    const oauthUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}&state=${tenantId}&response_type=code`;
+    const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}&state=${tenantId}&response_type=code&enable_fb_login=0&force_authentication=1`;
 
     return new Response(
       JSON.stringify({ url: oauthUrl }),
