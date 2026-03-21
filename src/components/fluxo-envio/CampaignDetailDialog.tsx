@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { fetchAllTenantGroupEvents, summarizeFlowEvents } from '@/lib/fluxo-envio-metrics';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -166,6 +167,15 @@ export default function CampaignDetailDialog({
     }
   };
 
+  const toggleEntryOpen = async (group: FeGroup) => {
+    const newValue = !group.is_entry_open;
+    await supabase
+      .from('fe_groups' as any)
+      .update({ is_entry_open: newValue } as any)
+      .eq('id', group.id);
+    setAllGroups(prev => prev.map(g => g.id === group.id ? { ...g, is_entry_open: newValue } : g));
+  };
+
   const getCampaignLink = () => {
     if (!tenant) return '';
     return `https://app.orderzaps.com/fluxo/${tenant.slug}/${campaignSlug}`;
@@ -276,9 +286,16 @@ export default function CampaignDetailDialog({
                     .filter((group) => campaignGroups.some((campaignGroup) => campaignGroup.group_id === group.id))
                     .map((group) => (
                       <div key={group.id} className="flex items-center justify-between rounded-lg bg-muted/30 p-2 text-sm">
-                        <span className="truncate font-medium">{group.group_name}</span>
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <Switch
+                            checked={group.is_entry_open}
+                            onCheckedChange={() => toggleEntryOpen(group)}
+                            title="Enviar pessoas para este grupo"
+                          />
+                          <span className="truncate font-medium">{group.group_name}</span>
+                        </div>
                         <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                          {group.participant_count || 0}{group.max_participants ? `/${group.max_participants}` : ''} participantes
+                          {group.participant_count || 0}/{group.max_participants || 1024} participantes
                         </span>
                       </div>
                     ))}
