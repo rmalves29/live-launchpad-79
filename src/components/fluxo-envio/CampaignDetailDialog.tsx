@@ -241,8 +241,8 @@ export default function CampaignDetailDialog({
                       .map((group) => (
                         <div key={group.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50">
                           <Checkbox
-                            checked={campaignGroups.some((campaignGroup) => campaignGroup.group_id === group.id)}
-                            onCheckedChange={() => toggleGroupInCampaign(group.id)}
+                            checked={pendingGroupIds.has(group.id)}
+                            onCheckedChange={() => toggleGroupLocally(group.id)}
                           />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium">{group.group_name}</p>
@@ -260,6 +260,13 @@ export default function CampaignDetailDialog({
                       <p className="py-4 text-center text-sm text-muted-foreground">Nenhum grupo encontrado</p>
                     )}
                   </div>
+                  {hasPendingChanges && (
+                    <div className="flex justify-end pt-2 border-t border-border">
+                      <Button size="sm" onClick={saveGroupChanges} disabled={saving}>
+                        {saving ? 'Salvando...' : `Salvar (${pendingGroupIds.size} grupos)`}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
