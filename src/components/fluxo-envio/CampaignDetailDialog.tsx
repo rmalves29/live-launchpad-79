@@ -249,6 +249,24 @@ export default function CampaignDetailDialog({
               </div>
             </div>
 
+            <div className="space-y-2 rounded-xl border border-border bg-muted/50 p-4">
+              <Label className="text-sm font-semibold">ID do Pixel do Facebook</Label>
+              <p className="text-xs text-muted-foreground">
+                Insira o ID do Pixel para rastrear conversões (evento Lead) nos links de redirecionamento desta campanha.
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Ex: 123456789012345"
+                  value={facebookPixelId}
+                  onChange={(e) => setFacebookPixelId(e.target.value)}
+                  className="bg-background font-mono text-xs"
+                />
+                <Button size="sm" onClick={savePixelId} disabled={savingPixel} variant="default">
+                  {savingPixel ? 'Salvando...' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">Grupos vinculados ({campaignGroups.length})</Label>
