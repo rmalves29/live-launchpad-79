@@ -26,6 +26,38 @@ async function parallelLimit<T, R>(
 
 const normalizePhone = (value?: string | null) => value?.replace(/\D/g, "") || "";
 
+// Extract core number (DDD + subscriber) stripping country code and normalizing 9th digit
+const coreNumber = (phone: string): string => {
+  let n = phone.replace(/\D/g, "");
+  // Strip country code 55
+  if (n.startsWith("55") && n.length >= 12) n = n.slice(2);
+  // Now n = DDD + number. Normalize: if 11 digits and starts with 9 after DDD, also produce 10-digit version
+  return n;
+};
+
+const phonesMatch = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  const na = a.replace(/\D/g, "");
+  const nb = b.replace(/\D/g, "");
+  if (na === nb) return true;
+  
+  const ca = coreNumber(na);
+  const cb = coreNumber(nb);
+  if (ca === cb) return true;
+  
+  // Handle 9th digit: one might have 11 digits (DDD+9+8digits) and other 10 (DDD+8digits)
+  const strip9 = (n: string) => n.length === 11 && n[2] === "9" ? n.slice(0, 2) + n.slice(3) : n;
+  const add9 = (n: string) => n.length === 10 ? n.slice(0, 2) + "9" + n.slice(2) : n;
+  
+  if (strip9(ca) === strip9(cb)) return true;
+  if (add9(ca) === cb || ca === add9(cb)) return true;
+  
+  // endsWith fallback for edge cases
+  if (na.endsWith(nb) || nb.endsWith(na)) return true;
+  
+  return false;
+};
+
 const parseCount = (source: any) => {
   const raw = source?.participantsCount ?? source?.participants_count ?? source?.participantsSize ?? source?.size;
   return raw != null && !isNaN(Number(raw)) ? Number(raw) : 0;
