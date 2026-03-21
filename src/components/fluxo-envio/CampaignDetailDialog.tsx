@@ -286,9 +286,16 @@ export default function CampaignDetailDialog({
                     .filter((group) => campaignGroups.some((campaignGroup) => campaignGroup.group_id === group.id))
                     .map((group) => (
                       <div key={group.id} className="flex items-center justify-between rounded-lg bg-muted/30 p-2 text-sm">
-                        <span className="truncate font-medium">{group.group_name}</span>
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <Switch
+                            checked={group.is_entry_open}
+                            onCheckedChange={() => toggleEntryOpen(group)}
+                            title="Enviar pessoas para este grupo"
+                          />
+                          <span className="truncate font-medium">{group.group_name}</span>
+                        </div>
                         <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                          {group.participant_count || 0}{group.max_participants ? `/${group.max_participants}` : ''} participantes
+                          {group.participant_count || 0}/{group.max_participants || 1024} participantes
                         </span>
                       </div>
                     ))}
