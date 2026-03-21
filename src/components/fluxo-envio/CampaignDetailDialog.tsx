@@ -68,7 +68,8 @@ export default function CampaignDetailDialog({
   const [groupSearch, setGroupSearch] = useState('');
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [loading, setLoading] = useState(true);
-
+  const [facebookPixelId, setFacebookPixelId] = useState('');
+  const [savingPixel, setSavingPixel] = useState(false);
   const fetchData = useCallback(async () => {
     if (!campaignId || !tenant) return;
     setLoading(true);
