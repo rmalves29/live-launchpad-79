@@ -71,28 +71,45 @@ serve(async (req) => {
     let connectedPhone = normalizePhone(waConfig.connected_phone);
 
     if (!connectedPhone) {
-      try {
-        const statusRes = await fetch(`${baseUrl}/status`, { headers: zapiHeaders });
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          console.log(`[fe-list-groups] /status response: ${JSON.stringify(statusData)}`);
-          const rawPhone = statusData?.phoneConnected || statusData?.phone || statusData?.number || "";
-          connectedPhone = normalizePhone(rawPhone);
+      // Try multiple Z-API endpoints to discover the connected phone number
+      const phoneEndpoints = [
+        { url: `${baseUrl}/phone`, fields: ["phone", "number"] },
+        { url: `${baseUrl}/profile`, fields: ["phone", "number", "phoneNumber"] },
+        { url: `${baseUrl}/status`, fields: ["phoneConnected", "phone", "number"] },
+      ];
 
-          if (connectedPhone) {
-            await supabase
-              .from("integration_whatsapp")
-              .update({ connected_phone: rawPhone, last_status_check: new Date().toISOString() })
-              .eq("tenant_id", tenant_id)
-              .eq("provider", "zapi");
-            console.log(`[fe-list-groups] Saved connected_phone: ${rawPhone}`);
+      for (const ep of phoneEndpoints) {
+        if (connectedPhone) break;
+        try {
+          const res = await fetch(ep.url, { headers: zapiHeaders });
+          if (res.ok) {
+            const data = await res.json();
+            console.log(`[fe-list-groups] ${ep.url.split('/').pop()} response: ${JSON.stringify(data)}`);
+            for (const field of ep.fields) {
+              const val = normalizePhone(data?.[field]);
+              if (val && val.length >= 10) {
+                connectedPhone = val;
+                break;
+              }
+            }
           }
-        } else {
-          const errText = await statusRes.text();
-          console.warn(`[fe-list-groups] /status failed: ${statusRes.status} ${errText}`);
+        } catch (err: any) {
+          console.warn(`[fe-list-groups] ${ep.url.split('/').pop()} error: ${err.message}`);
         }
-      } catch (err: any) {
-        console.warn(`[fe-list-groups] /status exception: ${err.message}`);
+      }
+
+      // Fallback: extract from the first group metadata where we appear as admin
+      if (!connectedPhone && allGroups.length === 0) {
+        console.warn("[fe-list-groups] Could not resolve connected phone from any endpoint");
+      }
+
+      if (connectedPhone) {
+        await supabase
+          .from("integration_whatsapp")
+          .update({ connected_phone: connectedPhone, last_status_check: new Date().toISOString() })
+          .eq("tenant_id", tenant_id)
+          .eq("provider", "zapi");
+        console.log(`[fe-list-groups] Saved connected_phone: ${connectedPhone}`);
       }
     }
 
