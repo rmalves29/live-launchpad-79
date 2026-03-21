@@ -205,30 +205,28 @@ export default function GroupsManager() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10 text-center">Enviar</TableHead>
                   <TableHead>Grupo</TableHead>
-                  <TableHead className="text-center">Participantes</TableHead>
-                  <TableHead className="text-center">Entrada</TableHead>
                   <TableHead className="text-center">Ativo</TableHead>
                   <TableHead className="text-center">Link</TableHead>
+                  <TableHead className="text-right">Participantes</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {groups.filter(g => g.group_name.toLowerCase().includes(search.toLowerCase())).map(g => (
                   <TableRow key={g.id}>
+                    <TableCell className="text-center">
+                      <Switch checked={g.is_entry_open} onCheckedChange={() => toggleEntryOpen(g)} />
+                    </TableCell>
                     <TableCell>
                       <div>
                         <p className="font-medium text-foreground">{g.group_name}</p>
                         <p className="text-xs text-muted-foreground font-mono">{g.group_jid}</p>
+                        {!g.invite_link && (
+                          <p className="text-xs text-destructive mt-0.5">Link do grupo não está configurado</p>
+                        )}
                       </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant="secondary">
-                        <Users className="h-3 w-3 mr-1" />{g.participant_count || 0}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Switch checked={g.is_entry_open} onCheckedChange={() => toggleEntryOpen(g)} />
                     </TableCell>
                     <TableCell className="text-center">
                       <Switch checked={g.is_active} onCheckedChange={() => toggleActive(g)} />
@@ -248,6 +246,11 @@ export default function GroupsManager() {
                           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                         </Button>
                       </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="secondary">
+                        <Users className="h-3 w-3 mr-1" />{g.participant_count || 0}/{g.max_participants || 1024}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" onClick={() => deleteGroup(g.id)}>
