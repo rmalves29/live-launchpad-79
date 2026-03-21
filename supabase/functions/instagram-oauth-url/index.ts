@@ -19,12 +19,12 @@ serve(async (req) => {
       );
     }
 
-    const FB_APP_ID = Deno.env.get('FACEBOOK_APP_ID');
+    const IG_APP_ID = Deno.env.get('INSTAGRAM_APP_ID');
     const REDIRECT_URI = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/instagram-auth-callback';
 
-    if (!FB_APP_ID) {
+    if (!IG_APP_ID) {
       return new Response(
-        JSON.stringify({ error: 'FACEBOOK_APP_ID não configurado' }),
+        JSON.stringify({ error: 'INSTAGRAM_APP_ID não configurado' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
