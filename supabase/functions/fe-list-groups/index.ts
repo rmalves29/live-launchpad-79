@@ -98,8 +98,7 @@ serve(async (req) => {
         }
       }
 
-      // Fallback: extract from the first group metadata where we appear as admin
-      if (!connectedPhone && allGroups.length === 0) {
+      if (!connectedPhone) {
         console.warn("[fe-list-groups] Could not resolve connected phone from any endpoint");
       }
 
