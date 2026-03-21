@@ -61,6 +61,9 @@ export default function CampaignDetailDialog({
   });
   const [campaignGroups, setCampaignGroups] = useState<CampaignGroup[]>([]);
   const [allGroups, setAllGroups] = useState<FeGroup[]>([]);
+  const [pendingGroupIds, setPendingGroupIds] = useState<Set<string>>(new Set());
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -92,6 +95,8 @@ export default function CampaignDetailDialog({
       const groups = (gData || []) as FeGroup[];
       setCampaignGroups(cgs);
       setAllGroups(groups);
+      setPendingGroupIds(new Set(cgs.map(cg => cg.group_id)));
+      setHasPendingChanges(false);
 
       const cgGroupIds = cgs.map((campaignGroup) => campaignGroup.group_id);
       const linkedGroups = groups.filter((group) => cgGroupIds.includes(group.id));
@@ -121,19 +126,44 @@ export default function CampaignDetailDialog({
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const toggleGroupInCampaign = async (groupId: string) => {
+  const toggleGroupLocally = (groupId: string) => {
+    setPendingGroupIds(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+    setHasPendingChanges(true);
+  };
+
+  const saveGroupChanges = async () => {
     if (!campaignId) return;
-    const existing = campaignGroups.find((campaignGroup) => campaignGroup.group_id === groupId);
-    if (existing) {
-      await supabase.from('fe_campaign_groups' as any).delete().eq('id', existing.id);
-    } else {
-      await supabase.from('fe_campaign_groups' as any).insert({
-        campaign_id: campaignId,
-        group_id: groupId,
-      } as any);
+    setSaving(true);
+    try {
+      // Remove all existing links
+      await supabase.from('fe_campaign_groups' as any).delete().eq('campaign_id', campaignId);
+
+      // Insert new links
+      if (pendingGroupIds.size > 0) {
+        const inserts = Array.from(pendingGroupIds).map(groupId => ({
+          campaign_id: campaignId,
+          group_id: groupId,
+        }));
+        await supabase.from('fe_campaign_groups' as any).insert(inserts as any);
+      }
+
+      toast({ title: 'Grupos salvos com sucesso!' });
+      setHasPendingChanges(false);
+      fetchData();
+      onRefresh();
+    } catch (err: any) {
+      toast({ title: 'Erro ao salvar', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
     }
-    fetchData();
-    onRefresh();
   };
 
   const getCampaignLink = () => {
@@ -211,8 +241,8 @@ export default function CampaignDetailDialog({
                       .map((group) => (
                         <div key={group.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50">
                           <Checkbox
-                            checked={campaignGroups.some((campaignGroup) => campaignGroup.group_id === group.id)}
-                            onCheckedChange={() => toggleGroupInCampaign(group.id)}
+                            checked={pendingGroupIds.has(group.id)}
+                            onCheckedChange={() => toggleGroupLocally(group.id)}
                           />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium">{group.group_name}</p>
@@ -230,6 +260,13 @@ export default function CampaignDetailDialog({
                       <p className="py-4 text-center text-sm text-muted-foreground">Nenhum grupo encontrado</p>
                     )}
                   </div>
+                  {hasPendingChanges && (
+                    <div className="flex justify-end pt-2 border-t border-border">
+                      <Button size="sm" onClick={saveGroupChanges} disabled={saving}>
+                        {saving ? 'Salvando...' : `Salvar (${pendingGroupIds.size} grupos)`}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
