@@ -75,7 +75,7 @@ export default function CampaignDetailDialog({
     setLoading(true);
 
     try {
-      const [{ data: cgData }, { data: gData }, { count: clickCount }, allEvents] = await Promise.all([
+      const [{ data: cgData }, { data: gData }, { count: clickCount }, allEvents, { data: campData }] = await Promise.all([
         supabase
           .from('fe_campaign_groups' as any)
           .select('id, group_id')
@@ -91,7 +91,14 @@ export default function CampaignDetailDialog({
           .select('id', { count: 'exact', head: true })
           .eq('campaign_id', campaignId),
         fetchAllTenantGroupEvents(tenant.id),
+        supabase
+          .from('fe_campaigns' as any)
+          .select('facebook_pixel_id')
+          .eq('id', campaignId)
+          .maybeSingle(),
       ]);
+
+      setFacebookPixelId((campData as any)?.facebook_pixel_id || '');
 
       const cgs = (cgData || []) as CampaignGroup[];
       const groups = (gData || []) as FeGroup[];
