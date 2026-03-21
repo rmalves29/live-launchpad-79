@@ -330,7 +330,12 @@ export default function CampaignDetailDialog({
                             onCheckedChange={() => toggleEntryOpen(group)}
                             title="Enviar pessoas para este grupo"
                           />
-                          <span className="truncate font-medium">{group.group_name}</span>
+                          <div className="min-w-0">
+                            <span className="truncate font-medium block">{group.group_name}</span>
+                            {!group.invite_link && (
+                              <span className="text-[11px] text-destructive">Falta adicionar o link</span>
+                            )}
+                          </div>
                         </div>
                         <span className="ml-2 shrink-0 text-xs text-muted-foreground">
                           {group.participant_count || 0}/{group.max_participants || 1024} participantes
