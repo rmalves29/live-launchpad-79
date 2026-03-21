@@ -68,13 +68,14 @@ export default function CampaignDetailDialog({
   const [groupSearch, setGroupSearch] = useState('');
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [loading, setLoading] = useState(true);
-
+  const [facebookPixelId, setFacebookPixelId] = useState('');
+  const [savingPixel, setSavingPixel] = useState(false);
   const fetchData = useCallback(async () => {
     if (!campaignId || !tenant) return;
     setLoading(true);
 
     try {
-      const [{ data: cgData }, { data: gData }, { count: clickCount }, allEvents] = await Promise.all([
+      const [{ data: cgData }, { data: gData }, { count: clickCount }, allEvents, { data: campData }] = await Promise.all([
         supabase
           .from('fe_campaign_groups' as any)
           .select('id, group_id')
@@ -90,7 +91,14 @@ export default function CampaignDetailDialog({
           .select('id', { count: 'exact', head: true })
           .eq('campaign_id', campaignId),
         fetchAllTenantGroupEvents(tenant.id),
+        supabase
+          .from('fe_campaigns' as any)
+          .select('facebook_pixel_id')
+          .eq('id', campaignId)
+          .maybeSingle(),
       ]);
+
+      setFacebookPixelId((campData as any)?.facebook_pixel_id || '');
 
       const cgs = (cgData || []) as CampaignGroup[];
       const groups = (gData || []) as FeGroup[];
@@ -167,6 +175,17 @@ export default function CampaignDetailDialog({
     }
   };
 
+  const savePixelId = async () => {
+    if (!campaignId) return;
+    setSavingPixel(true);
+    await supabase
+      .from('fe_campaigns' as any)
+      .update({ facebook_pixel_id: facebookPixelId.trim() || null } as any)
+      .eq('id', campaignId);
+    toast({ title: 'Pixel do Facebook salvo!' });
+    setSavingPixel(false);
+  };
+
   const toggleEntryOpen = async (group: FeGroup) => {
     const newValue = !group.is_entry_open;
     await supabase
@@ -226,6 +245,24 @@ export default function CampaignDetailDialog({
                 <Input value={getCampaignLink()} readOnly className="bg-background font-mono text-xs" />
                 <Button size="sm" onClick={copyLink} variant="default">
                   <Copy className="mr-1 h-4 w-4" /> Copiar
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-border bg-muted/50 p-4">
+              <Label className="text-sm font-semibold">ID do Pixel do Facebook</Label>
+              <p className="text-xs text-muted-foreground">
+                Insira o ID do Pixel para rastrear conversões (evento Lead) nos links de redirecionamento desta campanha.
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Ex: 123456789012345"
+                  value={facebookPixelId}
+                  onChange={(e) => setFacebookPixelId(e.target.value)}
+                  className="bg-background font-mono text-xs"
+                />
+                <Button size="sm" onClick={savePixelId} disabled={savingPixel} variant="default">
+                  {savingPixel ? 'Salvando...' : 'Salvar'}
                 </Button>
               </div>
             </div>
