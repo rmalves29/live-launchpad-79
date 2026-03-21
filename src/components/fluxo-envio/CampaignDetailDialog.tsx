@@ -38,6 +38,7 @@ interface FeGroup {
   max_participants: number | null;
   is_entry_open: boolean;
   is_active: boolean;
+  invite_link: string | null;
 }
 
 interface Stats {
@@ -82,7 +83,7 @@ export default function CampaignDetailDialog({
           .eq('campaign_id', campaignId),
         supabase
           .from('fe_groups' as any)
-          .select('id, group_jid, group_name, participant_count, max_participants, is_entry_open, is_active')
+          .select('id, group_jid, group_name, participant_count, max_participants, is_entry_open, is_active, invite_link')
           .eq('tenant_id', tenant.id)
           .eq('is_active', true)
           .order('group_name'),
@@ -329,7 +330,12 @@ export default function CampaignDetailDialog({
                             onCheckedChange={() => toggleEntryOpen(group)}
                             title="Enviar pessoas para este grupo"
                           />
-                          <span className="truncate font-medium">{group.group_name}</span>
+                          <div className="min-w-0">
+                            <span className="truncate font-medium block">{group.group_name}</span>
+                            {!group.invite_link && (
+                              <span className="text-[11px] text-destructive">Falta adicionar o link</span>
+                            )}
+                          </div>
                         </div>
                         <span className="ml-2 shrink-0 text-xs text-muted-foreground">
                           {group.participant_count || 0}/{group.max_participants || 1024} participantes
