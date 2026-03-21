@@ -272,6 +272,7 @@ serve(async (req) => {
       group_jid: g.group_jid,
       group_name: g.group_name,
       participant_count: g.participant_count || 0,
+      max_participants: 1024,
       invite_link: g.invite_link || existingLinks.get(g.group_jid) || null,
     }));
 
