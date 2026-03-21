@@ -144,8 +144,12 @@ serve(async (req) => {
           if (connectedPhone && participants.length > 0) {
             isAdmin = participants.some((p: any) => {
               const pPhone = normalizePhone(p.phone);
-              return (pPhone === connectedPhone || pPhone.endsWith(connectedPhone) || connectedPhone.endsWith(pPhone)) && p.isAdmin === true;
+              const phoneMatch = pPhone === connectedPhone || pPhone.endsWith(connectedPhone) || connectedPhone.endsWith(pPhone);
+              return phoneMatch && (p.isAdmin === true || p.isSuperAdmin === true);
             });
+            if (!isAdmin) {
+              console.log(`[fe-list-groups] ${group.phone}: NOT admin. connectedPhone=${connectedPhone}, participants sample=${JSON.stringify(participants.slice(0, 3).map((p: any) => ({ phone: normalizePhone(p.phone), isAdmin: p.isAdmin, isSuperAdmin: p.isSuperAdmin })))}`);
+            }
           }
 
           return {
