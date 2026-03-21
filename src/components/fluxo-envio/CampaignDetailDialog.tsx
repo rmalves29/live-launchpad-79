@@ -167,6 +167,15 @@ export default function CampaignDetailDialog({
     }
   };
 
+  const toggleEntryOpen = async (group: FeGroup) => {
+    const newValue = !group.is_entry_open;
+    await supabase
+      .from('fe_groups' as any)
+      .update({ is_entry_open: newValue } as any)
+      .eq('id', group.id);
+    setAllGroups(prev => prev.map(g => g.id === group.id ? { ...g, is_entry_open: newValue } : g));
+  };
+
   const getCampaignLink = () => {
     if (!tenant) return '';
     return `https://app.orderzaps.com/fluxo/${tenant.slug}/${campaignSlug}`;
