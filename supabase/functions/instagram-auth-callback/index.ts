@@ -18,8 +18,8 @@ serve(async (req) => {
   const errorReason = url.searchParams.get('error_reason');
 
   const APP_URL = (Deno.env.get('PUBLIC_APP_URL') || 'https://live-launchpad-79.lovable.app').replace(/\/+$/, '');
-  const FB_APP_ID = Deno.env.get('FACEBOOK_APP_ID');
-  const FB_APP_SECRET = Deno.env.get('FACEBOOK_APP_SECRET');
+  const FB_APP_ID = Deno.env.get('INSTAGRAM_APP_ID');
+  const FB_APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET');
   const REDIRECT_URI = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/instagram-auth-callback';
 
   if (error) {

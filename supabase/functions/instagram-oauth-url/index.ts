@@ -35,7 +35,7 @@ serve(async (req) => {
       'instagram_business_manage_comments'
     ].join(',');
 
-    const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}&state=${tenantId}&response_type=code&enable_fb_login=0&force_authentication=1`;
+    const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}&state=${tenantId}&response_type=code&enable_fb_login=0&force_authentication=1`;
 
     return new Response(
       JSON.stringify({ url: oauthUrl }),
