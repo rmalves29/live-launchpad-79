@@ -71,35 +71,46 @@ serve(async (req) => {
     let connectedPhone = normalizePhone(waConfig.connected_phone);
 
     if (!connectedPhone) {
-      try {
-        const statusRes = await fetch(`${baseUrl}/status`, { headers: zapiHeaders });
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          console.log(`[fe-list-groups] /status response: ${JSON.stringify(statusData)}`);
-          const rawPhone = statusData?.phoneConnected || statusData?.phone || statusData?.number || "";
-          connectedPhone = normalizePhone(rawPhone);
+      // Try multiple Z-API endpoints to discover the connected phone number
+      const phoneEndpoints = [
+        { url: `${baseUrl}/phone`, fields: ["phone", "number"] },
+        { url: `${baseUrl}/profile`, fields: ["phone", "number", "phoneNumber"] },
+        { url: `${baseUrl}/status`, fields: ["phoneConnected", "phone", "number"] },
+      ];
 
-          if (connectedPhone) {
-            await supabase
-              .from("integration_whatsapp")
-              .update({ connected_phone: rawPhone, last_status_check: new Date().toISOString() })
-              .eq("tenant_id", tenant_id)
-              .eq("provider", "zapi");
-            console.log(`[fe-list-groups] Saved connected_phone: ${rawPhone}`);
+      for (const ep of phoneEndpoints) {
+        if (connectedPhone) break;
+        try {
+          const res = await fetch(ep.url, { headers: zapiHeaders });
+          if (res.ok) {
+            const data = await res.json();
+            console.log(`[fe-list-groups] ${ep.url.split('/').pop()} response: ${JSON.stringify(data)}`);
+            for (const field of ep.fields) {
+              const val = normalizePhone(data?.[field]);
+              if (val && val.length >= 10) {
+                connectedPhone = val;
+                break;
+              }
+            }
           }
-        } else {
-          const errText = await statusRes.text();
-          console.warn(`[fe-list-groups] /status failed: ${statusRes.status} ${errText}`);
+        } catch (err: any) {
+          console.warn(`[fe-list-groups] ${ep.url.split('/').pop()} error: ${err.message}`);
         }
-      } catch (err: any) {
-        console.warn(`[fe-list-groups] /status exception: ${err.message}`);
       }
-    }
 
-    // If admin_only requested but no phone found, fall back to ALL groups with a warning
-    const effectiveAdminOnly = admin_only && !!connectedPhone;
-    if (admin_only && !connectedPhone) {
-      console.warn("[fe-list-groups] admin_only requested but no connected phone found, syncing ALL groups");
+      // Fallback: extract from the first group metadata where we appear as admin
+      if (!connectedPhone && allGroups.length === 0) {
+        console.warn("[fe-list-groups] Could not resolve connected phone from any endpoint");
+      }
+
+      if (connectedPhone) {
+        await supabase
+          .from("integration_whatsapp")
+          .update({ connected_phone: connectedPhone, last_status_check: new Date().toISOString() })
+          .eq("tenant_id", tenant_id)
+          .eq("provider", "zapi");
+        console.log(`[fe-list-groups] Saved connected_phone: ${connectedPhone}`);
+      }
     }
 
     // --- Fetch groups ---
@@ -124,6 +135,42 @@ serve(async (req) => {
     }
 
     console.log(`[fe-list-groups] Fetched ${allGroups.length} groups from Z-API`);
+
+    // --- Fallback: discover phone from first group's metadata if still unknown ---
+    if (!connectedPhone && admin_only && allGroups.length > 0) {
+      console.log("[fe-list-groups] Attempting phone discovery from group metadata...");
+      const sampleGroup = allGroups[0];
+      try {
+        const metaRes = await fetch(`${baseUrl}/group-metadata/${sampleGroup.phone}`, { headers: zapiHeaders });
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          const participants = Array.isArray(meta.participants) ? meta.participants : [];
+          // Look for any admin/superadmin participant - the connected number is likely one of them
+          const admins = participants.filter((p: any) => p.isAdmin === true || p.isSuperAdmin === true);
+          if (admins.length > 0) {
+            // The superAdmin is usually the instance owner
+            const superAdmin = admins.find((p: any) => p.isSuperAdmin === true) || admins[0];
+            connectedPhone = normalizePhone(superAdmin.phone);
+            console.log(`[fe-list-groups] Discovered phone from group metadata: ${connectedPhone}`);
+            if (connectedPhone) {
+              await supabase
+                .from("integration_whatsapp")
+                .update({ connected_phone: connectedPhone, last_status_check: new Date().toISOString() })
+                .eq("tenant_id", tenant_id)
+                .eq("provider", "zapi");
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[fe-list-groups] Phone discovery from metadata failed: ${err.message}`);
+      }
+    }
+
+    // If admin_only requested but no phone found, fall back to ALL groups with a warning
+    const effectiveAdminOnly = admin_only && !!connectedPhone;
+    if (admin_only && !connectedPhone) {
+      console.warn("[fe-list-groups] admin_only requested but no connected phone found, syncing ALL groups");
+    }
 
     // --- Enrich groups with metadata (parallel, concurrency 15) ---
     const enrichedGroups = await parallelLimit(allGroups, 15, async (group: any) => {
