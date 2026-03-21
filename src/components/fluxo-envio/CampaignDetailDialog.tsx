@@ -82,7 +82,7 @@ export default function CampaignDetailDialog({
           .eq('campaign_id', campaignId),
         supabase
           .from('fe_groups' as any)
-          .select('id, group_jid, group_name, participant_count, max_participants, is_entry_open, is_active')
+          .select('id, group_jid, group_name, participant_count, max_participants, is_entry_open, is_active, invite_link')
           .eq('tenant_id', tenant.id)
           .eq('is_active', true)
           .order('group_name'),
