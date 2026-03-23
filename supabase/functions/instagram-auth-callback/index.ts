@@ -104,7 +104,7 @@ serve(async (req) => {
       .upsert({
         tenant_id: state,
         instagram_account_id: instagramUserId.toString(),
-        access_token: longLivedToken,
+        access_token: finalToken,
         instagram_username: instagramUsername || null,
         is_active: true,
         environment: 'production',
