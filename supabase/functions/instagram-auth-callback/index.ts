@@ -65,18 +65,22 @@ serve(async (req) => {
     const instagramUserId = tokenData.user_id;
     console.log('[Instagram Callback] Got short-lived token for user:', instagramUserId);
 
-    const longLivedUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${FB_APP_SECRET}&access_token=${shortLivedToken}`;
+    // Tentar obter long-lived token, mas usar short-lived se falhar
+    let finalToken = shortLivedToken;
+    try {
+      const longLivedUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${FB_APP_SECRET}&access_token=${shortLivedToken}`;
+      const longLivedResponse = await fetch(longLivedUrl);
+      const longLivedData = await longLivedResponse.json();
 
-    const longLivedResponse = await fetch(longLivedUrl);
-    const longLivedData = await longLivedResponse.json();
-
-    if (longLivedData.error) {
-      console.error('[Instagram Callback] Long-lived token error:', longLivedData.error);
-      return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(longLivedData.error.message)}`);
+      if (longLivedData.access_token) {
+        finalToken = longLivedData.access_token;
+        console.log('[Instagram Callback] Got long-lived token successfully');
+      } else {
+        console.warn('[Instagram Callback] Long-lived token failed, using short-lived token:', longLivedData.error || longLivedData);
+      }
+    } catch (llErr) {
+      console.warn('[Instagram Callback] Long-lived token request failed, using short-lived token:', llErr);
     }
-
-    const longLivedToken = longLivedData.access_token;
-    console.log('[Instagram Callback] Got long-lived token');
 
     // Buscar username do Instagram
     let instagramUsername = '';
