@@ -202,14 +202,12 @@ export default function TenantIntegrationsPage() {
               <span className="sm:hidden">WA</span>
             </TabsTrigger>
           )}
-          {showAdvancedIntegrations && (
-            <TabsTrigger value="instagram" className="flex items-center gap-2">
-              <Instagram className="h-4 w-4" />
-              <span className="hidden sm:inline">Instagram</span>
-              <span className="sm:hidden">IG</span>
-              {instagramIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
-            </TabsTrigger>
-          )}
+          <TabsTrigger value="instagram" className="flex items-center gap-2">
+            <Instagram className="h-4 w-4" />
+            <span className="hidden sm:inline">Instagram</span>
+            <span className="sm:hidden">IG</span>
+            {instagramIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
           {showAdvancedIntegrations && (
             <TabsTrigger value="bagy" className="flex items-center gap-2">
               <ShoppingBag className="h-4 w-4" />
