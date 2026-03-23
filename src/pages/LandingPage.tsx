@@ -443,8 +443,16 @@ export default function LandingPage() {
               </div>
               <span className="font-semibold">OrderZap</span>
             </div>
+            <div className="flex items-center gap-4">
+              <Link to="/politica-de-privacidade" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+                Política de Privacidade
+              </Link>
+              <Link to="/termos-de-uso" className="text-sm text-gray-500 hover:text-gray-300 transition-colors">
+                Termos de Uso
+              </Link>
+            </div>
             <p className="text-sm text-gray-500">
-              © 2024 OrderZap. Todos os direitos reservados.
+              © 2026 OrderZap. Todos os direitos reservados.
             </p>
           </div>
         </div>
