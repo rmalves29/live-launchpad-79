@@ -47,6 +47,8 @@ import WhatsappTemplates from "./pages/whatsapp/Templates";
 import Cobranca from "./pages/whatsapp/Cobranca";
 import ConexaoZAPI from "./pages/whatsapp/ConexaoZAPI";
 import AgenteIA from "./pages/agente-ia/Index";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfUse from "./pages/TermsOfUse";
 import SuporteIA from "./pages/suporte-ia/Index";
 import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
@@ -68,7 +70,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
+  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
@@ -225,6 +227,10 @@ const AppContent = () => {
         
         {/* Rota de debug */}
         <Route path="/debug" element={<Debug />} />
+        
+        {/* Páginas públicas legais */}
+        <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
+        <Route path="/termos-de-uso" element={<TermsOfUse />} />
         
         {/* Redirect público de campanha do Fluxo de Envio */}
         <Route path="/fluxo/:tenantSlug/:campaignSlug" element={<CampaignRedirect />} />
