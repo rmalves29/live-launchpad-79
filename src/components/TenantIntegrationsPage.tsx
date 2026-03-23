@@ -283,11 +283,9 @@ export default function TenantIntegrationsPage() {
             <WhatsAppCloudIntegration tenantId={tenantId} />
           </TabsContent>
         )}
-        {showAdvancedIntegrations && (
-          <TabsContent value="instagram" className="mt-6">
-            <InstagramIntegration tenantId={tenantId} tenantSlug={tenant?.slug} />
-          </TabsContent>
-        )}
+        <TabsContent value="instagram" className="mt-6">
+          <InstagramIntegration tenantId={tenantId} tenantSlug={tenant?.slug} />
+        </TabsContent>
         {showAdvancedIntegrations && (
           <TabsContent value="bagy" className="mt-6">
             <BagyIntegration tenantId={tenantId} />
