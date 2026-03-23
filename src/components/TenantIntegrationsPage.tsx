@@ -193,7 +193,7 @@ export default function TenantIntegrationsPage() {
         Configure suas integrações de pagamento, envio e ERP para a empresa <strong>{tenant.name}</strong>
       </p>
 
-      <Tabs defaultValue="bling" className="w-full">
+      <Tabs defaultValue={new URLSearchParams(window.location.search).get('instagram_success') || new URLSearchParams(window.location.search).get('instagram_error') ? 'instagram' : 'bling'} className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1 w-full">
           {showAdvancedIntegrations && (
             <TabsTrigger value="whatsapp-cloud" className="flex items-center gap-2">
