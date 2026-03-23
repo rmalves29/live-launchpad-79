@@ -70,7 +70,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
+  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
