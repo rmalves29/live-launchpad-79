@@ -47,6 +47,8 @@ import WhatsappTemplates from "./pages/whatsapp/Templates";
 import Cobranca from "./pages/whatsapp/Cobranca";
 import ConexaoZAPI from "./pages/whatsapp/ConexaoZAPI";
 import AgenteIA from "./pages/agente-ia/Index";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfUse from "./pages/TermsOfUse";
 import SuporteIA from "./pages/suporte-ia/Index";
 import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
