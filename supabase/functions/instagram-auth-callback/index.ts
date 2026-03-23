@@ -85,7 +85,7 @@ serve(async (req) => {
     // Buscar username do Instagram
     let instagramUsername = '';
     try {
-      const profileRes = await fetch(`https://graph.instagram.com/v21.0/me?fields=username&access_token=${longLivedToken}`);
+      const profileRes = await fetch(`https://graph.instagram.com/v21.0/me?fields=username&access_token=${finalToken}`);
       const profileData = await profileRes.json();
       if (profileData.username) {
         instagramUsername = profileData.username;
