@@ -228,6 +228,10 @@ const AppContent = () => {
         {/* Rota de debug */}
         <Route path="/debug" element={<Debug />} />
         
+        {/* Páginas públicas legais */}
+        <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
+        <Route path="/termos-de-uso" element={<TermsOfUse />} />
+        
         {/* Redirect público de campanha do Fluxo de Envio */}
         <Route path="/fluxo/:tenantSlug/:campaignSlug" element={<CampaignRedirect />} />
         
