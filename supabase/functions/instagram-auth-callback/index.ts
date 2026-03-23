@@ -22,18 +22,28 @@ serve(async (req) => {
   const FB_APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET');
   const REDIRECT_URI = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/instagram-auth-callback';
 
+  console.log('[Instagram Callback] Received request:', { code: code ? 'present' : 'missing', state, error, errorReason });
+
   if (error) {
+    console.log('[Instagram Callback] OAuth error:', error, errorReason);
     return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(errorReason || error)}`);
   }
 
   if (!code || !state) {
+    console.log('[Instagram Callback] Missing code or state');
     return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=parametros_ausentes`);
   }
 
+  if (!FB_APP_ID || !FB_APP_SECRET) {
+    console.error('[Instagram Callback] Missing INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET');
+    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=credenciais_nao_configuradas`);
+  }
+
   try {
+    console.log('[Instagram Callback] Exchanging code for token...');
     const tokenFormData = new FormData();
-    tokenFormData.append('client_id', FB_APP_ID!);
-    tokenFormData.append('client_secret', FB_APP_SECRET!);
+    tokenFormData.append('client_id', FB_APP_ID);
+    tokenFormData.append('client_secret', FB_APP_SECRET);
     tokenFormData.append('grant_type', 'authorization_code');
     tokenFormData.append('redirect_uri', REDIRECT_URI);
     tokenFormData.append('code', code);
@@ -44,13 +54,16 @@ serve(async (req) => {
     });
 
     const tokenData = await tokenResponse.json();
+    console.log('[Instagram Callback] Token response status:', tokenResponse.status, 'hasError:', !!tokenData.error_message);
 
     if (tokenData.error_message) {
+      console.error('[Instagram Callback] Token error:', tokenData.error_message, tokenData.error_type);
       return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(tokenData.error_message)}`);
     }
 
     const shortLivedToken = tokenData.access_token;
     const instagramUserId = tokenData.user_id;
+    console.log('[Instagram Callback] Got short-lived token for user:', instagramUserId);
 
     const longLivedUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${FB_APP_SECRET}&access_token=${shortLivedToken}`;
 
@@ -58,10 +71,12 @@ serve(async (req) => {
     const longLivedData = await longLivedResponse.json();
 
     if (longLivedData.error) {
+      console.error('[Instagram Callback] Long-lived token error:', longLivedData.error);
       return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(longLivedData.error.message)}`);
     }
 
     const longLivedToken = longLivedData.access_token;
+    console.log('[Instagram Callback] Got long-lived token');
 
     // Buscar username do Instagram
     let instagramUsername = '';
@@ -95,12 +110,15 @@ serve(async (req) => {
       });
 
     if (upsertError) {
+      console.error('[Instagram Callback] Upsert error:', upsertError);
       return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(upsertError.message)}`);
     }
 
+    console.log('[Instagram Callback] Success! Redirecting...');
     return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_success=true`);
 
   } catch (err) {
+    console.error('[Instagram Callback] Unexpected error:', err);
     return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=erro_inesperado`);
   }
 });
