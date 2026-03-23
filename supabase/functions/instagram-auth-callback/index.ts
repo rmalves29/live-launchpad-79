@@ -65,23 +65,27 @@ serve(async (req) => {
     const instagramUserId = tokenData.user_id;
     console.log('[Instagram Callback] Got short-lived token for user:', instagramUserId);
 
-    const longLivedUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${FB_APP_SECRET}&access_token=${shortLivedToken}`;
+    // Tentar obter long-lived token, mas usar short-lived se falhar
+    let finalToken = shortLivedToken;
+    try {
+      const longLivedUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${FB_APP_SECRET}&access_token=${shortLivedToken}`;
+      const longLivedResponse = await fetch(longLivedUrl);
+      const longLivedData = await longLivedResponse.json();
 
-    const longLivedResponse = await fetch(longLivedUrl);
-    const longLivedData = await longLivedResponse.json();
-
-    if (longLivedData.error) {
-      console.error('[Instagram Callback] Long-lived token error:', longLivedData.error);
-      return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(longLivedData.error.message)}`);
+      if (longLivedData.access_token) {
+        finalToken = longLivedData.access_token;
+        console.log('[Instagram Callback] Got long-lived token successfully');
+      } else {
+        console.warn('[Instagram Callback] Long-lived token failed, using short-lived token:', longLivedData.error || longLivedData);
+      }
+    } catch (llErr) {
+      console.warn('[Instagram Callback] Long-lived token request failed, using short-lived token:', llErr);
     }
-
-    const longLivedToken = longLivedData.access_token;
-    console.log('[Instagram Callback] Got long-lived token');
 
     // Buscar username do Instagram
     let instagramUsername = '';
     try {
-      const profileRes = await fetch(`https://graph.instagram.com/v21.0/me?fields=username&access_token=${longLivedToken}`);
+      const profileRes = await fetch(`https://graph.instagram.com/v21.0/me?fields=username&access_token=${finalToken}`);
       const profileData = await profileRes.json();
       if (profileData.username) {
         instagramUsername = profileData.username;
@@ -100,7 +104,7 @@ serve(async (req) => {
       .upsert({
         tenant_id: state,
         instagram_account_id: instagramUserId.toString(),
-        access_token: longLivedToken,
+        access_token: finalToken,
         instagram_username: instagramUsername || null,
         is_active: true,
         environment: 'production',
