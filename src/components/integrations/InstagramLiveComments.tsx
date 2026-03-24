@@ -66,6 +66,10 @@ function getStatusConfig(status: string | null, productFound: boolean | null) {
 export default function InstagramLiveComments({ tenantId }: InstagramLiveCommentsProps) {
   const [comments, setComments] = useState<LiveComment[]>([]);
   const [listening, setListening] = useState(false);
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  const [testUsername, setTestUsername] = useState('');
+  const [testComment, setTestComment] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Initial load
