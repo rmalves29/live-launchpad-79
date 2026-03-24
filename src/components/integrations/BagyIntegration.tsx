@@ -317,6 +317,26 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
             <Switch checked={syncOrdersOut} onCheckedChange={setSyncOrdersOut} />
           </div>
 
+          {!syncOrdersOut && (
+            <div className="p-3 border rounded-lg bg-muted/50 space-y-2">
+              <p className="text-sm text-muted-foreground">
+                A exportação automática está desativada. Use o botão abaixo para exportar pedidos pagos pendentes manualmente.
+              </p>
+              <Button
+                onClick={() => exportOrdersMutation.mutate()}
+                disabled={exportOrdersMutation.isPending || !integration?.is_active}
+                variant="default"
+              >
+                {exportOrdersMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                )}
+                Exportar Pedidos Pagos para Bagy
+              </Button>
+            </div>
+          )}
+
           <div className="flex items-center justify-between p-3 border rounded-lg">
             <div className="flex items-center gap-3">
               <Package className="h-5 w-5 text-muted-foreground" />
