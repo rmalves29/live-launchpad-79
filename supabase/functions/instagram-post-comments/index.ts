@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     const postsWithComments = await Promise.all(
       posts.map(async (post) => {
         const commentsResponse = await fetch(
-          `https://graph.facebook.com/v21.0/${post.id}/comments?fields=id,text,username,timestamp&limit=50&access_token=${encodeURIComponent(accessToken)}`
+          `https://graph.instagram.com/v21.0/${post.id}/comments?fields=id,text,username,timestamp&limit=50&access_token=${encodeURIComponent(accessToken)}`
         );
 
         const commentsJson = await commentsResponse.json().catch(() => ({}));
