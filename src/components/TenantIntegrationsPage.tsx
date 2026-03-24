@@ -195,13 +195,6 @@ export default function TenantIntegrationsPage() {
 
       <Tabs defaultValue={new URLSearchParams(window.location.search).get('instagram_success') || new URLSearchParams(window.location.search).get('instagram_error') ? 'instagram' : 'bling'} className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1 w-full">
-          {showAdvancedIntegrations && (
-            <TabsTrigger value="whatsapp-cloud" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">WhatsApp API</span>
-              <span className="sm:hidden">WA</span>
-            </TabsTrigger>
-          )}
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
