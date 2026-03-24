@@ -209,6 +209,132 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ===================== EXPORT PENDING ORDERS (manual bulk) =====================
+    if (action === "export_pending_orders") {
+      try {
+        const { data: pendingOrders, error: pendingErr } = await supabase
+          .from("orders")
+          .select("id")
+          .eq("tenant_id", tenant_id)
+          .eq("is_paid", true)
+          .is("bagy_order_id", null)
+          .is("is_cancelled", null)
+          .order("created_at", { ascending: true })
+          .limit(50);
+
+        if (pendingErr) throw new Error(pendingErr.message);
+
+        if (!pendingOrders || pendingOrders.length === 0) {
+          return new Response(
+            JSON.stringify({ success: true, message: "Nenhum pedido pendente para exportar.", exported: 0, errors: 0 }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        let exported = 0;
+        let errors = 0;
+
+        for (const pending of pendingOrders) {
+          try {
+            // Reuse export_order logic inline
+            const { data: order } = await supabase
+              .from("orders")
+              .select("*")
+              .eq("id", pending.id)
+              .eq("tenant_id", tenant_id)
+              .single();
+
+            if (!order || order.bagy_order_id) continue;
+
+            let items: any[] = [];
+            if (order.cart_id) {
+              const { data: cartItems } = await supabase
+                .from("cart_items")
+                .select("*, products(code, name, price)")
+                .eq("cart_id", order.cart_id);
+              items = cartItems || [];
+            }
+
+            if (items.length === 0) continue;
+
+            const bagyItems = items.map((item: any) => ({
+              name: item.product_name || item.products?.name || "Produto",
+              reference: item.product_code || item.products?.code || "",
+              quantity: item.qty || 1,
+              price: item.unit_price || 0,
+            }));
+
+            const bagyOrder: any = {
+              customer: {
+                name: order.customer_name || "Cliente",
+                phone: order.customer_phone || "",
+              },
+              items: bagyItems,
+              total: order.total_amount || 0,
+              status: "paid",
+            };
+
+            if (order.customer_cep) {
+              bagyOrder.shipping_address = {
+                zip_code: order.customer_cep,
+                street: order.customer_street || "",
+                number: order.customer_number || "S/N",
+                complement: order.customer_complement || "",
+                neighborhood: order.customer_neighborhood || "",
+                city: order.customer_city || "",
+                state: order.customer_state || "",
+              };
+            }
+
+            const bagyResponse = await bagyFetch("/orders", token, {
+              method: "POST",
+              body: JSON.stringify(bagyOrder),
+            });
+
+            const bagyOrderId = bagyResponse?.data?.id || bagyResponse?.id;
+            if (bagyOrderId) {
+              await supabase
+                .from("orders")
+                .update({ bagy_order_id: bagyOrderId })
+                .eq("id", pending.id);
+            }
+
+            if (integration.sync_stock && items.length > 0) {
+              await syncStockForItems(items, token);
+            }
+
+            exported++;
+            console.log(`[bagy-sync] Pedido #${pending.id} exportado -> Bagy #${bagyOrderId}`);
+          } catch (e: any) {
+            errors++;
+            console.error(`[bagy-sync] Erro ao exportar pedido #${pending.id}:`, e.message);
+          }
+        }
+
+        await supabase
+          .from("integration_bagy")
+          .update({ last_sync_at: new Date().toISOString() })
+          .eq("tenant_id", tenant_id);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: `Exportação concluída! ${exported} pedido(s) exportado(s), ${errors} erro(s).`,
+            exported,
+            errors,
+            total: pendingOrders.length,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (e: any) {
+        console.error("[bagy-sync] Erro ao exportar pedidos pendentes:", e.message);
+        return new Response(
+          JSON.stringify({ success: false, error: `Erro ao exportar pedidos: ${e.message}` }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // ===================== SYNC STOCK =====================
     if (action === "sync_stock") {
       try {

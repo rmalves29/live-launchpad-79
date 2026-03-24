@@ -163,6 +163,15 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
     onError: (error) => toast.error(error.message || 'Erro ao importar produtos'),
   });
 
+  const exportOrdersMutation = useMutation({
+    mutationFn: () => callBagySync(tenantId, 'export_pending_orders'),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['bagy-integration', tenantId] });
+      toast.success(data.message || 'Pedidos exportados!');
+    },
+    onError: (error) => toast.error(error.message || 'Erro ao exportar pedidos'),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-32">
