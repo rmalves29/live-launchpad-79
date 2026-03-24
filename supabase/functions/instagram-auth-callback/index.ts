@@ -62,8 +62,8 @@ serve(async (req) => {
     }
 
     const shortLivedToken = tokenData.access_token;
-    const instagramUserId = tokenData.user_id;
-    console.log('[Instagram Callback] Got short-lived token for user:', instagramUserId);
+    const oauthUserId = tokenData.user_id;
+    console.log('[Instagram Callback] Got short-lived token for user:', oauthUserId);
 
     // Tentar obter long-lived token, mas usar short-lived se falhar
     let finalToken = shortLivedToken;
@@ -82,34 +82,26 @@ serve(async (req) => {
       console.warn('[Instagram Callback] Long-lived token request failed, using short-lived token:', llErr);
     }
 
-    // Buscar username do Instagram - tentar múltiplos endpoints
     let instagramUsername = '';
+    let instagramAccountId = oauthUserId?.toString() || '';
+
     try {
-      // Tentar endpoint v21.0 com user_id
-      const profileRes = await fetch(`https://graph.instagram.com/v21.0/${instagramUserId}?fields=username&access_token=${finalToken}`);
-      const profileData = await profileRes.json();
-      console.log('[Instagram Callback] Profile response:', JSON.stringify(profileData));
-      if (profileData.username) {
-        instagramUsername = profileData.username;
+      const meRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${finalToken}`);
+      const meData = await meRes.json();
+      console.log('[Instagram Callback] /me response:', JSON.stringify(meData));
+
+      if (meData?.id) {
+        instagramAccountId = String(meData.id);
       }
-    } catch (profileErr) {
-      console.error('[Instagram Callback] Erro ao buscar username via user_id:', profileErr);
+
+      if (meData?.username) {
+        instagramUsername = String(meData.username);
+      }
+    } catch (meErr) {
+      console.error('[Instagram Callback] Erro ao buscar dados via /me:', meErr);
     }
 
-    // Fallback: tentar /me
-    if (!instagramUsername) {
-      try {
-        const meRes = await fetch(`https://graph.instagram.com/me?fields=username&access_token=${finalToken}`);
-        const meData = await meRes.json();
-        console.log('[Instagram Callback] /me response:', JSON.stringify(meData));
-        if (meData.username) {
-          instagramUsername = meData.username;
-        }
-      } catch (meErr) {
-        console.error('[Instagram Callback] Erro ao buscar username via /me:', meErr);
-      }
-    }
-
+    console.log('[Instagram Callback] Final account/user:', instagramAccountId || '(não obtido)');
     console.log('[Instagram Callback] Final username:', instagramUsername || '(não obtido)');
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
