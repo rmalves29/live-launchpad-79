@@ -99,6 +99,7 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
         .from('instagram_live_comments')
         .select('id, username, comment_text, product_code, product_found, comment_status, is_live, created_at')
         .eq('tenant_id', tenantId)
+        .eq('is_live', false)
         .order('created_at', { ascending: false })
         .limit(200);
       if (data) setAllComments(data as LiveComment[]);
@@ -126,8 +127,10 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
             if (newComment.is_live) {
               setComments((prev) => [...prev, newComment].slice(-100));
             }
-            // Add to all comments tab
-            setAllComments((prev) => [newComment, ...prev].slice(0, 200));
+            // Add to all post comments tab (only non-live)
+            if (!newComment.is_live) {
+              setAllComments((prev) => [newComment, ...prev].slice(0, 200));
+            }
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as LiveComment;
             setComments((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
