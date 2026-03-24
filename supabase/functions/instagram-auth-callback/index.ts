@@ -112,7 +112,7 @@ serve(async (req) => {
       .from('integration_instagram')
       .upsert({
         tenant_id: state,
-        instagram_account_id: instagramUserId.toString(),
+        instagram_account_id: instagramAccountId || (oauthUserId ? String(oauthUserId) : null),
         access_token: finalToken,
         instagram_username: instagramUsername || null,
         is_active: true,
