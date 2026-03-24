@@ -304,5 +304,78 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
         </ScrollArea>
       </CardContent>
     </Card>
+
+    {/* Painel de Teste */}
+    <Card className="border-dashed border-amber-300">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="h-5 w-5 text-amber-500" />
+            <CardTitle className="text-lg">Simulador de Comentários (Teste)</CardTitle>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowTestPanel(!showTestPanel)}
+          >
+            {showTestPanel ? 'Ocultar' : 'Abrir'}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Use este painel para simular comentários e testar a funcionalidade antes da aprovação do Meta
+        </p>
+      </CardHeader>
+      {showTestPanel && (
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Username</label>
+              <Input
+                placeholder="@usuario_teste"
+                value={testUsername}
+                onChange={(e) => setTestUsername(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Comentário</label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Ex: Quero esse! ABC123"
+                  value={testComment}
+                  onChange={(e) => setTestComment(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendTestComment()}
+                />
+                <Button
+                  size="icon"
+                  onClick={() => handleSendTestComment()}
+                  disabled={sendingTest}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBurstTest}
+              disabled={sendingTest}
+              className="border-amber-300 text-amber-700 hover:bg-amber-50"
+            >
+              <FlaskConical className="h-4 w-4 mr-1" />
+              Simular 5 comentários automáticos
+            </Button>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground">
+            💡 <strong>Dica:</strong> Inclua um código de produto no comentário (ex: <code className="bg-muted px-1 rounded">ABC123</code>) para testar a detecção automática.
+            Os status são atribuídos aleatoriamente para demonstração.
+          </p>
+        </CardContent>
+      )}
+    </Card>
+    </div>
   );
 }
