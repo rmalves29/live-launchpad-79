@@ -21,7 +21,7 @@ import BlingIntegration from '@/components/integrations/BlingIntegration';
 import OlistIntegration from '@/components/integrations/OlistIntegration';
 import OmieIntegration from '@/components/integrations/OmieIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
-import WhatsAppCloudIntegration from '@/components/integrations/WhatsAppCloudIntegration';
+
 import BagyIntegration from '@/components/integrations/BagyIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -195,13 +195,6 @@ export default function TenantIntegrationsPage() {
 
       <Tabs defaultValue={new URLSearchParams(window.location.search).get('instagram_success') || new URLSearchParams(window.location.search).get('instagram_error') ? 'instagram' : 'bling'} className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1 w-full">
-          {showAdvancedIntegrations && (
-            <TabsTrigger value="whatsapp-cloud" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">WhatsApp API</span>
-              <span className="sm:hidden">WA</span>
-            </TabsTrigger>
-          )}
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
@@ -278,11 +271,6 @@ export default function TenantIntegrationsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {showAdvancedIntegrations && (
-          <TabsContent value="whatsapp-cloud" className="mt-6">
-            <WhatsAppCloudIntegration tenantId={tenantId} />
-          </TabsContent>
-        )}
         <TabsContent value="instagram" className="mt-6">
           <InstagramIntegration tenantId={tenantId} tenantSlug={tenant?.slug} />
         </TabsContent>
