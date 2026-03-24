@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
-import { Trash2, Radio, Download } from 'lucide-react';
+import { Trash2, Radio, Download, FlaskConical, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LiveComment {
@@ -65,6 +66,10 @@ function getStatusConfig(status: string | null, productFound: boolean | null) {
 export default function InstagramLiveComments({ tenantId }: InstagramLiveCommentsProps) {
   const [comments, setComments] = useState<LiveComment[]>([]);
   const [listening, setListening] = useState(false);
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  const [testUsername, setTestUsername] = useState('');
+  const [testComment, setTestComment] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Initial load
@@ -156,7 +161,67 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
     return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
+  const SAMPLE_COMMENTS = [
+    { username: 'maria_silva', text: 'Amei esse produto! ABC123', code: 'ABC123' },
+    { username: 'ana_costa', text: 'Quero esse! DEF456', code: 'DEF456' },
+    { username: 'julia_santos', text: 'Que lindo 😍', code: null },
+    { username: 'carol_oliveira', text: 'Tem no tamanho M? GHI789', code: 'GHI789' },
+    { username: 'beatriz_lima', text: '🔥🔥🔥', code: null },
+  ];
+
+  const handleSendTestComment = async (username?: string, text?: string, code?: string | null) => {
+    const finalUsername = username || testUsername || 'test_user';
+    const finalText = text || testComment || 'Comentário de teste';
+    
+    if (!finalText.trim()) {
+      toast.error('Digite um comentário');
+      return;
+    }
+
+    setSendingTest(true);
+    try {
+      // Extract product code from comment if not provided
+      const codeMatch = finalText.match(/\b([A-Za-z]{2,4}[-]?[0-9]{2,6})\b/i);
+      const productCode = code !== undefined ? code : (codeMatch ? codeMatch[1].toUpperCase() : null);
+
+      const { error } = await supabase
+        .from('instagram_live_comments')
+        .insert({
+          tenant_id: tenantId,
+          instagram_user_id: `test_${Date.now()}`,
+          username: finalUsername,
+          comment_text: finalText,
+          product_code: productCode,
+          product_found: productCode ? Math.random() > 0.3 : null,
+          comment_status: productCode 
+            ? ['added', 'repeat_added', 'not_for_live', 'out_of_stock', 'not_found'][Math.floor(Math.random() * 5)]
+            : null,
+          is_live: true,
+          media_id: `test_media_${Date.now()}`,
+        } as any);
+
+      if (error) throw error;
+      toast.success('Comentário de teste enviado!');
+      setTestComment('');
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao enviar comentário de teste');
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
+  const handleBurstTest = async () => {
+    setSendingTest(true);
+    for (const sample of SAMPLE_COMMENTS) {
+      await handleSendTestComment(sample.username, sample.text, sample.code);
+      await new Promise(r => setTimeout(r, 800));
+    }
+    setSendingTest(false);
+  };
+
   return (
+    <div className="space-y-4">
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div className="flex items-center gap-3">
@@ -239,5 +304,78 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
         </ScrollArea>
       </CardContent>
     </Card>
+
+    {/* Painel de Teste */}
+    <Card className="border-dashed border-amber-300">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="h-5 w-5 text-amber-500" />
+            <CardTitle className="text-lg">Simulador de Comentários (Teste)</CardTitle>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowTestPanel(!showTestPanel)}
+          >
+            {showTestPanel ? 'Ocultar' : 'Abrir'}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Use este painel para simular comentários e testar a funcionalidade antes da aprovação do Meta
+        </p>
+      </CardHeader>
+      {showTestPanel && (
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Username</label>
+              <Input
+                placeholder="@usuario_teste"
+                value={testUsername}
+                onChange={(e) => setTestUsername(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Comentário</label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Ex: Quero esse! ABC123"
+                  value={testComment}
+                  onChange={(e) => setTestComment(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSendTestComment()}
+                />
+                <Button
+                  size="icon"
+                  onClick={() => handleSendTestComment()}
+                  disabled={sendingTest}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBurstTest}
+              disabled={sendingTest}
+              className="border-amber-300 text-amber-700 hover:bg-amber-50"
+            >
+              <FlaskConical className="h-4 w-4 mr-1" />
+              Simular 5 comentários automáticos
+            </Button>
+          </div>
+
+          <p className="text-[11px] text-muted-foreground">
+            💡 <strong>Dica:</strong> Inclua um código de produto no comentário (ex: <code className="bg-muted px-1 rounded">ABC123</code>) para testar a detecção automática.
+            Os status são atribuídos aleatoriamente para demonstração.
+          </p>
+        </CardContent>
+      )}
+    </Card>
+    </div>
   );
 }
