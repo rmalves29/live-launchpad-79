@@ -161,7 +161,67 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
     return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
+  const SAMPLE_COMMENTS = [
+    { username: 'maria_silva', text: 'Amei esse produto! ABC123', code: 'ABC123' },
+    { username: 'ana_costa', text: 'Quero esse! DEF456', code: 'DEF456' },
+    { username: 'julia_santos', text: 'Que lindo 😍', code: null },
+    { username: 'carol_oliveira', text: 'Tem no tamanho M? GHI789', code: 'GHI789' },
+    { username: 'beatriz_lima', text: '🔥🔥🔥', code: null },
+  ];
+
+  const handleSendTestComment = async (username?: string, text?: string, code?: string | null) => {
+    const finalUsername = username || testUsername || 'test_user';
+    const finalText = text || testComment || 'Comentário de teste';
+    
+    if (!finalText.trim()) {
+      toast.error('Digite um comentário');
+      return;
+    }
+
+    setSendingTest(true);
+    try {
+      // Extract product code from comment if not provided
+      const codeMatch = finalText.match(/\b([A-Za-z]{2,4}[-]?[0-9]{2,6})\b/i);
+      const productCode = code !== undefined ? code : (codeMatch ? codeMatch[1].toUpperCase() : null);
+
+      const { error } = await supabase
+        .from('instagram_live_comments')
+        .insert({
+          tenant_id: tenantId,
+          instagram_user_id: `test_${Date.now()}`,
+          username: finalUsername,
+          comment_text: finalText,
+          product_code: productCode,
+          product_found: productCode ? Math.random() > 0.3 : null,
+          comment_status: productCode 
+            ? ['added', 'repeat_added', 'not_for_live', 'out_of_stock', 'not_found'][Math.floor(Math.random() * 5)]
+            : null,
+          is_live: true,
+          media_id: `test_media_${Date.now()}`,
+        } as any);
+
+      if (error) throw error;
+      toast.success('Comentário de teste enviado!');
+      setTestComment('');
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao enviar comentário de teste');
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
+  const handleBurstTest = async () => {
+    setSendingTest(true);
+    for (const sample of SAMPLE_COMMENTS) {
+      await handleSendTestComment(sample.username, sample.text, sample.code);
+      await new Promise(r => setTimeout(r, 800));
+    }
+    setSendingTest(false);
+  };
+
   return (
+    <div className="space-y-4">
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
         <div className="flex items-center gap-3">
