@@ -104,17 +104,41 @@ Deno.serve(async (req) => {
     }
 
     const accessToken = integration.page_access_token || integration.access_token;
-    if (!integration.instagram_account_id || !accessToken) {
+    if (!accessToken) {
       return jsonResponse({ error: 'Conta do Instagram sem credenciais suficientes para buscar postagens' }, 400);
     }
 
-    console.log(`[${timestamp}] [instagram-post-comments] Fetching media for account: ${integration.instagram_account_id}, token length: ${accessToken.length}`);
+    let accountId = integration.instagram_account_id;
+    let accountUsername = integration.instagram_username;
+
+    try {
+      const profileResponse = await fetch(
+        `https://graph.instagram.com/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`
+      );
+      const profileJson = await profileResponse.json().catch(() => ({}));
+
+      if (profileResponse.ok) {
+        if (profileJson?.id) {
+          accountId = String(profileJson.id);
+        }
+
+        if (profileJson?.username) {
+          accountUsername = String(profileJson.username);
+        }
+      } else {
+        console.warn(`[${timestamp}] [instagram-post-comments] Profile resolve warning:`, profileJson);
+      }
+    } catch (profileError) {
+      console.warn(`[${timestamp}] [instagram-post-comments] Profile resolve failed:`, profileError);
+    }
+
+    console.log(`[${timestamp}] [instagram-post-comments] Fetching media for account: ${accountId || 'me'}, token length: ${accessToken.length}`);
 
     const mediaResponse = await fetch(
-      `https://graph.instagram.com/v21.0/${integration.instagram_account_id}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count,media_product_type&limit=12&access_token=${encodeURIComponent(accessToken)}`
+      `https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count,media_product_type&limit=12&access_token=${encodeURIComponent(accessToken)}`
     );
 
-    const mediaJson = await mediaResponse.json();
+    const mediaJson = await mediaResponse.json().catch(() => ({}));
 
     if (!mediaResponse.ok) {
       console.error(`[${timestamp}] [instagram-post-comments] Media fetch error:`, mediaJson);
@@ -145,7 +169,8 @@ Deno.serve(async (req) => {
     );
 
     return jsonResponse({
-      account_username: integration.instagram_username,
+      account_id: accountId,
+      account_username: accountUsername,
       posts: postsWithComments,
     });
   } catch (error: any) {
