@@ -29,6 +29,18 @@ interface InstagramCommentItem {
   text?: string;
   username?: string;
   timestamp?: string;
+  from?: {
+    id?: string;
+    username?: string;
+  };
+}
+
+interface ReplyBody {
+  tenant_id: string;
+  action: 'reply';
+  media_id: string;
+  comment_id: string;
+  message: string;
 }
 
 Deno.serve(async (req) => {
@@ -63,7 +75,8 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json() as RequestBody;
-    const tenantId = body.tenant_id;
+    const tenantId = (body as any).tenant_id;
+    const action = (body as any).action;
 
     if (!tenantId) {
       return jsonResponse({ error: 'tenant_id é obrigatório' }, 400);
@@ -106,6 +119,38 @@ Deno.serve(async (req) => {
     const accessToken = integration.page_access_token || integration.access_token;
     if (!accessToken) {
       return jsonResponse({ error: 'Conta do Instagram sem credenciais suficientes para buscar postagens' }, 400);
+    }
+
+    // Handle reply action
+    if (action === 'reply') {
+      const replyBody = body as unknown as ReplyBody;
+      if (!replyBody.comment_id || !replyBody.message) {
+        return jsonResponse({ error: 'comment_id e message são obrigatórios' }, 400);
+      }
+
+      const replyResponse = await fetch(
+        `https://graph.instagram.com/v21.0/${replyBody.comment_id}/replies`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: replyBody.message,
+            access_token: accessToken,
+          }),
+        }
+      );
+
+      const replyJson = await replyResponse.json().catch(() => ({}));
+
+      if (!replyResponse.ok) {
+        console.error(`[${timestamp}] [instagram-post-comments] Reply error:`, replyJson);
+        return jsonResponse({
+          error: replyJson?.error?.message || 'Erro ao responder comentário',
+        }, replyResponse.status);
+      }
+
+      console.log(`[${timestamp}] [instagram-post-comments] Reply sent successfully:`, replyJson?.id);
+      return jsonResponse({ success: true, comment_id: replyJson?.id });
     }
 
     let accountId = integration.instagram_account_id;
@@ -153,13 +198,19 @@ Deno.serve(async (req) => {
     const postsWithComments = await Promise.all(
       posts.map(async (post) => {
         const commentsResponse = await fetch(
-          `https://graph.instagram.com/v21.0/${post.id}/comments?fields=id,text,username,timestamp&limit=50&access_token=${encodeURIComponent(accessToken)}`
+          `https://graph.instagram.com/v21.0/${post.id}/comments?fields=id,text,username,timestamp,from{id,username}&limit=50&access_token=${encodeURIComponent(accessToken)}`
         );
 
         const commentsJson = await commentsResponse.json().catch(() => ({}));
-        const comments = commentsResponse.ok && Array.isArray(commentsJson?.data)
+        let comments = commentsResponse.ok && Array.isArray(commentsJson?.data)
           ? commentsJson.data as InstagramCommentItem[]
           : [];
+
+        // Resolve username from 'from' field if 'username' is missing
+        comments = comments.map((c) => ({
+          ...c,
+          username: c.username || c.from?.username || null,
+        }));
 
         return {
           ...post,
