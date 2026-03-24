@@ -99,6 +99,7 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
         .from('instagram_live_comments')
         .select('id, username, comment_text, product_code, product_found, comment_status, is_live, created_at')
         .eq('tenant_id', tenantId)
+        .eq('is_live', false)
         .order('created_at', { ascending: false })
         .limit(200);
       if (data) setAllComments(data as LiveComment[]);
