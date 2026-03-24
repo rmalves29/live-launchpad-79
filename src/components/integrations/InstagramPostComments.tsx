@@ -4,8 +4,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageCircle, ExternalLink, RefreshCw, Instagram } from 'lucide-react';
+import { MessageCircle, ExternalLink, RefreshCw, Instagram, Send, Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { useState } from 'react';
 
 interface InstagramPostComment {
   id: string;
@@ -37,6 +39,10 @@ interface InstagramPostCommentsResponse {
 }
 
 export default function InstagramPostComments({ tenantId }: InstagramPostCommentsProps) {
+  const [replyingTo, setReplyingTo] = useState<{ commentId: string; postId: string } | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
+
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ['instagram-post-comments', tenantId],
     queryFn: async () => {
@@ -65,6 +71,34 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
     }
 
     toast.success('Comentários das postagens atualizados');
+  };
+
+  const handleReply = async () => {
+    if (!replyingTo || !replyText.trim()) return;
+    setSending(true);
+    try {
+      const response = await supabase.functions.invoke('instagram-post-comments', {
+        body: {
+          tenant_id: tenantId,
+          action: 'reply',
+          comment_id: replyingTo.commentId,
+          media_id: replyingTo.postId,
+          message: replyText.trim(),
+        },
+      });
+      if (response.error || response.data?.error) {
+        toast.error(response.data?.error || 'Erro ao responder comentário');
+      } else {
+        toast.success('Resposta enviada com sucesso!');
+        setReplyText('');
+        setReplyingTo(null);
+        refetch();
+      }
+    } catch {
+      toast.error('Erro ao enviar resposta');
+    } finally {
+      setSending(false);
+    }
   };
 
   const formatDateTime = (value?: string) => {
@@ -173,7 +207,7 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                       <p className="text-xs text-muted-foreground">Esta postagem ainda não recebeu comentários.</p>
                     ) : (
                       post.comments.map((comment) => (
-                        <div key={comment.id} className="rounded-md bg-muted/50 p-3">
+                        <div key={comment.id} className="rounded-md bg-muted/50 p-3 group">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-medium text-foreground">
                               @{comment.username || 'desconhecido'}
@@ -181,8 +215,39 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                             {comment.timestamp && (
                               <span className="text-[11px] text-muted-foreground">{formatDateTime(comment.timestamp)}</span>
                             )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="ml-auto h-6 px-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                setReplyingTo({ commentId: comment.id, postId: post.id });
+                                setReplyText('');
+                              }}
+                            >
+                              <Send className="mr-1 h-3 w-3" />
+                              Responder
+                            </Button>
                           </div>
                           <p className="mt-1 text-sm text-foreground/80 break-words">{comment.text || 'Comentário sem texto.'}</p>
+
+                          {replyingTo?.commentId === comment.id && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <Input
+                                placeholder="Digite sua resposta..."
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && !sending && handleReply()}
+                                className="h-8 text-sm"
+                                autoFocus
+                              />
+                              <Button size="sm" className="h-8" onClick={handleReply} disabled={sending || !replyText.trim()}>
+                                {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-8" onClick={() => setReplyingTo(null)}>
+                                ✕
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       ))
                     )}
