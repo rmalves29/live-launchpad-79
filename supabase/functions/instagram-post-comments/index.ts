@@ -108,8 +108,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Conta do Instagram sem credenciais suficientes para buscar postagens' }, 400);
     }
 
+    console.log(`[${timestamp}] [instagram-post-comments] Fetching media for account: ${integration.instagram_account_id}, token length: ${accessToken.length}`);
+
     const mediaResponse = await fetch(
-      `https://graph.facebook.com/v21.0/${integration.instagram_account_id}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count,media_product_type&limit=12&access_token=${encodeURIComponent(accessToken)}`
+      `https://graph.instagram.com/v21.0/${integration.instagram_account_id}/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count,media_product_type&limit=12&access_token=${encodeURIComponent(accessToken)}`
     );
 
     const mediaJson = await mediaResponse.json();
