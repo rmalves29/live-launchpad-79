@@ -116,6 +116,32 @@ export function ZAPISettings() {
     loadIntegration();
   }, [tenant?.id]);
 
+  // Fetch profile picture when integration is loaded
+  useEffect(() => {
+    if (integration?.connected_phone && integration?.zapi_instance_id && integration?.zapi_token) {
+      fetchProfilePicture(integration.connected_phone, integration.zapi_instance_id, integration.zapi_token);
+    }
+  }, [integration?.connected_phone, integration?.zapi_instance_id, integration?.zapi_token]);
+
+  const fetchProfilePicture = async (phone: string, instanceId: string, token: string) => {
+    try {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const response = await fetch(
+        `https://api.z-api.io/instances/${instanceId}/token/${token}/profile-picture/${cleanPhone}`,
+        { method: 'GET' }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.link) {
+          setProfilePicUrl(data.link);
+        }
+      }
+    } catch (err) {
+      console.log('Could not fetch profile picture:', err);
+    }
+  };
+  }, [tenant?.id]);
+
   const loadIntegration = async () => {
     if (!tenant?.id) return;
     
