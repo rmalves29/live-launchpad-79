@@ -83,9 +83,10 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
       fetch(`https://graph.facebook.com/v21.0/${config.instagram_account_id}?fields=profile_picture_url&access_token=${token}`)
         .then(r => r.json())
         .then(data => {
+          console.log('[Instagram] Profile pic response:', data);
           if (data?.profile_picture_url) setProfilePicUrl(data.profile_picture_url);
         })
-        .catch(() => {});
+        .catch((err) => console.warn('[Instagram] Failed to fetch profile pic:', err));
     }
   }, [isConnected, config?.instagram_account_id, config?.access_token, config?.page_access_token]);
 
@@ -198,8 +199,8 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
         <CardContent>
           {isConnected ? (
             <div className="flex items-center gap-4">
-              <Avatar className="h-10 w-10 border border-border">
-                <AvatarImage src={profilePicUrl || undefined} alt="Instagram profile" />
+              <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
+                <AvatarImage src={profilePicUrl || undefined} alt="Instagram profile" referrerPolicy="no-referrer" />
                 <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white text-xs">
                   <Instagram className="h-5 w-5" />
                 </AvatarFallback>
