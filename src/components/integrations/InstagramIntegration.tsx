@@ -83,29 +83,12 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
       fetch(`https://graph.facebook.com/v21.0/${config.instagram_account_id}?fields=profile_picture_url&access_token=${token}`)
         .then(r => r.json())
         .then(data => {
+          console.log('[Instagram] Profile pic response:', data);
           if (data?.profile_picture_url) setProfilePicUrl(data.profile_picture_url);
         })
-        .catch(() => {});
+        .catch((err) => console.warn('[Instagram] Failed to fetch profile pic:', err));
     }
   }, [isConnected, config?.instagram_account_id, config?.access_token, config?.page_access_token]);
-
-  // Buscar foto via Edge Function como fallback
-  useEffect(() => {
-    if (isConnected && !profilePicUrl && config?.instagram_account_id) {
-      const token = config?.page_access_token || config?.access_token;
-      if (!token) return;
-      supabase.functions.invoke('instagram-post-comments', {
-        body: { 
-          tenantId, 
-          action: 'get_profile',
-          igAccountId: config.instagram_account_id,
-          accessToken: token
-        }
-      }).then(({ data }) => {
-        if (data?.profile_picture_url) setProfilePicUrl(data.profile_picture_url);
-      }).catch(() => {});
-    }
-  }, [isConnected, profilePicUrl, config?.instagram_account_id, config?.page_access_token, config?.access_token, tenantId]);
 
   // Iniciar OAuth
   const handleConnectInstagram = async () => {
