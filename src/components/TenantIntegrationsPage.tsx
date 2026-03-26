@@ -217,8 +217,8 @@ export default function TenantIntegrationsPage() {
           </TabsTrigger>
           <TabsTrigger value="olist" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Olist ERP</span>
-            <span className="sm:hidden">Olist</span>
+            <span className="hidden sm:inline">Tiny ERP</span>
+            <span className="sm:hidden">Tiny</span>
             {olistIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="omie" className="flex items-center gap-2">
