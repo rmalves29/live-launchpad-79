@@ -198,6 +198,12 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
         <CardContent>
           {isConnected ? (
             <div className="flex items-center gap-4">
+              <Avatar className="h-10 w-10 border border-border">
+                <AvatarImage src={profilePicUrl || undefined} alt="Instagram profile" />
+                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white text-xs">
+                  <Instagram className="h-5 w-5" />
+                </AvatarFallback>
+              </Avatar>
               <div className="flex-1 space-y-1">
                 <p className="text-sm text-muted-foreground">
                   Conta conectada: <span className="font-medium text-foreground">
