@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
  import { Textarea } from '@/components/ui/textarea';
 import { MessageSquare, Save, CheckCircle2, AlertCircle, ExternalLink, Eye, EyeOff, Loader2, QrCode, RefreshCw, Bell, BellOff } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
@@ -109,9 +110,36 @@ export function ZAPISettings() {
    const [consentProtectionEnabled, setConsentProtectionEnabled] = useState(false);
    const [templateSolicitacao, setTemplateSolicitacao] = useState(DEFAULT_TEMPLATE_SOLICITACAO);
    const [templateComLink, setTemplateComLink] = useState(DEFAULT_TEMPLATE_COM_LINK);
+   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
 
   useEffect(() => {
     loadIntegration();
+  }, [tenant?.id]);
+
+  // Fetch profile picture when integration is loaded
+  useEffect(() => {
+    if (integration?.connected_phone && integration?.zapi_instance_id && integration?.zapi_token) {
+      fetchProfilePicture(integration.connected_phone, integration.zapi_instance_id, integration.zapi_token);
+    }
+  }, [integration?.connected_phone, integration?.zapi_instance_id, integration?.zapi_token]);
+
+  const fetchProfilePicture = async (phone: string, instanceId: string, token: string) => {
+    try {
+      const cleanPhone = phone.replace(/\D/g, '');
+      const response = await fetch(
+        `https://api.z-api.io/instances/${instanceId}/token/${token}/profile-picture/${cleanPhone}`,
+        { method: 'GET' }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.link) {
+          setProfilePicUrl(data.link);
+        }
+      }
+    } catch (err) {
+      console.log('Could not fetch profile picture:', err);
+    }
+  };
   }, [tenant?.id]);
 
   const loadIntegration = async () => {
