@@ -185,9 +185,8 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
           {isConnected ? (
             <div className="flex items-center gap-4">
               <InstagramProfileAvatar
-                accountId={config?.instagram_account_id}
-                accessToken={config?.page_access_token || config?.access_token}
-                username={(config as any)?.instagram_username || null}
+                tenantId={tenantId}
+                username={config?.instagram_username || null}
               />
               <div className="flex-1 space-y-1">
                 <p className="text-sm text-muted-foreground">
