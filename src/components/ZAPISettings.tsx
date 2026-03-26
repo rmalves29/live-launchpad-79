@@ -110,6 +110,7 @@ export function ZAPISettings() {
    const [consentProtectionEnabled, setConsentProtectionEnabled] = useState(false);
    const [templateSolicitacao, setTemplateSolicitacao] = useState(DEFAULT_TEMPLATE_SOLICITACAO);
    const [templateComLink, setTemplateComLink] = useState(DEFAULT_TEMPLATE_COM_LINK);
+   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
 
   useEffect(() => {
     loadIntegration();
