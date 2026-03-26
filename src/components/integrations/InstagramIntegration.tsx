@@ -3,7 +3,7 @@
  * Conexão via OAuth (botão "Conectar Instagram")
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Loader2, Instagram, CheckCircle2, AlertTriangle, Copy, ExternalLink, Link2, Radio } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -73,6 +74,20 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
   });
 
   const isConnected = !!(config?.is_active && (config?.access_token || config?.page_access_token));
+
+  // Buscar foto de perfil do Instagram
+  const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (isConnected && config?.instagram_account_id && (config?.access_token || config?.page_access_token)) {
+      const token = config.page_access_token || config.access_token;
+      fetch(`https://graph.facebook.com/v21.0/${config.instagram_account_id}?fields=profile_picture_url&access_token=${token}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data?.profile_picture_url) setProfilePicUrl(data.profile_picture_url);
+        })
+        .catch(() => {});
+    }
+  }, [isConnected, config?.instagram_account_id, config?.access_token, config?.page_access_token]);
 
   // Iniciar OAuth
   const handleConnectInstagram = async () => {
@@ -183,6 +198,12 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
         <CardContent>
           {isConnected ? (
             <div className="flex items-center gap-4">
+              <Avatar className="h-10 w-10 border border-border">
+                <AvatarImage src={profilePicUrl || undefined} alt="Instagram profile" />
+                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white text-xs">
+                  <Instagram className="h-5 w-5" />
+                </AvatarFallback>
+              </Avatar>
               <div className="flex-1 space-y-1">
                 <p className="text-sm text-muted-foreground">
                   Conta conectada: <span className="font-medium text-foreground">
