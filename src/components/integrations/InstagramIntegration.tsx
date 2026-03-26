@@ -75,6 +75,20 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
 
   const isConnected = !!(config?.is_active && (config?.access_token || config?.page_access_token));
 
+  // Buscar foto de perfil do Instagram
+  const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (isConnected && config?.instagram_account_id && (config?.access_token || config?.page_access_token)) {
+      const token = config.page_access_token || config.access_token;
+      fetch(`https://graph.facebook.com/v21.0/${config.instagram_account_id}?fields=profile_picture_url&access_token=${token}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data?.profile_picture_url) setProfilePicUrl(data.profile_picture_url);
+        })
+        .catch(() => {});
+    }
+  }, [isConnected, config?.instagram_account_id, config?.access_token, config?.page_access_token]);
+
   // Iniciar OAuth
   const handleConnectInstagram = async () => {
     try {
