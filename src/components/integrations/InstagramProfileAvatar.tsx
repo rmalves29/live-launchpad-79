@@ -2,16 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Instagram } from 'lucide-react';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { supabase } from '@/integrations/supabase/client';
 
 interface InstagramProfileAvatarProps {
-  accessToken?: string | null;
-  accountId?: string | null;
+  tenantId: string;
   username?: string | null;
 }
 
 export default function InstagramProfileAvatar({
-  accessToken,
-  accountId,
+  tenantId,
   username,
 }: InstagramProfileAvatarProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -27,54 +26,40 @@ export default function InstagramProfileAvatar({
       }
     };
 
-    const resolveProfileImage = async () => {
+    const loadAvatar = async () => {
       revokeObjectUrl();
       setImageSrc(null);
 
-      if (!accountId || !accessToken) {
-        return;
-      }
+      if (!tenantId) return;
 
       try {
-        const imageResponse = await fetch(
-          `https://graph.facebook.com/v21.0/${accountId}/picture?type=normal&access_token=${encodeURIComponent(accessToken)}`
+        const { data, error } = await supabase.functions.invoke(
+          'instagram-profile-avatar',
+          { body: { tenant_id: tenantId } }
         );
 
-        if (imageResponse.ok) {
-          const imageBlob = await imageResponse.blob();
+        if (error || !data) return;
 
-          if (!isCancelled && imageBlob.size > 0) {
-            const objectUrl = URL.createObjectURL(imageBlob);
-            objectUrlRef.current = objectUrl;
-            setImageSrc(objectUrl);
-            return;
+        // data comes as Blob when responseType is not set
+        if (data instanceof Blob && data.size > 0) {
+          if (!isCancelled) {
+            const url = URL.createObjectURL(data);
+            objectUrlRef.current = url;
+            setImageSrc(url);
           }
         }
-      } catch (error) {
-        console.warn('[Instagram] Failed to fetch profile image blob:', error);
-      }
-
-      try {
-        const profileResponse = await fetch(
-          `https://graph.facebook.com/v21.0/${accountId}?fields=profile_picture_url&access_token=${encodeURIComponent(accessToken)}`
-        );
-        const profileData = await profileResponse.json().catch(() => null);
-
-        if (!isCancelled && profileData?.profile_picture_url) {
-          setImageSrc(profileData.profile_picture_url);
-        }
-      } catch (error) {
-        console.warn('[Instagram] Failed to fetch profile image URL:', error);
+      } catch (err) {
+        console.warn('[InstagramProfileAvatar] Failed:', err);
       }
     };
 
-    void resolveProfileImage();
+    void loadAvatar();
 
     return () => {
       isCancelled = true;
       revokeObjectUrl();
     };
-  }, [accountId, accessToken]);
+  }, [tenantId]);
 
   return (
     <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
