@@ -552,6 +552,7 @@ export type Database = {
         Row: {
           created_at: string | null
           description: string | null
+          facebook_pixel_id: string | null
           id: string
           is_active: boolean | null
           is_entry_open: boolean | null
@@ -563,6 +564,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           description?: string | null
+          facebook_pixel_id?: string | null
           id?: string
           is_active?: boolean | null
           is_entry_open?: boolean | null
@@ -574,6 +576,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           description?: string | null
+          facebook_pixel_id?: string | null
           id?: string
           is_active?: boolean | null
           is_entry_open?: boolean | null
