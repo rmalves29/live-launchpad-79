@@ -251,7 +251,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
       const data = await response.json();
       return (data.canais || []) as BlingStore[];
     },
-    enabled: !!tenantId && !!integration?.access_token,
+    enabled: !!tenantId && !!integration?.access_token && !!integration?.is_active,
   });
 
   // Mutation para salvar/atualizar credenciais
