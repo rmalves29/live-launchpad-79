@@ -403,6 +403,25 @@ const Clientes = () => {
     setSaving(true);
     try {
       const normalizedPhone = normalizePhone(editingCustomer.phone);
+
+      // Check for duplicate phone in the same tenant before updating
+      const { data: existing } = await supabaseTenant
+        .from('customers')
+        .select('id, name')
+        .eq('phone', normalizedPhone)
+        .neq('id', editingCustomer.id)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        toast({
+          title: 'Telefone duplicado',
+          description: `Já existe o cliente "${existing[0].name}" com esse telefone. Exclua o duplicado primeiro.`,
+          variant: 'destructive'
+        });
+        setSaving(false);
+        return;
+      }
+
       const { error } = await supabaseTenant
         .from('customers')
         .update({
@@ -429,11 +448,14 @@ const Clientes = () => {
       
       setEditingCustomer(null);
       loadCustomers();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating customer:', error);
+      const msg = error?.message?.includes('unique') || error?.message?.includes('duplicate')
+        ? 'Já existe um cliente com esse telefone nesta empresa'
+        : 'Erro ao atualizar cliente';
       toast({
         title: 'Erro',
-        description: 'Erro ao atualizar cliente',
+        description: msg,
         variant: 'destructive'
       });
     } finally {
