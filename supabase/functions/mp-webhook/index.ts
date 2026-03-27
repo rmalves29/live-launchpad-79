@@ -166,6 +166,22 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
 
       for (const order of ordersToCancel) {
         if (order.is_cancelled) continue;
+        
+        // Only cancel orders that were previously paid (refund/chargeback).
+        // If the order was never paid (e.g. expired PIX QR code), skip cancellation.
+        if (!order.is_paid) {
+          console.log(`[mp-webhook] Order ${order.id} was never paid (is_paid=false), skipping cancellation for ${payment.status}. This is likely an expired PIX QR code.`);
+          
+          await sb.from("webhook_logs").insert({
+            webhook_type: "mercadopago_skip_cancel_unpaid",
+            status_code: 200,
+            tenant_id: order.tenant_id || tenantId,
+            payload: { order_id: order.id, payment_id: paymentId, payment_status: payment.status },
+            response: `Skipped cancellation: order ${order.id} was never paid`,
+          });
+          continue;
+        }
+        
         await markOrderAsCancelled(sb, order.id, order.tenant_id || tenantId, paymentId, payment.status);
       }
 
