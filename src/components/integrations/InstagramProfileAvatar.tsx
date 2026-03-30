@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Instagram } from 'lucide-react';
+import { User } from 'lucide-react';
 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
@@ -29,15 +29,15 @@ export default function InstagramProfileAvatar({
   return (
     <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
       <AvatarImage
-        src={!hasError ? imageSrc || undefined : undefined}
+        src={!hasError && imageSrc ? imageSrc : undefined}
         alt={username ? `Foto do perfil de @${username}` : 'Instagram profile'}
         className="object-cover"
         referrerPolicy="no-referrer"
         onError={() => setHasError(true)}
         onLoad={() => setHasError(false)}
       />
-      <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white text-xs">
-        {username?.charAt(0)?.toUpperCase() || <Instagram className="h-5 w-5" />}
+      <AvatarFallback className="bg-muted text-muted-foreground">
+        <User className="h-6 w-6" />
       </AvatarFallback>
     </Avatar>
   );
