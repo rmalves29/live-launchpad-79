@@ -132,6 +132,6 @@ serve(async (req) => {
 
   } catch (err) {
     console.error('[Instagram Callback] Unexpected error:', err);
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=erro_inesperado`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_error=erro_inesperado`);
   }
 });
