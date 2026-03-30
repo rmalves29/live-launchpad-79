@@ -458,61 +458,66 @@ Deno.serve(async (req) => {
         const hasPhone = !!customerData?.phone;
 
         if (pageAccessToken) {
-          const checkoutUrl = `https://app.orderzaps.com/t/${tenantSlug}/checkout`;
-          const cadastroUrl = `https://app.orderzaps.com/t/${tenantSlug}/cadastro-instagram`;
-          const priceFormatted = `R$ ${product.price.toFixed(2).replace('.', ',')}`;
-          const totalFormatted = `R$ ${total.toFixed(2).replace('.', ',')}`;
+          // Determine the DM recipient ID: use IGSID for messaging, skip if commenting on own account
+          const dmRecipientId = buyerIgsid || buyerIgId;
+          const isOwnerCommenting = buyerIgId === integration.instagram_account_id || buyerIgId === integration.page_id;
 
-          const qtyLabel = requestedQty > 1 ? ` (${requestedQty}x)` : '';
+          if (isOwnerCommenting) {
+            console.log(`[${timestamp}] [instagram-webhook] Skipping DM: comment is from account owner (@${buyerUsername})`);
+          } else {
+            const checkoutUrl = `https://app.orderzaps.com/t/${tenantSlug}/checkout`;
+            const cadastroUrl = `https://app.orderzaps.com/t/${tenantSlug}/cadastro-instagram`;
+            const priceFormatted = `R$ ${product.price.toFixed(2).replace('.', ',')}`;
+            const totalFormatted = `R$ ${total.toFixed(2).replace('.', ',')}`;
+            const qtyLabel = requestedQty > 1 ? ` (${requestedQty}x)` : '';
 
-          if ((!hasRegistration || !hasPhone) && integration.send_cadastro_dm) {
-            // Sem cadastro OU sem telefone + flag ativo → DM de cadastro
-            // Buscar template do banco
-            let cadastroDmMessage = '';
-            const { data: dmTemplate } = await supabase
-              .from('whatsapp_templates')
-              .select('content')
-              .eq('tenant_id', tenantId)
-              .eq('type', 'DM_INSTAGRAM_CADASTRO')
-              .maybeSingle();
+            console.log(`[${timestamp}] [instagram-webhook] DM recipient: ${dmRecipientId} (IGSID: ${buyerIgsid || 'N/A'}, IG ID: ${buyerIgId})`);
 
-            if (dmTemplate?.content) {
-              cadastroDmMessage = dmTemplate.content
-                .replace(/\{\{produto\}\}/g, product.name)
-                .replace(/\{\{quantidade\}\}/g, String(requestedQty))
-                .replace(/\{\{valor_unitario\}\}/g, priceFormatted)
-                .replace(/\{\{total\}\}/g, totalFormatted)
-                .replace(/\{\{link_cadastro\}\}/g, cadastroUrl);
-            } else {
-              // Fallback hardcoded
-              cadastroDmMessage =
-                `✅ *${product.name}*${qtyLabel} foi adicionado ao seu pedido!\n\n` +
-                `💰 Valor: ${priceFormatted}\n` +
-                `🛒 Total: ${totalFormatted}\n\n` +
-                `📋 Para confirmar seu produto, faça seu cadastro:\n${cadastroUrl}\n\n` +
-                `Após o cadastro, você receberá o link para finalizar o pedido. ✨`;
-            }
+            if ((!hasRegistration || !hasPhone) && integration.send_cadastro_dm) {
+              let cadastroDmMessage = '';
+              const { data: dmTemplate } = await supabase
+                .from('whatsapp_templates')
+                .select('content')
+                .eq('tenant_id', tenantId)
+                .eq('type', 'DM_INSTAGRAM_CADASTRO')
+                .maybeSingle();
 
-            console.log(`[${timestamp}] [instagram-webhook] Sending DM Cadastro to ${buyerId}, template found: ${!!dmTemplate?.content}`);
-            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, cadastroDmMessage, useInstagramApi);
-            if (dmResult.success) {
-              console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${buyerId}`);
-            } else {
-              console.error(`[${timestamp}] [instagram-webhook] DM Cadastro failed:`, dmResult.error);
-            }
-          } else if (!hasPhone) {
-            // Flag desativado mas sem telefone → DM checkout padrão
-            const dmMessage =
-              `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
-              `💰 Valor unitário: ${priceFormatted}\n` +
-              `🛒 Total do carrinho: ${totalFormatted}\n\n` +
-              `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
+              if (dmTemplate?.content) {
+                cadastroDmMessage = dmTemplate.content
+                  .replace(/\{\{produto\}\}/g, product.name)
+                  .replace(/\{\{quantidade\}\}/g, String(requestedQty))
+                  .replace(/\{\{valor_unitario\}\}/g, priceFormatted)
+                  .replace(/\{\{total\}\}/g, totalFormatted)
+                  .replace(/\{\{link_cadastro\}\}/g, cadastroUrl);
+              } else {
+                cadastroDmMessage =
+                  `✅ *${product.name}*${qtyLabel} foi adicionado ao seu pedido!\n\n` +
+                  `💰 Valor: ${priceFormatted}\n` +
+                  `🛒 Total: ${totalFormatted}\n\n` +
+                  `📋 Para confirmar seu produto, faça seu cadastro:\n${cadastroUrl}\n\n` +
+                  `Após o cadastro, você receberá o link para finalizar o pedido. ✨`;
+              }
 
-            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, dmMessage, useInstagramApi);
-            if (dmResult.success) {
-              console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${buyerId}`);
-            } else {
-              console.error(`[${timestamp}] [instagram-webhook] DM failed:`, dmResult.error);
+              console.log(`[${timestamp}] [instagram-webhook] Sending DM Cadastro to ${dmRecipientId}, template found: ${!!dmTemplate?.content}`);
+              const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, cadastroDmMessage, useInstagramApi);
+              if (dmResult.success) {
+                console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${dmRecipientId}`);
+              } else {
+                console.error(`[${timestamp}] [instagram-webhook] DM Cadastro failed:`, dmResult.error);
+              }
+            } else if (!hasPhone) {
+              const dmMessage =
+                `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
+                `💰 Valor unitário: ${priceFormatted}\n` +
+                `🛒 Total do carrinho: ${totalFormatted}\n\n` +
+                `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
+
+              const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, dmMessage, useInstagramApi);
+              if (dmResult.success) {
+                console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${dmRecipientId}`);
+              } else {
+                console.error(`[${timestamp}] [instagram-webhook] DM failed:`, dmResult.error);
+              }
             }
           }
           // Se tem cadastro COM telefone → não envia DM nenhuma
