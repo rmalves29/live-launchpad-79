@@ -12,7 +12,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { tenant_id } = await req.json();
+    let tenant_id: string | null = null;
+
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+      tenant_id = url.searchParams.get("tenant_id");
+    } else {
+      const body = await req.json();
+      tenant_id = body?.tenant_id ?? null;
+    }
+
     if (!tenant_id) {
       return new Response(JSON.stringify({ error: "tenant_id required" }), {
         status: 400,
@@ -49,10 +58,25 @@ Deno.serve(async (req) => {
     }
 
     // Use graph.instagram.com (required for Instagram Login tokens)
-    const profileRes = await fetch(
+    let profileData: { profile_picture_url?: string } | null = null;
+
+    const accountProfileRes = await fetch(
       `https://graph.instagram.com/v21.0/${accountId}?fields=profile_picture_url&access_token=${encodeURIComponent(token)}`
     );
-    const profileData = await profileRes.json();
+
+    if (accountProfileRes.ok) {
+      profileData = await accountProfileRes.json();
+    }
+
+    if (!profileData?.profile_picture_url) {
+      const meProfileRes = await fetch(
+        `https://graph.instagram.com/me?fields=profile_picture_url&access_token=${encodeURIComponent(token)}`
+      );
+
+      if (meProfileRes.ok) {
+        profileData = await meProfileRes.json();
+      }
+    }
 
     if (profileData?.profile_picture_url) {
       const imgRes = await fetch(profileData.profile_picture_url);
@@ -63,6 +87,7 @@ Deno.serve(async (req) => {
             ...corsHeaders,
             "Content-Type": imgBlob.type || "image/jpeg",
             "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": "inline",
           },
         });
       }
