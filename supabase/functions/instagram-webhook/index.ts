@@ -144,7 +144,10 @@ Deno.serve(async (req) => {
         }
 
         const { value } = change;
-        const buyerId = value.from.id;
+        const buyerIgId = value.from.id;
+        // For DMs, use the Instagram-Scoped ID (IGSID) if available
+        const buyerIgsid = value.from.self_ig_scoped_id || null;
+        const buyerId = buyerIgId; // Keep for cart/order logic
         const buyerUsername = value.from.username || '';
         const commentId = value.id;
         const commentText = value.text;
