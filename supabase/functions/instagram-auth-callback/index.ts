@@ -31,7 +31,7 @@ serve(async (req) => {
 
   if (!code || !state) {
     console.log('[Instagram Callback] Missing code or state');
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=parametros_ausentes`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_error=parametros_ausentes`);
   }
 
   if (!FB_APP_ID || !FB_APP_SECRET) {
