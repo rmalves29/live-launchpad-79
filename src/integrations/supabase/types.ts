@@ -1102,6 +1102,7 @@ export type Database = {
           is_active: boolean
           page_access_token: string | null
           page_id: string | null
+          profile_picture_url: string | null
           send_cadastro_dm: boolean
           tenant_id: string
           updated_at: string
@@ -1117,6 +1118,7 @@ export type Database = {
           is_active?: boolean
           page_access_token?: string | null
           page_id?: string | null
+          profile_picture_url?: string | null
           send_cadastro_dm?: boolean
           tenant_id: string
           updated_at?: string
@@ -1132,6 +1134,7 @@ export type Database = {
           is_active?: boolean
           page_access_token?: string | null
           page_id?: string | null
+          profile_picture_url?: string | null
           send_cadastro_dm?: boolean
           tenant_id?: string
           updated_at?: string
