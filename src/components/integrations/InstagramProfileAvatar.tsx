@@ -17,10 +17,13 @@ export default function InstagramProfileAvatar({
   const imageSrc = useMemo(() => {
     if (!tenantId) return null;
 
-    const url = new URL(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/instagram-profile-avatar`);
-    url.searchParams.set('tenant_id', tenantId);
-    url.searchParams.set('t', tenantId);
-    return url.toString();
+    try {
+      const base = import.meta.env.VITE_SUPABASE_URL;
+      if (!base) return null;
+      return `${base}/functions/v1/instagram-profile-avatar?tenant_id=${encodeURIComponent(tenantId)}`;
+    } catch {
+      return null;
+    }
   }, [tenantId]);
 
   return (
@@ -30,7 +33,6 @@ export default function InstagramProfileAvatar({
         alt={username ? `Foto do perfil de @${username}` : 'Instagram profile'}
         className="object-cover"
         referrerPolicy="no-referrer"
-        crossOrigin="anonymous"
         onError={() => setHasError(true)}
         onLoad={() => setHasError(false)}
       />
