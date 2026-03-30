@@ -505,7 +505,7 @@ Deno.serve(async (req) => {
               `🛒 Total do carrinho: ${totalFormatted}\n\n` +
               `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
 
-            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, dmMessage);
+            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, dmMessage, useInstagramApi);
             if (dmResult.success) {
               console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${buyerId}`);
             } else {
