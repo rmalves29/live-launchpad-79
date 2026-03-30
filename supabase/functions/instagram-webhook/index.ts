@@ -60,6 +60,7 @@ interface InstagramIntegrationRecord {
   tenant_id: string;
   instagram_account_id: string | null;
   instagram_username: string | null;
+  access_token: string | null;
   page_access_token: string | null;
   page_id: string | null;
   send_cadastro_dm: boolean;
@@ -128,7 +129,9 @@ Deno.serve(async (req) => {
 
       const tenantId = integration.tenant_id;
       const tenantSlug = getTenantSlug(integration.tenants);
-      const pageAccessToken = integration.page_access_token;
+      // Use page_access_token if available, otherwise fall back to Instagram access_token
+      const pageAccessToken = integration.page_access_token || integration.access_token;
+      const useInstagramApi = !integration.page_access_token && !!integration.access_token;
 
       console.log(`[${timestamp}] [instagram-webhook] Found tenant: ${tenantId} (${tenantSlug})`);
 
@@ -488,7 +491,7 @@ Deno.serve(async (req) => {
             }
 
             console.log(`[${timestamp}] [instagram-webhook] Sending DM Cadastro to ${buyerId}, template found: ${!!dmTemplate?.content}`);
-            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, cadastroDmMessage);
+            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, cadastroDmMessage, useInstagramApi);
             if (dmResult.success) {
               console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${buyerId}`);
             } else {
@@ -502,7 +505,7 @@ Deno.serve(async (req) => {
               `🛒 Total do carrinho: ${totalFormatted}\n\n` +
               `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
 
-            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, dmMessage);
+            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, dmMessage, useInstagramApi);
             if (dmResult.success) {
               console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${buyerId}`);
             } else {
@@ -694,11 +697,17 @@ async function syncWebhookSourceId(
 async function sendInstagramDM(
   recipientId: string,
   accessToken: string,
-  message: string
+  message: string,
+  useInstagramApi: boolean = false
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // If using Instagram access_token (not Facebook Page token), use Instagram Graph API
+    const apiUrl = useInstagramApi
+      ? `https://graph.instagram.com/v21.0/me/messages`
+      : `https://graph.facebook.com/v19.0/me/messages`;
+
     const response = await fetch(
-      `https://graph.facebook.com/v19.0/me/messages?access_token=${accessToken}`,
+      `${apiUrl}?access_token=${accessToken}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -715,6 +724,7 @@ async function sendInstagramDM(
 
     const errorData = await response.json().catch(() => ({}));
     const errorMsg = errorData?.error?.message || `HTTP ${response.status}`;
+    console.error(`[instagram-webhook] DM API error (${useInstagramApi ? 'instagram' : 'facebook'}):`, JSON.stringify(errorData));
 
     if (errorData?.error?.code === 190) {
       console.error('[instagram-webhook] Token expired or invalid');
