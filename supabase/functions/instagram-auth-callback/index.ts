@@ -26,7 +26,7 @@ serve(async (req) => {
 
   if (error) {
     console.log('[Instagram Callback] OAuth error:', error, errorReason);
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(errorReason || error)}`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_error=${encodeURIComponent(errorReason || error)}`);
   }
 
   if (!code || !state) {
