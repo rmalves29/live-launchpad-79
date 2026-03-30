@@ -58,7 +58,7 @@ serve(async (req) => {
 
     if (tokenData.error_message) {
       console.error('[Instagram Callback] Token error:', tokenData.error_message, tokenData.error_type);
-      return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(tokenData.error_message)}`);
+      return Response.redirect(`${APP_URL}/integracoes?instagram_error=${encodeURIComponent(tokenData.error_message)}`);
     }
 
     const shortLivedToken = tokenData.access_token;
