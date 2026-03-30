@@ -124,7 +124,7 @@ serve(async (req) => {
 
     if (upsertError) {
       console.error('[Instagram Callback] Upsert error:', upsertError);
-      return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(upsertError.message)}`);
+      return Response.redirect(`${APP_URL}/integracoes?instagram_error=${encodeURIComponent(upsertError.message)}`);
     }
 
     console.log('[Instagram Callback] Success! Redirecting...');
