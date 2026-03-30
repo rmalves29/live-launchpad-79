@@ -697,11 +697,17 @@ async function syncWebhookSourceId(
 async function sendInstagramDM(
   recipientId: string,
   accessToken: string,
-  message: string
+  message: string,
+  useInstagramApi: boolean = false
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // If using Instagram access_token (not Facebook Page token), use Instagram Graph API
+    const apiUrl = useInstagramApi
+      ? `https://graph.instagram.com/v21.0/me/messages`
+      : `https://graph.facebook.com/v19.0/me/messages`;
+
     const response = await fetch(
-      `https://graph.facebook.com/v19.0/me/messages?access_token=${accessToken}`,
+      `${apiUrl}?access_token=${accessToken}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -718,6 +724,7 @@ async function sendInstagramDM(
 
     const errorData = await response.json().catch(() => ({}));
     const errorMsg = errorData?.error?.message || `HTTP ${response.status}`;
+    console.error(`[instagram-webhook] DM API error (${useInstagramApi ? 'instagram' : 'facebook'}):`, JSON.stringify(errorData));
 
     if (errorData?.error?.code === 190) {
       console.error('[instagram-webhook] Token expired or invalid');
