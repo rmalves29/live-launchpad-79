@@ -128,7 +128,7 @@ serve(async (req) => {
     }
 
     console.log('[Instagram Callback] Success! Redirecting...');
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_success=true`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_success=true`);
 
   } catch (err) {
     console.error('[Instagram Callback] Unexpected error:', err);
