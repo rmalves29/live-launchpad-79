@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { User } from 'lucide-react';
 
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar } from '@/components/ui/avatar';
 
 interface InstagramProfileAvatarProps {
   tenantId: string;
@@ -14,33 +14,53 @@ export default function InstagramProfileAvatar({
   username,
   profilePictureUrl,
 }: InstagramProfileAvatarProps) {
-  const [hasError, setHasError] = useState(false);
+  const sources = useMemo(() => {
+    const candidates: string[] = [];
 
-  // Always use the edge function proxy - Instagram CDN URLs expire quickly
-  const imageSrc = useMemo(() => {
-    if (!tenantId) return null;
     try {
       const base = import.meta.env.VITE_SUPABASE_URL;
-      if (!base) return null;
-      return `${base}/functions/v1/instagram-profile-avatar?tenant_id=${encodeURIComponent(tenantId)}&t=${Date.now()}`;
+      if (tenantId && base) {
+        candidates.push(
+          `${base}/functions/v1/instagram-profile-avatar?tenant_id=${encodeURIComponent(tenantId)}&t=${Date.now()}`
+        );
+      }
     } catch {
-      return null;
+      // ignore
     }
-  }, [tenantId]);
+
+    if (profilePictureUrl) {
+      candidates.push(profilePictureUrl);
+    }
+
+    return Array.from(new Set(candidates.filter(Boolean)));
+  }, [tenantId, profilePictureUrl]);
+
+  const [sourceIndex, setSourceIndex] = useState(0);
+
+  useEffect(() => {
+    setSourceIndex(0);
+  }, [sources]);
+
+  const currentSrc = sources[sourceIndex] ?? null;
+
+  const showFallback = !currentSrc;
 
   return (
     <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
-      <AvatarImage
-        src={!hasError && imageSrc ? imageSrc : undefined}
-        alt={username ? `Foto do perfil de @${username}` : 'Instagram profile'}
-        className="object-cover"
-        referrerPolicy="no-referrer"
-        onError={() => setHasError(true)}
-        onLoad={() => setHasError(false)}
-      />
-      <AvatarFallback className="bg-muted text-muted-foreground">
-        <User className="h-6 w-6" />
-      </AvatarFallback>
+      {showFallback ? (
+        <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
+          <User className="h-6 w-6" />
+        </div>
+      ) : (
+        <img
+          src={currentSrc}
+          alt={username ? `Foto do perfil de @${username}` : 'Instagram profile'}
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          loading="eager"
+          onError={() => setSourceIndex((prev) => prev + 1)}
+        />
+      )}
     </Avatar>
   );
 }
