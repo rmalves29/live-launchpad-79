@@ -491,7 +491,7 @@ Deno.serve(async (req) => {
             }
 
             console.log(`[${timestamp}] [instagram-webhook] Sending DM Cadastro to ${buyerId}, template found: ${!!dmTemplate?.content}`);
-            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, cadastroDmMessage);
+            const dmResult = await sendInstagramDM(buyerId, pageAccessToken, cadastroDmMessage, useInstagramApi);
             if (dmResult.success) {
               console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${buyerId}`);
             } else {
