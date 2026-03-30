@@ -60,6 +60,7 @@ interface InstagramIntegrationRecord {
   tenant_id: string;
   instagram_account_id: string | null;
   instagram_username: string | null;
+  access_token: string | null;
   page_access_token: string | null;
   page_id: string | null;
   send_cadastro_dm: boolean;
