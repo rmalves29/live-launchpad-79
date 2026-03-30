@@ -113,6 +113,13 @@ Deno.serve(async (req) => {
     const profileData = await fetchProfileData(token, accountId);
 
     if (profileData?.profile_picture_url) {
+      // Save the profile picture URL to DB for future direct use
+      await supabase
+        .from("integration_instagram")
+        .update({ profile_picture_url: profileData.profile_picture_url })
+        .eq("tenant_id", tenant_id)
+        .then(() => {});
+
       const imgRes = await fetch(profileData.profile_picture_url, {
         headers: { Accept: "image/*" },
       });
