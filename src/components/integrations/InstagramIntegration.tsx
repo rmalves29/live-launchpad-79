@@ -187,6 +187,7 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
               <InstagramProfileAvatar
                 tenantId={tenantId}
                 username={config?.instagram_username || null}
+                profilePictureUrl={(config as any)?.profile_picture_url || null}
               />
               <div className="flex-1 space-y-1">
                 <p className="text-sm text-muted-foreground">

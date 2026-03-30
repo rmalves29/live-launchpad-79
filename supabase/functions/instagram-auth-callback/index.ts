@@ -121,6 +121,7 @@ serve(async (req) => {
         instagram_account_id: instagramAccountId || (oauthUserId ? String(oauthUserId) : null),
         access_token: finalToken,
         instagram_username: instagramUsername || null,
+        profile_picture_url: instagramProfilePictureUrl || null,
         is_active: true,
         environment: 'production',
         updated_at: new Date().toISOString(),
