@@ -6,17 +6,20 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 interface InstagramProfileAvatarProps {
   tenantId: string;
   username?: string | null;
+  profilePictureUrl?: string | null;
 }
 
 export default function InstagramProfileAvatar({
   tenantId,
   username,
+  profilePictureUrl,
 }: InstagramProfileAvatarProps) {
   const [hasError, setHasError] = useState(false);
 
+  // Priority: 1) DB-stored profile_picture_url, 2) Edge function proxy
   const imageSrc = useMemo(() => {
+    if (profilePictureUrl) return profilePictureUrl;
     if (!tenantId) return null;
-
     try {
       const base = import.meta.env.VITE_SUPABASE_URL;
       if (!base) return null;
@@ -24,7 +27,7 @@ export default function InstagramProfileAvatar({
     } catch {
       return null;
     }
-  }, [tenantId]);
+  }, [tenantId, profilePictureUrl]);
 
   return (
     <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
