@@ -33,20 +33,40 @@ export default function InstagramProfileAvatar({
       if (!tenantId) return;
 
       try {
-        const { data, error } = await supabase.functions.invoke(
-          'instagram-profile-avatar',
-          { body: { tenant_id: tenantId } }
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/instagram-profile-avatar`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              ...(session?.access_token
+                ? { Authorization: `Bearer ${session.access_token}` }
+                : {}),
+            },
+            body: JSON.stringify({ tenant_id: tenantId }),
+          }
         );
 
-        if (error || !data) return;
+        if (!response.ok) {
+          console.warn('[InstagramProfileAvatar] Request failed:', await response.text());
+          return;
+        }
 
-        // data comes as Blob when responseType is not set
-        if (data instanceof Blob && data.size > 0) {
-          if (!isCancelled) {
-            const url = URL.createObjectURL(data);
-            objectUrlRef.current = url;
-            setImageSrc(url);
-          }
+        const blob = await response.blob();
+        if (!blob.size || !blob.type.startsWith('image/')) {
+          console.warn('[InstagramProfileAvatar] Invalid image response');
+          return;
+        }
+
+        if (!isCancelled) {
+          const url = URL.createObjectURL(blob);
+          objectUrlRef.current = url;
+          setImageSrc(url);
         }
       } catch (err) {
         console.warn('[InstagramProfileAvatar] Failed:', err);
