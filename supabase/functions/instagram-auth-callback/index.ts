@@ -36,7 +36,7 @@ serve(async (req) => {
 
   if (!FB_APP_ID || !FB_APP_SECRET) {
     console.error('[Instagram Callback] Missing INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET');
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=credenciais_nao_configuradas`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_error=credenciais_nao_configuradas`);
   }
 
   try {
