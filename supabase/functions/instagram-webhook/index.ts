@@ -129,7 +129,9 @@ Deno.serve(async (req) => {
 
       const tenantId = integration.tenant_id;
       const tenantSlug = getTenantSlug(integration.tenants);
-      const pageAccessToken = integration.page_access_token;
+      // Use page_access_token if available, otherwise fall back to Instagram access_token
+      const pageAccessToken = integration.page_access_token || integration.access_token;
+      const useInstagramApi = !integration.page_access_token && !!integration.access_token;
 
       console.log(`[${timestamp}] [instagram-webhook] Found tenant: ${tenantId} (${tenantSlug})`);
 
