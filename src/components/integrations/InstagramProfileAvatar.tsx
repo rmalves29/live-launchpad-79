@@ -16,9 +16,8 @@ export default function InstagramProfileAvatar({
 }: InstagramProfileAvatarProps) {
   const [hasError, setHasError] = useState(false);
 
-  // Priority: 1) DB-stored profile_picture_url, 2) Edge function proxy
+  // Always use the edge function proxy - Instagram CDN URLs expire quickly
   const imageSrc = useMemo(() => {
-    if (profilePictureUrl) return profilePictureUrl;
     if (!tenantId) return null;
     try {
       const base = import.meta.env.VITE_SUPABASE_URL;
@@ -27,7 +26,7 @@ export default function InstagramProfileAvatar({
     } catch {
       return null;
     }
-  }, [tenantId, profilePictureUrl]);
+  }, [tenantId]);
 
   return (
     <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
