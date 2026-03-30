@@ -48,26 +48,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Try /picture endpoint first (returns image directly)
-    const picUrl = `https://graph.facebook.com/v21.0/${accountId}/picture?type=normal&access_token=${encodeURIComponent(token)}`;
-    const picRes = await fetch(picUrl, { redirect: "follow" });
-
-    if (picRes.ok) {
-      const blob = await picRes.blob();
-      if (blob.size > 0) {
-        return new Response(blob, {
-          headers: {
-            ...corsHeaders,
-            "Content-Type": blob.type || "image/jpeg",
-            "Cache-Control": "public, max-age=3600",
-          },
-        });
-      }
-    }
-
-    // Fallback: get profile_picture_url and proxy it
+    // Use graph.instagram.com (required for Instagram Login tokens)
     const profileRes = await fetch(
-      `https://graph.facebook.com/v21.0/${accountId}?fields=profile_picture_url&access_token=${encodeURIComponent(token)}`
+      `https://graph.instagram.com/v21.0/${accountId}?fields=profile_picture_url&access_token=${encodeURIComponent(token)}`
     );
     const profileData = await profileRes.json();
 

@@ -26,17 +26,17 @@ serve(async (req) => {
 
   if (error) {
     console.log('[Instagram Callback] OAuth error:', error, errorReason);
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(errorReason || error)}`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_error=${encodeURIComponent(errorReason || error)}`);
   }
 
   if (!code || !state) {
     console.log('[Instagram Callback] Missing code or state');
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=parametros_ausentes`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_error=parametros_ausentes`);
   }
 
   if (!FB_APP_ID || !FB_APP_SECRET) {
     console.error('[Instagram Callback] Missing INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET');
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=credenciais_nao_configuradas`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_error=credenciais_nao_configuradas`);
   }
 
   try {
@@ -58,7 +58,7 @@ serve(async (req) => {
 
     if (tokenData.error_message) {
       console.error('[Instagram Callback] Token error:', tokenData.error_message, tokenData.error_type);
-      return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(tokenData.error_message)}`);
+      return Response.redirect(`${APP_URL}/integracoes?instagram_error=${encodeURIComponent(tokenData.error_message)}`);
     }
 
     const shortLivedToken = tokenData.access_token;
@@ -124,14 +124,14 @@ serve(async (req) => {
 
     if (upsertError) {
       console.error('[Instagram Callback] Upsert error:', upsertError);
-      return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=${encodeURIComponent(upsertError.message)}`);
+      return Response.redirect(`${APP_URL}/integracoes?instagram_error=${encodeURIComponent(upsertError.message)}`);
     }
 
     console.log('[Instagram Callback] Success! Redirecting...');
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_success=true`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_success=true`);
 
   } catch (err) {
     console.error('[Instagram Callback] Unexpected error:', err);
-    return Response.redirect(`${APP_URL}/config?tab=integracoes&instagram_error=erro_inesperado`);
+    return Response.redirect(`${APP_URL}/integracoes?instagram_error=erro_inesperado`);
   }
 });
