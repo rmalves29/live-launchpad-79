@@ -46,7 +46,7 @@ export default function InstagramProfileAvatar({
   const showFallback = !currentSrc;
 
   return (
-    <Avatar className="h-12 w-12 border-2 border-border shadow-sm">
+    <Avatar className="h-16 w-16 border-2 border-border shadow-sm">
       {showFallback ? (
         <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
           <User className="h-6 w-6" />
