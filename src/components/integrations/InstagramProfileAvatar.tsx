@@ -20,7 +20,7 @@ export default function InstagramProfileAvatar({
     try {
       const base = import.meta.env.VITE_SUPABASE_URL;
       if (!base) return null;
-      return `${base}/functions/v1/instagram-profile-avatar?tenant_id=${encodeURIComponent(tenantId)}`;
+      return `${base}/functions/v1/instagram-profile-avatar?tenant_id=${encodeURIComponent(tenantId)}&t=${Date.now()}`;
     } catch {
       return null;
     }
