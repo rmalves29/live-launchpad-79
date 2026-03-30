@@ -84,9 +84,10 @@ serve(async (req) => {
 
     let instagramUsername = '';
     let instagramAccountId = oauthUserId?.toString() || '';
+    let instagramProfilePictureUrl = '';
 
     try {
-      const meRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${finalToken}`);
+      const meRes = await fetch(`https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${finalToken}`);
       const meData = await meRes.json();
       console.log('[Instagram Callback] /me response:', JSON.stringify(meData));
 
@@ -97,12 +98,17 @@ serve(async (req) => {
       if (meData?.username) {
         instagramUsername = String(meData.username);
       }
+
+      if (meData?.profile_picture_url) {
+        instagramProfilePictureUrl = String(meData.profile_picture_url);
+      }
     } catch (meErr) {
       console.error('[Instagram Callback] Erro ao buscar dados via /me:', meErr);
     }
 
     console.log('[Instagram Callback] Final account/user:', instagramAccountId || '(não obtido)');
     console.log('[Instagram Callback] Final username:', instagramUsername || '(não obtido)');
+    console.log('[Instagram Callback] Profile picture:', instagramProfilePictureUrl ? 'present' : 'missing');
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
