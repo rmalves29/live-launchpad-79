@@ -166,6 +166,7 @@ export const MelhorEnvioStatus = () => {
           </Alert>
         )}
       </CardContent>
+    </Card>
     </>
   );
 };
