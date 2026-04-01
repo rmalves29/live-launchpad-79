@@ -329,6 +329,21 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
             <div className="flex gap-2">
               <Button onClick={() => setIsEditing(true)}>Editar Configurações</Button>
             </div>
+
+            {integration.is_active && (
+              <div className="mt-4 space-y-3">
+                <ShippingServiceSelector
+                  services={MELHOR_ENVIO_SERVICES}
+                  enabledServices={enabledServices}
+                  onToggle={(key, enabled) => {
+                    setEnabledServices(prev => ({ ...prev, [key]: enabled }));
+                  }}
+                />
+                <Button onClick={saveEnabledServices} disabled={savingServices} className="w-full">
+                  {savingServices ? 'Salvando...' : 'Salvar Serviços'}
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <form
