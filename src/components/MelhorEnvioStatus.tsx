@@ -25,14 +25,6 @@ interface TokenStatus {
   };
 }
 
-const MELHOR_ENVIO_SERVICES = [
-  { key: 'PAC', name: 'PAC', description: 'Econômico – entrega em até 10 dias úteis' },
-  { key: 'SEDEX', name: 'SEDEX', description: 'Rápido – entrega em até 3 dias úteis' },
-  { key: '.Package', name: '.Package', description: 'Jadlog – entrega econômica' },
-  { key: '.Com', name: '.Com', description: 'Jadlog – entrega expressa' },
-  { key: 'Mini Envios', name: 'Mini Envios', description: 'Correios – até 300g' },
-  { key: 'SEDEX Hoje', name: 'SEDEX Hoje', description: 'Correios – entrega no mesmo dia' },
-];
 
 export const MelhorEnvioStatus = () => {
   const { toast } = useToast();
