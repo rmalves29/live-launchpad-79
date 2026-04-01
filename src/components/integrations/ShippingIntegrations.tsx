@@ -51,6 +51,48 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
     client_secret: '',
   });
   const [isEditing, setIsEditing] = useState(false);
+  const [enabledServices, setEnabledServices] = useState<Record<string, boolean>>({});
+  const [savingServices, setSavingServices] = useState(false);
+
+  // Load enabled services
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase
+      .from('shipping_integrations')
+      .select('enabled_services')
+      .eq('tenant_id', tenantId)
+      .eq('provider', 'melhor_envio')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.enabled_services) {
+          try {
+            const parsed = typeof data.enabled_services === 'string'
+              ? JSON.parse(data.enabled_services)
+              : data.enabled_services;
+            if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+              setEnabledServices(parsed);
+            }
+          } catch {}
+        }
+      });
+  }, [tenantId]);
+
+  const saveEnabledServices = async () => {
+    setSavingServices(true);
+    try {
+      const { error } = await supabase
+        .from('shipping_integrations')
+        .update({ enabled_services: JSON.stringify(enabledServices) })
+        .eq('tenant_id', tenantId)
+        .eq('provider', 'melhor_envio');
+      if (error) throw error;
+      toast({ title: 'Salvo', description: 'Serviços atualizados com sucesso.' });
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingServices(false);
+    }
+  };
 
   // Buscar integração existente na tabela shipping_integrations
   const { data: integration, isLoading } = useQuery({
