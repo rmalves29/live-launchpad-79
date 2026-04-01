@@ -9,6 +9,16 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle2, AlertCircle, Package, Truck } from 'lucide-react';
+import ShippingServiceSelector from '@/components/integrations/ShippingServiceSelector';
+
+const MELHOR_ENVIO_SERVICES = [
+  { key: 'PAC', name: 'PAC', description: 'Econômico – entrega em até 10 dias úteis' },
+  { key: 'SEDEX', name: 'SEDEX', description: 'Rápido – entrega em até 3 dias úteis' },
+  { key: '.Package', name: '.Package', description: 'Jadlog – entrega econômica' },
+  { key: '.Com', name: '.Com', description: 'Jadlog – entrega expressa' },
+  { key: 'Mini Envios', name: 'Mini Envios', description: 'Correios – até 300g' },
+  { key: 'SEDEX Hoje', name: 'SEDEX Hoje', description: 'Correios – entrega no mesmo dia' },
+];
 
 interface ShippingIntegrationsProps {
   tenantId: string;
