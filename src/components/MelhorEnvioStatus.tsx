@@ -166,22 +166,6 @@ export const MelhorEnvioStatus = () => {
           </Alert>
         )}
       </CardContent>
-    </Card>
-
-    {status?.valid && (
-      <div className="mt-4 space-y-3">
-        <ShippingServiceSelector
-          services={MELHOR_ENVIO_SERVICES}
-          enabledServices={enabledServices}
-          onToggle={(key, enabled) => {
-            setEnabledServices(prev => ({ ...prev, [key]: enabled }));
-          }}
-        />
-        <Button onClick={saveEnabledServices} disabled={savingServices} className="w-full">
-          {savingServices ? 'Salvando...' : 'Salvar Serviços'}
-        </Button>
-      </div>
-    )}
     </>
   );
 };
