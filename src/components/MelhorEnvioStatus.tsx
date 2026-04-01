@@ -7,7 +7,7 @@ import { ExternalLink, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenantContext } from '@/contexts/TenantContext';
-import ShippingServiceSelector from '@/components/integrations/ShippingServiceSelector';
+
 
 interface TokenStatus {
   valid: boolean;
