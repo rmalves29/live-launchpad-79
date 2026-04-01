@@ -32,43 +32,6 @@ export const MelhorEnvioStatus = () => {
   const [status, setStatus] = useState<TokenStatus | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const loadEnabledServices = async () => {
-    if (!tenantId) return;
-    const { data } = await supabase
-      .from('shipping_integrations')
-      .select('enabled_services')
-      .eq('tenant_id', tenantId)
-      .eq('provider', 'melhor_envio')
-      .maybeSingle();
-    if (data?.enabled_services) {
-      try {
-        const parsed = typeof data.enabled_services === 'string' 
-          ? JSON.parse(data.enabled_services) 
-          : data.enabled_services;
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setEnabledServices(parsed);
-        }
-      } catch {}
-    }
-  };
-
-  const saveEnabledServices = async () => {
-    if (!tenantId) return;
-    setSavingServices(true);
-    try {
-      const { error } = await supabase
-        .from('shipping_integrations')
-        .update({ enabled_services: JSON.stringify(enabledServices) })
-        .eq('tenant_id', tenantId)
-        .eq('provider', 'melhor_envio');
-      if (error) throw error;
-      toast({ title: 'Salvo', description: 'Serviços atualizados com sucesso.' });
-    } catch (err: any) {
-      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
-    } finally {
-      setSavingServices(false);
-    }
-  };
 
   const checkToken = async () => {
     if (!tenantId) return;
