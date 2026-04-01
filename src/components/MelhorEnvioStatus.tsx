@@ -31,8 +31,6 @@ export const MelhorEnvioStatus = () => {
   const { tenantId } = useTenantContext();
   const [status, setStatus] = useState<TokenStatus | null>(null);
   const [loading, setLoading] = useState(false);
-  const [enabledServices, setEnabledServices] = useState<Record<string, boolean>>({});
-  const [savingServices, setSavingServices] = useState(false);
 
   const loadEnabledServices = async () => {
     if (!tenantId) return;
