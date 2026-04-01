@@ -9,6 +9,16 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, CheckCircle2, AlertCircle, Package, Truck } from 'lucide-react';
+import ShippingServiceSelector from '@/components/integrations/ShippingServiceSelector';
+
+const MELHOR_ENVIO_SERVICES = [
+  { key: 'PAC', name: 'PAC', description: 'Econômico – entrega em até 10 dias úteis' },
+  { key: 'SEDEX', name: 'SEDEX', description: 'Rápido – entrega em até 3 dias úteis' },
+  { key: '.Package', name: '.Package', description: 'Jadlog – entrega econômica' },
+  { key: '.Com', name: '.Com', description: 'Jadlog – entrega expressa' },
+  { key: 'Mini Envios', name: 'Mini Envios', description: 'Correios – até 300g' },
+  { key: 'SEDEX Hoje', name: 'SEDEX Hoje', description: 'Correios – entrega no mesmo dia' },
+];
 
 interface ShippingIntegrationsProps {
   tenantId: string;
@@ -41,6 +51,48 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
     client_secret: '',
   });
   const [isEditing, setIsEditing] = useState(false);
+  const [enabledServices, setEnabledServices] = useState<Record<string, boolean>>({});
+  const [savingServices, setSavingServices] = useState(false);
+
+  // Load enabled services
+  useEffect(() => {
+    if (!tenantId) return;
+    supabase
+      .from('shipping_integrations')
+      .select('enabled_services')
+      .eq('tenant_id', tenantId)
+      .eq('provider', 'melhor_envio')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.enabled_services) {
+          try {
+            const parsed = typeof data.enabled_services === 'string'
+              ? JSON.parse(data.enabled_services)
+              : data.enabled_services;
+            if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+              setEnabledServices(parsed);
+            }
+          } catch {}
+        }
+      });
+  }, [tenantId]);
+
+  const saveEnabledServices = async () => {
+    setSavingServices(true);
+    try {
+      const { error } = await supabase
+        .from('shipping_integrations')
+        .update({ enabled_services: JSON.stringify(enabledServices) })
+        .eq('tenant_id', tenantId)
+        .eq('provider', 'melhor_envio');
+      if (error) throw error;
+      toast({ title: 'Salvo', description: 'Serviços atualizados com sucesso.' });
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingServices(false);
+    }
+  };
 
   // Buscar integração existente na tabela shipping_integrations
   const { data: integration, isLoading } = useQuery({
@@ -277,6 +329,21 @@ export default function ShippingIntegrations({ tenantId }: ShippingIntegrationsP
             <div className="flex gap-2">
               <Button onClick={() => setIsEditing(true)}>Editar Configurações</Button>
             </div>
+
+            {integration.is_active && (
+              <div className="mt-4 space-y-3">
+                <ShippingServiceSelector
+                  services={MELHOR_ENVIO_SERVICES}
+                  enabledServices={enabledServices}
+                  onToggle={(key, enabled) => {
+                    setEnabledServices(prev => ({ ...prev, [key]: enabled }));
+                  }}
+                />
+                <Button onClick={saveEnabledServices} disabled={savingServices} className="w-full">
+                  {savingServices ? 'Salvando...' : 'Salvar Serviços'}
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <form

@@ -7,7 +7,7 @@ import { ExternalLink, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenantContext } from '@/contexts/TenantContext';
-import ShippingServiceSelector from '@/components/integrations/ShippingServiceSelector';
+
 
 interface TokenStatus {
   valid: boolean;
@@ -25,60 +25,13 @@ interface TokenStatus {
   };
 }
 
-const MELHOR_ENVIO_SERVICES = [
-  { key: 'PAC', name: 'PAC', description: 'Econômico – entrega em até 10 dias úteis' },
-  { key: 'SEDEX', name: 'SEDEX', description: 'Rápido – entrega em até 3 dias úteis' },
-  { key: '.Package', name: '.Package', description: 'Jadlog – entrega econômica' },
-  { key: '.Com', name: '.Com', description: 'Jadlog – entrega expressa' },
-  { key: 'Mini Envios', name: 'Mini Envios', description: 'Correios – até 300g' },
-  { key: 'SEDEX Hoje', name: 'SEDEX Hoje', description: 'Correios – entrega no mesmo dia' },
-];
 
 export const MelhorEnvioStatus = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
   const [status, setStatus] = useState<TokenStatus | null>(null);
   const [loading, setLoading] = useState(false);
-  const [enabledServices, setEnabledServices] = useState<Record<string, boolean>>({});
-  const [savingServices, setSavingServices] = useState(false);
 
-  const loadEnabledServices = async () => {
-    if (!tenantId) return;
-    const { data } = await supabase
-      .from('shipping_integrations')
-      .select('enabled_services')
-      .eq('tenant_id', tenantId)
-      .eq('provider', 'melhor_envio')
-      .maybeSingle();
-    if (data?.enabled_services) {
-      try {
-        const parsed = typeof data.enabled_services === 'string' 
-          ? JSON.parse(data.enabled_services) 
-          : data.enabled_services;
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-          setEnabledServices(parsed);
-        }
-      } catch {}
-    }
-  };
-
-  const saveEnabledServices = async () => {
-    if (!tenantId) return;
-    setSavingServices(true);
-    try {
-      const { error } = await supabase
-        .from('shipping_integrations')
-        .update({ enabled_services: JSON.stringify(enabledServices) })
-        .eq('tenant_id', tenantId)
-        .eq('provider', 'melhor_envio');
-      if (error) throw error;
-      toast({ title: 'Salvo', description: 'Serviços atualizados com sucesso.' });
-    } catch (err: any) {
-      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
-    } finally {
-      setSavingServices(false);
-    }
-  };
 
   const checkToken = async () => {
     if (!tenantId) return;
@@ -108,7 +61,6 @@ export const MelhorEnvioStatus = () => {
 
   useEffect(() => {
     checkToken();
-    loadEnabledServices();
   }, [tenantId]);
 
   const handleOAuthRedirect = () => {
@@ -215,21 +167,6 @@ export const MelhorEnvioStatus = () => {
         )}
       </CardContent>
     </Card>
-
-    {status?.valid && (
-      <div className="mt-4 space-y-3">
-        <ShippingServiceSelector
-          services={MELHOR_ENVIO_SERVICES}
-          enabledServices={enabledServices}
-          onToggle={(key, enabled) => {
-            setEnabledServices(prev => ({ ...prev, [key]: enabled }));
-          }}
-        />
-        <Button onClick={saveEnabledServices} disabled={savingServices} className="w-full">
-          {savingServices ? 'Salvando...' : 'Salvar Serviços'}
-        </Button>
-      </div>
-    )}
     </>
   );
 };
