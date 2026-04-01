@@ -61,7 +61,6 @@ export const MelhorEnvioStatus = () => {
 
   useEffect(() => {
     checkToken();
-    loadEnabledServices();
   }, [tenantId]);
 
   const handleOAuthRedirect = () => {
