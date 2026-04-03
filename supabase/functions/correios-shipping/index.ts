@@ -131,7 +131,7 @@ serve(async (req) => {
     const cepOrigem = integration.from_cep;
     if (!cepOrigem) {
       return new Response(JSON.stringify({ success: false, error: "CEP de origem não configurado" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const credentials: CorreiosCredentials = {
