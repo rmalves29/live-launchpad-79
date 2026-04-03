@@ -146,12 +146,24 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           products: [{ weight: 0.5, insurance_value: 100, quantity: 1 }],
         },
       });
-      if (error) throw error;
+      if (error) {
+        // Try to extract message from FunctionsHttpError
+        let msg = error.message || 'Erro ao chamar a função';
+        try {
+          const ctx = (error as any).context;
+          if (ctx && typeof ctx.json === 'function') {
+            const body = await ctx.json();
+            if (body?.error) msg = body.error;
+          }
+        } catch {}
+        setTestResult({ success: false, message: msg, services: [] });
+        return;
+      }
       if (data?.success && data?.shipping_options?.length > 0) {
         const foundServices = data.shipping_options.map((opt: any) => opt.name);
         setTestResult({ success: true, message: `Conexão OK! ${data.shipping_options.length} serviço(s) disponível(is).`, services: foundServices });
       } else {
-        setTestResult({ success: false, message: data?.error || 'Nenhum serviço retornado', services: [] });
+        setTestResult({ success: false, message: data?.error || 'Nenhum serviço retornado. Verifique se as credenciais e o Cartão de Postagem estão corretos.', services: [] });
       }
     } catch (error: any) {
       setTestResult({ success: false, message: error.message || 'Erro ao testar conexão', services: [] });

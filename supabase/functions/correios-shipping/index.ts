@@ -114,7 +114,7 @@ serve(async (req) => {
 
     if (!to_postal_code) {
       return new Response(JSON.stringify({ success: false, error: "CEP de destino é obrigatório" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -124,14 +124,14 @@ serve(async (req) => {
       .eq("tenant_id", tenant_id).eq("provider", "correios").eq("is_active", true).maybeSingle();
 
     if (!integration) {
-      return new Response(JSON.stringify({ success: false, error: "Integração Correios não configurada ou inativa" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ success: false, error: "Integração Correios não configurada ou inativa. Salve a configuração primeiro." }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const cepOrigem = integration.from_cep;
     if (!cepOrigem) {
       return new Response(JSON.stringify({ success: false, error: "CEP de origem não configurado" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const credentials: CorreiosCredentials = {
