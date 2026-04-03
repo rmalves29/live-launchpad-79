@@ -114,7 +114,7 @@ serve(async (req) => {
 
     if (!to_postal_code) {
       return new Response(JSON.stringify({ success: false, error: "CEP de destino é obrigatório" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
