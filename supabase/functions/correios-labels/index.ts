@@ -66,6 +66,18 @@ const SERVICE_CODES: Record<string, string> = {
   "Mini Envios": "04227",
 };
 
+/** Normalise phone for Correios: digits only, strip country code 55, max 11 chars */
+function sanitizePhoneForCorreios(phone: string | null | undefined): string {
+  if (!phone) return "";
+  let clean = phone.replace(/\D/g, "");
+  // Strip Brazil country code
+  if (clean.startsWith("55") && clean.length > 11) {
+    clean = clean.slice(2);
+  }
+  // Max 11 digits (DDD + 9-digit mobile)
+  return clean.slice(0, 11);
+}
+
 interface SenderInfo {
   nome: string;
   logradouro: string;
@@ -105,7 +117,7 @@ async function createPrePostagem(
       cep: sender.cep.replace(/\D/g, ""),
       cidade: sender.cidade,
       uf: sender.uf,
-      celular: sender.telefone?.replace(/\D/g, "") || "",
+      celular: sanitizePhoneForCorreios(sender.telefone),
     },
     destinatario: {
       nome: order.customer_name || "Destinatário",
@@ -116,7 +128,7 @@ async function createPrePostagem(
       cep: (order.customer_cep || "").replace(/\D/g, ""),
       cidade: order.customer_city || "",
       uf: order.customer_state || "",
-      celular: order.customer_phone?.replace(/\D/g, "") || "",
+      celular: sanitizePhoneForCorreios(order.customer_phone),
     },
     codigoServico: serviceCode,
     pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
