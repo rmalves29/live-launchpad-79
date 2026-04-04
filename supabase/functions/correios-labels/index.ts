@@ -108,6 +108,7 @@ function buildPrePostagemPayload(
 ) {
   const senderPhone = sanitizePhoneForCorreios(sender.telefone);
   const recipientPhone = sanitizePhoneForCorreios(order.customer_phone);
+  const fallbackPhone = "";
 
   return {
     idCorreios: cartaoPostagem,
@@ -120,7 +121,7 @@ function buildPrePostagemPayload(
       cep: sender.cep.replace(/\D/g, ""),
       cidade: sender.cidade,
       uf: sender.uf,
-      ...(includePhones && senderPhone ? { celular: senderPhone } : {}),
+      celular: includePhones ? senderPhone : fallbackPhone,
     },
     destinatario: {
       nome: order.customer_name || "Destinatário",
@@ -131,7 +132,7 @@ function buildPrePostagemPayload(
       cep: (order.customer_cep || "").replace(/\D/g, ""),
       cidade: order.customer_city || "",
       uf: order.customer_state || "",
-      ...(includePhones && recipientPhone ? { celular: recipientPhone } : {}),
+      celular: includePhones ? recipientPhone : fallbackPhone,
     },
     codigoServico: serviceCode,
     pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
