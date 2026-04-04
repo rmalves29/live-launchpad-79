@@ -66,6 +66,18 @@ const SERVICE_CODES: Record<string, string> = {
   "Mini Envios": "04227",
 };
 
+/** Normalise phone for Correios: digits only, strip country code 55, max 11 chars */
+function sanitizePhoneForCorreios(phone: string | null | undefined): string {
+  if (!phone) return "";
+  let clean = phone.replace(/\D/g, "");
+  // Strip Brazil country code
+  if (clean.startsWith("55") && clean.length > 11) {
+    clean = clean.slice(2);
+  }
+  // Max 11 digits (DDD + 9-digit mobile)
+  return clean.slice(0, 11);
+}
+
 interface SenderInfo {
   nome: string;
   logradouro: string;
