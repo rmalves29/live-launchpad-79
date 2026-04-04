@@ -213,9 +213,7 @@ const Checkout = () => {
         setSelectedShippingData(null);
         
         // Usar opções customizadas do banco ou fallback padrão
-        const baseShippingOptions = customOptions.length > 0 
-          ? customOptions 
-          : [DEFAULT_SHIPPING_OPTION];
+        const baseShippingOptions = customOptions;
         
         setShippingOptions(baseShippingOptions);
         
