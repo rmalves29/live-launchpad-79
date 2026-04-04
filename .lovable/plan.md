@@ -1,36 +1,40 @@
 
 
-## Plano: Importar clientes do XLSX para Roanne Jóias (regras atualizadas)
+# Plano: Redesenhar etiqueta no modelo oficial dos Correios
 
-### Resumo
+## Contexto
+A etiqueta atual (`CorreiosLabelPrint.tsx`) tem um layout simplificado. O usuário quer que siga o modelo oficial dos Correios (conforme a imagem enviada), com:
+- Logo dos Correios no canto superior direito
+- Tipo de serviço (EXPRESSA/PAC) ao lado do logo
+- Contrato e Volume no cabeçalho
+- Código de rastreio em destaque com código de barras
+- Linha de "Recebedor" e "Assinatura/Documento"
+- Bloco DESTINATÁRIO com fundo preto no título e logo Correios
+- CEP em destaque + Cidade/UF
+- Bloco Remetente na parte inferior
+- Código de barras do CEP de destino (Postnet) na parte inferior
 
-Importar registros do arquivo `Tabela_clientes_VNL.xlsx` para o tenant **Roanne Jóias** (`014457e5-e85f-4d62-874b-6bd0b72213bc`), com as seguintes regras:
+## Alterações
 
-### Regras de importação
+### 1. Redesenhar `src/components/integrations/CorreiosLabelPrint.tsx`
+Reescrever o componente `SingleLabel` para replicar o layout oficial:
 
-1. **Cliente COM telefone** → importa normalmente
-2. **Cliente SEM telefone + COM Instagram** → **NÃO importa**
-3. **Cliente SEM telefone + SEM Instagram** → **NÃO importa**
-4. **Duplicatas por telefone** → manter o registro com `Created Date` mais recente
-5. **Sem nome** → usar Instagram como nome, ou "Sem nome" como fallback
+- **Cabeçalho**: código de barras do rastreio (Code128) + tipo de serviço (EXPRESSA/PAC/SEDEX) + "Contrato: {cartaoPostagem}" + "Volume: 1/1"
+- **Código de rastreio**: texto grande formatado (ex: "AD 295 137 639 BR")
+- **Linha de recebimento**: campos "Recebedor:___" e "Assinatura:___ Documento:___"
+- **Bloco Destinatário**: título com fundo preto + texto branco + logo Correios, dados do destinatário, CEP em destaque + Cidade/UF
+- **Código de barras do CEP**: barcode Code128 do CEP de destino na parte inferior do bloco
+- **Bloco Remetente**: compacto na base da etiqueta
 
-### Tratamentos
+### 2. Adicionar campo `contrato` ao `LabelData`
+Incluir o número do contrato/cartão de postagem para exibir no cabeçalho da etiqueta.
 
-- Telefone: normalizar (remover parênteses, traços, espaços, código 55)
-- CPF/CEP: limpar formatação
-- Instagram: remover `@`
-- Endereço: montar JSON com rua, número, bairro, complemento, CEP, cidade, estado
+### 3. Passar contrato do `CorreiosCWSLabels` para o `CorreiosLabelPrint`
+Ao montar os dados de impressão, incluir o cartão de postagem nos dados da etiqueta.
 
-### Resultado esperado
-
-Apenas clientes com telefone preenchido serão importados. Os demais serão descartados.
-
-### Mudanças no banco
-
-**Nenhuma migração necessária** — o campo `phone` continua NOT NULL, pois só importaremos clientes com telefone.
-
-### Execução
-
-- Script Python com `pandas` para ler XLSX, limpar, filtrar e deduplicar
-- Inserção via `psql` com `COPY`
+### Detalhes técnicos
+- Tamanho mantido em 100mm x 150mm (padrão A6 térmico)
+- Dois `Barcode` por etiqueta: um para o tracking code (topo) e um para o CEP destino (inferior)
+- CSS de impressão (`@page`) permanece igual
+- Nenhuma alteração na Edge Function — apenas visual no frontend
 
