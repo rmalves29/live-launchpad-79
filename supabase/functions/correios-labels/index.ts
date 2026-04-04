@@ -99,14 +99,17 @@ interface PrePostagemResult {
   error?: string;
 }
 
-async function createPrePostagem(
-  token: string,
+function buildPrePostagemPayload(
   cartaoPostagem: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
-): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  const payload = {
+  includePhones = true,
+) {
+  const senderPhone = sanitizePhoneForCorreios(sender.telefone);
+  const recipientPhone = sanitizePhoneForCorreios(order.customer_phone);
+
+  return {
     idCorreios: cartaoPostagem,
     remetente: {
       nome: sender.nome,
@@ -117,7 +120,7 @@ async function createPrePostagem(
       cep: sender.cep.replace(/\D/g, ""),
       cidade: sender.cidade,
       uf: sender.uf,
-      celular: sanitizePhoneForCorreios(sender.telefone),
+      ...(includePhones && senderPhone ? { celular: senderPhone } : {}),
     },
     destinatario: {
       nome: order.customer_name || "Destinatário",
@@ -128,7 +131,7 @@ async function createPrePostagem(
       cep: (order.customer_cep || "").replace(/\D/g, ""),
       cidade: order.customer_city || "",
       uf: order.customer_state || "",
-      celular: sanitizePhoneForCorreios(order.customer_phone),
+      ...(includePhones && recipientPhone ? { celular: recipientPhone } : {}),
     },
     codigoServico: serviceCode,
     pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
@@ -142,10 +145,9 @@ async function createPrePostagem(
     },
     servicos_adicionais: [],
   };
+}
 
-  console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
-  console.log("[correios-labels] Payload:", JSON.stringify(payload));
-
+async function sendPrePostagemRequest(token: string, payload: Record<string, unknown>) {
   const response = await fetch("https://api.correios.com.br/prepostagem/v1/prepostagens", {
     method: "POST",
     headers: {
@@ -157,15 +159,51 @@ async function createPrePostagem(
   });
 
   const responseText = await response.text();
+  return { response, responseText };
+}
+
+function getCorreiosErrorMessage(responseText: string, status: number): string {
+  let errorMsg = `Erro na pré-postagem (${status})`;
+  try {
+    const d = JSON.parse(responseText);
+    errorMsg = d.msgs?.[0]?.texto || d.msg || d.message || d.erros?.[0]?.mensagem || errorMsg;
+  } catch {
+    // mantém mensagem padrão
+  }
+  return errorMsg;
+}
+
+function isPhoneRelatedCorreiosError(responseText: string): boolean {
+  const normalized = responseText.toLowerCase();
+  return normalized.includes("celular") || normalized.includes("telefone");
+}
+
+async function createPrePostagem(
+  token: string,
+  cartaoPostagem: string,
+  sender: SenderInfo,
+  order: any,
+  serviceCode: string,
+): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
+  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, true);
+
+  console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
+  console.log("[correios-labels] Payload:", JSON.stringify(payload));
+
+  let { response, responseText } = await sendPrePostagemRequest(token, payload);
   console.log("[correios-labels] Pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
 
+  if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, false);
+    console.warn("[correios-labels] Retrying pre-postagem without phone numbers for order:", order.id);
+    console.log("[correios-labels] Retry payload:", JSON.stringify(payload));
+
+    ({ response, responseText } = await sendPrePostagemRequest(token, payload));
+    console.log("[correios-labels] Retry pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
+  }
+
   if (!response.ok) {
-    let errorMsg = `Erro na pré-postagem (${response.status})`;
-    try {
-      const d = JSON.parse(responseText);
-      errorMsg = d.msgs?.[0]?.texto || d.message || d.erros?.[0]?.mensagem || errorMsg;
-    } catch {}
-    throw new Error(errorMsg);
+    throw new Error(getCorreiosErrorMessage(responseText, response.status));
   }
 
   const data = JSON.parse(responseText);
