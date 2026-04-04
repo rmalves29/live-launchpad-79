@@ -66,16 +66,32 @@ const SERVICE_CODES: Record<string, string> = {
   "Mini Envios": "04227",
 };
 
-/** Normalise phone for Correios: digits only, strip country code 55, max 11 chars */
+/**
+ * Correios PPN expects recipient phone as 0 + DDD + number (12 digits)
+ * Example: 011999253224. If unavailable, send 000000000000.
+ */
 function sanitizePhoneForCorreios(phone: string | null | undefined): string {
-  if (!phone) return "";
+  if (!phone) return "000000000000";
+
   let clean = phone.replace(/\D/g, "");
-  // Strip Brazil country code
-  if (clean.startsWith("55") && clean.length > 11) {
+
+  if (clean.startsWith("55") && clean.length >= 12) {
     clean = clean.slice(2);
   }
-  // Max 11 digits (DDD + 9-digit mobile)
-  return clean.slice(0, 11);
+
+  if (clean.startsWith("0") && clean.length >= 11) {
+    clean = clean.slice(1);
+  }
+
+  if (clean.length > 11) {
+    clean = clean.slice(-11);
+  }
+
+  if (clean.length === 10 || clean.length === 11) {
+    return `0${clean}`;
+  }
+
+  return "000000000000";
 }
 
 interface SenderInfo {
@@ -108,7 +124,7 @@ function buildPrePostagemPayload(
 ) {
   const senderPhone = sanitizePhoneForCorreios(sender.telefone);
   const recipientPhone = sanitizePhoneForCorreios(order.customer_phone);
-  const fallbackPhone = "";
+  const fallbackPhone = "000000000000";
 
   return {
     idCorreios: cartaoPostagem,
@@ -120,7 +136,7 @@ function buildPrePostagemPayload(
       bairro: sender.bairro,
       cep: sender.cep.replace(/\D/g, ""),
       cidade: sender.cidade,
-      uf: sender.uf,
+      uf: (sender.uf || "").toUpperCase(),
       celular: includePhones ? senderPhone : fallbackPhone,
     },
     destinatario: {
@@ -131,7 +147,7 @@ function buildPrePostagemPayload(
       bairro: order.customer_neighborhood || "",
       cep: (order.customer_cep || "").replace(/\D/g, ""),
       cidade: order.customer_city || "",
-      uf: order.customer_state || "",
+      uf: (order.customer_state || "").toUpperCase(),
       celular: includePhones ? recipientPhone : fallbackPhone,
     },
     codigoServico: serviceCode,
@@ -167,7 +183,7 @@ function getCorreiosErrorMessage(responseText: string, status: number): string {
   let errorMsg = `Erro na pré-postagem (${status})`;
   try {
     const d = JSON.parse(responseText);
-    errorMsg = d.msgs?.[0]?.texto || d.msg || d.message || d.erros?.[0]?.mensagem || errorMsg;
+    errorMsg = d.msgs?.[0]?.texto || d.msgs?.[0] || d.msg || d.message || d.erros?.[0]?.mensagem || errorMsg;
   } catch {
     // mantém mensagem padrão
   }
