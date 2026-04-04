@@ -429,9 +429,7 @@ const PublicCheckout = () => {
       const customOptions = await fetchCustomShippingOptions(tenant.id, customerState, customerCity);
     
       // Usar opções customizadas do banco ou fallback padrão
-      const fallbackShipping = customOptions.length > 0 
-        ? customOptions 
-        : [DEFAULT_SHIPPING_OPTION];
+      const fallbackShipping = customOptions;
 
       // Preservar opção de merge se existir
       const mergeOption = hasPaidOrderWithinPeriod ? MERGE_ORDER_SHIPPING_OPTION : null;
