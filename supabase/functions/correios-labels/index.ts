@@ -134,7 +134,7 @@ async function createPrePostagem(
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
   console.log("[correios-labels] Payload:", JSON.stringify(payload));
 
-  const response = await fetch("https://api.correios.com.br/prepostagem/v2/prepostagens", {
+  const response = await fetch("https://api.correios.com.br/prepostagem/v1/prepostagens", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${token}`,
@@ -171,7 +171,7 @@ async function createPrePostagem(
 async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<string> {
   console.log("[correios-labels] Fetching label PDF for:", idPrePostagem);
   const response = await fetch(
-    `https://api.correios.com.br/prepostagem/v2/prepostagens/${idPrePostagem}/etiqueta`,
+    `https://api.correios.com.br/prepostagem/v1/prepostagens/${idPrePostagem}/rotulo`,
     {
       headers: {
         "Authorization": `Bearer ${token}`,
