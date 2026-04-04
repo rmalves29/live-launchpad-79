@@ -117,7 +117,7 @@ async function createPrePostagem(
       cep: sender.cep.replace(/\D/g, ""),
       cidade: sender.cidade,
       uf: sender.uf,
-      celular: sender.telefone?.replace(/\D/g, "") || "",
+      celular: sanitizePhoneForCorreios(sender.telefone),
     },
     destinatario: {
       nome: order.customer_name || "Destinatário",
@@ -128,7 +128,7 @@ async function createPrePostagem(
       cep: (order.customer_cep || "").replace(/\D/g, ""),
       cidade: order.customer_city || "",
       uf: order.customer_state || "",
-      celular: order.customer_phone?.replace(/\D/g, "") || "",
+      celular: sanitizePhoneForCorreios(order.customer_phone),
     },
     codigoServico: serviceCode,
     pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
