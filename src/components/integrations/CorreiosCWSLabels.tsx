@@ -195,6 +195,7 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
         return {
           trackingCode: r.trackingCode!,
           serviceName: serviceOverrides[String(r.orderId)] || 'PAC',
+          contrato: integration?.refresh_token || '',
           orderId: r.orderId,
           sender: { ...sender, cep: fromCep },
           recipient: {
