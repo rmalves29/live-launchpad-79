@@ -66,16 +66,32 @@ const SERVICE_CODES: Record<string, string> = {
   "Mini Envios": "04227",
 };
 
-/** Normalise phone for Correios: digits only, strip country code 55, max 11 chars */
+/**
+ * Correios PPN expects recipient phone as 0 + DDD + number (12 digits)
+ * Example: 011999253224. If unavailable, send 000000000000.
+ */
 function sanitizePhoneForCorreios(phone: string | null | undefined): string {
-  if (!phone) return "";
+  if (!phone) return "000000000000";
+
   let clean = phone.replace(/\D/g, "");
-  // Strip Brazil country code
-  if (clean.startsWith("55") && clean.length > 11) {
+
+  if (clean.startsWith("55") && clean.length >= 12) {
     clean = clean.slice(2);
   }
-  // Max 11 digits (DDD + 9-digit mobile)
-  return clean.slice(0, 11);
+
+  if (clean.startsWith("0") && clean.length >= 11) {
+    clean = clean.slice(1);
+  }
+
+  if (clean.length > 11) {
+    clean = clean.slice(-11);
+  }
+
+  if (clean.length === 10 || clean.length === 11) {
+    return `0${clean}`;
+  }
+
+  return "000000000000";
 }
 
 interface SenderInfo {
@@ -99,14 +115,18 @@ interface PrePostagemResult {
   error?: string;
 }
 
-async function createPrePostagem(
-  token: string,
+function buildPrePostagemPayload(
   cartaoPostagem: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
-): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  const payload = {
+  includePhones = true,
+) {
+  const senderPhone = sanitizePhoneForCorreios(sender.telefone);
+  const recipientPhone = sanitizePhoneForCorreios(order.customer_phone);
+  const fallbackPhone = "000000000000";
+
+  return {
     idCorreios: cartaoPostagem,
     remetente: {
       nome: sender.nome,
@@ -116,8 +136,8 @@ async function createPrePostagem(
       bairro: sender.bairro,
       cep: sender.cep.replace(/\D/g, ""),
       cidade: sender.cidade,
-      uf: sender.uf,
-      celular: sanitizePhoneForCorreios(sender.telefone),
+      uf: (sender.uf || "").toUpperCase(),
+      celular: includePhones ? senderPhone : fallbackPhone,
     },
     destinatario: {
       nome: order.customer_name || "Destinatário",
@@ -127,8 +147,8 @@ async function createPrePostagem(
       bairro: order.customer_neighborhood || "",
       cep: (order.customer_cep || "").replace(/\D/g, ""),
       cidade: order.customer_city || "",
-      uf: order.customer_state || "",
-      celular: sanitizePhoneForCorreios(order.customer_phone),
+      uf: (order.customer_state || "").toUpperCase(),
+      celular: includePhones ? recipientPhone : fallbackPhone,
     },
     codigoServico: serviceCode,
     pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
@@ -142,10 +162,9 @@ async function createPrePostagem(
     },
     servicos_adicionais: [],
   };
+}
 
-  console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
-  console.log("[correios-labels] Payload:", JSON.stringify(payload));
-
+async function sendPrePostagemRequest(token: string, payload: Record<string, unknown>) {
   const response = await fetch("https://api.correios.com.br/prepostagem/v1/prepostagens", {
     method: "POST",
     headers: {
@@ -157,15 +176,51 @@ async function createPrePostagem(
   });
 
   const responseText = await response.text();
+  return { response, responseText };
+}
+
+function getCorreiosErrorMessage(responseText: string, status: number): string {
+  let errorMsg = `Erro na pré-postagem (${status})`;
+  try {
+    const d = JSON.parse(responseText);
+    errorMsg = d.msgs?.[0]?.texto || d.msgs?.[0] || d.msg || d.message || d.erros?.[0]?.mensagem || errorMsg;
+  } catch {
+    // mantém mensagem padrão
+  }
+  return errorMsg;
+}
+
+function isPhoneRelatedCorreiosError(responseText: string): boolean {
+  const normalized = responseText.toLowerCase();
+  return normalized.includes("celular") || normalized.includes("telefone");
+}
+
+async function createPrePostagem(
+  token: string,
+  cartaoPostagem: string,
+  sender: SenderInfo,
+  order: any,
+  serviceCode: string,
+): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
+  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, true);
+
+  console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
+  console.log("[correios-labels] Payload:", JSON.stringify(payload));
+
+  let { response, responseText } = await sendPrePostagemRequest(token, payload);
   console.log("[correios-labels] Pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
 
+  if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, false);
+    console.warn("[correios-labels] Retrying pre-postagem without phone numbers for order:", order.id);
+    console.log("[correios-labels] Retry payload:", JSON.stringify(payload));
+
+    ({ response, responseText } = await sendPrePostagemRequest(token, payload));
+    console.log("[correios-labels] Retry pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
+  }
+
   if (!response.ok) {
-    let errorMsg = `Erro na pré-postagem (${response.status})`;
-    try {
-      const d = JSON.parse(responseText);
-      errorMsg = d.msgs?.[0]?.texto || d.message || d.erros?.[0]?.mensagem || errorMsg;
-    } catch {}
-    throw new Error(errorMsg);
+    throw new Error(getCorreiosErrorMessage(responseText, response.status));
   }
 
   const data = JSON.parse(responseText);
