@@ -15,7 +15,7 @@ import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 import { formatBrasiliaDate, formatBrasiliaDateLong } from '@/lib/date-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
-import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
+import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegration, ShippingProvider } from '@/lib/shipping-utils';
 

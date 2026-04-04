@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
-import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
+import { fetchCustomShippingOptions, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegration } from '@/lib/shipping-utils';
 
