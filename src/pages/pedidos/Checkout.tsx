@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
-import { fetchCustomShippingOptions, DEFAULT_SHIPPING_OPTION, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
+import { fetchCustomShippingOptions, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegration } from '@/lib/shipping-utils';
 
@@ -213,9 +213,7 @@ const Checkout = () => {
         setSelectedShippingData(null);
         
         // Usar opções customizadas do banco ou fallback padrão
-        const baseShippingOptions = customOptions.length > 0 
-          ? customOptions 
-          : [DEFAULT_SHIPPING_OPTION];
+        const baseShippingOptions = customOptions;
         
         setShippingOptions(baseShippingOptions);
         
@@ -630,9 +628,7 @@ const Checkout = () => {
       const customOptions = await fetchCustomShippingOptions(tenantId || '', customerState, customerCity);
     
       // Usar opções customizadas do banco ou fallback padrão
-      const fallbackShipping = customOptions.length > 0 
-        ? customOptions 
-        : [DEFAULT_SHIPPING_OPTION];
+      const fallbackShipping = customOptions;
 
       // Preservar opção de merge se existir
       const mergeOption = hasPaidOrderWithinPeriod ? MERGE_ORDER_SHIPPING_OPTION : null;
