@@ -58,18 +58,20 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
   });
   const [savingSender, setSavingSender] = useState(false);
   const [senderLoaded, setSenderLoaded] = useState(false);
+  const [cartaoPostagem, setCartaoPostagem] = useState('');
 
-  // Load sender from DB (persisted in webhook_secret)
+  // Load sender from DB (persisted in webhook_secret) + cartao de postagem
   const { data: savedSenderData } = useQuery({
     queryKey: ['correios-sender', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('shipping_integrations')
-        .select('webhook_secret')
+        .select('webhook_secret, refresh_token')
         .eq('tenant_id', tenantId)
         .eq('provider', 'correios')
         .maybeSingle();
       if (error) throw error;
+      if (data?.refresh_token) setCartaoPostagem(data.refresh_token);
       if (data?.webhook_secret) {
         try {
           return JSON.parse(data.webhook_secret as string) as SenderInfo;
