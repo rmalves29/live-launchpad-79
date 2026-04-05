@@ -125,7 +125,7 @@ function buildPrePostagemPayload(
   sender: SenderInfo,
   order: any,
   serviceCode: string,
-  phoneMode: "full" | "zeros" | "omit" = "full",
+  phoneMode: "full" | "zeros" | "telefone" | "omit" = "full",
 ) {
   const senderPhone = sanitizePhoneForCorreios(sender.telefone);
   const recipientPhone = sanitizePhoneForCorreios(order.customer_phone);
