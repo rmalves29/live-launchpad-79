@@ -196,7 +196,6 @@ async function createPrePostagem(
   order: any,
   serviceCode: string,
 ): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "split");
   let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, true);
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
