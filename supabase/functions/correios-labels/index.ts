@@ -148,6 +148,7 @@ function buildPrePostagemPayload(
 
   return {
     numeroCartaoPostagem: cartaoPostagem,
+    idCorreios: sender.cnpj || "",
     remetente,
     destinatario,
     codigoServico: serviceCode,
