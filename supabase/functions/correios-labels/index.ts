@@ -67,31 +67,30 @@ const SERVICE_CODES: Record<string, string> = {
 };
 
 /**
- * Correios PPN expects recipient phone as 0 + DDD + number (12 digits)
- * Example: 011999253224. If unavailable, send 000000000000.
+ * Correios PPN API expects phone split into dddCelular (2 digits) + celular (8-9 digits).
+ * Returns { ddd, number } or null if invalid.
  */
-function sanitizePhoneForCorreios(phone: string | null | undefined): string {
-  if (!phone) return "000000000000";
+function parsePhoneForCorreios(phone: string | null | undefined): { ddd: string; number: string } | null {
+  if (!phone) return null;
 
   let clean = phone.replace(/\D/g, "");
 
+  // Remove country code 55
   if (clean.startsWith("55") && clean.length >= 12) {
     clean = clean.slice(2);
   }
 
+  // Remove leading 0
   if (clean.startsWith("0") && clean.length >= 11) {
     clean = clean.slice(1);
   }
 
-  if (clean.length > 11) {
-    clean = clean.slice(-11);
-  }
-
+  // Should be 10 or 11 digits: DDD(2) + number(8-9)
   if (clean.length === 10 || clean.length === 11) {
-    return `0${clean}`;
+    return { ddd: clean.slice(0, 2), number: clean.slice(2) };
   }
 
-  return "000000000000";
+  return null;
 }
 
 interface SenderInfo {
@@ -120,36 +119,58 @@ function buildPrePostagemPayload(
   sender: SenderInfo,
   order: any,
   serviceCode: string,
-  includePhones = true,
+  phoneMode: "split" | "flat" | "telefone" | "omit" = "split",
 ) {
-  const senderPhone = sanitizePhoneForCorreios(sender.telefone);
-  const recipientPhone = sanitizePhoneForCorreios(order.customer_phone);
-  const fallbackPhone = "000000000000";
+  const senderParsed = parsePhoneForCorreios(sender.telefone);
+  const recipientParsed = parsePhoneForCorreios(order.customer_phone);
+
+  const remetente: Record<string, unknown> = {
+    nome: sender.nome,
+    logradouro: sender.logradouro,
+    numero: sender.numero,
+    complemento: sender.complemento || "",
+    bairro: sender.bairro,
+    cep: sender.cep.replace(/\D/g, ""),
+    cidade: sender.cidade,
+    uf: (sender.uf || "").toUpperCase(),
+  };
+
+  const destinatario: Record<string, unknown> = {
+    nome: order.customer_name || "Destinatário",
+    logradouro: order.customer_street || "",
+    numero: order.customer_number || "S/N",
+    complemento: order.customer_complement || "",
+    bairro: order.customer_neighborhood || "",
+    cep: (order.customer_cep || "").replace(/\D/g, ""),
+    cidade: order.customer_city || "",
+    uf: (order.customer_state || "").toUpperCase(),
+  };
+
+  if (phoneMode === "split") {
+    // Split into dddCelular + celular
+    if (senderParsed) {
+      remetente.dddCelular = senderParsed.ddd;
+      remetente.celular = senderParsed.number;
+    }
+    if (recipientParsed) {
+      destinatario.dddCelular = recipientParsed.ddd;
+      destinatario.celular = recipientParsed.number;
+    }
+  } else if (phoneMode === "flat") {
+    // Send as single celular field (DDD+number)
+    if (senderParsed) remetente.celular = senderParsed.ddd + senderParsed.number;
+    if (recipientParsed) destinatario.celular = recipientParsed.ddd + recipientParsed.number;
+  } else if (phoneMode === "telefone") {
+    // Use telefone field
+    if (senderParsed) remetente.telefone = senderParsed.ddd + senderParsed.number;
+    if (recipientParsed) destinatario.telefone = recipientParsed.ddd + recipientParsed.number;
+  }
+  // phoneMode === "omit" → no phone field
 
   return {
     idCorreios: cartaoPostagem,
-    remetente: {
-      nome: sender.nome,
-      logradouro: sender.logradouro,
-      numero: sender.numero,
-      complemento: sender.complemento || "",
-      bairro: sender.bairro,
-      cep: sender.cep.replace(/\D/g, ""),
-      cidade: sender.cidade,
-      uf: (sender.uf || "").toUpperCase(),
-      celular: includePhones ? senderPhone : fallbackPhone,
-    },
-    destinatario: {
-      nome: order.customer_name || "Destinatário",
-      logradouro: order.customer_street || "",
-      numero: order.customer_number || "S/N",
-      complemento: order.customer_complement || "",
-      bairro: order.customer_neighborhood || "",
-      cep: (order.customer_cep || "").replace(/\D/g, ""),
-      cidade: order.customer_city || "",
-      uf: (order.customer_state || "").toUpperCase(),
-      celular: includePhones ? recipientPhone : fallbackPhone,
-    },
+    remetente,
+    destinatario,
     codigoServico: serviceCode,
     pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
     objetoPostal: {
@@ -202,7 +223,7 @@ async function createPrePostagem(
   order: any,
   serviceCode: string,
 ): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, true);
+  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "split");
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
   console.log("[correios-labels] Payload:", JSON.stringify(payload));
@@ -210,13 +231,28 @@ async function createPrePostagem(
   let { response, responseText } = await sendPrePostagemRequest(token, payload);
   console.log("[correios-labels] Pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
 
+  // Retry 1: flat celular
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
-    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, false);
-    console.warn("[correios-labels] Retrying pre-postagem without phone numbers for order:", order.id);
-    console.log("[correios-labels] Retry payload:", JSON.stringify(payload));
-
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "flat");
+    console.warn("[correios-labels] Retrying with flat celular for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
-    console.log("[correios-labels] Retry pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
+    console.log("[correios-labels] Retry (flat) status:", response.status, "body:", responseText.substring(0, 1000));
+  }
+
+  // Retry 2: telefone field
+  if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "telefone");
+    console.warn("[correios-labels] Retrying with telefone for order:", order.id);
+    ({ response, responseText } = await sendPrePostagemRequest(token, payload));
+    console.log("[correios-labels] Retry (telefone) status:", response.status, "body:", responseText.substring(0, 1000));
+  }
+
+  // Retry 3: omit phone
+  if (!response.ok) {
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "omit");
+    console.warn("[correios-labels] Retrying without phone for order:", order.id);
+    ({ response, responseText } = await sendPrePostagemRequest(token, payload));
+    console.log("[correios-labels] Retry (omit) status:", response.status, "body:", responseText.substring(0, 1000));
   }
 
   if (!response.ok) {
