@@ -229,18 +229,26 @@ async function createPrePostagem(
   let { response, responseText } = await sendPrePostagemRequest(token, payload);
   console.log("[correios-labels] Pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
 
-  // Retry 1: send zeros for phone
+  // Retry 1: send 10 zeros for phone
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
     payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "zeros");
-    console.warn("[correios-labels] Retrying with zeros phone for order:", order.id);
+    console.warn("[correios-labels] Retrying with 10-zero phone for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
     console.log("[correios-labels] Retry (zeros) status:", response.status, "body:", responseText.substring(0, 1000));
   }
 
-  // Retry 2: omit phone field entirely
+  // Retry 2: use "telefone" field instead of "celular"
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "telefone");
+    console.warn("[correios-labels] Retrying with telefone field for order:", order.id);
+    ({ response, responseText } = await sendPrePostagemRequest(token, payload));
+    console.log("[correios-labels] Retry (telefone) status:", response.status, "body:", responseText.substring(0, 1000));
+  }
+
+  // Retry 3: omit phone field entirely
+  if (!response.ok && (isPhoneRelatedCorreiosError(responseText) || responseText.includes("endereço"))) {
     payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "omit");
-    console.warn("[correios-labels] Retrying without celular field for order:", order.id);
+    console.warn("[correios-labels] Retrying without any phone field for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
     console.log("[correios-labels] Retry (omit) status:", response.status, "body:", responseText.substring(0, 1000));
   }
