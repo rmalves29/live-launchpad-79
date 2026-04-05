@@ -119,10 +119,10 @@ function buildPrePostagemPayload(
   sender: SenderInfo,
   order: any,
   serviceCode: string,
-  phoneMode: "full" | "zeros" | "telefone" | "omit" = "full",
+  phoneMode: "split" | "flat" | "telefone" | "omit" = "split",
 ) {
-  const senderPhone = sanitizePhoneForCorreios(sender.telefone);
-  const recipientPhone = sanitizePhoneForCorreios(order.customer_phone);
+  const senderParsed = parsePhoneForCorreios(sender.telefone);
+  const recipientParsed = parsePhoneForCorreios(order.customer_phone);
 
   const remetente: Record<string, unknown> = {
     nome: sender.nome,
@@ -146,18 +146,26 @@ function buildPrePostagemPayload(
     uf: (order.customer_state || "").toUpperCase(),
   };
 
-  if (phoneMode === "full") {
-    if (senderPhone) remetente.celular = senderPhone;
-    if (recipientPhone) destinatario.celular = recipientPhone;
-  } else if (phoneMode === "zeros") {
-    remetente.celular = "0000000000";
-    destinatario.celular = "0000000000";
+  if (phoneMode === "split") {
+    // Split into dddCelular + celular
+    if (senderParsed) {
+      remetente.dddCelular = senderParsed.ddd;
+      remetente.celular = senderParsed.number;
+    }
+    if (recipientParsed) {
+      destinatario.dddCelular = recipientParsed.ddd;
+      destinatario.celular = recipientParsed.number;
+    }
+  } else if (phoneMode === "flat") {
+    // Send as single celular field (DDD+number)
+    if (senderParsed) remetente.celular = senderParsed.ddd + senderParsed.number;
+    if (recipientParsed) destinatario.celular = recipientParsed.ddd + recipientParsed.number;
   } else if (phoneMode === "telefone") {
-    // Try using "telefone" field name instead of "celular"
-    if (senderPhone) remetente.telefone = senderPhone;
-    if (recipientPhone) destinatario.telefone = recipientPhone;
+    // Use telefone field
+    if (senderParsed) remetente.telefone = senderParsed.ddd + senderParsed.number;
+    if (recipientParsed) destinatario.telefone = recipientParsed.ddd + recipientParsed.number;
   }
-  // phoneMode === "omit" → no phone field at all
+  // phoneMode === "omit" → no phone field
 
   return {
     idCorreios: cartaoPostagem,
