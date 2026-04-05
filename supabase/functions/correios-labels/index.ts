@@ -156,7 +156,6 @@ function buildPrePostagemPayload(
     alturaInformada: "10",
     larguraInformada: "16",
     comprimentoInformado: "20",
-    diametroInformado: "0",
     modalidadePagamento: "2",
     cienteObjetoNaoProibido: "1",
     itensDeclaracaoConteudo: [
