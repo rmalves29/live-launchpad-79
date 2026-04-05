@@ -67,8 +67,8 @@ const SERVICE_CODES: Record<string, string> = {
 };
 
 /**
- * Correios PPN expects recipient phone as 0 + DDD + number (12 digits)
- * Example: 011999253224. If unavailable, send 000000000000.
+ * Correios PPN expects recipient phone as DDD + number (10-11 digits).
+ * Example: 31992904210. If unavailable, send 00000000000 (11 zeros).
  */
 function sanitizePhoneForCorreios(phone: string | null | undefined): string {
   if (!phone) return "00000000000";
