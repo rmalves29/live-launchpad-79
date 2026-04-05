@@ -109,52 +109,57 @@ function buildPrePostagemPayload(
   serviceCode: string,
   includePhone: boolean = true,
 ) {
+  const senderPhone = includePhone ? sanitizePhone(sender.telefone) : null;
+  const recipientPhone = includePhone ? sanitizePhone(order.customer_phone) : null;
+
   const remetente: Record<string, unknown> = {
     nome: sender.nome,
-    logradouro: sender.logradouro,
-    numero: sender.numero,
-    complemento: sender.complemento || "",
-    bairro: sender.bairro,
-    cep: sender.cep.replace(/\D/g, ""),
-    cidade: sender.cidade,
-    uf: (sender.uf || "").toUpperCase(),
-    ignorarValidacaoDeCep: false,
+    endereco: {
+      cep: sender.cep.replace(/\D/g, ""),
+      logradouro: (sender.logradouro || "").substring(0, 50),
+      numero: (sender.numero || "S/N").substring(0, 6),
+      complemento: (sender.complemento || "").substring(0, 30),
+      bairro: (sender.bairro || "").substring(0, 30),
+      cidade: (sender.cidade || "").substring(0, 30),
+      uf: (sender.uf || "").toUpperCase().substring(0, 2),
+    },
   };
+  if (senderPhone) {
+    remetente.dddCelular = senderPhone.substring(0, 2);
+    remetente.celular = senderPhone.substring(2, 11);
+  }
 
   const destinatario: Record<string, unknown> = {
     nome: order.customer_name || "Destinatário",
-    logradouro: order.customer_street || "",
-    numero: order.customer_number || "S/N",
-    complemento: order.customer_complement || "",
-    bairro: order.customer_neighborhood || "",
-    cep: (order.customer_cep || "").replace(/\D/g, ""),
-    cidade: order.customer_city || "",
-    uf: (order.customer_state || "").toUpperCase(),
-    ignorarValidacaoDeCep: false,
+    endereco: {
+      cep: (order.customer_cep || "").replace(/\D/g, ""),
+      logradouro: (order.customer_street || "").substring(0, 50),
+      numero: (order.customer_number || "S/N").substring(0, 6),
+      complemento: (order.customer_complement || "").substring(0, 30),
+      bairro: (order.customer_neighborhood || "").substring(0, 30),
+      cidade: (order.customer_city || "").substring(0, 30),
+      uf: (order.customer_state || "").toUpperCase().substring(0, 2),
+      regiao: "",
+    },
   };
-
-  if (includePhone) {
-    const senderPhone = sanitizePhone(sender.telefone);
-    const recipientPhone = sanitizePhone(order.customer_phone);
-    if (senderPhone) remetente.telefone = senderPhone;
-    if (recipientPhone) destinatario.telefone = recipientPhone;
+  if (recipientPhone) {
+    destinatario.dddCelular = recipientPhone.substring(0, 2);
+    destinatario.celular = recipientPhone.substring(2, 11);
   }
 
   return {
-    idCorreios: cartaoPostagem,
+    numeroCartaoPostagem: cartaoPostagem,
     remetente,
     destinatario,
     codigoServico: serviceCode,
-    pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
-    objetoPostal: {
-      tipo: "2",
-      peso: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
-      comprimento: 20,
-      largura: 16,
-      altura: 10,
-      diametro: 0,
-    },
-    servicos_adicionais: [],
+    pesoInformado: String(Math.max(300, Math.round((order.weight || 0.3) * 1000))),
+    codigoFormatoObjetoInformado: "2",
+    alturaInformada: "10",
+    larguraInformada: "16",
+    comprimentoInformado: "20",
+    diametroInformado: "0",
+    modalidadePagamento: 2,
+    cienteObjetoNaoProibido: 1,
   };
 }
 
