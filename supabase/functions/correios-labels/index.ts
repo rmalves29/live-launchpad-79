@@ -120,36 +120,46 @@ function buildPrePostagemPayload(
   sender: SenderInfo,
   order: any,
   serviceCode: string,
-  includePhones = true,
+  phoneMode: "full" | "zeros" | "omit" = "full",
 ) {
   const senderPhone = sanitizePhoneForCorreios(sender.telefone);
   const recipientPhone = sanitizePhoneForCorreios(order.customer_phone);
-  const fallbackPhone = "000000000000";
+
+  const remetente: Record<string, unknown> = {
+    nome: sender.nome,
+    logradouro: sender.logradouro,
+    numero: sender.numero,
+    complemento: sender.complemento || "",
+    bairro: sender.bairro,
+    cep: sender.cep.replace(/\D/g, ""),
+    cidade: sender.cidade,
+    uf: (sender.uf || "").toUpperCase(),
+  };
+
+  const destinatario: Record<string, unknown> = {
+    nome: order.customer_name || "Destinatário",
+    logradouro: order.customer_street || "",
+    numero: order.customer_number || "S/N",
+    complemento: order.customer_complement || "",
+    bairro: order.customer_neighborhood || "",
+    cep: (order.customer_cep || "").replace(/\D/g, ""),
+    cidade: order.customer_city || "",
+    uf: (order.customer_state || "").toUpperCase(),
+  };
+
+  if (phoneMode === "full") {
+    remetente.celular = senderPhone;
+    destinatario.celular = recipientPhone;
+  } else if (phoneMode === "zeros") {
+    remetente.celular = "000000000000";
+    destinatario.celular = "000000000000";
+  }
+  // phoneMode === "omit" → no celular field at all
 
   return {
     idCorreios: cartaoPostagem,
-    remetente: {
-      nome: sender.nome,
-      logradouro: sender.logradouro,
-      numero: sender.numero,
-      complemento: sender.complemento || "",
-      bairro: sender.bairro,
-      cep: sender.cep.replace(/\D/g, ""),
-      cidade: sender.cidade,
-      uf: (sender.uf || "").toUpperCase(),
-      celular: includePhones ? senderPhone : fallbackPhone,
-    },
-    destinatario: {
-      nome: order.customer_name || "Destinatário",
-      logradouro: order.customer_street || "",
-      numero: order.customer_number || "S/N",
-      complemento: order.customer_complement || "",
-      bairro: order.customer_neighborhood || "",
-      cep: (order.customer_cep || "").replace(/\D/g, ""),
-      cidade: order.customer_city || "",
-      uf: (order.customer_state || "").toUpperCase(),
-      celular: includePhones ? recipientPhone : fallbackPhone,
-    },
+    remetente,
+    destinatario,
     codigoServico: serviceCode,
     pesoInformado: Math.max(300, Math.round((order.weight || 0.3) * 1000)),
     objetoPostal: {
