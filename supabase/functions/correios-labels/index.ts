@@ -67,12 +67,11 @@ const SERVICE_CODES: Record<string, string> = {
 };
 
 /**
- * Correios PPN API field "celular" accepts max 10 digits.
- * Format: DDD + 8-digit number (remove 9th digit if mobile).
- * If invalid, return empty string.
+ * Correios PPN API expects phone split into dddCelular (2 digits) + celular (8-9 digits).
+ * Returns { ddd, number } or null if invalid.
  */
-function sanitizePhoneForCorreios(phone: string | null | undefined): string {
-  if (!phone) return "";
+function parsePhoneForCorreios(phone: string | null | undefined): { ddd: string; number: string } | null {
+  if (!phone) return null;
 
   let clean = phone.replace(/\D/g, "");
 
@@ -81,22 +80,17 @@ function sanitizePhoneForCorreios(phone: string | null | undefined): string {
     clean = clean.slice(2);
   }
 
-  // Remove leading 0 if present
+  // Remove leading 0
   if (clean.startsWith("0") && clean.length >= 11) {
     clean = clean.slice(1);
   }
 
-  // If 11 digits (DDD + 9 + 8digits), remove the 9th digit indicator
-  if (clean.length === 11 && clean[2] === "9") {
-    clean = clean.slice(0, 2) + clean.slice(3);
+  // Should be 10 or 11 digits: DDD(2) + number(8-9)
+  if (clean.length === 10 || clean.length === 11) {
+    return { ddd: clean.slice(0, 2), number: clean.slice(2) };
   }
 
-  // Must be exactly 10 digits now
-  if (clean.length === 10) {
-    return clean;
-  }
-
-  return "";
+  return null;
 }
 
 interface SenderInfo {
