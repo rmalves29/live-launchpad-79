@@ -139,7 +139,6 @@ function buildPrePostagemPayload(
       bairro: (order.customer_neighborhood || "").substring(0, 30),
       cidade: (order.customer_city || "").substring(0, 30),
       uf: (order.customer_state || "").toUpperCase().substring(0, 2),
-      regiao: "",
     },
   };
   if (recipientPhone) {
@@ -164,7 +163,7 @@ function buildPrePostagemPayload(
       {
         conteudo: "Mercadoria",
         quantidade: "1",
-        valor: String(((order.total_amount || 0) / 100).toFixed(2)),
+        valor: String(Math.max(1, order.total_amount || 1).toFixed(2)),
       },
     ],
   };
