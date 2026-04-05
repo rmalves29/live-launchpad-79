@@ -153,13 +153,17 @@ function buildPrePostagemPayload(
   };
 
   if (phoneMode === "full") {
-    remetente.celular = senderPhone;
-    destinatario.celular = recipientPhone;
+    if (senderPhone) remetente.celular = senderPhone;
+    if (recipientPhone) destinatario.celular = recipientPhone;
   } else if (phoneMode === "zeros") {
-    remetente.celular = "00000000000";
-    destinatario.celular = "00000000000";
+    remetente.celular = "0000000000";
+    destinatario.celular = "0000000000";
+  } else if (phoneMode === "telefone") {
+    // Try using "telefone" field name instead of "celular"
+    if (senderPhone) remetente.telefone = senderPhone;
+    if (recipientPhone) destinatario.telefone = recipientPhone;
   }
-  // phoneMode === "omit" → no celular field at all
+  // phoneMode === "omit" → no phone field at all
 
   return {
     idCorreios: cartaoPostagem,
