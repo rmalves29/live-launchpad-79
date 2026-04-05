@@ -150,8 +150,8 @@ function buildPrePostagemPayload(
     remetente.celular = senderPhone;
     destinatario.celular = recipientPhone;
   } else if (phoneMode === "zeros") {
-    remetente.celular = "000000000000";
-    destinatario.celular = "000000000000";
+    remetente.celular = "00000000000";
+    destinatario.celular = "00000000000";
   }
   // phoneMode === "omit" → no celular field at all
 
