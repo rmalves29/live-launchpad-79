@@ -223,7 +223,7 @@ async function createPrePostagem(
   order: any,
   serviceCode: string,
 ): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "full");
+  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "split");
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
   console.log("[correios-labels] Payload:", JSON.stringify(payload));
@@ -231,26 +231,26 @@ async function createPrePostagem(
   let { response, responseText } = await sendPrePostagemRequest(token, payload);
   console.log("[correios-labels] Pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
 
-  // Retry 1: send 10 zeros for phone
+  // Retry 1: flat celular
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
-    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "zeros");
-    console.warn("[correios-labels] Retrying with 10-zero phone for order:", order.id);
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "flat");
+    console.warn("[correios-labels] Retrying with flat celular for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
-    console.log("[correios-labels] Retry (zeros) status:", response.status, "body:", responseText.substring(0, 1000));
+    console.log("[correios-labels] Retry (flat) status:", response.status, "body:", responseText.substring(0, 1000));
   }
 
-  // Retry 2: use "telefone" field instead of "celular"
+  // Retry 2: telefone field
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
     payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "telefone");
-    console.warn("[correios-labels] Retrying with telefone field for order:", order.id);
+    console.warn("[correios-labels] Retrying with telefone for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
     console.log("[correios-labels] Retry (telefone) status:", response.status, "body:", responseText.substring(0, 1000));
   }
 
-  // Retry 3: omit phone field entirely
-  if (!response.ok && (isPhoneRelatedCorreiosError(responseText) || responseText.includes("endereço"))) {
+  // Retry 3: omit phone
+  if (!response.ok) {
     payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "omit");
-    console.warn("[correios-labels] Retrying without any phone field for order:", order.id);
+    console.warn("[correios-labels] Retrying without phone for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
     console.log("[correios-labels] Retry (omit) status:", response.status, "body:", responseText.substring(0, 1000));
   }
