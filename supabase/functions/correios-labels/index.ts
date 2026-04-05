@@ -188,7 +188,10 @@ function getCorreiosErrorMessage(responseText: string, status: number): string {
   let errorMsg = `Erro na pré-postagem (${status})`;
   try {
     const d = JSON.parse(responseText);
-    errorMsg = d.msgs?.[0]?.texto || d.msgs?.[0] || d.msg || d.message || d.erros?.[0]?.mensagem || errorMsg;
+    // Filter out "null" strings and find first real message
+    const msgs = (d.msgs || []).filter((m: unknown) => m && m !== "null");
+    const causa = d.causa ? d.causa.replace("ApiNegocioRuntimeException: ", "").trim() : "";
+    errorMsg = msgs[0]?.texto || msgs[0] || causa || d.msg || d.message || d.erros?.[0]?.mensagem || `Erro desconhecido (${status}): ${responseText.substring(0, 200)}`;
   } catch {
     // mantém mensagem padrão
   }
