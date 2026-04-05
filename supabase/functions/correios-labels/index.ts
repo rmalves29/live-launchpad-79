@@ -212,7 +212,7 @@ async function createPrePostagem(
   order: any,
   serviceCode: string,
 ): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, true);
+  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "full");
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
   console.log("[correios-labels] Payload:", JSON.stringify(payload));
@@ -220,13 +220,20 @@ async function createPrePostagem(
   let { response, responseText } = await sendPrePostagemRequest(token, payload);
   console.log("[correios-labels] Pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
 
+  // Retry 1: send zeros for phone
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
-    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, false);
-    console.warn("[correios-labels] Retrying pre-postagem without phone numbers for order:", order.id);
-    console.log("[correios-labels] Retry payload:", JSON.stringify(payload));
-
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "zeros");
+    console.warn("[correios-labels] Retrying with zeros phone for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
-    console.log("[correios-labels] Retry pre-postagem response status:", response.status, "body:", responseText.substring(0, 1000));
+    console.log("[correios-labels] Retry (zeros) status:", response.status, "body:", responseText.substring(0, 1000));
+  }
+
+  // Retry 2: omit phone field entirely
+  if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
+    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, "omit");
+    console.warn("[correios-labels] Retrying without celular field for order:", order.id);
+    ({ response, responseText } = await sendPrePostagemRequest(token, payload));
+    console.log("[correios-labels] Retry (omit) status:", response.status, "body:", responseText.substring(0, 1000));
   }
 
   if (!response.ok) {
