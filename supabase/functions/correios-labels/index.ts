@@ -71,27 +71,26 @@ const SERVICE_CODES: Record<string, string> = {
  * Example: 011999253224. If unavailable, send 000000000000.
  */
 function sanitizePhoneForCorreios(phone: string | null | undefined): string {
-  if (!phone) return "000000000000";
+  if (!phone) return "00000000000";
 
   let clean = phone.replace(/\D/g, "");
 
+  // Remove country code 55
   if (clean.startsWith("55") && clean.length >= 12) {
     clean = clean.slice(2);
   }
 
+  // Remove leading 0 if present
   if (clean.startsWith("0") && clean.length >= 11) {
     clean = clean.slice(1);
   }
 
-  if (clean.length > 11) {
-    clean = clean.slice(-11);
-  }
-
+  // Must be 10 or 11 digits (DDD + number)
   if (clean.length === 10 || clean.length === 11) {
-    return `0${clean}`;
+    return clean;
   }
 
-  return "000000000000";
+  return "00000000000";
 }
 
 interface SenderInfo {
