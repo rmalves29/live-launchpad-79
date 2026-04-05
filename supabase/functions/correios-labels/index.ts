@@ -160,6 +160,13 @@ function buildPrePostagemPayload(
     diametroInformado: "0",
     modalidadePagamento: 2,
     cienteObjetoNaoProibido: 1,
+    itensDeclaracaoConteudo: [
+      {
+        conteudo: "Mercadoria",
+        quantidade: "1",
+        valor: String(((order.total_amount || 0) / 100).toFixed(2)),
+      },
+    ],
   };
 }
 
