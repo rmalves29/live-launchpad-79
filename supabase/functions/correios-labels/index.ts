@@ -157,8 +157,8 @@ function buildPrePostagemPayload(
     larguraInformada: "16",
     comprimentoInformado: "20",
     diametroInformado: "0",
-    modalidadePagamento: 2,
-    cienteObjetoNaoProibido: 1,
+    modalidadePagamento: "2",
+    cienteObjetoNaoProibido: "1",
     itensDeclaracaoConteudo: [
       {
         conteudo: "Mercadoria",
