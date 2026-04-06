@@ -130,6 +130,16 @@ function buildPrePostagemPayload(
     remetente.celular = senderPhone.substring(2, 11);
   }
 
+  // Determinar região do destinatário baseada na UF
+  const destUf = (order.customer_state || "").toUpperCase().substring(0, 2);
+  const UF_TO_REGIAO: Record<string, string> = {
+    AC: "N", AM: "N", AP: "N", PA: "N", RO: "N", RR: "N", TO: "N",
+    AL: "NE", BA: "NE", CE: "NE", MA: "NE", PB: "NE", PE: "NE", PI: "NE", RN: "NE", SE: "NE",
+    DF: "CO", GO: "CO", MT: "CO", MS: "CO",
+    ES: "SE", MG: "SE", RJ: "SE", SP: "SE",
+    PR: "SU", RS: "SU", SC: "SU",
+  };
+
   const destinatario: Record<string, unknown> = {
     nome: (order.customer_name || "Destinatário").substring(0, 50),
     endereco: {
@@ -139,7 +149,8 @@ function buildPrePostagemPayload(
       complemento: (order.customer_complement || "").substring(0, 30),
       bairro: (order.customer_neighborhood || "").substring(0, 30),
       cidade: (order.customer_city || "").toUpperCase().substring(0, 30),
-      uf: (order.customer_state || "").toUpperCase().substring(0, 2),
+      uf: destUf,
+      regiao: UF_TO_REGIAO[destUf] || "",
     },
   };
   if (recipientPhone) {
@@ -150,8 +161,6 @@ function buildPrePostagemPayload(
   const valorDeclarado = Math.max(1, order.total_amount || 1);
 
   return {
-    numeroCartaoPostagem: cartaoPostagem,
-    idCorreios: cnpj || cartaoPostagem,
     remetente,
     destinatario,
     codigoServico: serviceCode,
