@@ -224,7 +224,7 @@ async function createPrePostagem(
 
   // Retry: without phone
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
-    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, false);
+    payload = buildPrePostagemPayload(cartaoPostagem, cnpj, sender, order, serviceCode, false);
     console.warn("[correios-labels] Retrying without phone for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
     console.log("[correios-labels] Retry (no phone) status:", response.status, "body:", responseText.substring(0, 1000));
@@ -414,7 +414,7 @@ serve(async (req) => {
           }
 
           const { idPrePostagem, codigoObjeto } = await createPrePostagem(
-            token, credentials.cartaoPostagem, senderInfo, order, serviceCode,
+            token, credentials.cartaoPostagem, credentials.clientId, senderInfo, order, serviceCode,
           );
 
           let labelPdfBase64: string | undefined;
