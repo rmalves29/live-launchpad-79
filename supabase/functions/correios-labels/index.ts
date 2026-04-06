@@ -161,6 +161,7 @@ function buildPrePostagemPayload(
   const valorDeclarado = Math.max(1, order.total_amount || 1);
 
   return {
+    numeroCartaoPostagem: cartaoPostagem,
     remetente,
     destinatario,
     codigoServico: serviceCode,
@@ -169,7 +170,7 @@ function buildPrePostagemPayload(
     alturaInformada: "10",
     larguraInformada: "16",
     comprimentoInformado: "20",
-    modalidadePagamento: "2",
+    modalidadePagamento: "1",
     cienteObjetoNaoProibido: "1",
     itensDeclaracaoConteudo: [
       {
