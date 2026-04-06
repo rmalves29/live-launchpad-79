@@ -104,6 +104,7 @@ interface PrePostagemResult {
 
 function buildPrePostagemPayload(
   cartaoPostagem: string,
+  cnpj: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
@@ -113,14 +114,14 @@ function buildPrePostagemPayload(
   const recipientPhone = includePhone ? sanitizePhone(order.customer_phone) : null;
 
   const remetente: Record<string, unknown> = {
-    nome: sender.nome,
+    nome: (sender.nome || "").substring(0, 50),
     endereco: {
       cep: sender.cep.replace(/\D/g, ""),
       logradouro: (sender.logradouro || "").substring(0, 50),
       numero: (sender.numero || "S/N").substring(0, 6),
       complemento: (sender.complemento || "").substring(0, 30),
       bairro: (sender.bairro || "").substring(0, 30),
-      cidade: (sender.cidade || "").substring(0, 30),
+      cidade: (sender.cidade || "").toUpperCase().substring(0, 30),
       uf: (sender.uf || "").toUpperCase().substring(0, 2),
     },
   };
@@ -129,16 +130,27 @@ function buildPrePostagemPayload(
     remetente.celular = senderPhone.substring(2, 11);
   }
 
+  // Determinar região do destinatário baseada na UF
+  const destUf = (order.customer_state || "").toUpperCase().substring(0, 2);
+  const UF_TO_REGIAO: Record<string, string> = {
+    AC: "N", AM: "N", AP: "N", PA: "N", RO: "N", RR: "N", TO: "N",
+    AL: "NE", BA: "NE", CE: "NE", MA: "NE", PB: "NE", PE: "NE", PI: "NE", RN: "NE", SE: "NE",
+    DF: "CO", GO: "CO", MT: "CO", MS: "CO",
+    ES: "SE", MG: "SE", RJ: "SE", SP: "SE",
+    PR: "SU", RS: "SU", SC: "SU",
+  };
+
   const destinatario: Record<string, unknown> = {
-    nome: order.customer_name || "Destinatário",
+    nome: (order.customer_name || "Destinatário").substring(0, 50),
     endereco: {
       cep: (order.customer_cep || "").replace(/\D/g, ""),
       logradouro: (order.customer_street || "").substring(0, 50),
       numero: (order.customer_number || "S/N").substring(0, 6),
       complemento: (order.customer_complement || "").substring(0, 30),
       bairro: (order.customer_neighborhood || "").substring(0, 30),
-      cidade: (order.customer_city || "").substring(0, 30),
-      uf: (order.customer_state || "").toUpperCase().substring(0, 2),
+      cidade: (order.customer_city || "").toUpperCase().substring(0, 30),
+      uf: destUf,
+      regiao: UF_TO_REGIAO[destUf] || "",
     },
   };
   if (recipientPhone) {
@@ -146,9 +158,10 @@ function buildPrePostagemPayload(
     destinatario.celular = recipientPhone.substring(2, 11);
   }
 
+  const valorDeclarado = Math.max(1, order.total_amount || 1);
+
   return {
     numeroCartaoPostagem: cartaoPostagem,
-    idCorreios: sender.cnpj || cartaoPostagem,
     remetente,
     destinatario,
     codigoServico: serviceCode,
@@ -157,13 +170,13 @@ function buildPrePostagemPayload(
     alturaInformada: "10",
     larguraInformada: "16",
     comprimentoInformado: "20",
-    modalidadePagamento: "2",
+    modalidadePagamento: "1",
     cienteObjetoNaoProibido: "1",
     itensDeclaracaoConteudo: [
       {
         conteudo: "Mercadoria",
         quantidade: "1",
-        valor: String(Math.max(1, order.total_amount || 1).toFixed(2)),
+        valor: valorDeclarado.toFixed(2),
       },
     ],
   };
@@ -206,11 +219,12 @@ function isPhoneRelatedCorreiosError(responseText: string): boolean {
 async function createPrePostagem(
   token: string,
   cartaoPostagem: string,
+  cnpj: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
 ): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, true);
+  let payload = buildPrePostagemPayload(cartaoPostagem, cnpj, sender, order, serviceCode, true);
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
   console.log("[correios-labels] Payload:", JSON.stringify(payload));
@@ -220,7 +234,7 @@ async function createPrePostagem(
 
   // Retry: without phone
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
-    payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, false);
+    payload = buildPrePostagemPayload(cartaoPostagem, cnpj, sender, order, serviceCode, false);
     console.warn("[correios-labels] Retrying without phone for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
     console.log("[correios-labels] Retry (no phone) status:", response.status, "body:", responseText.substring(0, 1000));
@@ -410,7 +424,7 @@ serve(async (req) => {
           }
 
           const { idPrePostagem, codigoObjeto } = await createPrePostagem(
-            token, credentials.cartaoPostagem, senderInfo, order, serviceCode,
+            token, credentials.cartaoPostagem, credentials.clientId, senderInfo, order, serviceCode,
           );
 
           let labelPdfBase64: string | undefined;
