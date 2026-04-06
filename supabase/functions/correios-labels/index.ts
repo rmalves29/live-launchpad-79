@@ -209,11 +209,12 @@ function isPhoneRelatedCorreiosError(responseText: string): boolean {
 async function createPrePostagem(
   token: string,
   cartaoPostagem: string,
+  cnpj: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
 ): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  let payload = buildPrePostagemPayload(cartaoPostagem, sender, order, serviceCode, true);
+  let payload = buildPrePostagemPayload(cartaoPostagem, cnpj, sender, order, serviceCode, true);
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
   console.log("[correios-labels] Payload:", JSON.stringify(payload));
