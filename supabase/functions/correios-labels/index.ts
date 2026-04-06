@@ -104,6 +104,7 @@ interface PrePostagemResult {
 
 function buildPrePostagemPayload(
   cartaoPostagem: string,
+  cnpj: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
@@ -113,14 +114,14 @@ function buildPrePostagemPayload(
   const recipientPhone = includePhone ? sanitizePhone(order.customer_phone) : null;
 
   const remetente: Record<string, unknown> = {
-    nome: sender.nome,
+    nome: (sender.nome || "").substring(0, 50),
     endereco: {
       cep: sender.cep.replace(/\D/g, ""),
       logradouro: (sender.logradouro || "").substring(0, 50),
       numero: (sender.numero || "S/N").substring(0, 6),
       complemento: (sender.complemento || "").substring(0, 30),
       bairro: (sender.bairro || "").substring(0, 30),
-      cidade: (sender.cidade || "").substring(0, 30),
+      cidade: (sender.cidade || "").toUpperCase().substring(0, 30),
       uf: (sender.uf || "").toUpperCase().substring(0, 2),
     },
   };
@@ -130,14 +131,14 @@ function buildPrePostagemPayload(
   }
 
   const destinatario: Record<string, unknown> = {
-    nome: order.customer_name || "Destinatário",
+    nome: (order.customer_name || "Destinatário").substring(0, 50),
     endereco: {
       cep: (order.customer_cep || "").replace(/\D/g, ""),
       logradouro: (order.customer_street || "").substring(0, 50),
       numero: (order.customer_number || "S/N").substring(0, 6),
       complemento: (order.customer_complement || "").substring(0, 30),
       bairro: (order.customer_neighborhood || "").substring(0, 30),
-      cidade: (order.customer_city || "").substring(0, 30),
+      cidade: (order.customer_city || "").toUpperCase().substring(0, 30),
       uf: (order.customer_state || "").toUpperCase().substring(0, 2),
     },
   };
@@ -146,9 +147,11 @@ function buildPrePostagemPayload(
     destinatario.celular = recipientPhone.substring(2, 11);
   }
 
+  const valorDeclarado = Math.max(1, order.total_amount || 1);
+
   return {
     numeroCartaoPostagem: cartaoPostagem,
-    idCorreios: sender.cnpj || cartaoPostagem,
+    idCorreios: cnpj || cartaoPostagem,
     remetente,
     destinatario,
     codigoServico: serviceCode,
@@ -163,7 +166,7 @@ function buildPrePostagemPayload(
       {
         conteudo: "Mercadoria",
         quantidade: "1",
-        valor: String(Math.max(1, order.total_amount || 1).toFixed(2)),
+        valor: valorDeclarado.toFixed(2),
       },
     ],
   };
