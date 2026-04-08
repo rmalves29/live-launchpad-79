@@ -1,40 +1,37 @@
 
 
-# Plano: Usar preço promocional automaticamente nos pedidos
+# Plano: Adicionar variáveis de preço promocional nos templates WhatsApp
 
-## Problema
-Quando um produto tem `promotional_price` cadastrado, o sistema ignora esse valor e sempre usa o `price` (preço original) como `unit_price` nos itens do carrinho. Isso faz com que pedidos de produtos em promoção sejam criados com o valor cheio.
+## O que será feito
+Adicionar suporte às variáveis `{{valor_original}}` e `{{valor_promo}}` nos templates de mensagem WhatsApp (Item Adicionado, Cobrança, etc.), para que o cliente possa exibir "De R$ X por R$ Y" nas mensagens.
 
-## Solução
-Em todos os pontos onde `unit_price` é definido ao adicionar/atualizar itens no carrinho, aplicar a lógica:
+## Alterações
 
-```text
-preço efetivo = promotional_price > 0 ? promotional_price : price
+### 1. Template Types — Frontend (`src/pages/whatsapp/Templates.tsx`)
+- Adicionar `{{valor_original}}` e `{{valor_promo}}` na lista de variáveis do tipo `ITEM_ADDED` e `PAID_ORDER`
+
+### 2. DB Trigger — Nova migration
+- Alterar a função `send_whatsapp_on_item_added()` para buscar `promotional_price` da tabela `products` (atualmente só busca `price`)
+- Passar `original_price` no payload JSON enviado à edge function
+
+### 3. Edge Function (`supabase/functions/zapi-send-item-added/index.ts`)
+- Adicionar `original_price` na interface `ItemAddedRequest`
+- Na função `formatMessage`, adicionar substituição de `{{valor_original}}` e `{{valor_promo}}`
+- Se não houver preço promocional, remover automaticamente as linhas que contenham essas variáveis (mesmo comportamento do SendFlow)
+
+## Lógica
+- `{{valor}}` continua sendo o preço efetivo (promocional se existir, senão original)
+- `{{valor_original}}` = preço original do produto (`product.price`)
+- `{{valor_promo}}` = preço promocional (`product.promotional_price`)
+- Se não houver preço promocional, linhas com `{{valor_original}}` e `{{valor_promo}}` são removidas automaticamente
+
+## Detalhes técnicos
+
+**Migration SQL:**
+```sql
+CREATE OR REPLACE FUNCTION public.send_whatsapp_on_item_added()
+-- Adiciona promotional_price no SELECT e original_price no jsonb_build_object
 ```
 
-## Arquivos a alterar
-
-### Frontend (3 arquivos)
-1. **`src/pages/pedidos/Live.tsx`** — Pedidos via Live: trocar `product.price` por `product.promotional_price || product.price` nas linhas 591 e 607
-2. **`src/pages/pedidos/Manual.tsx`** — Pedidos manuais: mesma troca nas linhas 352 e ~375
-3. **`src/components/EditOrderDialog.tsx`** — Edição de pedido: nas linhas 209 e 222, usar `selectedProduct.promotional_price || selectedProduct.price` como fallback (mantendo `unitPrice` quando informado manualmente)
-
-### Edge Functions (2 arquivos)
-4. **`supabase/functions/zapi-webhook/index.ts`** — Pedidos via WhatsApp: linhas 1345 e 1416
-5. **`supabase/functions/instagram-webhook/index.ts`** — Pedidos via Instagram: linhas 367 e 816
-
-## Lógica aplicada
-Em cada ponto, a substituição segue o padrão:
-```
-// Antes
-unit_price: product.price
-
-// Depois  
-unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price
-```
-
-## Impacto
-- Produtos sem preço promocional continuam usando o preço normal (sem breaking change)
-- Produtos com promoção passam a usar automaticamente o valor com desconto
-- Nenhuma alteração de banco de dados necessária
+**Edge function:** Mesma lógica já usada no `sendflow-process` para tratar linhas com variáveis vazias.
 
