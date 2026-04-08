@@ -28,6 +28,7 @@ interface Product {
   price: number;
   promotional_price?: number | null;
   observation?: string | null;
+  sku_erp?: string | null;
   stock: number;
   color?: string;
   size?: string;
@@ -42,6 +43,7 @@ interface ImportRow {
   preco: number;
   preco_promocional?: number;
   observacao?: string;
+  sku_erp?: string;
   estoque?: number;
   cor?: string;
   tamanho?: string;
@@ -470,6 +472,7 @@ const Produtos = () => {
       preco: p.price,
       preco_promocional: p.promotional_price || '',
       observacao: p.observation || '',
+      sku_erp: p.sku_erp || '',
       estoque: p.stock,
       cor: p.color || '',
       tamanho: p.size || '',
@@ -489,7 +492,7 @@ const Produtos = () => {
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     ws['!cols'] = [
-      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 },
+      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 18 },
       { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
     ];
     const wb = XLSX.utils.book_new();
@@ -508,6 +511,7 @@ const Produtos = () => {
         preco: 99.90,
         preco_promocional: 79.90,
         observacao: 'Material premium',
+        sku_erp: 'ERP-001',
         estoque: 10,
         cor: 'Azul',
         tamanho: 'M',
@@ -520,6 +524,7 @@ const Produtos = () => {
         preco: 149.90,
         preco_promocional: '',
         observacao: '',
+        sku_erp: '',
         estoque: 5,
         cor: 'Vermelho',
         tamanho: 'G',
@@ -532,6 +537,7 @@ const Produtos = () => {
         preco: 199.90,
         preco_promocional: 169.90,
         observacao: 'Edição limitada',
+        sku_erp: 'ERP-003',
         estoque: 15,
         cor: 'Preto',
         tamanho: 'P',
@@ -549,6 +555,7 @@ const Produtos = () => {
       { wch: 10 }, // preco
       { wch: 15 }, // preco_promocional
       { wch: 30 }, // observacao
+      { wch: 18 }, // sku_erp
       { wch: 10 }, // estoque
       { wch: 15 }, // cor
       { wch: 12 }, // tamanho
@@ -605,6 +612,7 @@ const Produtos = () => {
         'tamanho': 'tamanho', 'size': 'tamanho', 'tam': 'tamanho',
         'preco_promocional': 'preco_promocional', 'promotional_price': 'preco_promocional', 'promo': 'preco_promocional', 'precopromocional': 'preco_promocional',
         'observacao': 'observacao', 'observation': 'observacao', 'obs': 'observacao',
+        'sku_erp': 'sku_erp', 'skuerp': 'sku_erp', 'erp': 'sku_erp', 'sku_erp_code': 'sku_erp',
         'tipo_venda': 'tipo_venda', 'tipo': 'tipo_venda',
         'imagem_url': 'imagem_url', 'imagem': 'imagem_url', 'image': 'imagem_url', 'image_url': 'imagem_url',
       };
@@ -669,6 +677,7 @@ const Produtos = () => {
           price: typeof row.preco === 'number' ? row.preco : parseFloat(String(row.preco).replace(',', '.')),
           promotional_price: isNaN(promoPrice as number) ? null : promoPrice,
           observation: row.observacao ? String(row.observacao).trim() : null,
+          sku_erp: row.sku_erp ? String(row.sku_erp).trim() : null,
           stock: row.estoque ? parseInt(String(row.estoque)) : 0,
           color: row.cor ? String(row.cor).trim() : null,
           size: row.tamanho ? String(row.tamanho).trim() : null,
