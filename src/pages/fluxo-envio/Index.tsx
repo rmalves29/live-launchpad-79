@@ -12,12 +12,7 @@ import { Navigate } from 'react-router-dom';
 export default function FluxoEnvioIndex() {
   const { tenant } = useTenantContext();
   const { profile } = useAuth();
-  const isSuperAdmin = profile?.role === 'super_admin';
-  const isAllowed = tenant?.slug === 'app' || isSuperAdmin;
-
-  if (!isAllowed) {
-    return <Navigate to="/pedidos" replace />;
-  }
+  // Fluxo de Envio liberado para todas as empresas
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="mb-6">
