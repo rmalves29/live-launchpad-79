@@ -28,6 +28,7 @@ interface Product {
   price: number;
   promotional_price?: number | null;
   observation?: string | null;
+  sku_erp?: string | null;
   stock: number;
   color?: string;
   size?: string;
@@ -42,6 +43,7 @@ interface ImportRow {
   preco: number;
   preco_promocional?: number;
   observacao?: string;
+  sku_erp?: string;
   estoque?: number;
   cor?: string;
   tamanho?: string;
@@ -470,6 +472,7 @@ const Produtos = () => {
       preco: p.price,
       preco_promocional: p.promotional_price || '',
       observacao: p.observation || '',
+      sku_erp: p.sku_erp || '',
       estoque: p.stock,
       cor: p.color || '',
       tamanho: p.size || '',
@@ -489,7 +492,7 @@ const Produtos = () => {
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     ws['!cols'] = [
-      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 },
+      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 18 },
       { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
     ];
     const wb = XLSX.utils.book_new();
