@@ -511,6 +511,7 @@ const Produtos = () => {
         preco: 99.90,
         preco_promocional: 79.90,
         observacao: 'Material premium',
+        sku_erp: 'ERP-001',
         estoque: 10,
         cor: 'Azul',
         tamanho: 'M',
@@ -523,6 +524,7 @@ const Produtos = () => {
         preco: 149.90,
         preco_promocional: '',
         observacao: '',
+        sku_erp: '',
         estoque: 5,
         cor: 'Vermelho',
         tamanho: 'G',
@@ -535,6 +537,7 @@ const Produtos = () => {
         preco: 199.90,
         preco_promocional: 169.90,
         observacao: 'Edição limitada',
+        sku_erp: 'ERP-003',
         estoque: 15,
         cor: 'Preto',
         tamanho: 'P',
@@ -552,6 +555,7 @@ const Produtos = () => {
       { wch: 10 }, // preco
       { wch: 15 }, // preco_promocional
       { wch: 30 }, // observacao
+      { wch: 18 }, // sku_erp
       { wch: 10 }, // estoque
       { wch: 15 }, // cor
       { wch: 12 }, // tamanho
