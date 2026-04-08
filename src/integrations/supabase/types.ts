@@ -1960,7 +1960,9 @@ export type Database = {
           image_url: string | null
           is_active: boolean
           name: string
+          observation: string | null
           price: number
+          promotional_price: number | null
           sale_type: string
           size: string | null
           stock: number
@@ -1976,7 +1978,9 @@ export type Database = {
           image_url?: string | null
           is_active?: boolean
           name: string
+          observation?: string | null
           price: number
+          promotional_price?: number | null
           sale_type?: string
           size?: string | null
           stock?: number
@@ -1992,7 +1996,9 @@ export type Database = {
           image_url?: string | null
           is_active?: boolean
           name?: string
+          observation?: string | null
           price?: number
+          promotional_price?: number | null
           sale_type?: string
           size?: string | null
           stock?: number
