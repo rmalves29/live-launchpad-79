@@ -612,6 +612,7 @@ const Produtos = () => {
         'tamanho': 'tamanho', 'size': 'tamanho', 'tam': 'tamanho',
         'preco_promocional': 'preco_promocional', 'promotional_price': 'preco_promocional', 'promo': 'preco_promocional', 'precopromocional': 'preco_promocional',
         'observacao': 'observacao', 'observation': 'observacao', 'obs': 'observacao',
+        'sku_erp': 'sku_erp', 'skuerp': 'sku_erp', 'erp': 'sku_erp', 'sku_erp_code': 'sku_erp',
         'tipo_venda': 'tipo_venda', 'tipo': 'tipo_venda',
         'imagem_url': 'imagem_url', 'imagem': 'imagem_url', 'image': 'imagem_url', 'image_url': 'imagem_url',
       };
