@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -914,6 +915,17 @@ const Produtos = () => {
                     value={formData.promotional_price}
                     onChange={(e) => setFormData({ ...formData, promotional_price: e.target.value })}
                     placeholder="Opcional - deixe vazio se não houver promoção"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="observation">Observação</Label>
+                  <Textarea
+                    id="observation"
+                    value={formData.observation}
+                    onChange={(e) => setFormData({ ...formData, observation: e.target.value })}
+                    placeholder="Observação opcional (ex: material, detalhes do produto)"
+                    rows={2}
                   />
                 </div>
 
