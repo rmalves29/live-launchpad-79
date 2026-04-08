@@ -922,7 +922,7 @@ export default function SendFlow() {
         <CardHeader>
           <CardTitle>Template de Mensagem</CardTitle>
           <CardDescription>
-            Use as variáveis: {'{'}{'{'} codigo {'}'}{'}'}, {'{'}{'{'} nome {'}'}{'}'}, {'{'}{'{'} cor {'}'}{'}'}, {'{'}{'{'} tamanho {'}'}{'}'}, {'{'}{'{'} valor {'}'}{'}'}
+            Use as variáveis: {'{'}{'{'} codigo {'}'}{'}'}, {'{'}{'{'} nome {'}'}{'}'}, {'{'}{'{'} cor {'}'}{'}'}, {'{'}{'{'} tamanho {'}'}{'}'}, {'{'}{'{'} valor {'}'}{'}'}, {'{'}{'{'} valor_original {'}'}{'}'}, {'{'}{'{'} valor_promo {'}'}{'}'}, {'{'}{'{'} observacao {'}'}{'}'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

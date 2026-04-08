@@ -19,6 +19,8 @@ interface Product {
   color?: string;
   size?: string;
   price: number;
+  promotional_price?: number | null;
+  observation?: string | null;
   image_url?: string;
 }
 
@@ -47,10 +49,25 @@ function formatPrice(price: number): string {
 function personalizeMessage(template: string, product: Product): string {
   let message = template;
   
+  // {{valor}} shows promo price if available, otherwise normal price
+  const displayPrice = (product.promotional_price && product.promotional_price > 0)
+    ? product.promotional_price
+    : product.price;
+  
   message = message
     .replace(/\{\{?codigo\}?\}/gi, product.code.trim())
     .replace(/\{\{?nome\}?\}/gi, product.name.trim())
-    .replace(/\{\{?valor\}?\}/gi, formatPrice(product.price));
+    .replace(/\{\{?valor\}?\}/gi, formatPrice(displayPrice));
+  
+  // {{valor_original}} and {{valor_promo}} — remove lines if no promo
+  if (product.promotional_price && product.promotional_price > 0) {
+    message = message
+      .replace(/\{\{?valor_original\}?\}/gi, formatPrice(product.price))
+      .replace(/\{\{?valor_promo\}?\}/gi, formatPrice(product.promotional_price));
+  } else {
+    message = message.replace(/.*\{\{?valor_original\}?\}.*\n?/gi, '');
+    message = message.replace(/.*\{\{?valor_promo\}?\}.*\n?/gi, '');
+  }
   
   if (product.color && product.color.trim()) {
     message = message.replace(/\{\{?cor\}?\}/gi, product.color.trim());
@@ -62,6 +79,13 @@ function personalizeMessage(template: string, product: Product): string {
     message = message.replace(/\{\{?tamanho\}?\}/gi, product.size.trim());
   } else {
     message = message.replace(/.*\{\{?tamanho\}?\}.*\n?/gi, '');
+  }
+  
+  // {{observacao}} — remove line if empty
+  if (product.observation && product.observation.trim()) {
+    message = message.replace(/\{\{?observacao\}?\}/gi, product.observation.trim());
+  } else {
+    message = message.replace(/.*\{\{?observacao\}?\}.*\n?/gi, '');
   }
   
   message = message.replace(/\n{3,}/g, '\n\n');
@@ -292,7 +316,7 @@ async function processTaskQueue({
   const productIds = [...new Set(tasks.map((t: SendFlowTask) => t.product_id))];
   const { data: products, error: productsError } = await supabase
     .from('products')
-    .select('id, code, name, color, size, price, image_url')
+    .select('id, code, name, color, size, price, promotional_price, observation, image_url')
     .eq('tenant_id', tenantId)
     .in('id', productIds);
 

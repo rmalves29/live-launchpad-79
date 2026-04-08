@@ -18,6 +18,8 @@ interface Product {
   code: string;
   name: string;
   price: number;
+  promotional_price?: number | null;
+  observation?: string | null;
   stock: number;
   is_active: boolean;
   image_url?: string;
@@ -29,6 +31,8 @@ interface ProductForm {
   code: string;
   name: string;
   price: string;
+  promotional_price: string;
+  observation: string;
   stock: string;
   is_active: boolean;
 }
@@ -94,6 +98,8 @@ export default function TenantProducts() {
       code: '',
       name: '',
       price: '',
+      promotional_price: '',
+      observation: '',
       stock: '0',
       is_active: true
     });
@@ -110,6 +116,8 @@ export default function TenantProducts() {
       code: product.code,
       name: product.name,
       price: product.price.toString(),
+      promotional_price: product.promotional_price?.toString() || '',
+      observation: product.observation || '',
       stock: product.stock.toString(),
       is_active: product.is_active
     });
@@ -125,6 +133,8 @@ export default function TenantProducts() {
         code: formData.code.toUpperCase(),
         name: formData.name,
         price: parseFloat(formData.price),
+        promotional_price: formData.promotional_price ? parseFloat(formData.promotional_price) : null,
+        observation: formData.observation.trim() || null,
         stock: parseInt(formData.stock) || 0,
         is_active: formData.is_active
       };
@@ -283,8 +293,16 @@ export default function TenantProducts() {
                       <Badge variant="secondary">{product.code}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} • 
-                      Estoque: {product.stock}
+                      {product.promotional_price ? (
+                        <>
+                          <span className="line-through">R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          {' '}
+                          <span className="text-green-600 font-semibold">R$ {product.promotional_price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </>
+                      ) : (
+                        <>R$ {product.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</>
+                      )}
+                      {' '}• Estoque: {product.stock}
                     </p>
                   </div>
                 </div>
@@ -345,7 +363,7 @@ export default function TenantProducts() {
                   placeholder="Ex: Produto Demo"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="price">Preço (R$)</Label>
                   <Input
@@ -358,6 +376,17 @@ export default function TenantProducts() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="promotional_price">Preço Promocional (R$)</Label>
+                  <Input
+                    id="promotional_price"
+                    type="number"
+                    step="0.01"
+                    value={formData.promotional_price}
+                    onChange={(e) => setFormData({ ...formData, promotional_price: e.target.value })}
+                    placeholder="Opcional"
+                  />
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="stock">Estoque</Label>
                   <Input
                     id="stock"
@@ -367,6 +396,16 @@ export default function TenantProducts() {
                     placeholder="0"
                   />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="observation">Observação</Label>
+                <Textarea
+                  id="observation"
+                  value={formData.observation}
+                  onChange={(e) => setFormData({ ...formData, observation: e.target.value })}
+                  placeholder="Observação opcional (ex: material, detalhes do produto)"
+                  rows={2}
+                />
               </div>
               <div className="flex items-center space-x-2">
                 <Switch
