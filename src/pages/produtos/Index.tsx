@@ -40,6 +40,8 @@ interface ImportRow {
   codigo: string;
   nome: string;
   preco: number;
+  preco_promocional?: number;
+  observacao?: string;
   estoque?: number;
   cor?: string;
   tamanho?: string;
@@ -466,6 +468,8 @@ const Produtos = () => {
       codigo: p.code,
       nome: p.name,
       preco: p.price,
+      preco_promocional: p.promotional_price || '',
+      observacao: p.observation || '',
       estoque: p.stock,
       cor: p.color || '',
       tamanho: p.size || '',
@@ -485,8 +489,8 @@ const Produtos = () => {
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     ws['!cols'] = [
-      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 10 },
-      { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
+      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 },
+      { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Produtos');
@@ -502,6 +506,8 @@ const Produtos = () => {
         codigo: 'C001',
         nome: 'Produto Exemplo 1',
         preco: 99.90,
+        preco_promocional: 79.90,
+        observacao: 'Material premium',
         estoque: 10,
         cor: 'Azul',
         tamanho: 'M',
@@ -512,6 +518,8 @@ const Produtos = () => {
         codigo: 'C002',
         nome: 'Produto Exemplo 2',
         preco: 149.90,
+        preco_promocional: '',
+        observacao: '',
         estoque: 5,
         cor: 'Vermelho',
         tamanho: 'G',
@@ -522,6 +530,8 @@ const Produtos = () => {
         codigo: 'C003',
         nome: 'Produto Exemplo 3',
         preco: 199.90,
+        preco_promocional: 169.90,
+        observacao: 'Edição limitada',
         estoque: 15,
         cor: 'Preto',
         tamanho: 'P',
@@ -537,6 +547,8 @@ const Produtos = () => {
       { wch: 12 }, // codigo
       { wch: 30 }, // nome
       { wch: 10 }, // preco
+      { wch: 15 }, // preco_promocional
+      { wch: 30 }, // observacao
       { wch: 10 }, // estoque
       { wch: 15 }, // cor
       { wch: 12 }, // tamanho
@@ -591,6 +603,8 @@ const Produtos = () => {
         'estoque': 'estoque', 'stock': 'estoque', 'qtd': 'estoque', 'quantidade': 'estoque',
         'cor': 'cor', 'color': 'cor',
         'tamanho': 'tamanho', 'size': 'tamanho', 'tam': 'tamanho',
+        'preco_promocional': 'preco_promocional', 'promotional_price': 'preco_promocional', 'promo': 'preco_promocional', 'precopromocional': 'preco_promocional',
+        'observacao': 'observacao', 'observation': 'observacao', 'obs': 'observacao',
         'tipo_venda': 'tipo_venda', 'tipo': 'tipo_venda',
         'imagem_url': 'imagem_url', 'imagem': 'imagem_url', 'image': 'imagem_url', 'image_url': 'imagem_url',
       };
@@ -645,10 +659,16 @@ const Produtos = () => {
           saleType = 'AMBOS';
         }
 
+        const promoPrice = row.preco_promocional != null && String(row.preco_promocional).trim() !== ''
+          ? (typeof row.preco_promocional === 'number' ? row.preco_promocional : parseFloat(String(row.preco_promocional).replace(',', '.')))
+          : null;
+
         const productData = {
           code: String(row.codigo).trim(),
           name: String(row.nome).trim(),
           price: typeof row.preco === 'number' ? row.preco : parseFloat(String(row.preco).replace(',', '.')),
+          promotional_price: isNaN(promoPrice as number) ? null : promoPrice,
+          observation: row.observacao ? String(row.observacao).trim() : null,
           stock: row.estoque ? parseInt(String(row.estoque)) : 0,
           color: row.cor ? String(row.cor).trim() : null,
           size: row.tamanho ? String(row.tamanho).trim() : null,
