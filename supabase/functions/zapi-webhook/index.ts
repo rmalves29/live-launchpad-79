@@ -1342,7 +1342,7 @@ serve(async (req) => {
           .from('cart_items')
           .update({
             qty: newQty,
-            unit_price: product.price,
+            unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price,
             product_name: product.name,
             product_code: product.code,
             product_image_url: product.image_url,
@@ -1413,7 +1413,7 @@ serve(async (req) => {
             cart_id: cart.id,
             product_id: product.id,
             qty: requestedQty,
-            unit_price: product.price,
+            unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price,
             tenant_id: tenantId,
             product_name: product.name,
             product_code: product.code,

@@ -588,7 +588,7 @@ const Live = () => {
           .from('cart_items')
           .update({
             qty: existingCartItem.qty + qty,
-            unit_price: product.price,
+            unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price,
             product_name: product.name,
             product_code: product.code,
             product_image_url: product.image_url
@@ -604,7 +604,7 @@ const Live = () => {
             cart_id: cartId,
             product_id: product.id,
             qty: qty,
-            unit_price: product.price,
+            unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price,
             product_name: product.name,
             product_code: product.code,
             product_image_url: product.image_url
