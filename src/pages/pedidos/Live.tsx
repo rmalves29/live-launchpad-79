@@ -434,7 +434,10 @@ const Live = () => {
 
       // Normalizar para armazenamento (sempre com 11 dígitos)
       const normalizedPhone = normalizeForStorage(phone);
-      const subtotal = product.price * qty;
+      const effectivePrice = (product.promotional_price && product.promotional_price > 0)
+        ? product.promotional_price
+        : product.price;
+      const subtotal = effectivePrice * qty;
       const today = getBrasiliaDateISO();
       
       // Function to get or create order with retry logic
