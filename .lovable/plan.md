@@ -1,40 +1,48 @@
 
 
-# Plano: Redesenhar etiqueta no modelo oficial dos Correios
+# Plano: Preço Promocional + Campo Observação nos Produtos
 
-## Contexto
-A etiqueta atual (`CorreiosLabelPrint.tsx`) tem um layout simplificado. O usuário quer que siga o modelo oficial dos Correios (conforme a imagem enviada), com:
-- Logo dos Correios no canto superior direito
-- Tipo de serviço (EXPRESSA/PAC) ao lado do logo
-- Contrato e Volume no cabeçalho
-- Código de rastreio em destaque com código de barras
-- Linha de "Recebedor" e "Assinatura/Documento"
-- Bloco DESTINATÁRIO com fundo preto no título e logo Correios
-- CEP em destaque + Cidade/UF
-- Bloco Remetente na parte inferior
-- Código de barras do CEP de destino (Postnet) na parte inferior
+## O que será feito
+1. Adicionar dois novos campos na tabela `products`: `promotional_price` (preço promocional) e `observation` (observação)
+2. Atualizar o formulário de produtos para editar esses campos
+3. Atualizar o SendFlow para suportar as variáveis `{{valor_original}}`, `{{valor_promo}}` e `{{observacao}}` nas mensagens
 
 ## Alterações
 
-### 1. Redesenhar `src/components/integrations/CorreiosLabelPrint.tsx`
-Reescrever o componente `SingleLabel` para replicar o layout oficial:
+### 1. Migration — adicionar colunas na tabela `products`
+```sql
+ALTER TABLE products ADD COLUMN promotional_price numeric DEFAULT NULL;
+ALTER TABLE products ADD COLUMN observation text DEFAULT NULL;
+```
 
-- **Cabeçalho**: código de barras do rastreio (Code128) + tipo de serviço (EXPRESSA/PAC/SEDEX) + "Contrato: {cartaoPostagem}" + "Volume: 1/1"
-- **Código de rastreio**: texto grande formatado (ex: "AD 295 137 639 BR")
-- **Linha de recebimento**: campos "Recebedor:___" e "Assinatura:___ Documento:___"
-- **Bloco Destinatário**: título com fundo preto + texto branco + logo Correios, dados do destinatário, CEP em destaque + Cidade/UF
-- **Código de barras do CEP**: barcode Code128 do CEP de destino na parte inferior do bloco
-- **Bloco Remetente**: compacto na base da etiqueta
+### 2. `src/components/tenant/TenantProducts.tsx`
+- Adicionar campos no formulário: "Preço Promocional" (opcional, abaixo do preço) e "Observação" (textarea, abaixo do grid de preço/estoque)
+- Exibir preço promocional na listagem quando existir (ex: "~~R$100~~ R$79,90")
+- Incluir `promotional_price` e `observation` no `saveProduct`
 
-### 2. Adicionar campo `contrato` ao `LabelData`
-Incluir o número do contrato/cartão de postagem para exibir no cabeçalho da etiqueta.
+### 3. `supabase/functions/sendflow-process/index.ts`
+- Adicionar `promotional_price` e `observation` à interface `Product` e à query de busca
+- Na função `personalizeMessage`:
+  - `{{valor_original}}` → preço original formatado
+  - `{{valor_promo}}` → preço promocional (se existir)
+  - `{{valor}}` → mostra promo se existir, senão normal
+  - `{{observacao}}` → texto da observação (remove a linha se vazio, como cor/tamanho)
+- Linhas com `{{valor_promo}}`, `{{valor_original}}` ou `{{observacao}}` são removidas quando o campo estiver vazio
 
-### 3. Passar contrato do `CorreiosCWSLabels` para o `CorreiosLabelPrint`
-Ao montar os dados de impressão, incluir o cartão de postagem nos dados da etiqueta.
+### 4. UI do SendFlow — documentar variáveis
+- Atualizar a lista de variáveis disponíveis na página de envio para incluir `{{valor_original}}`, `{{valor_promo}}` e `{{observacao}}`
 
-### Detalhes técnicos
-- Tamanho mantido em 100mm x 150mm (padrão A6 térmico)
-- Dois `Barcode` por etiqueta: um para o tracking code (topo) e um para o CEP destino (inferior)
-- CSS de impressão (`@page`) permanece igual
-- Nenhuma alteração na Edge Function — apenas visual no frontend
+## Exemplo de template
+```
+👜 *{{nome}}* ({{codigo}})
+🎨 Cor: {{cor}}
+💰 ~De {{valor_original}}~ por *{{valor_promo}}*
+📝 {{observacao}}
+📱 Código: *{{codigo}}*
+```
+
+## Detalhes técnicos
+- Produtos sem preço promocional ou observação continuam funcionando normalmente (linhas removidas automaticamente)
+- Nenhuma breaking change
+- 1 migration + 2 arquivos editados + 1 edge function atualizada
 
