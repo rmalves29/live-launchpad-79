@@ -364,7 +364,7 @@ Deno.serve(async (req) => {
               product_code: product.code,
               product_name: product.name,
               product_image_url: product.image_url,
-              unit_price: product.price,
+              unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price,
               qty: requestedQty,
             });
 
@@ -813,7 +813,7 @@ async function triggerWhatsAppItemAdded(
           product_name: product.name,
           product_code: product.code,
           quantity: qty,
-          unit_price: product.price,
+          unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price,
         }),
       }
     );

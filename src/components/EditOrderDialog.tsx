@@ -206,7 +206,7 @@ useEffect(() => {
           .from('cart_items')
           .update({
             qty: existingItem.qty + quantity,
-            unit_price: unitPrice || selectedProduct.price
+            unit_price: unitPrice || ((selectedProduct.promotional_price && selectedProduct.promotional_price > 0) ? selectedProduct.promotional_price : selectedProduct.price)
           })
           .eq('id', existingItem.id);
 
@@ -479,7 +479,7 @@ useEffect(() => {
                   onValueChange={(value) => {
                     const product = products.find(p => p.id.toString() === value);
                     setSelectedProduct(product || null);
-                    setUnitPrice(product?.price || 0);
+                    setUnitPrice((product?.promotional_price && product.promotional_price > 0) ? product.promotional_price : (product?.price || 0));
                   }}
                 >
                   <SelectTrigger>
