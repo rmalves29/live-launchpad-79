@@ -332,6 +332,10 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         let itemQty = requestedQty;
+        const effectiveUnitPrice = (product.promotional_price && product.promotional_price > 0)
+          ? product.promotional_price
+          : product.price;
+
         if (existingItem) {
           // Already has this specific product → also repeat
           isRepeatBuyer = true;
@@ -344,7 +348,7 @@ Deno.serve(async (req) => {
 
           await supabase
             .from('cart_items')
-            .update({ qty: itemQty })
+            .update({ qty: itemQty, unit_price: effectiveUnitPrice })
             .eq('id', existingItem.id);
 
           console.log(`[${timestamp}] [instagram-webhook] Item quantity updated: ${product.code} qty=${itemQty}`);
@@ -364,7 +368,7 @@ Deno.serve(async (req) => {
               product_code: product.code,
               product_name: product.name,
               product_image_url: product.image_url,
-              unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price,
+              unit_price: effectiveUnitPrice,
               qty: requestedQty,
             });
 

@@ -200,13 +200,17 @@ useEffect(() => {
       const targetCartId = await createCartIfNeeded();
       if (!targetCartId) throw new Error('Não foi possível criar/obter carrinho');
 
+      const effectiveUnitPrice = unitPrice || ((selectedProduct.promotional_price && selectedProduct.promotional_price > 0)
+        ? selectedProduct.promotional_price
+        : selectedProduct.price);
+
       if (existingItem) {
         // Update existing item
         const { error } = await supabaseTenant
           .from('cart_items')
           .update({
             qty: existingItem.qty + quantity,
-            unit_price: unitPrice || ((selectedProduct.promotional_price && selectedProduct.promotional_price > 0) ? selectedProduct.promotional_price : selectedProduct.price)
+            unit_price: effectiveUnitPrice
           })
           .eq('id', existingItem.id);
 
@@ -219,7 +223,7 @@ useEffect(() => {
             cart_id: targetCartId,
             product_id: selectedProduct.id,
             qty: quantity,
-            unit_price: unitPrice || selectedProduct.price,
+            unit_price: effectiveUnitPrice,
             product_name: selectedProduct.name,
             product_code: selectedProduct.code,
             product_image_url: selectedProduct.image_url
