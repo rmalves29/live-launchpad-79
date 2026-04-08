@@ -1,48 +1,40 @@
 
 
-# Plano: Preço Promocional + Campo Observação nos Produtos
+# Plano: Usar preço promocional automaticamente nos pedidos
 
-## O que será feito
-1. Adicionar dois novos campos na tabela `products`: `promotional_price` (preço promocional) e `observation` (observação)
-2. Atualizar o formulário de produtos para editar esses campos
-3. Atualizar o SendFlow para suportar as variáveis `{{valor_original}}`, `{{valor_promo}}` e `{{observacao}}` nas mensagens
+## Problema
+Quando um produto tem `promotional_price` cadastrado, o sistema ignora esse valor e sempre usa o `price` (preço original) como `unit_price` nos itens do carrinho. Isso faz com que pedidos de produtos em promoção sejam criados com o valor cheio.
 
-## Alterações
+## Solução
+Em todos os pontos onde `unit_price` é definido ao adicionar/atualizar itens no carrinho, aplicar a lógica:
 
-### 1. Migration — adicionar colunas na tabela `products`
-```sql
-ALTER TABLE products ADD COLUMN promotional_price numeric DEFAULT NULL;
-ALTER TABLE products ADD COLUMN observation text DEFAULT NULL;
+```text
+preço efetivo = promotional_price > 0 ? promotional_price : price
 ```
 
-### 2. `src/components/tenant/TenantProducts.tsx`
-- Adicionar campos no formulário: "Preço Promocional" (opcional, abaixo do preço) e "Observação" (textarea, abaixo do grid de preço/estoque)
-- Exibir preço promocional na listagem quando existir (ex: "~~R$100~~ R$79,90")
-- Incluir `promotional_price` e `observation` no `saveProduct`
+## Arquivos a alterar
 
-### 3. `supabase/functions/sendflow-process/index.ts`
-- Adicionar `promotional_price` e `observation` à interface `Product` e à query de busca
-- Na função `personalizeMessage`:
-  - `{{valor_original}}` → preço original formatado
-  - `{{valor_promo}}` → preço promocional (se existir)
-  - `{{valor}}` → mostra promo se existir, senão normal
-  - `{{observacao}}` → texto da observação (remove a linha se vazio, como cor/tamanho)
-- Linhas com `{{valor_promo}}`, `{{valor_original}}` ou `{{observacao}}` são removidas quando o campo estiver vazio
+### Frontend (3 arquivos)
+1. **`src/pages/pedidos/Live.tsx`** — Pedidos via Live: trocar `product.price` por `product.promotional_price || product.price` nas linhas 591 e 607
+2. **`src/pages/pedidos/Manual.tsx`** — Pedidos manuais: mesma troca nas linhas 352 e ~375
+3. **`src/components/EditOrderDialog.tsx`** — Edição de pedido: nas linhas 209 e 222, usar `selectedProduct.promotional_price || selectedProduct.price` como fallback (mantendo `unitPrice` quando informado manualmente)
 
-### 4. UI do SendFlow — documentar variáveis
-- Atualizar a lista de variáveis disponíveis na página de envio para incluir `{{valor_original}}`, `{{valor_promo}}` e `{{observacao}}`
+### Edge Functions (2 arquivos)
+4. **`supabase/functions/zapi-webhook/index.ts`** — Pedidos via WhatsApp: linhas 1345 e 1416
+5. **`supabase/functions/instagram-webhook/index.ts`** — Pedidos via Instagram: linhas 367 e 816
 
-## Exemplo de template
+## Lógica aplicada
+Em cada ponto, a substituição segue o padrão:
 ```
-👜 *{{nome}}* ({{codigo}})
-🎨 Cor: {{cor}}
-💰 ~De {{valor_original}}~ por *{{valor_promo}}*
-📝 {{observacao}}
-📱 Código: *{{codigo}}*
+// Antes
+unit_price: product.price
+
+// Depois  
+unit_price: (product.promotional_price && product.promotional_price > 0) ? product.promotional_price : product.price
 ```
 
-## Detalhes técnicos
-- Produtos sem preço promocional ou observação continuam funcionando normalmente (linhas removidas automaticamente)
-- Nenhuma breaking change
-- 1 migration + 2 arquivos editados + 1 edge function atualizada
+## Impacto
+- Produtos sem preço promocional continuam usando o preço normal (sem breaking change)
+- Produtos com promoção passam a usar automaticamente o valor com desconto
+- Nenhuma alteração de banco de dados necessária
 
