@@ -677,6 +677,7 @@ const Produtos = () => {
           price: typeof row.preco === 'number' ? row.preco : parseFloat(String(row.preco).replace(',', '.')),
           promotional_price: isNaN(promoPrice as number) ? null : promoPrice,
           observation: row.observacao ? String(row.observacao).trim() : null,
+          sku_erp: row.sku_erp ? String(row.sku_erp).trim() : null,
           stock: row.estoque ? parseInt(String(row.estoque)) : 0,
           color: row.cor ? String(row.cor).trim() : null,
           size: row.tamanho ? String(row.tamanho).trim() : null,
