@@ -460,12 +460,19 @@ const Live = () => {
         if (existingOrders && existingOrders.length > 0) {
           const existingOrder = existingOrders[0];
           
-          // Update existing order total
-          const newTotal = existingOrder.total_amount + subtotal;
+          // Recalculate total from cart_items for accuracy (handles promotional prices)
+          const { data: cartItemsData } = await supabaseTenant
+            .from('cart_items')
+            .select('unit_price, qty')
+            .eq('cart_id', existingOrder.cart_id);
+
+          const recalcTotal = (cartItemsData || []).reduce(
+            (sum: number, ci: any) => sum + (ci.unit_price * ci.qty), 0
+          ) + subtotal;
           
           const { error: updateError } = await supabaseTenant
             .from('orders')
-            .update({ total_amount: newTotal })
+            .update({ total_amount: recalcTotal })
             .eq('id', existingOrder.id);
 
           if (updateError) throw updateError;
@@ -517,11 +524,18 @@ const Live = () => {
               if (retryOrders && retryOrders.length > 0) {
                 const existingOrder = retryOrders[0];
                 
-                // Update total
-                const newTotal = existingOrder.total_amount + subtotal;
+                // Recalculate total from cart_items
+                const { data: retryCartItems } = await supabaseTenant
+                  .from('cart_items')
+                  .select('unit_price, qty')
+                  .eq('cart_id', existingOrder.cart_id);
+
+                const recalcTotal = (retryCartItems || []).reduce(
+                  (sum: number, ci: any) => sum + (ci.unit_price * ci.qty), 0
+                ) + subtotal;
                 const { error: updateError } = await supabaseTenant
                   .from('orders')
-                  .update({ total_amount: newTotal })
+                  .update({ total_amount: recalcTotal })
                   .eq('id', existingOrder.id);
 
                 if (updateError) throw updateError;
