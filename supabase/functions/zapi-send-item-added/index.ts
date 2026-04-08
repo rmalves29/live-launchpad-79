@@ -271,7 +271,7 @@ serve(async (req) => {
       );
     }
 
-    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, order_id } = body;
+    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id } = body;
 
     console.log(`[${timestamp}] [zapi-send-item-added] Processing for tenant ${tenant_id}`);
 
