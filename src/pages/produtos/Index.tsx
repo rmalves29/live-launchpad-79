@@ -25,6 +25,8 @@ interface Product {
   code: string;
   name: string;
   price: number;
+  promotional_price?: number | null;
+  observation?: string | null;
   stock: number;
   color?: string;
   size?: string;
@@ -65,6 +67,8 @@ const Produtos = () => {
     code: '',
     name: '',
     price: '',
+    promotional_price: '',
+    observation: '',
     stock: '',
     color: '',
     size: '',
@@ -213,6 +217,8 @@ const Produtos = () => {
         code: formData.code,
         name: formData.name,
         price: parseFloat(formData.price),
+        promotional_price: formData.promotional_price ? parseFloat(formData.promotional_price) : null,
+        observation: formData.observation.trim() || null,
         stock: parseInt(formData.stock) || 0,
         color: formData.color || null,
         size: formData.size || null,
@@ -252,6 +258,8 @@ const Produtos = () => {
         code: '',
         name: '',
         price: '',
+        promotional_price: '',
+        observation: '',
         stock: '',
         color: '',
         size: '',
@@ -331,6 +339,8 @@ const Produtos = () => {
         code: product.code,
         name: product.name,
         price: product.price.toString(),
+        promotional_price: product.promotional_price?.toString() || '',
+        observation: product.observation || '',
         stock: product.stock.toString(),
         color: product.color || '',
         size: product.size || '',
@@ -893,6 +903,18 @@ const Produtos = () => {
                       placeholder="0"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="promotional_price">Preço Promocional (R$)</Label>
+                  <Input
+                    id="promotional_price"
+                    type="number"
+                    step="0.01"
+                    value={formData.promotional_price}
+                    onChange={(e) => setFormData({ ...formData, promotional_price: e.target.value })}
+                    placeholder="Opcional - deixe vazio se não houver promoção"
+                  />
                 </div>
 
                 <div>
