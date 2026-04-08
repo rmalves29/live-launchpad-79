@@ -26,13 +26,13 @@ const TEMPLATE_TYPES = [
     value: 'ITEM_ADDED', 
     label: 'Item Adicionado',
     description: 'Enviado quando um item é adicionado ao pedido',
-    variables: ['{{produto}}', '{{codigo}}', '{{quantidade}}', '{{valor}}', '{{customer_name}}']
+    variables: ['{{produto}}', '{{codigo}}', '{{quantidade}}', '{{valor}}', '{{valor_original}}', '{{valor_promo}}', '{{customer_name}}']
   },
   { 
     value: 'PAID_ORDER', 
     label: 'Pedido Pago',
     description: 'Enviado quando um pedido é marcado como pago',
-    variables: ['{{order_id}}', '{{total}}', '{{customer_name}}']
+    variables: ['{{order_id}}', '{{total}}', '{{valor_original}}', '{{valor_promo}}', '{{customer_name}}']
   },
   { 
     value: 'PRODUCT_CANCELED', 

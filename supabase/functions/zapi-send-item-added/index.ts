@@ -23,6 +23,7 @@ interface ItemAddedRequest {
   product_code: string;
   quantity: number;
   unit_price: number;
+  original_price?: number;
   order_id?: number;
 }
 
@@ -176,11 +177,13 @@ function formatPhoneNumber(phone: string): string {
 function formatMessage(template: string, data: ItemAddedRequest): string {
   const unitPrice = data.unit_price.toFixed(2);
   const total = (data.quantity * data.unit_price).toFixed(2);
+  const originalPrice = data.original_price ? data.original_price.toFixed(2) : '';
+  const promoPrice = (data.original_price && data.original_price > data.unit_price) ? data.unit_price.toFixed(2) : '';
   
   // Gera quantidade aleatória entre 2 e 4 para variação anti-bloqueio
   const randomQty = Math.floor(Math.random() * 3) + 2; // 2, 3 ou 4
   
-  return template
+  let result = template
     .replace(/\{\{produto\}\}/g, `${data.product_name} (${data.product_code})`)
     .replace(/\{\{quantidade\}\}/g, String(data.quantity))
     .replace(/\{\{qtd_aleatoria\}\}/g, String(randomQty))
@@ -188,7 +191,23 @@ function formatMessage(template: string, data: ItemAddedRequest): string {
     .replace(/\{\{preco\}\}/g, unitPrice)
     .replace(/\{\{total\}\}/g, total)
     .replace(/\{\{subtotal\}\}/g, total)
-    .replace(/\{\{codigo\}\}/g, data.product_code);
+    .replace(/\{\{codigo\}\}/g, data.product_code)
+    .replace(/\{\{valor_original\}\}/g, originalPrice)
+    .replace(/\{\{valor_promo\}\}/g, promoPrice);
+
+  // Remove linhas que contenham variáveis vazias (sem valor promocional)
+  if (!originalPrice || !promoPrice) {
+    result = result
+      .split('\n')
+      .filter(line => {
+        if (!originalPrice && line.includes('{{valor_original}}')) return false;
+        if (!promoPrice && line.includes('{{valor_promo}}')) return false;
+        return true;
+      })
+      .join('\n');
+  }
+
+  return result;
 }
 
 // Build checkout URL for tenant
@@ -252,7 +271,7 @@ serve(async (req) => {
       );
     }
 
-    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, order_id } = body;
+    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id } = body;
 
     console.log(`[${timestamp}] [zapi-send-item-added] Processing for tenant ${tenant_id}`);
 
