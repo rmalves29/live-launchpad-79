@@ -149,6 +149,7 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
     data: {
       tenant_id: body.tenant_id,
       tenant_slug: body.tenant_slug ? String(body.tenant_slug).slice(0, 100) : undefined,
+      order_id: orderId,
       order_ids: Array.isArray(body.order_ids) ? body.order_ids.map((x: any) => Number(x)).filter((x: number) => Number.isFinite(x)) : undefined,
       cartItems: body.cartItems.map((it: any) => ({
         product_name: String(it.product_name ?? "").slice(0, 200),
