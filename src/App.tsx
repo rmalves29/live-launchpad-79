@@ -15,6 +15,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 // Callbacks
 import MercadoPagoCallback from "./pages/callbacks/MercadoPagoCallback";
 import MpReturn from "./pages/callbacks/MpReturn";
+import PagamentoRetorno from "./pages/pagamento/Retorno";
 
 // Pedidos
 import PedidosManual from "./pages/pedidos/Manual";
