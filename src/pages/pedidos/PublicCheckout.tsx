@@ -811,6 +811,7 @@ const PublicCheckout = () => {
         coupon_discount: couponDiscount,
         coupon_code: appliedCoupon?.code || null,
         tenant_id: tenant.id,
+        tenant_slug: tenant.slug || undefined,
         merge_observation: mergeObservation,
         payment_method: paymentMethod,
         pix_discount: pixDiscount,

@@ -1272,6 +1272,7 @@ const Checkout = () => {
         coupon_discount: couponDiscount,
         coupon_code: appliedCoupon?.code || null,
         tenant_id: tenantId,
+        tenant_slug: tenantSlug || undefined,
         merge_observation: mergeObservation
       };
 

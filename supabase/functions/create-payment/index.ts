@@ -33,6 +33,7 @@ type ShippingData = {
 
 type CreatePaymentRequest = {
   tenant_id: string;
+  tenant_slug?: string;
   order_id: number;
   order_ids?: number[];
   cartItems: CartItem[];
@@ -147,6 +148,7 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
     ok: true,
     data: {
       tenant_id: body.tenant_id,
+      tenant_slug: body.tenant_slug ? String(body.tenant_slug).slice(0, 100) : undefined,
       order_id: orderId,
       order_ids: Array.isArray(body.order_ids) ? body.order_ids.map((x: any) => Number(x)).filter((x: number) => Number.isFinite(x)) : undefined,
       cartItems: body.cartItems.map((it: any) => ({
@@ -184,6 +186,10 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // Detect origin dynamically from request headers
+  const requestOrigin = req.headers.get("origin") || req.headers.get("referer")?.replace(/\/[^/]*$/, "") || "";
+  const appBaseUrl = Deno.env.get("PUBLIC_APP_URL") || requestOrigin || "https://app.orderzaps.com";
 
   try {
     const parsed = validate(await req.json());
@@ -718,7 +724,7 @@ serve(async (req) => {
               billing_address_editable: false,
               customer_editable: false,
               accepted_payment_methods: ["credit_card", "boleto", "pix"],
-              success_url: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=success`,
+              success_url: `${appBaseUrl}/pagamento/retorno?status=success${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
 
               // Pagar.me exige estes objetos quando boleto/pix estão em accepted_payment_methods
               boleto: {
@@ -828,9 +834,9 @@ serve(async (req) => {
       },
       notification_url: webhookUrl,
       back_urls: {
-        success: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=success`,
-        failure: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=failure`,
-        pending: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=pending`,
+        success: `${appBaseUrl}/pagamento/retorno?status=success${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
+        failure: `${appBaseUrl}/pagamento/retorno?status=failure${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
+        pending: `${appBaseUrl}/pagamento/retorno?status=pending${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
       },
       auto_return: "approved",
     };
