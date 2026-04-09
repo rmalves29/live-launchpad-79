@@ -803,14 +803,21 @@ serve(async (req) => {
     
     const effectiveMpAccessToken = mpIntegration?.access_token || fallbackMpAccessToken;
 
+    // Calcular subtotal dos produtos para distribuir descontos proporcionalmente
+    const mpSubtotal = payload.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
+    const mpTotalDiscount = toNumber(payload.pix_discount, 0) + toNumber(payload.coupon_discount, 0);
+    const mpDiscountRatio = mpSubtotal > 0 && mpTotalDiscount > 0 ? (mpSubtotal - mpTotalDiscount) / mpSubtotal : 1;
+
+    console.log(`[create-payment] MP discount: subtotal=${mpSubtotal}, totalDiscount=${mpTotalDiscount}, ratio=${mpDiscountRatio}`);
+
     const items = payload.cartItems.map((it) => ({
       title: it.product_name || it.product_code || "Produto",
       quantity: it.qty,
-      unit_price: Number(it.unit_price),
+      unit_price: Math.round(Number(it.unit_price) * mpDiscountRatio * 100) / 100,
       currency_id: "BRL",
     }));
 
-    // Se houver frete, adiciona como item separado
+    // Se houver frete, adiciona como item separado (sem desconto)
     if (payload.shippingCost && payload.shippingCost > 0) {
       items.push({
         title: "Frete",
