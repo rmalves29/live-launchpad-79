@@ -32,6 +32,8 @@ interface Product {
   promotional_price: number | null;
   image_url: string | null;
   is_active: boolean;
+  color: string | null;
+  size: string | null;
 }
 
 export default function TenantStorefront() {

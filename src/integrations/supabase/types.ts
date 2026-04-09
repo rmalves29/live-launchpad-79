@@ -1965,6 +1965,7 @@ export type Database = {
           promotional_price: number | null
           sale_type: string
           size: string | null
+          sku_erp: string | null
           stock: number
           tenant_id: string
           updated_at: string | null
@@ -1983,6 +1984,7 @@ export type Database = {
           promotional_price?: number | null
           sale_type?: string
           size?: string | null
+          sku_erp?: string | null
           stock?: number
           tenant_id: string
           updated_at?: string | null
@@ -2001,6 +2003,7 @@ export type Database = {
           promotional_price?: number | null
           sale_type?: string
           size?: string | null
+          sku_erp?: string | null
           stock?: number
           tenant_id?: string
           updated_at?: string | null
