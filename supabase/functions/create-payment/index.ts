@@ -724,7 +724,7 @@ serve(async (req) => {
               billing_address_editable: false,
               customer_editable: false,
               accepted_payment_methods: ["credit_card", "boleto", "pix"],
-              success_url: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=success`,
+              success_url: `${appBaseUrl}/pagamento/retorno?status=success${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
 
               // Pagar.me exige estes objetos quando boleto/pix estão em accepted_payment_methods
               boleto: {
@@ -834,9 +834,9 @@ serve(async (req) => {
       },
       notification_url: webhookUrl,
       back_urls: {
-        success: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=success`,
-        failure: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=failure`,
-        pending: `${Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com"}/mp/return?status=pending`,
+        success: `${appBaseUrl}/pagamento/retorno?status=success${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
+        failure: `${appBaseUrl}/pagamento/retorno?status=failure${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
+        pending: `${appBaseUrl}/pagamento/retorno?status=pending${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
       },
       auto_return: "approved",
     };
