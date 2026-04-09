@@ -119,7 +119,10 @@ const AppContent = () => {
         
         {/* Callback do Mercado Pago */}
         <Route path="/mp/callback" element={<MercadoPagoCallback />} />
-        <Route path="/mp/return" element={<MpReturn />} />
+        <Route path="/mp/return" element={<Navigate to={`/pagamento/retorno${window.location.search}`} replace />} />
+        
+        {/* Página universal de retorno de pagamento */}
+        <Route path="/pagamento/retorno" element={<PagamentoRetorno />} />
         
         {/* Rotas protegidas */}
         <Route path="/checkout" element={<Checkout />} />
