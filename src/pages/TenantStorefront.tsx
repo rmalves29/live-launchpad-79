@@ -51,7 +51,7 @@ export default function TenantStorefront() {
       try {
         const { data } = await supabase
           .from('products')
-          .select('id, name, code, price, promotional_price, image_url, is_active')
+          .select('id, name, code, price, promotional_price, image_url, is_active, color, size')
           .eq('tenant_id', tenant!.id)
           .eq('is_active', true)
           .order('name');
