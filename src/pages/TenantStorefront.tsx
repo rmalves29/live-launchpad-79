@@ -1,6 +1,6 @@
 /**
  * Página Pública da Loja do Tenant
- * Acessível via: /loja-da-maria, /loja-do-joao, etc
+ * Acessível via: /t/loja-da-maria, /t/loja-do-joao, etc
  * Mostra produtos, informações e permite fazer pedidos
  */
 
@@ -9,6 +9,7 @@ import { useTenantBySlug } from '@/hooks/useTenantBySlug';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { 
   Loader2, 
   ShoppingBag, 
@@ -16,12 +17,53 @@ import {
   Mail, 
   MapPin,
   Store,
-  XCircle 
+  XCircle,
+  ExternalLink
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { formatCurrency } from '@/lib/utils';
+
+interface Product {
+  id: number;
+  name: string;
+  code: string | null;
+  price: number;
+  promotional_price: number | null;
+  image_url: string | null;
+  is_active: boolean;
+}
 
 export default function TenantStorefront() {
   const { slug } = useParams<{ slug: string }>();
   const { tenant, loading, error } = useTenantBySlug(slug);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+
+  // Carregar produtos do tenant
+  useEffect(() => {
+    if (!tenant) return;
+
+    async function loadProducts() {
+      setLoadingProducts(true);
+      try {
+        const { data } = await supabase
+          .from('products')
+          .select('id, name, code, price, promotional_price, image_url, is_active')
+          .eq('tenant_id', tenant!.id)
+          .eq('is_active', true)
+          .order('name');
+        
+        if (data) setProducts(data);
+      } catch (err) {
+        console.error('Erro ao carregar produtos:', err);
+      } finally {
+        setLoadingProducts(false);
+      }
+    }
+
+    loadProducts();
+  }, [tenant]);
 
   // Loading
   if (loading) {
@@ -72,7 +114,9 @@ export default function TenantStorefront() {
     );
   }
 
-  // Página da loja
+  const storeUrl = `https://app.orderzaps.com/t/${tenant.slug}`;
+  const checkoutUrl = `https://app.orderzaps.com/t/${tenant.slug}/checkout`;
+
   return (
     <div 
       className="min-h-screen"
@@ -149,9 +193,14 @@ export default function TenantStorefront() {
                 <MapPin className="h-5 w-5 text-red-600 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium">URL da Loja</p>
-                  <p className="text-sm text-gray-600 break-all">
-                    /t/{tenant.slug}
-                  </p>
+                  <a 
+                    href={storeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:underline break-all"
+                  >
+                    {storeUrl}
+                  </a>
                 </div>
               </div>
             </CardContent>
@@ -165,70 +214,125 @@ export default function TenantStorefront() {
                 Bem-vindo à {tenant.name}!
               </CardTitle>
               <CardDescription>
-                Esta é a página pública da loja. Em breve você poderá ver produtos e fazer pedidos aqui.
+                Esta é a página pública da loja. Veja nossos produtos e faça seu pedido.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Alert className="bg-blue-50 border-blue-200">
                 <AlertDescription className="text-blue-800">
-                  <strong>🎉 Novidade!</strong> Agora você pode acessar sua loja sem subdomínio!
+                  <strong>🎉 Novidade!</strong> Agora você pode acessar o catálogo da loja.
                   <br />
                   <br />
-                  Compartilhe este link: <strong className="font-mono">/t/{tenant.slug}</strong>
+                  <a 
+                    href={checkoutUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
+                  >
+                    Clique aqui para finalizar o pedido
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
                 </AlertDescription>
               </Alert>
 
-              <div className="mt-6 space-y-3">
-                <p className="text-sm text-gray-600">
-                  <strong>Para o administrador:</strong> Faça login para gerenciar sua loja.
-                </p>
-                <div className="flex gap-3">
-                  <Button asChild variant="default">
-                    <Link to="/auth">Fazer Login</Link>
-                  </Button>
-                  <Button asChild variant="outline">
-                    <Link to={`/t/${tenant.slug}/produtos`}>Ver Produtos</Link>
-                  </Button>
-                </div>
+              <div className="mt-6">
+                <Button asChild variant="default">
+                  <a href="#produtos">Ver todos os Produtos</a>
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Área de Produtos (Preview) */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Produtos em Destaque</CardTitle>
-            <CardDescription>
-              Em breve: Catálogo completo de produtos
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map((item) => (
-                <div 
-                  key={item}
-                  className="border rounded-lg p-4 bg-gray-50 hover:shadow-md transition-shadow"
-                >
-                  <div className="aspect-square bg-gray-200 rounded-lg mb-3 flex items-center justify-center">
-                    <ShoppingBag className="h-12 w-12 text-gray-400" />
-                  </div>
-                  <h3 className="font-medium text-gray-900">Produto {item}</h3>
-                  <p className="text-sm text-gray-600 mt-1">R$ 00,00</p>
-                  <Button size="sm" className="w-full mt-3" disabled>
-                    Em breve
-                  </Button>
+        {/* Área de Produtos */}
+        <div id="produtos">
+          <Card>
+            <CardHeader>
+              <CardTitle>Produtos em Destaque</CardTitle>
+              <CardDescription>
+                {products.length > 0 
+                  ? `${products.length} produto(s) disponível(is)`
+                  : 'Nenhum produto cadastrado ainda'
+                }
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingProducts ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              ) : products.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <ShoppingBag className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                  <p>Nenhum produto disponível no momento.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {products.map((product) => {
+                    const hasPromo = product.promotional_price && product.promotional_price > 0 && product.promotional_price < product.price;
+                    const displayPrice = hasPromo ? product.promotional_price! : product.price;
+
+                    return (
+                      <div 
+                        key={product.id}
+                        className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow"
+                      >
+                        {/* Imagem */}
+                        <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden relative">
+                          {product.image_url ? (
+                            <img 
+                              src={product.image_url} 
+                              alt={product.name}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <ShoppingBag className="h-12 w-12 text-gray-300" />
+                          )}
+                          {hasPromo && (
+                            <Badge className="absolute top-2 right-2 bg-red-500 text-white text-xs">
+                              Promoção
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* Info */}
+                        <div className="p-3">
+                          {product.code && (
+                            <p className="text-xs text-gray-400 mb-1">Cód: {product.code}</p>
+                          )}
+                          <h3 className="font-medium text-gray-900 text-sm line-clamp-2">{product.name}</h3>
+                          <div className="mt-2">
+                            {hasPromo ? (
+                              <div className="flex flex-col">
+                                <span className="text-xs text-gray-400 line-through">
+                                  {formatCurrency(product.price)}
+                                </span>
+                                <span className="text-base font-bold text-red-600">
+                                  {formatCurrency(displayPrice)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-base font-bold text-gray-900">
+                                {formatCurrency(product.price)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </main>
 
       {/* Footer */}
       <footer className="bg-white border-t mt-12">
         <div className="container mx-auto px-4 py-6 text-center text-sm text-gray-600">
-          <p>© 2024 {tenant.name}. Todos os direitos reservados.</p>
+          <p>© {new Date().getFullYear()} {tenant.name}. Todos os direitos reservados.</p>
           <p className="mt-2">
             Powered by <strong>OrderZap</strong> - Sistema Multi-Tenant
           </p>
