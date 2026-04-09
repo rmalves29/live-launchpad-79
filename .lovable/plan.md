@@ -1,37 +1,54 @@
 
 
-# Plano: Adicionar variáveis de preço promocional nos templates WhatsApp
+# Plano: Corrigir redirecionamento pós-pagamento (404)
 
-## O que será feito
-Adicionar suporte às variáveis `{{valor_original}}` e `{{valor_promo}}` nos templates de mensagem WhatsApp (Item Adicionado, Cobrança, etc.), para que o cliente possa exibir "De R$ X por R$ Y" nas mensagens.
+## Problema identificado
+Após o cliente finalizar o pagamento, o gateway (Pagar.me, Appmax ou Mercado Pago) redireciona o cliente de volta ao sistema, mas ele cai em uma página 404. Isso acontece porque:
 
-## Alterações
+1. **Pagar.me**: A `success_url` aponta para `/mp/return?status=success`, mas não há URLs de falha/pendente configuradas
+2. **Appmax**: Não tem **nenhuma** URL de retorno configurada — após pagar, o checkout do Appmax não sabe para onde redirecionar o cliente
+3. **Variável PUBLIC_APP_URL**: Pode não estar configurada na edge function, fazendo o redirect apontar para `app.orderzaps.com` enquanto o cliente está no `live-launchpad-79.lovable.app`
 
-### 1. Template Types — Frontend (`src/pages/whatsapp/Templates.tsx`)
-- Adicionar `{{valor_original}}` e `{{valor_promo}}` na lista de variáveis do tipo `ITEM_ADDED` e `PAID_ORDER`
+## Solução
 
-### 2. DB Trigger — Nova migration
-- Alterar a função `send_whatsapp_on_item_added()` para buscar `promotional_price` da tabela `products` (atualmente só busca `price`)
-- Passar `original_price` no payload JSON enviado à edge function
+### 1. Criar página dedicada de retorno de pagamento
+Renomear e melhorar a página `/mp/return` para ser uma página genérica de retorno de pagamento que funcione para todos os provedores (MP, Pagar.me, Appmax).
 
-### 3. Edge Function (`supabase/functions/zapi-send-item-added/index.ts`)
-- Adicionar `original_price` na interface `ItemAddedRequest`
-- Na função `formatMessage`, adicionar substituição de `{{valor_original}}` e `{{valor_promo}}`
-- Se não houver preço promocional, remover automaticamente as linhas que contenham essas variáveis (mesmo comportamento do SendFlow)
+- Criar rota `/pagamento/retorno` (mais intuitiva)
+- Manter `/mp/return` como redirect para compatibilidade
+- A página exibirá status do pagamento (sucesso/pendente/falha) com visual claro
+- Incluirá botão "Voltar ao catálogo da loja" com link dinâmico baseado no tenant
 
-## Lógica
-- `{{valor}}` continua sendo o preço efetivo (promocional se existir, senão original)
-- `{{valor_original}}` = preço original do produto (`product.price`)
-- `{{valor_promo}}` = preço promocional (`product.promotional_price`)
-- Se não houver preço promocional, linhas com `{{valor_original}}` e `{{valor_promo}}` são removidas automaticamente
+### 2. Configurar URLs de retorno em todos os provedores
 
-## Detalhes técnicos
+**Pagar.me** (edge function `create-payment`):
+- Adicionar `success_url` apontando para `/pagamento/retorno?status=success&tenant={slug}`
 
-**Migration SQL:**
-```sql
-CREATE OR REPLACE FUNCTION public.send_whatsapp_on_item_added()
--- Adiciona promotional_price no SELECT e original_price no jsonb_build_object
-```
+**Appmax** (edge function `create-payment`):
+- Passar o slug do tenant no body do checkout
+- Incluir URL de retorno no pedido Appmax (campo `url_callback` ou similar)
 
-**Edge function:** Mesma lógica já usada no `sendflow-process` para tratar linhas com variáveis vazias.
+**Mercado Pago**:
+- Já tem `back_urls` configurados — apenas ajustar para incluir o slug do tenant
+
+### 3. Incluir slug do tenant nas URLs de retorno
+Para que a página de retorno saiba para qual loja redirecionar o cliente, todas as URLs terão o parâmetro `&tenant={slug}`.
+
+### 4. Garantir que PUBLIC_APP_URL esteja correto
+Verificar se a variável de ambiente `PUBLIC_APP_URL` está definida nas edge functions. Se não, usar o origin da requisição como fallback dinâmico.
+
+## Alterações técnicas
+
+| Arquivo | O que muda |
+|---|---|
+| `src/pages/pagamento/Retorno.tsx` | Nova página de retorno de pagamento universal |
+| `src/App.tsx` | Adicionar rota `/pagamento/retorno` e redirect de `/mp/return` |
+| `supabase/functions/create-payment/index.ts` | Corrigir `success_url` do Pagar.me, adicionar `back_urls` dinâmicos com tenant slug, usar origin da requisição como fallback |
+| `src/pages/callbacks/MpReturn.tsx` | Redirecionar para a nova rota |
+
+## Resultado esperado
+Após o pagamento, o cliente verá uma página amigável com:
+- Confirmação visual do status (aprovado/pendente/falha)
+- Botão para voltar ao catálogo da loja
+- Informações do pedido quando disponível
 
