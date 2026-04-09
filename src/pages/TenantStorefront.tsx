@@ -223,15 +223,17 @@ export default function TenantStorefront() {
                   <strong>🎉 Novidade!</strong> Agora você pode acessar o catálogo da loja.
                   <br />
                   <br />
-                  <a 
-                    href={checkoutUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
-                  >
-                    Clique aqui para finalizar o pedido
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
+                  <Button asChild size="lg" className="mt-2 bg-green-600 hover:bg-green-700 text-white font-bold text-base px-6 py-3 shadow-md">
+                    <a 
+                      href={checkoutUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2"
+                    >
+                      🛒 Clique aqui para finalizar o pedido
+                      <ExternalLink className="h-5 w-5" />
+                    </a>
+                  </Button>
                 </AlertDescription>
               </Alert>
 
