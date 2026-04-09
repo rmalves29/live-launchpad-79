@@ -299,7 +299,9 @@ export default function TenantStorefront() {
                         {/* Info */}
                         <div className="p-3">
                           {product.code && (
-                            <p className="text-xs text-gray-400 mb-1">Cód: {product.code}</p>
+                            <Badge variant="outline" className="mb-2 text-xs font-bold tracking-wide bg-blue-50 text-blue-700 border-blue-200">
+                              {product.code}
+                            </Badge>
                           )}
                           <h3 className="font-medium text-gray-900 text-sm line-clamp-2">{product.name}</h3>
                           <div className="mt-2">
