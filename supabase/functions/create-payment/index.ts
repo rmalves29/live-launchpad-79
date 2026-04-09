@@ -33,6 +33,7 @@ type ShippingData = {
 
 type CreatePaymentRequest = {
   tenant_id: string;
+  tenant_slug?: string;
   order_id: number;
   order_ids?: number[];
   cartItems: CartItem[];
