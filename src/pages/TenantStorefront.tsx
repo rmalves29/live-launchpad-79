@@ -308,6 +308,20 @@ export default function TenantStorefront() {
                             </Badge>
                           )}
                           <h3 className="font-medium text-gray-900 text-sm line-clamp-2">{product.name}</h3>
+                          {(product.color || product.size) && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {product.color && (
+                                <Badge variant="secondary" className="text-xs font-normal">
+                                  Cor: {product.color}
+                                </Badge>
+                              )}
+                              {product.size && (
+                                <Badge variant="secondary" className="text-xs font-normal">
+                                  Tam: {product.size}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                           <div className="mt-2">
                             {hasPromo ? (
                               <div className="flex flex-col">
