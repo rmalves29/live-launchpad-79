@@ -187,6 +187,10 @@ function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: f
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Detect origin dynamically from request headers
+  const requestOrigin = req.headers.get("origin") || req.headers.get("referer")?.replace(/\/[^/]*$/, "") || "";
+  const appBaseUrl = Deno.env.get("PUBLIC_APP_URL") || requestOrigin || "https://app.orderzaps.com";
+
   try {
     const parsed = validate(await req.json());
     if (!parsed.ok) {
