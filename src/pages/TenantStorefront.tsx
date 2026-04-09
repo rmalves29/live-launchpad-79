@@ -32,6 +32,8 @@ interface Product {
   promotional_price: number | null;
   image_url: string | null;
   is_active: boolean;
+  color: string | null;
+  size: string | null;
 }
 
 export default function TenantStorefront() {
@@ -49,7 +51,7 @@ export default function TenantStorefront() {
       try {
         const { data } = await supabase
           .from('products')
-          .select('id, name, code, price, promotional_price, image_url, is_active')
+          .select('id, name, code, price, promotional_price, image_url, is_active, color, size')
           .eq('tenant_id', tenant!.id)
           .eq('is_active', true)
           .order('name');
@@ -306,6 +308,20 @@ export default function TenantStorefront() {
                             </Badge>
                           )}
                           <h3 className="font-medium text-gray-900 text-sm line-clamp-2">{product.name}</h3>
+                          {(product.color || product.size) && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {product.color && (
+                                <Badge variant="secondary" className="text-xs font-normal">
+                                  Cor: {product.color}
+                                </Badge>
+                              )}
+                              {product.size && (
+                                <Badge variant="secondary" className="text-xs font-normal">
+                                  Tam: {product.size}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                           <div className="mt-2">
                             {hasPromo ? (
                               <div className="flex flex-col">
