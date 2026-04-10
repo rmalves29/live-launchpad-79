@@ -5,6 +5,7 @@ import { useTenant } from '@/hooks/useTenant';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useBackendSendFlow } from '@/hooks/useBackendSendFlow';
 import { SendingJob } from '@/hooks/useSendingJob';
+import { getLatestWhatsAppTemplate, saveWhatsAppTemplate } from '@/lib/whatsapp-templates';
 import SendingControl from '@/components/SendingControl';
 import SendingProgressLive from '@/components/SendingProgressLive';
 import { Button } from '@/components/ui/button';
@@ -318,13 +319,7 @@ export default function SendFlow() {
 
   const loadTemplate = async () => {
     try {
-      const { data, error } = await supabaseTenant
-        .from('whatsapp_templates')
-        .select('content')
-        .eq('type', 'SENDFLOW')
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') throw error;
+      const data = await getLatestWhatsAppTemplate('SENDFLOW');
 
       if (data) {
         setMessageTemplate(data.content);
@@ -407,17 +402,13 @@ export default function SendFlow() {
     }
 
     try {
-      const { error } = await supabaseTenant
-        .from('whatsapp_templates')
-        .upsert({
-          type: 'SENDFLOW',
-          title: 'SendFlow - Divulgação em Grupos',
-          content: messageTemplate
-        }, {
-          onConflict: 'tenant_id,type'
-        });
+      await saveWhatsAppTemplate({
+        content: messageTemplate,
+        title: 'SendFlow - Divulgação em Grupos',
+        type: 'SENDFLOW',
+      });
 
-      if (error) throw error;
+      await loadTemplate();
 
       toast({
         title: 'Sucesso',

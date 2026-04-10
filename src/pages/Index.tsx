@@ -816,6 +816,9 @@ const Pedidos = () => {
         .select('content')
         .eq('type', 'MSG_MASSA')
         .eq('tenant_id', currentTenantId)
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       console.log('Template encontrado:', template);

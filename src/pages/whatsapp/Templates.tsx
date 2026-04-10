@@ -8,17 +8,18 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabaseTenant } from "@/lib/supabase-tenant";
+import { deleteWhatsAppTemplate, listLatestWhatsAppTemplates, saveWhatsAppTemplate, type WhatsAppTemplateType } from "@/lib/whatsapp-templates";
 import { Plus, Edit2, Trash2, Save, X } from "lucide-react";
-import { formatBrasiliaDateTime, getBrasiliaDateTimeISO } from '@/lib/date-utils';
+import { formatBrasiliaDateTime } from '@/lib/date-utils';
 
 interface Template {
   id: number;
   tenant_id: string;
-  type: string;
-  title: string;
+  type: WhatsAppTemplateType;
+  title: string | null;
   content: string;
-  created_at: string;
-  updated_at: string;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 const TEMPLATE_TYPES = [
@@ -172,15 +173,7 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
     try {
       setLoading(true);
       
-      // Buscar templates existentes
-      const { data: existingTemplates, error } = await supabaseTenant
-        .from('whatsapp_templates')
-        .select('*')
-        .order('type', { ascending: true });
-
-      if (error) throw error;
-
-      const templates = existingTemplates || [];
+      const templates = await listLatestWhatsAppTemplates();
       const existingTypes = templates.map(t => t.type);
 
       // Criar templates padrão que não existem
@@ -189,23 +182,19 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
       );
 
       if (templatesToCreate.length > 0) {
-        const { error: insertError } = await supabaseTenant
-          .from('whatsapp_templates')
-          .insert(templatesToCreate);
+        await Promise.all(
+          templatesToCreate.map((template) =>
+            saveWhatsAppTemplate({
+              content: template.content,
+              title: template.title,
+              type: template.type as WhatsAppTemplateType,
+            })
+          )
+        );
 
-        if (insertError) {
-          console.error('Erro ao criar templates padrão:', insertError);
-        } else {
-          console.log(`Criados ${templatesToCreate.length} templates padrão`);
-          // Recarregar para incluir os novos
-          const { data: updatedTemplates } = await supabaseTenant
-            .from('whatsapp_templates')
-            .select('*')
-            .order('type', { ascending: true });
-          
-          setTemplates(updatedTemplates || []);
-          return;
-        }
+        console.log(`Criados ${templatesToCreate.length} templates padrão`);
+        setTemplates(await listLatestWhatsAppTemplates());
+        return;
       }
 
       setTemplates(templates);
@@ -220,12 +209,7 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabaseTenant
-        .from('whatsapp_templates')
-        .select('*')
-        .order('type', { ascending: true });
-
-      if (error) throw error;
+      const data = await listLatestWhatsAppTemplates();
       setTemplates(data || []);
     } catch (error: any) {
       console.error('Erro ao carregar templates:', error);
@@ -242,41 +226,28 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
     }
 
     try {
-      if (editingId) {
-        // Atualizar
-        console.log('📝 Atualizando template:', editingId, formData);
-        const result = await supabaseTenant
-          .from('whatsapp_templates')
-          .update({
-            type: formData.type,
-            title: formData.title,
-            content: formData.content,
-            updated_at: getBrasiliaDateTimeISO()
-          })
-          .eq('id', editingId);
+      const originalTemplate = editingId
+        ? templates.find((template) => template.id === editingId)
+        : null;
 
-        console.log('📝 Resultado update:', result);
-        const error = result?.error;
-        if (error) throw error;
+      await saveWhatsAppTemplate({
+        content: formData.content,
+        editingId,
+        originalType: originalTemplate?.type,
+        title: formData.title,
+        type: formData.type as WhatsAppTemplateType,
+      });
+
+      if (editingId) {
         toast.success('Template atualizado com sucesso');
       } else {
-        // Criar
-        const { error } = await supabaseTenant
-          .from('whatsapp_templates')
-          .insert({
-            type: formData.type,
-            title: formData.title,
-            content: formData.content
-          });
-
-        if (error) throw error;
         toast.success('Template criado com sucesso');
       }
 
       setFormData({ type: '', title: '', content: '' });
       setEditingId(null);
       setIsCreating(false);
-      loadTemplates();
+      await loadTemplates();
     } catch (error: any) {
       console.error('Erro ao salvar template:', error);
       toast.error(error?.message || 'Erro ao salvar template');
@@ -286,7 +257,7 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
   const handleEdit = (template: Template) => {
     setFormData({
       type: template.type,
-      title: template.title,
+      title: template.title || '',
       content: template.content
     });
     setEditingId(template.id);
@@ -295,18 +266,13 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
     setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (template: Template) => {
     if (!confirm('Tem certeza que deseja excluir este template?')) return;
 
     try {
-      const { error } = await supabaseTenant
-        .from('whatsapp_templates')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await deleteWhatsAppTemplate(template.type);
       toast.success('Template excluído com sucesso');
-      loadTemplates();
+      await loadTemplates();
     } catch (error: any) {
       console.error('Erro ao excluir template:', error);
       toast.error(error?.message || 'Erro ao excluir template');
@@ -452,7 +418,7 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
                     <span className="text-xs font-medium px-2 py-1 bg-primary/10 text-primary rounded">
                       {getTemplateTypeLabel(template.type)}
                     </span>
-                    <h3 className="text-lg font-semibold">{template.title}</h3>
+                    <h3 className="text-lg font-semibold">{template.title || getTemplateTypeLabel(template.type)}</h3>
                     {template.type === 'DM_INSTAGRAM_CADASTRO' && (
                       <div className="flex items-center gap-2 ml-auto">
                         <span className="text-xs text-muted-foreground">
@@ -470,7 +436,7 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
                     {template.content}
                   </p>
                   <p className="text-xs text-muted-foreground mt-3">
-                    Atualizado em: {formatBrasiliaDateTime(template.updated_at)}
+                    Atualizado em: {formatBrasiliaDateTime(template.updated_at || template.created_at || new Date().toISOString())}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -484,7 +450,7 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleDelete(template.id)}
+                      onClick={() => handleDelete(template)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
