@@ -186,6 +186,9 @@ export default function Cobranca() {
         .from('whatsapp_templates')
         .select('content')
         .eq('type', 'MSG_MASSA')
+        .order('updated_at', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (error) throw error;
