@@ -1,6 +1,7 @@
 -- ===============================================
 -- MIGRAÇÃO: Atualizar trigger validate_order_total_on_payment
--- para reconhecer tag [PIX_DISCOUNT] nas observações
+-- para reconhecer tags [PIX_DISCOUNT] e [COUPON_DISCOUNT]
+-- e usar regex POR LINHA (evita captura cruzada)
 -- Execute este SQL no Supabase SQL Editor
 -- ===============================================
 
@@ -16,9 +17,10 @@ DECLARE
   v_pix_discount numeric := 0;
   v_coupon_discount numeric := 0;
   v_correct_total numeric;
-  v_freight_match text[];
-  v_pix_match text[];
-  v_coupon_match text[];
+  v_freight_line text;
+  v_pix_line text;
+  v_coupon_line text;
+  v_val_match text[];
 BEGIN
   IF NEW.is_paid = true AND (OLD.is_paid = false OR OLD.is_paid IS NULL) THEN
     IF NEW.cart_id IS NOT NULL THEN
@@ -28,22 +30,31 @@ BEGIN
     IF v_products_total = 0 THEN RETURN NEW; END IF;
 
     IF NEW.observation IS NOT NULL THEN
-      -- Extrair frete
-      v_freight_match := regexp_match(NEW.observation, '\[FRETE\].*R\$\s*([\d]+[.,][\d]{2})');
-      IF v_freight_match IS NOT NULL AND v_freight_match[1] IS NOT NULL THEN
-        v_freight := CAST(REPLACE(v_freight_match[1], ',', '.') AS numeric);
+      -- Extrair APENAS a linha do frete (evita capturar valores de outras tags)
+      v_freight_line := (regexp_match(NEW.observation, '(\[FRETE\][^\n]*)'))[1];
+      IF v_freight_line IS NOT NULL THEN
+        v_val_match := regexp_match(v_freight_line, 'R\$\s*([\d]+[.,][\d]{2})');
+        IF v_val_match IS NOT NULL THEN
+          v_freight := CAST(REPLACE(v_val_match[1], ',', '.') AS numeric);
+        END IF;
       END IF;
 
-      -- Extrair desconto PIX
-      v_pix_match := regexp_match(NEW.observation, '\[PIX_DISCOUNT\]\s*R\$\s*([\d]+[.,][\d]{2})');
-      IF v_pix_match IS NOT NULL AND v_pix_match[1] IS NOT NULL THEN
-        v_pix_discount := CAST(REPLACE(v_pix_match[1], ',', '.') AS numeric);
+      -- Extrair APENAS a linha do desconto PIX
+      v_pix_line := (regexp_match(NEW.observation, '(\[PIX_DISCOUNT\][^\n]*)'))[1];
+      IF v_pix_line IS NOT NULL THEN
+        v_val_match := regexp_match(v_pix_line, 'R\$\s*([\d]+[.,][\d]{2})');
+        IF v_val_match IS NOT NULL THEN
+          v_pix_discount := CAST(REPLACE(v_val_match[1], ',', '.') AS numeric);
+        END IF;
       END IF;
 
-      -- Extrair desconto cupom
-      v_coupon_match := regexp_match(NEW.observation, '\[COUPON_DISCOUNT\]\s*R\$\s*([\d]+[.,][\d]{2})');
-      IF v_coupon_match IS NOT NULL AND v_coupon_match[1] IS NOT NULL THEN
-        v_coupon_discount := CAST(REPLACE(v_coupon_match[1], ',', '.') AS numeric);
+      -- Extrair APENAS a linha do desconto cupom
+      v_coupon_line := (regexp_match(NEW.observation, '(\[COUPON_DISCOUNT\][^\n]*)'))[1];
+      IF v_coupon_line IS NOT NULL THEN
+        v_val_match := regexp_match(v_coupon_line, 'R\$\s*([\d]+[.,][\d]{2})');
+        IF v_val_match IS NOT NULL THEN
+          v_coupon_discount := CAST(REPLACE(v_val_match[1], ',', '.') AS numeric);
+        END IF;
       END IF;
     END IF;
 
