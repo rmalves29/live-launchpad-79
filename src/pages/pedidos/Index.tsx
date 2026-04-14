@@ -235,31 +235,39 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           customerMap.set(normalizeForStorage(c.phone), c);
         });
 
-        // Batch query para cart_items (uma única query para todos os cart_ids)
-        // NOTA: Usamos fromGlobal porque super_admins podem visualizar pedidos de outros tenants
-        // e os cart_ids já garantem a segurança dos dados
+        // Batch query para cart_items (com paginação para evitar limite de 1000 linhas do Supabase)
+        // NOTA: Usamos raw porque super_admins podem visualizar pedidos de outros tenants
         let allCartItems: any[] = [];
         if (uniqueCartIds.length > 0) {
-          const { data: cartItemsData } = await supabaseTenant.raw
-            .from('cart_items')
-            .select(`
-              id,
-              cart_id,
-              qty,
-              unit_price,
-              product_name,
-              product_code,
-              product_image_url,
-              product:products!cart_items_product_id_fkey (
-                name,
-                code,
-                image_url,
-                color,
-                size
-              )
-            `)
-            .in('cart_id', uniqueCartIds);
-          allCartItems = cartItemsData || [];
+          const CART_ITEMS_PAGE_SIZE = 1000;
+          let offset = 0;
+          let hasMore = true;
+          while (hasMore) {
+            const { data: cartItemsData } = await supabaseTenant.raw
+              .from('cart_items')
+              .select(`
+                id,
+                cart_id,
+                qty,
+                unit_price,
+                product_name,
+                product_code,
+                product_image_url,
+                product:products!cart_items_product_id_fkey (
+                  name,
+                  code,
+                  image_url,
+                  color,
+                  size
+                )
+              `)
+              .in('cart_id', uniqueCartIds)
+              .range(offset, offset + CART_ITEMS_PAGE_SIZE - 1);
+            const page = cartItemsData || [];
+            allCartItems = allCartItems.concat(page);
+            hasMore = page.length === CART_ITEMS_PAGE_SIZE;
+            offset += CART_ITEMS_PAGE_SIZE;
+          }
         }
 
         // Criar mapa de cart_items por cart_id para lookup O(1)
@@ -919,25 +927,39 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         const cartIds = [...new Set(ordersNeedingItems.map(o => o.cart_id!).filter(Boolean))];
 
         if (cartIds.length > 0) {
-          const { data: cartItemsData, error: cartItemsError } = await supabaseTenant.raw
-            .from('cart_items')
-            .select(`
-              id,
-              cart_id,
-              qty,
-              unit_price,
-              product_name,
-              product_code,
-              product_image_url,
-              product:products!cart_items_product_id_fkey (
-                name,
-                code,
-                image_url,
-                color,
-                size
-              )
-            `)
-            .in('cart_id', cartIds);
+          // Paginar para evitar limite de 1000 linhas do Supabase
+          let allPrintCartItems: any[] = [];
+          const PRINT_PAGE_SIZE = 1000;
+          let printOffset = 0;
+          let printHasMore = true;
+          while (printHasMore) {
+            const { data: cartItemsPage, error: cartItemsError } = await supabaseTenant.raw
+              .from('cart_items')
+              .select(`
+                id,
+                cart_id,
+                qty,
+                unit_price,
+                product_name,
+                product_code,
+                product_image_url,
+                product:products!cart_items_product_id_fkey (
+                  name,
+                  code,
+                  image_url,
+                  color,
+                  size
+                )
+              `)
+              .in('cart_id', cartIds)
+              .range(printOffset, printOffset + PRINT_PAGE_SIZE - 1);
+            if (cartItemsError) throw cartItemsError;
+            const page = cartItemsPage || [];
+            allPrintCartItems = allPrintCartItems.concat(page);
+            printHasMore = page.length === PRINT_PAGE_SIZE;
+            printOffset += PRINT_PAGE_SIZE;
+          }
+          const cartItemsData = allPrintCartItems;
 
           if (cartItemsError) throw cartItemsError;
 
