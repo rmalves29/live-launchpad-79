@@ -75,6 +75,7 @@ export async function saveWhatsAppTemplate({
   type,
 }: SaveWhatsAppTemplateInput) {
   const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
+  const updatedAt = getBrasiliaDateTimeISO();
   let keptId = editingId ?? null;
 
   if (editingId) {
