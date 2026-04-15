@@ -157,8 +157,8 @@ export async function saveWhatsAppTemplate({
   return keptId;
 }
 
-export async function deleteWhatsAppTemplate(type: WhatsAppTemplateType) {
-  const { tenantId, table } = getTenantTemplateContext();
+export async function deleteWhatsAppTemplate(type: WhatsAppTemplateType, explicitTenantId?: string) {
+  const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
 
   const { error } = await table
     .delete()
