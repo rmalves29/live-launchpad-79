@@ -46,8 +46,53 @@ function formatPrice(price: number): string {
   return `R$ ${price.toFixed(2).replace('.', ',')}`;
 }
 
+function removePromotionalSegment(line: string): string {
+  return line
+    .replace(
+      /(\s*[,;|/\\-]\s*)?(?:🤑|💸)?\s*\*?\s*(por|promo(?:cional)?|valor\s+promo(?:cional)?)\s*\*?\s*:?\s*\*?\s*\{\{?valor_promo\}?\}\*?/giu,
+      ''
+    )
+    .replace(/(?:🤑|💸)/gu, '')
+    .replace(/\{\{?valor_promo\}?\}/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/^\*+|\*+$/g, '')
+    .replace(/[|,;:–—-]\s*$/g, '')
+    .trim();
+}
+
+function applyPromotionalPriceFallback(template: string, product: Product): string {
+  const promoRegex = /\{\{?valor_promo\}?\}/gi;
+  const hasPromotionalPrice = !!(product.promotional_price && product.promotional_price > 0);
+
+  return template
+    .split('\n')
+    .map((line) => {
+      if (!promoRegex.test(line)) {
+        return line;
+      }
+
+      promoRegex.lastIndex = 0;
+
+      if (hasPromotionalPrice) {
+        return line.replace(promoRegex, formatPrice(product.promotional_price!));
+      }
+
+      const hasBasePriceOnSameLine = /\{\{?(valor|valor_original)\}?\}/i.test(line);
+
+      if (!hasBasePriceOnSameLine) {
+        return line.replace(promoRegex, formatPrice(product.price));
+      }
+
+      return removePromotionalSegment(line);
+    })
+    .filter((line) => line.trim().length > 0)
+    .join('\n');
+}
+
 function personalizeMessage(template: string, product: Product): string {
-  let message = template;
+  let message = applyPromotionalPriceFallback(template, product);
   
   // {{valor}} and {{valor_original}} always show the BASE price (without discount)
   message = message
@@ -56,14 +101,12 @@ function personalizeMessage(template: string, product: Product): string {
     .replace(/\{\{?valor\}?\}/gi, formatPrice(product.price));
   
   // {{valor_original}} always shows the base price
-  // {{valor_promo}} shows promo price if available, otherwise remove the line
+  // {{valor_promo}} shows promo price if available, otherwise falls back to base price
+  // or removes only the promo segment when the same line already contains {{valor}}/{{valor_original}}
   message = message.replace(/\{\{?valor_original\}?\}/gi, formatPrice(product.price));
   
   if (product.promotional_price && product.promotional_price > 0) {
     message = message.replace(/\{\{?valor_promo\}?\}/gi, formatPrice(product.promotional_price));
-  } else {
-    // Remove entire line containing {{valor_promo}} when no promo exists
-    message = message.replace(/.*\{\{?valor_promo\}?\}.*\n?/gi, '');
   }
   
   if (product.color && product.color.trim()) {
