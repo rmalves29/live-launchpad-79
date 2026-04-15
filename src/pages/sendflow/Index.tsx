@@ -319,7 +319,7 @@ export default function SendFlow() {
 
   const loadTemplate = async () => {
     try {
-      const data = await getLatestWhatsAppTemplate('SENDFLOW');
+      const data = await getLatestWhatsAppTemplate('SENDFLOW', tenant?.id);
 
       if (data) {
         setMessageTemplate(data.content);
@@ -406,6 +406,7 @@ export default function SendFlow() {
         content: messageTemplate,
         title: 'SendFlow - Divulgação em Grupos',
         type: 'SENDFLOW',
+        tenantId: tenant?.id,
       });
 
       await loadTemplate();

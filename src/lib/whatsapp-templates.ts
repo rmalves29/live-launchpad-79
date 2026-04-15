@@ -9,12 +9,13 @@ type SaveWhatsAppTemplateInput = {
   content: string;
   editingId?: number | null;
   originalType?: WhatsAppTemplateType;
+  tenantId?: string;
   title?: string | null;
   type: WhatsAppTemplateType;
 };
 
-const getTenantTemplateContext = () => {
-  const tenantId = supabaseTenant.getTenantId();
+const getTenantTemplateContext = (explicitTenantId?: string) => {
+  const tenantId = explicitTenantId || supabaseTenant.getTenantId();
 
   if (!tenantId) {
     throw new Error('Tenant ID não encontrado.');
@@ -26,8 +27,8 @@ const getTenantTemplateContext = () => {
   };
 };
 
-export async function getLatestWhatsAppTemplate(type: WhatsAppTemplateType) {
-  const { tenantId, table } = getTenantTemplateContext();
+export async function getLatestWhatsAppTemplate(type: WhatsAppTemplateType, explicitTenantId?: string) {
+  const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
 
   const { data, error } = await table
     .select('*')
@@ -42,8 +43,8 @@ export async function getLatestWhatsAppTemplate(type: WhatsAppTemplateType) {
   return data;
 }
 
-export async function listLatestWhatsAppTemplates() {
-  const { tenantId, table } = getTenantTemplateContext();
+export async function listLatestWhatsAppTemplates(explicitTenantId?: string) {
+  const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
 
   const { data, error } = await table
     .select('*')
@@ -69,10 +70,11 @@ export async function saveWhatsAppTemplate({
   content,
   editingId,
   originalType,
+  tenantId: explicitTenantId,
   title,
   type,
 }: SaveWhatsAppTemplateInput) {
-  const { tenantId, table } = getTenantTemplateContext();
+  const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
   const updatedAt = getBrasiliaDateTimeISO();
   let keptId = editingId ?? null;
 
@@ -155,8 +157,8 @@ export async function saveWhatsAppTemplate({
   return keptId;
 }
 
-export async function deleteWhatsAppTemplate(type: WhatsAppTemplateType) {
-  const { tenantId, table } = getTenantTemplateContext();
+export async function deleteWhatsAppTemplate(type: WhatsAppTemplateType, explicitTenantId?: string) {
+  const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
 
   const { error } = await table
     .delete()
