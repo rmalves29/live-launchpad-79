@@ -59,13 +59,14 @@ function personalizeMessage(template: string, product: Product): string {
     .replace(/\{\{?nome\}?\}/gi, product.name.trim())
     .replace(/\{\{?valor\}?\}/gi, formatPrice(displayPrice));
   
-  // {{valor_original}} and {{valor_promo}} — remove lines if no promo
+  // {{valor_original}} always shows the base price
+  // {{valor_promo}} shows promo price if available, otherwise remove the line
+  message = message.replace(/\{\{?valor_original\}?\}/gi, formatPrice(product.price));
+  
   if (product.promotional_price && product.promotional_price > 0) {
-    message = message
-      .replace(/\{\{?valor_original\}?\}/gi, formatPrice(product.price))
-      .replace(/\{\{?valor_promo\}?\}/gi, formatPrice(product.promotional_price));
+    message = message.replace(/\{\{?valor_promo\}?\}/gi, formatPrice(product.promotional_price));
   } else {
-    message = message.replace(/.*\{\{?valor_original\}?\}.*\n?/gi, '');
+    // Remove entire line containing {{valor_promo}} when no promo exists
     message = message.replace(/.*\{\{?valor_promo\}?\}.*\n?/gi, '');
   }
   
