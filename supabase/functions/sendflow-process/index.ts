@@ -49,15 +49,11 @@ function formatPrice(price: number): string {
 function personalizeMessage(template: string, product: Product): string {
   let message = template;
   
-  // {{valor}} shows promo price if available, otherwise normal price
-  const displayPrice = (product.promotional_price && product.promotional_price > 0)
-    ? product.promotional_price
-    : product.price;
-  
+  // {{valor}} and {{valor_original}} always show the BASE price (without discount)
   message = message
     .replace(/\{\{?codigo\}?\}/gi, product.code.trim())
     .replace(/\{\{?nome\}?\}/gi, product.name.trim())
-    .replace(/\{\{?valor\}?\}/gi, formatPrice(displayPrice));
+    .replace(/\{\{?valor\}?\}/gi, formatPrice(product.price));
   
   // {{valor_original}} always shows the base price
   // {{valor_promo}} shows promo price if available, otherwise remove the line
