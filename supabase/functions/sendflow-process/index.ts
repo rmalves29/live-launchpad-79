@@ -49,12 +49,15 @@ function formatPrice(price: number): string {
 function removePromotionalSegment(line: string): string {
   return line
     .replace(
-      /(\s*[,;|/\\-]\s*)?[🤑💸]?\s*\*?\s*(por|promo(?:cional)?|valor\s+promo(?:cional)?)\s*\*?\s*:?\s*\*?\s*\{\{?valor_promo\}?\}\*?/gi,
+      /(\s*[,;|/\\-]\s*)?(?:🤑|💸)?\s*\*?\s*(por|promo(?:cional)?|valor\s+promo(?:cional)?)\s*\*?\s*:?\s*\*?\s*\{\{?valor_promo\}?\}\*?/giu,
       ''
     )
+    .replace(/(?:🤑|💸)/gu, '')
     .replace(/\{\{?valor_promo\}?\}/gi, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/\*\*/g, '')
+    .replace(/^\*+|\*+$/g, '')
     .replace(/[|,;:–—-]\s*$/g, '')
     .trim();
 }
