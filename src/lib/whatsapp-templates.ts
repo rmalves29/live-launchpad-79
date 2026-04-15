@@ -27,8 +27,8 @@ const getTenantTemplateContext = (explicitTenantId?: string) => {
   };
 };
 
-export async function getLatestWhatsAppTemplate(type: WhatsAppTemplateType) {
-  const { tenantId, table } = getTenantTemplateContext();
+export async function getLatestWhatsAppTemplate(type: WhatsAppTemplateType, explicitTenantId?: string) {
+  const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
 
   const { data, error } = await table
     .select('*')
@@ -43,8 +43,8 @@ export async function getLatestWhatsAppTemplate(type: WhatsAppTemplateType) {
   return data;
 }
 
-export async function listLatestWhatsAppTemplates() {
-  const { tenantId, table } = getTenantTemplateContext();
+export async function listLatestWhatsAppTemplates(explicitTenantId?: string) {
+  const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
 
   const { data, error } = await table
     .select('*')
@@ -70,11 +70,11 @@ export async function saveWhatsAppTemplate({
   content,
   editingId,
   originalType,
+  tenantId: explicitTenantId,
   title,
   type,
 }: SaveWhatsAppTemplateInput) {
-  const { tenantId, table } = getTenantTemplateContext();
-  const updatedAt = getBrasiliaDateTimeISO();
+  const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
   let keptId = editingId ?? null;
 
   if (editingId) {
