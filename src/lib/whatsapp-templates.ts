@@ -9,12 +9,13 @@ type SaveWhatsAppTemplateInput = {
   content: string;
   editingId?: number | null;
   originalType?: WhatsAppTemplateType;
+  tenantId?: string;
   title?: string | null;
   type: WhatsAppTemplateType;
 };
 
-const getTenantTemplateContext = () => {
-  const tenantId = supabaseTenant.getTenantId();
+const getTenantTemplateContext = (explicitTenantId?: string) => {
+  const tenantId = explicitTenantId || supabaseTenant.getTenantId();
 
   if (!tenantId) {
     throw new Error('Tenant ID não encontrado.');
