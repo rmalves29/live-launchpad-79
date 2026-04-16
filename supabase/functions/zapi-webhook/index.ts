@@ -2411,12 +2411,45 @@ async function updateOrderTotal(supabase: any, orderId: number) {
  
  Qualquer dúvida estou à disposição! ✨`;
    
-   let message = (whatsappConfig.item_added_confirmation_template || defaultTemplate)
-     .replace(/\{\{checkout_url\}\}/g, confirmation.checkout_url || '')
-     .replace(/\{\{link\}\}/g, confirmation.checkout_url || '');
-   
-   // Add message variation
-   message = addMessageVariation(message);
+    // Extract product info from confirmation metadata to support {{produto}}, {{quantidade}}, {{valor}}, etc.
+    const meta = (confirmation.metadata || {}) as Record<string, any>;
+    const productName = meta.product_name || '';
+    const productCode = meta.product_code || '';
+    const quantity = meta.quantity ?? '';
+    const unitPriceNum = typeof meta.unit_price === 'number' ? meta.unit_price : Number(meta.unit_price) || 0;
+    const originalPriceNum = typeof meta.original_price === 'number' ? meta.original_price : Number(meta.original_price) || 0;
+    const unitPriceStr = unitPriceNum ? unitPriceNum.toFixed(2) : '';
+    const totalStr = (unitPriceNum && quantity) ? (unitPriceNum * Number(quantity)).toFixed(2) : '';
+    const originalPriceStr = originalPriceNum ? originalPriceNum.toFixed(2) : '';
+    const promoPriceStr = (originalPriceNum && originalPriceNum > unitPriceNum) ? unitPriceStr : '';
+
+    let message = (whatsappConfig.item_added_confirmation_template || defaultTemplate)
+      .replace(/\{\{checkout_url\}\}/g, confirmation.checkout_url || '')
+      .replace(/\{\{link\}\}/g, confirmation.checkout_url || '')
+      .replace(/\{\{produto\}\}/g, productName ? `${productName}${productCode ? ` (${productCode})` : ''}` : '')
+      .replace(/\{\{quantidade\}\}/g, String(quantity))
+      .replace(/\{\{valor\}\}/g, unitPriceStr)
+      .replace(/\{\{preco\}\}/g, unitPriceStr)
+      .replace(/\{\{total\}\}/g, totalStr)
+      .replace(/\{\{subtotal\}\}/g, totalStr)
+      .replace(/\{\{codigo\}\}/g, productCode)
+      .replace(/\{\{valor_original\}\}/g, originalPriceStr)
+      .replace(/\{\{valor_promo\}\}/g, promoPriceStr);
+
+    // Remove lines containing unfilled promo placeholders when no promo data
+    if (!originalPriceStr || !promoPriceStr) {
+      message = message
+        .split('\n')
+        .filter((line) => {
+          if (!originalPriceStr && line.includes('{{valor_original}}')) return false;
+          if (!promoPriceStr && line.includes('{{valor_promo}}')) return false;
+          return true;
+        })
+        .join('\n');
+    }
+
+    // Add message variation
+    message = addMessageVariation(message);
    
     const targetPhone = (targetPhoneOverride || confirmation.customer_phone || '').replace(/\D/g, '') || confirmation.customer_phone;
 
