@@ -156,9 +156,20 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
 
     console.log(`[mp-webhook] Payment ${paymentId} APPROVED. external_ref="${externalRef}", parsed orderIds=[${orderIds}], tenantId=${tenantId}`);
 
+    // Detect payment method (pix | credit_card | debit_card | ticket=boleto | account_money | bank_transfer)
+    const mpType = String(payment.payment_type_id || "").toLowerCase();
+    const mpMethod = String(payment.payment_method_id || "").toLowerCase();
+    let detectedMethod: string = mpType || mpMethod || "";
+    if (mpType === "ticket" || mpMethod === "bolbradesco") detectedMethod = "boleto";
+    if (mpType === "credit_card") detectedMethod = "credit_card";
+    if (mpType === "debit_card") detectedMethod = "debit_card";
+    if (mpType === "bank_transfer" && mpMethod === "pix") detectedMethod = "pix";
+    if (mpMethod === "pix") detectedMethod = "pix";
+    const detectedInstallments = Number(payment.installments) || 1;
+
     if (orderIds.length > 0) {
       for (const orderId of orderIds) {
-        await markOrderAsPaid(sb, orderId, tenantId, paymentId);
+        await markOrderAsPaid(sb, orderId, tenantId, paymentId, detectedMethod, detectedInstallments);
       }
       return;
     }
@@ -174,7 +185,7 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
 
       if (orders && orders.length > 0) {
         for (const order of orders) {
-          await markOrderAsPaid(sb, order.id, order.tenant_id || tenantId, paymentId);
+          await markOrderAsPaid(sb, order.id, order.tenant_id || tenantId, paymentId, detectedMethod, detectedInstallments);
         }
       } else {
         console.log(`[mp-webhook] No orders found for preference_id: ${preferenceId}`);
@@ -365,12 +376,19 @@ async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken:
 // Mark order as paid
 // ──────────────────────────────────────────────────────────────────
 
-async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null, paymentId: string) {
-  console.log(`[mp-webhook] Marking order ${orderId} as paid (payment: ${paymentId})`);
+async function markOrderAsPaid(
+  sb: any,
+  orderId: number,
+  tenantId: string | null,
+  paymentId: string,
+  paymentMethod?: string | null,
+  installments?: number | null,
+) {
+  console.log(`[mp-webhook] Marking order ${orderId} as paid (payment: ${paymentId}, method: ${paymentMethod}, x${installments})`);
 
   const { data: existingOrder } = await sb
     .from("orders")
-    .select("id, is_paid, tenant_id, customer_phone, total_amount")
+    .select("id, is_paid, tenant_id, customer_phone, total_amount, payment_method")
     .eq("id", orderId)
     .single();
 
@@ -386,9 +404,13 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
 
   const orderTenantId = existingOrder.tenant_id || tenantId;
 
+  const updatePayload: Record<string, unknown> = { is_paid: true };
+  if (paymentMethod) updatePayload.payment_method = paymentMethod;
+  if (installments && installments > 0) updatePayload.payment_installments = installments;
+
   const { error: updateError } = await sb
     .from("orders")
-    .update({ is_paid: true })
+    .update(updatePayload)
     .eq("id", orderId);
 
   if (updateError) {
