@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, MapPin, Printer, Percent, Gift, X } from 'lucide-react';
 import { printThermalReceipt } from '@/components/ThermalReceipt';
+import { formatPaymentMethodWithInstallments } from '@/lib/payment-method-utils';
 
 interface Order {
   id: number;
@@ -29,6 +30,8 @@ interface Order {
   coupon_code?: string;
   coupon_discount?: number;
   gift_name?: string;
+  payment_method?: string | null;
+  payment_installments?: number | null;
   customer?: {
     name?: string;
     cpf?: string;
@@ -533,6 +536,17 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
                 <div>
                   <strong>Pedido criado em:</strong> {formatBrasiliaDateTime(order.created_at)}
                 </div>
+                <div>
+                  <strong>Quantidade de produtos:</strong>{' '}
+                  {(order.cart_items?.reduce((sum, i) => sum + (i.qty || 0), 0)) || 0}{' '}
+                  ({order.cart_items?.length || 0} {(order.cart_items?.length || 0) === 1 ? 'item' : 'itens'})
+                </div>
+                {order.is_paid && (
+                  <div>
+                    <strong>Forma de pagamento:</strong>{' '}
+                    {formatPaymentMethodWithInstallments(order.payment_method, order.payment_installments)}
+                  </div>
+                )}
                 {order.observation && (
                   <div>
                     <strong>Observações:</strong>
