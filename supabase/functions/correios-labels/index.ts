@@ -447,8 +447,11 @@ serve(async (req) => {
             continue;
           }
 
+          // idCorreios na API PPN dos Correios é o CNPJ (sem máscara) da empresa contratante,
+          // NÃO o nome de usuário do portal. Fallback para client_id apenas se CNPJ não estiver configurado.
+          const idCorreios = (cnpjRemetente || "").replace(/\D/g, "") || credentials.clientId;
           const { idPrePostagem, codigoObjeto } = await createPrePostagem(
-            token, credentials.cartaoPostagem, credentials.clientId, senderInfo, order, serviceCode, cnpjRemetente,
+            token, credentials.cartaoPostagem, idCorreios, senderInfo, order, serviceCode, cnpjRemetente,
           );
 
           let labelPdfBase64: string | undefined;
