@@ -3,6 +3,7 @@ import { getPrinterConfig } from '@/components/PrinterSettings';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatBrasiliaDate } from '@/lib/date-utils';
+import { formatPaymentMethodWithInstallments } from '@/lib/payment-method-utils';
 
 interface ReceiptOrder {
   id: number;
@@ -12,6 +13,8 @@ interface ReceiptOrder {
   is_paid: boolean;
   created_at: string;
   observation?: string;
+  payment_method?: string | null;
+  payment_installments?: number | null;
   customer?: {
     name?: string;
     cpf?: string;
@@ -144,12 +147,17 @@ const buildReceiptHtml = (order: ReceiptOrder, companyName?: string): string => 
     ${order.is_paid ? `
     <div class="center section">
       <div>Pagamento:</div>
-      <div class="bold">Confirmado</div>
+      <div class="bold">Confirmado${order.payment_method ? ' (' + formatPaymentMethodWithInstallments(order.payment_method, order.payment_installments) + ')' : ''}</div>
     </div>` : `
     <div class="center section">
       <div>Pagamento:</div>
       <div class="bold" style="color:red;">Pendente</div>
     </div>`}
+
+    <div class="center section">
+      <div>Qtd. de produtos:</div>
+      <div class="bold">${(order.cart_items || []).reduce((s, i) => s + (i.qty || 0), 0)} (${(order.cart_items?.length || 0)} ${((order.cart_items?.length || 0) === 1) ? 'item' : 'itens'})</div>
+    </div>
 
     ${shippingInfo ? `
     <div class="center section">

@@ -319,6 +319,8 @@ async function markOrderAsPaid(
 
     // Marcar como pago - o TRIGGER do banco de dados vai disparar zapi-send-paid-order automaticamente
     const updateData: any = { is_paid: true };
+    if (paymentMethod) updateData.payment_method = paymentMethod;
+    if (installments && installments > 0) updateData.payment_installments = installments;
 
     const { error } = await sb
       .from("orders")
