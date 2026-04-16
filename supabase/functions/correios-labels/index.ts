@@ -361,6 +361,7 @@ serve(async (req) => {
       clientSecret: integration.client_secret || "",
       cartaoPostagem: integration.refresh_token || "",
     };
+    const cnpjRemetente = integration.scope || "";
 
     // Parse sender info from webhook_secret (JSON)
     let senderInfo: SenderInfo = {
