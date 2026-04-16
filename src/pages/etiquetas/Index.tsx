@@ -79,6 +79,13 @@ interface IntegrationLog {
   error_message?: string;
 }
 
+const SHIPPING_PROVIDER_LABELS: Record<'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios', string> = {
+  melhor_envio: 'Melhor Envio',
+  mandae: 'Mandae',
+  correios: 'Correios',
+  meuscorreios: 'Meus Correios',
+};
+
 const Etiquetas = () => {
   const { isSuperAdmin } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -117,6 +124,25 @@ const Etiquetas = () => {
   
   // Estado para integração de frete ativa
   const [activeShippingProvider, setActiveShippingProvider] = useState<ShippingProvider>(null);
+  const activeProviderLabel = activeShippingProvider ? SHIPPING_PROVIDER_LABELS[activeShippingProvider] : 'integração de frete';
+  const isProviderHandledInLabelsPage = activeShippingProvider === 'melhor_envio' || activeShippingProvider === 'mandae';
+  const isCorreiosProvider = activeShippingProvider === 'correios' || activeShippingProvider === 'meuscorreios';
+
+  const openIntegrationsPage = () => {
+    window.location.assign('/integracoes');
+  };
+
+  const getUnsupportedProviderMessage = () => {
+    if (isCorreiosProvider) {
+      return `As etiquetas do ${activeProviderLabel} são geradas na aba Integrações.`;
+    }
+
+    if (!activeShippingProvider) {
+      return 'Nenhuma integração de frete ativa. Configure uma integração antes de criar remessas.';
+    }
+
+    return `Esta tela não oferece ações para ${activeProviderLabel}.`;
+  };
 
   useEffect(() => {
     if (!isSearchMode) {
@@ -358,11 +384,16 @@ const Etiquetas = () => {
   };
 
   const sendToShippingProvider = async (orderId: number) => {
-    const providerName = activeShippingProvider === 'mandae' ? 'Mandae' : 'Melhor Envio';
+    const providerName = activeShippingProvider ? SHIPPING_PROVIDER_LABELS[activeShippingProvider] : 'integração de frete';
     console.log(`🚀 [ETIQUETAS] Iniciando envio para ${providerName}:`, { orderId, provider: activeShippingProvider, timestamp: new Date().toISOString() });
     
     if (!activeShippingProvider) {
-      toast.error('Nenhuma integração de frete ativa. Configure Melhor Envio ou Mandae.');
+      toast.error(getUnsupportedProviderMessage());
+      return;
+    }
+
+    if (!isProviderHandledInLabelsPage) {
+      toast.error(getUnsupportedProviderMessage());
       return;
     }
     
@@ -826,6 +857,11 @@ const Etiquetas = () => {
 
   // Sincronizar todos os pedidos com remessa no Melhor Envio
   const syncAllOrdersStatus = async () => {
+    if (!isProviderHandledInLabelsPage) {
+      toast.info(getUnsupportedProviderMessage());
+      return;
+    }
+
     const ordersWithShipment = orders.filter(o => o.melhor_envio_shipment_id && !o.melhor_envio_tracking_code);
     
     if (ordersWithShipment.length === 0) {
@@ -910,6 +946,11 @@ const Etiquetas = () => {
   
   // Criar remessas em lote para todos os selecionados
   const createBatchShipments = async () => {
+    if (!isProviderHandledInLabelsPage) {
+      toast.error(getUnsupportedProviderMessage());
+      return;
+    }
+
     if (selectedOrders.size === 0) {
       toast.error('Selecione pelo menos um pedido');
       return;
@@ -1047,7 +1088,11 @@ const Etiquetas = () => {
             Etiquetas de Envio
           </h1>
           <p className="text-muted-foreground">
-            Gerencie as etiquetas dos pedidos pagos no Melhor Envio
+            {isProviderHandledInLabelsPage
+              ? `Gerencie as etiquetas dos pedidos pagos no ${activeProviderLabel}`
+              : isCorreiosProvider
+                ? `Para ${activeProviderLabel}, use o módulo específico na tela de Integrações`
+                : 'Gerencie as etiquetas dos pedidos pagos da sua integração de frete'}
           </p>
         </div>
       </div>
@@ -1058,12 +1103,16 @@ const Etiquetas = () => {
             <Truck className="h-4 w-4" />
             Etiquetas
           </TabsTrigger>
-          {isSuperAdmin && (
+          {isSuperAdmin && isProviderHandledInLabelsPage && (
             <>
               <TabsTrigger value="logs" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
                 Logs de Integração
               </TabsTrigger>
+            </>
+          )}
+          {isSuperAdmin && activeShippingProvider === 'melhor_envio' && (
+            <>
               <TabsTrigger value="config" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Configuração Webhook
@@ -1073,6 +1122,22 @@ const Etiquetas = () => {
         </TabsList>
 
         <TabsContent value="etiquetas" className="space-y-4">
+          {isCorreiosProvider && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Use o módulo específico do {activeProviderLabel}</AlertTitle>
+              <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  Esta tela ainda usa o fluxo de etiquetas do Melhor Envio/Mandae. Para {activeProviderLabel}, gere as etiquetas em Integrações.
+                </span>
+                <Button variant="outline" size="sm" onClick={openIntegrationsPage} className="shrink-0">
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Abrir Integrações
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Busca por nome e filtro por data */}
           <div className="flex flex-col gap-3">
             {/* Campo de busca por nome */}
@@ -1144,52 +1209,61 @@ const Etiquetas = () => {
               
               <div className="flex-1" />
               
-              {/* Controles de seleção em lote */}
-              {selectableOrders.length > 0 && (
-                <div className="flex items-center gap-2">
+              {isProviderHandledInLabelsPage ? (
+                <>
+                  {/* Controles de seleção em lote */}
+                  {selectableOrders.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={toggleSelectAll}
+                        disabled={validSelectableOrders.length === 0}
+                      >
+                        {selectedOrders.size === validSelectableOrders.length && validSelectableOrders.length > 0 ? (
+                          <CheckSquare className="h-4 w-4 mr-2" />
+                        ) : (
+                          <Square className="h-4 w-4 mr-2" />
+                        )}
+                        {selectedOrders.size > 0 ? `${selectedOrders.size} selecionado(s)` : 'Selecionar todos'}
+                      </Button>
+                      
+                      <Button
+                        size="sm"
+                        onClick={createBatchShipments}
+                        disabled={selectedOrders.size === 0 || batchProcessing}
+                        className="bg-primary"
+                      >
+                        {batchProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Send className="h-4 w-4 mr-2" />
+                        )}
+                        {batchProcessing ? 'Enviando...' : 'Criar Remessas'}
+                      </Button>
+                    </div>
+                  )}
+
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={toggleSelectAll}
-                    disabled={validSelectableOrders.length === 0}
+                    onClick={syncAllOrdersStatus}
+                    disabled={syncingAll}
                   >
-                    {selectedOrders.size === validSelectableOrders.length && validSelectableOrders.length > 0 ? (
-                      <CheckSquare className="h-4 w-4 mr-2" />
-                    ) : (
-                      <Square className="h-4 w-4 mr-2" />
-                    )}
-                    {selectedOrders.size > 0 ? `${selectedOrders.size} selecionado(s)` : 'Selecionar todos'}
-                  </Button>
-                  
-                  <Button
-                    size="sm"
-                    onClick={createBatchShipments}
-                    disabled={selectedOrders.size === 0 || batchProcessing}
-                    className="bg-primary"
-                  >
-                    {batchProcessing ? (
+                    {syncingAll ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : (
-                      <Send className="h-4 w-4 mr-2" />
+                      <RefreshCw className="h-4 w-4 mr-2" />
                     )}
-                    {batchProcessing ? 'Enviando...' : 'Criar Remessas'}
+                    {syncingAll ? 'Sincronizando...' : 'Sincronizar Rastreios'}
                   </Button>
-                </div>
-              )}
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={syncAllOrdersStatus}
-                disabled={syncingAll}
-              >
-                {syncingAll ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                {syncingAll ? 'Sincronizando...' : 'Sincronizar Rastreios'}
-              </Button>
+                </>
+              ) : isCorreiosProvider ? (
+                <Button variant="outline" size="sm" onClick={openIntegrationsPage}>
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Abrir Integrações
+                </Button>
+              ) : null}
             </div>
           </div>
 
@@ -1481,7 +1555,7 @@ const Etiquetas = () => {
                       {/* Botões de Ação */}
                       <div className="flex flex-wrap gap-2 pt-2 border-t">
                         {/* Botão Criar Remessa */}
-                        {!order.melhor_envio_shipment_id && (
+                        {!order.melhor_envio_shipment_id && isProviderHandledInLabelsPage && (
                           <Button
                             onClick={() => sendToShippingProvider(order.id)}
                             disabled={processingOrders.has(order.id)}
@@ -1493,6 +1567,13 @@ const Etiquetas = () => {
                               <Send className="h-4 w-4 mr-2" />
                             )}
                             Criar Remessa
+                          </Button>
+                        )}
+
+                        {!order.melhor_envio_shipment_id && isCorreiosProvider && (
+                          <Button onClick={openIntegrationsPage} variant="outline" size="sm">
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            Abrir módulo do {activeProviderLabel}
                           </Button>
                         )}
 
@@ -1580,7 +1661,7 @@ const Etiquetas = () => {
           )}
         </TabsContent>
 
-        {isSuperAdmin && (
+        {isSuperAdmin && isProviderHandledInLabelsPage && (
           <TabsContent value="logs" className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
@@ -1708,7 +1789,7 @@ const Etiquetas = () => {
           </TabsContent>
         )}
 
-        {isSuperAdmin && (
+        {isSuperAdmin && activeShippingProvider === 'melhor_envio' && (
           <TabsContent value="config" className="space-y-4">
             <Card>
               <CardHeader>
