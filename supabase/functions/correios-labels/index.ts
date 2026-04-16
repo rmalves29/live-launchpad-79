@@ -230,12 +230,13 @@ function isPhoneRelatedCorreiosError(responseText: string): boolean {
 async function createPrePostagem(
   token: string,
   cartaoPostagem: string,
-  cnpj: string,
+  idCorreios: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
+  cnpjRemetente: string = "",
 ): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  let payload = buildPrePostagemPayload(cartaoPostagem, cnpj, sender, order, serviceCode, true);
+  let payload = buildPrePostagemPayload(cartaoPostagem, idCorreios, sender, order, serviceCode, true, cnpjRemetente);
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
   console.log("[correios-labels] Payload:", JSON.stringify(payload));
@@ -245,7 +246,7 @@ async function createPrePostagem(
 
   // Retry: without phone
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
-    payload = buildPrePostagemPayload(cartaoPostagem, cnpj, sender, order, serviceCode, false);
+    payload = buildPrePostagemPayload(cartaoPostagem, idCorreios, sender, order, serviceCode, false, cnpjRemetente);
     console.warn("[correios-labels] Retrying without phone for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
     console.log("[correios-labels] Retry (no phone) status:", response.status, "body:", responseText.substring(0, 1000));
