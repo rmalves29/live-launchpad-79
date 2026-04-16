@@ -60,7 +60,9 @@ async function getCorreiosToken(credentials: CorreiosCredentials, tenantId: stri
   return tokenData.token;
 }
 
-const SERVICE_CODES: Record<string, string> = {
+// Default service codes - these can vary per contract
+// Common codes: 03298/04669 (PAC), 03220/04162 (SEDEX), 04227 (Mini Envios)
+const DEFAULT_SERVICE_CODES: Record<string, string> = {
   PAC: "03298",
   SEDEX: "03220",
   "Mini Envios": "04227",
