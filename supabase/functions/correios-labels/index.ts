@@ -437,7 +437,7 @@ serve(async (req) => {
           }
 
           const { idPrePostagem, codigoObjeto } = await createPrePostagem(
-            token, credentials.cartaoPostagem, credentials.clientId, senderInfo, order, serviceCode,
+            token, credentials.cartaoPostagem, credentials.clientId, senderInfo, order, serviceCode, cnpjRemetente,
           );
 
           let labelPdfBase64: string | undefined;
