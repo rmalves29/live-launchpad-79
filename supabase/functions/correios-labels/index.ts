@@ -428,14 +428,15 @@ serve(async (req) => {
 
       console.log("[correios-labels] Found", orders.length, "orders to process");
 
+      // Parse custom service codes from MeusCorreiosServiceCodes (stored in a separate field or integration config)
+      const parsedServiceCodes: Record<string, string> = {};
+
       const results: PrePostagemResult[] = [];
 
       for (const order of orders) {
         try {
           const serviceKey = service_overrides?.[String(order.id)] || "PAC";
-          // Try custom codes from webhook_secret dict, then defaults, then alternates
-          const customCodes = parsedServiceCodes;
-          const serviceCode = customCodes[serviceKey] || DEFAULT_SERVICE_CODES[serviceKey] || DEFAULT_SERVICE_CODES.PAC;
+          const serviceCode = parsedServiceCodes[serviceKey] || DEFAULT_SERVICE_CODES[serviceKey] || DEFAULT_SERVICE_CODES.PAC;
 
           if (!order.customer_cep || !order.customer_street) {
             results.push({
