@@ -433,7 +433,9 @@ serve(async (req) => {
       for (const order of orders) {
         try {
           const serviceKey = service_overrides?.[String(order.id)] || "PAC";
-          const serviceCode = SERVICE_CODES[serviceKey] || SERVICE_CODES.PAC;
+          // Try custom codes from webhook_secret dict, then defaults, then alternates
+          const customCodes = parsedServiceCodes;
+          const serviceCode = customCodes[serviceKey] || DEFAULT_SERVICE_CODES[serviceKey] || DEFAULT_SERVICE_CODES.PAC;
 
           if (!order.customer_cep || !order.customer_street) {
             results.push({
