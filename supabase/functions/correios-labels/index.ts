@@ -60,9 +60,17 @@ async function getCorreiosToken(credentials: CorreiosCredentials, tenantId: stri
   return tokenData.token;
 }
 
-const SERVICE_CODES: Record<string, string> = {
+// Default service codes - can vary per contract
+const DEFAULT_SERVICE_CODES: Record<string, string> = {
   PAC: "03298",
   SEDEX: "03220",
+  "Mini Envios": "04227",
+};
+
+// Alternative service codes used by some contracts
+const ALT_SERVICE_CODES: Record<string, string> = {
+  PAC: "04669",
+  SEDEX: "04162",
   "Mini Envios": "04227",
 };
 
@@ -104,11 +112,12 @@ interface PrePostagemResult {
 
 function buildPrePostagemPayload(
   cartaoPostagem: string,
-  cnpj: string,
+  idCorreios: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
   includePhone: boolean = true,
+  cnpjRemetente: string = "",
 ) {
   const senderPhone = includePhone ? sanitizePhone(sender.telefone) : null;
   const recipientPhone = includePhone ? sanitizePhone(order.customer_phone) : null;
@@ -125,6 +134,13 @@ function buildPrePostagemPayload(
       uf: (sender.uf || "").toUpperCase().substring(0, 2),
     },
   };
+  // Add CNPJ/CPF if available (stored in scope field)
+  if (cnpjRemetente) {
+    const cleanCnpj = cnpjRemetente.replace(/\D/g, "");
+    if (cleanCnpj.length >= 11 && cleanCnpj.length <= 14) {
+      remetente.cpfCnpj = cleanCnpj;
+    }
+  }
   if (senderPhone) {
     remetente.dddCelular = senderPhone.substring(0, 2);
     remetente.celular = senderPhone.substring(2, 11);
@@ -160,7 +176,8 @@ function buildPrePostagemPayload(
 
   const valorDeclarado = Math.max(1, order.total_amount || 1);
 
-  return {
+  const payload: Record<string, unknown> = {
+    idCorreios: idCorreios,
     numeroCartaoPostagem: cartaoPostagem,
     remetente,
     destinatario,
@@ -170,7 +187,7 @@ function buildPrePostagemPayload(
     alturaInformada: "10",
     larguraInformada: "16",
     comprimentoInformado: "20",
-    modalidadePagamento: "2",
+    modalidadePagamento: "1",
     cienteObjetoNaoProibido: "1",
     itensDeclaracaoConteudo: [
       {
@@ -180,6 +197,8 @@ function buildPrePostagemPayload(
       },
     ],
   };
+
+  return payload;
 }
 
 async function sendPrePostagemRequest(token: string, payload: Record<string, unknown>) {
@@ -219,12 +238,13 @@ function isPhoneRelatedCorreiosError(responseText: string): boolean {
 async function createPrePostagem(
   token: string,
   cartaoPostagem: string,
-  cnpj: string,
+  idCorreios: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
+  cnpjRemetente: string = "",
 ): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
-  let payload = buildPrePostagemPayload(cartaoPostagem, cnpj, sender, order, serviceCode, true);
+  let payload = buildPrePostagemPayload(cartaoPostagem, idCorreios, sender, order, serviceCode, true, cnpjRemetente);
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
   console.log("[correios-labels] Payload:", JSON.stringify(payload));
@@ -234,7 +254,7 @@ async function createPrePostagem(
 
   // Retry: without phone
   if (!response.ok && isPhoneRelatedCorreiosError(responseText)) {
-    payload = buildPrePostagemPayload(cartaoPostagem, cnpj, sender, order, serviceCode, false);
+    payload = buildPrePostagemPayload(cartaoPostagem, idCorreios, sender, order, serviceCode, false, cnpjRemetente);
     console.warn("[correios-labels] Retrying without phone for order:", order.id);
     ({ response, responseText } = await sendPrePostagemRequest(token, payload));
     console.log("[correios-labels] Retry (no phone) status:", response.status, "body:", responseText.substring(0, 1000));
@@ -349,6 +369,7 @@ serve(async (req) => {
       clientSecret: integration.client_secret || "",
       cartaoPostagem: integration.refresh_token || "",
     };
+    const cnpjRemetente = integration.scope || "";
 
     // Parse sender info from webhook_secret (JSON)
     let senderInfo: SenderInfo = {
@@ -407,12 +428,15 @@ serve(async (req) => {
 
       console.log("[correios-labels] Found", orders.length, "orders to process");
 
+      // Parse custom service codes from MeusCorreiosServiceCodes (stored in a separate field or integration config)
+      const parsedServiceCodes: Record<string, string> = {};
+
       const results: PrePostagemResult[] = [];
 
       for (const order of orders) {
         try {
           const serviceKey = service_overrides?.[String(order.id)] || "PAC";
-          const serviceCode = SERVICE_CODES[serviceKey] || SERVICE_CODES.PAC;
+          const serviceCode = parsedServiceCodes[serviceKey] || DEFAULT_SERVICE_CODES[serviceKey] || DEFAULT_SERVICE_CODES.PAC;
 
           if (!order.customer_cep || !order.customer_street) {
             results.push({
@@ -424,7 +448,7 @@ serve(async (req) => {
           }
 
           const { idPrePostagem, codigoObjeto } = await createPrePostagem(
-            token, credentials.cartaoPostagem, credentials.clientId, senderInfo, order, serviceCode,
+            token, credentials.cartaoPostagem, credentials.clientId, senderInfo, order, serviceCode, cnpjRemetente,
           );
 
           let labelPdfBase64: string | undefined;
