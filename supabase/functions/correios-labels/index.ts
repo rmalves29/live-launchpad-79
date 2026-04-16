@@ -110,6 +110,57 @@ interface PrePostagemResult {
   error?: string;
 }
 
+interface PrePostagemLookup {
+  idPrePostagem: string;
+  codigoObjeto?: string;
+  status?: string;
+}
+
+const TRACKING_POLL_ATTEMPTS = 5;
+const TRACKING_POLL_INTERVAL_MS = 1500;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractPrePostagemLookup(data: any, fallbackId = ""): PrePostagemLookup {
+  const idPrePostagem =
+    data?.id ??
+    data?.idPrePostagem ??
+    data?.prePostagem?.id ??
+    data?.prepostagem?.id ??
+    fallbackId;
+
+  const codigoObjeto =
+    data?.codigoObjeto ??
+    data?.objetoPostal?.codigoObjeto ??
+    data?.prePostagem?.codigoObjeto ??
+    data?.prePostagem?.objetoPostal?.codigoObjeto ??
+    data?.prepostagem?.codigoObjeto ??
+    data?.prepostagem?.objetoPostal?.codigoObjeto;
+
+  const rawStatus =
+    data?.statusAtual?.descricao ??
+    data?.status?.descricao ??
+    data?.situacao?.descricao ??
+    data?.statusAtualDescricao ??
+    data?.statusDescricao ??
+    data?.statusAtual ??
+    data?.status ??
+    data?.situacao;
+
+  return {
+    idPrePostagem,
+    codigoObjeto,
+    status: rawStatus != null ? String(rawStatus) : undefined,
+  };
+}
+
+function buildPendingPrePostagemMessage(prePostagem: PrePostagemLookup): string {
+  const statusText = prePostagem.status ? ` (status: ${prePostagem.status})` : "";
+  return `Pré-postagem ${prePostagem.idPrePostagem} criada nos Correios${statusText}, mas o código de rastreio e o PDF ainda não ficaram disponíveis. Tente novamente em alguns segundos.`;
+}
+
 function buildPrePostagemPayload(
   cartaoPostagem: string,
   idCorreios: string,
@@ -243,7 +294,7 @@ async function createPrePostagem(
   order: any,
   serviceCode: string,
   cnpjRemetente: string = "",
-): Promise<{ idPrePostagem: string; codigoObjeto: string }> {
+): Promise<PrePostagemLookup> {
   let payload = buildPrePostagemPayload(cartaoPostagem, idCorreios, sender, order, serviceCode, true, cnpjRemetente);
 
   console.log("[correios-labels] Creating pre-postagem for order:", order.id, "service:", serviceCode);
@@ -265,15 +316,94 @@ async function createPrePostagem(
   }
 
   const data = JSON.parse(responseText);
-  const idPrePostagem = data.id || data.idPrePostagem;
-  const codigoObjeto = data.codigoObjeto || data.objetoPostal?.codigoObjeto;
+  const lookup = extractPrePostagemLookup(data);
 
-  if (!idPrePostagem || !codigoObjeto) {
-    console.error("[correios-labels] Missing ID/tracking in response:", JSON.stringify(data));
-    throw new Error("Resposta da API não contém ID ou código de rastreio");
+  if (!lookup.idPrePostagem) {
+    console.error("[correios-labels] Missing pre-postagem ID in response:", JSON.stringify(data));
+    throw new Error("Resposta da API não contém o ID da pré-postagem");
   }
 
-  return { idPrePostagem, codigoObjeto };
+  if (!lookup.codigoObjeto) {
+    console.warn(
+      "[correios-labels] Pre-postagem criada sem código de rastreio imediato:",
+      JSON.stringify({ orderId: order.id, idPrePostagem: lookup.idPrePostagem, status: lookup.status }),
+    );
+  }
+
+  return lookup;
+}
+
+async function fetchPrePostagemDetails(token: string, idPrePostagem: string): Promise<PrePostagemLookup> {
+  console.log("[correios-labels] Fetching pre-postagem details for:", idPrePostagem);
+
+  const response = await fetch(
+    `https://api.correios.com.br/prepostagem/v1/prepostagens/${idPrePostagem}`,
+    {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/json",
+      },
+    },
+  );
+
+  const responseText = await response.text();
+  console.log("[correios-labels] Pre-postagem details status:", response.status, "body:", responseText.substring(0, 1000));
+
+  if (!response.ok) {
+    throw new Error(getCorreiosErrorMessage(responseText, response.status));
+  }
+
+  const data = JSON.parse(responseText);
+  const lookup = extractPrePostagemLookup(data, idPrePostagem);
+
+  if (!lookup.idPrePostagem) {
+    throw new Error("Resposta da consulta da pré-postagem não contém ID");
+  }
+
+  return lookup;
+}
+
+async function waitForTrackingCode(
+  token: string,
+  prePostagem: PrePostagemLookup,
+  orderId: number,
+): Promise<PrePostagemLookup> {
+  if (prePostagem.codigoObjeto) {
+    return prePostagem;
+  }
+
+  let lastLookup = prePostagem;
+
+  for (let attempt = 1; attempt <= TRACKING_POLL_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      await sleep(TRACKING_POLL_INTERVAL_MS);
+    }
+
+    try {
+      const currentLookup = await fetchPrePostagemDetails(token, prePostagem.idPrePostagem);
+      lastLookup = { ...lastLookup, ...currentLookup };
+
+      console.log(
+        "[correios-labels] Tracking poll attempt:",
+        JSON.stringify({
+          orderId,
+          attempt,
+          idPrePostagem: lastLookup.idPrePostagem,
+          codigoObjeto: lastLookup.codigoObjeto,
+          status: lastLookup.status,
+        }),
+      );
+
+      if (lastLookup.codigoObjeto) {
+        return lastLookup;
+      }
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.warn("[correios-labels] Tracking poll failed:", JSON.stringify({ orderId, attempt, errMsg }));
+    }
+  }
+
+  return lastLookup;
 }
 
 async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<string> {
@@ -450,9 +580,11 @@ serve(async (req) => {
           // idCorreios na API PPN dos Correios é o CNPJ (sem máscara) da empresa contratante,
           // NÃO o nome de usuário do portal. Fallback para client_id apenas se CNPJ não estiver configurado.
           const idCorreios = (cnpjRemetente || "").replace(/\D/g, "") || credentials.clientId;
-          const { idPrePostagem, codigoObjeto } = await createPrePostagem(
+          const createdPrePostagem = await createPrePostagem(
             token, credentials.cartaoPostagem, idCorreios, senderInfo, order, serviceCode, cnpjRemetente,
           );
+          const resolvedPrePostagem = await waitForTrackingCode(token, createdPrePostagem, order.id);
+          const { idPrePostagem, codigoObjeto } = resolvedPrePostagem;
 
           let labelPdfBase64: string | undefined;
           try {
@@ -461,10 +593,32 @@ serve(async (req) => {
             console.error("[correios-labels] PDF fetch failed for order", order.id, pdfErr);
           }
 
-          await supabase
+          if (!codigoObjeto && !labelPdfBase64) {
+            throw new Error(buildPendingPrePostagemMessage(resolvedPrePostagem));
+          }
+
+          const orderUpdate: Record<string, string> = {
+            melhor_envio_shipment_id: idPrePostagem,
+          };
+
+          if (codigoObjeto) {
+            orderUpdate.melhor_envio_tracking_code = codigoObjeto;
+          } else {
+            console.warn(
+              "[correios-labels] Label PDF available before tracking code:",
+              JSON.stringify({ orderId: order.id, idPrePostagem }),
+            );
+          }
+
+          const { error: updateOrderError } = await supabase
             .from("orders")
-            .update({ melhor_envio_tracking_code: codigoObjeto })
-            .eq("id", order.id);
+            .update(orderUpdate)
+            .eq("id", order.id)
+            .eq("tenant_id", tenant_id);
+
+          if (updateOrderError) {
+            console.error("[correios-labels] Order update failed:", updateOrderError.message);
+          }
 
           results.push({
             orderId: order.id,
