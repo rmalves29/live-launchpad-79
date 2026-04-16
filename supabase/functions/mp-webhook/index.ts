@@ -31,7 +31,6 @@ serve(async (req) => {
     const body = await req.json();
     console.log("[mp-webhook] Received webhook:", JSON.stringify({ tenant_id: tenantIdFromQuery, body }));
 
-    // Log webhook received
     await sb.from("webhook_logs").insert({
       webhook_type: "mercadopago_webhook",
       status_code: 200,
@@ -59,12 +58,11 @@ serve(async (req) => {
     if (!mpAccessToken) {
       console.error("[mp-webhook] No MP access token found for tenant:", tenantIdFromQuery);
       return new Response(JSON.stringify({ error: "No MP token" }), {
-        status: 200, // Return 200 to MP so it doesn't retry endlessly
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Handle different webhook types
     const { type, data, topic, resource, action } = body;
 
     // === IPN-style: topic=payment, resource=paymentId ===
@@ -102,7 +100,6 @@ serve(async (req) => {
       error_message: error instanceof Error ? error.message : String(error),
     });
 
-    // Return 200 to prevent MP from retrying on our errors
     return new Response(JSON.stringify({ error: "Internal error" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -110,88 +107,40 @@ serve(async (req) => {
   }
 });
 
+// ──────────────────────────────────────────────────────────────────
+// Payment processing
+// ──────────────────────────────────────────────────────────────────
+
 async function processPayment(sb: any, paymentId: string, mpAccessToken: string, tenantIdHint: string | null) {
   console.log(`[mp-webhook] Processing payment: ${paymentId}`);
 
   try {
-    // Fetch payment details from Mercado Pago
-    const paymentRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-      headers: {
-        Authorization: `Bearer ${mpAccessToken}`,
-      },
-    });
-
-    if (!paymentRes.ok) {
-      const errText = await paymentRes.text();
-      console.error(`[mp-webhook] Failed to fetch payment ${paymentId}: ${paymentRes.status} - ${errText.substring(0, 200)}`);
-      
-      // Log the failure
+    const payment = await fetchPaymentFromMP(paymentId, mpAccessToken);
+    if (!payment) {
       await sb.from("webhook_logs").insert({
         webhook_type: "mercadopago_payment_fetch_error",
-        status_code: paymentRes.status,
+        status_code: 0,
         tenant_id: tenantIdHint,
-        error_message: `Failed to fetch payment ${paymentId}: ${paymentRes.status}`,
-        payload: { payment_id: paymentId, response_preview: errText.substring(0, 500) },
+        error_message: `Failed to fetch payment ${paymentId}`,
+        payload: { payment_id: paymentId },
       });
       return;
     }
 
-    const payment = await paymentRes.json();
     console.log(`[mp-webhook] Payment ${paymentId}: status=${payment.status}, external_reference=${payment.external_reference}, preference_id=${payment.preference_id}`);
 
-    // Process cancelled/refunded payments
-    const isCancelled = payment.status === "refunded" || payment.status === "cancelled" || 
-                        payment.status === "charged_back" || payment.status === "rejected";
+    // ── Cancelled / Refunded ──
+    const isCancelled = ["refunded", "cancelled", "charged_back", "rejected"].includes(payment.status);
 
     if (isCancelled) {
-      console.log(`[mp-webhook] Payment ${paymentId} is ${payment.status}, processing cancellation`);
-
-      const externalRef = payment.external_reference || "";
-      const orderIds = parseOrderIds(externalRef);
-      const tenantId = parseTenantId(externalRef) || tenantIdHint;
-
-      let ordersToCancel: any[] = [];
-
-      if (orderIds.length > 0) {
-        const { data } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id").in("id", orderIds);
-        if (data) ordersToCancel = data;
-      }
-
-      // Fallback by preference_id
-      if (ordersToCancel.length === 0 && payment.preference_id) {
-        const { data } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id")
-          .ilike("payment_link", `%${payment.preference_id}%`);
-        if (data && data.length > 0) ordersToCancel = data;
-      }
-
-      for (const order of ordersToCancel) {
-        if (order.is_cancelled) continue;
-        
-        // Only cancel orders that were previously paid (refund/chargeback).
-        // If the order was never paid (e.g. expired PIX QR code), skip cancellation.
-        if (!order.is_paid) {
-          console.log(`[mp-webhook] Order ${order.id} was never paid (is_paid=false), skipping cancellation for ${payment.status}. This is likely an expired PIX QR code.`);
-          
-          await sb.from("webhook_logs").insert({
-            webhook_type: "mercadopago_skip_cancel_unpaid",
-            status_code: 200,
-            tenant_id: order.tenant_id || tenantId,
-            payload: { order_id: order.id, payment_id: paymentId, payment_status: payment.status },
-            response: `Skipped cancellation: order ${order.id} was never paid`,
-          });
-          continue;
-        }
-        
-        await markOrderAsCancelled(sb, order.id, order.tenant_id || tenantId, paymentId, payment.status);
-      }
-
+      console.log(`[mp-webhook] Payment ${paymentId} is ${payment.status}, evaluating cancellation`);
+      await handleCancelledPayment(sb, payment, paymentId, mpAccessToken, tenantIdHint);
       return;
     }
 
-    // Only process approved payments
+    // ── Approved ──
     if (payment.status !== "approved") {
       console.log(`[mp-webhook] Payment ${paymentId} not approved (status: ${payment.status}), skipping`);
-      
       await sb.from("webhook_logs").insert({
         webhook_type: "mercadopago_payment_not_approved",
         status_code: 200,
@@ -201,7 +150,6 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
       return;
     }
 
-    // Parse external_reference to get order IDs
     const externalRef = payment.external_reference || "";
     const orderIds = parseOrderIds(externalRef);
     const tenantId = parseTenantId(externalRef) || tenantIdHint;
@@ -209,14 +157,13 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
     console.log(`[mp-webhook] Payment ${paymentId} APPROVED. external_ref="${externalRef}", parsed orderIds=[${orderIds}], tenantId=${tenantId}`);
 
     if (orderIds.length > 0) {
-      // Mark orders as paid using external_reference
       for (const orderId of orderIds) {
         await markOrderAsPaid(sb, orderId, tenantId, paymentId);
       }
       return;
     }
 
-    // Fallback: Try to find order by preference_id in payment_link
+    // Fallback: preference_id
     const preferenceId = payment.preference_id;
     if (preferenceId) {
       console.log(`[mp-webhook] No orderIds from external_ref, trying preference_id: ${preferenceId}`);
@@ -226,13 +173,11 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
         .ilike("payment_link", `%${preferenceId}%`);
 
       if (orders && orders.length > 0) {
-        console.log(`[mp-webhook] Found ${orders.length} order(s) by preference_id`);
         for (const order of orders) {
           await markOrderAsPaid(sb, order.id, order.tenant_id || tenantId, paymentId);
         }
       } else {
         console.log(`[mp-webhook] No orders found for preference_id: ${preferenceId}`);
-        
         await sb.from("webhook_logs").insert({
           webhook_type: "mercadopago_payment_no_order",
           status_code: 200,
@@ -245,7 +190,6 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
     }
   } catch (error) {
     console.error(`[mp-webhook] Error processing payment ${paymentId}:`, error);
-    
     await sb.from("webhook_logs").insert({
       webhook_type: "mercadopago_payment_process_error",
       status_code: 500,
@@ -256,12 +200,141 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
   }
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Handle cancelled / refunded payment
+//
+// KEY FIX: Before cancelling an order, check if there is ANOTHER
+// approved payment for the same external_reference. If yes, the
+// cancelled payment is just an expired secondary attempt (e.g. PIX
+// QR code that was regenerated) and should be ignored.
+// ──────────────────────────────────────────────────────────────────
+
+async function handleCancelledPayment(
+  sb: any,
+  payment: any,
+  paymentId: string,
+  mpAccessToken: string,
+  tenantIdHint: string | null,
+) {
+  const externalRef = payment.external_reference || "";
+  const orderIds = parseOrderIds(externalRef);
+  const tenantId = parseTenantId(externalRef) || tenantIdHint;
+
+  let ordersToCheck: any[] = [];
+
+  if (orderIds.length > 0) {
+    const { data } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id").in("id", orderIds);
+    if (data) ordersToCheck = data;
+  }
+
+  // Fallback by preference_id
+  if (ordersToCheck.length === 0 && payment.preference_id) {
+    const { data } = await sb.from("orders").select("id, is_paid, is_cancelled, tenant_id")
+      .ilike("payment_link", `%${payment.preference_id}%`);
+    if (data && data.length > 0) ordersToCheck = data;
+  }
+
+  for (const order of ordersToCheck) {
+    if (order.is_cancelled) continue;
+
+    // Skip orders that were never paid (e.g. expired PIX QR code)
+    if (!order.is_paid) {
+      console.log(`[mp-webhook] Order ${order.id} was never paid (is_paid=false), skipping cancellation for ${payment.status}. Likely an expired PIX.`);
+      await sb.from("webhook_logs").insert({
+        webhook_type: "mercadopago_skip_cancel_unpaid",
+        status_code: 200,
+        tenant_id: order.tenant_id || tenantId,
+        payload: { order_id: order.id, payment_id: paymentId, payment_status: payment.status },
+        response: `Skipped: order ${order.id} was never paid`,
+      });
+      continue;
+    }
+
+    // ★ CRITICAL CHECK: Search MP for another approved payment with the same external_reference.
+    // If one exists, this cancellation is just a secondary attempt expiring — DO NOT cancel the order.
+    const hasOtherApproved = await hasAnotherApprovedPayment(externalRef, paymentId, mpAccessToken);
+
+    if (hasOtherApproved) {
+      console.log(`[mp-webhook] ⚠️ Order ${order.id}: ignoring ${payment.status} for payment ${paymentId} because another approved payment exists for the same external_reference.`);
+      await sb.from("webhook_logs").insert({
+        webhook_type: "mercadopago_skip_cancel_other_approved",
+        status_code: 200,
+        tenant_id: order.tenant_id || tenantId,
+        payload: { order_id: order.id, payment_id: paymentId, payment_status: payment.status, external_reference: externalRef },
+        response: `Skipped cancellation: another approved payment exists`,
+      });
+      continue;
+    }
+
+    // No other approved payment → proceed with cancellation
+    await markOrderAsCancelled(sb, order.id, order.tenant_id || tenantId, paymentId, payment.status);
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Check if another APPROVED payment exists for the same external_reference
+// ──────────────────────────────────────────────────────────────────
+
+async function hasAnotherApprovedPayment(
+  externalReference: string,
+  excludePaymentId: string,
+  mpAccessToken: string,
+): Promise<boolean> {
+  if (!externalReference) return false;
+
+  try {
+    const searchUrl = `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(externalReference)}&status=approved&limit=5`;
+    const res = await fetch(searchUrl, {
+      headers: { Authorization: `Bearer ${mpAccessToken}` },
+    });
+
+    if (!res.ok) {
+      console.error(`[mp-webhook] Failed to search payments by external_reference: ${res.status}`);
+      // On API error, be conservative and DON'T cancel
+      return true;
+    }
+
+    const data = await res.json();
+    const results = data.results || [];
+
+    // Check if any approved payment is different from the one being cancelled
+    const otherApproved = results.some((p: any) => String(p.id) !== excludePaymentId && p.status === "approved");
+
+    console.log(`[mp-webhook] Search for approved payments with ref="${externalReference}": found ${results.length} results, otherApproved=${otherApproved}`);
+    return otherApproved;
+  } catch (error) {
+    console.error(`[mp-webhook] Error searching payments:`, error);
+    // On error, be conservative and DON'T cancel
+    return true;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Fetch payment details from MP
+// ──────────────────────────────────────────────────────────────────
+
+async function fetchPaymentFromMP(paymentId: string, mpAccessToken: string): Promise<any | null> {
+  const paymentRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${mpAccessToken}` },
+  });
+
+  if (!paymentRes.ok) {
+    const errText = await paymentRes.text();
+    console.error(`[mp-webhook] Failed to fetch payment ${paymentId}: ${paymentRes.status} - ${errText.substring(0, 200)}`);
+    return null;
+  }
+
+  return await paymentRes.json();
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Merchant order processing
+// ──────────────────────────────────────────────────────────────────
+
 async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken: string, tenantIdHint: string | null) {
   try {
     const orderRes = await fetch(resourceUrl, {
-      headers: {
-        Authorization: `Bearer ${mpAccessToken}`,
-      },
+      headers: { Authorization: `Bearer ${mpAccessToken}` },
     });
 
     if (!orderRes.ok) {
@@ -273,12 +346,9 @@ async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken:
     const merchantOrder = await orderRes.json();
     console.log(`[mp-webhook] Merchant order: status=${merchantOrder.order_status}, payments=${merchantOrder.payments?.length || 0}`);
 
-    // Process ALL payments in the merchant order, not just when order_status is "paid"
-    // This is the key fix: sometimes order_status is "payment_required" but individual payments are "approved"
     if (merchantOrder.payments && merchantOrder.payments.length > 0) {
       for (const payment of merchantOrder.payments) {
         console.log(`[mp-webhook] Merchant order payment: id=${payment.id}, status=${payment.status}, amount=${payment.transaction_amount}`);
-        
         if (payment.status === "approved") {
           await processPayment(sb, String(payment.id), mpAccessToken, tenantIdHint);
         }
@@ -291,10 +361,13 @@ async function processMerchantOrder(sb: any, resourceUrl: string, mpAccessToken:
   }
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Mark order as paid
+// ──────────────────────────────────────────────────────────────────
+
 async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null, paymentId: string) {
   console.log(`[mp-webhook] Marking order ${orderId} as paid (payment: ${paymentId})`);
 
-  // Check if already paid
   const { data: existingOrder } = await sb
     .from("orders")
     .select("id, is_paid, tenant_id, customer_phone, total_amount")
@@ -313,7 +386,6 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
 
   const orderTenantId = existingOrder.tenant_id || tenantId;
 
-  // Update order to paid
   const { error: updateError } = await sb
     .from("orders")
     .update({ is_paid: true })
@@ -321,7 +393,6 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
 
   if (updateError) {
     console.error(`[mp-webhook] Error updating order ${orderId}:`, updateError);
-    
     await sb.from("webhook_logs").insert({
       webhook_type: "mercadopago_update_error",
       status_code: 500,
@@ -334,7 +405,6 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
 
   console.log(`[mp-webhook] ✅ Order ${orderId} marked as paid successfully`);
 
-  // Log success
   await sb.from("webhook_logs").insert({
     webhook_type: "mercadopago_payment_success",
     status_code: 200,
@@ -343,11 +413,12 @@ async function markOrderAsPaid(sb: any, orderId: number, tenantId: string | null
     response: `Order ${orderId} marked as paid`,
   });
 
-  // Note: WhatsApp notification is sent by the database trigger (process_paid_order)
-
-  // Sync with Bling ERP if configured
   await syncOrderWithBling(sb, orderId, orderTenantId);
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Bling ERP sync
+// ──────────────────────────────────────────────────────────────────
 
 async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | null) {
   if (!tenantId) return;
@@ -392,6 +463,10 @@ async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | n
     console.error(`[mp-webhook] Error syncing order ${orderId} with Bling:`, error);
   }
 }
+
+// ──────────────────────────────────────────────────────────────────
+// Mark order as cancelled
+// ──────────────────────────────────────────────────────────────────
 
 async function markOrderAsCancelled(sb: any, orderId: number, tenantId: string | null, paymentId: string, reason: string) {
   console.log(`[mp-webhook] Cancelling order ${orderId} (reason: ${reason})`);
@@ -438,14 +513,14 @@ async function markOrderAsCancelled(sb: any, orderId: number, tenantId: string |
   });
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────────
+
 function parseOrderIds(externalRef: string): number[] {
   const match = externalRef.match(/orders:([0-9,]+)/);
   if (!match) return [];
-  
-  return match[1]
-    .split(",")
-    .map((id) => parseInt(id, 10))
-    .filter((id) => !isNaN(id));
+  return match[1].split(",").map((id) => parseInt(id, 10)).filter((id) => !isNaN(id));
 }
 
 function parseTenantId(externalRef: string): string | null {
