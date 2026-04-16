@@ -116,8 +116,8 @@ interface PrePostagemLookup {
   status?: string;
 }
 
-const TRACKING_POLL_ATTEMPTS = 5;
-const TRACKING_POLL_INTERVAL_MS = 1500;
+const TRACKING_POLL_ATTEMPTS = 2;
+const TRACKING_POLL_INTERVAL_MS = 800;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -158,7 +158,7 @@ function extractPrePostagemLookup(data: any, fallbackId = ""): PrePostagemLookup
 
 function buildPendingPrePostagemMessage(prePostagem: PrePostagemLookup): string {
   const statusText = prePostagem.status ? ` (status: ${prePostagem.status})` : "";
-  return `Pré-postagem ${prePostagem.idPrePostagem} criada nos Correios${statusText}, mas o código de rastreio e o PDF ainda não ficaram disponíveis. Tente novamente em alguns segundos.`;
+  return `Pré-postagem ${prePostagem.idPrePostagem} criada nos Correios${statusText}, mas nem o código de rastreio nem o PDF ficaram disponíveis. Tente baixar a etiqueta novamente em alguns segundos.`;
 }
 
 function buildPrePostagemPayload(
