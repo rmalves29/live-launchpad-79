@@ -18,6 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatCurrency } from '@/lib/utils';
+import { formatPaymentMethodWithInstallments } from '@/lib/payment-method-utils';
 import { formatBrasiliaDate, formatBrasiliaDateTime, getBrasiliaDateTimeISO, getBrasiliaDateISO } from '@/lib/date-utils';
 import { EditOrderDialog } from '@/components/EditOrderDialog';
 import { ViewOrderDialog } from '@/components/ViewOrderDialog';
@@ -1104,9 +1105,13 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
               <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: #1a1a2e;">💳 Forma de pagamento</h3>
               <div style="background: #f0fdf4; padding: 14px; border-radius: 8px; border: 1px solid #86efac;">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px;">
-                  <div style="font-size: 13px; font-weight: 600; color: #166534;">Pix - Mercado Pago</div>
+                  <div style="font-size: 13px; font-weight: 600; color: #166534;">${order.is_paid ? (order.payment_method ? formatPaymentMethodWithInstallments(order.payment_method, order.payment_installments) : 'Pago') : 'Pagamento pendente'}</div>
                   <div style="font-size: 16px; font-weight: 700; color: #16a34a;">R$ ${order.total_amount.toFixed(2)}</div>
                   <div style="color: #4b5563; font-size: 12px; display: flex; align-items: center; gap: 4px;">📅 ${formatBrasiliaDate(order.created_at)}</div>
+                </div>
+                <div style="margin-top: 8px; font-size: 12px; color: #166534;">
+                  📦 Quantidade de produtos: <strong>${(order.cart_items || []).reduce((s: number, i: any) => s + (i.qty || 0), 0)}</strong>
+                  (${order.cart_items?.length || 0} ${(order.cart_items?.length || 0) === 1 ? 'item' : 'itens'})
                 </div>
               </div>
             </div>
