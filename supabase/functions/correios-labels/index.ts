@@ -170,7 +170,7 @@ function buildPrePostagemPayload(
     alturaInformada: "10",
     larguraInformada: "16",
     comprimentoInformado: "20",
-    modalidadePagamento: "1",
+    modalidadePagamento: "2",
     cienteObjetoNaoProibido: "1",
     itensDeclaracaoConteudo: [
       {
