@@ -1649,7 +1649,9 @@ export type Database = {
           omie_sync_status: string | null
           payment_confirmation_delivered: boolean | null
           payment_confirmation_sent: boolean | null
+          payment_installments: number | null
           payment_link: string | null
+          payment_method: string | null
           printed: boolean | null
           shipping_service_id: number | null
           skip_paid_message: boolean | null
@@ -1692,7 +1694,9 @@ export type Database = {
           omie_sync_status?: string | null
           payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
+          payment_installments?: number | null
           payment_link?: string | null
+          payment_method?: string | null
           printed?: boolean | null
           shipping_service_id?: number | null
           skip_paid_message?: boolean | null
@@ -1735,7 +1739,9 @@ export type Database = {
           omie_sync_status?: string | null
           payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
+          payment_installments?: number | null
           payment_link?: string | null
+          payment_method?: string | null
           printed?: boolean | null
           shipping_service_id?: number | null
           skip_paid_message?: boolean | null
