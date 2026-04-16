@@ -104,11 +104,12 @@ interface PrePostagemResult {
 
 function buildPrePostagemPayload(
   cartaoPostagem: string,
-  cnpj: string,
+  idCorreios: string,
   sender: SenderInfo,
   order: any,
   serviceCode: string,
   includePhone: boolean = true,
+  cnpjRemetente: string = "",
 ) {
   const senderPhone = includePhone ? sanitizePhone(sender.telefone) : null;
   const recipientPhone = includePhone ? sanitizePhone(order.customer_phone) : null;
@@ -125,6 +126,13 @@ function buildPrePostagemPayload(
       uf: (sender.uf || "").toUpperCase().substring(0, 2),
     },
   };
+  // Add CNPJ/CPF if available (stored in scope field)
+  if (cnpjRemetente) {
+    const cleanCnpj = cnpjRemetente.replace(/\D/g, "");
+    if (cleanCnpj.length >= 11 && cleanCnpj.length <= 14) {
+      remetente.cpfCnpj = cleanCnpj;
+    }
+  }
   if (senderPhone) {
     remetente.dddCelular = senderPhone.substring(0, 2);
     remetente.celular = senderPhone.substring(2, 11);
@@ -160,7 +168,8 @@ function buildPrePostagemPayload(
 
   const valorDeclarado = Math.max(1, order.total_amount || 1);
 
-  return {
+  const payload: Record<string, unknown> = {
+    idCorreios: idCorreios,
     numeroCartaoPostagem: cartaoPostagem,
     remetente,
     destinatario,
@@ -170,7 +179,7 @@ function buildPrePostagemPayload(
     alturaInformada: "10",
     larguraInformada: "16",
     comprimentoInformado: "20",
-    modalidadePagamento: "2",
+    modalidadePagamento: "1",
     cienteObjetoNaoProibido: "1",
     itensDeclaracaoConteudo: [
       {
@@ -180,6 +189,8 @@ function buildPrePostagemPayload(
       },
     ],
   };
+
+  return payload;
 }
 
 async function sendPrePostagemRequest(token: string, payload: Record<string, unknown>) {
