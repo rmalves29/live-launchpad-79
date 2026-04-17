@@ -272,6 +272,7 @@ async function sendPrePostagemRequest(token: string, payload: Record<string, unk
 }
 
 function getCorreiosErrorMessage(responseText: string, status: number): string {
+  console.error("[correios-labels] Erro HTTP", status, "| body completo:", responseText.substring(0, 1000));
   let errorMsg = `Erro na pré-postagem (${status})`;
   try {
     const d = JSON.parse(responseText);
