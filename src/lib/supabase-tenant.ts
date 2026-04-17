@@ -1,18 +1,11 @@
-import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
-
-const SUPABASE_URL = "https://hxtbsieodbtzgcvvkeqx.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4";
+import { supabase } from '@/integrations/supabase/client';
 
 // Cliente Supabase com filtragem automática por tenant
+// Reutiliza a instância singleton para evitar múltiplos GoTrueClient
+// competindo pela mesma sessão no localStorage.
 class TenantSupabaseClient {
-  private client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: {
-      storage: localStorage,
-      persistSession: true,
-      autoRefreshToken: true,
-    }
-  });
+  private client = supabase;
 
   private currentTenantId: string | null = null;
 

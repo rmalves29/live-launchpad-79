@@ -54,7 +54,6 @@ import SuporteIA from "./pages/suporte-ia/Index";
 import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
-import { TenantLoader } from "@/components/TenantLoader";
 import { useTenantContext } from "@/contexts/TenantContext";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 
@@ -258,16 +257,14 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <TenantProvider>
-        <TenantLoader>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
           <BrowserRouter>
-              <AppContent />
-              <WhatsAppSupportButton />
-            </BrowserRouter>
-          </TooltipProvider>
-        </TenantLoader>
+            <AppContent />
+            <WhatsAppSupportButton />
+          </BrowserRouter>
+        </TooltipProvider>
       </TenantProvider>
     </AuthProvider>
   </QueryClientProvider>
