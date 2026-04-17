@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -49,7 +49,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; services?: string[] } | null>(null);
   const [showSecrets, setShowSecrets] = useState(false);
 
-  const { data: integration, isLoading } = useQuery({
+  const { isLoading } = useQuery({
     queryKey: ['correios-integration', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
