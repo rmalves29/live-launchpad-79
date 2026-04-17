@@ -128,7 +128,7 @@ interface CorreiosCredentials {
 }
 
 async function getCredentials(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   tenantId: string,
 ): Promise<CorreiosCredentials> {
   const { data, error } = await supabase
@@ -141,18 +141,23 @@ async function getCredentials(
   if (error) throw new Error(`Erro ao buscar integração: ${error.message}`);
   if (!data) throw new Error("Integração Correios não configurada para este tenant");
 
-  if (!data.client_id || !data.client_secret || !data.refresh_token) {
+  const record = data as Record<string, unknown>;
+  const clientId = String(record.client_id || "");
+  const clientSecret = String(record.client_secret || "");
+  const cartaoPostagem = String(record.refresh_token || "");
+
+  if (!clientId || !clientSecret || !cartaoPostagem) {
     throw new Error("Credenciais incompletas (client_id, client_secret e cartão de postagem são obrigatórios)");
   }
 
   return {
-    client_id: data.client_id,
-    client_secret: data.client_secret,
-    cartao_postagem: data.refresh_token,
-    contrato: data.scope || null,
-    from_cep: data.from_cep || "",
-    webhook_secret: (data as any).webhook_secret || null,
-    integration_id: data.id,
+    client_id: clientId,
+    client_secret: clientSecret,
+    cartao_postagem: cartaoPostagem,
+    contrato: record.scope ? String(record.scope) : null,
+    from_cep: record.from_cep ? String(record.from_cep) : "",
+    webhook_secret: record.webhook_secret ? String(record.webhook_secret) : null,
+    integration_id: String(record.id || ""),
   };
 }
 
