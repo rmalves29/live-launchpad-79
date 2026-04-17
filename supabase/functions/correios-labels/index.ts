@@ -120,8 +120,8 @@ const TRACKING_POLL_ATTEMPTS = 2;
 const TRACKING_POLL_INTERVAL_MS = 800;
 
 // Retry configuration for label PDF download
-const PDF_RETRY_ATTEMPTS = 3;
-const PDF_RETRY_DELAYS_MS = [1500, 3000, 5000]; // wait before each attempt
+const PDF_RETRY_ATTEMPTS = 5;
+const PDF_RETRY_DELAYS_MS = [10000, 15000, 20000, 25000, 30000]; // wait before each attempt
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -445,18 +445,20 @@ async function fetchLabelPdfWithRetry(token: string, idPrePostagem: string): Pro
   let lastError: string | undefined;
 
   for (let attempt = 1; attempt <= PDF_RETRY_ATTEMPTS; attempt++) {
-    const delayMs = PDF_RETRY_DELAYS_MS[attempt - 1] ?? 3000;
+    const delayMs = PDF_RETRY_DELAYS_MS[attempt - 1] ?? 30000;
     console.log(
-      `[correios-labels] Tentativa ${attempt}/${PDF_RETRY_ATTEMPTS} de download do rótulo | idPrePostagem: ${idPrePostagem} | aguardando ${(delayMs / 1000).toFixed(1)}s...`,
+      `[correios-labels] Aguardando ${delayMs}ms antes da tentativa ${attempt}/${PDF_RETRY_ATTEMPTS} do rótulo...`,
     );
     await sleep(delayMs);
 
     try {
       const result = await fetchLabelPdf(token, idPrePostagem);
       lastStatus = result.status;
+      console.log(
+        `[correios-labels] Tentativa ${attempt}/${PDF_RETRY_ATTEMPTS} | status: ${result.status} | id: ${idPrePostagem}`,
+      );
 
       if (result.pdfBase64) {
-        // Approximate raw byte size from base64 length
         const bytes = Math.floor((result.pdfBase64.length * 3) / 4);
         console.log(
           `[correios-labels] Rótulo baixado com sucesso | idPrePostagem: ${idPrePostagem} | tamanho: ${bytes} bytes`,
@@ -465,9 +467,6 @@ async function fetchLabelPdfWithRetry(token: string, idPrePostagem: string): Pro
       }
 
       if (result.status === 404) {
-        console.warn(
-          `[correios-labels] Rótulo ainda não disponível (404) | tentativa ${attempt}/${PDF_RETRY_ATTEMPTS} | idPrePostagem: ${idPrePostagem}`,
-        );
         lastError = result.errorText;
         continue;
       }
@@ -487,8 +486,8 @@ async function fetchLabelPdfWithRetry(token: string, idPrePostagem: string): Pro
     }
   }
 
-  console.warn(
-    `[correios-labels] Rótulo não disponível após ${PDF_RETRY_ATTEMPTS} tentativas | idPrePostagem: ${idPrePostagem} | retornando pendente`,
+  console.log(
+    `[correios-labels] Rótulo pendente após ${PDF_RETRY_ATTEMPTS} tentativas | id: ${idPrePostagem} | pedido salvo com idPrePostagem como tracking`,
   );
   return { lastStatus, lastError };
 }
@@ -669,22 +668,11 @@ serve(async (req) => {
             );
           }
 
-          if (!codigoObjeto && !labelPdfBase64) {
-            throw new Error(buildPendingPrePostagemMessage(resolvedPrePostagem));
-          }
-
+          // Sucesso parcial: salva o pedido mesmo sem PDF/tracking — usa idPrePostagem como fallback
           const orderUpdate: Record<string, string> = {
             melhor_envio_shipment_id: idPrePostagem,
+            melhor_envio_tracking_code: codigoObjeto || idPrePostagem,
           };
-
-          if (codigoObjeto) {
-            orderUpdate.melhor_envio_tracking_code = codigoObjeto;
-          } else {
-            console.warn(
-              "[correios-labels] Label PDF available before tracking code:",
-              JSON.stringify({ orderId: order.id, idPrePostagem }),
-            );
-          }
 
           const { error: updateOrderError } = await supabase
             .from("orders")
@@ -699,12 +687,16 @@ serve(async (req) => {
           results.push({
             orderId: order.id,
             success: true,
-            trackingCode: codigoObjeto,
+            trackingCode: codigoObjeto || idPrePostagem,
             prePostagemId: idPrePostagem,
-            labelPdfBase64,
+            labelPdfBase64: labelPdfBase64 ?? null,
           });
 
-          console.log("[correios-labels] ✅ Success for order", order.id, "tracking:", codigoObjeto);
+          console.log(
+            "[correios-labels] ✅ Success for order", order.id,
+            "| tracking:", codigoObjeto || idPrePostagem,
+            "| pdf:", labelPdfBase64 ? "ok" : "pendente",
+          );
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
           console.error(
