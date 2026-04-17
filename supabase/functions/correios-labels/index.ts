@@ -715,7 +715,7 @@ serve(async (req) => {
 
           let labelPdfBase64: string | undefined;
           try {
-            const pdfResult = await fetchLabelPdfWithRetry(token, idPrePostagem);
+            const pdfResult = await fetchLabelPdfWithRetry(token, idPrePostagem, idCorreios, credentials.cartaoPostagem);
             labelPdfBase64 = pdfResult.pdfBase64;
           } catch (pdfErr) {
             const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
