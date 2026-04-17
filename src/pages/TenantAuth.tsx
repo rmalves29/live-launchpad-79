@@ -9,7 +9,6 @@ import { useNavigate } from "react-router-dom";
 import { useTenantContext } from "@/contexts/TenantContext";
 import { Building2, Shield, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { isInvalidCredentialsError, isNetworkAuthError, signInWithPasswordResilient } from "@/lib/auth-password";
 
 export default function TenantAuth() {
   const { toast } = useToast();
@@ -38,7 +37,10 @@ export default function TenantAuth() {
     setLoading(true);
     try {
       // Fazer login no Supabase
-      const { data: authData, error: authError } = await signInWithPasswordResilient(email, password);
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      });
       
       if (authError) throw authError;
 
@@ -107,26 +109,6 @@ export default function TenantAuth() {
       navigate("/", { replace: true });
       
     } catch (err: any) {
-      console.error('[TenantAuth] Erro no login', err);
-
-      if (isInvalidCredentialsError(err)) {
-        toast({ 
-          title: "Credenciais inválidas", 
-          description: "E-mail ou senha incorretos.", 
-          variant: "destructive" 
-        });
-        return;
-      }
-
-      if (isNetworkAuthError(err)) {
-        toast({ 
-          title: "Falha de conexão no login", 
-          description: "Não foi possível alcançar o servidor de autenticação. Tente novamente; se persistir, pode haver bloqueio de rede ou DNS no acesso ao Supabase.", 
-          variant: "destructive" 
-        });
-        return;
-      }
-
       toast({ 
         title: "Erro ao entrar", 
         description: err.message || "Verifique suas credenciais.", 

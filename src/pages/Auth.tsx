@@ -8,7 +8,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Zap, AlertTriangle, Phone, Mail } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { isInvalidCredentialsError, isNetworkAuthError, signInWithPasswordResilient } from "@/lib/auth-password";
 
 export default function Auth() {
   const { toast } = useToast();
@@ -132,7 +131,7 @@ export default function Auth() {
     setAccessError(null);
     
     try {
-      const { data, error } = await signInWithPasswordResilient(email, password);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
       // Verificar se a tenant do usuário tem acesso
@@ -163,31 +162,15 @@ export default function Auth() {
       toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
       navigate(from, { replace: true });
     } catch (err: any) {
-      console.error('[Auth] Erro no login', err);
+      const msg = (err?.message || '').toLowerCase();
+      const isInvalidCreds = msg.includes('invalid login credentials') || msg.includes('invalid login');
 
-      if (isInvalidCredentialsError(err)) {
-        toast({
-          title: 'Credenciais inválidas',
-          description: 'E-mail ou senha incorretos. Use "Esqueci minha senha" para redefinir.',
-          variant: 'destructive',
-        });
+      if (isInvalidCreds) {
+        toast({ title: 'Credenciais inválidas', description: 'Verifique seu e-mail e senha. Use "Esqueci minha senha" para redefinir.', variant: 'destructive' });
         return;
       }
 
-      if (isNetworkAuthError(err)) {
-        toast({
-          title: 'Falha de conexão no login',
-          description: 'Não foi possível alcançar o servidor de autenticação. Tente novamente; se persistir, pode haver bloqueio de rede ou DNS no acesso ao Supabase.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      toast({
-        title: 'Erro ao entrar',
-        description: err?.message || 'Não foi possível conectar. Verifique sua internet e tente novamente.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao entrar', description: err.message || 'Verifique suas credenciais.', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
