@@ -375,7 +375,7 @@ async function actionDownloadLabel(
 
 // ----- ACTION: create_prepostagem -----
 async function actionCreatePrepostagem(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   creds: CorreiosCredentials,
   payload: any,
 ) {
