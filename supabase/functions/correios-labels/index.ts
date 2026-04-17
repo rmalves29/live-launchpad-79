@@ -545,13 +545,23 @@ Deno.serve(async (req) => {
       if (!prePostagemId) {
         return new Response(
           JSON.stringify({ success: false, error: "prePostagem_id é obrigatório" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const result = await actionDownloadLabel(creds, String(prePostagemId));
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      try {
+        const result = await actionDownloadLabel(creds, String(prePostagemId));
+        return new Response(JSON.stringify(result), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        const msg = (e as Error).message || "Erro ao baixar etiqueta";
+        log(`ERRO download_label: ${msg}`);
+        return new Response(
+          JSON.stringify({ success: false, pending: false, error: msg }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     return new Response(
