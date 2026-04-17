@@ -327,6 +327,10 @@ async function createPrePostagem(
     throw new Error("Resposta da API não contém o ID da pré-postagem");
   }
 
+  console.log(
+    `[correios-labels] Pré-postagem criada | id: ${lookup.idPrePostagem} | statusAtual: ${lookup.status ?? 'desconhecido'} | codigoObjeto: ${lookup.codigoObjeto ?? 'ausente'}`,
+  );
+
   if (!lookup.codigoObjeto) {
     console.warn(
       "[correios-labels] Pre-postagem criada sem código de rastreio imediato:",
