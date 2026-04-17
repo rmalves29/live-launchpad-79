@@ -175,27 +175,76 @@ async function actionDownloadLabel(
   const token = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
 
   // Etapa 1 — Solicitar geração assíncrona
+  // A API CWS dos Correios exige body completo com formato/tipo de rótulo.
+  // Tentamos múltiplos formatos conhecidos da documentação.
   const asyncUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`;
-  const asyncBody = {
-    idPrePostagem: [String(prePostagemId)],
-    cartaoPostagem: creds.cartao_postagem,
-  };
 
-  const asyncResp = await fetch(asyncUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
+  const bodyVariants: Array<{ label: string; body: Record<string, unknown> }> = [
+    {
+      label: "v1-idsPrePostagem-objetos",
+      body: {
+        idsPrePostagem: [
+          {
+            id: String(prePostagemId),
+            tipoRotulo: "P", // P = Padrão (etiqueta), I = Introdutória
+          },
+        ],
+        numeroCartaoPostagem: creds.cartao_postagem,
+        idFormatoRotulo: "ET", // ET = Etiqueta
+      },
     },
-    body: JSON.stringify(asyncBody),
-  });
+    {
+      label: "v2-listaIdPrePostagem",
+      body: {
+        listaIdPrePostagem: [String(prePostagemId)],
+        numeroCartaoPostagem: creds.cartao_postagem,
+        idFormatoRotulo: "ET",
+        tipoRotulo: "P",
+      },
+    },
+    {
+      label: "v3-idPrePostagem-cartaoPostagem",
+      body: {
+        idPrePostagem: [String(prePostagemId)],
+        cartaoPostagem: creds.cartao_postagem,
+        tipoRotulo: "P",
+        formatoRotulo: "ET",
+      },
+    },
+  ];
 
-  const asyncText = await asyncResp.text();
-  log(`Etapa 1 | POST assincrono/pdf | status: ${asyncResp.status} | body: ${asyncText}`);
+  let asyncResp: Response | null = null;
+  let asyncText = "";
+  let lastStatus = 0;
 
-  if (!asyncResp.ok) {
-    throw new Error(`Falha ao solicitar rótulo assíncrono (${asyncResp.status}): ${asyncText}`);
+  for (const variant of bodyVariants) {
+    log(`Etapa 1 | tentando variante: ${variant.label} | body: ${JSON.stringify(variant.body)}`);
+    const r = await fetch(asyncUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(variant.body),
+    });
+    const t = await r.text();
+    lastStatus = r.status;
+    log(`Etapa 1 | variante ${variant.label} | status: ${r.status} | body: ${t}`);
+    if (r.ok) {
+      asyncResp = r;
+      asyncText = t;
+      break;
+    }
+    asyncText = t; // guarda o último erro para mensagem final
+  }
+
+  if (!asyncResp) {
+    return {
+      success: false,
+      pending: false,
+      error: `Falha ao solicitar rótulo assíncrono (${lastStatus}): ${asyncText}`,
+    };
   }
 
   let asyncJson: any = null;
@@ -496,13 +545,23 @@ Deno.serve(async (req) => {
       if (!prePostagemId) {
         return new Response(
           JSON.stringify({ success: false, error: "prePostagem_id é obrigatório" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-      const result = await actionDownloadLabel(creds, String(prePostagemId));
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      try {
+        const result = await actionDownloadLabel(creds, String(prePostagemId));
+        return new Response(JSON.stringify(result), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        const msg = (e as Error).message || "Erro ao baixar etiqueta";
+        log(`ERRO download_label: ${msg}`);
+        return new Response(
+          JSON.stringify({ success: false, pending: false, error: msg }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     return new Response(
