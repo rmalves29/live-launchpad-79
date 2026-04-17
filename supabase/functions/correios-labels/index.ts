@@ -352,29 +352,102 @@ async function waitForTrackingCode(
   return prePostagem;
 }
 
-async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<{ status: number; pdfBase64?: string; errorText?: string }> {
-  const response = await fetch(
-    `https://api.correios.com.br/prepostagem/v1/prepostagens/${idPrePostagem}/rotulo`,
-    {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept": "application/pdf",
-      },
-    },
-  );
-
-  if (!response.ok) {
-    const errText = await response.text();
-    return { status: response.status, errorText: errText.substring(0, 500) };
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
   let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const chunk = bytes.subarray(i, Math.min(i + CHUNK, bytes.length));
+    binary += String.fromCharCode.apply(null, Array.from(chunk) as number[]);
   }
-  return { status: response.status, pdfBase64: btoa(binary) };
+  return btoa(binary);
+}
+
+// Tenta múltiplos endpoints da API PPN dos Correios — varia por contrato
+async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<{ status: number; pdfBase64?: string; errorText?: string }> {
+  const base = "https://api.correios.com.br/prepostagem/v1/prepostagens";
+  const attempts: Array<{ label: string; url: string; method: "GET" | "POST"; body?: string }> = [
+    { label: `GET /prepostagens/${idPrePostagem}/rotulo`, url: `${base}/${idPrePostagem}/rotulo`, method: "GET" },
+    { label: `GET /prepostagens/rotulo?id=${idPrePostagem}`, url: `${base}/rotulo?id=${encodeURIComponent(idPrePostagem)}`, method: "GET" },
+    { label: `POST /prepostagens/rotulo`, url: `${base}/rotulo`, method: "POST", body: JSON.stringify({ idPrePostagem: [idPrePostagem] }) },
+  ];
+
+  let lastStatus = 0;
+  let lastErrorText: string | undefined;
+
+  for (let i = 0; i < attempts.length; i++) {
+    const a = attempts[i];
+    try {
+      const headers: Record<string, string> = {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/pdf, application/json",
+      };
+      if (a.method === "POST") headers["Content-Type"] = "application/json";
+
+      const response = await fetch(a.url, { method: a.method, headers, body: a.body });
+      const contentType = response.headers.get("content-type") || "";
+      console.log(
+        `[correios-labels] Tentando endpoint ${i + 1}: ${a.label} | status: ${response.status} | content-type: ${contentType}`,
+      );
+
+      if (response.ok) {
+        // Pode vir como PDF direto ou JSON com base64/URL
+        if (contentType.includes("application/pdf")) {
+          const buf = await response.arrayBuffer();
+          return { status: response.status, pdfBase64: arrayBufferToBase64(buf) };
+        }
+
+        if (contentType.includes("application/json")) {
+          const json = await response.json().catch(() => null) as any;
+          // Possíveis formatos: { rotulo: "base64..." } | [{ rotulo: "..." }] | { url: "..." }
+          const candidates: any[] = [];
+          if (Array.isArray(json)) candidates.push(...json);
+          else if (json) candidates.push(json);
+
+          for (const c of candidates) {
+            const b64 = c?.rotulo || c?.pdfBase64 || c?.base64 || c?.arquivo;
+            if (typeof b64 === "string" && b64.length > 100) {
+              return { status: response.status, pdfBase64: b64 };
+            }
+            const url = c?.url || c?.linkRotulo;
+            if (typeof url === "string" && url.startsWith("http")) {
+              const r2 = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+              if (r2.ok) {
+                const buf = await r2.arrayBuffer();
+                return { status: r2.status, pdfBase64: arrayBufferToBase64(buf) };
+              }
+            }
+          }
+          lastErrorText = `JSON sem PDF/base64: ${JSON.stringify(json).substring(0, 300)}`;
+          lastStatus = response.status;
+          continue;
+        }
+
+        // Resposta OK mas tipo desconhecido — tentar como binário mesmo assim
+        const buf = await response.arrayBuffer();
+        if (buf.byteLength > 1000) {
+          return { status: response.status, pdfBase64: arrayBufferToBase64(buf) };
+        }
+        lastErrorText = `Resposta OK mas formato inesperado (${buf.byteLength} bytes)`;
+        lastStatus = response.status;
+        continue;
+      }
+
+      lastStatus = response.status;
+      const errText = await response.text().catch(() => "");
+      lastErrorText = errText.substring(0, 500);
+      console.log(
+        `[correios-labels] Endpoint ${i + 1} falhou | status: ${response.status} | corpo: ${lastErrorText}`,
+      );
+      // Se for 404 (pendente) tenta próximo; outros erros (401/403) também tenta para cobrir variações
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[correios-labels] Erro endpoint ${i + 1} (${a.label}): ${msg}`);
+      lastErrorText = msg;
+    }
+  }
+
+  return { status: lastStatus, errorText: lastErrorText };
 }
 
 async function fetchLabelPdfWithRetry(token: string, idPrePostagem: string): Promise<{ pdfBase64?: string; bytes?: number; lastStatus?: number; lastError?: string }> {
