@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff, Info, Settings, Tag } from 'lucide-react';
+import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff, Settings, Tag } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ShippingServiceSelector from './ShippingServiceSelector';
 import CorreiosCWSLabels from './CorreiosCWSLabels';
