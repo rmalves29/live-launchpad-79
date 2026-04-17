@@ -379,7 +379,7 @@ async function fetchLabelPdf(
   // IMPORTANTE: usar `idsPrepostagens` quando temos o ID retornado pelo POST de criação (ex: PRLS...).
   // O campo `codigosObjeto` seria para rastreios reais (NL...BR).
   const solicitarBody = {
-    idsPrepostagens: [idPrePostagem],
+    idsPrePostagem: [idPrePostagem],
     idCorreios,
     numeroCartaoPostagem: cartaoPostagem,
     tipoRotulo: "P",            // P = padrão / R = reduzido
