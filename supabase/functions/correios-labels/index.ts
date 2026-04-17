@@ -16,9 +16,16 @@ const CORREIOS_BASE = "https://api.correios.com.br";
 const LOG_PREFIX = "[correios-labels]";
 
 // ----- Cache de token em memória (válido enquanto a function estiver quente) -----
+interface CorreiosCartaoData {
+  contrato?: string | null;
+  numero?: string | null;
+  dr?: number | null;
+}
+
 interface TokenCache {
   token: string;
   expiresAt: number; // epoch ms
+  cartaoData: CorreiosCartaoData;
 }
 const tokenCache = new Map<string, TokenCache>();
 
@@ -55,12 +62,12 @@ async function getCorreiosToken(
   clientId: string,
   clientSecret: string,
   cartaoPostagem: string,
-): Promise<string> {
+): Promise<{ token: string; cartaoData: CorreiosCartaoData }> {
   const cacheKey = `${clientId}:${cartaoPostagem}`;
   const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now() + 60_000) {
     log("Token em cache reutilizado");
-    return cached.token;
+    return { token: cached.token, cartaoData: cached.cartaoData };
   }
 
   const basic = btoa(`${clientId}:${clientSecret}`);
@@ -96,10 +103,17 @@ async function getCorreiosToken(
     throw new Error(`Token não retornado pela API. Body: ${text.slice(0, 200)}`);
   }
 
+  const cartaoToken = json.cartaoPostagem || {};
+  const cartaoData: CorreiosCartaoData = {
+    contrato: cartaoToken.contrato || null,
+    numero: cartaoToken.numero || cartaoPostagem || null,
+    dr: typeof cartaoToken.dr === "number" ? cartaoToken.dr : Number(cartaoToken.dr || 0) || null,
+  };
+
   // Expira em ~24h, mas guardamos por 23h para segurança
   const expiresAt = Date.now() + 23 * 60 * 60 * 1000;
-  tokenCache.set(cacheKey, { token, expiresAt });
-  return token;
+  tokenCache.set(cacheKey, { token, expiresAt, cartaoData });
+  return { token, cartaoData };
 }
 
 // ----- Buscar credenciais do tenant -----
@@ -114,7 +128,7 @@ interface CorreiosCredentials {
 }
 
 async function getCredentials(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   tenantId: string,
 ): Promise<CorreiosCredentials> {
   const { data, error } = await supabase
@@ -127,24 +141,29 @@ async function getCredentials(
   if (error) throw new Error(`Erro ao buscar integração: ${error.message}`);
   if (!data) throw new Error("Integração Correios não configurada para este tenant");
 
-  if (!data.client_id || !data.client_secret || !data.refresh_token) {
+  const record = data as Record<string, unknown>;
+  const clientId = String(record.client_id || "");
+  const clientSecret = String(record.client_secret || "");
+  const cartaoPostagem = String(record.refresh_token || "");
+
+  if (!clientId || !clientSecret || !cartaoPostagem) {
     throw new Error("Credenciais incompletas (client_id, client_secret e cartão de postagem são obrigatórios)");
   }
 
   return {
-    client_id: data.client_id,
-    client_secret: data.client_secret,
-    cartao_postagem: data.refresh_token,
-    contrato: data.scope || null,
-    from_cep: data.from_cep || "",
-    webhook_secret: (data as any).webhook_secret || null,
-    integration_id: data.id,
+    client_id: clientId,
+    client_secret: clientSecret,
+    cartao_postagem: cartaoPostagem,
+    contrato: record.scope ? String(record.scope) : null,
+    from_cep: record.from_cep ? String(record.from_cep) : "",
+    webhook_secret: record.webhook_secret ? String(record.webhook_secret) : null,
+    integration_id: String(record.id || ""),
   };
 }
 
 // ----- ACTION: save_sender -----
 async function actionSaveSender(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   tenantId: string,
   sender: Record<string, unknown>,
 ) {
@@ -172,60 +191,61 @@ async function actionDownloadLabel(
   creds: CorreiosCredentials,
   prePostagemId: string,
 ): Promise<DownloadLabelResult> {
-  const token = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
+  const { token, cartaoData } = await getCorreiosToken(
+    creds.client_id,
+    creds.client_secret,
+    creds.cartao_postagem,
+  );
 
-  // Etapa 1 — Solicitar geração assíncrona
-  // A API CWS dos Correios exige body completo com formato/tipo de rótulo.
-  // Tentamos múltiplos formatos conhecidos da documentação.
+  const cartaoNumero = cartaoData.numero || creds.cartao_postagem;
+
   const asyncUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`;
-
   const bodyVariants: Array<{ label: string; body: Record<string, unknown> }> = [
     {
-      label: "v0-completo-LASER_PACKEF_CAIXA",
+      label: "v0-contrato-dr-layout-formato",
       body: {
         idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: creds.cartao_postagem,
-        layoutImpressao: "LASER_PACKEF_CAIXA",
-        formatoRotulo: "PDF",
-        tipo: "PDF",
-        imprimeRemetente: true,
-      },
-    },
-    {
-      label: "v1-minimo-LASER_PACKEF_CAIXA",
-      body: {
-        idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: creds.cartao_postagem,
-        layoutImpressao: "LASER_PACKEF_CAIXA",
-      },
-    },
-    {
-      label: "v2-numeroCartaoPostagem-formatoRotulo",
-      body: {
-        idPrePostagem: [String(prePostagemId)],
-        numeroCartaoPostagem: creds.cartao_postagem,
+        cartaoPostagem: cartaoNumero,
+        contrato: cartaoData.contrato,
+        dr: cartaoData.dr,
         layoutImpressao: "LASER_PACKEF_CAIXA",
         formatoRotulo: "PDF",
       },
     },
     {
-      label: "v3-tipoRotulo-PACKEF",
+      label: "A-contrato-codigoServico",
       body: {
         idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: creds.cartao_postagem,
-        tipoRotulo: "PDF",
-        layoutImpressao: "PACKEF",
+        cartaoPostagem: cartaoNumero,
+        contrato: cartaoData.contrato,
+        layoutImpressao: "LASER_PACKEF_CAIXA",
+        formatoRotulo: "PDF",
+        codigoServico: "03298",
+      },
+    },
+    {
+      label: "B-cartao-aninhado",
+      body: {
+        idPrePostagem: [String(prePostagemId)],
+        cartaoPostagem: {
+          numero: cartaoNumero,
+          contrato: cartaoData.contrato,
+          dr: cartaoData.dr,
+        },
+        layoutImpressao: "LASER_PACKEF_CAIXA",
+        formatoRotulo: "PDF",
       },
     },
   ];
 
-  let asyncResp: Response | null = null;
   let asyncText = "";
   let lastStatus = 0;
 
-  for (const variant of bodyVariants) {
-    log(`Etapa 1 | tentando variante: ${variant.label} | body: ${JSON.stringify(variant.body)}`);
-    const r = await fetch(asyncUrl, {
+  for (let index = 0; index < bodyVariants.length; index++) {
+    const variant = bodyVariants[index];
+    log(`Variação ${index + 1} | body: ${JSON.stringify(variant.body)}`);
+
+    const response = await fetch(asyncUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -234,144 +254,132 @@ async function actionDownloadLabel(
       },
       body: JSON.stringify(variant.body),
     });
-    const t = await r.text();
-    lastStatus = r.status;
-    log(`Etapa 1 | variante ${variant.label} | status: ${r.status} | body: ${t}`);
-    if (r.ok) {
-      asyncResp = r;
-      asyncText = t;
-      break;
-    }
-    asyncText = t; // guarda o último erro para mensagem final
-  }
 
-  if (!asyncResp) {
+    const responseText = await response.text();
+    lastStatus = response.status;
+    asyncText = responseText;
+
+    log(
+      `Variação ${index + 1} | body: ${JSON.stringify(variant.body)} | status: ${response.status} | resposta: ${responseText}`,
+    );
+
+    if (!response.ok) continue;
+
+    let asyncJson: any = null;
+    try {
+      asyncJson = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Resposta inválida da Etapa 1 (não-JSON): ${responseText.slice(0, 300)}`);
+    }
+
+    const idRecibo: string | undefined =
+      asyncJson?.idRecibo ||
+      asyncJson?.recibo ||
+      asyncJson?.id ||
+      asyncJson?.protocolo ||
+      asyncJson?.numeroProtocolo;
+
+    if (!idRecibo) {
+      throw new Error(`idRecibo não retornado pela Etapa 1. Body completo: ${responseText}`);
+    }
+
+    log(`idRecibo obtido: ${idRecibo}`);
+
+    const pollUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`;
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      const pollResp = await fetch(pollUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/pdf, application/json",
+        },
+      });
+
+      const contentType = pollResp.headers.get("content-type") || "";
+
+      if (contentType.includes("application/pdf")) {
+        const buf = await pollResp.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+        }
+        const base64 = btoa(binary);
+        log(
+          `Polling ${attempt}/10 | status: ${pollResp.status} | content-type: ${contentType} | PDF recebido (${bytes.length} bytes)`,
+        );
+        return { success: true, labelPdfBase64: base64, idRecibo };
+      }
+
+      const bodyText = await pollResp.text();
+      log(
+        `Polling ${attempt}/10 | status: ${pollResp.status} | content-type: ${contentType} | body: ${bodyText}`,
+      );
+
+      if (contentType.includes("application/json")) {
+        try {
+          const j = JSON.parse(bodyText);
+          log(`Polling ${attempt}/10 | JSON keys: ${Object.keys(j || {}).join(", ")}`);
+
+          const candidate =
+            j?.arquivo || j?.pdf || j?.conteudo || j?.rotulo || j?.base64 || j?.data;
+
+          if (typeof candidate === "string" && candidate.length > 100) {
+            const base64 = candidate.startsWith("data:")
+              ? candidate.split(",")[1] || candidate
+              : candidate;
+            return { success: true, labelPdfBase64: base64, idRecibo };
+          }
+
+          const urlField = j?.url || j?.link || j?.urlArquivo;
+          if (typeof urlField === "string" && urlField.startsWith("http")) {
+            log(`Baixando PDF via URL retornada: ${urlField}`);
+            const fileResp = await fetch(urlField);
+            if (fileResp.ok) {
+              const buf = await fileResp.arrayBuffer();
+              const bytes = new Uint8Array(buf);
+              let binary = "";
+              const chunkSize = 0x8000;
+              for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+              }
+              const base64 = btoa(binary);
+              return { success: true, labelPdfBase64: base64, idRecibo };
+            }
+          }
+        } catch (e) {
+          log(`Polling ${attempt}/10 | erro ao parsear JSON: ${(e as Error).message}`);
+        }
+      }
+
+      if (attempt < 10) {
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    }
+
     return {
       success: false,
-      pending: false,
-      error: `Falha ao solicitar rótulo assíncrono (${lastStatus}): ${asyncText}`,
+      pending: true,
+      idRecibo,
+      error: "Rótulo em processamento. Tente novamente em 1 minuto.",
     };
   }
 
-  let asyncJson: any = null;
-  try {
-    asyncJson = JSON.parse(asyncText);
-  } catch {
-    throw new Error(`Resposta inválida da Etapa 1 (não-JSON): ${asyncText.slice(0, 300)}`);
-  }
-
-  // Possíveis nomes do recibo
-  const idRecibo: string | undefined =
-    asyncJson?.idRecibo ||
-    asyncJson?.recibo ||
-    asyncJson?.id ||
-    asyncJson?.protocolo ||
-    asyncJson?.numeroProtocolo;
-
-  if (!idRecibo) {
-    throw new Error(
-      `idRecibo não retornado pela Etapa 1. Body completo: ${asyncText}`,
-    );
-  }
-
-  log(`idRecibo obtido: ${idRecibo}`);
-
-  // Etapa 2 — Polling até 10x com 5s de intervalo
-  const pollUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`;
-  for (let attempt = 1; attempt <= 10; attempt++) {
-    const pollResp = await fetch(pollUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/pdf, application/json",
-      },
-    });
-
-    const contentType = pollResp.headers.get("content-type") || "";
-
-    // Se vier PDF binário direto
-    if (contentType.includes("application/pdf")) {
-      const buf = await pollResp.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      const chunkSize = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-      }
-      const base64 = btoa(binary);
-      log(
-        `Polling ${attempt}/10 | status: ${pollResp.status} | content-type: ${contentType} | PDF recebido (${bytes.length} bytes)`,
-      );
-      return { success: true, labelPdfBase64: base64, idRecibo };
-    }
-
-    // Caso contrário, ler como texto e tentar parsear JSON
-    const bodyText = await pollResp.text();
-    log(
-      `Polling ${attempt}/10 | status: ${pollResp.status} | content-type: ${contentType} | body: ${bodyText}`,
-    );
-
-    if (contentType.includes("application/json")) {
-      try {
-        const j = JSON.parse(bodyText);
-        log(`Polling ${attempt}/10 | JSON keys: ${Object.keys(j || {}).join(", ")}`);
-
-        // Procurar campo com base64 do PDF
-        const candidate =
-          j?.arquivo || j?.pdf || j?.conteudo || j?.rotulo || j?.base64 || j?.data;
-
-        if (typeof candidate === "string" && candidate.length > 100) {
-          // Já é base64 ou data URL
-          const base64 = candidate.startsWith("data:")
-            ? candidate.split(",")[1] || candidate
-            : candidate;
-          return { success: true, labelPdfBase64: base64, idRecibo };
-        }
-
-        // Se vier URL, baixa e converte
-        const urlField = j?.url || j?.link || j?.urlArquivo;
-        if (typeof urlField === "string" && urlField.startsWith("http")) {
-          log(`Baixando PDF via URL retornada: ${urlField}`);
-          const fileResp = await fetch(urlField);
-          if (fileResp.ok) {
-            const buf = await fileResp.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let binary = "";
-            const chunkSize = 0x8000;
-            for (let i = 0; i < bytes.length; i += chunkSize) {
-              binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-            }
-            const base64 = btoa(binary);
-            return { success: true, labelPdfBase64: base64, idRecibo };
-          }
-        }
-      } catch (e) {
-        log(`Polling ${attempt}/10 | erro ao parsear JSON: ${(e as Error).message}`);
-      }
-    }
-
-    // Aguarda 5s antes da próxima tentativa (exceto na última)
-    if (attempt < 10) {
-      await new Promise((r) => setTimeout(r, 5000));
-    }
-  }
-
-  // Após 10 tentativas, ainda em processamento
   return {
     success: false,
-    pending: true,
-    idRecibo,
-    error: "Rótulo em processamento. Tente novamente em 1 minuto.",
+    pending: false,
+    error: `Falha ao solicitar rótulo assíncrono (${lastStatus}): ${asyncText}`,
   };
 }
 
 // ----- ACTION: create_prepostagem -----
 async function actionCreatePrepostagem(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   creds: CorreiosCredentials,
   payload: any,
 ) {
-  const token = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
+  const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
 
   // Sanitização de dados (mantém o que já funciona)
   const dest = payload.destinatario || {};
