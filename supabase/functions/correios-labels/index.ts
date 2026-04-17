@@ -437,13 +437,15 @@ async function fetchLabelPdf(
 
   console.log(`[correios-labels] [rotulo-assinc] idRecibo obtido: ${idRecibo} — iniciando polling`);
 
-  // Etapa 2: Polling no endpoint de download (pode levar alguns segundos)
+  // Etapa 2: Polling no endpoint de download (pode levar bastante tempo)
   const downloadUrl = `${base}/rotulo/download/assincrono/${idRecibo}`;
-  const pollDelays = [2000, 3000, 5000, 5000, 10000]; // ~25s total
+  // 8 tentativas com intervalos crescentes (~52s total)
+  const pollDelays = [3000, 3000, 5000, 5000, 8000, 8000, 10000, 10000];
+  const maxPolls = pollDelays.length;
   let lastStatus = 0;
   let lastErrorText: string | undefined;
 
-  for (let i = 0; i < pollDelays.length; i++) {
+  for (let i = 0; i < maxPolls; i++) {
     if (i > 0) await new Promise((r) => setTimeout(r, pollDelays[i - 1]));
 
     const r = await fetch(downloadUrl, {
@@ -455,144 +457,88 @@ async function fetchLabelPdf(
     });
 
     const ct = r.headers.get("content-type") || "";
-    console.log(
-      `[correios-labels] [rotulo-assinc] Etapa 2 polling ${i + 1}/${pollDelays.length} | status: ${r.status} | content-type: ${ct}`,
-    );
     lastStatus = r.status;
 
-    if (r.ok) {
-      if (ct.includes("application/pdf")) {
-        const buf = await r.arrayBuffer();
-        if (buf.byteLength > 500) {
-          console.log(`[correios-labels] [rotulo-assinc] ✅ PDF binário recebido | bytes: ${buf.byteLength}`);
-          return { status: r.status, pdfBase64: arrayBufferToBase64(buf) };
-        }
-      }
-
-      if (ct.includes("application/json")) {
-        const txt = await r.text();
-        try {
-          const j = JSON.parse(txt);
-          const candidates = Array.isArray(j) ? j : [j, j?.dados, ...(Array.isArray(j?.dados) ? j.dados : [])].filter(Boolean);
-          for (const c of candidates) {
-            const b64 = c?.dados || c?.rotulo || c?.pdfBase64 || c?.base64 || c?.arquivo;
-            if (typeof b64 === "string" && b64.length > 500) {
-              console.log(`[correios-labels] [rotulo-assinc] ✅ PDF base64 recebido via JSON | length: ${b64.length}`);
-              return { status: r.status, pdfBase64: b64 };
-            }
-            const url = c?.url || c?.linkRotulo;
-            if (typeof url === "string" && url.startsWith("http")) {
-              const r2 = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
-              if (r2.ok) {
-                const buf = await r2.arrayBuffer();
-                console.log(`[correios-labels] [rotulo-assinc] ✅ PDF baixado via URL | bytes: ${buf.byteLength}`);
-                return { status: r2.status, pdfBase64: arrayBufferToBase64(buf) };
-              }
-            }
-          }
-          lastErrorText = `JSON sem PDF: ${txt.substring(0, 300)}`;
-        } catch {
-          lastErrorText = `JSON inválido: ${txt.substring(0, 300)}`;
-        }
-        continue;
-      }
-
-      // ok mas content-type desconhecido — tentar como binário
+    if (r.ok && ct.includes("application/pdf")) {
       const buf = await r.arrayBuffer();
-      if (buf.byteLength > 1000) {
-        console.log(`[correios-labels] [rotulo-assinc] ✅ Binário desconhecido aceito | bytes: ${buf.byteLength}`);
+      console.log(
+        `[correios-labels] [rotulo-assinc] polling ${i + 1}/${maxPolls} | status: ${r.status} | content-type: ${ct} | bytes: ${buf.byteLength}`,
+      );
+      if (buf.byteLength > 500) {
+        console.log(`[correios-labels] [rotulo-assinc] ✅ PDF binário recebido | bytes: ${buf.byteLength}`);
         return { status: r.status, pdfBase64: arrayBufferToBase64(buf) };
       }
-      lastErrorText = `Resposta OK formato inesperado (${buf.byteLength} bytes, ct=${ct})`;
+      lastErrorText = `PDF binário muito pequeno (${buf.byteLength} bytes)`;
       continue;
     }
 
-    // 404/202 = ainda processando — continua polling
-    const errText = await r.text().catch(() => "");
-    lastErrorText = errText.substring(0, 500);
+    // Ler body como texto para logar e processar JSON
+    const pollText = await r.text().catch(() => "");
+    console.log(
+      `[correios-labels] [rotulo-assinc] polling ${i + 1}/${maxPolls} | status: ${r.status} | content-type: ${ct} | body: ${pollText.substring(0, 1000)}`,
+    );
+
+    if (r.ok && ct.includes("application/json")) {
+      try {
+        const pollData = JSON.parse(pollText);
+
+        // Logar estrutura
+        if (pollData && typeof pollData === "object" && !Array.isArray(pollData)) {
+          console.log(
+            `[correios-labels] [rotulo-assinc] Campos disponíveis no JSON: ${Object.keys(pollData).join(", ")}`,
+          );
+        }
+
+        // Status de processamento
+        const procStatus = pollData?.status ?? pollData?.situacao ?? pollData?.statusProcessamento;
+        if (procStatus) {
+          console.log(`[correios-labels] [rotulo-assinc] Status processamento: ${procStatus}`);
+        }
+
+        // Procurar PDF em todos os campos conhecidos (incluindo novos)
+        const candidates = Array.isArray(pollData)
+          ? pollData
+          : [pollData, pollData?.dados, pollData?.body, pollData?.resultado, ...(Array.isArray(pollData?.dados) ? pollData.dados : [])].filter(Boolean);
+
+        for (const c of candidates) {
+          if (!c || typeof c !== "object") continue;
+          const b64 =
+            c?.arquivo ?? c?.pdf ?? c?.conteudo ?? c?.rotulo ?? c?.dados ?? c?.pdfBase64 ?? c?.base64 ?? c?.body;
+          if (typeof b64 === "string" && b64.length > 500) {
+            const fieldName = Object.keys(c).find((k) => (c as any)[k] === b64) || "?";
+            console.log(`[correios-labels] [rotulo-assinc] ✅ PDF encontrado no campo: ${fieldName} | length: ${b64.length}`);
+            return { status: r.status, pdfBase64: b64 };
+          }
+          // URL para baixar PDF separadamente
+          const url = c?.url ?? c?.linkRotulo ?? c?.link;
+          if (typeof url === "string" && url.startsWith("http")) {
+            console.log(`[correios-labels] [rotulo-assinc] URL de download encontrada: ${url}`);
+            const r2 = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
+            if (r2.ok) {
+              const buf = await r2.arrayBuffer();
+              console.log(`[correios-labels] [rotulo-assinc] ✅ PDF baixado via URL | bytes: ${buf.byteLength}`);
+              return { status: r2.status, pdfBase64: arrayBufferToBase64(buf) };
+            }
+          }
+        }
+        lastErrorText = `JSON sem PDF: ${pollText.substring(0, 300)}`;
+      } catch (e) {
+        lastErrorText = `JSON inválido: ${pollText.substring(0, 300)}`;
+      }
+      continue;
+    }
+
+    // Status não-OK
+    lastErrorText = pollText.substring(0, 500);
     if (r.status !== 404 && r.status !== 202) {
-      // erro definitivo — para o polling
       console.warn(`[correios-labels] [rotulo-assinc] Erro definitivo no polling | status: ${r.status} | body: ${lastErrorText}`);
       break;
     }
   }
 
-  // ===== FALLBACK SÍNCRONO =====
-  // Se o fluxo assíncrono não retornou PDF, tentar fluxo síncrono legado:
-  // 1) POST /rotulo  (solicita geração)
-  // 2) GET  /rotulo/{idPrePostagem}  (baixa PDF)
-  console.log(`[correios-labels] [rotulo-sync-fallback] Assíncrono não retornou PDF — tentando fluxo síncrono | id: ${idPrePostagem}`);
-
-  try {
-    const gerarResp = await fetch(`${base}/rotulo`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: JSON.stringify({
-        idPrePostagem: [idPrePostagem],
-        layoutImpressao: "LASER_PACKEF_CAIXA",
-        formatoRotulo: "PDF",
-      }),
-    });
-    const gerarText = await gerarResp.text();
-    console.log(
-      `[correios-labels] [rotulo-sync-fallback] Etapa 1 POST /rotulo | status: ${gerarResp.status} | body: ${gerarText.substring(0, 500)}`,
-    );
-
-    // Mesmo se o POST retornar 405/erro, ainda tentamos o GET (pode já existir rótulo)
-    await new Promise((r) => setTimeout(r, 5000));
-
-    const pdfResp = await fetch(`${base}/rotulo/${idPrePostagem}`, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept": "application/pdf, application/json",
-      },
-    });
-    const ct = pdfResp.headers.get("content-type") || "";
-    console.log(
-      `[correios-labels] [rotulo-sync-fallback] Etapa 2 GET /rotulo/${idPrePostagem} | status: ${pdfResp.status} | content-type: ${ct}`,
-    );
-
-    if (pdfResp.ok) {
-      if (ct.includes("application/pdf")) {
-        const buf = await pdfResp.arrayBuffer();
-        if (buf.byteLength > 500) {
-          console.log(`[correios-labels] [rotulo-sync-fallback] ✅ PDF binário recebido | bytes: ${buf.byteLength}`);
-          return { status: pdfResp.status, pdfBase64: arrayBufferToBase64(buf) };
-        }
-      }
-      if (ct.includes("application/json")) {
-        const txt = await pdfResp.text();
-        try {
-          const j = JSON.parse(txt);
-          const candidates = Array.isArray(j) ? j : [j, j?.dados, ...(Array.isArray(j?.dados) ? j.dados : [])].filter(Boolean);
-          for (const c of candidates) {
-            const b64 = c?.dados || c?.rotulo || c?.pdfBase64 || c?.base64 || c?.arquivo;
-            if (typeof b64 === "string" && b64.length > 500) {
-              console.log(`[correios-labels] [rotulo-sync-fallback] ✅ PDF base64 via JSON | length: ${b64.length}`);
-              return { status: pdfResp.status, pdfBase64: b64 };
-            }
-          }
-          lastErrorText = `Sync fallback JSON sem PDF: ${txt.substring(0, 300)}`;
-        } catch {
-          lastErrorText = `Sync fallback JSON inválido: ${txt.substring(0, 300)}`;
-        }
-      }
-    } else {
-      const errText = await pdfResp.text().catch(() => "");
-      lastErrorText = `Sync fallback falhou (${pdfResp.status}): ${errText.substring(0, 300)}`;
-      console.warn(`[correios-labels] [rotulo-sync-fallback] ❌ ${lastErrorText}`);
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[correios-labels] [rotulo-sync-fallback] Exceção: ${msg}`);
-    lastErrorText = `Sync fallback exceção: ${msg}`;
-  }
-
+  console.warn(
+    `[correios-labels] [rotulo-assinc] Polling esgotado após ${maxPolls} tentativas | último status: ${lastStatus} | último erro: ${lastErrorText}`,
+  );
   return { status: lastStatus, errorText: lastErrorText };
 }
 
