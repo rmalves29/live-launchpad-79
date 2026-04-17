@@ -16,9 +16,16 @@ const CORREIOS_BASE = "https://api.correios.com.br";
 const LOG_PREFIX = "[correios-labels]";
 
 // ----- Cache de token em memória (válido enquanto a function estiver quente) -----
+interface CorreiosCartaoData {
+  contrato?: string | null;
+  numero?: string | null;
+  dr?: number | null;
+}
+
 interface TokenCache {
   token: string;
   expiresAt: number; // epoch ms
+  cartaoData: CorreiosCartaoData;
 }
 const tokenCache = new Map<string, TokenCache>();
 
@@ -55,12 +62,12 @@ async function getCorreiosToken(
   clientId: string,
   clientSecret: string,
   cartaoPostagem: string,
-): Promise<string> {
+): Promise<{ token: string; cartaoData: CorreiosCartaoData }> {
   const cacheKey = `${clientId}:${cartaoPostagem}`;
   const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now() + 60_000) {
     log("Token em cache reutilizado");
-    return cached.token;
+    return { token: cached.token, cartaoData: cached.cartaoData };
   }
 
   const basic = btoa(`${clientId}:${clientSecret}`);
@@ -96,10 +103,17 @@ async function getCorreiosToken(
     throw new Error(`Token não retornado pela API. Body: ${text.slice(0, 200)}`);
   }
 
+  const cartaoToken = json.cartaoPostagem || {};
+  const cartaoData: CorreiosCartaoData = {
+    contrato: cartaoToken.contrato || null,
+    numero: cartaoToken.numero || cartaoPostagem || null,
+    dr: typeof cartaoToken.dr === "number" ? cartaoToken.dr : Number(cartaoToken.dr || 0) || null,
+  };
+
   // Expira em ~24h, mas guardamos por 23h para segurança
   const expiresAt = Date.now() + 23 * 60 * 60 * 1000;
-  tokenCache.set(cacheKey, { token, expiresAt });
-  return token;
+  tokenCache.set(cacheKey, { token, expiresAt, cartaoData });
+  return { token, cartaoData };
 }
 
 // ----- Buscar credenciais do tenant -----
