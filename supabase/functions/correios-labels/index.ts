@@ -376,8 +376,10 @@ async function fetchLabelPdf(
   const base = "https://api.correios.com.br/prepostagem/v1/prepostagens";
 
   // Etapa 1: Solicitar geração assíncrona do rótulo
+  // IMPORTANTE: usar `idsPrepostagens` quando temos o ID retornado pelo POST de criação (ex: PRLS...).
+  // O campo `codigosObjeto` seria para rastreios reais (NL...BR).
   const solicitarBody = {
-    codigosObjeto: [idPrePostagem], // aceita idPrePostagem ou codigoObjeto (NL...BR)
+    idsPrepostagens: [idPrePostagem],
     idCorreios,
     numeroCartaoPostagem: cartaoPostagem,
     tipoRotulo: "P",            // P = padrão / R = reduzido
