@@ -23,6 +23,7 @@ interface CorreiosCWSLabelsProps {
 
 interface SenderInfo {
   nome: string;
+  cnpj: string;
   logradouro: string;
   numero: string;
   complemento: string;
@@ -33,7 +34,7 @@ interface SenderInfo {
 }
 
 const DEFAULT_SENDER: SenderInfo = {
-  nome: '', logradouro: '', numero: '', complemento: '',
+  nome: '', cnpj: '', logradouro: '', numero: '', complemento: '',
   bairro: '', cidade: '', uf: '', telefone: '',
 };
 
@@ -60,13 +61,13 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
   const [senderLoaded, setSenderLoaded] = useState(false);
   const [cartaoPostagem, setCartaoPostagem] = useState('');
 
-  // Load sender from DB (persisted in webhook_secret) + cartao de postagem
+  // Load sender from DB (persisted in webhook_secret) + cartao de postagem + cnpj (scope)
   const { data: savedSenderData } = useQuery({
     queryKey: ['correios-sender', tenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('shipping_integrations')
-        .select('webhook_secret, refresh_token')
+        .select('webhook_secret, refresh_token, scope')
         .eq('tenant_id', tenantId)
         .eq('provider', 'correios')
         .maybeSingle();
@@ -74,10 +75,12 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
       if (data?.refresh_token) setCartaoPostagem(data.refresh_token);
       if (data?.webhook_secret) {
         try {
-          return JSON.parse(data.webhook_secret as string) as SenderInfo;
-        } catch { return null; }
+          const parsed = JSON.parse(data.webhook_secret as string) as Partial<SenderInfo>;
+          // CNPJ vem do campo scope (separado do JSON do remetente)
+          return { ...parsed, cnpj: (data.scope as string) || parsed.cnpj || '' } as SenderInfo;
+        } catch { return { cnpj: (data.scope as string) || '' } as SenderInfo; }
       }
-      return null;
+      return { cnpj: (data?.scope as string) || '' } as SenderInfo;
     },
     enabled: !!tenantId,
   });
@@ -237,7 +240,7 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
     link.click();
   };
 
-  const isSenderValid = sender.nome && sender.logradouro && sender.cidade && sender.uf;
+  const isSenderValid = sender.nome && sender.cnpj && sender.logradouro && sender.cidade && sender.uf;
 
   return (
     <Tabs defaultValue="orders" className="space-y-4">
@@ -263,6 +266,16 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
                 <Input value={sender.nome} onChange={e => setSender({ ...sender, nome: e.target.value })} placeholder="Nome da empresa" />
               </div>
               <div className="space-y-1">
+                <Label>CNPJ / CPF *</Label>
+                <Input
+                  value={sender.cnpj}
+                  onChange={e => setSender({ ...sender, cnpj: e.target.value })}
+                  placeholder="00.000.000/0000-00"
+                  maxLength={18}
+                />
+                <p className="text-xs text-muted-foreground">Obrigatório para a API dos Correios aceitar a pré-postagem.</p>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
                 <Label>Telefone</Label>
                 <Input value={sender.telefone} onChange={e => setSender({ ...sender, telefone: e.target.value })} placeholder="(00) 00000-0000" />
               </div>
