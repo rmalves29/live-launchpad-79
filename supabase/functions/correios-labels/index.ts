@@ -342,77 +342,14 @@ async function createPrePostagem(
   return lookup;
 }
 
-async function fetchPrePostagemDetails(token: string, idPrePostagem: string): Promise<PrePostagemLookup> {
-  console.log("[correios-labels] Fetching pre-postagem details for:", idPrePostagem);
-
-  const response = await fetch(
-    `https://api.correios.com.br/prepostagem/v1/prepostagens/${idPrePostagem}`,
-    {
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Accept": "application/json",
-      },
-    },
-  );
-
-  const responseText = await response.text();
-  console.log("[correios-labels] Pre-postagem details status:", response.status, "body:", responseText.substring(0, 1000));
-
-  if (!response.ok) {
-    throw new Error(getCorreiosErrorMessage(responseText, response.status));
-  }
-
-  const data = JSON.parse(responseText);
-  const lookup = extractPrePostagemLookup(data, idPrePostagem);
-
-  if (!lookup.idPrePostagem) {
-    throw new Error("Resposta da consulta da pré-postagem não contém ID");
-  }
-
-  return lookup;
-}
-
+// NOTE: A API PPN dos Correios NÃO suporta GET em /prepostagens/{id} (retorna 405).
+// Não fazemos polling de detalhes — usamos apenas o ID retornado pelo POST inicial.
 async function waitForTrackingCode(
-  token: string,
+  _token: string,
   prePostagem: PrePostagemLookup,
-  orderId: number,
+  _orderId: number,
 ): Promise<PrePostagemLookup> {
-  if (prePostagem.codigoObjeto) {
-    return prePostagem;
-  }
-
-  let lastLookup = prePostagem;
-
-  for (let attempt = 1; attempt <= TRACKING_POLL_ATTEMPTS; attempt++) {
-    if (attempt > 1) {
-      await sleep(TRACKING_POLL_INTERVAL_MS);
-    }
-
-    try {
-      const currentLookup = await fetchPrePostagemDetails(token, prePostagem.idPrePostagem);
-      lastLookup = { ...lastLookup, ...currentLookup };
-
-      console.log(
-        "[correios-labels] Tracking poll attempt:",
-        JSON.stringify({
-          orderId,
-          attempt,
-          idPrePostagem: lastLookup.idPrePostagem,
-          codigoObjeto: lastLookup.codigoObjeto,
-          status: lastLookup.status,
-        }),
-      );
-
-      if (lastLookup.codigoObjeto) {
-        return lastLookup;
-      }
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.warn("[correios-labels] Tracking poll failed:", JSON.stringify({ orderId, attempt, errMsg }));
-    }
-  }
-
-  return lastLookup;
+  return prePostagem;
 }
 
 async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<{ status: number; pdfBase64?: string; errorText?: string }> {
