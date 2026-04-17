@@ -186,49 +186,51 @@ async function actionDownloadLabel(
   creds: CorreiosCredentials,
   prePostagemId: string,
 ): Promise<DownloadLabelResult> {
-  const token = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
+  const { token, cartaoData } = await getCorreiosToken(
+    creds.client_id,
+    creds.client_secret,
+    creds.cartao_postagem,
+  );
+
+  const cartaoNumero = cartaoData.numero || creds.cartao_postagem;
 
   // Etapa 1 — Solicitar geração assíncrona
-  // A API CWS dos Correios exige body completo com formato/tipo de rótulo.
-  // Tentamos múltiplos formatos conhecidos da documentação.
   const asyncUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`;
 
   const bodyVariants: Array<{ label: string; body: Record<string, unknown> }> = [
     {
-      label: "v0-completo-LASER_PACKEF_CAIXA",
+      label: "v0-contrato-dr-layout-formato",
       body: {
         idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: creds.cartao_postagem,
-        layoutImpressao: "LASER_PACKEF_CAIXA",
-        formatoRotulo: "PDF",
-        tipo: "PDF",
-        imprimeRemetente: true,
-      },
-    },
-    {
-      label: "v1-minimo-LASER_PACKEF_CAIXA",
-      body: {
-        idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: creds.cartao_postagem,
-        layoutImpressao: "LASER_PACKEF_CAIXA",
-      },
-    },
-    {
-      label: "v2-numeroCartaoPostagem-formatoRotulo",
-      body: {
-        idPrePostagem: [String(prePostagemId)],
-        numeroCartaoPostagem: creds.cartao_postagem,
+        cartaoPostagem: cartaoNumero,
+        contrato: cartaoData.contrato,
+        dr: cartaoData.dr,
         layoutImpressao: "LASER_PACKEF_CAIXA",
         formatoRotulo: "PDF",
       },
     },
     {
-      label: "v3-tipoRotulo-PACKEF",
+      label: "A-contrato-codigoServico",
       body: {
         idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: creds.cartao_postagem,
-        tipoRotulo: "PDF",
-        layoutImpressao: "PACKEF",
+        cartaoPostagem: cartaoNumero,
+        contrato: cartaoData.contrato,
+        layoutImpressao: "LASER_PACKEF_CAIXA",
+        formatoRotulo: "PDF",
+        codigoServico: "03298",
+      },
+    },
+    {
+      label: "B-cartao-aninhado",
+      body: {
+        idPrePostagem: [String(prePostagemId)],
+        cartaoPostagem: {
+          numero: cartaoNumero,
+          contrato: cartaoData.contrato,
+          dr: cartaoData.dr,
+        },
+        layoutImpressao: "LASER_PACKEF_CAIXA",
+        formatoRotulo: "PDF",
       },
     },
   ];
@@ -237,8 +239,9 @@ async function actionDownloadLabel(
   let asyncText = "";
   let lastStatus = 0;
 
-  for (const variant of bodyVariants) {
-    log(`Etapa 1 | tentando variante: ${variant.label} | body: ${JSON.stringify(variant.body)}`);
+  for (let index = 0; index < bodyVariants.length; index++) {
+    const variant = bodyVariants[index];
+    log(`Variação ${index + 1} | body: ${JSON.stringify(variant.body)}`);
     const r = await fetch(asyncUrl, {
       method: "POST",
       headers: {
@@ -250,13 +253,13 @@ async function actionDownloadLabel(
     });
     const t = await r.text();
     lastStatus = r.status;
-    log(`Etapa 1 | variante ${variant.label} | status: ${r.status} | body: ${t}`);
+    log(`Variação ${index + 1} | body: ${JSON.stringify(variant.body)} | status: ${r.status} | resposta: ${t}`);
     if (r.ok) {
       asyncResp = r;
       asyncText = t;
       break;
     }
-    asyncText = t; // guarda o último erro para mensagem final
+    asyncText = t;
   }
 
   if (!asyncResp) {
@@ -266,6 +269,7 @@ async function actionDownloadLabel(
       error: `Falha ao solicitar rótulo assíncrono (${lastStatus}): ${asyncText}`,
     };
   }
+}
 
   let asyncJson: any = null;
   try {
