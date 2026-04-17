@@ -291,6 +291,12 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           setFormData({ ...formData, enabled_services: updated });
         }}
       />
+        </TabsContent>
+
+        <TabsContent value="labels" className="mt-4">
+          <CorreiosCWSLabels tenantId={tenantId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
