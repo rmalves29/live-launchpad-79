@@ -240,6 +240,31 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
     link.click();
   };
 
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const handleDownloadLabel = async (orderId: number) => {
+    setDownloadingId(orderId);
+    try {
+      const { data, error } = await supabase.functions.invoke('correios-labels', {
+        body: { action: 'download_label', tenant_id: tenantId, order_id: orderId },
+      });
+      if (error) throw error;
+      if (data?.success && data?.labelPdfBase64) {
+        downloadPdf(data.labelPdfBase64, orderId);
+        toast({ title: 'Etiqueta baixada', description: `Pedido #${orderId}` });
+      } else {
+        toast({
+          title: data?.pending ? 'Em processamento' : 'Erro',
+          description: data?.error || 'Não foi possível baixar a etiqueta',
+          variant: data?.pending ? 'default' : 'destructive',
+        });
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const isSenderValid = sender.nome && sender.cnpj && sender.logradouro && sender.cidade && sender.uf;
 
   return (
