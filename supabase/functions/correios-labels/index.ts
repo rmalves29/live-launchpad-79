@@ -647,9 +647,13 @@ serve(async (req) => {
 
           let labelPdfBase64: string | undefined;
           try {
-            labelPdfBase64 = await fetchLabelPdf(token, idPrePostagem);
+            const pdfResult = await fetchLabelPdfWithRetry(token, idPrePostagem);
+            labelPdfBase64 = pdfResult.pdfBase64;
           } catch (pdfErr) {
-            console.error("[correios-labels] PDF fetch failed for order", order.id, pdfErr);
+            const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+            console.error(
+              `[correios-labels] Erro inesperado | etapa: fetchLabelPdfWithRetry | mensagem: ${errMsg} | detalhes: ${JSON.stringify(pdfErr, Object.getOwnPropertyNames(pdfErr || {}))}`,
+            );
           }
 
           if (!codigoObjeto && !labelPdfBase64) {
@@ -690,7 +694,9 @@ serve(async (req) => {
           console.log("[correios-labels] ✅ Success for order", order.id, "tracking:", codigoObjeto);
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          console.error("[correios-labels] ❌ Error for order", order.id, errMsg);
+          console.error(
+            `[correios-labels] Erro inesperado | etapa: processar_pedido_${order.id} | mensagem: ${errMsg} | detalhes: ${JSON.stringify(err, Object.getOwnPropertyNames(err || {}))}`,
+          );
           results.push({ orderId: order.id, success: false, error: errMsg });
         }
       }
