@@ -517,6 +517,82 @@ async function fetchLabelPdf(
     }
   }
 
+  // ===== FALLBACK SÍNCRONO =====
+  // Se o fluxo assíncrono não retornou PDF, tentar fluxo síncrono legado:
+  // 1) POST /rotulo  (solicita geração)
+  // 2) GET  /rotulo/{idPrePostagem}  (baixa PDF)
+  console.log(`[correios-labels] [rotulo-sync-fallback] Assíncrono não retornou PDF — tentando fluxo síncrono | id: ${idPrePostagem}`);
+
+  try {
+    const gerarResp = await fetch(`${base}/rotulo`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        idPrePostagem: [idPrePostagem],
+        layoutImpressao: "LASER_PACKEF_CAIXA",
+        formatoRotulo: "PDF",
+      }),
+    });
+    const gerarText = await gerarResp.text();
+    console.log(
+      `[correios-labels] [rotulo-sync-fallback] Etapa 1 POST /rotulo | status: ${gerarResp.status} | body: ${gerarText.substring(0, 500)}`,
+    );
+
+    // Mesmo se o POST retornar 405/erro, ainda tentamos o GET (pode já existir rótulo)
+    await new Promise((r) => setTimeout(r, 5000));
+
+    const pdfResp = await fetch(`${base}/rotulo/${idPrePostagem}`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/pdf, application/json",
+      },
+    });
+    const ct = pdfResp.headers.get("content-type") || "";
+    console.log(
+      `[correios-labels] [rotulo-sync-fallback] Etapa 2 GET /rotulo/${idPrePostagem} | status: ${pdfResp.status} | content-type: ${ct}`,
+    );
+
+    if (pdfResp.ok) {
+      if (ct.includes("application/pdf")) {
+        const buf = await pdfResp.arrayBuffer();
+        if (buf.byteLength > 500) {
+          console.log(`[correios-labels] [rotulo-sync-fallback] ✅ PDF binário recebido | bytes: ${buf.byteLength}`);
+          return { status: pdfResp.status, pdfBase64: arrayBufferToBase64(buf) };
+        }
+      }
+      if (ct.includes("application/json")) {
+        const txt = await pdfResp.text();
+        try {
+          const j = JSON.parse(txt);
+          const candidates = Array.isArray(j) ? j : [j, j?.dados, ...(Array.isArray(j?.dados) ? j.dados : [])].filter(Boolean);
+          for (const c of candidates) {
+            const b64 = c?.dados || c?.rotulo || c?.pdfBase64 || c?.base64 || c?.arquivo;
+            if (typeof b64 === "string" && b64.length > 500) {
+              console.log(`[correios-labels] [rotulo-sync-fallback] ✅ PDF base64 via JSON | length: ${b64.length}`);
+              return { status: pdfResp.status, pdfBase64: b64 };
+            }
+          }
+          lastErrorText = `Sync fallback JSON sem PDF: ${txt.substring(0, 300)}`;
+        } catch {
+          lastErrorText = `Sync fallback JSON inválido: ${txt.substring(0, 300)}`;
+        }
+      }
+    } else {
+      const errText = await pdfResp.text().catch(() => "");
+      lastErrorText = `Sync fallback falhou (${pdfResp.status}): ${errText.substring(0, 300)}`;
+      console.warn(`[correios-labels] [rotulo-sync-fallback] ❌ ${lastErrorText}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[correios-labels] [rotulo-sync-fallback] Exceção: ${msg}`);
+    lastErrorText = `Sync fallback exceção: ${msg}`;
+  }
+
   return { status: lastStatus, errorText: lastErrorText };
 }
 
