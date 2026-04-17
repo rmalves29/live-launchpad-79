@@ -730,30 +730,37 @@ serve(async (req) => {
     }
 
     if (action === "download_label") {
-      const { order_id } = body;
-      if (!order_id) {
-        return new Response(
-          JSON.stringify({ success: false, error: "order_id é obrigatório" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+      const { order_id, prePostagem_id: prePostagemFromBody } = body;
+
+      let idPrePostagem: string | null = prePostagemFromBody || null;
+      let trackingCode: string | null = null;
+
+      if (!idPrePostagem) {
+        if (!order_id) {
+          return new Response(
+            JSON.stringify({ success: false, error: "order_id ou prePostagem_id é obrigatório" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        const { data: order, error: orderErr } = await supabase
+          .from("orders")
+          .select("id, melhor_envio_shipment_id, melhor_envio_tracking_code")
+          .eq("id", order_id)
+          .eq("tenant_id", tenant_id)
+          .maybeSingle();
+
+        if (orderErr || !order) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Pedido não encontrado" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        idPrePostagem = order.melhor_envio_shipment_id || order.melhor_envio_tracking_code;
+        trackingCode = order.melhor_envio_tracking_code;
       }
 
-      const { data: order, error: orderErr } = await supabase
-        .from("orders")
-        .select("id, melhor_envio_shipment_id, melhor_envio_tracking_code")
-        .eq("id", order_id)
-        .eq("tenant_id", tenant_id)
-        .maybeSingle();
-
-      if (orderErr || !order) {
-        return new Response(
-          JSON.stringify({ success: false, error: "Pedido não encontrado" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      // idPrePostagem foi salvo em melhor_envio_shipment_id (ou como fallback no tracking_code)
-      const idPrePostagem = order.melhor_envio_shipment_id || order.melhor_envio_tracking_code;
       if (!idPrePostagem) {
         return new Response(
           JSON.stringify({ success: false, error: "Pedido não possui pré-postagem registrada" }),
@@ -761,21 +768,22 @@ serve(async (req) => {
         );
       }
 
-      console.log(`[correios-labels] download_label | orderId: ${order_id} | idPrePostagem: ${idPrePostagem}`);
+      console.log(`[correios-labels] download_label on demand | orderId: ${order_id ?? '-'} | idPrePostagem: ${idPrePostagem}`);
       const result = await fetchLabelPdf(token, idPrePostagem);
 
       if (result.pdfBase64) {
         return new Response(
-          JSON.stringify({ success: true, labelPdfBase64: result.pdfBase64, trackingCode: order.melhor_envio_tracking_code }),
+          JSON.stringify({ success: true, labelPdfBase64: result.pdfBase64, trackingCode }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
-      const isPending = result.status === 404;
+      const isPending = result.status === 404 || result.status === 0;
       return new Response(
         JSON.stringify({
           success: false,
           pending: isPending,
+          status: result.status,
           error: isPending
             ? "Etiqueta ainda em processamento nos Correios. Tente novamente em alguns minutos."
             : `Erro ao baixar etiqueta (status ${result.status}): ${result.errorText ?? ''}`,
