@@ -9,8 +9,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff, Info } from 'lucide-react';
+import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff, Info, Settings, Tag } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ShippingServiceSelector from './ShippingServiceSelector';
+import CorreiosCWSLabels from './CorreiosCWSLabels';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
@@ -216,15 +218,13 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         </CardHeader>
       </Card>
 
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          Esta integração é usada apenas para <strong>cálculo de frete</strong> no checkout.
-          A emissão de etiquetas dos Correios passou a ser feita exclusivamente pela integração
-          <strong> MeusCorreios</strong>, que é mais estável e gera rastreio + PDF em uma única chamada.
-        </AlertDescription>
-      </Alert>
+      <Tabs defaultValue="config">
+        <TabsList>
+          <TabsTrigger value="config" className="gap-2"><Settings className="h-4 w-4" /> Configuração</TabsTrigger>
+          <TabsTrigger value="labels" className="gap-2"><Tag className="h-4 w-4" /> Etiquetas</TabsTrigger>
+        </TabsList>
 
+        <TabsContent value="config" className="space-y-4 mt-4">
       <Card>
         <CardContent className="space-y-6 pt-6">
           <div className="space-y-4">
