@@ -536,10 +536,22 @@ serve(async (req) => {
     // Handle save_sender FIRST (before authentication)
     if (action === "save_sender") {
       const { sender } = body;
-      console.log("[correios-labels] Saving sender data:", JSON.stringify(sender));
+      // Extrai CNPJ separado e salva no campo `scope` (usado pela API dos Correios)
+      const { cnpj, ...senderJson } = sender || {};
+      const cleanCnpj = (cnpj || "").replace(/\D/g, "");
+      console.log("[correios-labels] Saving sender data | cnpj:", cleanCnpj || "(vazio)", "| nome:", senderJson.nome);
+
+      const updatePayload: Record<string, unknown> = {
+        webhook_secret: JSON.stringify(senderJson),
+      };
+      // Só atualiza scope se CNPJ válido (11=CPF, 14=CNPJ)
+      if (cleanCnpj && (cleanCnpj.length === 11 || cleanCnpj.length === 14)) {
+        updatePayload.scope = cleanCnpj;
+      }
+
       const { error: updateError } = await supabase
         .from("shipping_integrations")
-        .update({ webhook_secret: JSON.stringify(sender) })
+        .update(updatePayload)
         .eq("id", integration.id);
 
       if (updateError) {
