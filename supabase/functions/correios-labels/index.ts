@@ -163,7 +163,7 @@ async function getCredentials(
 
 // ----- ACTION: save_sender -----
 async function actionSaveSender(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   tenantId: string,
   sender: Record<string, unknown>,
 ) {
