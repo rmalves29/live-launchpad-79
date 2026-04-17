@@ -720,7 +720,9 @@ serve(async (req) => {
     );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error("[correios-labels] ❌ Top-level error:", errMsg);
+    console.error(
+      `[correios-labels] Erro inesperado | etapa: top_level | mensagem: ${errMsg} | detalhes: ${JSON.stringify(error, Object.getOwnPropertyNames(error || {}))}`,
+    );
     return new Response(
       JSON.stringify({ success: false, error: errMsg }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
