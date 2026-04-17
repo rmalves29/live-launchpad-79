@@ -814,8 +814,9 @@ serve(async (req) => {
         );
       }
 
-      console.log(`[correios-labels] download_label on demand | orderId: ${order_id ?? '-'} | idPrePostagem: ${idPrePostagem}`);
-      const result = await fetchLabelPdf(token, idPrePostagem);
+      const idCorreios = (cnpjRemetente || "").replace(/\D/g, "") || credentials.clientId;
+      console.log(`[correios-labels] download_label on demand | orderId: ${order_id ?? '-'} | idPrePostagem: ${idPrePostagem} | idCorreios: ${idCorreios}`);
+      const result = await fetchLabelPdf(token, idPrePostagem, idCorreios, credentials.cartaoPostagem);
 
       if (result.pdfBase64) {
         return new Response(
