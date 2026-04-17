@@ -181,34 +181,40 @@ async function actionDownloadLabel(
 
   const bodyVariants: Array<{ label: string; body: Record<string, unknown> }> = [
     {
-      label: "v1-idsPrePostagem-objetos",
-      body: {
-        idsPrePostagem: [
-          {
-            id: String(prePostagemId),
-            tipoRotulo: "P", // P = Padrão (etiqueta), I = Introdutória
-          },
-        ],
-        numeroCartaoPostagem: creds.cartao_postagem,
-        idFormatoRotulo: "ET", // ET = Etiqueta
-      },
-    },
-    {
-      label: "v2-listaIdPrePostagem",
-      body: {
-        listaIdPrePostagem: [String(prePostagemId)],
-        numeroCartaoPostagem: creds.cartao_postagem,
-        idFormatoRotulo: "ET",
-        tipoRotulo: "P",
-      },
-    },
-    {
-      label: "v3-idPrePostagem-cartaoPostagem",
+      label: "v0-completo-LASER_PACKEF_CAIXA",
       body: {
         idPrePostagem: [String(prePostagemId)],
         cartaoPostagem: creds.cartao_postagem,
-        tipoRotulo: "P",
-        formatoRotulo: "ET",
+        layoutImpressao: "LASER_PACKEF_CAIXA",
+        formatoRotulo: "PDF",
+        tipo: "PDF",
+        imprimeRemetente: true,
+      },
+    },
+    {
+      label: "v1-minimo-LASER_PACKEF_CAIXA",
+      body: {
+        idPrePostagem: [String(prePostagemId)],
+        cartaoPostagem: creds.cartao_postagem,
+        layoutImpressao: "LASER_PACKEF_CAIXA",
+      },
+    },
+    {
+      label: "v2-numeroCartaoPostagem-formatoRotulo",
+      body: {
+        idPrePostagem: [String(prePostagemId)],
+        numeroCartaoPostagem: creds.cartao_postagem,
+        layoutImpressao: "LASER_PACKEF_CAIXA",
+        formatoRotulo: "PDF",
+      },
+    },
+    {
+      label: "v3-tipoRotulo-PACKEF",
+      body: {
+        idPrePostagem: [String(prePostagemId)],
+        cartaoPostagem: creds.cartao_postagem,
+        tipoRotulo: "PDF",
+        layoutImpressao: "PACKEF",
       },
     },
   ];
