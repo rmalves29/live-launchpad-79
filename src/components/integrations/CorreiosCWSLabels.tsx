@@ -240,6 +240,31 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
     link.click();
   };
 
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const handleDownloadLabel = async (orderId: number) => {
+    setDownloadingId(orderId);
+    try {
+      const { data, error } = await supabase.functions.invoke('correios-labels', {
+        body: { action: 'download_label', tenant_id: tenantId, order_id: orderId },
+      });
+      if (error) throw error;
+      if (data?.success && data?.labelPdfBase64) {
+        downloadPdf(data.labelPdfBase64, orderId);
+        toast({ title: 'Etiqueta baixada', description: `Pedido #${orderId}` });
+      } else {
+        toast({
+          title: data?.pending ? 'Em processamento' : 'Erro',
+          description: data?.error || 'Não foi possível baixar a etiqueta',
+          variant: data?.pending ? 'default' : 'destructive',
+        });
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const isSenderValid = sender.nome && sender.cnpj && sender.logradouro && sender.cidade && sender.uf;
 
   return (
@@ -459,7 +484,22 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
                       <span className="font-medium">#{order.id}</span>
                       <span className="text-sm text-muted-foreground">{order.customer_name}</span>
                     </div>
-                    <Badge variant="secondary">{order.melhor_envio_tracking_code}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">{order.melhor_envio_tracking_code}</Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownloadLabel(order.id)}
+                        disabled={downloadingId === order.id}
+                      >
+                        {downloadingId === order.id ? (
+                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Download className="mr-1 h-3 w-3" />
+                        )}
+                        Baixar etiqueta
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
