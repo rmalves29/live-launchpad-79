@@ -363,88 +363,155 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-// Tenta múltiplos endpoints da API PPN dos Correios — varia por contrato
-async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<{ status: number; pdfBase64?: string; errorText?: string }> {
+// Fluxo ASSÍNCRONO oficial dos Correios PPN para download de rótulo:
+// 1) POST /prepostagem/v1/prepostagens/rotulo/assincrono/pdf  → retorna idRecibo
+// 2) GET  /prepostagem/v1/prepostagens/rotulo/download/assincrono/{idRecibo} → retorna o PDF (ou JSON com base64)
+// Pode levar alguns segundos entre solicitar e o PDF estar pronto, então fazemos polling curto.
+async function fetchLabelPdf(
+  token: string,
+  idPrePostagem: string,
+  idCorreios: string,
+  cartaoPostagem: string,
+): Promise<{ status: number; pdfBase64?: string; errorText?: string }> {
   const base = "https://api.correios.com.br/prepostagem/v1/prepostagens";
-  const attempts: Array<{ label: string; url: string; method: "GET" | "POST"; body?: string }> = [
-    { label: `GET /prepostagens/rotulo/${idPrePostagem}`, url: `${base}/rotulo/${idPrePostagem}`, method: "GET" },
-    { label: `GET /prepostagens/${idPrePostagem}/rotulo/pdf`, url: `${base}/${idPrePostagem}/rotulo/pdf`, method: "GET" },
-    { label: `GET /prepostagens/rotulo?idPrePostagem=${idPrePostagem}`, url: `${base}/rotulo?idPrePostagem=${encodeURIComponent(idPrePostagem)}`, method: "GET" },
-    { label: `GET /prepostagens/${idPrePostagem}/rotulo`, url: `${base}/${idPrePostagem}/rotulo`, method: "GET" },
-  ];
 
+  // Etapa 1: Solicitar geração assíncrona do rótulo
+  const solicitarBody = {
+    codigosObjeto: [idPrePostagem], // aceita idPrePostagem ou codigoObjeto (NL...BR)
+    idCorreios,
+    numeroCartaoPostagem: cartaoPostagem,
+    tipoRotulo: "P",            // P = padrão / R = reduzido
+    formatoRotulo: "ET",        // ET = etiqueta
+    imprimeRemetente: "S",
+    layoutImpressao: "PADRAO",  // PADRAO, LINEAR_100_150, LINEAR_100_80, LINEAR_A4, LINEAR_A
+  };
+
+  console.log(
+    `[correios-labels] [rotulo-assinc] Etapa 1 POST /rotulo/assincrono/pdf | id: ${idPrePostagem} | idCorreios: ${idCorreios} | cartao: ${cartaoPostagem}`,
+  );
+
+  const solicitarResp = await fetch(`${base}/rotulo/assincrono/pdf`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(solicitarBody),
+  });
+
+  const solicitarText = await solicitarResp.text();
+  console.log(
+    `[correios-labels] [rotulo-assinc] Etapa 1 resposta | status: ${solicitarResp.status} | body: ${solicitarText.substring(0, 500)}`,
+  );
+
+  if (!solicitarResp.ok) {
+    return { status: solicitarResp.status, errorText: solicitarText.substring(0, 500) };
+  }
+
+  // Extrair idRecibo da resposta — formato pode variar
+  let idRecibo: string | undefined;
+  try {
+    const json = JSON.parse(solicitarText);
+    idRecibo = json?.idRecibo
+      ?? json?.recibo
+      ?? json?.id
+      ?? json?.dados?.idRecibo
+      ?? json?.dados?.recibo
+      ?? (Array.isArray(json) ? json[0]?.idRecibo : undefined);
+  } catch {
+    // pode ser id puro como string
+    if (solicitarText && solicitarText.length < 200 && /^[A-Za-z0-9_-]+$/.test(solicitarText.trim())) {
+      idRecibo = solicitarText.trim();
+    }
+  }
+
+  if (!idRecibo) {
+    return {
+      status: solicitarResp.status,
+      errorText: `Sem idRecibo na resposta: ${solicitarText.substring(0, 300)}`,
+    };
+  }
+
+  console.log(`[correios-labels] [rotulo-assinc] idRecibo obtido: ${idRecibo} — iniciando polling`);
+
+  // Etapa 2: Polling no endpoint de download (pode levar alguns segundos)
+  const downloadUrl = `${base}/rotulo/download/assincrono/${idRecibo}`;
+  const pollDelays = [2000, 3000, 5000, 5000, 10000]; // ~25s total
   let lastStatus = 0;
   let lastErrorText: string | undefined;
 
-  for (let i = 0; i < attempts.length; i++) {
-    const a = attempts[i];
-    try {
-      const headers: Record<string, string> = {
+  for (let i = 0; i < pollDelays.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, pollDelays[i - 1]));
+
+    const r = await fetch(downloadUrl, {
+      method: "GET",
+      headers: {
         "Authorization": `Bearer ${token}`,
         "Accept": "application/pdf, application/json",
-      };
-      if (a.method === "POST") headers["Content-Type"] = "application/json";
+      },
+    });
 
-      const response = await fetch(a.url, { method: a.method, headers, body: a.body });
-      const contentType = response.headers.get("content-type") || "";
-      console.log(
-        `[correios-labels] Tentando endpoint ${i + 1}: ${a.label} | status: ${response.status} | content-type: ${contentType}`,
-      );
+    const ct = r.headers.get("content-type") || "";
+    console.log(
+      `[correios-labels] [rotulo-assinc] Etapa 2 polling ${i + 1}/${pollDelays.length} | status: ${r.status} | content-type: ${ct}`,
+    );
+    lastStatus = r.status;
 
-      if (response.ok) {
-        // Pode vir como PDF direto ou JSON com base64/URL
-        if (contentType.includes("application/pdf")) {
-          const buf = await response.arrayBuffer();
-          return { status: response.status, pdfBase64: arrayBufferToBase64(buf) };
+    if (r.ok) {
+      if (ct.includes("application/pdf")) {
+        const buf = await r.arrayBuffer();
+        if (buf.byteLength > 500) {
+          console.log(`[correios-labels] [rotulo-assinc] ✅ PDF binário recebido | bytes: ${buf.byteLength}`);
+          return { status: r.status, pdfBase64: arrayBufferToBase64(buf) };
         }
+      }
 
-        if (contentType.includes("application/json")) {
-          const json = await response.json().catch(() => null) as any;
-          // Possíveis formatos: { rotulo: "base64..." } | [{ rotulo: "..." }] | { url: "..." }
-          const candidates: any[] = [];
-          if (Array.isArray(json)) candidates.push(...json);
-          else if (json) candidates.push(json);
-
+      if (ct.includes("application/json")) {
+        const txt = await r.text();
+        try {
+          const j = JSON.parse(txt);
+          const candidates = Array.isArray(j) ? j : [j, j?.dados, ...(Array.isArray(j?.dados) ? j.dados : [])].filter(Boolean);
           for (const c of candidates) {
-            const b64 = c?.rotulo || c?.pdfBase64 || c?.base64 || c?.arquivo;
-            if (typeof b64 === "string" && b64.length > 100) {
-              return { status: response.status, pdfBase64: b64 };
+            const b64 = c?.dados || c?.rotulo || c?.pdfBase64 || c?.base64 || c?.arquivo;
+            if (typeof b64 === "string" && b64.length > 500) {
+              console.log(`[correios-labels] [rotulo-assinc] ✅ PDF base64 recebido via JSON | length: ${b64.length}`);
+              return { status: r.status, pdfBase64: b64 };
             }
             const url = c?.url || c?.linkRotulo;
             if (typeof url === "string" && url.startsWith("http")) {
               const r2 = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
               if (r2.ok) {
                 const buf = await r2.arrayBuffer();
+                console.log(`[correios-labels] [rotulo-assinc] ✅ PDF baixado via URL | bytes: ${buf.byteLength}`);
                 return { status: r2.status, pdfBase64: arrayBufferToBase64(buf) };
               }
             }
           }
-          lastErrorText = `JSON sem PDF/base64: ${JSON.stringify(json).substring(0, 300)}`;
-          lastStatus = response.status;
-          continue;
+          lastErrorText = `JSON sem PDF: ${txt.substring(0, 300)}`;
+        } catch {
+          lastErrorText = `JSON inválido: ${txt.substring(0, 300)}`;
         }
-
-        // Resposta OK mas tipo desconhecido — tentar como binário mesmo assim
-        const buf = await response.arrayBuffer();
-        if (buf.byteLength > 1000) {
-          return { status: response.status, pdfBase64: arrayBufferToBase64(buf) };
-        }
-        lastErrorText = `Resposta OK mas formato inesperado (${buf.byteLength} bytes)`;
-        lastStatus = response.status;
         continue;
       }
 
-      lastStatus = response.status;
-      const errText = await response.text().catch(() => "");
-      lastErrorText = errText.substring(0, 500);
-      console.log(
-        `[correios-labels] Endpoint ${i + 1} falhou | status: ${response.status} | corpo: ${lastErrorText}`,
-      );
-      // Se for 404 (pendente) tenta próximo; outros erros (401/403) também tenta para cobrir variações
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[correios-labels] Erro endpoint ${i + 1} (${a.label}): ${msg}`);
-      lastErrorText = msg;
+      // ok mas content-type desconhecido — tentar como binário
+      const buf = await r.arrayBuffer();
+      if (buf.byteLength > 1000) {
+        console.log(`[correios-labels] [rotulo-assinc] ✅ Binário desconhecido aceito | bytes: ${buf.byteLength}`);
+        return { status: r.status, pdfBase64: arrayBufferToBase64(buf) };
+      }
+      lastErrorText = `Resposta OK formato inesperado (${buf.byteLength} bytes, ct=${ct})`;
+      continue;
+    }
+
+    // 404/202 = ainda processando — continua polling
+    const errText = await r.text().catch(() => "");
+    lastErrorText = errText.substring(0, 500);
+    if (r.status !== 404 && r.status !== 202) {
+      // erro definitivo — para o polling
+      console.warn(`[correios-labels] [rotulo-assinc] Erro definitivo no polling | status: ${r.status} | body: ${lastErrorText}`);
+      break;
     }
   }
 
