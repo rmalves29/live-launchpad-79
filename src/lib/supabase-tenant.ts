@@ -3,7 +3,8 @@ import type { Database } from '@/integrations/supabase/types';
 
 // Cliente Supabase com filtragem automática por tenant, reutilizando o singleton oficial
 // para evitar múltiplas instâncias de auth concorrendo pelo mesmo storage/sessão.
-
+class TenantSupabaseClient {
+  private client = supabase;
   private currentTenantId: string | null = null;
 
   // Definir tenant atual (chamado pelo TenantProvider)
