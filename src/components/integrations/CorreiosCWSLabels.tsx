@@ -409,6 +409,11 @@ export default function CorreiosCWSLabels({ tenantId, integrationId, fromCep, se
                   </div>
                   <div className="flex items-center gap-2">
                     {r.error && <span className="text-xs text-destructive">{r.error}</span>}
+                    {r.success && !r.labelPdfBase64 && !r.error && (
+                      <span className="text-xs text-muted-foreground">
+                        Etiqueta em processamento — tente baixar novamente em alguns minutos
+                      </span>
+                    )}
                     {r.labelPdfBase64 && (
                       <Button variant="outline" size="sm" onClick={() => downloadPdf(r.labelPdfBase64!, r.orderId)}>
                         <Download className="mr-1 h-3 w-3" /> PDF
