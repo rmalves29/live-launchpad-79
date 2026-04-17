@@ -1,19 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
 
-const SUPABASE_URL = "https://hxtbsieodbtzgcvvkeqx.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4";
-
-// Cliente Supabase com filtragem automática por tenant
+// Cliente Supabase com filtragem automática por tenant, reutilizando o singleton oficial
+// para evitar múltiplas instâncias de auth concorrendo pelo mesmo storage/sessão.
 class TenantSupabaseClient {
-  private client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: {
-      storage: localStorage,
-      persistSession: true,
-      autoRefreshToken: true,
-    }
-  });
-
+  private client = supabase;
   private currentTenantId: string | null = null;
 
   // Definir tenant atual (chamado pelo TenantProvider)
@@ -161,5 +152,5 @@ class TenantSupabaseClient {
   }
 }
 
-// Instância única do cliente
+// Instância única do cliente tenant, reaproveitando o cliente Supabase principal
 export const supabaseTenant = new TenantSupabaseClient();
