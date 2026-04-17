@@ -367,9 +367,10 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<{ status: number; pdfBase64?: string; errorText?: string }> {
   const base = "https://api.correios.com.br/prepostagem/v1/prepostagens";
   const attempts: Array<{ label: string; url: string; method: "GET" | "POST"; body?: string }> = [
+    { label: `GET /prepostagens/rotulo/${idPrePostagem}`, url: `${base}/rotulo/${idPrePostagem}`, method: "GET" },
+    { label: `GET /prepostagens/${idPrePostagem}/rotulo/pdf`, url: `${base}/${idPrePostagem}/rotulo/pdf`, method: "GET" },
+    { label: `GET /prepostagens/rotulo?idPrePostagem=${idPrePostagem}`, url: `${base}/rotulo?idPrePostagem=${encodeURIComponent(idPrePostagem)}`, method: "GET" },
     { label: `GET /prepostagens/${idPrePostagem}/rotulo`, url: `${base}/${idPrePostagem}/rotulo`, method: "GET" },
-    { label: `GET /prepostagens/rotulo?id=${idPrePostagem}`, url: `${base}/rotulo?id=${encodeURIComponent(idPrePostagem)}`, method: "GET" },
-    { label: `POST /prepostagens/rotulo`, url: `${base}/rotulo`, method: "POST", body: JSON.stringify({ idPrePostagem: [idPrePostagem] }) },
   ];
 
   let lastStatus = 0;
