@@ -163,14 +163,27 @@ export default function Auth() {
       navigate(from, { replace: true });
     } catch (err: any) {
       const msg = (err?.message || '').toLowerCase();
-      const isInvalidCreds = msg.includes('invalid login credentials') || msg.includes('invalid login');
+      const status = err?.status ?? err?.statusCode;
+      const isInvalidCreds =
+        msg.includes('invalid login credentials') ||
+        msg.includes('invalid login') ||
+        msg.includes('invalid_credentials') ||
+        status === 400;
 
       if (isInvalidCreds) {
-        toast({ title: 'Credenciais inválidas', description: 'Verifique seu e-mail e senha. Use "Esqueci minha senha" para redefinir.', variant: 'destructive' });
+        toast({
+          title: 'Credenciais inválidas',
+          description: 'E-mail ou senha incorretos. Use "Esqueci minha senha" para redefinir.',
+          variant: 'destructive',
+        });
         return;
       }
 
-      toast({ title: 'Erro ao entrar', description: err.message || 'Verifique suas credenciais.', variant: 'destructive' });
+      toast({
+        title: 'Erro ao entrar',
+        description: err?.message || 'Não foi possível conectar. Verifique sua internet e tente novamente.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
