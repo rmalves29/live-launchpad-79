@@ -518,56 +518,34 @@ async function fetchLabelPdf(
   return { status: lastStatus, errorText: lastErrorText };
 }
 
-async function fetchLabelPdfWithRetry(token: string, idPrePostagem: string): Promise<{ pdfBase64?: string; bytes?: number; lastStatus?: number; lastError?: string }> {
-  let lastStatus: number | undefined;
-  let lastError: string | undefined;
-
-  for (let attempt = 1; attempt <= PDF_RETRY_ATTEMPTS; attempt++) {
-    const delayMs = PDF_RETRY_DELAYS_MS[attempt - 1] ?? 30000;
-    console.log(
-      `[correios-labels] Aguardando ${delayMs}ms antes da tentativa ${attempt}/${PDF_RETRY_ATTEMPTS} do rótulo...`,
-    );
-    await sleep(delayMs);
-
-    try {
-      const result = await fetchLabelPdf(token, idPrePostagem);
-      lastStatus = result.status;
+async function fetchLabelPdfWithRetry(
+  token: string,
+  idPrePostagem: string,
+  idCorreios: string,
+  cartaoPostagem: string,
+): Promise<{ pdfBase64?: string; bytes?: number; lastStatus?: number; lastError?: string }> {
+  // Como o fluxo assíncrono (POST + polling interno ~25s) já lida com a espera,
+  // basta uma única chamada aqui.
+  try {
+    const result = await fetchLabelPdf(token, idPrePostagem, idCorreios, cartaoPostagem);
+    if (result.pdfBase64) {
+      const bytes = Math.floor((result.pdfBase64.length * 3) / 4);
       console.log(
-        `[correios-labels] Tentativa ${attempt}/${PDF_RETRY_ATTEMPTS} | status: ${result.status} | id: ${idPrePostagem}`,
+        `[correios-labels] Rótulo baixado com sucesso | idPrePostagem: ${idPrePostagem} | tamanho: ${bytes} bytes`,
       );
-
-      if (result.pdfBase64) {
-        const bytes = Math.floor((result.pdfBase64.length * 3) / 4);
-        console.log(
-          `[correios-labels] Rótulo baixado com sucesso | idPrePostagem: ${idPrePostagem} | tamanho: ${bytes} bytes`,
-        );
-        return { pdfBase64: result.pdfBase64, bytes, lastStatus };
-      }
-
-      if (result.status === 404) {
-        lastError = result.errorText;
-        continue;
-      }
-
-      // Non-404 error: log and stop retrying
-      console.error(
-        `[correios-labels] Erro ao baixar rótulo (status ${result.status}) | idPrePostagem: ${idPrePostagem} | corpo: ${result.errorText ?? ''}`,
-      );
-      lastError = result.errorText;
-      break;
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(
-        `[correios-labels] Erro inesperado | etapa: download_rotulo (tentativa ${attempt}/${PDF_RETRY_ATTEMPTS}) | mensagem: ${errMsg} | detalhes: ${JSON.stringify(error, Object.getOwnPropertyNames(error || {}))}`,
-      );
-      lastError = errMsg;
+      return { pdfBase64: result.pdfBase64, bytes, lastStatus: result.status };
     }
+    console.log(
+      `[correios-labels] Rótulo não disponível | id: ${idPrePostagem} | status: ${result.status} | erro: ${result.errorText ?? ''}`,
+    );
+    return { lastStatus: result.status, lastError: result.errorText };
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[correios-labels] Erro inesperado | etapa: download_rotulo | mensagem: ${errMsg}`,
+    );
+    return { lastError: errMsg };
   }
-
-  console.log(
-    `[correios-labels] Rótulo pendente após ${PDF_RETRY_ATTEMPTS} tentativas | id: ${idPrePostagem} | pedido salvo com idPrePostagem como tracking`,
-  );
-  return { lastStatus, lastError };
 }
 
 serve(async (req) => {
