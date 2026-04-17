@@ -119,6 +119,10 @@ interface PrePostagemLookup {
 const TRACKING_POLL_ATTEMPTS = 2;
 const TRACKING_POLL_INTERVAL_MS = 800;
 
+// Retry configuration for label PDF download
+const PDF_RETRY_ATTEMPTS = 3;
+const PDF_RETRY_DELAYS_MS = [1500, 3000, 5000]; // wait before each attempt
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -323,6 +327,10 @@ async function createPrePostagem(
     throw new Error("Resposta da API não contém o ID da pré-postagem");
   }
 
+  console.log(
+    `[correios-labels] Pré-postagem criada | id: ${lookup.idPrePostagem} | statusAtual: ${lookup.status ?? 'desconhecido'} | codigoObjeto: ${lookup.codigoObjeto ?? 'ausente'}`,
+  );
+
   if (!lookup.codigoObjeto) {
     console.warn(
       "[correios-labels] Pre-postagem criada sem código de rastreio imediato:",
@@ -406,8 +414,7 @@ async function waitForTrackingCode(
   return lastLookup;
 }
 
-async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<string> {
-  console.log("[correios-labels] Fetching label PDF for:", idPrePostagem);
+async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<{ status: number; pdfBase64?: string; errorText?: string }> {
   const response = await fetch(
     `https://api.correios.com.br/prepostagem/v1/prepostagens/${idPrePostagem}/rotulo`,
     {
@@ -420,8 +427,7 @@ async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<stri
 
   if (!response.ok) {
     const errText = await response.text();
-    console.error("[correios-labels] Label PDF error:", response.status, errText.substring(0, 500));
-    throw new Error(`Erro ao gerar etiqueta PDF (${response.status})`);
+    return { status: response.status, errorText: errText.substring(0, 500) };
   }
 
   const arrayBuffer = await response.arrayBuffer();
@@ -430,7 +436,60 @@ async function fetchLabelPdf(token: string, idPrePostagem: string): Promise<stri
   for (let i = 0; i < bytes.length; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa(binary);
+  return { status: response.status, pdfBase64: btoa(binary) };
+}
+
+async function fetchLabelPdfWithRetry(token: string, idPrePostagem: string): Promise<{ pdfBase64?: string; bytes?: number; lastStatus?: number; lastError?: string }> {
+  let lastStatus: number | undefined;
+  let lastError: string | undefined;
+
+  for (let attempt = 1; attempt <= PDF_RETRY_ATTEMPTS; attempt++) {
+    const delayMs = PDF_RETRY_DELAYS_MS[attempt - 1] ?? 3000;
+    console.log(
+      `[correios-labels] Tentativa ${attempt}/${PDF_RETRY_ATTEMPTS} de download do rótulo | idPrePostagem: ${idPrePostagem} | aguardando ${(delayMs / 1000).toFixed(1)}s...`,
+    );
+    await sleep(delayMs);
+
+    try {
+      const result = await fetchLabelPdf(token, idPrePostagem);
+      lastStatus = result.status;
+
+      if (result.pdfBase64) {
+        // Approximate raw byte size from base64 length
+        const bytes = Math.floor((result.pdfBase64.length * 3) / 4);
+        console.log(
+          `[correios-labels] Rótulo baixado com sucesso | idPrePostagem: ${idPrePostagem} | tamanho: ${bytes} bytes`,
+        );
+        return { pdfBase64: result.pdfBase64, bytes, lastStatus };
+      }
+
+      if (result.status === 404) {
+        console.warn(
+          `[correios-labels] Rótulo ainda não disponível (404) | tentativa ${attempt}/${PDF_RETRY_ATTEMPTS} | idPrePostagem: ${idPrePostagem}`,
+        );
+        lastError = result.errorText;
+        continue;
+      }
+
+      // Non-404 error: log and stop retrying
+      console.error(
+        `[correios-labels] Erro ao baixar rótulo (status ${result.status}) | idPrePostagem: ${idPrePostagem} | corpo: ${result.errorText ?? ''}`,
+      );
+      lastError = result.errorText;
+      break;
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[correios-labels] Erro inesperado | etapa: download_rotulo (tentativa ${attempt}/${PDF_RETRY_ATTEMPTS}) | mensagem: ${errMsg} | detalhes: ${JSON.stringify(error, Object.getOwnPropertyNames(error || {}))}`,
+      );
+      lastError = errMsg;
+    }
+  }
+
+  console.warn(
+    `[correios-labels] Rótulo não disponível após ${PDF_RETRY_ATTEMPTS} tentativas | idPrePostagem: ${idPrePostagem} | retornando pendente`,
+  );
+  return { lastStatus, lastError };
 }
 
 serve(async (req) => {
@@ -588,9 +647,13 @@ serve(async (req) => {
 
           let labelPdfBase64: string | undefined;
           try {
-            labelPdfBase64 = await fetchLabelPdf(token, idPrePostagem);
+            const pdfResult = await fetchLabelPdfWithRetry(token, idPrePostagem);
+            labelPdfBase64 = pdfResult.pdfBase64;
           } catch (pdfErr) {
-            console.error("[correios-labels] PDF fetch failed for order", order.id, pdfErr);
+            const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+            console.error(
+              `[correios-labels] Erro inesperado | etapa: fetchLabelPdfWithRetry | mensagem: ${errMsg} | detalhes: ${JSON.stringify(pdfErr, Object.getOwnPropertyNames(pdfErr || {}))}`,
+            );
           }
 
           if (!codigoObjeto && !labelPdfBase64) {
@@ -631,7 +694,9 @@ serve(async (req) => {
           console.log("[correios-labels] ✅ Success for order", order.id, "tracking:", codigoObjeto);
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          console.error("[correios-labels] ❌ Error for order", order.id, errMsg);
+          console.error(
+            `[correios-labels] Erro inesperado | etapa: processar_pedido_${order.id} | mensagem: ${errMsg} | detalhes: ${JSON.stringify(err, Object.getOwnPropertyNames(err || {}))}`,
+          );
           results.push({ orderId: order.id, success: false, error: errMsg });
         }
       }
@@ -655,7 +720,9 @@ serve(async (req) => {
     );
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error("[correios-labels] ❌ Top-level error:", errMsg);
+    console.error(
+      `[correios-labels] Erro inesperado | etapa: top_level | mensagem: ${errMsg} | detalhes: ${JSON.stringify(error, Object.getOwnPropertyNames(error || {}))}`,
+    );
     return new Response(
       JSON.stringify({ success: false, error: errMsg }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
