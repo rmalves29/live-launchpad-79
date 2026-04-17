@@ -119,6 +119,10 @@ interface PrePostagemLookup {
 const TRACKING_POLL_ATTEMPTS = 2;
 const TRACKING_POLL_INTERVAL_MS = 800;
 
+// Retry configuration for label PDF download
+const PDF_RETRY_ATTEMPTS = 3;
+const PDF_RETRY_DELAYS_MS = [1500, 3000, 5000]; // wait before each attempt
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
