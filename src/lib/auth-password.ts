@@ -95,6 +95,107 @@ function clearLocalAuthArtifacts() {
   });
 }
 
+/**
+ * Fallback usando XMLHttpRequest para contornar o proxy de fetch do Preview Lovable.
+ * O proxy intercepta window.fetch mas não intercepta XMLHttpRequest.
+ */
+function xhrPost(url: string, body: string, headers: Record<string, string>): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
+    
+    Object.entries(headers).forEach(([key, value]) => {
+      xhr.setRequestHeader(key, value);
+    });
+    
+    xhr.onload = () => {
+      resolve({ status: xhr.status, body: xhr.responseText });
+    };
+    
+    xhr.onerror = () => {
+      reject(new Error("XMLHttpRequest falhou - verifique sua conexão de internet"));
+    };
+    
+    xhr.ontimeout = () => {
+      reject(new Error("Timeout na requisição de autenticação"));
+    };
+    
+    xhr.timeout = 15000; // 15 segundos
+    xhr.send(body);
+  });
+}
+
+async function signInWithXHR(email: string, password: string): Promise<ResilientSignInResult> {
+  try {
+    console.info("[auth] Tentando login via XMLHttpRequest (bypass do proxy)");
+    
+    const url = `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+      "X-Client-Info": "orderzap-auth-xhr-fallback",
+    };
+    const body = JSON.stringify({ email, password });
+    
+    const response = await xhrPost(url, body, headers);
+    
+    let payload: any = null;
+    try {
+      payload = JSON.parse(response.body);
+    } catch {
+      // ignore parse errors
+    }
+
+    if (response.status >= 400) {
+      const errorMessage =
+        payload?.msg ||
+        payload?.error_description ||
+        payload?.message ||
+        payload?.error ||
+        `Falha na autenticação (${response.status})`;
+
+      return {
+        data: { user: null, session: null },
+        error: {
+          message: String(errorMessage),
+          status: response.status,
+          statusCode: response.status,
+        },
+      };
+    }
+
+    if (!payload?.access_token || !payload?.refresh_token) {
+      return {
+        data: { user: null, session: null },
+        error: {
+          message: "Resposta de autenticação inválida recebida do Supabase.",
+        },
+      };
+    }
+
+    // Injetar a sessão no cliente Supabase
+    const { data, error } = await supabase.auth.setSession({
+      access_token: payload.access_token,
+      refresh_token: payload.refresh_token,
+    });
+
+    return {
+      data: {
+        user: data.user,
+        session: data.session,
+      },
+      error: error ? toAuthLikeError(error) : null,
+    };
+  } catch (error) {
+    console.error("[auth] XMLHttpRequest fallback falhou:", error);
+    return {
+      data: { user: null, session: null },
+      error: toAuthLikeError(error),
+    };
+  }
+}
+
 async function signInWithDirectFetch(email: string, password: string): Promise<ResilientSignInResult> {
   try {
     const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
@@ -163,10 +264,14 @@ export async function signInWithPasswordResilient(
   email: string,
   password: string,
 ): Promise<ResilientSignInResult> {
+  // =====================================================
+  // Tentativa 1: SDK padrão do Supabase
+  // =====================================================
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (!error) {
+      console.info("[auth] Login via SDK padrão OK");
       return {
         data: {
           user: data.user,
@@ -186,42 +291,55 @@ export async function signInWithPasswordResilient(
       };
     }
 
-    console.error("[auth] signInWithPassword falhou com erro de rede; tentando fallback direto", {
+    console.warn("[auth] SDK falhou com erro de rede, tentando fallbacks...", {
       origin: window.location.origin,
       online: navigator.onLine,
-      error: toAuthLikeError(error),
     });
   } catch (error) {
     if (!isNetworkAuthError(error)) {
       throw error;
     }
 
-    console.error("[auth] signInWithPassword lançou erro de rede; tentando fallback direto", {
+    console.warn("[auth] SDK lançou erro de rede, tentando fallbacks...", {
       origin: window.location.origin,
       online: navigator.onLine,
-      error: toAuthLikeError(error),
     });
   }
 
+  // Limpar artefatos antes dos fallbacks
   try {
     await supabase.auth.signOut({ scope: "local" });
   } catch {
     // noop
   }
-
   clearLocalAuthArtifacts();
 
-  const fallbackResult = await signInWithDirectFetch(email, password);
-
-  if (fallbackResult.error) {
-    console.error("[auth] Fallback direto ao endpoint /token falhou", {
-      origin: window.location.origin,
-      online: navigator.onLine,
-      error: fallbackResult.error,
-    });
-  } else {
-    console.info("[auth] Fallback direto ao endpoint /token executado com sucesso");
+  // =====================================================
+  // Tentativa 2: XMLHttpRequest (bypass do proxy do Preview)
+  // =====================================================
+  const xhrResult = await signInWithXHR(email, password);
+  if (!xhrResult.error) {
+    console.info("[auth] Login via XMLHttpRequest OK");
+    return xhrResult;
   }
 
-  return fallbackResult;
+  console.warn("[auth] XMLHttpRequest falhou, tentando fetch direto...", xhrResult.error);
+
+  // =====================================================
+  // Tentativa 3: fetch direto como último recurso
+  // =====================================================
+  const fetchResult = await signInWithDirectFetch(email, password);
+
+  if (fetchResult.error) {
+    console.error("[auth] Todos os métodos de login falharam", {
+      origin: window.location.origin,
+      online: navigator.onLine,
+      xhrError: xhrResult.error,
+      fetchError: fetchResult.error,
+    });
+  } else {
+    console.info("[auth] Login via fetch direto OK");
+  }
+
+  return fetchResult;
 }
