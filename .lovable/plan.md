@@ -1,54 +1,44 @@
 
+Objetivo: simplificar a emissão de etiquetas removendo a dependência da API PPN dos Correios e usando apenas a integração MeusCorreios, que já está mais estável no projeto.
 
-# Plano: Corrigir redirecionamento pós-pagamento (404)
+1. Mapear onde a emissão PPN está acoplada
+- Revisar `src/components/integrations/CorreiosCWSLabels.tsx` e os pontos da UI que expõem “Etiquetas Correios”.
+- Confirmar onde `correios-labels` é invocada e onde a integração `provider = 'correios'` aparece como opção de emissão.
 
-## Problema identificado
-Após o cliente finalizar o pagamento, o gateway (Pagar.me, Appmax ou Mercado Pago) redireciona o cliente de volta ao sistema, mas ele cai em uma página 404. Isso acontece porque:
+2. Descontinuar a emissão PPN na interface
+- Remover ou ocultar a aba/componente de etiquetas do contrato direto dos Correios.
+- Ajustar textos e status da integração para deixar claro que emissão de etiqueta passa a ocorrer via MeusCorreios.
+- Se fizer sentido, mostrar aviso curto: “Emissão via contrato direto descontinuada; use MeusCorreios”.
 
-1. **Pagar.me**: A `success_url` aponta para `/mp/return?status=success`, mas não há URLs de falha/pendente configuradas
-2. **Appmax**: Não tem **nenhuma** URL de retorno configurada — após pagar, o checkout do Appmax não sabe para onde redirecionar o cliente
-3. **Variável PUBLIC_APP_URL**: Pode não estar configurada na edge function, fazendo o redirect apontar para `app.orderzaps.com` enquanto o cliente está no `live-launchpad-79.lovable.app`
+3. Redirecionar o fluxo de emissão para MeusCorreios
+- Fazer a UI de emissão chamar `process-meus-correios` em vez de `correios-labels`.
+- Reaproveitar o padrão já existente de geração de rastreio + etiqueta base64 retornado por `process-meus-correios`.
+- Garantir que seleção de pedidos, override de serviço e download do PDF continuem funcionando.
 
-## Solução
+4. Remover código morto do contrato direto
+- Eliminar referências de uso de `correios-labels` no frontend.
+- Opcionalmente remover a Edge Function `correios-labels` e o componente `CorreiosCWSLabels.tsx` se não houver mais uso.
+- Manter `correios-shipping` apenas se ainda for necessário para cotação; caso também queira aposentar o frete via contrato direto, isso pode virar uma segunda etapa separada.
 
-### 1. Criar página dedicada de retorno de pagamento
-Renomear e melhorar a página `/mp/return` para ser uma página genérica de retorno de pagamento que funcione para todos os provedores (MP, Pagar.me, Appmax).
+5. Ajustar descoberta/prioridade de integrações
+- Revisar `src/lib/shipping-utils.ts` para garantir que a lógica de integrações não continue sugerindo o fluxo antigo de etiqueta PPN.
+- Confirmar se “correios” seguirá existindo só para cotação ou se deve ser totalmente retirado das opções operacionais.
 
-- Criar rota `/pagamento/retorno` (mais intuitiva)
-- Manter `/mp/return` como redirect para compatibilidade
-- A página exibirá status do pagamento (sucesso/pendente/falha) com visual claro
-- Incluirá botão "Voltar ao catálogo da loja" com link dinâmico baseado no tenant
+6. Validação final
+- Testar seleção de pedidos e emissão end-to-end usando apenas MeusCorreios.
+- Validar casos de sucesso, pedido já com rastreio, endereço incompleto e erro de serviço inválido.
+- Confirmar que download do PDF e atualização do tracking continuam gravando no pedido corretamente.
 
-### 2. Configurar URLs de retorno em todos os provedores
+Detalhes técnicos
+- Arquivos com maior chance de mudança:
+  - `src/components/integrations/CorreiosCWSLabels.tsx`
+  - `src/components/integrations/CorreiosIntegration.tsx`
+  - `src/lib/shipping-utils.ts`
+  - `supabase/functions/process-meus-correios/index.ts`
+  - possivelmente remoção de `supabase/functions/correios-labels/index.ts`
+- Benefício principal: reduz complexidade, remove um fluxo instável e concentra a emissão em uma integração já funcional.
+- Risco principal: se ainda houver clientes usando contrato direto só para etiqueta, precisamos trocar cuidadosamente os pontos da UI para não deixar ação quebrada.
 
-**Pagar.me** (edge function `create-payment`):
-- Adicionar `success_url` apontando para `/pagamento/retorno?status=success&tenant={slug}`
-
-**Appmax** (edge function `create-payment`):
-- Passar o slug do tenant no body do checkout
-- Incluir URL de retorno no pedido Appmax (campo `url_callback` ou similar)
-
-**Mercado Pago**:
-- Já tem `back_urls` configurados — apenas ajustar para incluir o slug do tenant
-
-### 3. Incluir slug do tenant nas URLs de retorno
-Para que a página de retorno saiba para qual loja redirecionar o cliente, todas as URLs terão o parâmetro `&tenant={slug}`.
-
-### 4. Garantir que PUBLIC_APP_URL esteja correto
-Verificar se a variável de ambiente `PUBLIC_APP_URL` está definida nas edge functions. Se não, usar o origin da requisição como fallback dinâmico.
-
-## Alterações técnicas
-
-| Arquivo | O que muda |
-|---|---|
-| `src/pages/pagamento/Retorno.tsx` | Nova página de retorno de pagamento universal |
-| `src/App.tsx` | Adicionar rota `/pagamento/retorno` e redirect de `/mp/return` |
-| `supabase/functions/create-payment/index.ts` | Corrigir `success_url` do Pagar.me, adicionar `back_urls` dinâmicos com tenant slug, usar origin da requisição como fallback |
-| `src/pages/callbacks/MpReturn.tsx` | Redirecionar para a nova rota |
-
-## Resultado esperado
-Após o pagamento, o cliente verá uma página amigável com:
-- Confirmação visual do status (aprovado/pendente/falha)
-- Botão para voltar ao catálogo da loja
-- Informações do pedido quando disponível
-
+Resultado esperado
+- A parte de emissão de etiquetas fica menor, mais previsível e sem dependência do estado “Pendente” da pré-postagem PPN.
+- O sistema passa a ter um único caminho de emissão: MeusCorreios.
