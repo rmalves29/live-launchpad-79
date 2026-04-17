@@ -77,7 +77,7 @@ class TenantSupabaseClient {
       },
       update: (values: any) => {
         const query = (base as any).update(values);
-        
+
         // Retornar objeto que adiciona tenant_id no final de qualquer cadeia
         return {
           eq: (column: string, value: any) => {
@@ -102,7 +102,7 @@ class TenantSupabaseClient {
       },
       delete: () => {
         const query = (base as any).delete();
-        
+
         const createChainableDelete = (currentQuery: any): any => {
           return {
             eq: (column: string, value: any) => {
@@ -128,7 +128,7 @@ class TenantSupabaseClient {
             }
           };
         };
-        
+
         return createChainableDelete(query);
       },
       upsert: (values: any) => {
