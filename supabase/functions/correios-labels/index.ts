@@ -194,9 +194,7 @@ async function actionDownloadLabel(
 
   const cartaoNumero = cartaoData.numero || creds.cartao_postagem;
 
-  // Etapa 1 — Solicitar geração assíncrona
   const asyncUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`;
-
   const bodyVariants: Array<{ label: string; body: Record<string, unknown> }> = [
     {
       label: "v0-contrato-dr-layout-formato",
@@ -235,14 +233,14 @@ async function actionDownloadLabel(
     },
   ];
 
-  let asyncResp: Response | null = null;
   let asyncText = "";
   let lastStatus = 0;
 
   for (let index = 0; index < bodyVariants.length; index++) {
     const variant = bodyVariants[index];
     log(`Variação ${index + 1} | body: ${JSON.stringify(variant.body)}`);
-    const r = await fetch(asyncUrl, {
+
+    const response = await fetch(asyncUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -251,135 +249,122 @@ async function actionDownloadLabel(
       },
       body: JSON.stringify(variant.body),
     });
-    const t = await r.text();
-    lastStatus = r.status;
-    log(`Variação ${index + 1} | body: ${JSON.stringify(variant.body)} | status: ${r.status} | resposta: ${t}`);
-    if (r.ok) {
-      asyncResp = r;
-      asyncText = t;
-      break;
-    }
-    asyncText = t;
-  }
 
-  if (!asyncResp) {
-    return {
-      success: false,
-      pending: false,
-      error: `Falha ao solicitar rótulo assíncrono (${lastStatus}): ${asyncText}`,
-    };
-  }
-}
+    const responseText = await response.text();
+    lastStatus = response.status;
+    asyncText = responseText;
 
-  let asyncJson: any = null;
-  try {
-    asyncJson = JSON.parse(asyncText);
-  } catch {
-    throw new Error(`Resposta inválida da Etapa 1 (não-JSON): ${asyncText.slice(0, 300)}`);
-  }
-
-  // Possíveis nomes do recibo
-  const idRecibo: string | undefined =
-    asyncJson?.idRecibo ||
-    asyncJson?.recibo ||
-    asyncJson?.id ||
-    asyncJson?.protocolo ||
-    asyncJson?.numeroProtocolo;
-
-  if (!idRecibo) {
-    throw new Error(
-      `idRecibo não retornado pela Etapa 1. Body completo: ${asyncText}`,
-    );
-  }
-
-  log(`idRecibo obtido: ${idRecibo}`);
-
-  // Etapa 2 — Polling até 10x com 5s de intervalo
-  const pollUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`;
-  for (let attempt = 1; attempt <= 10; attempt++) {
-    const pollResp = await fetch(pollUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/pdf, application/json",
-      },
-    });
-
-    const contentType = pollResp.headers.get("content-type") || "";
-
-    // Se vier PDF binário direto
-    if (contentType.includes("application/pdf")) {
-      const buf = await pollResp.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = "";
-      const chunkSize = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-      }
-      const base64 = btoa(binary);
-      log(
-        `Polling ${attempt}/10 | status: ${pollResp.status} | content-type: ${contentType} | PDF recebido (${bytes.length} bytes)`,
-      );
-      return { success: true, labelPdfBase64: base64, idRecibo };
-    }
-
-    // Caso contrário, ler como texto e tentar parsear JSON
-    const bodyText = await pollResp.text();
     log(
-      `Polling ${attempt}/10 | status: ${pollResp.status} | content-type: ${contentType} | body: ${bodyText}`,
+      `Variação ${index + 1} | body: ${JSON.stringify(variant.body)} | status: ${response.status} | resposta: ${responseText}`,
     );
 
-    if (contentType.includes("application/json")) {
-      try {
-        const j = JSON.parse(bodyText);
-        log(`Polling ${attempt}/10 | JSON keys: ${Object.keys(j || {}).join(", ")}`);
+    if (!response.ok) continue;
 
-        // Procurar campo com base64 do PDF
-        const candidate =
-          j?.arquivo || j?.pdf || j?.conteudo || j?.rotulo || j?.base64 || j?.data;
+    let asyncJson: any = null;
+    try {
+      asyncJson = JSON.parse(responseText);
+    } catch {
+      throw new Error(`Resposta inválida da Etapa 1 (não-JSON): ${responseText.slice(0, 300)}`);
+    }
 
-        if (typeof candidate === "string" && candidate.length > 100) {
-          // Já é base64 ou data URL
-          const base64 = candidate.startsWith("data:")
-            ? candidate.split(",")[1] || candidate
-            : candidate;
-          return { success: true, labelPdfBase64: base64, idRecibo };
+    const idRecibo: string | undefined =
+      asyncJson?.idRecibo ||
+      asyncJson?.recibo ||
+      asyncJson?.id ||
+      asyncJson?.protocolo ||
+      asyncJson?.numeroProtocolo;
+
+    if (!idRecibo) {
+      throw new Error(`idRecibo não retornado pela Etapa 1. Body completo: ${responseText}`);
+    }
+
+    log(`idRecibo obtido: ${idRecibo}`);
+
+    const pollUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`;
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      const pollResp = await fetch(pollUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/pdf, application/json",
+        },
+      });
+
+      const contentType = pollResp.headers.get("content-type") || "";
+
+      if (contentType.includes("application/pdf")) {
+        const buf = await pollResp.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
         }
+        const base64 = btoa(binary);
+        log(
+          `Polling ${attempt}/10 | status: ${pollResp.status} | content-type: ${contentType} | PDF recebido (${bytes.length} bytes)`,
+        );
+        return { success: true, labelPdfBase64: base64, idRecibo };
+      }
 
-        // Se vier URL, baixa e converte
-        const urlField = j?.url || j?.link || j?.urlArquivo;
-        if (typeof urlField === "string" && urlField.startsWith("http")) {
-          log(`Baixando PDF via URL retornada: ${urlField}`);
-          const fileResp = await fetch(urlField);
-          if (fileResp.ok) {
-            const buf = await fileResp.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let binary = "";
-            const chunkSize = 0x8000;
-            for (let i = 0; i < bytes.length; i += chunkSize) {
-              binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-            }
-            const base64 = btoa(binary);
+      const bodyText = await pollResp.text();
+      log(
+        `Polling ${attempt}/10 | status: ${pollResp.status} | content-type: ${contentType} | body: ${bodyText}`,
+      );
+
+      if (contentType.includes("application/json")) {
+        try {
+          const j = JSON.parse(bodyText);
+          log(`Polling ${attempt}/10 | JSON keys: ${Object.keys(j || {}).join(", ")}`);
+
+          const candidate =
+            j?.arquivo || j?.pdf || j?.conteudo || j?.rotulo || j?.base64 || j?.data;
+
+          if (typeof candidate === "string" && candidate.length > 100) {
+            const base64 = candidate.startsWith("data:")
+              ? candidate.split(",")[1] || candidate
+              : candidate;
             return { success: true, labelPdfBase64: base64, idRecibo };
           }
+
+          const urlField = j?.url || j?.link || j?.urlArquivo;
+          if (typeof urlField === "string" && urlField.startsWith("http")) {
+            log(`Baixando PDF via URL retornada: ${urlField}`);
+            const fileResp = await fetch(urlField);
+            if (fileResp.ok) {
+              const buf = await fileResp.arrayBuffer();
+              const bytes = new Uint8Array(buf);
+              let binary = "";
+              const chunkSize = 0x8000;
+              for (let i = 0; i < bytes.length; i += chunkSize) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+              }
+              const base64 = btoa(binary);
+              return { success: true, labelPdfBase64: base64, idRecibo };
+            }
+          }
+        } catch (e) {
+          log(`Polling ${attempt}/10 | erro ao parsear JSON: ${(e as Error).message}`);
         }
-      } catch (e) {
-        log(`Polling ${attempt}/10 | erro ao parsear JSON: ${(e as Error).message}`);
+      }
+
+      if (attempt < 10) {
+        await new Promise((r) => setTimeout(r, 5000));
       }
     }
 
-    // Aguarda 5s antes da próxima tentativa (exceto na última)
-    if (attempt < 10) {
-      await new Promise((r) => setTimeout(r, 5000));
-    }
+    return {
+      success: false,
+      pending: true,
+      idRecibo,
+      error: "Rótulo em processamento. Tente novamente em 1 minuto.",
+    };
   }
 
-  // Após 10 tentativas, ainda em processamento
   return {
     success: false,
-    pending: true,
-    idRecibo,
-    error: "Rótulo em processamento. Tente novamente em 1 minuto.",
+    pending: false,
+    error: `Falha ao solicitar rótulo assíncrono (${lastStatus}): ${asyncText}`,
   };
 }
 
@@ -389,7 +374,7 @@ async function actionCreatePrepostagem(
   creds: CorreiosCredentials,
   payload: any,
 ) {
-  const token = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
+  const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
 
   // Sanitização de dados (mantém o que já funciona)
   const dest = payload.destinatario || {};
