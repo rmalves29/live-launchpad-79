@@ -199,41 +199,44 @@ async function actionDownloadLabel(
 
   const cartaoNumero = cartaoData.numero || creds.cartao_postagem;
 
+  // Payload oficial conforme manual Correios API v2.4 (abril/2025)
+  // Campos OBRIGATÓRIOS: idsPrePostagem (plural), numeroCartaoPostagem,
+  // tipoRotulo (P=padrão | R=reduzido), formatoRotulo (ET=Etiqueta | EV=Envelope),
+  // imprimeRemetente (S | N), layoutImpressao (PADRAO | LINEAR_100_150 | etc.)
   const asyncUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`;
   const bodyVariants: Array<{ label: string; body: Record<string, unknown> }> = [
     {
-      label: "v0-contrato-dr-layout-formato",
+      label: "oficial-padrao",
       body: {
-        idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: cartaoNumero,
-        contrato: cartaoData.contrato,
-        dr: cartaoData.dr,
-        layoutImpressao: "LASER_PACKEF_CAIXA",
-        formatoRotulo: "PDF",
+        idsPrePostagem: [String(prePostagemId)],
+        numeroCartaoPostagem: cartaoNumero,
+        tipoRotulo: "P",
+        formatoRotulo: "ET",
+        imprimeRemetente: "S",
+        layoutImpressao: "PADRAO",
       },
     },
     {
-      label: "A-contrato-codigoServico",
+      label: "oficial-com-contrato",
       body: {
-        idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: cartaoNumero,
+        idsPrePostagem: [String(prePostagemId)],
+        numeroCartaoPostagem: cartaoNumero,
         contrato: cartaoData.contrato,
-        layoutImpressao: "LASER_PACKEF_CAIXA",
-        formatoRotulo: "PDF",
-        codigoServico: "03298",
+        tipoRotulo: "P",
+        formatoRotulo: "ET",
+        imprimeRemetente: "S",
+        layoutImpressao: "PADRAO",
       },
     },
     {
-      label: "B-cartao-aninhado",
+      label: "fallback-reduzido",
       body: {
-        idPrePostagem: [String(prePostagemId)],
-        cartaoPostagem: {
-          numero: cartaoNumero,
-          contrato: cartaoData.contrato,
-          dr: cartaoData.dr,
-        },
-        layoutImpressao: "LASER_PACKEF_CAIXA",
-        formatoRotulo: "PDF",
+        idsPrePostagem: [String(prePostagemId)],
+        numeroCartaoPostagem: cartaoNumero,
+        tipoRotulo: "R",
+        formatoRotulo: "ET",
+        imprimeRemetente: "S",
+        layoutImpressao: "PADRAO",
       },
     },
   ];
