@@ -85,7 +85,7 @@ function normalizeRemetente(raw: any, fallbackCep: string): any {
 
   return {
     nome: String(src.nome || src.name || "").slice(0, 50),
-    dddTelefone: ddd,
+    ddd,
     telefone: numeroTelefone,
     dddCelular: ddd,
     celular: numeroTelefone,
