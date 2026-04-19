@@ -185,6 +185,7 @@ interface DownloadLabelResult {
   pending?: boolean;
   error?: string;
   idRecibo?: string;
+  details?: Record<string, unknown>;
 }
 
 async function pdfResponseToBase64(resp: Response): Promise<string> {
