@@ -685,8 +685,15 @@ async function actionDownloadLabel(
   // ETAPA 0b: Consulta status antes de qualquer tentativa de geração
   const statusCheck = await fetchPrePostagemStatus(token, effectiveId);
 
-  // Se 404 ou status inválido E temos contexto do pedido → tenta recriar
-  const needsRecreate = !recreated && (statusCheck.httpStatus === 404 || !isPrePostadoStatus(statusCheck.status));
+  const isNative = isCorreiosNativeId(effectiveId);
+
+  // REGRA: IDs nativos dos Correios (PR...) NUNCA são recriados.
+  // Apenas IDs estrangeiros (UUID) podem disparar recreatePrepostagemFromOrder.
+  const needsRecreate =
+    !recreated &&
+    !isNative &&
+    (statusCheck.httpStatus === 404 || !isPrePostadoStatus(statusCheck.status));
+
   if (needsRecreate && supabase && orderId) {
     log(`⚠️ Pré-postagem ${effectiveId} inválida (HTTP ${statusCheck.httpStatus}, status "${statusCheck.status}") — recriando para pedido ${orderId}`);
     try {
@@ -704,7 +711,10 @@ async function actionDownloadLabel(
     }
   } else if (!isPrePostadoStatus(statusCheck.status)) {
     const currentStatus = statusCheck.status || "DESCONHECIDO";
-    const errMsg = `Pré-postagem ${effectiveId} está com status "${currentStatus}" — rótulo só pode ser emitido quando status == "PRE_POSTADO". ${!supabase || !orderId ? "Forneça order_id para recriar automaticamente." : ""}`;
+    const baseMsg = `Pré-postagem ${effectiveId} está com status "${currentStatus}" — rótulo só pode ser emitido quando status == "PRE_POSTADO".`;
+    const errMsg = isNative
+      ? `${baseMsg} Como o ID já é nativo dos Correios, não será recriado automaticamente. Verifique a pré-postagem no painel dos Correios.`
+      : `${baseMsg} ${!supabase || !orderId ? "Forneça order_id para recriar automaticamente." : ""}`;
     log(`❌ ${errMsg}`);
     return {
       success: false,
@@ -714,6 +724,7 @@ async function actionDownloadLabel(
         currentStatus,
         httpStatus: statusCheck.httpStatus,
         rawResponse: statusCheck.rawJson || statusCheck.bodyText,
+        isNativeCorreiosId: isNative,
       },
     };
   }
