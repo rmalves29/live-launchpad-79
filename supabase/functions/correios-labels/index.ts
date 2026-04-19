@@ -336,7 +336,7 @@ async function downloadArquivo(idArquivo: string, token: string) {
 }
 
 async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
-  const finalUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`;
+  const finalUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/resultado/${idRecibo}`;
 
   // ETAPA 2: polling do status do recibo (até 10 tentativas, 5s de intervalo)
   for (let attempt = 1; attempt <= 10; attempt++) {
