@@ -579,6 +579,7 @@ async function recreatePrepostagemFromOrder(
   };
 
   const createUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens`;
+  log(`🔄 recreate payload completo: ${JSON.stringify(createBody)}`);
   const resp = await fetch(createUrl, {
     method: "POST",
     headers: {
@@ -590,7 +591,7 @@ async function recreatePrepostagemFromOrder(
   });
 
   const text = await resp.text();
-  log(`🔄 recreate prepostagem | status: ${resp.status} | body: ${text.slice(0, 800)}`);
+  log(`🔄 recreate prepostagem | status: ${resp.status} | body: ${text.slice(0, 1000)}`);
 
   if (!resp.ok) {
     throw new Error(`Falha ao recriar pré-postagem nos Correios (${resp.status}): ${text.slice(0, 500)}`);
