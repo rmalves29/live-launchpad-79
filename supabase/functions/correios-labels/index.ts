@@ -185,7 +185,22 @@ interface DownloadLabelResult {
   pending?: boolean;
   error?: string;
   idRecibo?: string;
+  idPrePostagem?: string;
+  recreated?: boolean;
   details?: Record<string, unknown>;
+}
+
+// Detecta se um ID é provavelmente um UUID de outro provedor (ex: Melhor Envio)
+// e portanto NÃO é um id válido de pré-postagem dos Correios.
+// Pré-postagens dos Correios costumam ser strings sem hífens, hex/numéricas (ex: "84d744bde9004a1a..." ou "PRLSl03xKx...").
+function isLikelyForeignId(id: string): boolean {
+  if (!id) return true;
+  // UUID v4 padrão: 8-4-4-4-12 com hífens
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) return true;
+  // Qualquer string com múltiplos hífens (não é o padrão dos Correios)
+  if ((id.match(/-/g) || []).length >= 2) return true;
+  return false;
 }
 
 async function pdfResponseToBase64(resp: Response): Promise<string> {
