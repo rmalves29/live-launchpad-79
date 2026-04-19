@@ -40,6 +40,7 @@ export default function CorreiosCWSLabels({ tenantId }: CorreiosCWSLabelsProps) 
         )
         .eq('tenant_id', tenantId)
         .not('melhor_envio_shipment_id', 'is', null)
+        .like('melhor_envio_shipment_id', 'PR%')
         .order('created_at', { ascending: false })
         .limit(100);
 
