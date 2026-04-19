@@ -418,16 +418,6 @@ function isPrePostadoStatus(status: string | null | undefined): boolean {
   return VALID_PRE_POSTADO_STATUS.has(normalized) || normalized.includes("POSTADO");
 }
 
-async function actionDownloadLabel(
-  creds: CorreiosCredentials,
-  prePostagemId: string,
-): Promise<DownloadLabelResult> {
-  const { token, cartaoData } = await getCorreiosToken(
-    creds.client_id,
-    creds.client_secret,
-    creds.cartao_postagem,
-  );
-
 // Busca dados do pedido e cria nova pré-postagem nos Correios.
 // Usado quando o melhor_envio_shipment_id armazenado é um UUID (ex: ID do Melhor Envio antigo)
 // ou quando a consulta retorna 404 (pré-postagem não existe no sistema dos Correios).
