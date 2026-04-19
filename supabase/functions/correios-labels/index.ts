@@ -911,7 +911,7 @@ async function actionCreatePrepostagem(
   let pending = false;
   let labelError: string | undefined;
   try {
-    const dl = await actionDownloadLabel(creds, String(idPrePostagem));
+    const dl = await actionDownloadLabel(creds, String(idPrePostagem), supabase, payload.order_id);
     if (dl.success && dl.labelPdfBase64) {
       labelPdfBase64 = dl.labelPdfBase64;
     } else {
