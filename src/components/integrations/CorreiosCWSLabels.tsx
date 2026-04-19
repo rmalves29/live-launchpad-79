@@ -59,6 +59,7 @@ export default function CorreiosCWSLabels({ tenantId }: CorreiosCWSLabelsProps) 
           action: 'download_label',
           tenant_id: tenantId,
           prePostagem_id: order.melhor_envio_shipment_id,
+          order_id: order.id,
         },
       });
 
