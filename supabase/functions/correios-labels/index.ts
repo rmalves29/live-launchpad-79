@@ -257,6 +257,32 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
             return { ok: true as const, base64: fileResp.base64, url: fileUrl, status: resp.status, contentType, bodyText };
           }
         }
+
+        const message = String(
+          json?.mensagem || json?.message || json?.descricao || json?.detail || "",
+        );
+        if (/PPN-295|rótulo não foi gerado|rotulo nao foi gerado|nova solicitação|nova solicitacao/i.test(message)) {
+          return {
+            ok: false as const,
+            retryable: false,
+            regenerate: true,
+            url,
+            status: resp.status,
+            contentType,
+            bodyText: message,
+          };
+        }
+
+        if (message) {
+          return {
+            ok: false as const,
+            retryable: false,
+            url,
+            status: resp.status,
+            contentType,
+            bodyText: message,
+          };
+        }
       } catch {
         // segue para retorno abaixo
       }
