@@ -109,7 +109,7 @@ function buildDeclaracaoConteudo(totalAmount: number | null | undefined, observa
   const valor = Number(totalAmount) > 0 ? Number(totalAmount) : 50;
   return [
     {
-      conteudo: (observacao && observacao.trim()) ? observacao.trim().slice(0, 60) : "Acessórios femininos",
+      conteudo: (observacao && observacao.trim()) ? observacao.trim().slice(0, 60) : "Bijuterias e acessórios",
       quantidade: 1,
       valor: Number(valor.toFixed(2)),
     },
