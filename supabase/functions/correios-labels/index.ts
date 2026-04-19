@@ -217,13 +217,44 @@ async function tryDownloadPdfFromUrl(url: string, token: string) {
   return { ok: false as const, status: resp.status, contentType, bodyText };
 }
 
-async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
-  const downloadUrls = [
-    `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`,
-    `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/pdf/${idRecibo}`,
+// Fluxo CORRETO da API CWS dos Correios para etiquetas assíncronas:
+// 1) POST /rotulo/assincrono/pdf -> retorna idRecibo (já feito antes)
+// 2) GET  /rotulo/assincrono/{idRecibo} -> polling até retornar idArquivo
+// 3) GET  /rotulo/download/{idArquivo}  -> baixa o PDF
+async function fetchReciboStatus(idRecibo: string, token: string) {
+  const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`;
+  const resp = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json, application/pdf",
+    },
+  });
+
+  const contentType = resp.headers.get("content-type") || "";
+
+  // Caso raro: a API entrega o PDF direto neste endpoint
+  if (resp.ok && contentType.includes("application/pdf")) {
+    const base64 = await pdfResponseToBase64(resp);
+    return { url, status: resp.status, contentType, bodyText: "", pdfBase64: base64, json: null as any };
+  }
+
+  const bodyText = await resp.text();
+  let json: any = null;
+  if (contentType.includes("application/json")) {
+    try { json = JSON.parse(bodyText); } catch { json = null; }
+  }
+
+  return { url, status: resp.status, contentType, bodyText, pdfBase64: null as string | null, json };
+}
+
+async function downloadArquivo(idArquivo: string, token: string) {
+  const candidates = [
+    `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/${idArquivo}`,
+    `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/pdf/${idArquivo}`,
   ];
 
-  for (const url of downloadUrls) {
+  for (const url of candidates) {
     const resp = await fetch(url, {
       method: "GET",
       headers: {
@@ -249,7 +280,6 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
           const base64 = candidate.startsWith("data:") ? candidate.split(",")[1] || candidate : candidate;
           return { ok: true as const, base64, url, status: resp.status, contentType, bodyText };
         }
-
         const fileUrl = json?.url || json?.link || json?.urlArquivo;
         if (typeof fileUrl === "string" && fileUrl.startsWith("http")) {
           const fileResp = await tryDownloadPdfFromUrl(fileUrl, token);
@@ -257,53 +287,132 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
             return { ok: true as const, base64: fileResp.base64, url: fileUrl, status: resp.status, contentType, bodyText };
           }
         }
-
-        const message = String(
-          json?.mensagem || json?.message || json?.descricao || json?.detail || "",
-        );
-        if (/PPN-295|rótulo não foi gerado|rotulo nao foi gerado|nova solicitação|nova solicitacao/i.test(message)) {
-          return {
-            ok: false as const,
-            retryable: false,
-            regenerate: true,
-            url,
-            status: resp.status,
-            contentType,
-            bodyText: message,
-          };
-        }
-
-        if (message) {
-          return {
-            ok: false as const,
-            retryable: false,
-            url,
-            status: resp.status,
-            contentType,
-            bodyText: message,
-          };
-        }
       } catch {
-        // segue para retorno abaixo
+        // ignora e tenta próximo candidato
       }
     }
 
-    if ([202, 204, 409, 425, 429, 500, 502, 503, 504].includes(resp.status)) {
-      return { ok: false as const, retryable: true, url, status: resp.status, contentType, bodyText };
-    }
-
-    if (![404].includes(resp.status)) {
-      return { ok: false as const, retryable: false, url, status: resp.status, contentType, bodyText };
+    if (resp.status !== 404) {
+      return { ok: false as const, url, status: resp.status, contentType, bodyText };
     }
   }
 
   return {
     ok: false as const,
-    retryable: false,
-    url: `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`,
+    url: candidates[0],
     status: 404,
     contentType: "",
-    bodyText: "PDF não encontrado nos endpoints assíncronos documentados.",
+    bodyText: "Endpoint de download do arquivo não respondeu com PDF.",
+  };
+}
+
+async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
+  const finalUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`;
+
+  // ETAPA 2: polling do status do recibo (até 10 tentativas, 5s de intervalo)
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    const status = await fetchReciboStatus(idRecibo, token);
+    log(
+      `[recibo ${idRecibo}] status poll ${attempt}/10 | http: ${status.status} | content-type: ${status.contentType} | body: ${(status.bodyText || "").slice(0, 400)}`,
+    );
+
+    // Caso a API tenha entregue o PDF direto
+    if (status.pdfBase64) {
+      return { ok: true as const, base64: status.pdfBase64, url: status.url, status: status.status, contentType: status.contentType, bodyText: "" };
+    }
+
+    const json = status.json;
+
+    // Detecta erro PPN-295 ou "rótulo não foi gerado" -> sinaliza regenerate
+    const message = String(
+      json?.mensagem || json?.message || json?.descricao || json?.detail || json?.msgs?.[0] || "",
+    );
+    if (/PPN-295|rótulo não foi gerado|rotulo nao foi gerado|nova solicitação|nova solicitacao/i.test(message)) {
+      return {
+        ok: false as const,
+        retryable: false,
+        regenerate: true,
+        url: status.url,
+        status: status.status,
+        contentType: status.contentType,
+        bodyText: message,
+      };
+    }
+
+    // Erro JSON terminal (não-retryable e não-regenerate)
+    if (status.status >= 400 && status.status !== 404 && message) {
+      return {
+        ok: false as const,
+        retryable: false,
+        url: status.url,
+        status: status.status,
+        contentType: status.contentType,
+        bodyText: message,
+      };
+    }
+
+    // Tenta extrair idArquivo da resposta
+    const idArquivo: string | undefined =
+      json?.idArquivo ||
+      json?.arquivoId ||
+      json?.idArquivoRotulo ||
+      json?.arquivo?.id ||
+      json?.arquivo?.idArquivo ||
+      (typeof json?.arquivo === "string" && json.arquivo.length < 100 ? json.arquivo : undefined) ||
+      json?.id ||
+      json?.protocolo ||
+      json?.numeroProtocolo;
+
+    // Verifica se o status indica conclusão
+    const statusTexto = String(json?.status || json?.situacao || json?.statusProcessamento || "").toUpperCase();
+    const concluido = /CONCLUIDO|CONCLUÍDO|FINALIZADO|PROCESSADO|PRONTO|DISPONIVEL|DISPONÍVEL|SUCESSO|OK/.test(statusTexto);
+
+    if (idArquivo && (concluido || !statusTexto)) {
+      log(`[recibo ${idRecibo}] idArquivo obtido: ${idArquivo} | status: ${statusTexto || "(sem campo status)"}`);
+      // ETAPA 3: baixa o PDF pelo idArquivo
+      const dl = await downloadArquivo(String(idArquivo), token);
+      log(
+        `[recibo ${idRecibo}] download arquivo ${idArquivo} | http: ${dl.status} | content-type: ${dl.contentType} | ${dl.ok ? "PDF recebido" : `body: ${dl.bodyText}`}`,
+      );
+      if (dl.ok) return dl;
+
+      // Se o download falhar mas o status era concluído, é terminal
+      return {
+        ok: false as const,
+        retryable: false,
+        url: dl.url,
+        status: dl.status,
+        contentType: dl.contentType,
+        bodyText: dl.bodyText,
+      };
+    }
+
+    // Status indica processamento em andamento -> aguarda e tenta de novo
+    const emProcessamento = /PROCESSANDO|PENDENTE|EM_ANDAMENTO|AGUARD|FILA|GERANDO/.test(statusTexto) || status.status === 202 || status.status === 204;
+    log(`[recibo ${idRecibo}] ainda em processamento (status: ${statusTexto || status.status}) | aguardando 5s...`);
+
+    if (attempt < 10) {
+      await new Promise((r) => setTimeout(r, 5000));
+    } else if (!emProcessamento && !idArquivo) {
+      // Última tentativa sem idArquivo e sem indicação clara -> retorna como terminal
+      return {
+        ok: false as const,
+        retryable: false,
+        url: status.url,
+        status: status.status,
+        contentType: status.contentType,
+        bodyText: status.bodyText || `Recibo ${idRecibo} não retornou idArquivo após 10 tentativas`,
+      };
+    }
+  }
+
+  return {
+    ok: false as const,
+    retryable: true,
+    url: finalUrl,
+    status: 408,
+    contentType: "",
+    bodyText: `Timeout: recibo ${idRecibo} não ficou pronto após 10 tentativas (50s)`,
   };
 }
 
@@ -416,42 +525,36 @@ async function actionDownloadLabel(
 
       log(`idRecibo obtido: ${idRecibo}`);
 
-      let regenerateLabel = false;
+      // tryDownloadAsyncLabel já faz polling interno (até 10x com 5s) na etapa 2
+      // e baixa o arquivo na etapa 3, então basta uma chamada por geração.
+      const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token);
+      log(
+        `Resultado download | url: ${asyncDownload.url} | status: ${asyncDownload.status} | content-type: ${asyncDownload.contentType} | ${asyncDownload.ok ? "PDF recebido" : `body: ${asyncDownload.bodyText}`}`,
+      );
 
-      for (let attempt = 1; attempt <= 10; attempt++) {
-        const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token);
-        log(
-          `Download assíncrono ${attempt}/10 | url: ${asyncDownload.url} | status: ${asyncDownload.status} | content-type: ${asyncDownload.contentType} | ${asyncDownload.ok ? "PDF recebido" : `body: ${asyncDownload.bodyText}`}`,
-        );
-
-        if (asyncDownload.ok) {
-          return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo };
-        }
-
-        lastError = asyncDownload.bodyText || responseText;
-
-        if (asyncDownload.regenerate) {
-          regenerateLabel = true;
-          break;
-        }
-
-        if (!asyncDownload.retryable) {
-          return {
-            success: false,
-            pending: false,
-            idRecibo,
-            error:
-              `A API dos Correios gerou o recibo ${idRecibo}, mas não entregou o PDF da etiqueta. Resposta final: ${asyncDownload.bodyText || responseText}`,
-          };
-        }
-
-        if (attempt < 10) {
-          await new Promise((r) => setTimeout(r, 5000));
-        }
+      if (asyncDownload.ok) {
+        return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo };
       }
 
-      if (regenerateLabel && generationAttempt < 3) {
+      lastError = asyncDownload.bodyText || responseText;
+
+      if (asyncDownload.regenerate && generationAttempt < 3) {
         log(`Correios retornou PPN-295 para o recibo ${idRecibo}; refazendo solicitação do rótulo`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+
+      if (asyncDownload.regenerate) {
+        return {
+          success: false,
+          pending: false,
+          idRecibo,
+          error: `A API dos Correios retornou PPN-295 (rótulo não gerado) em todas as 3 tentativas. Última resposta: ${lastError}`,
+        };
+      }
+
+      if (asyncDownload.retryable && generationAttempt < 3) {
+        log(`Timeout no polling do recibo ${idRecibo}; refazendo solicitação`);
         await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
