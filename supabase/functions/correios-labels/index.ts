@@ -57,6 +57,65 @@ function sanitizeCEP(cep: string | null | undefined): string {
   return sanitizeDigits(cep).slice(0, 8);
 }
 
+// Normaliza o JSON do remetente salvo em webhook_secret.
+// Aceita tanto o formato achatado (logradouro/numero/bairro no nível raiz)
+// quanto o formato aninhado (dentro de .endereco). Retorna sempre o formato
+// que a API CWS dos Correios espera, garantindo telefone e endereço completos.
+function normalizeRemetente(raw: any, fallbackCep: string): any {
+  if (!raw) return null;
+  const src = typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw;
+  if (!src || typeof src !== "object") return null;
+
+  const end = src.endereco && typeof src.endereco === "object" ? src.endereco : {};
+
+  const documento = sanitizeCNPJ(src.documento || src.cnpj || src.cpf || end.documento);
+  const telefoneRaw = src.telefone || src.telefoneCelular || src.celular || end.telefone || "";
+  const telefone = sanitizePhone(telefoneRaw);
+
+  const logradouro = String(src.logradouro || end.logradouro || src.rua || end.rua || "").trim();
+  const numero = String(src.numero || end.numero || "S/N").trim() || "S/N";
+  const complemento = String(src.complemento || end.complemento || "").trim();
+  const bairro = String(src.bairro || end.bairro || "").trim();
+  const cidade = String(src.cidade || end.cidade || src.municipio || end.municipio || "").trim();
+  const uf = sanitizeUF(src.uf || end.uf || src.estado || end.estado);
+  const cep = sanitizeCEP(src.cep || end.cep || fallbackCep);
+
+  const ddd = telefone.length >= 10 ? telefone.slice(0, 2) : "";
+  const numeroTelefone = telefone.length >= 10 ? telefone.slice(2) : telefone;
+
+  return {
+    nome: String(src.nome || src.name || "").slice(0, 50),
+    dddTelefone: ddd,
+    telefone: numeroTelefone,
+    dddCelular: ddd,
+    celular: numeroTelefone,
+    email: src.email || undefined,
+    cpfCnpj: documento,
+    endereco: {
+      cep,
+      logradouro: logradouro.slice(0, 50),
+      numero: numero.slice(0, 6),
+      complemento: complemento.slice(0, 30),
+      bairro: bairro.slice(0, 30),
+      cidade: cidade.slice(0, 50),
+      uf,
+    },
+  };
+}
+
+// Declaração de conteúdo obrigatória para alguns serviços (ex: Mini Envios).
+// Distribui o valor total do pedido em um único item genérico.
+function buildDeclaracaoConteudo(totalAmount: number | null | undefined, observacao?: string): any[] {
+  const valor = Number(totalAmount) > 0 ? Number(totalAmount) : 50;
+  return [
+    {
+      conteudo: (observacao && observacao.trim()) ? observacao.trim().slice(0, 60) : "Acessórios femininos",
+      quantidade: 1,
+      valor: Number(valor.toFixed(2)),
+    },
+  ];
+}
+
 // ----- Autenticação com cache -----
 async function getCorreiosToken(
   clientId: string,
