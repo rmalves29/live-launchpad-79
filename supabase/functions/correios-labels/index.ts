@@ -63,14 +63,30 @@ function sanitizeCEP(cep: string | null | undefined): string {
 // que a API CWS dos Correios espera, garantindo telefone e endereço completos.
 function normalizeRemetente(raw: any, fallbackCep: string): any {
   if (!raw) return null;
-  const src = typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw;
+  log("normalizeRemetente input", { rawType: typeof raw, raw });
+  const src = typeof raw === "string"
+    ? (() => {
+      try {
+        return JSON.parse(raw);
+      } catch (error) {
+        log("normalizeRemetente parse error", {
+          rawType: typeof raw,
+          raw,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }
+    })()
+    : raw;
   if (!src || typeof src !== "object") return null;
 
   const end = src.endereco && typeof src.endereco === "object" ? src.endereco : {};
 
   const documento = sanitizeCNPJ(src.documento || src.cnpj || src.cpf || end.documento);
   const telefoneRaw = src.telefone || src.telefoneCelular || src.celular || end.telefone || "";
+  log("normalizeRemetente telefoneRaw", { telefoneRaw });
   const telefone = sanitizePhone(telefoneRaw);
+  log("normalizeRemetente telefone sanitizado", { telefone });
 
   const logradouro = String(src.logradouro || end.logradouro || src.rua || end.rua || "").trim();
   const numero = String(src.numero || end.numero || "S/N").trim() || "S/N";
@@ -82,6 +98,7 @@ function normalizeRemetente(raw: any, fallbackCep: string): any {
 
   const ddd = telefone.length >= 10 ? telefone.slice(0, 2) : "";
   const numeroTelefone = telefone.length >= 10 ? telefone.slice(2) : telefone;
+  log("normalizeRemetente telefone split", { ddd, numeroTelefone, documento });
 
   return {
     nome: String(src.nome || src.name || "").slice(0, 50),
