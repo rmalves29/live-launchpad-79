@@ -57,6 +57,65 @@ function sanitizeCEP(cep: string | null | undefined): string {
   return sanitizeDigits(cep).slice(0, 8);
 }
 
+// Normaliza o JSON do remetente salvo em webhook_secret.
+// Aceita tanto o formato achatado (logradouro/numero/bairro no nível raiz)
+// quanto o formato aninhado (dentro de .endereco). Retorna sempre o formato
+// que a API CWS dos Correios espera, garantindo telefone e endereço completos.
+function normalizeRemetente(raw: any, fallbackCep: string): any {
+  if (!raw) return null;
+  const src = typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw;
+  if (!src || typeof src !== "object") return null;
+
+  const end = src.endereco && typeof src.endereco === "object" ? src.endereco : {};
+
+  const documento = sanitizeCNPJ(src.documento || src.cnpj || src.cpf || end.documento);
+  const telefoneRaw = src.telefone || src.telefoneCelular || src.celular || end.telefone || "";
+  const telefone = sanitizePhone(telefoneRaw);
+
+  const logradouro = String(src.logradouro || end.logradouro || src.rua || end.rua || "").trim();
+  const numero = String(src.numero || end.numero || "S/N").trim() || "S/N";
+  const complemento = String(src.complemento || end.complemento || "").trim();
+  const bairro = String(src.bairro || end.bairro || "").trim();
+  const cidade = String(src.cidade || end.cidade || src.municipio || end.municipio || "").trim();
+  const uf = sanitizeUF(src.uf || end.uf || src.estado || end.estado);
+  const cep = sanitizeCEP(src.cep || end.cep || fallbackCep);
+
+  const ddd = telefone.length >= 10 ? telefone.slice(0, 2) : "";
+  const numeroTelefone = telefone.length >= 10 ? telefone.slice(2) : telefone;
+
+  return {
+    nome: String(src.nome || src.name || "").slice(0, 50),
+    dddTelefone: ddd,
+    telefone: numeroTelefone,
+    dddCelular: ddd,
+    celular: numeroTelefone,
+    email: src.email || undefined,
+    cpfCnpj: documento,
+    endereco: {
+      cep,
+      logradouro: logradouro.slice(0, 50),
+      numero: numero.slice(0, 6),
+      complemento: complemento.slice(0, 30),
+      bairro: bairro.slice(0, 30),
+      cidade: cidade.slice(0, 50),
+      uf,
+    },
+  };
+}
+
+// Declaração de conteúdo obrigatória para alguns serviços (ex: Mini Envios).
+// Distribui o valor total do pedido em um único item genérico.
+function buildDeclaracaoConteudo(totalAmount: number | null | undefined, observacao?: string): any[] {
+  const valor = Number(totalAmount) > 0 ? Number(totalAmount) : 50;
+  return [
+    {
+      conteudo: (observacao && observacao.trim()) ? observacao.trim().slice(0, 60) : "Acessórios femininos",
+      quantidade: 1,
+      valor: Number(valor.toFixed(2)),
+    },
+  ];
+}
+
 // ----- Autenticação com cache -----
 async function getCorreiosToken(
   clientId: string,
@@ -486,23 +545,21 @@ async function recreatePrepostagemFromOrder(
     },
   };
 
-  let remetente: any = null;
-  if (creds.webhook_secret) {
-    try { remetente = JSON.parse(creds.webhook_secret); } catch { /* ignore */ }
-  }
+  let remetente: any = normalizeRemetente(creds.webhook_secret, creds.from_cep);
   if (!remetente) throw new Error("Remetente não configurado nos Correios. Configure em Integrações → Correios.");
 
-  const remEnd = remetente.endereco || {};
-  remetente = {
-    ...remetente,
-    documento: sanitizeCNPJ(remetente.documento || remetente.cpf || remetente.cnpj),
-    telefone: sanitizePhone(remetente.telefone),
-    endereco: {
-      ...remEnd,
-      cep: sanitizeCEP(remEnd.cep || creds.from_cep),
-      uf: sanitizeUF(remEnd.uf),
-    },
-  };
+  // Validações que correspondem aos erros conhecidos da API Correios
+  if (!remetente.celular && !remetente.telefone) {
+    throw new Error("Telefone do remetente não configurado. Edite o cadastro do remetente na integração Correios.");
+  }
+  if (!remetente.endereco.logradouro) {
+    throw new Error("Logradouro do remetente não configurado (RTL-032). Edite o cadastro do remetente.");
+  }
+  if (!remetente.endereco.bairro) {
+    throw new Error("Bairro do remetente não configurado. Edite o cadastro do remetente.");
+  }
+
+  const declaracaoConteudo = buildDeclaracaoConteudo(order.total_amount, order.observation);
 
   const createBody = {
     remetente,
@@ -517,9 +574,12 @@ async function recreatePrepostagemFromOrder(
     diametroInformado: "0",
     servicosAdicionais: [],
     observacao: "",
+    itensDeclaracaoConteudo: declaracaoConteudo,
+    rfidObjeto: "",
   };
 
   const createUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens`;
+  log(`🔄 recreate payload completo: ${JSON.stringify(createBody)}`);
   const resp = await fetch(createUrl, {
     method: "POST",
     headers: {
@@ -531,7 +591,7 @@ async function recreatePrepostagemFromOrder(
   });
 
   const text = await resp.text();
-  log(`🔄 recreate prepostagem | status: ${resp.status} | body: ${text.slice(0, 800)}`);
+  log(`🔄 recreate prepostagem | status: ${resp.status} | body: ${text.slice(0, 1000)}`);
 
   if (!resp.ok) {
     throw new Error(`Falha ao recriar pré-postagem nos Correios (${resp.status}): ${text.slice(0, 500)}`);
@@ -810,28 +870,20 @@ async function actionCreatePrepostagem(
     },
   };
 
-  let remetente: any = payload.remetente;
-  if (!remetente && creds.webhook_secret) {
-    try {
-      remetente = JSON.parse(creds.webhook_secret);
-    } catch {
-      log("webhook_secret não contém JSON válido de sender");
-    }
-  }
+  let remetente: any = payload.remetente
+    ? normalizeRemetente(payload.remetente, creds.from_cep)
+    : normalizeRemetente(creds.webhook_secret, creds.from_cep);
   if (!remetente) throw new Error("Remetente não configurado. Salve os dados via action save_sender primeiro.");
 
-  // Sanitiza remetente também
-  const remEnd = remetente.endereco || {};
-  remetente = {
-    ...remetente,
-    documento: sanitizeCNPJ(remetente.documento || remetente.cpf || remetente.cnpj),
-    telefone: sanitizePhone(remetente.telefone),
-    endereco: {
-      ...remEnd,
-      cep: sanitizeCEP(remEnd.cep || creds.from_cep),
-      uf: sanitizeUF(remEnd.uf),
-    },
-  };
+  if (!remetente.celular && !remetente.telefone) {
+    throw new Error("Telefone do remetente não configurado.");
+  }
+  if (!remetente.endereco.logradouro) {
+    throw new Error("Logradouro do remetente não configurado (RTL-032).");
+  }
+
+  const declaracaoConteudo = payload.itensDeclaracaoConteudo
+    || buildDeclaracaoConteudo(payload.valorDeclarado || payload.total_amount, payload.observacao);
 
   const body = {
     remetente,
@@ -846,10 +898,13 @@ async function actionCreatePrepostagem(
     diametroInformado: payload.diametroInformado || "0",
     servicosAdicionais: payload.servicosAdicionais || [],
     observacao: payload.observacao || "",
+    itensDeclaracaoConteudo: declaracaoConteudo,
+    rfidObjeto: "",
   };
 
   const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens`;
   log(`Criando pré-postagem | POST /prepostagem/v1/prepostagens | dest CEP: ${destinatario.endereco.cep}`);
+  log(`📦 payload completo: ${JSON.stringify(body)}`);
 
   const resp = await fetch(url, {
     method: "POST",
