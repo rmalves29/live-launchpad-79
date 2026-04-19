@@ -338,6 +338,70 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
   };
 }
 
+// Consulta o status atual da pré-postagem antes de gerar rótulo.
+// Conforme manual oficial Correios, o rótulo só é emitido se status == "PRE_POSTADO" (ou variações).
+// Retorna { ok, status, rawJson, httpStatus, errorMessage }.
+async function fetchPrePostagemStatus(
+  token: string,
+  prePostagemId: string,
+): Promise<{
+  ok: boolean;
+  status: string | null;
+  rawJson: any;
+  httpStatus: number;
+  bodyText: string;
+}> {
+  const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/${encodeURIComponent(prePostagemId)}`;
+  log(`📋 Consultando status da pré-postagem | GET ${url}`);
+
+  const resp = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+
+  const text = await resp.text();
+  log(`📋 Status pré-postagem ${prePostagemId} | HTTP ${resp.status} | body completo: ${text}`);
+
+  let json: any = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return { ok: false, status: null, rawJson: null, httpStatus: resp.status, bodyText: text };
+  }
+
+  // Tenta múltiplos nomes de campo (a API varia)
+  const status: string | null =
+    json?.status ||
+    json?.situacao ||
+    json?.statusPrePostagem ||
+    json?.situacaoPrePostagem ||
+    json?.statusObjeto ||
+    null;
+
+  log(`📋 Status extraído: "${status}"`);
+
+  return { ok: resp.ok, status, rawJson: json, httpStatus: resp.status, bodyText: text };
+}
+
+// Status aceitos para emissão do rótulo (variações conhecidas da API Correios)
+const VALID_PRE_POSTADO_STATUS = new Set([
+  "PRE_POSTADO",
+  "PREPOSTADO",
+  "PRE-POSTADO",
+  "PRÉ-POSTADO",
+  "PRÉ_POSTADO",
+  "PRÉPOSTADO",
+]);
+
+function isPrePostadoStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const normalized = status.toString().trim().toUpperCase();
+  return VALID_PRE_POSTADO_STATUS.has(normalized) || normalized.includes("POSTADO");
+}
+
 async function actionDownloadLabel(
   creds: CorreiosCredentials,
   prePostagemId: string,
@@ -347,6 +411,25 @@ async function actionDownloadLabel(
     creds.client_secret,
     creds.cartao_postagem,
   );
+
+  // ETAPA 0: Consulta status antes de qualquer tentativa de geração
+  const statusCheck = await fetchPrePostagemStatus(token, prePostagemId);
+  if (!isPrePostadoStatus(statusCheck.status)) {
+    const currentStatus = statusCheck.status || "DESCONHECIDO";
+    const errMsg = `Pré-postagem ${prePostagemId} está com status "${currentStatus}" — rótulo só pode ser emitido quando status == "PRE_POSTADO". Verifique no painel dos Correios se a pré-postagem foi finalizada corretamente.`;
+    log(`❌ ${errMsg}`);
+    return {
+      success: false,
+      error: errMsg,
+      details: {
+        prePostagemId,
+        currentStatus,
+        httpStatus: statusCheck.httpStatus,
+        rawResponse: statusCheck.rawJson || statusCheck.bodyText,
+      },
+    } as DownloadLabelResult;
+  }
+  log(`✅ Pré-postagem ${prePostagemId} está em status válido ("${statusCheck.status}") — prosseguindo com geração do rótulo`);
 
   const cartaoNumero = cartaoData.numero || creds.cartao_postagem;
 
