@@ -870,28 +870,20 @@ async function actionCreatePrepostagem(
     },
   };
 
-  let remetente: any = payload.remetente;
-  if (!remetente && creds.webhook_secret) {
-    try {
-      remetente = JSON.parse(creds.webhook_secret);
-    } catch {
-      log("webhook_secret não contém JSON válido de sender");
-    }
-  }
+  let remetente: any = payload.remetente
+    ? normalizeRemetente(payload.remetente, creds.from_cep)
+    : normalizeRemetente(creds.webhook_secret, creds.from_cep);
   if (!remetente) throw new Error("Remetente não configurado. Salve os dados via action save_sender primeiro.");
 
-  // Sanitiza remetente também
-  const remEnd = remetente.endereco || {};
-  remetente = {
-    ...remetente,
-    documento: sanitizeCNPJ(remetente.documento || remetente.cpf || remetente.cnpj),
-    telefone: sanitizePhone(remetente.telefone),
-    endereco: {
-      ...remEnd,
-      cep: sanitizeCEP(remEnd.cep || creds.from_cep),
-      uf: sanitizeUF(remEnd.uf),
-    },
-  };
+  if (!remetente.celular && !remetente.telefone) {
+    throw new Error("Telefone do remetente não configurado.");
+  }
+  if (!remetente.endereco.logradouro) {
+    throw new Error("Logradouro do remetente não configurado (RTL-032).");
+  }
+
+  const declaracaoConteudo = payload.itensDeclaracaoConteudo
+    || buildDeclaracaoConteudo(payload.valorDeclarado || payload.total_amount, payload.observacao);
 
   const body = {
     remetente,
@@ -906,10 +898,13 @@ async function actionCreatePrepostagem(
     diametroInformado: payload.diametroInformado || "0",
     servicosAdicionais: payload.servicosAdicionais || [],
     observacao: payload.observacao || "",
+    itensDeclaracaoConteudo: declaracaoConteudo,
+    rfidObjeto: "",
   };
 
   const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens`;
   log(`Criando pré-postagem | POST /prepostagem/v1/prepostagens | dest CEP: ${destinatario.endereco.cep}`);
+  log(`📦 payload completo: ${JSON.stringify(body)}`);
 
   const resp = await fetch(url, {
     method: "POST",
