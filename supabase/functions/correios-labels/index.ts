@@ -428,24 +428,220 @@ async function actionDownloadLabel(
     creds.cartao_postagem,
   );
 
-  // ETAPA 0: Consulta status antes de qualquer tentativa de geração
-  const statusCheck = await fetchPrePostagemStatus(token, prePostagemId);
-  if (!isPrePostadoStatus(statusCheck.status)) {
+// Busca dados do pedido e cria nova pré-postagem nos Correios.
+// Usado quando o melhor_envio_shipment_id armazenado é um UUID (ex: ID do Melhor Envio antigo)
+// ou quando a consulta retorna 404 (pré-postagem não existe no sistema dos Correios).
+async function recreatePrepostagemFromOrder(
+  supabase: any,
+  creds: CorreiosCredentials,
+  orderId: number | string,
+): Promise<{ idPrePostagem: string; codigoObjeto: string | null }> {
+  log(`🔄 Recriando pré-postagem para pedido ${orderId}`);
+
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select("id, customer_name, customer_phone, customer_cep, customer_street, customer_number, customer_complement, customer_neighborhood, customer_city, customer_state, observation, total_amount, shipping_service_id")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (error) throw new Error(`Erro ao buscar pedido ${orderId}: ${error.message}`);
+  if (!order) throw new Error(`Pedido ${orderId} não encontrado`);
+
+  // Validação mínima de endereço
+  if (!order.customer_cep || !order.customer_city || !order.customer_state) {
+    throw new Error(`Pedido ${orderId} não possui endereço completo (CEP/cidade/UF)`);
+  }
+
+  // Detecta serviço a partir da observação (mesma lógica do front)
+  const obsUpper = String(order.observation || "").toUpperCase();
+  let codigoServico = "03220"; // PAC contrato padrão
+  if (obsUpper.includes("SEDEX 12") || obsUpper.includes("SEDEX12")) codigoServico = "03140";
+  else if (obsUpper.includes("SEDEX")) codigoServico = "03298";
+  else if (obsUpper.includes("MINI")) codigoServico = "04227";
+
+  const payload = {
+    order_id: order.id,
+    codigoServico,
+    destinatario: {
+      nome: order.customer_name || "Cliente",
+      telefone: order.customer_phone,
+      endereco: {
+        cep: order.customer_cep,
+        logradouro: order.customer_street || "",
+        numero: order.customer_number || "S/N",
+        complemento: order.customer_complement || "",
+        bairro: order.customer_neighborhood || "",
+        cidade: order.customer_city,
+        uf: order.customer_state,
+      },
+    },
+  };
+
+  const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
+
+  // Reaproveita a lógica de criação (sanitização + POST + update do pedido)
+  const dest = payload.destinatario;
+  const destEnd = dest.endereco;
+  const destinatario = {
+    nome: dest.nome.slice(0, 50),
+    telefone: sanitizePhone(dest.telefone),
+    endereco: {
+      cep: sanitizeCEP(destEnd.cep),
+      logradouro: destEnd.logradouro.slice(0, 50),
+      numero: String(destEnd.numero).slice(0, 6),
+      complemento: destEnd.complemento.slice(0, 30),
+      bairro: destEnd.bairro.slice(0, 30),
+      cidade: destEnd.cidade.slice(0, 50),
+      uf: sanitizeUF(destEnd.uf),
+    },
+  };
+
+  let remetente: any = null;
+  if (creds.webhook_secret) {
+    try { remetente = JSON.parse(creds.webhook_secret); } catch { /* ignore */ }
+  }
+  if (!remetente) throw new Error("Remetente não configurado nos Correios. Configure em Integrações → Correios.");
+
+  const remEnd = remetente.endereco || {};
+  remetente = {
+    ...remetente,
+    documento: sanitizeCNPJ(remetente.documento || remetente.cpf || remetente.cnpj),
+    telefone: sanitizePhone(remetente.telefone),
+    endereco: {
+      ...remEnd,
+      cep: sanitizeCEP(remEnd.cep || creds.from_cep),
+      uf: sanitizeUF(remEnd.uf),
+    },
+  };
+
+  const createBody = {
+    remetente,
+    destinatario,
+    codigoServico,
+    cartaoPostagem: creds.cartao_postagem,
+    pesoInformado: "300",
+    codigoFormatoObjetoInformado: "2",
+    alturaInformada: "2",
+    larguraInformada: "11",
+    comprimentoInformado: "16",
+    diametroInformado: "0",
+    servicosAdicionais: [],
+    observacao: "",
+  };
+
+  const createUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens`;
+  const resp = await fetch(createUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(createBody),
+  });
+
+  const text = await resp.text();
+  log(`🔄 recreate prepostagem | status: ${resp.status} | body: ${text.slice(0, 800)}`);
+
+  if (!resp.ok) {
+    throw new Error(`Falha ao recriar pré-postagem nos Correios (${resp.status}): ${text.slice(0, 500)}`);
+  }
+
+  let json: any;
+  try { json = JSON.parse(text); } catch {
+    throw new Error(`Resposta inválida ao recriar pré-postagem: ${text.slice(0, 300)}`);
+  }
+
+  const idPrePostagem = json.id || json.idPrePostagem || json.numero;
+  const codigoObjeto = json.codigoObjeto || json.numeroEtiqueta || null;
+  if (!idPrePostagem) throw new Error(`idPrePostagem não retornado ao recriar. Body: ${text.slice(0, 300)}`);
+
+  // Salva o NOVO id no pedido
+  const updateData: Record<string, unknown> = { melhor_envio_shipment_id: String(idPrePostagem) };
+  if (codigoObjeto) updateData.melhor_envio_tracking_code = String(codigoObjeto);
+  const { error: upErr } = await supabase.from("orders").update(updateData).eq("id", orderId);
+  if (upErr) log(`⚠️ Erro ao salvar novo idPrePostagem no pedido ${orderId}: ${upErr.message}`);
+  else log(`✅ Pedido ${orderId} atualizado com novo idPrePostagem: ${idPrePostagem}`);
+
+  return { idPrePostagem: String(idPrePostagem), codigoObjeto };
+}
+
+async function actionDownloadLabel(
+  creds: CorreiosCredentials,
+  prePostagemId: string,
+  supabase?: any,
+  orderId?: number | string,
+): Promise<DownloadLabelResult> {
+  const { token, cartaoData } = await getCorreiosToken(
+    creds.client_id,
+    creds.client_secret,
+    creds.cartao_postagem,
+  );
+
+  let effectiveId = prePostagemId;
+  let recreated = false;
+
+  // ETAPA 0a: Se o ID for um UUID/estrangeiro, recria imediatamente
+  if (isLikelyForeignId(prePostagemId)) {
+    log(`⚠️ ID "${prePostagemId}" parece ser de outro provedor (UUID/Melhor Envio) — não é uma pré-postagem dos Correios`);
+    if (!supabase || !orderId) {
+      return {
+        success: false,
+        error: `O ID "${prePostagemId}" não é uma pré-postagem dos Correios (parece ID do Melhor Envio). Não foi possível recriar automaticamente sem order_id.`,
+        details: { prePostagemId, reason: "foreign_id_no_order_context" },
+      };
+    }
+    try {
+      const created = await recreatePrepostagemFromOrder(supabase, creds, orderId);
+      effectiveId = created.idPrePostagem;
+      recreated = true;
+      log(`✅ Pré-postagem recriada com sucesso: ${effectiveId}`);
+    } catch (e) {
+      const msg = (e as Error).message;
+      return {
+        success: false,
+        error: `Não foi possível criar a pré-postagem nos Correios: ${msg}`,
+        details: { prePostagemId, recreateError: msg },
+      };
+    }
+  }
+
+  // ETAPA 0b: Consulta status antes de qualquer tentativa de geração
+  const statusCheck = await fetchPrePostagemStatus(token, effectiveId);
+
+  // Se 404 ou status inválido E temos contexto do pedido → tenta recriar
+  const needsRecreate = !recreated && (statusCheck.httpStatus === 404 || !isPrePostadoStatus(statusCheck.status));
+  if (needsRecreate && supabase && orderId) {
+    log(`⚠️ Pré-postagem ${effectiveId} inválida (HTTP ${statusCheck.httpStatus}, status "${statusCheck.status}") — recriando para pedido ${orderId}`);
+    try {
+      const created = await recreatePrepostagemFromOrder(supabase, creds, orderId);
+      effectiveId = created.idPrePostagem;
+      recreated = true;
+      log(`✅ Pré-postagem recriada: ${effectiveId}`);
+    } catch (e) {
+      const msg = (e as Error).message;
+      return {
+        success: false,
+        error: `Pré-postagem original inválida e falha ao recriar nos Correios: ${msg}`,
+        details: { originalId: prePostagemId, originalHttpStatus: statusCheck.httpStatus, originalStatus: statusCheck.status, recreateError: msg },
+      };
+    }
+  } else if (!isPrePostadoStatus(statusCheck.status)) {
     const currentStatus = statusCheck.status || "DESCONHECIDO";
-    const errMsg = `Pré-postagem ${prePostagemId} está com status "${currentStatus}" — rótulo só pode ser emitido quando status == "PRE_POSTADO". Verifique no painel dos Correios se a pré-postagem foi finalizada corretamente.`;
+    const errMsg = `Pré-postagem ${effectiveId} está com status "${currentStatus}" — rótulo só pode ser emitido quando status == "PRE_POSTADO". ${!supabase || !orderId ? "Forneça order_id para recriar automaticamente." : ""}`;
     log(`❌ ${errMsg}`);
     return {
       success: false,
       error: errMsg,
       details: {
-        prePostagemId,
+        prePostagemId: effectiveId,
         currentStatus,
         httpStatus: statusCheck.httpStatus,
         rawResponse: statusCheck.rawJson || statusCheck.bodyText,
       },
-    } as DownloadLabelResult;
+    };
   }
-  log(`✅ Pré-postagem ${prePostagemId} está em status válido ("${statusCheck.status}") — prosseguindo com geração do rótulo`);
+  log(`✅ Pré-postagem ${effectiveId} pronta para emissão de rótulo`);
 
   const cartaoNumero = cartaoData.numero || creds.cartao_postagem;
 
