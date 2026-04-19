@@ -4,7 +4,7 @@
 // 1. POST /prepostagem/v1/prepostagens/rotulo/assincrono/pdf -> idRecibo
 // 2. Polling em GET /prepostagem/v1/prepostagens/rotulo/assincrono/{idRecibo}
 // 3. Retorna PDF base64 ou pending: true
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -217,6 +217,70 @@ async function tryDownloadPdfFromUrl(url: string, token: string) {
   return { ok: false as const, status: resp.status, contentType, bodyText };
 }
 
+async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
+  const downloadUrls = [
+    `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`,
+    `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/pdf/${idRecibo}`,
+  ];
+
+  for (const url of downloadUrls) {
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/pdf, application/json",
+      },
+    });
+
+    const contentType = resp.headers.get("content-type") || "";
+
+    if (resp.ok && contentType.includes("application/pdf")) {
+      const base64 = await pdfResponseToBase64(resp);
+      return { ok: true as const, base64, url, status: resp.status, contentType, bodyText: "" };
+    }
+
+    const bodyText = await resp.text();
+
+    if (resp.ok && contentType.includes("application/json")) {
+      try {
+        const json = JSON.parse(bodyText);
+        const candidate = json?.arquivo || json?.pdf || json?.conteudo || json?.rotulo || json?.base64 || json?.data;
+        if (typeof candidate === "string" && candidate.length > 100) {
+          const base64 = candidate.startsWith("data:") ? candidate.split(",")[1] || candidate : candidate;
+          return { ok: true as const, base64, url, status: resp.status, contentType, bodyText };
+        }
+
+        const fileUrl = json?.url || json?.link || json?.urlArquivo;
+        if (typeof fileUrl === "string" && fileUrl.startsWith("http")) {
+          const fileResp = await tryDownloadPdfFromUrl(fileUrl, token);
+          if (fileResp.ok) {
+            return { ok: true as const, base64: fileResp.base64, url: fileUrl, status: resp.status, contentType, bodyText };
+          }
+        }
+      } catch {
+        // segue para retorno abaixo
+      }
+    }
+
+    if ([202, 204, 409, 425, 429, 500, 502, 503, 504].includes(resp.status)) {
+      return { ok: false as const, retryable: true, url, status: resp.status, contentType, bodyText };
+    }
+
+    if (![404].includes(resp.status)) {
+      return { ok: false as const, retryable: false, url, status: resp.status, contentType, bodyText };
+    }
+  }
+
+  return {
+    ok: false as const,
+    retryable: false,
+    url: `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`,
+    status: 404,
+    contentType: "",
+    bodyText: "PDF não encontrado nos endpoints assíncronos documentados.",
+  };
+}
+
 async function actionDownloadLabel(
   creds: CorreiosCredentials,
   prePostagemId: string,
@@ -319,73 +383,17 @@ async function actionDownloadLabel(
 
     log(`idRecibo obtido: ${idRecibo}`);
 
-    const pollUrls = [
-      `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`,
-      `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf/${idRecibo}`,
-      `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}/pdf`,
-    ];
-
     for (let attempt = 1; attempt <= 10; attempt++) {
-      let sawRetryableStatus = false;
+      const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token);
+      log(
+        `Download assíncrono ${attempt}/10 | url: ${asyncDownload.url} | status: ${asyncDownload.status} | content-type: ${asyncDownload.contentType} | ${asyncDownload.ok ? "PDF recebido" : `body: ${asyncDownload.bodyText}`}`,
+      );
 
-      for (const pollUrl of pollUrls) {
-        const pollResp = await fetch(pollUrl, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/pdf, application/json",
-          },
-        });
-
-        const contentType = pollResp.headers.get("content-type") || "";
-
-        if (contentType.includes("application/pdf")) {
-          const base64 = await pdfResponseToBase64(pollResp);
-          log(
-            `Polling ${attempt}/10 | url: ${pollUrl} | status: ${pollResp.status} | content-type: ${contentType} | PDF recebido`,
-          );
-          return { success: true, labelPdfBase64: base64, idRecibo };
-        }
-
-        const bodyText = await pollResp.text();
-        log(
-          `Polling ${attempt}/10 | url: ${pollUrl} | status: ${pollResp.status} | content-type: ${contentType} | body: ${bodyText}`,
-        );
-
-        if ([200, 202, 204, 409, 425, 429, 500, 502, 503, 504].includes(pollResp.status)) {
-          sawRetryableStatus = true;
-        }
-
-        if (contentType.includes("application/json")) {
-          try {
-            const j = JSON.parse(bodyText);
-            log(`Polling ${attempt}/10 | JSON keys: ${Object.keys(j || {}).join(", ")}`);
-
-            const candidate =
-              j?.arquivo || j?.pdf || j?.conteudo || j?.rotulo || j?.base64 || j?.data;
-
-            if (typeof candidate === "string" && candidate.length > 100) {
-              const base64 = candidate.startsWith("data:")
-                ? candidate.split(",")[1] || candidate
-                : candidate;
-              return { success: true, labelPdfBase64: base64, idRecibo };
-            }
-
-            const urlField = j?.url || j?.link || j?.urlArquivo;
-            if (typeof urlField === "string" && urlField.startsWith("http")) {
-              log(`Baixando PDF via URL retornada: ${urlField}`);
-              const fileResp = await tryDownloadPdfFromUrl(urlField, token);
-              if (fileResp.ok) {
-                return { success: true, labelPdfBase64: fileResp.base64, idRecibo };
-              }
-            }
-          } catch (e) {
-            log(`Polling ${attempt}/10 | erro ao parsear JSON: ${(e as Error).message}`);
-          }
-        }
+      if (asyncDownload.ok) {
+        return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo };
       }
 
-      if (!sawRetryableStatus) {
+      if (!asyncDownload.retryable) {
         break;
       }
 
@@ -394,7 +402,7 @@ async function actionDownloadLabel(
       }
     }
 
-    log("Polling assíncrono não retornou PDF; tentando endpoint síncrono como fallback");
+    log("Download assíncrono documentado não retornou PDF; tentando endpoint síncrono como fallback");
 
     const syncResp = await fetch(syncUrl, {
       method: "POST",
@@ -418,12 +426,10 @@ async function actionDownloadLabel(
 
     return {
       success: false,
-      pending: syncResp.status !== 400 && syncResp.status !== 404,
+      pending: false,
       idRecibo,
       error:
-        syncResp.status === 400 || syncResp.status === 404
-          ? `A API dos Correios gerou o recibo ${idRecibo}, mas não disponibilizou o PDF no endpoint consultado. Resposta final: ${syncText || asyncText}`
-          : "Rótulo em processamento. Tente novamente em 1 minuto.",
+        `A API dos Correios gerou o recibo ${idRecibo}, mas o PDF não foi disponibilizado. Download assíncrono e fallback síncrono falharam. Resposta final: ${syncText || asyncText}`,
     };
   }
 
