@@ -222,30 +222,59 @@ async function tryDownloadPdfFromUrl(url: string, token: string) {
 // 2) GET  /rotulo/assincrono/{idRecibo} -> polling até retornar idArquivo
 // 3) GET  /rotulo/download/{idArquivo}  -> baixa o PDF
 async function fetchReciboStatus(idRecibo: string, token: string) {
-  const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/${idRecibo}`;
-  const resp = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json, application/pdf",
-    },
-  });
+  const urls = [
+    `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/resultado/${idRecibo}`,
+    `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/resultado/${idRecibo}`,
+  ];
 
-  const contentType = resp.headers.get("content-type") || "";
+  let lastResult: {
+    url: string;
+    status: number;
+    contentType: string;
+    bodyText: string;
+    pdfBase64: string | null;
+    json: any;
+  } | null = null;
 
-  // Caso raro: a API entrega o PDF direto neste endpoint
-  if (resp.ok && contentType.includes("application/pdf")) {
-    const base64 = await pdfResponseToBase64(resp);
-    return { url, status: resp.status, contentType, bodyText: "", pdfBase64: base64, json: null as any };
+  for (const url of urls) {
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json, application/pdf",
+      },
+    });
+
+    const contentType = resp.headers.get("content-type") || "";
+
+    if (resp.ok && contentType.includes("application/pdf")) {
+      const base64 = await pdfResponseToBase64(resp);
+      return { url, status: resp.status, contentType, bodyText: "", pdfBase64: base64, json: null as any };
+    }
+
+    const bodyText = await resp.text();
+    let json: any = null;
+    if (contentType.includes("application/json")) {
+      try { json = JSON.parse(bodyText); } catch { json = null; }
+    }
+
+    const result = { url, status: resp.status, contentType, bodyText, pdfBase64: null as string | null, json };
+
+    if (resp.status !== 404) {
+      return result;
+    }
+
+    lastResult = result;
   }
 
-  const bodyText = await resp.text();
-  let json: any = null;
-  if (contentType.includes("application/json")) {
-    try { json = JSON.parse(bodyText); } catch { json = null; }
-  }
-
-  return { url, status: resp.status, contentType, bodyText, pdfBase64: null as string | null, json };
+  return lastResult || {
+    url: urls[0],
+    status: 404,
+    contentType: "",
+    bodyText: "Endpoint de resultado assíncrono não encontrado.",
+    pdfBase64: null as string | null,
+    json: null as any,
+  };
 }
 
 async function downloadArquivo(idArquivo: string, token: string) {
