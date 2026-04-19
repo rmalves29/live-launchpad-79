@@ -87,8 +87,6 @@ function normalizeRemetente(raw: any, fallbackCep: string): any {
     nome: String(src.nome || src.name || "").slice(0, 50),
     ddd,
     telefone: numeroTelefone,
-    dddCelular: ddd,
-    celular: numeroTelefone,
     email: src.email || undefined,
     cpfCnpj: documento,
     endereco: {
@@ -108,10 +106,10 @@ function normalizeRemetente(raw: any, fallbackCep: string): any {
 function buildDeclaracaoConteudo(totalAmount: number | null | undefined, _observacao?: string): any[] {
   const valor = Number(totalAmount) > 0 ? Number(totalAmount) : 50;
   // IMPORTANTE: Sempre usar descrição segura para evitar PPN-330 (Objetos proibidos).
-  // Não usar observação do pedido pois pode conter palavras que os Correios bloqueiam.
+  // Usar SEM acento para evitar rejeição por encoding.
   return [
     {
-      conteudo: "Bijuterias e acessórios",
+      conteudo: "Acessorios",
       quantidade: 1,
       valor: Number(valor.toFixed(2)),
     },
