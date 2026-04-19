@@ -105,11 +105,13 @@ function normalizeRemetente(raw: any, fallbackCep: string): any {
 
 // Declaração de conteúdo obrigatória para alguns serviços (ex: Mini Envios).
 // Distribui o valor total do pedido em um único item genérico.
-function buildDeclaracaoConteudo(totalAmount: number | null | undefined, observacao?: string): any[] {
+function buildDeclaracaoConteudo(totalAmount: number | null | undefined, _observacao?: string): any[] {
   const valor = Number(totalAmount) > 0 ? Number(totalAmount) : 50;
+  // IMPORTANTE: Sempre usar descrição segura para evitar PPN-330 (Objetos proibidos).
+  // Não usar observação do pedido pois pode conter palavras que os Correios bloqueiam.
   return [
     {
-      conteudo: (observacao && observacao.trim()) ? observacao.trim().slice(0, 60) : "Bijuterias e acessórios",
+      conteudo: "Bijuterias e acessórios",
       quantidade: 1,
       valor: Number(valor.toFixed(2)),
     },
