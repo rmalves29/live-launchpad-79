@@ -983,7 +983,8 @@ Deno.serve(async (req) => {
         );
       }
       try {
-        const result = await actionDownloadLabel(creds, String(prePostagemId));
+        const orderIdParam = body.order_id ?? body.orderId;
+        const result = await actionDownloadLabel(creds, String(prePostagemId), supabase, orderIdParam);
         return new Response(JSON.stringify(result), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
