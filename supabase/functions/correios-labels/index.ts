@@ -750,7 +750,7 @@ async function actionDownloadLabel(
       );
 
       if (asyncDownload.ok) {
-        return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo };
+        return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo, idPrePostagem: effectiveId, recreated };
       }
 
       lastError = asyncDownload.bodyText || responseText;
