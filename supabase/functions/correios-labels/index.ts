@@ -549,7 +549,7 @@ async function recreatePrepostagemFromOrder(
   if (!remetente) throw new Error("Remetente não configurado nos Correios. Configure em Integrações → Correios.");
 
   // Validações que correspondem aos erros conhecidos da API Correios
-  if (!remetente.celular && !remetente.telefone) {
+  if (!remetente.telefone) {
     throw new Error("Telefone do remetente não configurado. Edite o cadastro do remetente na integração Correios.");
   }
   if (!remetente.endereco.logradouro) {
@@ -875,7 +875,7 @@ async function actionCreatePrepostagem(
     : normalizeRemetente(creds.webhook_secret, creds.from_cep);
   if (!remetente) throw new Error("Remetente não configurado. Salve os dados via action save_sender primeiro.");
 
-  if (!remetente.celular && !remetente.telefone) {
+  if (!remetente.telefone) {
     throw new Error("Telefone do remetente não configurado.");
   }
   if (!remetente.endereco.logradouro) {
