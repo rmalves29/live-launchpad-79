@@ -545,23 +545,21 @@ async function recreatePrepostagemFromOrder(
     },
   };
 
-  let remetente: any = null;
-  if (creds.webhook_secret) {
-    try { remetente = JSON.parse(creds.webhook_secret); } catch { /* ignore */ }
-  }
+  let remetente: any = normalizeRemetente(creds.webhook_secret, creds.from_cep);
   if (!remetente) throw new Error("Remetente não configurado nos Correios. Configure em Integrações → Correios.");
 
-  const remEnd = remetente.endereco || {};
-  remetente = {
-    ...remetente,
-    documento: sanitizeCNPJ(remetente.documento || remetente.cpf || remetente.cnpj),
-    telefone: sanitizePhone(remetente.telefone),
-    endereco: {
-      ...remEnd,
-      cep: sanitizeCEP(remEnd.cep || creds.from_cep),
-      uf: sanitizeUF(remEnd.uf),
-    },
-  };
+  // Validações que correspondem aos erros conhecidos da API Correios
+  if (!remetente.celular && !remetente.telefone) {
+    throw new Error("Telefone do remetente não configurado. Edite o cadastro do remetente na integração Correios.");
+  }
+  if (!remetente.endereco.logradouro) {
+    throw new Error("Logradouro do remetente não configurado (RTL-032). Edite o cadastro do remetente.");
+  }
+  if (!remetente.endereco.bairro) {
+    throw new Error("Bairro do remetente não configurado. Edite o cadastro do remetente.");
+  }
+
+  const declaracaoConteudo = buildDeclaracaoConteudo(order.total_amount, order.observation);
 
   const createBody = {
     remetente,
@@ -576,6 +574,8 @@ async function recreatePrepostagemFromOrder(
     diametroInformado: "0",
     servicosAdicionais: [],
     observacao: "",
+    itensDeclaracaoConteudo: declaracaoConteudo,
+    rfidObjeto: "",
   };
 
   const createUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens`;
