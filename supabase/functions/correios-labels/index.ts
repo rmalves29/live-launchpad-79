@@ -324,7 +324,6 @@ async function actionDownloadLabel(
   // tipoRotulo (P=padrão | R=reduzido), formatoRotulo (ET=Etiqueta | EV=Envelope),
   // imprimeRemetente (S | N), layoutImpressao (PADRAO | LINEAR_100_150 | etc.)
   const asyncUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`;
-  const syncUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo`;
   const bodyVariants: Array<{ label: string; body: Record<string, unknown> }> = [
     {
       label: "oficial-padrao",
@@ -365,104 +364,112 @@ async function actionDownloadLabel(
   let asyncText = "";
   let lastStatus = 0;
 
+  let lastError = "";
+
   for (let index = 0; index < bodyVariants.length; index++) {
     const variant = bodyVariants[index];
-    log(`Variação ${index + 1} | body: ${JSON.stringify(variant.body)}`);
-
-    const response = await fetch(asyncUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(variant.body),
-    });
-
-    const responseText = await response.text();
-    lastStatus = response.status;
-    asyncText = responseText;
-
-    log(
-      `Variação ${index + 1} | body: ${JSON.stringify(variant.body)} | status: ${response.status} | resposta: ${responseText}`,
-    );
-
-    if (!response.ok) continue;
-
-    let asyncJson: any = null;
-    try {
-      asyncJson = JSON.parse(responseText);
-    } catch {
-      throw new Error(`Resposta inválida da Etapa 1 (não-JSON): ${responseText.slice(0, 300)}`);
-    }
-
-    const idRecibo: string | undefined =
-      asyncJson?.idRecibo ||
-      asyncJson?.recibo ||
-      asyncJson?.id ||
-      asyncJson?.protocolo ||
-      asyncJson?.numeroProtocolo;
-
-    if (!idRecibo) {
-      throw new Error(`idRecibo não retornado pela Etapa 1. Body completo: ${responseText}`);
-    }
-
-    log(`idRecibo obtido: ${idRecibo}`);
-
-    for (let attempt = 1; attempt <= 10; attempt++) {
-      const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token);
+    for (let generationAttempt = 1; generationAttempt <= 3; generationAttempt++) {
       log(
-        `Download assíncrono ${attempt}/10 | url: ${asyncDownload.url} | status: ${asyncDownload.status} | content-type: ${asyncDownload.contentType} | ${asyncDownload.ok ? "PDF recebido" : `body: ${asyncDownload.bodyText}`}`,
+        `Variação ${index + 1} | tentativa de geração ${generationAttempt}/3 | body: ${JSON.stringify(variant.body)}`,
       );
 
-      if (asyncDownload.ok) {
-        return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo };
+      const response = await fetch(asyncUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(variant.body),
+      });
+
+      const responseText = await response.text();
+      lastStatus = response.status;
+      asyncText = responseText;
+
+      log(
+        `Variação ${index + 1} | tentativa ${generationAttempt}/3 | status: ${response.status} | resposta: ${responseText}`,
+      );
+
+      if (!response.ok) {
+        lastError = responseText;
+        continue;
       }
 
-      if (!asyncDownload.retryable) {
-        break;
+      let asyncJson: any = null;
+      try {
+        asyncJson = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Resposta inválida da Etapa 1 (não-JSON): ${responseText.slice(0, 300)}`);
       }
 
-      if (attempt < 10) {
-        await new Promise((r) => setTimeout(r, 5000));
+      const idRecibo: string | undefined =
+        asyncJson?.idRecibo ||
+        asyncJson?.recibo ||
+        asyncJson?.id ||
+        asyncJson?.protocolo ||
+        asyncJson?.numeroProtocolo;
+
+      if (!idRecibo) {
+        throw new Error(`idRecibo não retornado pela Etapa 1. Body completo: ${responseText}`);
       }
+
+      log(`idRecibo obtido: ${idRecibo}`);
+
+      let regenerateLabel = false;
+
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token);
+        log(
+          `Download assíncrono ${attempt}/10 | url: ${asyncDownload.url} | status: ${asyncDownload.status} | content-type: ${asyncDownload.contentType} | ${asyncDownload.ok ? "PDF recebido" : `body: ${asyncDownload.bodyText}`}`,
+        );
+
+        if (asyncDownload.ok) {
+          return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo };
+        }
+
+        lastError = asyncDownload.bodyText || responseText;
+
+        if (asyncDownload.regenerate) {
+          regenerateLabel = true;
+          break;
+        }
+
+        if (!asyncDownload.retryable) {
+          return {
+            success: false,
+            pending: false,
+            idRecibo,
+            error:
+              `A API dos Correios gerou o recibo ${idRecibo}, mas não entregou o PDF da etiqueta. Resposta final: ${asyncDownload.bodyText || responseText}`,
+          };
+        }
+
+        if (attempt < 10) {
+          await new Promise((r) => setTimeout(r, 5000));
+        }
+      }
+
+      if (regenerateLabel && generationAttempt < 3) {
+        log(`Correios retornou PPN-295 para o recibo ${idRecibo}; refazendo solicitação do rótulo`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+
+      return {
+        success: false,
+        pending: false,
+        idRecibo,
+        error:
+          `A API dos Correios gerou o recibo ${idRecibo}, mas retornou falha na geração da etiqueta. Resposta final: ${lastError || responseText}`,
+      };
     }
-
-    log("Download assíncrono documentado não retornou PDF; tentando endpoint síncrono como fallback");
-
-    const syncResp = await fetch(syncUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        Accept: "application/pdf, application/json",
-      },
-      body: JSON.stringify(variant.body),
-    });
-
-    const syncContentType = syncResp.headers.get("content-type") || "";
-    if (syncResp.ok && syncContentType.includes("application/pdf")) {
-      const base64 = await pdfResponseToBase64(syncResp);
-      log(`Fallback síncrono OK | status: ${syncResp.status} | content-type: ${syncContentType}`);
-      return { success: true, labelPdfBase64: base64, idRecibo };
-    }
-
-    const syncText = await syncResp.text();
-    log(`Fallback síncrono falhou | status: ${syncResp.status} | body: ${syncText}`);
-
-    return {
-      success: false,
-      pending: false,
-      idRecibo,
-      error:
-        `A API dos Correios gerou o recibo ${idRecibo}, mas o PDF não foi disponibilizado. Download assíncrono e fallback síncrono falharam. Resposta final: ${syncText || asyncText}`,
-    };
   }
 
   return {
     success: false,
     pending: false,
-    error: `Falha ao solicitar rótulo assíncrono (${lastStatus}): ${asyncText}`,
+    error: `Falha ao solicitar rótulo assíncrono (${lastStatus}): ${lastError || asyncText}`,
   };
 }
 
