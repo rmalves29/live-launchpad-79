@@ -268,15 +268,24 @@ interface DownloadLabelResult {
 
 // Detecta se um ID é provavelmente um UUID de outro provedor (ex: Melhor Envio)
 // e portanto NÃO é um id válido de pré-postagem dos Correios.
-// Pré-postagens dos Correios costumam ser strings sem hífens, hex/numéricas (ex: "84d744bde9004a1a..." ou "PRLSl03xKx...").
+// Regra: IDs nativos dos Correios começam com "PR" (ex: "PRLSl03xKx..."). Qualquer
+// outra coisa (UUID v4 com hífens, etc.) é considerado estrangeiro e exige recriação.
 function isLikelyForeignId(id: string): boolean {
   if (!id) return true;
+  // IDs nativos dos Correios SEMPRE começam com "PR" — nunca tratar como estrangeiro
+  if (/^PR/i.test(id)) return false;
   // UUID v4 padrão: 8-4-4-4-12 com hífens
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (uuidRegex.test(id)) return true;
   // Qualquer string com múltiplos hífens (não é o padrão dos Correios)
   if ((id.match(/-/g) || []).length >= 2) return true;
   return false;
+}
+
+// IDs nativos dos Correios SEMPRE começam com "PR" — nunca devem ser recriados,
+// apenas consultados/utilizados como já existem na API.
+function isCorreiosNativeId(id: string): boolean {
+  return !!id && /^PR/i.test(id);
 }
 
 async function pdfResponseToBase64(resp: Response): Promise<string> {
@@ -676,8 +685,15 @@ async function actionDownloadLabel(
   // ETAPA 0b: Consulta status antes de qualquer tentativa de geração
   const statusCheck = await fetchPrePostagemStatus(token, effectiveId);
 
-  // Se 404 ou status inválido E temos contexto do pedido → tenta recriar
-  const needsRecreate = !recreated && (statusCheck.httpStatus === 404 || !isPrePostadoStatus(statusCheck.status));
+  const isNative = isCorreiosNativeId(effectiveId);
+
+  // REGRA: IDs nativos dos Correios (PR...) NUNCA são recriados.
+  // Apenas IDs estrangeiros (UUID) podem disparar recreatePrepostagemFromOrder.
+  const needsRecreate =
+    !recreated &&
+    !isNative &&
+    (statusCheck.httpStatus === 404 || !isPrePostadoStatus(statusCheck.status));
+
   if (needsRecreate && supabase && orderId) {
     log(`⚠️ Pré-postagem ${effectiveId} inválida (HTTP ${statusCheck.httpStatus}, status "${statusCheck.status}") — recriando para pedido ${orderId}`);
     try {
@@ -695,7 +711,10 @@ async function actionDownloadLabel(
     }
   } else if (!isPrePostadoStatus(statusCheck.status)) {
     const currentStatus = statusCheck.status || "DESCONHECIDO";
-    const errMsg = `Pré-postagem ${effectiveId} está com status "${currentStatus}" — rótulo só pode ser emitido quando status == "PRE_POSTADO". ${!supabase || !orderId ? "Forneça order_id para recriar automaticamente." : ""}`;
+    const baseMsg = `Pré-postagem ${effectiveId} está com status "${currentStatus}" — rótulo só pode ser emitido quando status == "PRE_POSTADO".`;
+    const errMsg = isNative
+      ? `${baseMsg} Como o ID já é nativo dos Correios, não será recriado automaticamente. Verifique a pré-postagem no painel dos Correios.`
+      : `${baseMsg} ${!supabase || !orderId ? "Forneça order_id para recriar automaticamente." : ""}`;
     log(`❌ ${errMsg}`);
     return {
       success: false,
@@ -705,6 +724,7 @@ async function actionDownloadLabel(
         currentStatus,
         httpStatus: statusCheck.httpStatus,
         rawResponse: statusCheck.rawJson || statusCheck.bodyText,
+        isNativeCorreiosId: isNative,
       },
     };
   }
