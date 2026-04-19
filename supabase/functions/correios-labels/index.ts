@@ -525,42 +525,36 @@ async function actionDownloadLabel(
 
       log(`idRecibo obtido: ${idRecibo}`);
 
-      let regenerateLabel = false;
+      // tryDownloadAsyncLabel já faz polling interno (até 10x com 5s) na etapa 2
+      // e baixa o arquivo na etapa 3, então basta uma chamada por geração.
+      const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token);
+      log(
+        `Resultado download | url: ${asyncDownload.url} | status: ${asyncDownload.status} | content-type: ${asyncDownload.contentType} | ${asyncDownload.ok ? "PDF recebido" : `body: ${asyncDownload.bodyText}`}`,
+      );
 
-      for (let attempt = 1; attempt <= 10; attempt++) {
-        const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token);
-        log(
-          `Download assíncrono ${attempt}/10 | url: ${asyncDownload.url} | status: ${asyncDownload.status} | content-type: ${asyncDownload.contentType} | ${asyncDownload.ok ? "PDF recebido" : `body: ${asyncDownload.bodyText}`}`,
-        );
-
-        if (asyncDownload.ok) {
-          return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo };
-        }
-
-        lastError = asyncDownload.bodyText || responseText;
-
-        if (asyncDownload.regenerate) {
-          regenerateLabel = true;
-          break;
-        }
-
-        if (!asyncDownload.retryable) {
-          return {
-            success: false,
-            pending: false,
-            idRecibo,
-            error:
-              `A API dos Correios gerou o recibo ${idRecibo}, mas não entregou o PDF da etiqueta. Resposta final: ${asyncDownload.bodyText || responseText}`,
-          };
-        }
-
-        if (attempt < 10) {
-          await new Promise((r) => setTimeout(r, 5000));
-        }
+      if (asyncDownload.ok) {
+        return { success: true, labelPdfBase64: asyncDownload.base64, idRecibo };
       }
 
-      if (regenerateLabel && generationAttempt < 3) {
+      lastError = asyncDownload.bodyText || responseText;
+
+      if (asyncDownload.regenerate && generationAttempt < 3) {
         log(`Correios retornou PPN-295 para o recibo ${idRecibo}; refazendo solicitação do rótulo`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+
+      if (asyncDownload.regenerate) {
+        return {
+          success: false,
+          pending: false,
+          idRecibo,
+          error: `A API dos Correios retornou PPN-295 (rótulo não gerado) em todas as 3 tentativas. Última resposta: ${lastError}`,
+        };
+      }
+
+      if (asyncDownload.retryable && generationAttempt < 3) {
+        log(`Timeout no polling do recibo ${idRecibo}; refazendo solicitação`);
         await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
