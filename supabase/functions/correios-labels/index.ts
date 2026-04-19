@@ -654,7 +654,7 @@ async function actionDownloadLabel(
     {
       label: "oficial-padrao",
       body: {
-        idsPrePostagem: [String(prePostagemId)],
+        idsPrePostagem: [String(effectiveId)],
         numeroCartaoPostagem: cartaoNumero,
         tipoRotulo: "P",
         formatoRotulo: "ET",
@@ -665,7 +665,7 @@ async function actionDownloadLabel(
     {
       label: "oficial-com-contrato",
       body: {
-        idsPrePostagem: [String(prePostagemId)],
+        idsPrePostagem: [String(effectiveId)],
         numeroCartaoPostagem: cartaoNumero,
         contrato: cartaoData.contrato,
         tipoRotulo: "P",
@@ -677,7 +677,7 @@ async function actionDownloadLabel(
     {
       label: "fallback-reduzido",
       body: {
-        idsPrePostagem: [String(prePostagemId)],
+        idsPrePostagem: [String(effectiveId)],
         numeroCartaoPostagem: cartaoNumero,
         tipoRotulo: "R",
         formatoRotulo: "ET",
