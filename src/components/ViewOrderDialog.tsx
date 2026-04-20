@@ -571,17 +571,6 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
                 <div>
                   <strong>Pedido criado em:</strong> {formatBrasiliaDateTime(order.created_at)}
                 </div>
-                <div>
-                  <strong>Quantidade de produtos:</strong>{' '}
-                  {(order.cart_items?.reduce((sum, i) => sum + (i.qty || 0), 0)) || 0}{' '}
-                  ({order.cart_items?.length || 0} {(order.cart_items?.length || 0) === 1 ? 'item' : 'itens'})
-                </div>
-                {order.is_paid && (
-                  <div>
-                    <strong>Forma de pagamento:</strong>{' '}
-                    {formatPaymentMethodWithInstallments(order.payment_method, order.payment_installments)}
-                  </div>
-                )}
                 {order.observation && (
                   <div>
                     <strong>Observações:</strong>
