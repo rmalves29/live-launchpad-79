@@ -367,20 +367,55 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
           <Card>
             <CardContent className="p-4">
               <h3 className="text-lg font-semibold mb-3">Resumo do Pedido</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <strong>Total:</strong> {formatCurrency(order.total_amount)}
-                </div>
-                <div>
-                  <strong>Status:</strong> 
-                  <Badge variant={order.is_paid ? 'default' : 'secondary'} className="ml-2">
-                    {order.is_paid ? 'Pago' : 'Pendente'}
-                  </Badge>
-                </div>
-                <div>
-                  <strong>Data:</strong> {formatBrasiliaDate(order.created_at)}
-                </div>
-              </div>
+              {(() => {
+                const discount = Number(order.coupon_discount || 0);
+                const hasDiscount = discount > 0;
+                // Valor original = produtos (sem desconto) + frete
+                const originalTotal = productsSubtotal + freteValue;
+                // Valor pago pelo cliente = total_amount (já considera desconto + frete)
+                const paidTotal = Number(order.total_amount || 0);
+                const totalQty = order.cart_items?.reduce((sum, i) => sum + (i.qty || 0), 0) || 0;
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div>
+                      <strong>Valor total:</strong> {formatCurrency(originalTotal)}
+                    </div>
+                    {hasDiscount && (
+                      <div>
+                        <strong>Valor com desconto:</strong>{' '}
+                        <span className="text-green-700 dark:text-green-400 font-semibold">
+                          {formatCurrency(paidTotal)}
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-1">
+                          (desconto de {formatCurrency(discount)})
+                        </span>
+                      </div>
+                    )}
+                    <div>
+                      <strong>Status:</strong>
+                      <Badge variant={order.is_paid ? 'default' : 'secondary'} className="ml-2">
+                        {order.is_paid ? 'Pago' : 'Pendente'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <strong>Data:</strong> {formatBrasiliaDate(order.created_at)}
+                    </div>
+                    <div>
+                      <strong>Quantidade de produtos:</strong> {totalQty}{' '}
+                      <span className="text-muted-foreground">
+                        ({order.cart_items?.length || 0} {(order.cart_items?.length || 0) === 1 ? 'item' : 'itens'})
+                      </span>
+                    </div>
+                    {order.is_paid && (
+                      <div>
+                        <strong>Forma de pagamento:</strong>{' '}
+                        {formatPaymentMethodWithInstallments(order.payment_method, order.payment_installments)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 
