@@ -1038,9 +1038,9 @@ serve(async (req) => {
         console.log(`[zapi-webhook] Product not found: ${codeUpper}`);
 
         // ============================================================
-        // AMBIGUITY DETECTION: When customer sends a partial code (e.g. "C370")
-        // and we have variants like "C370/14", "C370/24" registered, reply
-        // in the group asking which size/variant they want.
+        // AMBIGUITY DETECTION: Log when customer sends a partial code (e.g. "C370")
+        // and we have variants like "C370/14", "C370/24" registered.
+        // NOTE: Bot does NOT reply in group - admin must handle manually.
         // ============================================================
         if (isGroup && groupId && !codeUpper.includes('/') && !codeUpper.includes('-')) {
           const { data: variants } = await supabase
@@ -1052,67 +1052,7 @@ serve(async (req) => {
             .limit(20);
 
           if (variants && variants.length > 1) {
-            console.log(`[zapi-webhook] 🤔 Ambiguous code ${codeUpper}: found ${variants.length} variants`);
-
-            // Dedup-key for ambiguity reply (avoid spamming the group)
-            const ambiguityKey = `[AMBIGUITY_REPLY] ${codeUpper}`;
-            const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-            const { data: recentReply } = await supabase
-              .from('whatsapp_messages')
-              .select('id')
-              .eq('tenant_id', tenantId)
-              .eq('whatsapp_group_name', groupName || '')
-              .eq('message', ambiguityKey)
-              .gte('created_at', fiveMinAgo)
-              .limit(1)
-              .maybeSingle();
-
-            if (!recentReply) {
-              try {
-                const { data: cfg } = await supabase
-                  .from('integration_whatsapp')
-                  .select('zapi_instance_id, zapi_token, zapi_client_token')
-                  .eq('tenant_id', tenantId)
-                  .eq('provider', 'zapi')
-                  .eq('is_active', true)
-                  .maybeSingle();
-
-                if (cfg?.zapi_instance_id && cfg?.zapi_token) {
-                  const variantList = variants
-                    .map((v: { code: string }) => `*${v.code.trim()}*`)
-                    .join(', ');
-                  const replyMsg = `🤔 Encontrei mais de uma opção para *${codeUpper}*:\n\n${variantList}\n\nQual você deseja? Responda com o código completo (ex: *${variants[0].code.trim()}*).`;
-
-                  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                  if (cfg.zapi_client_token) headers['Client-Token'] = cfg.zapi_client_token;
-
-                  await fetch(
-                    `https://api.z-api.io/instances/${cfg.zapi_instance_id}/token/${cfg.zapi_token}/send-text`,
-                    {
-                      method: 'POST',
-                      headers,
-                      body: JSON.stringify({ phone: groupId, message: replyMsg }),
-                    }
-                  );
-
-                  // Log dedup marker
-                  await supabase.from('whatsapp_messages').insert({
-                    tenant_id: tenantId,
-                    phone: normalizedPhone,
-                    message: ambiguityKey,
-                    type: 'system_log',
-                    whatsapp_group_name: groupName || null,
-                    sent_at: new Date().toISOString(),
-                  });
-                  console.log(`[zapi-webhook] ✅ Sent ambiguity reply to group for code ${codeUpper}`);
-                }
-              } catch (e: any) {
-                console.error(`[zapi-webhook] Error sending ambiguity reply: ${e.message}`);
-              }
-            } else {
-              console.log(`[zapi-webhook] ⏭️ Ambiguity reply already sent recently for ${codeUpper}, skipping`);
-            }
-
+            console.log(`[zapi-webhook] 🤔 Ambiguous code ${codeUpper}: found ${variants.length} variants - NOT sending group reply per config`);
             results.push({ code: codeUpper, success: false, error: 'ambiguous_code', variants: variants.length });
             continue;
           }
