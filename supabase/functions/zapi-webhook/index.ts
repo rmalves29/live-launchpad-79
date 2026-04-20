@@ -666,14 +666,16 @@ serve(async (req) => {
     // Recognize product codes with optional quantity:
     // Formats: C76126x2, C76126 x2, 2xC76126, 2x C76126, C76126X2, etc.
     // Also plain: C76126 (qty=1)
+    // Supports variants with "/" or "-": C370/24, C014-1
     const productEntries: Array<{ code: string; qty: number }> = [];
 
-    // Pattern 1: code first, then optional quantity — C76126x2, C014-1x2, C014-1 x 2
-    const codeFirstRegex = /\b[Cc](\d{1,6}(?:-\d{1,3})?)\s*[xX]\s*(\d{1,3})\b/g;
-    // Pattern 2: quantity first, then code — 2xC76126, 2xC014-1
-    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*[Cc](\d{1,6}(?:-\d{1,3})?)\b/g;
-    // Pattern 3: plain code without quantity — C76126, C014-1
-    const plainCodeRegex = /\b[Cc](\d{1,6}(?:-\d{1,3})?)\b/g;
+    // Code suffix capture: digits, optionally followed by /NN or -NN (variants like /24, -1)
+    // Pattern 1: code first, then optional quantity — C76126x2, C014-1x2, C370/24 x2
+    const codeFirstRegex = /\b[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)\s*[xX]\s*(\d{1,3})\b/g;
+    // Pattern 2: quantity first, then code — 2xC76126, 2xC014-1, 2xC370/24
+    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)\b/g;
+    // Pattern 3: plain code without quantity — C76126, C014-1, C370/24
+    const plainCodeRegex = /\b[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)/g;
 
     const processedCodes = new Set<string>();
     let match;
@@ -699,9 +701,19 @@ serve(async (req) => {
     }
 
     // Third pass: plain "C76126" (only if not already matched with quantity)
+    // Prefer the longer/more specific match: if "C370/24" was captured, don't also add "C370".
+    const plainMatches: string[] = [];
     while ((match = plainCodeRegex.exec(messageText)) !== null) {
-      const normalized = `C${match[1]}`;
-      if (!processedCodes.has(normalized)) {
+      plainMatches.push(`C${match[1]}`);
+    }
+    // Sort by length DESC so variants come first (C370/24 before C370)
+    plainMatches.sort((a, b) => b.length - a.length);
+    for (const normalized of plainMatches) {
+      // Skip if a more specific variant of this code was already added
+      const hasMoreSpecific = Array.from(processedCodes).some(
+        c => c !== normalized && c.startsWith(normalized) && (c[normalized.length] === '/' || c[normalized.length] === '-')
+      );
+      if (!processedCodes.has(normalized) && !hasMoreSpecific) {
         processedCodes.add(normalized);
         productEntries.push({ code: normalized, qty: 1 });
       }
@@ -1024,6 +1036,88 @@ serve(async (req) => {
 
       if (!product) {
         console.log(`[zapi-webhook] Product not found: ${codeUpper}`);
+
+        // ============================================================
+        // AMBIGUITY DETECTION: When customer sends a partial code (e.g. "C370")
+        // and we have variants like "C370/14", "C370/24" registered, reply
+        // in the group asking which size/variant they want.
+        // ============================================================
+        if (isGroup && groupId && !codeUpper.includes('/') && !codeUpper.includes('-')) {
+          const { data: variants } = await supabase
+            .from('products')
+            .select('code, name')
+            .eq('tenant_id', tenantId)
+            .eq('is_active', true)
+            .or(`code.ilike.${codeUpper}/%,code.ilike.${codeUpper}-%`)
+            .limit(20);
+
+          if (variants && variants.length > 1) {
+            console.log(`[zapi-webhook] 🤔 Ambiguous code ${codeUpper}: found ${variants.length} variants`);
+
+            // Dedup-key for ambiguity reply (avoid spamming the group)
+            const ambiguityKey = `[AMBIGUITY_REPLY] ${codeUpper}`;
+            const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+            const { data: recentReply } = await supabase
+              .from('whatsapp_messages')
+              .select('id')
+              .eq('tenant_id', tenantId)
+              .eq('whatsapp_group_name', groupName || '')
+              .eq('message', ambiguityKey)
+              .gte('created_at', fiveMinAgo)
+              .limit(1)
+              .maybeSingle();
+
+            if (!recentReply) {
+              try {
+                const { data: cfg } = await supabase
+                  .from('integration_whatsapp')
+                  .select('zapi_instance_id, zapi_token, zapi_client_token')
+                  .eq('tenant_id', tenantId)
+                  .eq('provider', 'zapi')
+                  .eq('is_active', true)
+                  .maybeSingle();
+
+                if (cfg?.zapi_instance_id && cfg?.zapi_token) {
+                  const variantList = variants
+                    .map((v: { code: string }) => `*${v.code.trim()}*`)
+                    .join(', ');
+                  const replyMsg = `🤔 Encontrei mais de uma opção para *${codeUpper}*:\n\n${variantList}\n\nQual você deseja? Responda com o código completo (ex: *${variants[0].code.trim()}*).`;
+
+                  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                  if (cfg.zapi_client_token) headers['Client-Token'] = cfg.zapi_client_token;
+
+                  await fetch(
+                    `https://api.z-api.io/instances/${cfg.zapi_instance_id}/token/${cfg.zapi_token}/send-text`,
+                    {
+                      method: 'POST',
+                      headers,
+                      body: JSON.stringify({ phone: groupId, message: replyMsg }),
+                    }
+                  );
+
+                  // Log dedup marker
+                  await supabase.from('whatsapp_messages').insert({
+                    tenant_id: tenantId,
+                    phone: normalizedPhone,
+                    message: ambiguityKey,
+                    type: 'system_log',
+                    whatsapp_group_name: groupName || null,
+                    sent_at: new Date().toISOString(),
+                  });
+                  console.log(`[zapi-webhook] ✅ Sent ambiguity reply to group for code ${codeUpper}`);
+                }
+              } catch (e: any) {
+                console.error(`[zapi-webhook] Error sending ambiguity reply: ${e.message}`);
+              }
+            } else {
+              console.log(`[zapi-webhook] ⏭️ Ambiguity reply already sent recently for ${codeUpper}, skipping`);
+            }
+
+            results.push({ code: codeUpper, success: false, error: 'ambiguous_code', variants: variants.length });
+            continue;
+          }
+        }
+
         results.push({ code: codeUpper, success: false, error: 'product_not_found' });
         continue;
       }
