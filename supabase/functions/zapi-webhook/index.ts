@@ -666,14 +666,16 @@ serve(async (req) => {
     // Recognize product codes with optional quantity:
     // Formats: C76126x2, C76126 x2, 2xC76126, 2x C76126, C76126X2, etc.
     // Also plain: C76126 (qty=1)
+    // Supports variants with "/" or "-": C370/24, C014-1
     const productEntries: Array<{ code: string; qty: number }> = [];
 
-    // Pattern 1: code first, then optional quantity — C76126x2, C014-1x2, C014-1 x 2
-    const codeFirstRegex = /\b[Cc](\d{1,6}(?:-\d{1,3})?)\s*[xX]\s*(\d{1,3})\b/g;
-    // Pattern 2: quantity first, then code — 2xC76126, 2xC014-1
-    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*[Cc](\d{1,6}(?:-\d{1,3})?)\b/g;
-    // Pattern 3: plain code without quantity — C76126, C014-1
-    const plainCodeRegex = /\b[Cc](\d{1,6}(?:-\d{1,3})?)\b/g;
+    // Code suffix capture: digits, optionally followed by /NN or -NN (variants like /24, -1)
+    // Pattern 1: code first, then optional quantity — C76126x2, C014-1x2, C370/24 x2
+    const codeFirstRegex = /\b[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)\s*[xX]\s*(\d{1,3})\b/g;
+    // Pattern 2: quantity first, then code — 2xC76126, 2xC014-1, 2xC370/24
+    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)\b/g;
+    // Pattern 3: plain code without quantity — C76126, C014-1, C370/24
+    const plainCodeRegex = /\b[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)/g;
 
     const processedCodes = new Set<string>();
     let match;
@@ -699,9 +701,19 @@ serve(async (req) => {
     }
 
     // Third pass: plain "C76126" (only if not already matched with quantity)
+    // Prefer the longer/more specific match: if "C370/24" was captured, don't also add "C370".
+    const plainMatches: string[] = [];
     while ((match = plainCodeRegex.exec(messageText)) !== null) {
-      const normalized = `C${match[1]}`;
-      if (!processedCodes.has(normalized)) {
+      plainMatches.push(`C${match[1]}`);
+    }
+    // Sort by length DESC so variants come first (C370/24 before C370)
+    plainMatches.sort((a, b) => b.length - a.length);
+    for (const normalized of plainMatches) {
+      // Skip if a more specific variant of this code was already added
+      const hasMoreSpecific = Array.from(processedCodes).some(
+        c => c !== normalized && c.startsWith(normalized) && (c[normalized.length] === '/' || c[normalized.length] === '-')
+      );
+      if (!processedCodes.has(normalized) && !hasMoreSpecific) {
         processedCodes.add(normalized);
         productEntries.push({ code: normalized, qty: 1 });
       }
