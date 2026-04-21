@@ -160,9 +160,25 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         setTestResult({ success: false, message: msg, services: [] });
         return;
       }
+      // ⚠️ Detectar resposta fallback (estimativa por distância) — significa que credenciais CWS falharam
+      if (data?.fallback === true) {
+        setTestResult({
+          success: false,
+          message: '⚠️ Credenciais CWS inválidas! O sistema está usando valores ESTIMADOS (fallback), não os preços reais do seu contrato. Verifique: usuário API CWS, senha e número do Cartão de Postagem no portal dos Correios.',
+          services: [],
+        });
+        return;
+      }
       if (data?.success && data?.shipping_options?.length > 0) {
         const foundServices = data.shipping_options.map((opt: any) => opt.name);
-        setTestResult({ success: true, message: `Conexão OK! ${data.shipping_options.length} serviço(s) disponível(is).`, services: foundServices });
+        const samplePrices = data.shipping_options
+          .map((opt: any) => `${opt.name} R$ ${opt.price}`)
+          .join(' • ');
+        setTestResult({
+          success: true,
+          message: `✅ Conexão CWS autenticada! ${data.shipping_options.length} serviço(s) com preços reais do contrato. ${samplePrices}`,
+          services: foundServices,
+        });
       } else {
         setTestResult({ success: false, message: data?.error || 'Nenhum serviço retornado. Verifique se as credenciais e o Cartão de Postagem estão corretos.', services: [] });
       }
