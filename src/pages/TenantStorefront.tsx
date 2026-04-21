@@ -305,18 +305,22 @@ export default function TenantStorefront() {
         <div id="produtos">
           <Card>
             <CardHeader>
-              <CardTitle>Produtos em Destaque</CardTitle>
-              <CardDescription>
-                {products.length > 0 ? `${products.length} produto(s) disponível(is)` : 'Nenhum produto cadastrado ainda'}
-              </CardDescription>
-              <div className="relative mt-3 max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Buscar produto pelo nome ou código..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="min-w-0">
+                  <CardTitle>Produtos em Destaque</CardTitle>
+                  <CardDescription>
+                    {products.length > 0 ? `${products.length} produto(s) disponível(is)` : 'Nenhum produto cadastrado ainda'}
+                  </CardDescription>
+                </div>
+                <div className="relative w-full sm:w-72 shrink-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="Buscar produto pelo nome ou código..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
