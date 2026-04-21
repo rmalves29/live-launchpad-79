@@ -110,7 +110,7 @@ export default function TenantStorefront() {
     if (!slug) return;
     const product = products.find((p) => p.id === productId);
     if (!product) return;
-    const qty = getQty(productId);
+    const qty = quantities[productId] ?? 1;
     setAddingId(productId);
     try {
       const { data, error: fnErr } = await supabase.functions.invoke('storefront-add-to-cart', {
@@ -146,7 +146,7 @@ export default function TenantStorefront() {
     } finally {
       setAddingId(null);
     }
-  }, [slug, products, tenant, loadProducts]);
+  }, [slug, products, tenant, loadProducts, quantities]);
 
   const handleAddClick = (productId: number) => {
     if (identity?.phone) {
