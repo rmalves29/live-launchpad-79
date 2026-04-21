@@ -316,14 +316,14 @@ export default function TenantStorefront() {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
                 </div>
-              ) : products.length === 0 ? (
+              ) : filteredProducts.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <ShoppingBag className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p>Nenhum produto disponível no momento.</p>
+                  <p>{searchTerm ? 'Nenhum produto encontrado para sua busca.' : 'Nenhum produto disponível no momento.'}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {products.map((product) => {
+                  {filteredProducts.map((product) => {
                     const hasPromo = product.promotional_price != null
                       && product.promotional_price > 0
                       && product.promotional_price < product.price;
