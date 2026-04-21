@@ -1,44 +1,102 @@
 
-Objetivo: simplificar a emissão de etiquetas removendo a dependência da API PPN dos Correios e usando apenas a integração MeusCorreios, que já está mais estável no projeto.
 
-1. Mapear onde a emissão PPN está acoplada
-- Revisar `src/components/integrations/CorreiosCWSLabels.tsx` e os pontos da UI que expõem “Etiquetas Correios”.
-- Confirmar onde `correios-labels` é invocada e onde a integração `provider = 'correios'` aparece como opção de emissão.
+# Botão "Adicionar ao Carrinho" na Vitrine `/t/:slug` — versão simplificada
 
-2. Descontinuar a emissão PPN na interface
-- Remover ou ocultar a aba/componente de etiquetas do contrato direto dos Correios.
-- Ajustar textos e status da integração para deixar claro que emissão de etiqueta passa a ocorrer via MeusCorreios.
-- Se fizer sentido, mostrar aviso curto: “Emissão via contrato direto descontinuada; use MeusCorreios”.
+## Ajustes desta versão
 
-3. Redirecionar o fluxo de emissão para MeusCorreios
-- Fazer a UI de emissão chamar `process-meus-correios` em vez de `correios-labels`.
-- Reaproveitar o padrão já existente de geração de rastreio + etiqueta base64 retornado por `process-meus-correios`.
-- Garantir que seleção de pedidos, override de serviço e download do PDF continuem funcionando.
+1. Modal de identificação na 1ª vez pede **somente @Instagram + WhatsApp**.
+2. Se o produto estiver **sem estoque**, o botão "Adicionar ao carrinho" é substituído por **"Esgotado"** (desabilitado), e o seletor de quantidade fica oculto.
 
-4. Remover código morto do contrato direto
-- Eliminar referências de uso de `correios-labels` no frontend.
-- Opcionalmente remover a Edge Function `correios-labels` e o componente `CorreiosCWSLabels.tsx` se não houver mais uso.
-- Manter `correios-shipping` apenas se ainda for necessário para cotação; caso também queira aposentar o frete via contrato direto, isso pode virar uma segunda etapa separada.
+## Fluxo
 
-5. Ajustar descoberta/prioridade de integrações
-- Revisar `src/lib/shipping-utils.ts` para garantir que a lógica de integrações não continue sugerindo o fluxo antigo de etiqueta PPN.
-- Confirmar se “correios” seguirá existindo só para cotação ou se deve ser totalmente retirado das opções operacionais.
+```text
+[Card produto — com estoque]        [Card produto — sem estoque]
+  imagem                              imagem (com selo "Esgotado")
+  C123 — Nome                         C124 — Nome
+  R$ 49,90                            R$ 39,90
+  ───────────────                     ───────────────
+  [-] [ 1 ] [+]                       (sem seletor)
+  [ 🛒  Adicionar ao carrinho ]       [   Esgotado   ]  (cinza, disabled)
 
-6. Validação final
-- Testar seleção de pedidos e emissão end-to-end usando apenas MeusCorreios.
-- Validar casos de sucesso, pedido já com rastreio, endereço incompleto e erro de serviço inválido.
-- Confirmar que download do PDF e atualização do tracking continuam gravando no pedido corretamente.
+       ↓ (1ª vez no navegador / 1º acesso desse IP)
+┌──────────────────────────────┐
+│  Identifique-se p/ comprar   │
+│  @Instagram: [____________]  │
+│  WhatsApp:   [____________]  │
+│  [  Confirmar e adicionar ]  │
+└──────────────────────────────┘
+       ↓
+  ✅ "Produto adicionado!
+     Confira no seu WhatsApp ✨"
+```
 
-Detalhes técnicos
-- Arquivos com maior chance de mudança:
-  - `src/components/integrations/CorreiosCWSLabels.tsx`
-  - `src/components/integrations/CorreiosIntegration.tsx`
-  - `src/lib/shipping-utils.ts`
-  - `supabase/functions/process-meus-correios/index.ts`
-  - possivelmente remoção de `supabase/functions/correios-labels/index.ts`
-- Benefício principal: reduz complexidade, remove um fluxo instável e concentra a emissão em uma integração já funcional.
-- Risco principal: se ainda houver clientes usando contrato direto só para etiqueta, precisamos trocar cuidadosamente os pontos da UI para não deixar ação quebrada.
+## Identificação persistente (3 camadas)
 
-Resultado esperado
-- A parte de emissão de etiquetas fica menor, mais previsível e sem dependência do estado “Pendente” da pré-postagem PPN.
-- O sistema passa a ter um único caminho de emissão: MeusCorreios.
+| Origem | Conteúdo | Quando |
+|---|---|---|
+| `localStorage` | `phone`, `instagram` | Mesmo navegador |
+| Tabela `storefront_visitors` | `tenant_id`, `ip_hash`, `customer_phone` | Outro dispositivo, mesmo IP |
+| Modal | — | Quando nada acima resolve |
+
+## Backend
+
+**Nova tabela**
+
+```sql
+CREATE TABLE public.storefront_visitors (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  ip_hash text NOT NULL,
+  customer_id bigint,
+  customer_phone text NOT NULL,
+  last_seen_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tenant_id, ip_hash)
+);
+ALTER TABLE public.storefront_visitors ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON public.storefront_visitors
+  FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "tenant_view_own" ON public.storefront_visitors
+  FOR SELECT USING (tenant_id = get_current_tenant_id() OR is_super_admin());
+```
+
+**Novas Edge Functions** (service role, vitrine é anônima):
+
+- `storefront-resolve-visitor` — recebe `tenant_slug`, hasheia o IP da request, devolve `{ phone, instagram }` se existir.
+- `storefront-add-to-cart` — recebe `tenant_slug`, `product_id`, `qty`, `customer_phone`, `customer_instagram`. Resolve cliente (cria se não existir, atualiza Instagram se vazio), garante pedido aberto **LIVE / hoje / `is_paid=false`**, valida estoque atomicamente (rejeita se `stock <= 0` ou `stock < qty`), faz upsert em `cart_items` com snapshot (`product_name`, `product_code`, `product_image_url`, preço promocional), recalcula `total_amount` e atualiza `storefront_visitors`.
+
+A mensagem **"item adicionado"** continua disparada pelo trigger `send_whatsapp_on_item_added` ao inserir em `cart_items` — sem chamada extra.
+
+## Frontend
+
+- `src/pages/TenantStorefront.tsx`
+  - Carrega também `stock` na query de produtos.
+  - `const isOutOfStock = (product.stock ?? 0) <= 0;`
+  - Card sem estoque: badge **"Esgotado"** sobre a imagem (substitui a badge "Promoção"), oculta seletor `[-]/[+]`, botão renderizado como **"Esgotado"** com `variant="secondary"` e `disabled`.
+  - Card com estoque: estado `quantities[productId]`, controles `[-] [n] [+]` (limite máximo = `stock`) e botão **"Adicionar ao carrinho"** com loading.
+  - Ao montar: lê `localStorage.storefront_identity_<slug>`; se vazio, chama `storefront-resolve-visitor`.
+  - No clique: se sem identidade, abre modal; senão chama `storefront-add-to-cart` direto.
+  - Erro de estoque vindo da função → toast vermelho + recarrega o produto (atualiza para "Esgotado" se for o caso).
+- `src/components/storefront/IdentifyCustomerDialog.tsx` (novo)
+  - Apenas dois inputs: `@Instagram` e `WhatsApp`.
+  - Validação: telefone brasileiro válido + sanitização do `@` e espaços.
+  - Salva em `localStorage` no sucesso.
+
+## Regras importantes
+
+- **Imutabilidade pago**: só anexa em pedido com `is_paid=false`; se o do dia já foi pago, cria novo.
+- **Estoque atômico**: mesma proteção do `Live.tsx` (read fresh + `update().gt('stock', 0)` + rollback). Se outro cliente esgotou entre a renderização e o clique, a função recusa com mensagem amigável.
+- **Cliente bloqueado**: recusa com erro amigável.
+- **Snapshot de produto** em `cart_items` conforme regra existente.
+- **CORS** padrão do projeto nas duas funções.
+
+## Arquivos
+
+| Arquivo | Mudança |
+|---|---|
+| `supabase/migrations/<ts>_storefront_visitors.sql` | Novo |
+| `supabase/functions/storefront-resolve-visitor/index.ts` | Novo |
+| `supabase/functions/storefront-add-to-cart/index.ts` | Novo |
+| `src/pages/TenantStorefront.tsx` | Botão + qty + badge "Esgotado" + integração |
+| `src/components/storefront/IdentifyCustomerDialog.tsx` | Novo (só @ + telefone) |
+
