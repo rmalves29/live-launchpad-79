@@ -32,6 +32,16 @@ interface Product {
   stock: number | null;
 }
 
+interface CompanyAddress {
+  company_address: string | null;
+  company_number: string | null;
+  company_complement: string | null;
+  company_district: string | null;
+  company_city: string | null;
+  company_state: string | null;
+  company_cep: string | null;
+}
+
 const IDENTITY_KEY = (slug: string) => `storefront_identity_${slug}`;
 
 export default function TenantStorefront() {
