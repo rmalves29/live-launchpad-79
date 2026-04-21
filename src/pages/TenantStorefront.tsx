@@ -11,8 +11,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
   Loader2, ShoppingBag, Phone, Mail, MapPin, Store, XCircle, ExternalLink,
-  Plus, Minus, ShoppingCart,
+  Plus, Minus, ShoppingCart, Search,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/utils';
@@ -51,6 +52,7 @@ export default function TenantStorefront() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [addingId, setAddingId] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Identidade do cliente
   const [identity, setIdentity] = useState<StorefrontIdentity | null>(null);
@@ -137,6 +139,14 @@ export default function TenantStorefront() {
     const clamped = Math.max(1, Math.min(value, Math.max(1, max)));
     setQuantities((prev) => ({ ...prev, [id]: clamped }));
   };
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredProducts = normalizedSearch
+    ? products.filter((p) =>
+        p.name.toLowerCase().includes(normalizedSearch) ||
+        (p.code || '').toLowerCase().includes(normalizedSearch)
+      )
+    : products;
 
   const performAdd = useCallback(async (productId: number, currentIdentity: StorefrontIdentity) => {
     if (!slug) return;
@@ -266,90 +276,31 @@ export default function TenantStorefront() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Store className="h-5 w-5" />Informações</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {tenant.whatsapp_number && (
-                <div className="flex items-start gap-3">
-                  <Phone className="h-5 w-5 text-green-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">WhatsApp</p>
-                    <a href={`https://wa.me/${tenant.whatsapp_number.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-sm text-green-600 hover:underline">
-                      {tenant.whatsapp_number}
-                    </a>
-                  </div>
-                </div>
-              )}
-              {tenant.email && (
-                <div className="flex items-start gap-3">
-                  <Mail className="h-5 w-5 text-blue-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">E-mail</p>
-                    <a href={`mailto:${tenant.email}`} className="text-sm text-blue-600 hover:underline">{tenant.email}</a>
-                  </div>
-                </div>
-              )}
-              <div className="flex items-start gap-3">
-                <MapPin className="h-5 w-5 text-red-600 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium">URL da Loja</p>
-                  <a href={storeUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">{storeUrl}</a>
-                </div>
+        {/* Banner compacto de boas-vindas com destaque para o CTA */}
+        <Card className="mb-8 overflow-hidden border-green-200">
+          <CardContent className="p-5 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <ShoppingBag className="h-5 w-5 text-green-600" />
+                  Bem-vindo à {tenant.name}!
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Escolha os produtos abaixo e finalize seu pedido. Você recebe a confirmação no WhatsApp.
+                </p>
               </div>
-              {companyAddress && (companyAddress.company_address || companyAddress.company_city) && (
-                <div className="flex items-start gap-3">
-                  <Store className="h-5 w-5 text-orange-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium">Endereço</p>
-                    <p className="text-sm text-gray-600">
-                      {[
-                        companyAddress.company_address,
-                        companyAddress.company_number,
-                      ].filter(Boolean).join(', ')}
-                      {companyAddress.company_complement ? ` — ${companyAddress.company_complement}` : ''}
-                    </p>
-                    {companyAddress.company_district && (
-                      <p className="text-sm text-gray-600">{companyAddress.company_district}</p>
-                    )}
-                    <p className="text-sm text-gray-600">
-                      {[
-                        companyAddress.company_city,
-                        companyAddress.company_state,
-                      ].filter(Boolean).join(' - ')}
-                      {companyAddress.company_cep ? ` • CEP ${companyAddress.company_cep}` : ''}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><ShoppingBag className="h-5 w-5" />Bem-vindo à {tenant.name}!</CardTitle>
-              <CardDescription>Adicione produtos no carrinho abaixo. Quando terminar, finalize seu pedido.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Alert className="bg-blue-50 border-blue-200">
-                <AlertDescription className="text-blue-800">
-                  <strong>🛒 Como comprar:</strong> escolha a quantidade no produto e toque em <em>Adicionar ao carrinho</em>. Você receberá uma confirmação no WhatsApp a cada item.
-                  <br /><br />
-                  <Button asChild size="lg" className="mt-2 bg-green-600 hover:bg-green-700 text-white font-bold text-base px-6 py-3 shadow-md">
-                    <a href={checkoutUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2">
-                      🛒 Finalizar pedido <ExternalLink className="h-5 w-5" />
-                    </a>
-                  </Button>
-                </AlertDescription>
-              </Alert>
-              <div className="mt-6">
-                <Button asChild variant="default"><a href="#produtos">Ver todos os Produtos</a></Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              <Button
+                asChild
+                size="lg"
+                className="bg-green-600 hover:bg-green-700 text-white font-bold text-base px-8 py-6 shadow-lg hover:shadow-xl transition-all whitespace-nowrap shrink-0"
+              >
+                <a href={checkoutUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2">
+                  🛒 Finalizar pedido <ExternalLink className="h-5 w-5" />
+                </a>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <div id="produtos">
           <Card>
@@ -358,20 +309,29 @@ export default function TenantStorefront() {
               <CardDescription>
                 {products.length > 0 ? `${products.length} produto(s) disponível(is)` : 'Nenhum produto cadastrado ainda'}
               </CardDescription>
+              <div className="relative mt-3 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Buscar produto pelo nome ou código..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </CardHeader>
             <CardContent>
               {loadingProducts ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
                 </div>
-              ) : products.length === 0 ? (
+              ) : filteredProducts.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <ShoppingBag className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p>Nenhum produto disponível no momento.</p>
+                  <p>{searchTerm ? 'Nenhum produto encontrado para sua busca.' : 'Nenhum produto disponível no momento.'}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {products.map((product) => {
+                  {filteredProducts.map((product) => {
                     const hasPromo = product.promotional_price != null
                       && product.promotional_price > 0
                       && product.promotional_price < product.price;
@@ -480,9 +440,67 @@ export default function TenantStorefront() {
       </main>
 
       <footer className="bg-white border-t mt-12">
-        <div className="container mx-auto px-4 py-6 text-center text-sm text-gray-600">
-          <p>© {new Date().getFullYear()} {tenant.name}. Todos os direitos reservados.</p>
-          <p className="mt-2">Powered by <strong>OrderZap</strong> - Sistema Multi-Tenant</p>
+        <div className="container mx-auto px-4 py-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+            <div>
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                <Store className="h-5 w-5" />Informações
+              </h3>
+              {tenant.whatsapp_number && (
+                <div className="flex items-start gap-3 mb-2">
+                  <Phone className="h-4 w-4 text-green-600 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-700">WhatsApp</p>
+                    <a href={`https://wa.me/${tenant.whatsapp_number.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-sm text-green-600 hover:underline">
+                      {tenant.whatsapp_number}
+                    </a>
+                  </div>
+                </div>
+              )}
+              {tenant.email && (
+                <div className="flex items-start gap-3 mb-2">
+                  <Mail className="h-4 w-4 text-blue-600 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-700">E-mail</p>
+                    <a href={`mailto:${tenant.email}`} className="text-sm text-blue-600 hover:underline">{tenant.email}</a>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                <MapPin className="h-5 w-5" />URL da Loja
+              </h3>
+              <a href={storeUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">
+                {storeUrl}
+              </a>
+            </div>
+
+            {companyAddress && (companyAddress.company_address || companyAddress.company_city) && (
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                  <MapPin className="h-5 w-5" />Endereço
+                </h3>
+                <div className="text-sm text-gray-600 space-y-0.5">
+                  <p>
+                    {[companyAddress.company_address, companyAddress.company_number].filter(Boolean).join(', ')}
+                    {companyAddress.company_complement ? ` — ${companyAddress.company_complement}` : ''}
+                  </p>
+                  {companyAddress.company_district && <p>{companyAddress.company_district}</p>}
+                  <p>
+                    {[companyAddress.company_city, companyAddress.company_state].filter(Boolean).join(' - ')}
+                    {companyAddress.company_cep ? ` • CEP ${companyAddress.company_cep}` : ''}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-4 text-center text-sm text-gray-600">
+            <p>© {new Date().getFullYear()} {tenant.name}. Todos os direitos reservados.</p>
+            <p className="mt-1">Powered by <strong>OrderZap</strong> - Sistema Multi-Tenant</p>
+          </div>
         </div>
       </footer>
 
