@@ -11,8 +11,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
   Loader2, ShoppingBag, Phone, Mail, MapPin, Store, XCircle, ExternalLink,
-  Plus, Minus, ShoppingCart,
+  Plus, Minus, ShoppingCart, Search,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/utils';
