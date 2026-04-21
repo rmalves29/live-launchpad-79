@@ -140,6 +140,14 @@ export default function TenantStorefront() {
     setQuantities((prev) => ({ ...prev, [id]: clamped }));
   };
 
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredProducts = normalizedSearch
+    ? products.filter((p) =>
+        p.name.toLowerCase().includes(normalizedSearch) ||
+        (p.code || '').toLowerCase().includes(normalizedSearch)
+      )
+    : products;
+
   const performAdd = useCallback(async (productId: number, currentIdentity: StorefrontIdentity) => {
     if (!slug) return;
     const product = products.find((p) => p.id === productId);
