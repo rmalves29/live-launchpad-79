@@ -58,6 +58,9 @@ export default function TenantStorefront() {
   const [identifyLoading, setIdentifyLoading] = useState(false);
   const [pendingProductId, setPendingProductId] = useState<number | null>(null);
 
+  // Endereço da empresa
+  const [companyAddress, setCompanyAddress] = useState<CompanyAddress | null>(null);
+
   // Carregar produtos
   const loadProducts = useCallback(async (tenantId: string) => {
     setLoadingProducts(true);
@@ -80,6 +83,25 @@ export default function TenantStorefront() {
     if (!tenant) return;
     loadProducts(tenant.id);
   }, [tenant, loadProducts]);
+
+  // Carregar endereço da empresa
+  useEffect(() => {
+    if (!tenant) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('tenants')
+          .select('company_address, company_number, company_complement, company_district, company_city, company_state, company_cep')
+          .eq('id', tenant.id)
+          .maybeSingle();
+        if (!cancelled && data) setCompanyAddress(data as CompanyAddress);
+      } catch (err) {
+        console.warn('Erro ao carregar endereço da empresa:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tenant]);
 
   // Resolve identidade ao montar (localStorage → edge function por IP)
   useEffect(() => {
