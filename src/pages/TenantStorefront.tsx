@@ -440,9 +440,67 @@ export default function TenantStorefront() {
       </main>
 
       <footer className="bg-white border-t mt-12">
-        <div className="container mx-auto px-4 py-6 text-center text-sm text-gray-600">
-          <p>© {new Date().getFullYear()} {tenant.name}. Todos os direitos reservados.</p>
-          <p className="mt-2">Powered by <strong>OrderZap</strong> - Sistema Multi-Tenant</p>
+        <div className="container mx-auto px-4 py-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+            <div>
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                <Store className="h-5 w-5" />Informações
+              </h3>
+              {tenant.whatsapp_number && (
+                <div className="flex items-start gap-3 mb-2">
+                  <Phone className="h-4 w-4 text-green-600 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-700">WhatsApp</p>
+                    <a href={`https://wa.me/${tenant.whatsapp_number.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-sm text-green-600 hover:underline">
+                      {tenant.whatsapp_number}
+                    </a>
+                  </div>
+                </div>
+              )}
+              {tenant.email && (
+                <div className="flex items-start gap-3 mb-2">
+                  <Mail className="h-4 w-4 text-blue-600 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-medium text-gray-700">E-mail</p>
+                    <a href={`mailto:${tenant.email}`} className="text-sm text-blue-600 hover:underline">{tenant.email}</a>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                <MapPin className="h-5 w-5" />URL da Loja
+              </h3>
+              <a href={storeUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">
+                {storeUrl}
+              </a>
+            </div>
+
+            {companyAddress && (companyAddress.company_address || companyAddress.company_city) && (
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-3">
+                  <MapPin className="h-5 w-5" />Endereço
+                </h3>
+                <div className="text-sm text-gray-600 space-y-0.5">
+                  <p>
+                    {[companyAddress.company_address, companyAddress.company_number].filter(Boolean).join(', ')}
+                    {companyAddress.company_complement ? ` — ${companyAddress.company_complement}` : ''}
+                  </p>
+                  {companyAddress.company_district && <p>{companyAddress.company_district}</p>}
+                  <p>
+                    {[companyAddress.company_city, companyAddress.company_state].filter(Boolean).join(' - ')}
+                    {companyAddress.company_cep ? ` • CEP ${companyAddress.company_cep}` : ''}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-4 text-center text-sm text-gray-600">
+            <p>© {new Date().getFullYear()} {tenant.name}. Todos os direitos reservados.</p>
+            <p className="mt-1">Powered by <strong>OrderZap</strong> - Sistema Multi-Tenant</p>
+          </div>
         </div>
       </footer>
 
