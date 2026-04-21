@@ -52,6 +52,7 @@ export default function TenantStorefront() {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [addingId, setAddingId] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Identidade do cliente
   const [identity, setIdentity] = useState<StorefrontIdentity | null>(null);
