@@ -299,6 +299,31 @@ export default function TenantStorefront() {
                   <a href={storeUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline break-all">{storeUrl}</a>
                 </div>
               </div>
+              {companyAddress && (companyAddress.company_address || companyAddress.company_city) && (
+                <div className="flex items-start gap-3">
+                  <Store className="h-5 w-5 text-orange-600 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium">Endereço</p>
+                    <p className="text-sm text-gray-600">
+                      {[
+                        companyAddress.company_address,
+                        companyAddress.company_number,
+                      ].filter(Boolean).join(', ')}
+                      {companyAddress.company_complement ? ` — ${companyAddress.company_complement}` : ''}
+                    </p>
+                    {companyAddress.company_district && (
+                      <p className="text-sm text-gray-600">{companyAddress.company_district}</p>
+                    )}
+                    <p className="text-sm text-gray-600">
+                      {[
+                        companyAddress.company_city,
+                        companyAddress.company_state,
+                      ].filter(Boolean).join(' - ')}
+                      {companyAddress.company_cep ? ` • CEP ${companyAddress.company_cep}` : ''}
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
