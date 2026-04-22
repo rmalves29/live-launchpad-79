@@ -1,6 +1,6 @@
 import { useTenantContext } from '@/contexts/TenantContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2, Wallet, Zap, Instagram } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, MessageSquare, CreditCard, Truck, Building2, Wallet, Zap, Instagram, Sparkles } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -73,6 +73,20 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
+  // InfinitePay Status
+  const { data: infinitepayIntegration, isLoading: infinitepayLoading } = useQuery({
+    queryKey: ['infinitepay-checklist-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('integration_infinitepay' as any)
+        .select('is_active, handle')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      return data as { is_active: boolean; handle: string | null } | null;
+    },
+    enabled: !!tenantId,
+  });
+
   // Melhor Envio Status
   const { data: shippingIntegration, isLoading: shippingLoading } = useQuery({
     queryKey: ['shipping-checklist-status', tenantId],
@@ -130,7 +144,7 @@ export default function IntegrationsChecklist() {
     enabled: !!tenantId,
   });
 
-  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || shippingLoading || blingLoading || olistLoading || instagramLoading;
+  const isLoading = zapiLoading || mpLoading || pagarmeLoading || appmaxLoading || infinitepayLoading || shippingLoading || blingLoading || olistLoading || instagramLoading;
 
   // Contagem de módulos ativos do Bling
   const blingActiveModules = blingIntegration ? [
@@ -152,21 +166,27 @@ export default function IntegrationsChecklist() {
   ].filter(Boolean).length : 0;
 
   // Determinar qual integração de pagamento está ativa
-  const activePaymentProvider = appmaxIntegration?.is_active 
-    ? 'appmax'
-    : mpIntegration?.is_active 
-      ? 'mercado_pago' 
-      : pagarmeIntegration?.is_active 
-        ? 'pagarme' 
-        : null;
+  const activePaymentProvider = infinitepayIntegration?.is_active
+    ? 'infinitepay'
+    : appmaxIntegration?.is_active 
+      ? 'appmax'
+      : mpIntegration?.is_active 
+        ? 'mercado_pago' 
+        : pagarmeIntegration?.is_active 
+          ? 'pagarme' 
+          : null;
 
   const getPaymentIcon = () => {
+    if (activePaymentProvider === 'infinitepay') return <Sparkles className="h-5 w-5" />;
     if (activePaymentProvider === 'appmax') return <Zap className="h-5 w-5" />;
     if (activePaymentProvider === 'pagarme') return <Wallet className="h-5 w-5" />;
     return <CreditCard className="h-5 w-5" />;
   };
 
   const getPaymentDetails = () => {
+    if (activePaymentProvider === 'infinitepay') {
+      return `InfinitePay (@${infinitepayIntegration?.handle || 'sem handle'})`;
+    }
     if (activePaymentProvider === 'appmax') {
       return `App Max (${appmaxIntegration?.environment === 'production' ? 'Produção' : 'Sandbox'})`;
     }
