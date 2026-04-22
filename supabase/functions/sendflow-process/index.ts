@@ -68,7 +68,7 @@ function applyPromotionalPriceFallback(template: string, product: Product): stri
 
   return template
     .split('\n')
-    .map((line) => {
+    .map((line): string | null => {
       if (!promoRegex.test(line)) {
         return line;
       }
@@ -82,12 +82,13 @@ function applyPromotionalPriceFallback(template: string, product: Product): stri
       const hasBasePriceOnSameLine = /\{\{?\s*(valor|valor_original)\s*\}?\}/i.test(line);
 
       if (!hasBasePriceOnSameLine) {
-        return line.replace(promoRegex, formatPrice(product.price));
+        // Sem preço promocional e {{valor_promo}} sozinho na linha → remove a linha inteira
+        return null;
       }
 
       return removePromotionalSegment(line);
     })
-    .filter((line) => line.trim().length > 0)
+    .filter((line): line is string => line !== null && line.trim().length > 0)
     .join('\n');
 }
 
