@@ -122,17 +122,34 @@ const SUFFIXES = ['', '', '', '', '']; // Disabled - use only registered templat
  * For bulk/mass messages: always prepends a random greeting.
  * Also adds invisible characters and minor emoji swaps.
  */
-export function addMessageVariation(message: string, isBulk: boolean = true): string {
+export interface MessageVariationOptions {
+  /** Prepend a random greeting (default: follows isBulk) */
+  prependGreeting?: boolean;
+  /** Randomly swap emojis (default: follows isBulk) */
+  swapEmojis?: boolean;
+  /** Insert invisible zero-width space (default: true) */
+  invisibleVariation?: boolean;
+}
+
+export function addMessageVariation(
+  message: string,
+  isBulk: boolean = true,
+  options?: MessageVariationOptions
+): string {
   let result = message;
-  
-  // For bulk/mass messages, always prepend a random greeting
-  if (isBulk && BULK_GREETINGS.length > 0) {
+
+  const prependGreeting = options?.prependGreeting ?? isBulk;
+  const swapEmojis = options?.swapEmojis ?? isBulk;
+  const invisibleVariation = options?.invisibleVariation ?? true;
+
+  // For bulk/mass messages, optionally prepend a random greeting
+  if (prependGreeting && BULK_GREETINGS.length > 0) {
     const greeting = BULK_GREETINGS[Math.floor(Math.random() * BULK_GREETINGS.length)];
     result = greeting + '\n' + result;
   }
-  
+
   // 30% chance: Swap emojis with alternatives (subtle anti-spam)
-  if (Math.random() < 0.30) {
+  if (swapEmojis && Math.random() < 0.30) {
     for (const [original, alternatives] of Object.entries(EMOJI_VARIATIONS)) {
       if (result.includes(original) && Math.random() < 0.5) {
         const replacement = alternatives[Math.floor(Math.random() * alternatives.length)];
@@ -141,16 +158,13 @@ export function addMessageVariation(message: string, isBulk: boolean = true): st
       }
     }
   }
-  
+
   // 60% chance: Add invisible variation (zero-width space) - anti-spam technique
-  if (Math.random() < 0.60) {
+  if (invisibleVariation && Math.random() < 0.60) {
     const pos = Math.floor(Math.random() * result.length);
     result = result.slice(0, pos) + '\u200B' + result.slice(pos);
   }
-  
-  // REMOVED: No longer adds random suffixes or extra line breaks
-  // System now strictly follows the registered template
-  
+
   return result;
 }
 

@@ -113,22 +113,24 @@ function personalizeMessage(template: string, product: Product): string {
   if (product.color && product.color.trim()) {
     message = message.replace(/\{\{?\s*cor\s*\}?\}/gi, product.color.trim());
   } else {
-    message = message.replace(/.*\{\{?\s*cor\s*\}?\}.*\n?/gi, '');
+    // Remove só a linha (sem consumir o \n seguinte) para preservar quebras estruturais
+    message = message.replace(/^.*\{\{?\s*cor\s*\}?\}.*$/gim, '');
   }
   
   if (product.size && product.size.trim()) {
     message = message.replace(/\{\{?\s*tamanho\s*\}?\}/gi, product.size.trim());
   } else {
-    message = message.replace(/.*\{\{?\s*tamanho\s*\}?\}.*\n?/gi, '');
+    message = message.replace(/^.*\{\{?\s*tamanho\s*\}?\}.*$/gim, '');
   }
   
   // {{observacao}} — remove line if empty (tolerates spaces like {{ observacao }})
   if (product.observation && product.observation.trim()) {
     message = message.replace(/\{\{?\s*observacao\s*\}?\}/gi, product.observation.trim());
   } else {
-    message = message.replace(/.*\{\{?\s*observacao\s*\}?\}.*\n?/gi, '');
+    message = message.replace(/^.*\{\{?\s*observacao\s*\}?\}.*$/gim, '');
   }
   
+  // Consolida no MÁXIMO 1 linha em branco entre blocos (preserva estrutura do template)
   message = message.replace(/\n{3,}/g, '\n\n');
   
   return message.trim();
@@ -164,7 +166,13 @@ async function sendGroupMessage(
   
   try {
     await simulateTyping(instanceId, token, clientToken, groupId);
-    const variedMessage = addMessageVariation(message, false);
+    // Modo "soft": preserva o template EXATAMENTE como configurado.
+    // Sem saudação automática, sem swap de emojis. Apenas zero-width space invisível como anti-spam.
+    const variedMessage = addMessageVariation(message, false, {
+      prependGreeting: false,
+      swapEmojis: false,
+      invisibleVariation: true,
+    });
 
     let url: string;
     let body: Record<string, unknown>;
