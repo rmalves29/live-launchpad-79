@@ -9,10 +9,11 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer, MessageSquare, ShoppingBag } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer, MessageSquare, ShoppingBag, Sparkles } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
+import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
@@ -110,6 +111,15 @@ export default function TenantIntegrationsPage() {
     queryFn: async () => {
       const { data } = await supabase.from('integration_appmax').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const { data: infinitepayIntegration } = useQuery({
+    queryKey: ['infinitepay-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('integration_infinitepay' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
+      return data as { is_active: boolean } | null;
     },
     enabled: !!tenantId,
   });
@@ -245,6 +255,12 @@ export default function TenantIntegrationsPage() {
             <span className="sm:hidden">AM</span>
             {appmaxIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          <TabsTrigger value="infinitepay" className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4" />
+            <span className="hidden sm:inline">InfinitePay</span>
+            <span className="sm:hidden">IP</span>
+            {infinitepayIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
           <TabsTrigger value="melhorenvio" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
             <span className="hidden sm:inline">Melhor Envio</span>
@@ -296,6 +312,9 @@ export default function TenantIntegrationsPage() {
         </TabsContent>
         <TabsContent value="appmax" className="mt-6">
           <AppmaxIntegration tenantId={tenantId} />
+        </TabsContent>
+        <TabsContent value="infinitepay" className="mt-6">
+          <InfinitePayIntegration tenantId={tenantId} />
         </TabsContent>
         <TabsContent value="melhorenvio" className="mt-6">
           <ShippingIntegrations tenantId={tenantId} />

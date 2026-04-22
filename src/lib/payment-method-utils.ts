@@ -23,6 +23,10 @@ const LABEL_MAP: Record<string, string> = {
   bank_transfer: 'Transferência Bancária',
   voucher: 'Vale',
   other: 'Outro',
+  infinitepay: 'InfinitePay',
+  infinitepay_pix: 'PIX (InfinitePay)',
+  infinitepay_credit: 'Cartão de Crédito (InfinitePay)',
+  infinitepay_debit: 'Cartão de Débito (InfinitePay)',
 };
 
 export function formatPaymentMethod(
