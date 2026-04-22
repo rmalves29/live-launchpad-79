@@ -49,11 +49,11 @@ function formatPrice(price: number): string {
 function removePromotionalSegment(line: string): string {
   return line
     .replace(
-      /(\s*[,;|/\\-]\s*)?(?:🤑|💸)?\s*\*?\s*(por|promo(?:cional)?|valor\s+promo(?:cional)?)\s*\*?\s*:?\s*\*?\s*\{\{?valor_promo\}?\}\*?/giu,
+      /(\s*[,;|/\\-]\s*)?(?:🤑|💸)?\s*\*?\s*(por|promo(?:cional)?|valor\s+promo(?:cional)?)\s*\*?\s*:?\s*\*?\s*\{\{?\s*valor_promo\s*\}?\}\*?/giu,
       ''
     )
     .replace(/(?:🤑|💸)/gu, '')
-    .replace(/\{\{?valor_promo\}?\}/gi, '')
+    .replace(/\{\{?\s*valor_promo\s*\}?\}/gi, '')
     .replace(/\s{2,}/g, ' ')
     .replace(/\s+([,.;!?])/g, '$1')
     .replace(/\*\*/g, '')
@@ -63,7 +63,7 @@ function removePromotionalSegment(line: string): string {
 }
 
 function applyPromotionalPriceFallback(template: string, product: Product): string {
-  const promoRegex = /\{\{?valor_promo\}?\}/gi;
+  const promoRegex = /\{\{?\s*valor_promo\s*\}?\}/gi;
   const hasPromotionalPrice = !!(product.promotional_price && product.promotional_price > 0);
 
   return template
@@ -79,7 +79,7 @@ function applyPromotionalPriceFallback(template: string, product: Product): stri
         return line.replace(promoRegex, formatPrice(product.promotional_price!));
       }
 
-      const hasBasePriceOnSameLine = /\{\{?(valor|valor_original)\}?\}/i.test(line);
+      const hasBasePriceOnSameLine = /\{\{?\s*(valor|valor_original)\s*\}?\}/i.test(line);
 
       if (!hasBasePriceOnSameLine) {
         return line.replace(promoRegex, formatPrice(product.price));
@@ -96,36 +96,36 @@ function personalizeMessage(template: string, product: Product): string {
   
   // {{valor}} and {{valor_original}} always show the BASE price (without discount)
   message = message
-    .replace(/\{\{?codigo\}?\}/gi, product.code.trim())
-    .replace(/\{\{?nome\}?\}/gi, product.name.trim())
-    .replace(/\{\{?valor\}?\}/gi, formatPrice(product.price));
+    .replace(/\{\{?\s*codigo\s*\}?\}/gi, product.code.trim())
+    .replace(/\{\{?\s*nome\s*\}?\}/gi, product.name.trim())
+    .replace(/\{\{?\s*valor\s*\}?\}/gi, formatPrice(product.price));
   
   // {{valor_original}} always shows the base price
   // {{valor_promo}} shows promo price if available, otherwise falls back to base price
   // or removes only the promo segment when the same line already contains {{valor}}/{{valor_original}}
-  message = message.replace(/\{\{?valor_original\}?\}/gi, formatPrice(product.price));
+  message = message.replace(/\{\{?\s*valor_original\s*\}?\}/gi, formatPrice(product.price));
   
   if (product.promotional_price && product.promotional_price > 0) {
-    message = message.replace(/\{\{?valor_promo\}?\}/gi, formatPrice(product.promotional_price));
+    message = message.replace(/\{\{?\s*valor_promo\s*\}?\}/gi, formatPrice(product.promotional_price));
   }
   
   if (product.color && product.color.trim()) {
-    message = message.replace(/\{\{?cor\}?\}/gi, product.color.trim());
+    message = message.replace(/\{\{?\s*cor\s*\}?\}/gi, product.color.trim());
   } else {
-    message = message.replace(/.*\{\{?cor\}?\}.*\n?/gi, '');
+    message = message.replace(/.*\{\{?\s*cor\s*\}?\}.*\n?/gi, '');
   }
   
   if (product.size && product.size.trim()) {
-    message = message.replace(/\{\{?tamanho\}?\}/gi, product.size.trim());
+    message = message.replace(/\{\{?\s*tamanho\s*\}?\}/gi, product.size.trim());
   } else {
-    message = message.replace(/.*\{\{?tamanho\}?\}.*\n?/gi, '');
+    message = message.replace(/.*\{\{?\s*tamanho\s*\}?\}.*\n?/gi, '');
   }
   
-  // {{observacao}} — remove line if empty
+  // {{observacao}} — remove line if empty (tolerates spaces like {{ observacao }})
   if (product.observation && product.observation.trim()) {
-    message = message.replace(/\{\{?observacao\}?\}/gi, product.observation.trim());
+    message = message.replace(/\{\{?\s*observacao\s*\}?\}/gi, product.observation.trim());
   } else {
-    message = message.replace(/.*\{\{?observacao\}?\}.*\n?/gi, '');
+    message = message.replace(/.*\{\{?\s*observacao\s*\}?\}.*\n?/gi, '');
   }
   
   message = message.replace(/\n{3,}/g, '\n\n');
