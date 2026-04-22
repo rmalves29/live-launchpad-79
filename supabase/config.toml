@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.bagy-sync]
 verify_jwt = false
+
+[functions.infinitepay-webhook]
+verify_jwt = false
+
+[functions.create-infinitepay-payment]
+verify_jwt = false
