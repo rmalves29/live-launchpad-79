@@ -166,7 +166,13 @@ async function sendGroupMessage(
   
   try {
     await simulateTyping(instanceId, token, clientToken, groupId);
-    const variedMessage = addMessageVariation(message, false);
+    // Modo "soft": preserva o template EXATAMENTE como configurado.
+    // Sem saudação automática, sem swap de emojis. Apenas zero-width space invisível como anti-spam.
+    const variedMessage = addMessageVariation(message, false, {
+      prependGreeting: false,
+      swapEmojis: false,
+      invisibleVariation: true,
+    });
 
     let url: string;
     let body: Record<string, unknown>;
