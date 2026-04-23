@@ -266,30 +266,61 @@ const PublicCheckout = () => {
   }, []);
 
   // Carregar configuração de desconto PIX da integração de pagamento ativa
+  // - Lê primeiro do sessionStorage (cache 10min) para resposta instantânea
+  // - Em paralelo, revalida no backend (4 integrações de uma vez via Promise.all)
+  // - Bloqueia o botão "Continuar" enquanto não houver valor confiável
   useEffect(() => {
+    if (!tenant?.id) return;
+
+    const cacheKey = `pix_discount_${tenant.id}`;
+    const CACHE_TTL_MS = 10 * 60 * 1000;
+
+    // 1) Tentar cache (resposta instantânea)
+    try {
+      const raw = sessionStorage.getItem(cacheKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { value: number; ts: number };
+        if (parsed && typeof parsed.value === 'number' && Date.now() - parsed.ts < CACHE_TTL_MS) {
+          console.log('[PublicCheckout] Desconto PIX (cache):', parsed.value + '%');
+          setPixDiscountPercent(parsed.value);
+          setPixDiscountLoading(false);
+        }
+      }
+    } catch { /* ignore */ }
+
+    // 2) Revalidar do backend em paralelo (mesmo se já temos cache)
     const loadPixDiscount = async () => {
-      if (!tenant?.id) return;
       try {
-        // Ordem de prioridade: AppMax > Pagar.me > Mercado Pago
-        const [appmaxRes, pagarmeRes, mpRes] = await Promise.all([
+        const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
           supabase.from('integration_appmax').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
           supabase.from('integration_pagarme').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
           supabase.from('integration_mp').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_infinitepay').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
         ]);
 
         let discount = 0;
         if (appmaxRes.data?.is_active && appmaxRes.data?.pix_discount_percent) {
-          discount = appmaxRes.data.pix_discount_percent;
+          discount = Number(appmaxRes.data.pix_discount_percent);
         } else if (pagarmeRes.data?.is_active && pagarmeRes.data?.pix_discount_percent) {
-          discount = pagarmeRes.data.pix_discount_percent;
+          discount = Number(pagarmeRes.data.pix_discount_percent);
         } else if (mpRes.data?.is_active && mpRes.data?.pix_discount_percent) {
-          discount = mpRes.data.pix_discount_percent;
+          discount = Number(mpRes.data.pix_discount_percent);
+        } else if (infRes.data?.is_active && infRes.data?.pix_discount_percent) {
+          discount = Number(infRes.data.pix_discount_percent);
         }
-        
-        console.log('[PublicCheckout] Desconto PIX configurado:', discount + '%');
+
+        console.log('[PublicCheckout] Desconto PIX (backend):', discount + '%');
         setPixDiscountPercent(discount);
+
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ value: discount, ts: Date.now() }));
+        } catch { /* ignore */ }
       } catch (error) {
         console.error('Erro ao carregar desconto PIX:', error);
+        // Falhou: deixar 0 para não travar o checkout (backend recalcula de qualquer jeito)
+        setPixDiscountPercent((prev) => (prev == null ? 0 : prev));
+      } finally {
+        setPixDiscountLoading(false);
       }
     };
     loadPixDiscount();
