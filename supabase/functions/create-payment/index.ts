@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { applyPaymentMethodLock } from "../_shared/payment-method-lock.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -487,7 +488,7 @@ serve(async (req) => {
       const productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
       const totalWithShipping = productsTotal + payload.shippingCost;
 
-      const orderBody = {
+      const orderBody: Record<string, any> = {
         "access-token": accessToken,
         total: totalWithShipping,
         products: payload.cartItems.map(item => ({
@@ -501,6 +502,9 @@ serve(async (req) => {
         discount: payload.coupon_discount || 0,
         freight_type: payload.shippingData?.service_name || "Retirada",
       };
+
+      // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
+      applyPaymentMethodLock("appmax", orderBody, payload.payment_method);
 
       console.log("[create-payment] Creating App Max order...");
       let orderRes: Response;
@@ -686,7 +690,7 @@ serve(async (req) => {
 
       const validCpf = (cpfDigits && cpfDigits.length === 11) ? cpfDigits : "";
 
-      const pagarmeBody = {
+      const pagarmeBody: Record<string, any> = {
         items,
         customer: {
           // Obrigatório no Core v5
@@ -753,6 +757,9 @@ serve(async (req) => {
           external_reference: externalReference,
         },
       };
+
+      // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
+      applyPaymentMethodLock("pagarme", pagarmeBody, payload.payment_method);
 
       const baseUrl = pagarmeIntegration.environment === 'sandbox' 
         ? "https://api.pagar.me/core/v5" 
@@ -830,7 +837,7 @@ serve(async (req) => {
     // Webhook URL for payment notifications (inclui tenant_id para resolver token correto)
     const webhookUrl = `${supabaseUrl}/functions/v1/mp-webhook?tenant_id=${payload.tenant_id}`;
 
-    const preferenceBody = {
+    const preferenceBody: Record<string, any> = {
       items,
       external_reference: externalReference,
       payer: {
@@ -847,6 +854,10 @@ serve(async (req) => {
       },
       auto_return: "approved",
     };
+
+    // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
+    applyPaymentMethodLock("mercado_pago", preferenceBody, payload.payment_method);
+
 
     const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",
