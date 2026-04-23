@@ -488,7 +488,7 @@ serve(async (req) => {
       const productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
       const totalWithShipping = productsTotal + payload.shippingCost;
 
-      const orderBody = {
+      const orderBody: Record<string, any> = {
         "access-token": accessToken,
         total: totalWithShipping,
         products: payload.cartItems.map(item => ({
@@ -502,6 +502,9 @@ serve(async (req) => {
         discount: payload.coupon_discount || 0,
         freight_type: payload.shippingData?.service_name || "Retirada",
       };
+
+      // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
+      applyPaymentMethodLock("appmax", orderBody, payload.payment_method);
 
       console.log("[create-payment] Creating App Max order...");
       let orderRes: Response;
