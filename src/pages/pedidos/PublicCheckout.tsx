@@ -160,7 +160,8 @@ const PublicCheckout = () => {
   // Pagamento
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
-  const [pixDiscountPercent, setPixDiscountPercent] = useState(0);
+  const [pixDiscountPercent, setPixDiscountPercent] = useState<number | null>(null);
+  const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
   const [pixDiscountValue, setPixDiscountValue] = useState(0);
 
   // Cupom
@@ -265,30 +266,61 @@ const PublicCheckout = () => {
   }, []);
 
   // Carregar configuração de desconto PIX da integração de pagamento ativa
+  // - Lê primeiro do sessionStorage (cache 10min) para resposta instantânea
+  // - Em paralelo, revalida no backend (4 integrações de uma vez via Promise.all)
+  // - Bloqueia o botão "Continuar" enquanto não houver valor confiável
   useEffect(() => {
+    if (!tenant?.id) return;
+
+    const cacheKey = `pix_discount_${tenant.id}`;
+    const CACHE_TTL_MS = 10 * 60 * 1000;
+
+    // 1) Tentar cache (resposta instantânea)
+    try {
+      const raw = sessionStorage.getItem(cacheKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { value: number; ts: number };
+        if (parsed && typeof parsed.value === 'number' && Date.now() - parsed.ts < CACHE_TTL_MS) {
+          console.log('[PublicCheckout] Desconto PIX (cache):', parsed.value + '%');
+          setPixDiscountPercent(parsed.value);
+          setPixDiscountLoading(false);
+        }
+      }
+    } catch { /* ignore */ }
+
+    // 2) Revalidar do backend em paralelo (mesmo se já temos cache)
     const loadPixDiscount = async () => {
-      if (!tenant?.id) return;
       try {
-        // Ordem de prioridade: AppMax > Pagar.me > Mercado Pago
-        const [appmaxRes, pagarmeRes, mpRes] = await Promise.all([
+        const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
           supabase.from('integration_appmax').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
           supabase.from('integration_pagarme').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
           supabase.from('integration_mp').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_infinitepay').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
         ]);
 
         let discount = 0;
         if (appmaxRes.data?.is_active && appmaxRes.data?.pix_discount_percent) {
-          discount = appmaxRes.data.pix_discount_percent;
+          discount = Number(appmaxRes.data.pix_discount_percent);
         } else if (pagarmeRes.data?.is_active && pagarmeRes.data?.pix_discount_percent) {
-          discount = pagarmeRes.data.pix_discount_percent;
+          discount = Number(pagarmeRes.data.pix_discount_percent);
         } else if (mpRes.data?.is_active && mpRes.data?.pix_discount_percent) {
-          discount = mpRes.data.pix_discount_percent;
+          discount = Number(mpRes.data.pix_discount_percent);
+        } else if (infRes.data?.is_active && infRes.data?.pix_discount_percent) {
+          discount = Number(infRes.data.pix_discount_percent);
         }
-        
-        console.log('[PublicCheckout] Desconto PIX configurado:', discount + '%');
+
+        console.log('[PublicCheckout] Desconto PIX (backend):', discount + '%');
         setPixDiscountPercent(discount);
+
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify({ value: discount, ts: Date.now() }));
+        } catch { /* ignore */ }
       } catch (error) {
         console.error('Erro ao carregar desconto PIX:', error);
+        // Falhou: deixar 0 para não travar o checkout (backend recalcula de qualquer jeito)
+        setPixDiscountPercent((prev) => (prev == null ? 0 : prev));
+      } finally {
+        setPixDiscountLoading(false);
       }
     };
     loadPixDiscount();
@@ -749,8 +781,9 @@ const PublicCheckout = () => {
       // Calcular total combinado de todos os pedidos
       const allItems = ordersToProcess.flatMap(order => order.items);
       const productsTotal = allItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
-      const pixDiscount = paymentMethod === 'pix' && pixDiscountPercent > 0
-        ? Math.round((productsTotal * pixDiscountPercent / 100) * 100) / 100
+      const effectivePixPercentForPayment = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
+      const pixDiscount = paymentMethod === 'pix' && effectivePixPercentForPayment > 0
+        ? Math.round((productsTotal * effectivePixPercentForPayment / 100) * 100) / 100
         : 0;
       const totalWithDiscount = Math.max(0, productsTotal - couponDiscount - pixDiscount);
       const totalAmount = totalWithDiscount + shippingCost;
@@ -1120,8 +1153,11 @@ const PublicCheckout = () => {
   const allSelectedItems = selectedOrders.flatMap(order => order.items);
 
   // Recalcular desconto PIX quando método de pagamento ou subtotal mudam
-  const currentPixDiscount = paymentMethod === 'pix' && pixDiscountPercent > 0
-    ? Math.round((combinedSubtotal * pixDiscountPercent / 100) * 100) / 100
+  // Trata pixDiscountPercent === null (carregando) como 0 para a UI; o backend
+  // sempre recalcula o valor real antes de criar o pedido (blindagem servidor).
+  const effectivePixPercent = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
+  const currentPixDiscount = paymentMethod === 'pix' && effectivePixPercent > 0
+    ? Math.round((combinedSubtotal * effectivePixPercent / 100) * 100) / 100
     : 0;
 
   // Função para formatar telefone com máscara
@@ -1643,9 +1679,11 @@ const PublicCheckout = () => {
                           <input type="radio" checked={paymentMethod === 'pix'} onChange={() => setPaymentMethod('pix')} className="w-4 h-4" />
                           <div>
                             <span className="font-medium">PIX</span>
-                            {pixDiscountPercent > 0 && (
-                              <Badge className="ml-2 bg-emerald-500 text-white text-xs">{pixDiscountPercent}% OFF</Badge>
-                            )}
+                            {pixDiscountLoading ? (
+                              <Badge variant="secondary" className="ml-2 text-xs">Carregando…</Badge>
+                            ) : effectivePixPercent > 0 ? (
+                              <Badge className="ml-2 bg-emerald-500 text-white text-xs">{effectivePixPercent}% OFF</Badge>
+                            ) : null}
                           </div>
                         </div>
                         {currentPixDiscount > 0 && (
@@ -1743,12 +1781,19 @@ const PublicCheckout = () => {
                       <span>{formatCurrency(combinedSubtotal)}</span>
                     </div>
 
-                    {currentPixDiscount > 0 && (
+                    {pixDiscountLoading && paymentMethod === 'pix' ? (
+                      <div className="flex justify-between items-center text-emerald-600/70">
+                        <span>Desconto PIX:</span>
+                        <span className="inline-flex items-center gap-1 text-xs">
+                          <Loader2 className="h-3 w-3 animate-spin" /> calculando…
+                        </span>
+                      </div>
+                    ) : currentPixDiscount > 0 ? (
                       <div className="flex justify-between items-center text-emerald-600">
-                        <span>Desconto PIX ({pixDiscountPercent}%):</span>
+                        <span>Desconto PIX ({effectivePixPercent}%):</span>
                         <span>- {formatCurrency(currentPixDiscount)}</span>
                       </div>
-                    )}
+                    ) : null}
                     
                     {selectedShipping !== 'retirada' && (
                       <div className="flex justify-between items-center">
@@ -1780,14 +1825,14 @@ const PublicCheckout = () => {
                   <Button
                     className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 text-lg shadow-lg shadow-emerald-500/25"
                     onClick={() => processMultipleOrdersPayment(selectedOrders)}
-                    disabled={loadingPayment}
+                    disabled={loadingPayment || (paymentMethod === 'pix' && pixDiscountLoading)}
                   >
-                    {loadingPayment ? (
+                    {loadingPayment || (paymentMethod === 'pix' && pixDiscountLoading) ? (
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     ) : (
                       <CreditCard className="h-4 w-4 mr-2" />
                     )}
-                    Fazer Pagamento Agora
+                    {paymentMethod === 'pix' && pixDiscountLoading ? 'Carregando desconto…' : 'Fazer Pagamento Agora'}
                   </Button>
                 </CardContent>
               </Card>
