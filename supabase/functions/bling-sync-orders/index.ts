@@ -538,9 +538,9 @@ async function getOrCreateBlingContactId(
   if (customer?.bling_contact_id) {
     console.log(`[bling-sync-orders] Using cached bling_contact_id: ${customer.bling_contact_id}`);
     
-    // Atualizar o endereço no Bling para garantir dados atualizados
-    await updateBlingContactAddress(customer.bling_contact_id, accessToken, buildAddressData());
-    
+    // Atualizar endereço no Bling com retry automático em modo "forçado" se falhar
+    await updateBlingContactWithRetry(supabase, tenantId, customer.bling_contact_id, accessToken, buildAddressData(), { trigger: 'order_sync', orderId: order.id });
+
     return customer.bling_contact_id;
   }
 
