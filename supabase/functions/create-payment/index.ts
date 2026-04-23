@@ -837,7 +837,7 @@ serve(async (req) => {
     // Webhook URL for payment notifications (inclui tenant_id para resolver token correto)
     const webhookUrl = `${supabaseUrl}/functions/v1/mp-webhook?tenant_id=${payload.tenant_id}`;
 
-    const preferenceBody = {
+    const preferenceBody: Record<string, any> = {
       items,
       external_reference: externalReference,
       payer: {
@@ -854,6 +854,10 @@ serve(async (req) => {
       },
       auto_return: "approved",
     };
+
+    // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
+    applyPaymentMethodLock("mercado_pago", preferenceBody, payload.payment_method);
+
 
     const mpRes = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",
