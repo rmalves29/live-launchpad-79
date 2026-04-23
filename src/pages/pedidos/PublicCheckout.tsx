@@ -160,7 +160,8 @@ const PublicCheckout = () => {
   // Pagamento
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
-  const [pixDiscountPercent, setPixDiscountPercent] = useState(0);
+  const [pixDiscountPercent, setPixDiscountPercent] = useState<number | null>(null);
+  const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
   const [pixDiscountValue, setPixDiscountValue] = useState(0);
 
   // Cupom
