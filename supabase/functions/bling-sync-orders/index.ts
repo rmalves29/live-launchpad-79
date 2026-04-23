@@ -617,9 +617,9 @@ async function getOrCreateBlingContactId(
   if (foundContactId) {
     console.log(`[bling-sync-orders] Found existing Bling contact: ${foundContactId}`);
     
-    // Atualizar o endereço no Bling para garantir dados atualizados
-    await updateBlingContactAddress(foundContactId, accessToken, buildAddressData());
-    
+    // Atualizar endereço no Bling com retry automático em modo "forçado" se falhar
+    await updateBlingContactWithRetry(supabase, tenantId, foundContactId, accessToken, buildAddressData(), { trigger: 'order_sync', orderId: order.id });
+
     if (customer?.id) {
       await supabase
         .from('customers')
