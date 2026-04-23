@@ -690,7 +690,7 @@ serve(async (req) => {
 
       const validCpf = (cpfDigits && cpfDigits.length === 11) ? cpfDigits : "";
 
-      const pagarmeBody = {
+      const pagarmeBody: Record<string, any> = {
         items,
         customer: {
           // Obrigatório no Core v5
@@ -757,6 +757,9 @@ serve(async (req) => {
           external_reference: externalReference,
         },
       };
+
+      // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
+      applyPaymentMethodLock("pagarme", pagarmeBody, payload.payment_method);
 
       const baseUrl = pagarmeIntegration.environment === 'sandbox' 
         ? "https://api.pagar.me/core/v5" 
