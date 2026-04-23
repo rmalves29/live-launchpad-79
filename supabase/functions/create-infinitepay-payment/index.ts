@@ -136,6 +136,28 @@ serve(async (req) => {
     // 3) Persistir endereço + frete + descontos no(s) pedido(s)
     const orderIds = (body.order_ids?.length ? body.order_ids : [body.order_id]).filter(Boolean);
     const freightNote = buildFreightNote(body.shippingData, body.shippingCost);
+
+    // === BLINDAGEM SERVIDOR: recalcular desconto PIX (fonte de verdade) ===
+    {
+      const productsSubtotalForDiscount = body.cartItems.reduce(
+        (s, it) => s + Number(it.unit_price) * Number(it.qty),
+        0,
+      );
+      const resolved = await resolvePixDiscount(
+        sb,
+        body.tenant_id,
+        body.payment_method,
+        productsSubtotalForDiscount,
+      );
+      const incoming = toNumber(body.pix_discount, 0);
+      if (Math.abs(incoming - resolved.value) > 0.01) {
+        console.log(
+          `[create-infinitepay-payment] PIX discount override: incoming=${incoming.toFixed(2)} → server=${resolved.value.toFixed(2)} (source=${resolved.source})`,
+        );
+      }
+      body.pix_discount = resolved.value;
+    }
+
     const pixDiscountValue = toNumber(body.pix_discount, 0);
     const couponDiscountValue = toNumber(body.coupon_discount, 0);
     const shippingValue = toNumber(body.shippingCost, 0);
