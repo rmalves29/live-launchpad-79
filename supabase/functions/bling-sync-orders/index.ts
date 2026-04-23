@@ -364,7 +364,9 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
 }
 
 /**
- * Update an existing Bling contact's address data
+ * Update an existing Bling contact's address data.
+ * When `force=true`, uses a longer timeout and skips any short-circuit logic
+ * (this is used as the automatic retry path when the first attempt fails).
  */
 async function updateBlingContactAddress(
   contactId: number,
@@ -381,8 +383,10 @@ async function updateBlingContactAddress(
     cep: string;
     municipio: string;
     uf: string;
-  }
-): Promise<boolean> {
+  },
+  opts: { force?: boolean } = {}
+): Promise<{ ok: boolean; status?: number; error?: string }> {
+  const force = opts.force === true;
   try {
     // Bling API V3 requires "geral" wrapper for address data
     const payload = {
@@ -403,33 +407,95 @@ async function updateBlingContactAddress(
       },
     };
 
-    console.log(`[bling-sync-orders] Updating contact ${contactId} address:`, JSON.stringify(payload, null, 2));
+    console.log(`[bling-sync-orders] Updating contact ${contactId} address (force=${force}):`, JSON.stringify(payload, null, 2));
 
-    const { response: updateRes, text: updateText } = await blingFetchWithRetry(
-      `${BLING_API_URL}/contatos/${contactId}`,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
+    // Forced mode = larger timeout (15s) and more retry attempts at the HTTP layer
+    const timeoutMs = force ? 15000 : 8000;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+    let updateRes: Response;
+    let updateText: string;
+    try {
+      const result = await blingFetchWithRetry(
+        `${BLING_API_URL}/contatos/${contactId}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: ctrl.signal,
         },
-        body: JSON.stringify(payload),
-      },
-      { label: 'update-contact-address' }
-    );
-
-    if (!updateRes.ok) {
-      console.log(`[bling-sync-orders] Failed to update contact ${contactId}: ${updateRes.status} - ${updateText}`);
-      return false;
+        { label: `update-contact-address${force ? '-forced' : ''}`, maxAttempts: force ? 6 : 5 }
+      );
+      updateRes = result.response;
+      updateText = result.text;
+    } finally {
+      clearTimeout(timer);
     }
 
-    console.log(`[bling-sync-orders] Contact ${contactId} address updated successfully`);
-    return true;
+    if (!updateRes.ok) {
+      const errMsg = `HTTP ${updateRes.status} - ${updateText.slice(0, 300)}`;
+      console.log(`[bling-sync-orders] Failed to update contact ${contactId} (force=${force}): ${errMsg}`);
+      return { ok: false, status: updateRes.status, error: errMsg };
+    }
+
+    console.log(`[bling-sync-orders] Contact ${contactId} address updated successfully (force=${force})`);
+    return { ok: true, status: updateRes.status };
   } catch (e: any) {
-    console.log(`[bling-sync-orders] Error updating contact ${contactId}:`, String(e?.message || e));
-    return false;
+    const msg = String(e?.message || e);
+    console.log(`[bling-sync-orders] Error updating contact ${contactId} (force=${force}):`, msg);
+    return { ok: false, error: msg };
   }
+}
+
+/**
+ * Update Bling contact with automatic retry in "forced" mode if the first
+ * attempt fails. Logs each attempt to bling_sync_logs.
+ *
+ * Even if both attempts fail, the order creation can proceed because the
+ * order payload always includes `transporte.contato` with the correct address.
+ */
+async function updateBlingContactWithRetry(
+  supabase: any,
+  tenantId: string,
+  contactId: number,
+  accessToken: string,
+  addressData: Parameters<typeof updateBlingContactAddress>[2],
+  context: { trigger: 'order_sync' | 'manual'; orderId?: string | number }
+): Promise<{ ok: boolean; attempts: number; forced: boolean }> {
+  // Attempt 1 — normal
+  const first = await updateBlingContactAddress(contactId, accessToken, addressData, { force: false });
+  await logBlingSync(supabase, tenantId, 'update_contact_address', 'contact', context.orderId ?? null, contactId, first.ok ? 'success' : 'error', {
+    attempt: 1,
+    forced: false,
+    trigger: context.trigger,
+    status: first.status,
+    error_reason: first.ok ? undefined : first.error,
+  });
+
+  if (first.ok) {
+    return { ok: true, attempts: 1, forced: false };
+  }
+
+  // Wait 1s then retry in forced mode
+  console.log(`[bling-sync-orders] Contact ${contactId} update failed — retrying in forced mode after 1s`);
+  await delay(1000);
+
+  const second = await updateBlingContactAddress(contactId, accessToken, addressData, { force: true });
+  await logBlingSync(supabase, tenantId, 'update_contact_address', 'contact', context.orderId ?? null, contactId, second.ok ? 'success' : 'error', {
+    attempt: 2,
+    forced: true,
+    trigger: context.trigger,
+    status: second.status,
+    error_reason: second.ok ? undefined : second.error,
+    previous_error: first.error,
+  });
+
+  return { ok: second.ok, attempts: 2, forced: true };
 }
 
 async function getOrCreateBlingContactId(
@@ -472,9 +538,9 @@ async function getOrCreateBlingContactId(
   if (customer?.bling_contact_id) {
     console.log(`[bling-sync-orders] Using cached bling_contact_id: ${customer.bling_contact_id}`);
     
-    // Atualizar o endereço no Bling para garantir dados atualizados
-    await updateBlingContactAddress(customer.bling_contact_id, accessToken, buildAddressData());
-    
+    // Atualizar endereço no Bling com retry automático em modo "forçado" se falhar
+    await updateBlingContactWithRetry(supabase, tenantId, customer.bling_contact_id, accessToken, buildAddressData(), { trigger: 'order_sync', orderId: order.id });
+
     return customer.bling_contact_id;
   }
 
@@ -551,9 +617,9 @@ async function getOrCreateBlingContactId(
   if (foundContactId) {
     console.log(`[bling-sync-orders] Found existing Bling contact: ${foundContactId}`);
     
-    // Atualizar o endereço no Bling para garantir dados atualizados
-    await updateBlingContactAddress(foundContactId, accessToken, buildAddressData());
-    
+    // Atualizar endereço no Bling com retry automático em modo "forçado" se falhar
+    await updateBlingContactWithRetry(supabase, tenantId, foundContactId, accessToken, buildAddressData(), { trigger: 'order_sync', orderId: order.id });
+
     if (customer?.id) {
       await supabase
         .from('customers')
