@@ -1,55 +1,72 @@
 
 
-## Replicar templates da Mania de Mulher em toda empresa nova
+## Travar método de pagamento (PIX/Cartão) em todos os gateways — atuais e futuros
 
-### Resposta direta à dúvida
+### Resposta direta
 
-**Sim, fica automático.** Vou criar uma função no banco que dispara sozinha toda vez que uma empresa nova é cadastrada — você não precisa rodar nada manual depois.
+**Sim, dá para deixar programado.** Vou centralizar a lógica de restrição num único lugar do código, de forma que:
+1. **Funcione hoje** para Mercado Pago, Pagar.me, Appmax e InfinitePay
+2. **Funcione automaticamente** para qualquer gateway novo que for adicionado no futuro, exigindo apenas implementar uma função padrão `applyPaymentMethodLock()` no novo gateway
 
-### O que será replicado (cópia exata da Mania de Mulher)
+### Como vai funcionar
 
-**1. Templates da tabela `whatsapp_templates`** (8 templates)
-- `ITEM_ADDED` — Item Adicionado ao Pedido
-- `PAID_ORDER` — Pedido Pago
-- `PRODUCT_CANCELED` — Produto Cancelado
-- `TRACKING` — Código de Rastreio
-- `BLOCKED_CUSTOMER` — Mensagem de Cliente Bloqueado
-- `MSG_MASSA` — Mensagem em Massa
-- `SENDFLOW` — Divulgação em Grupos
-- `DM_INSTAGRAM_CADASTRO` — Cadastro Sistema
+**Regra única, válida para todos os gateways:**
 
-**2. Campos de template/flags de `integration_whatsapp`** (apenas configurações, sem credenciais Z-API)
-- `template_solicitacao`, `template_com_link`, `template_item_added`, `item_added_confirmation_template`
-- `blocked_customer_template`
-- `send_item_added_msg`, `send_paid_order_msg`, `send_product_canceled_msg`, `send_out_of_stock_msg`
-- `confirmation_timeout_minutes` (30 min)
-- `consent_protection_enabled`
+| Cliente escolheu | Gateway mostra | Desconto PIX |
+|---|---|---|
+| **PIX** | Apenas PIX (cartão e boleto bloqueados) | ✅ Aplicado |
+| **Cartão** | Apenas cartão (PIX e boleto bloqueados) | ❌ Não aplicado |
 
-### O que NÃO será replicado (continua zerado / configurado pela empresa)
+### Implementação por gateway (atuais)
 
-- Credenciais Z-API (`zapi_instance_id`, `zapi_token`, `zapi_client_token`, `instance_name`, `webhook_secret`, `connected_phone`)
-- Qualquer integração externa (Bling, Mercado Pago, Pagar.me, InfinitePay, Melhor Envio, Correios, Olist, Omie, Bagy, Instagram)
-- Presentes, cupons, opções de frete customizado, produtos, clientes, pedidos
-- Flags do tenant (`enable_live`, `enable_sendflow`, `plan_type`, etc.)
+| Gateway | Como travar |
+|---|---|
+| **Mercado Pago** | Adicionar `payment_methods.excluded_payment_types` na preference (bloqueia `credit_card`, `debit_card`, `ticket`, `atm` quando PIX; bloqueia `bank_transfer` quando cartão) + `default_payment_method_id` |
+| **Pagar.me** | Trocar `accepted_payment_methods` para `["pix"]` ou `["credit_card"]` conforme escolha; remover blocos não usados da payload |
+| **Appmax** | Enviar `payment_type: "Pix"` ou `"CreditCard"` e omitir as opções não escolhidas |
+| **InfinitePay** | Adicionar parâmetro `?payment_method=pix` ou `?payment_method=credit_card` na URL do checkout retornada |
 
-### Como vai funcionar tecnicamente
+### Como fica preparado para gateways futuros
 
-1. **Função `clone_mania_de_mulher_templates(new_tenant_id uuid)`** no banco — copia os 8 templates de `whatsapp_templates` e cria a linha em `integration_whatsapp` com os campos de template/flags da Mania de Mulher (gerando `instance_name` e `webhook_secret` únicos vazios para a nova empresa).
-2. **Trigger `AFTER INSERT ON tenants`** — chama a função automaticamente. Toda empresa nova nasce com os templates já configurados.
-3. **Idempotência**: a função verifica se a nova empresa já tem templates antes de inserir, então rodar de novo não duplica nada.
-4. **Variáveis dinâmicas**: os templates usam `{{produto}}`, `{{nome}}`, `{{order_id}}`, etc. — esses placeholders são resolvidos em runtime pelo SendFlow/zapi-send-*, então cada empresa preenche com os próprios dados sem precisar editar o template.
+Vou criar um **módulo compartilhado** `supabase/functions/_shared/payment-method-lock.ts` com:
 
-### Empresas já existentes
+```text
+applyPaymentMethodLock(provider, payload, paymentMethod)
+  ├─ 'mercado_pago' → injeta excluded_payment_types
+  ├─ 'pagarme'      → ajusta accepted_payment_methods
+  ├─ 'appmax'       → define payment_type
+  ├─ 'infinitepay'  → ajusta URL
+  └─ <novo>         → fallback documentado: TODO + log de aviso
+```
 
-Não serão afetadas — a trigger só dispara em `INSERT`. Se você quiser, posso rodar uma vez manualmente para empresas específicas que ainda estão sem templates (me diga quais).
+Quando um gateway novo for adicionado (ex: PagSeguro, Asaas, Stripe BR), basta:
+1. Adicionar um `case 'novo_gateway':` nessa função
+2. A edge function do novo gateway chama `applyPaymentMethodLock('novo_gateway', payload, body.payment_method)` antes de enviar para a API externa
 
-### Validação após deploy
+**Documentação inline** no arquivo deixará claro o padrão para futuras integrações — um checklist no topo do arquivo lembrando: "Todo gateway novo DEVE chamar esta função antes de criar o link de pagamento."
 
-Criar uma empresa de teste em `/empresas` → entrar em **Configurações → WhatsApp** → confirmar que os 8 templates aparecem listados e os flags estão como na Mania de Mulher, com os campos de credencial Z-API vazios.
+### O que NÃO muda
+
+- UI do checkout (continua com PIX/Cartão)
+- Webhooks de confirmação
+- Página de retorno `/pagamento/retorno`
+- Cálculo do desconto PIX
+- Templates de WhatsApp e sincronização Bling
 
 ### Detalhes técnicos
 
-- 1 migração SQL: cria função `clone_mania_de_mulher_templates(uuid)` + trigger `trg_clone_templates_on_new_tenant` em `tenants`
-- Tenant fonte hardcoded: `08f2b1b9-3988-489e-8186-c60f0c0b0622` (Mania de Mulher)
-- Sem alterações em frontend nem em edge functions
+**Arquivos criados:**
+- `supabase/functions/_shared/payment-method-lock.ts` — função central com switch por provider + JSDoc com instruções para gateways novos
+
+**Arquivos editados:**
+- `supabase/functions/create-payment/index.ts` — chamar `applyPaymentMethodLock` para MP, Pagar.me e Appmax antes de enviar
+- `supabase/functions/create-infinitepay-payment/index.ts` — chamar `applyPaymentMethodLock` antes de retornar a URL
+
+**Sem alterações em:** banco de dados, frontend, webhooks, página de retorno.
+
+### Validação após deploy
+
+Para cada gateway ativo (MP, Pagar.me, Appmax, InfinitePay):
+1. Criar pedido teste, escolher **PIX** → confirmar que o gateway mostra **apenas PIX**
+2. Repetir escolhendo **Cartão** → confirmar que mostra **apenas cartão** e o valor **não tem desconto PIX**
 
