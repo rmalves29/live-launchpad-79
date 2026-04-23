@@ -1,72 +1,86 @@
 
 
-## Travar método de pagamento (PIX/Cartão) em todos os gateways — atuais e futuros
+## Forçar atualização do cadastro no Bling com retry automático em caso de erro
 
 ### Resposta direta
 
-**Sim, dá para deixar programado.** Vou centralizar a lógica de restrição num único lugar do código, de forma que:
-1. **Funcione hoje** para Mercado Pago, Pagar.me, Appmax e InfinitePay
-2. **Funcione automaticamente** para qualquer gateway novo que for adicionado no futuro, exigindo apenas implementar uma função padrão `applyPaymentMethodLock()` no novo gateway
+Quando a atualização automática do cadastro do cliente no Bling falhar (timeout, erro 4xx/5xx, contato bloqueado, etc.), o sistema vai **automaticamente tentar de novo em modo "forçado"** — sem precisar de clique manual.
 
 ### Como vai funcionar
 
-**Regra única, válida para todos os gateways:**
-
-| Cliente escolheu | Gateway mostra | Desconto PIX |
-|---|---|---|
-| **PIX** | Apenas PIX (cartão e boleto bloqueados) | ✅ Aplicado |
-| **Cartão** | Apenas cartão (PIX e boleto bloqueados) | ❌ Não aplicado |
-
-### Implementação por gateway (atuais)
-
-| Gateway | Como travar |
-|---|---|
-| **Mercado Pago** | Adicionar `payment_methods.excluded_payment_types` na preference (bloqueia `credit_card`, `debit_card`, `ticket`, `atm` quando PIX; bloqueia `bank_transfer` quando cartão) + `default_payment_method_id` |
-| **Pagar.me** | Trocar `accepted_payment_methods` para `["pix"]` ou `["credit_card"]` conforme escolha; remover blocos não usados da payload |
-| **Appmax** | Enviar `payment_type: "Pix"` ou `"CreditCard"` e omitir as opções não escolhidas |
-| **InfinitePay** | Adicionar parâmetro `?payment_method=pix` ou `?payment_method=credit_card` na URL do checkout retornada |
-
-### Como fica preparado para gateways futuros
-
-Vou criar um **módulo compartilhado** `supabase/functions/_shared/payment-method-lock.ts` com:
+**Fluxo novo na criação do pedido no Bling** (`bling-sync-orders`):
 
 ```text
-applyPaymentMethodLock(provider, payload, paymentMethod)
-  ├─ 'mercado_pago' → injeta excluded_payment_types
-  ├─ 'pagarme'      → ajusta accepted_payment_methods
-  ├─ 'appmax'       → define payment_type
-  ├─ 'infinitepay'  → ajusta URL
-  └─ <novo>         → fallback documentado: TODO + log de aviso
+1. Resolver contato no Bling (busca ou cria)
+2. Tentar atualizar cadastro (PUT /contatos/{id})
+   ├─ Sucesso → segue para criar pedido
+   └─ Erro    → aguarda 1s e RETRY em modo forçado
+                ├─ Sucesso → segue para criar pedido
+                └─ Erro    → segue para criar pedido + log de aviso
+3. Criar pedido no Bling SEMPRE com transporte.contato.endereco completo
+   (garante endereço certo no pedido mesmo se contato continuar errado)
 ```
 
-Quando um gateway novo for adicionado (ex: PagSeguro, Asaas, Stripe BR), basta:
-1. Adicionar um `case 'novo_gateway':` nessa função
-2. A edge function do novo gateway chama `applyPaymentMethodLock('novo_gateway', payload, body.payment_method)` antes de enviar para a API externa
+**Modo "forçado" (retry):**
+- Ignora qualquer cache/short-circuit interno
+- Reenvia o payload completo do cadastro (nome, endereço, telefone, CPF)
+- Usa timeout maior (15s em vez de 8s)
+- Registra tentativa em `bling_sync_logs` com flag `forced: true`
 
-**Documentação inline** no arquivo deixará claro o padrão para futuras integrações — um checklist no topo do arquivo lembrando: "Todo gateway novo DEVE chamar esta função antes de criar o link de pagamento."
+### Aplicação em todas as 3 superfícies
+
+| Onde | Comportamento |
+|---|---|
+| **Pedido novo (auto-sync)** | Tenta normal → se falhar, retry forçado automático |
+| **Botão "Atualizar Endereço no Bling"** (no `ViewOrderDialog`) | Já força sempre (passa `force: true`) |
+| **"Atualizar Cadastro de Clientes no Bling"** (em massa) | Já força sempre (passa `force: true`) |
+
+### Garantia adicional: endereço no pedido independente do contato
+
+Mesmo se as 2 tentativas de atualizar o contato falharem, o **pedido criado no Bling** vai sair com o endereço correto, porque o payload do pedido passa a incluir explicitamente:
+
+```text
+transporte.contato: {
+  nome, endereco, numero, complemento,
+  bairro, cep, municipio, uf
+}
+```
+
+Isso resolve definitivamente o problema dos pedidos 5905 e 5922 (contato desatualizado → pedido sai com endereço errado).
 
 ### O que NÃO muda
 
-- UI do checkout (continua com PIX/Cartão)
-- Webhooks de confirmação
-- Página de retorno `/pagamento/retorno`
-- Cálculo do desconto PIX
-- Templates de WhatsApp e sincronização Bling
+- Frontend (botões já existentes continuam idênticos)
+- Tabelas, RLS, triggers
+- Lógica de criação do contato (busca CPF → telefone → nome)
+- Demais integrações (Olist, Omie, Bagy)
 
 ### Detalhes técnicos
 
-**Arquivos criados:**
-- `supabase/functions/_shared/payment-method-lock.ts` — função central com switch por provider + JSDoc com instruções para gateways novos
-
 **Arquivos editados:**
-- `supabase/functions/create-payment/index.ts` — chamar `applyPaymentMethodLock` para MP, Pagar.me e Appmax antes de enviar
-- `supabase/functions/create-infinitepay-payment/index.ts` — chamar `applyPaymentMethodLock` antes de retornar a URL
 
-**Sem alterações em:** banco de dados, frontend, webhooks, página de retorno.
+- `supabase/functions/bling-sync-orders/index.ts`
+  - Função `updateBlingContactAddress`: aceitar parâmetro `force: boolean`; em modo forçado, pular qualquer short-circuit e usar timeout 15s
+  - Bloco de criação de pedido: envolver chamada de update em try/catch com 1 retry automático em modo forçado após 1s
+  - Payload de criação do pedido: adicionar `transporte.contato` completo com endereço do nosso banco
+
+- `supabase/functions/sync-address-bling/index.ts`
+  - Aceitar `force: boolean` no body (default `true`)
+  - Quando `true`, pular short-circuits e sempre executar PUT no contato + PUT no transporte
+
+- `src/components/integrations/BlingBulkAddressSync.tsx`
+  - Enviar `force: true` em todas as 3 ações (single, bulk, retry)
+
+**Logs estruturados** em `bling_sync_logs` com:
+- `attempt: 1` (normal) ou `attempt: 2` (forçado)
+- `error_reason` em caso de falha
+- `forced: boolean`
+
+**Sem migrações de banco. Sem novos secrets.**
 
 ### Validação após deploy
 
-Para cada gateway ativo (MP, Pagar.me, Appmax, InfinitePay):
-1. Criar pedido teste, escolher **PIX** → confirmar que o gateway mostra **apenas PIX**
-2. Repetir escolhendo **Cartão** → confirmar que mostra **apenas cartão** e o valor **não tem desconto PIX**
+1. Criar pedido teste para cliente cujo cadastro Bling esteja bloqueado/desatualizado → confirmar nos logs da função `bling-sync-orders` as 2 tentativas (normal + forçado), e o pedido aparecer no Bling com endereço correto via `transporte.contato`.
+2. Rodar correção retroativa para pedidos **5905** e **5922** via botão "Atualizar Cadastro" (massa) com filtro de data cobrindo eles → confirmar contatos atualizados no Bling.
+3. Conferir entradas em `bling_sync_logs` mostrando `attempt: 2, forced: true` quando aplicável.
 
