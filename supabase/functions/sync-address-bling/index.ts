@@ -18,7 +18,12 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { order_id, tenant_id } = await req.json();
+    const body = await req.json();
+    const { order_id, tenant_id } = body;
+    // Por padrão, esta função SEMPRE força a atualização (ignora qualquer
+    // short-circuit), pois é chamada manualmente pelo usuário (botão "Atualizar
+    // Endereço no Bling" e "Atualizar Cadastro de Clientes em massa").
+    const force: boolean = body.force !== false;
 
     if (!order_id || !tenant_id) {
       return new Response(
@@ -28,10 +33,11 @@ serve(async (req) => {
     }
 
     const log = (msg: string, data?: unknown) => {
-      console.log(`[sync-address-bling] [order=${order_id}] ${msg}`, data !== undefined ? JSON.stringify(data) : '');
+      console.log(`[sync-address-bling] [order=${order_id}] [force=${force}] ${msg}`, data !== undefined ? JSON.stringify(data) : '');
     };
 
     log('▶ INÍCIO — Sincronização de endereço (endereço do pedido prevalece)');
+
 
     // 1. Buscar pedido — prioridade máxima nos campos customer_* do pedido
     const { data: order, error: orderError } = await supabase
