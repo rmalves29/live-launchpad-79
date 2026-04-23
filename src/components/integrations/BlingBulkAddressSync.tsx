@@ -130,7 +130,7 @@ export default function BlingBulkAddressSync({ tenantId }: BlingBulkAddressSyncP
 
         try {
           const { data, error: fnError } = await supabase.functions.invoke('sync-address-bling', {
-            body: { order_id: order.id, tenant_id: order.tenant_id },
+            body: { order_id: order.id, tenant_id: order.tenant_id, force: true },
           });
 
           if (fnError) throw new Error(fnError.message || 'Erro na chamada da função');
