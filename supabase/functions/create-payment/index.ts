@@ -215,6 +215,31 @@ serve(async (req) => {
 
     const sb = createClient(supabaseUrl, serviceKey);
 
+    // === BLINDAGEM SERVIDOR: recalcular desconto PIX a partir das integrações ativas ===
+    // Ignoramos qualquer valor enviado pelo frontend — fonte de verdade é o backend.
+    // Isso garante que mesmo se o front mandar pix_discount=0 por race condition / cache ruim,
+    // o desconto PIX configurado seja sempre aplicado corretamente.
+    {
+      const productsSubtotalForDiscount = payload.cartItems.reduce(
+        (s, it) => s + Number(it.unit_price) * Number(it.qty),
+        0,
+      );
+      const resolved = await resolvePixDiscount(
+        sb,
+        payload.tenant_id,
+        payload.payment_method,
+        productsSubtotalForDiscount,
+      );
+      const incoming = toNumber(payload.pix_discount, 0);
+      if (Math.abs(incoming - resolved.value) > 0.01) {
+        console.log(
+          `[create-payment] PIX discount override: incoming=${incoming.toFixed(2)} → server=${resolved.value.toFixed(2)} (source=${resolved.source})`,
+        );
+      }
+      payload.pix_discount = resolved.value;
+    }
+
+
     // 1) Persistir endereço no cliente (service role)
     await sb
       .from("customers")
