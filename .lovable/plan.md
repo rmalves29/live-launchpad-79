@@ -1,86 +1,68 @@
 
 
-## Forçar atualização do cadastro no Bling com retry automático em caso de erro
+## Garantir aplicação rápida e confiável do desconto PIX no checkout
 
 ### Resposta direta
 
-Quando a atualização automática do cadastro do cliente no Bling falhar (timeout, erro 4xx/5xx, contato bloqueado, etc.), o sistema vai **automaticamente tentar de novo em modo "forçado"** — sem precisar de clique manual.
+Sim. A solução combina **duas camadas**: uma rápida no frontend (para o cliente ver o desconto na hora) e uma blindagem no backend (para garantir que o desconto sempre saia certo, mesmo se o frontend falhar).
 
-### Como vai funcionar
+### Camada 1 — Frontend instantâneo (`PublicCheckout.tsx`)
 
-**Fluxo novo na criação do pedido no Bling** (`bling-sync-orders`):
+**Problema atual**: o `pix_discount_percent` só carrega depois de um `useEffect` assíncrono que consulta 4 tabelas em sequência. Se o cliente clica antes, vai sem desconto.
 
-```text
-1. Resolver contato no Bling (busca ou cria)
-2. Tentar atualizar cadastro (PUT /contatos/{id})
-   ├─ Sucesso → segue para criar pedido
-   └─ Erro    → aguarda 1s e RETRY em modo forçado
-                ├─ Sucesso → segue para criar pedido
-                └─ Erro    → segue para criar pedido + log de aviso
-3. Criar pedido no Bling SEMPRE com transporte.contato.endereco completo
-   (garante endereço certo no pedido mesmo se contato continuar errado)
-```
+**Mudanças**:
 
-**Modo "forçado" (retry):**
-- Ignora qualquer cache/short-circuit interno
-- Reenvia o payload completo do cadastro (nome, endereço, telefone, CPF)
-- Usa timeout maior (15s em vez de 8s)
-- Registra tentativa em `bling_sync_logs` com flag `forced: true`
+1. **Pré-carregar junto com o carrinho** — mover a busca do `pix_discount_percent` para dentro do mesmo `useEffect` que já carrega o carrinho/produtos do tenant, em paralelo (`Promise.all`). Quando a tela renderizar pela primeira vez, o desconto já está disponível.
 
-### Aplicação em todas as 3 superfícies
+2. **Cache em `sessionStorage`** — gravar `pix_discount_percent` por `tenant_id` no `sessionStorage`. Em retornos à tela (cliente fecha e abre, ou recarrega), o valor é lido instantaneamente do cache enquanto o backend revalida em segundo plano.
 
-| Onde | Comportamento |
-|---|---|
-| **Pedido novo (auto-sync)** | Tenta normal → se falhar, retry forçado automático |
-| **Botão "Atualizar Endereço no Bling"** (no `ViewOrderDialog`) | Já força sempre (passa `force: true`) |
-| **"Atualizar Cadastro de Clientes no Bling"** (em massa) | Já força sempre (passa `force: true`) |
+3. **Bloquear o botão "Continuar para pagamento"** enquanto `pixDiscountPercent` ainda for `null` (estado de carregamento). O botão fica com label "Carregando…" por no máximo ~500ms na primeira visita; nas próximas é instantâneo por causa do cache.
 
-### Garantia adicional: endereço no pedido independente do contato
+4. **Pré-busca opcional** na entrada da loja (`TenantStorefront.tsx`) — quando o cliente abre a vitrine, já dispara em background a query do `pix_discount_percent`. Quando ele chegar no checkout, o valor já está no cache.
 
-Mesmo se as 2 tentativas de atualizar o contato falharem, o **pedido criado no Bling** vai sair com o endereço correto, porque o payload do pedido passa a incluir explicitamente:
+### Camada 2 — Backend blindado (rede de segurança)
 
-```text
-transporte.contato: {
-  nome, endereco, numero, complemento,
-  bairro, cep, municipio, uf
-}
-```
+Mesmo com tudo isso, se o frontend mandar `pix_discount: 0` por qualquer motivo (rede ruim, bug de cache, cliente em modo anônimo), o backend **recalcula sozinho**:
 
-Isso resolve definitivamente o problema dos pedidos 5905 e 5922 (contato desatualizado → pedido sai com endereço errado).
+- Helper `_shared/pix-discount.ts` (já planejado) consulta a integração ativa do tenant e calcula o desconto correto antes de criar o pedido.
+- Frontend nunca mais consegue "errar" o valor — vira só uma sugestão para a UI.
+
+Isso garante que:
+- **99% dos clientes** vão ver o desconto na hora (camada 1).
+- **100% dos clientes** vão pagar com o desconto correto (camada 2).
+
+### Aplica também para cupom?
+
+Não no escopo desta entrega — cupons já funcionam (são aplicados manualmente pelo cliente digitando código). Só o desconto PIX automático precisa dessa otimização.
 
 ### O que NÃO muda
 
-- Frontend (botões já existentes continuam idênticos)
-- Tabelas, RLS, triggers
-- Lógica de criação do contato (busca CPF → telefone → nome)
-- Demais integrações (Olist, Omie, Bagy)
+- Backend de pagamento (já vai ser corrigido no plano anterior aprovado).
+- Trava de método de pagamento.
+- Banco de dados, RLS, triggers.
+- Demais gateways e webhooks.
 
 ### Detalhes técnicos
 
 **Arquivos editados:**
 
-- `supabase/functions/bling-sync-orders/index.ts`
-  - Função `updateBlingContactAddress`: aceitar parâmetro `force: boolean`; em modo forçado, pular qualquer short-circuit e usar timeout 15s
-  - Bloco de criação de pedido: envolver chamada de update em try/catch com 1 retry automático em modo forçado após 1s
-  - Payload de criação do pedido: adicionar `transporte.contato` completo com endereço do nosso banco
+- `src/pages/pedidos/PublicCheckout.tsx`
+  - Mover `loadPixDiscount` para dentro do `useEffect` principal que carrega o carrinho, paralelizado com `Promise.all`
+  - Adicionar leitura/escrita em `sessionStorage` com chave `pix_discount_${tenant_id}` (TTL de 10min via timestamp)
+  - Estado `pixDiscountLoading: boolean`; botão "Continuar" desabilitado enquanto `true` com label "Carregando…"
+  - Skeleton/placeholder na linha "Desconto PIX" do resumo durante o loading
 
-- `supabase/functions/sync-address-bling/index.ts`
-  - Aceitar `force: boolean` no body (default `true`)
-  - Quando `true`, pular short-circuits e sempre executar PUT no contato + PUT no transporte
+- `src/pages/TenantStorefront.tsx`
+  - Disparar pré-busca `select pix_discount_percent` em background ao montar a vitrine, gravando no mesmo `sessionStorage`
 
-- `src/components/integrations/BlingBulkAddressSync.tsx`
-  - Enviar `force: true` em todas as 3 ações (single, bulk, retry)
-
-**Logs estruturados** em `bling_sync_logs` com:
-- `attempt: 1` (normal) ou `attempt: 2` (forçado)
-- `error_reason` em caso de falha
-- `forced: boolean`
+- (Já no plano anterior aprovado) `supabase/functions/_shared/pix-discount.ts` + ajustes em `create-payment` e `create-infinitepay-payment` — recalculam no servidor independente do que o frontend mandou.
 
 **Sem migrações de banco. Sem novos secrets.**
 
 ### Validação após deploy
 
-1. Criar pedido teste para cliente cujo cadastro Bling esteja bloqueado/desatualizado → confirmar nos logs da função `bling-sync-orders` as 2 tentativas (normal + forçado), e o pedido aparecer no Bling com endereço correto via `transporte.contato`.
-2. Rodar correção retroativa para pedidos **5905** e **5922** via botão "Atualizar Cadastro" (massa) com filtro de data cobrindo eles → confirmar contatos atualizados no Bling.
-3. Conferir entradas em `bling_sync_logs` mostrando `attempt: 2, forced: true` quando aplicável.
+1. **Teste de velocidade**: abrir vitrine da Roanne Joias, adicionar item, ir ao checkout → desconto PIX deve aparecer **na primeira renderização** (sem flicker).
+2. **Teste de cache**: voltar ao checkout uma segunda vez → desconto aparece instantaneamente do `sessionStorage`.
+3. **Teste de rede lenta**: simular throttle 3G no DevTools, clicar "Continuar" rapidamente → botão fica desabilitado até o desconto carregar; pedido sai correto.
+4. **Teste de blindagem**: forçar `sessionStorage` corrompido + bloquear a query do front → backend ainda recalcula e pedido sai com desconto correto.
 
