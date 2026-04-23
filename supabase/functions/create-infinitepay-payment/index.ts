@@ -299,13 +299,17 @@ serve(async (req) => {
       );
     }
 
-    const checkoutUrl: string = infJson.link;
+    const rawCheckoutUrl: string = infJson.link;
+
+    // Trava método de pagamento (PIX-only ou Cartão-only) via query string
+    const checkoutUrl = buildLockedCheckoutUrl(rawCheckoutUrl, body.payment_method);
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
       .from("orders")
       .update({ payment_link: `${checkoutUrl}#nsu=${orderNsu}` })
       .in("id", orderIds);
+
 
     return new Response(
       JSON.stringify({
