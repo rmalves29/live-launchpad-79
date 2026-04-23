@@ -1,53 +1,55 @@
 
 
-## Integração InfinitePay (Checkout) — Análise de viabilidade
+## Replicar templates da Mania de Mulher em toda empresa nova
 
-### Resposta direta
+### Resposta direta à dúvida
 
-**Sim, é totalmente possível integrar o InfinitePay** ao OrderZaps. A API pública de checkout deles é simples (apenas 3 endpoints) e se encaixa perfeitamente no padrão que já usamos para Mercado Pago, Pagar.me e Appmax.
+**Sim, fica automático.** Vou criar uma função no banco que dispara sozinha toda vez que uma empresa nova é cadastrada — você não precisa rodar nada manual depois.
 
-### Como o InfinitePay funciona (resumo técnico)
+### O que será replicado (cópia exata da Mania de Mulher)
 
-| Recurso | Como funciona |
-|---|---|
-| **Autenticação** | Apenas o `handle` (InfiniteTag, ex: `colakids`) — sem API key, sem OAuth |
-| **Criar link** | `POST https://api.infinitepay.io/invoices/public/checkout/links` com `handle`, `itens`, `order_nsu`, `redirect_url`, `webhook_url` |
-| **Resposta** | `{ link, slug }` — o `link` é a URL do checkout para redirecionar o cliente |
-| **Webhook** | InfinitePay POSTa em `webhook_url` com status do pagamento (`paid`, `capture_method`, `transaction_nsu`, `installments`, `paid_amount`) |
-| **Consulta de status** | `POST /invoices/public/checkout/payment_check` (fallback) |
-| **Métodos aceitos** | PIX, Crédito (até 12x), Débito |
-| **Pré-preenchimento** | Aceita objeto `customer` (nome, email, telefone) e `address` (CEP, rua, bairro, etc.) |
+**1. Templates da tabela `whatsapp_templates`** (8 templates)
+- `ITEM_ADDED` — Item Adicionado ao Pedido
+- `PAID_ORDER` — Pedido Pago
+- `PRODUCT_CANCELED` — Produto Cancelado
+- `TRACKING` — Código de Rastreio
+- `BLOCKED_CUSTOMER` — Mensagem de Cliente Bloqueado
+- `MSG_MASSA` — Mensagem em Massa
+- `SENDFLOW` — Divulgação em Grupos
+- `DM_INSTAGRAM_CADASTRO` — Cadastro Sistema
 
-### Funcionalidade que dá pra entregar
+**2. Campos de template/flags de `integration_whatsapp`** (apenas configurações, sem credenciais Z-API)
+- `template_solicitacao`, `template_com_link`, `template_item_added`, `item_added_confirmation_template`
+- `blocked_customer_template`
+- `send_item_added_msg`, `send_paid_order_msg`, `send_product_canceled_msg`, `send_out_of_stock_msg`
+- `confirmation_timeout_minutes` (30 min)
+- `consent_protection_enabled`
 
-1. **Aba "InfinitePay" em /config → Integrações**, ao lado de Mercado Pago, Pagar.me e Appmax
-2. Cliente escolhe InfinitePay no checkout → sistema gera link → redireciona pra `checkout.infinitepay.io`
-3. Após pagar, InfinitePay redireciona de volta para nossa página universal `/pagamento/retorno`
-4. Webhook confirma o pagamento automaticamente, marca `is_paid = true`, dispara confirmação por WhatsApp e notifica Bling/ERP — exatamente como Mercado Pago e Pagar.me fazem hoje
-5. **Exclusividade mútua**: ativar InfinitePay desativa MP/Pagar.me/Appmax automaticamente (mesmo padrão atual)
+### O que NÃO será replicado (continua zerado / configurado pela empresa)
 
-### Limitações honestas a considerar
+- Credenciais Z-API (`zapi_instance_id`, `zapi_token`, `zapi_client_token`, `instance_name`, `webhook_secret`, `connected_phone`)
+- Qualquer integração externa (Bling, Mercado Pago, Pagar.me, InfinitePay, Melhor Envio, Correios, Olist, Omie, Bagy, Instagram)
+- Presentes, cupons, opções de frete customizado, produtos, clientes, pedidos
+- Flags do tenant (`enable_live`, `enable_sendflow`, `plan_type`, etc.)
 
-- **Sem desconto PIX nativo**: a API não tem campo separado de desconto PIX por método. Solução: aplicar o desconto antes de gerar o link (igual já fazemos no Pagar.me/Appmax) — funciona, mas o cliente vê o valor já com desconto, não a opção "pague no PIX e ganhe X%"
-- **Sem split/divisão de pagamento**
-- **Webhook sem assinatura HMAC documentada**: precisamos validar via `payment_check` após receber o webhook (defesa contra spoofing)
-- **`handle` é público**: qualquer um que descobrir o handle de um lojista pode gerar links em nome dele. Mitigação: gerar `order_nsu` aleatório e validar status via `payment_check` antes de marcar pedido como pago
+### Como vai funcionar tecnicamente
 
-### Plano de implementação (alto nível)
+1. **Função `clone_mania_de_mulher_templates(new_tenant_id uuid)`** no banco — copia os 8 templates de `whatsapp_templates` e cria a linha em `integration_whatsapp` com os campos de template/flags da Mania de Mulher (gerando `instance_name` e `webhook_secret` únicos vazios para a nova empresa).
+2. **Trigger `AFTER INSERT ON tenants`** — chama a função automaticamente. Toda empresa nova nasce com os templates já configurados.
+3. **Idempotência**: a função verifica se a nova empresa já tem templates antes de inserir, então rodar de novo não duplica nada.
+4. **Variáveis dinâmicas**: os templates usam `{{produto}}`, `{{nome}}`, `{{order_id}}`, etc. — esses placeholders são resolvidos em runtime pelo SendFlow/zapi-send-*, então cada empresa preenche com os próprios dados sem precisar editar o template.
 
-1. **Banco**: tabela `integration_infinitepay` (`tenant_id`, `handle`, `is_active`) + trigger de exclusividade mútua com MP/Pagar.me/Appmax
-2. **UI de configuração**: componente `InfinitePayIntegration.tsx` na página `/config → Integrações` (campo único: handle)
-3. **Edge function** `create-infinitepay-payment`: gera link a partir do carrinho, retorna URL para redirecionamento
-4. **Edge function** `infinitepay-webhook` (verify_jwt = false): recebe webhook, chama `payment_check` para confirmar, marca pedido como pago
-5. **Checkout**: adicionar InfinitePay como opção em `PublicCheckout.tsx` quando ativa para o tenant
-6. **Página de retorno**: já existe (`/pagamento/retorno`) — apenas adicionar suporte ao parâmetro do InfinitePay
-7. **Forma de pagamento**: adicionar ao `payment-method-utils.ts` os labels `infinitepay_pix`, `infinitepay_credit`
+### Empresas já existentes
 
-### Tempo estimado
+Não serão afetadas — a trigger só dispara em `INSERT`. Se você quiser, posso rodar uma vez manualmente para empresas específicas que ainda estão sem templates (me diga quais).
 
-Integração completa (config + checkout + webhook + retorno + testes) cabe em **uma rodada de implementação** depois que você aprovar.
+### Validação após deploy
 
-### Pergunta antes de começar
+Criar uma empresa de teste em `/empresas` → entrar em **Configurações → WhatsApp** → confirmar que os 8 templates aparecem listados e os flags estão como na Mania de Mulher, com os campos de credencial Z-API vazios.
 
-Quer que eu já implemente tudo, ou prefere que eu faça primeiro só a parte de configuração (cadastro do handle) para testar visualmente, e depois ligo o checkout e o webhook?
+### Detalhes técnicos
+
+- 1 migração SQL: cria função `clone_mania_de_mulher_templates(uuid)` + trigger `trg_clone_templates_on_new_tenant` em `tenants`
+- Tenant fonte hardcoded: `08f2b1b9-3988-489e-8186-c60f0c0b0622` (Mania de Mulher)
+- Sem alterações em frontend nem em edge functions
 
