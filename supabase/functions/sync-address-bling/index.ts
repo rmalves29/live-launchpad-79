@@ -236,15 +236,17 @@ serve(async (req) => {
     // Se encontrou o contato no Bling, fazer PUT para atualizar o endereço
     if (blingContactId) {
       log(`PUT /contatos/${blingContactId} com endereço do pedido`);
-      
+
+      const putTimeout = force ? 15000 : 12000;
       const putRes = await fetch(`${BLING_API_URL}/contatos/${blingContactId}`, {
         method: 'PUT',
         headers: blingHeaders,
         body: JSON.stringify(contactBody),
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(putTimeout),
       });
 
       const putBody = await putRes.text();
+
 
       // Salvar bling_contact_id no customer para reutilizar
       if (customer?.id) {
