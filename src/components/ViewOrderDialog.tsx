@@ -243,7 +243,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
     setSyncingAddress(true);
     try {
       const { data, error } = await supabase.functions.invoke('sync-address-bling', {
-        body: { order_id: order.id, tenant_id: order.tenant_id }
+        body: { order_id: order.id, tenant_id: order.tenant_id, force: true }
       });
 
       if (error) throw error;
