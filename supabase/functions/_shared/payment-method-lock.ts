@@ -77,7 +77,7 @@ export function normalizePaymentMethodChoice(
 export function applyPaymentMethodLock(
   provider: PaymentProvider | string,
   payload: Record<string, any>,
-  choice: PaymentMethodChoice,
+  choice: PaymentMethodChoice | string | null | undefined,
 ): void {
   const normalized = normalizePaymentMethodChoice(choice);
   if (!normalized) {
