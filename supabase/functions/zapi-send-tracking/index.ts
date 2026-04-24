@@ -120,7 +120,6 @@ Obrigado pela preferência! 💚`;
       .replace(/\{\{customer_name\}\}/g, customerName)
       .replace(/\{\{order_id\}\}/g, order.unique_order_id || String(order.id))
       .replace(/\{\{tracking_code\}\}/g, tracking_code)
-      .replace(/\{\{rastreio\}\}/g, tracking_code)
       .replace(/\{\{shipped_at\}\}/g, shippedDate);
 
     // Normalizar telefone
