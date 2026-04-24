@@ -169,7 +169,8 @@ serve(async (req) => {
     const publicBaseUrl = getPublicBaseUrl();
     const redirectUrl = new URL("/integracoes", publicBaseUrl);
     redirectUrl.searchParams.set("olist", "error");
-    redirectUrl.searchParams.set("reason", `Erro interno: ${error.message}`);
+    const msg = error instanceof Error ? error.message : String(error);
+    redirectUrl.searchParams.set("reason", `Erro interno: ${msg}`);
     return Response.redirect(redirectUrl.toString(), 302);
   }
 });
