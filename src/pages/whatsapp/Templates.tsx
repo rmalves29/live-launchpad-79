@@ -57,7 +57,7 @@ const TEMPLATE_TYPES = [
     value: 'TRACKING', 
     label: 'Código de Rastreio',
     description: 'Enviado quando o código de rastreio é adicionado',
-    variables: ['{{customer_name}}', '{{order_id}}', '{{tracking_code}}', '{{shipped_at}}']
+    variables: ['{{customer_name}}', '{{order_id}}', '{{tracking_code}}', '{{rastreio}}', '{{shipped_at}}']
   },
   { 
     value: 'BLOCKED_CUSTOMER', 
