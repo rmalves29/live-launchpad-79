@@ -1,68 +1,112 @@
 
 
-## Garantir aplicação rápida e confiável do desconto PIX no checkout
+## Identificação progressiva no /t/app: IP/localStorage → @Instagram → Telefone
 
 ### Resposta direta
 
-Sim. A solução combina **duas camadas**: uma rápida no frontend (para o cliente ver o desconto na hora) e uma blindagem no backend (para garantir que o desconto sempre saia certo, mesmo se o frontend falhar).
+Sim. Vou transformar o modal único atual em um fluxo de 3 passos progressivos, sempre tentando o caminho menos invasivo primeiro:
 
-### Camada 1 — Frontend instantâneo (`PublicCheckout.tsx`)
+```text
+1. Cliente clica "Adicionar"
+   ↓
+2. Sistema tenta identificar por IP + localStorage  (silencioso)
+   ├─ Encontrou → adiciona ao carrinho direto, sem modal ✅
+   └─ Não encontrou ↓
+3. Modal abre pedindo SÓ o @ do Instagram
+   ├─ Cliente digita @ → backend busca em customers (tenant_id, instagram)
+   │   ├─ Encontrou cliente → "Olá, @fulano! Vamos continuar." ✅
+   │   │   adiciona ao carrinho direto, salva identidade
+   │   └─ Não encontrou → modal expande pedindo o WhatsApp ↓
+4. Cliente digita WhatsApp
+   ├─ Telefone já existe em customers → reusa cadastro, atualiza @
+   └─ Telefone novo → cria customer novo
+```
 
-**Problema atual**: o `pix_discount_percent` só carrega depois de um `useEffect` assíncrono que consulta 4 tabelas em sequência. Se o cliente clica antes, vai sem desconto.
+### Camada 1 — Tentativa silenciosa (já existe, mantida)
 
-**Mudanças**:
+`TenantStorefront.tsx` já consulta `localStorage.storefront_identity_<slug>` e a função `storefront-resolve-visitor` (que casa por hash de IP). Sem mudanças aqui.
 
-1. **Pré-carregar junto com o carrinho** — mover a busca do `pix_discount_percent` para dentro do mesmo `useEffect` que já carrega o carrinho/produtos do tenant, em paralelo (`Promise.all`). Quando a tela renderizar pela primeira vez, o desconto já está disponível.
+### Camada 2 — Lookup por @Instagram (novo)
 
-2. **Cache em `sessionStorage`** — gravar `pix_discount_percent` por `tenant_id` no `sessionStorage`. Em retornos à tela (cliente fecha e abre, ou recarrega), o valor é lido instantaneamente do cache enquanto o backend revalida em segundo plano.
+Nova edge function `storefront-lookup-by-instagram`:
 
-3. **Bloquear o botão "Continuar para pagamento"** enquanto `pixDiscountPercent` ainda for `null` (estado de carregamento). O botão fica com label "Carregando…" por no máximo ~500ms na primeira visita; nas próximas é instantâneo por causa do cache.
+- Recebe `{ tenant_slug, instagram }`
+- Normaliza o @ (remove `@`, espaços, lowercase opcional dependendo do dado salvo)
+- Busca `customers` por `(tenant_id, instagram)` usando `ilike` para ser case-insensitive
+- Se `is_blocked = true` → retorna `{ blocked: true }` (modal mostra mensagem de contato com a loja)
+- Se encontrou → retorna `{ found: true, phone, instagram, name }`
+- Se não encontrou → retorna `{ found: false }`
 
-4. **Pré-busca opcional** na entrada da loja (`TenantStorefront.tsx`) — quando o cliente abre a vitrine, já dispara em background a query do `pix_discount_percent`. Quando ele chegar no checkout, o valor já está no cache.
+A função **não cria nada** — é só lookup. A criação continua no `storefront-add-to-cart` que já recebe `customer_phone`.
 
-### Camada 2 — Backend blindado (rede de segurança)
+### Camada 3 — Modal progressivo (substitui o atual)
 
-Mesmo com tudo isso, se o frontend mandar `pix_discount: 0` por qualquer motivo (rede ruim, bug de cache, cliente em modo anônimo), o backend **recalcula sozinho**:
+Refatorar `IdentifyCustomerDialog.tsx` para ter 2 estados internos:
 
-- Helper `_shared/pix-discount.ts` (já planejado) consulta a integração ativa do tenant e calcula o desconto correto antes de criar o pedido.
-- Frontend nunca mais consegue "errar" o valor — vira só uma sugestão para a UI.
+**Estado A — "Identifique-se"** (estado inicial)
+- Único campo: `@ do Instagram`
+- Botão: "Continuar"
+- Texto auxiliar: "Use o mesmo @ que você usa nas nossas lives"
+- Ao clicar → chama `storefront-lookup-by-instagram`
+  - `found: true` → fecha modal, salva identidade no localStorage, dispara `onConfirm({ instagram, phone })`
+  - `found: false` → transição suave para Estado B (mantém o @ digitado)
+  - `blocked: true` → mostra erro vermelho "Cliente bloqueado. Entre em contato com a loja."
 
-Isso garante que:
-- **99% dos clientes** vão ver o desconto na hora (camada 1).
-- **100% dos clientes** vão pagar com o desconto correto (camada 2).
+**Estado B — "Primeira compra? Bem-vindo!"** (após @ não encontrado)
+- Mostra o @ digitado em destaque (chip ou linha "Cadastrando @fulano")
+- Campo único: `WhatsApp` (com máscara BR existente)
+- Link discreto "← usar outro @" volta ao Estado A
+- Botão: "Confirmar e adicionar"
+- Ao clicar → dispara `onConfirm({ instagram, phone })` que vai para `storefront-add-to-cart` (cria cliente novo)
 
-### Aplica também para cupom?
+### Garantias e edge cases
 
-Não no escopo desta entrega — cupons já funcionam (são aplicados manualmente pelo cliente digitando código). Só o desconto PIX automático precisa dessa otimização.
+- **Telefone já cadastrado com outro @**: o `storefront-add-to-cart` continua respeitando a regra atual — busca por `(tenant_id, phone)`, e se já existir customer com Instagram preenchido, **não sobrescreve** (preserva o histórico). Se o Instagram estiver vazio, atualiza com o novo @.
+- **Cliente bloqueado**: tanto no lookup por @ quanto no add-to-cart final, retorna 403 / `blocked: true` e o modal mostra a mensagem "Cliente bloqueado. Entre em contato com a loja."
+- **Identidade persistente**: após qualquer sucesso (Estado A ou B), salva `localStorage.storefront_identity_<slug> = { phone, instagram }` e o backend já atualiza `storefront_visitors` com o IP hash. Próximas adições não pedem nada.
+- **Múltiplos clientes com mesmo @**: improvável, mas se acontecer pega o mais recente (`order by id desc limit 1`).
+- **@ vazio ou inválido no Estado A**: validação já existente (sanitiza, exige pelo menos 1 caractere).
 
 ### O que NÃO muda
 
-- Backend de pagamento (já vai ser corrigido no plano anterior aprovado).
-- Trava de método de pagamento.
-- Banco de dados, RLS, triggers.
-- Demais gateways e webhooks.
+- `storefront-add-to-cart/index.ts` — continua igual, ainda recebe `{ tenant_slug, product_id, qty, customer_phone, customer_instagram }`.
+- `storefront-resolve-visitor/index.ts` — Camada 1 silenciosa permanece intacta.
+- Fluxo de checkout, pagamento, estoque, total — nenhuma mudança.
+- Tabelas, RLS, triggers — sem migrações.
 
 ### Detalhes técnicos
 
 **Arquivos editados:**
 
-- `src/pages/pedidos/PublicCheckout.tsx`
-  - Mover `loadPixDiscount` para dentro do `useEffect` principal que carrega o carrinho, paralelizado com `Promise.all`
-  - Adicionar leitura/escrita em `sessionStorage` com chave `pix_discount_${tenant_id}` (TTL de 10min via timestamp)
-  - Estado `pixDiscountLoading: boolean`; botão "Continuar" desabilitado enquanto `true` com label "Carregando…"
-  - Skeleton/placeholder na linha "Desconto PIX" do resumo durante o loading
+- `src/components/storefront/IdentifyCustomerDialog.tsx`
+  - Adicionar estado interno `step: 'instagram' | 'phone'`
+  - Estado A renderiza só o input de @ + botão "Continuar"
+  - Estado B renderiza chip do @ + input de telefone + link "usar outro @" + botão "Confirmar e adicionar"
+  - No "Continuar" do Estado A, chama a nova função e decide o próximo passo
+  - Manter prop `onConfirm({ instagram, phone })` igual para não quebrar `TenantStorefront.tsx`
+  - Loading states distintos para lookup (Estado A) e add-to-cart (Estado B)
+  - Mensagem de "Bem-vindo de volta, @fulano!" via toast quando lookup encontra cliente
+
+- `supabase/functions/storefront-lookup-by-instagram/index.ts` (novo)
+  - Body: `{ tenant_slug: string, instagram: string }`
+  - Resolve tenant ativo, normaliza @, busca em `customers`
+  - Retorna `{ found, phone?, instagram?, name?, blocked? }`
+  - CORS padrão, sem autenticação (público), service role internamente
+  - Logs estruturados para debug
+
+- `supabase/config.toml`
+  - Adicionar `[functions.storefront-lookup-by-instagram] verify_jwt = false`
 
 - `src/pages/TenantStorefront.tsx`
-  - Disparar pré-busca `select pix_discount_percent` em background ao montar a vitrine, gravando no mesmo `sessionStorage`
-
-- (Já no plano anterior aprovado) `supabase/functions/_shared/pix-discount.ts` + ajustes em `create-payment` e `create-infinitepay-payment` — recalculam no servidor independente do que o frontend mandou.
+  - Quando o `IdentifyCustomerDialog` confirmar via Estado A (cliente encontrado por @), persistir no `localStorage.storefront_identity_<slug>` igual ao fluxo atual — nenhuma mudança de lógica externa, só passa a receber `{ phone, instagram }` resolvido pelo dialog.
 
 **Sem migrações de banco. Sem novos secrets.**
 
 ### Validação após deploy
 
-1. **Teste de velocidade**: abrir vitrine da Roanne Joias, adicionar item, ir ao checkout → desconto PIX deve aparecer **na primeira renderização** (sem flicker).
-2. **Teste de cache**: voltar ao checkout uma segunda vez → desconto aparece instantaneamente do `sessionStorage`.
-3. **Teste de rede lenta**: simular throttle 3G no DevTools, clicar "Continuar" rapidamente → botão fica desabilitado até o desconto carregar; pedido sai correto.
-4. **Teste de blindagem**: forçar `sessionStorage` corrompido + bloquear a query do front → backend ainda recalcula e pedido sai com desconto correto.
+1. **Cliente conhecido por IP**: abrir vitrine de um tenant onde já comprou antes → clicar "Adicionar" → produto cai no carrinho sem modal.
+2. **Cliente novo, mas registrado**: limpar localStorage + abrir em rede diferente (4G no celular) → clicar "Adicionar" → modal pede @ → digitar @ existente → toast "Bem-vindo de volta, @fulano!" e produto adicionado sem pedir telefone.
+3. **Cliente totalmente novo**: digitar @ que não existe → modal expande para pedir WhatsApp → confirmar → produto adicionado, customer criado.
+4. **Cliente bloqueado**: digitar @ de cliente com `is_blocked = true` → mensagem "Cliente bloqueado. Entre em contato com a loja." (mesmo no Estado A, antes de chegar no add-to-cart).
+5. **Voltar e trocar @**: no Estado B, clicar "← usar outro @" → volta ao Estado A com input limpo.
 
