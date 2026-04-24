@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -17,36 +17,36 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // Verificar caller é super_admin
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing auth" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !user) {
-      return new Response(JSON.stringify({ error: "Invalid auth" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const admin = createClient(supabaseUrl, serviceKey);
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
 
-    if (profile?.role !== "super_admin") {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
+    // Caminho 1: chamada via header x-admin-key (uso interno por super-admin operacional)
+    const adminKeyHeader = req.headers.get("x-admin-key");
+    let isAuthorized = false;
+
+    if (adminKeyHeader && adminKeyHeader === serviceKey) {
+      isAuthorized = true;
+    } else {
+      // Caminho 2: chamada com JWT de usuário super_admin
+      const authHeader = req.headers.get("Authorization");
+      if (authHeader) {
+        const userClient = createClient(supabaseUrl, anonKey, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: { user } } = await userClient.auth.getUser();
+        if (user) {
+          const { data: profile } = await admin
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single();
+          if (profile?.role === "super_admin") isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -70,6 +70,9 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Sincronizar profile.email
+    await admin.from("profiles").update({ email: new_email }).eq("id", user_id);
 
     return new Response(JSON.stringify({ success: true, user: data.user }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
