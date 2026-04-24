@@ -188,7 +188,7 @@ export function applyPaymentMethodLock(
  */
 export function buildLockedCheckoutUrl(
   baseUrl: string,
-  choice: PaymentMethodChoice,
+  choice: PaymentMethodChoice | string | null | undefined,
 ): string {
   const normalized = normalizePaymentMethodChoice(choice);
   if (!normalized) return baseUrl;
