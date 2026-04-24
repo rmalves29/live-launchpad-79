@@ -56,3 +56,12 @@ verify_jwt = false
 
 [functions.create-infinitepay-payment]
 verify_jwt = false
+
+[functions.storefront-lookup-by-instagram]
+verify_jwt = false
+
+[functions.storefront-resolve-visitor]
+verify_jwt = false
+
+[functions.storefront-add-to-cart]
+verify_jwt = false

@@ -541,6 +541,7 @@ export default function TenantStorefront() {
         onOpenChange={(o) => { setIdentifyOpen(o); if (!o) setPendingProductId(null); }}
         onConfirm={handleIdentityConfirm}
         loading={identifyLoading}
+        tenantSlug={slug ?? ''}
       />
     </div>
   );
