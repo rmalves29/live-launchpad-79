@@ -77,7 +77,7 @@ export function normalizePaymentMethodChoice(
 export function applyPaymentMethodLock(
   provider: PaymentProvider | string,
   payload: Record<string, any>,
-  choice: PaymentMethodChoice,
+  choice: PaymentMethodChoice | string | null | undefined,
 ): void {
   const normalized = normalizePaymentMethodChoice(choice);
   if (!normalized) {
@@ -188,7 +188,7 @@ export function applyPaymentMethodLock(
  */
 export function buildLockedCheckoutUrl(
   baseUrl: string,
-  choice: PaymentMethodChoice,
+  choice: PaymentMethodChoice | string | null | undefined,
 ): string {
   const normalized = normalizePaymentMethodChoice(choice);
   if (!normalized) return baseUrl;
