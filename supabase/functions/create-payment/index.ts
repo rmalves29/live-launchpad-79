@@ -358,7 +358,35 @@ serve(async (req) => {
     }
 
     // 3) Determinar qual integração de pagamento usar
-    // Verificar primeiro App Max, depois Pagar.me, depois Mercado Pago
+    // Prioridade: InfinitePay > App Max > Pagar.me > Mercado Pago
+    const { data: infinitepayIntegration } = await sb
+      .from("integration_infinitepay")
+      .select("is_active, handle")
+      .eq("tenant_id", payload.tenant_id)
+      .maybeSingle();
+
+    if (infinitepayIntegration?.is_active && infinitepayIntegration?.handle) {
+      console.log("[create-payment] Delegating to create-infinitepay-payment for tenant:", payload.tenant_id);
+      const ipPayload = {
+        ...payload,
+        order_id: orderIds[0],
+        order_ids: orderIds,
+      };
+      const { data: ipData, error: ipError } = await sb.functions.invoke("create-infinitepay-payment", {
+        body: ipPayload,
+      });
+      if (ipError) {
+        return new Response(JSON.stringify({ error: ipError.message || "Erro ao gerar pagamento InfinitePay" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(ipData), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const { data: appmaxIntegration } = await sb
       .from("integration_appmax")
       .select("access_token, environment, is_active")

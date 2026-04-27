@@ -1091,6 +1091,39 @@ export type Database = {
           },
         ]
       }
+      integration_infinitepay: {
+        Row: {
+          created_at: string
+          environment: string
+          handle: string | null
+          id: string
+          is_active: boolean
+          pix_discount_percent: number | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          environment?: string
+          handle?: string | null
+          id?: string
+          is_active?: boolean
+          pix_discount_percent?: number | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          environment?: string
+          handle?: string | null
+          id?: string
+          is_active?: boolean
+          pix_discount_percent?: number | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       integration_instagram: {
         Row: {
           access_token: string | null
