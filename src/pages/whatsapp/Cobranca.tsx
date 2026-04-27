@@ -497,10 +497,21 @@ export default function Cobranca() {
           [customer.customer_phone]: { phone: customer.customer_phone, status: 'sending' }
         }));
 
-        // Personalizar mensagem com nome do cliente se disponível
+        // Personalizar mensagem com nome do cliente (com fallback genérico)
         let personalizedMessage = messageTemplate;
-        if (customer.customer_name) {
-          personalizedMessage = personalizedMessage.replace(/\{\{nome\}\}/g, customer.customer_name);
+        const rawName = (customer.customer_name || '').trim();
+        // Usa só o primeiro nome quando disponível; senão, fallback neutro
+        const firstName = rawName ? rawName.split(/\s+/)[0] : '';
+        if (firstName) {
+          personalizedMessage = personalizedMessage.replace(/\{\{nome\}\}/g, firstName);
+        } else {
+          // Sem nome: remove a saudação "Olá {{nome}}, " ou "Oi {{nome}}, " inteira
+          // e, se restar algum {{nome}} solto, troca por "tudo bem"
+          personalizedMessage = personalizedMessage
+            .replace(/(Olá|Oi|Ola|Olá,)\s*\{\{nome\}\}\s*,?\s*/gi, 'Olá, ')
+            .replace(/\{\{nome\}\}/g, '');
+          // Limpa espaços duplicados resultantes
+          personalizedMessage = personalizedMessage.replace(/\s{2,}/g, ' ').trim();
         }
 
         // 🛡️ Anti-bloqueio: aplicar variação sutil (emoji swap + zero-width space)
