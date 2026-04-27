@@ -14,6 +14,25 @@ const SERVICE_NAMES: Record<number, string> = {
   17: "Mini Envios",
 };
 
+function parseSuperFreteError(responseText: string): string {
+  try {
+    const parsed = JSON.parse(responseText);
+    const errors = parsed?.errors;
+    if (errors && typeof errors === "object") {
+      const messages = Object.values(errors).flat().filter(Boolean) as string[];
+      if (messages.some((message) => String(message).toLowerCase().includes("postcode") || String(message).toLowerCase().includes("cep"))) {
+        return "CEP de destino inválido ou sem cobertura pela SuperFrete";
+      }
+      if (messages.length > 0) return messages.join(" ");
+    }
+    if (typeof parsed?.message === "string" && parsed.message.trim()) return parsed.message;
+  } catch {
+    // ignore parse errors and use fallback below
+  }
+
+  return "Erro ao calcular frete com SuperFrete";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -52,19 +71,19 @@ serve(async (req) => {
     if (integrationError || !integration) {
       return new Response(
         JSON.stringify({ success: false, error: "Configuração SuperFrete não encontrada" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
     if (!integration.access_token) {
       return new Response(
         JSON.stringify({ success: false, error: "Token SuperFrete não configurado" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
     if (!integration.from_cep) {
       return new Response(
         JSON.stringify({ success: false, error: "CEP de origem não configurado" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -152,10 +171,10 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Erro ao calcular frete com SuperFrete",
+          error: parseSuperFreteError(responseText),
           details: responseText,
         }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -199,7 +218,7 @@ serve(async (req) => {
     console.error("[superfrete-shipping] Error:", error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
