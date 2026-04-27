@@ -16,6 +16,7 @@ import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
+import SuperFreteIntegration from '@/components/integrations/SuperFreteIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
@@ -65,6 +66,15 @@ export default function TenantIntegrationsPage() {
     queryKey: ['mandae-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'mandae').maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const { data: superfreteIntegration } = useQuery({
+    queryKey: ['superfrete-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'superfrete').maybeSingle();
       return data;
     },
     enabled: !!tenantId,
@@ -273,6 +283,12 @@ export default function TenantIntegrationsPage() {
             <span className="sm:hidden">MD</span>
             {mandaeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          <TabsTrigger value="superfrete" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            <span className="hidden sm:inline">SuperFrete</span>
+            <span className="sm:hidden">SF</span>
+            {superfreteIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
           <TabsTrigger value="correios" className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
             <span className="hidden sm:inline">Correios</span>
@@ -321,6 +337,9 @@ export default function TenantIntegrationsPage() {
         </TabsContent>
         <TabsContent value="mandae" className="mt-6">
           <MandaeIntegration tenantId={tenantId} />
+        </TabsContent>
+        <TabsContent value="superfrete" className="mt-6">
+          <SuperFreteIntegration tenantId={tenantId} />
         </TabsContent>
         <TabsContent value="correios" className="mt-6">
           <CorreiosIntegration tenantId={tenantId} />
