@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type ShippingProvider = 'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | null;
+export type ShippingProvider = 'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'superfrete' | null;
 
 export interface ActiveShippingIntegration {
   provider: ShippingProvider;
