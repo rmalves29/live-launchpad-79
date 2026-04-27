@@ -338,6 +338,9 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="mandae" className="mt-6">
           <MandaeIntegration tenantId={tenantId} />
         </TabsContent>
+        <TabsContent value="superfrete" className="mt-6">
+          <SuperFreteIntegration tenantId={tenantId} />
+        </TabsContent>
         <TabsContent value="correios" className="mt-6">
           <CorreiosIntegration tenantId={tenantId} />
         </TabsContent>
