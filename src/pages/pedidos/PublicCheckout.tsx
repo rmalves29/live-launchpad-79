@@ -413,6 +413,20 @@ const PublicCheckout = () => {
           serviceName.includes('mini')
         );
       }
+
+      // SuperFrete pode retornar Correios, Mini Envios e Jadlog
+      if (activeProvider === 'superfrete') {
+        return (
+          companyName.includes('superfrete') ||
+          companyName.includes('correios') ||
+          companyName.includes('jadlog') ||
+          serviceName.includes('pac') ||
+          serviceName.includes('sedex') ||
+          serviceName.includes('mini') ||
+          serviceName.includes('jadlog') ||
+          serviceName.includes('package')
+        );
+      }
       
       // IMPORTANTE: só permitir serviços "Mandae" quando a integração ativa do tenant for Mandae.
       const isMandaeService =
@@ -539,6 +553,7 @@ const PublicCheckout = () => {
            .map((option: any) => {
              // SEMPRE exibe o nome da integração ativa do tenant, não da transportadora
              const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae' 
+                : activeIntegration.provider === 'superfrete' ? 'SuperFrete'
                : (activeIntegration.provider === 'meuscorreios' || activeIntegration.provider === 'correios') ? 'Correios' 
                : 'Melhor Envio';
 
