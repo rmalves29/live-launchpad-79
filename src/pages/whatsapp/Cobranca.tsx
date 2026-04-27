@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Loader2, Send, Users, Calendar as CalendarIcon, Filter, Tag, RefreshCw, Clock, Database } from 'lucide-react';
 import { normalizeForSending } from '@/lib/phone-utils';
+import { addMessageVariation, getHumanizedDelayMs } from '@/lib/whatsapp-anti-block';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -88,9 +89,9 @@ export default function Cobranca() {
   const [loadingTags, setLoadingTags] = useState(false);
   
   // Configurações de timer para envio
-  const [delayBetweenMessages, setDelayBetweenMessages] = useState(3); // segundos entre cada mensagem
+  const [delayBetweenMessages, setDelayBetweenMessages] = useState(15); // segundos entre cada mensagem (anti-bloqueio: 15s recomendado)
   const [messagesBeforePause, setMessagesBeforePause] = useState(10); // qtd de mensagens antes da pausa
-  const [pauseDuration, setPauseDuration] = useState(30); // segundos de pausa a cada X mensagens
+  const [pauseDuration, setPauseDuration] = useState(120); // segundos de pausa a cada X mensagens (2min recomendado)
 
   // Estado para agendamento
   const [isScheduled, setIsScheduled] = useState(false);
@@ -502,6 +503,10 @@ export default function Cobranca() {
           personalizedMessage = personalizedMessage.replace(/\{\{nome\}\}/g, customer.customer_name);
         }
 
+        // 🛡️ Anti-bloqueio: aplicar variação sutil (emoji swap + zero-width space)
+        // para evitar que o WhatsApp filtre mensagens idênticas em massa
+        const variedMessage = addMessageVariation(personalizedMessage);
+
         // Normalizar telefone para envio
         const phoneToSend = normalizeForSending(customer.customer_phone);
         console.log(`📱 Enviando para ${phoneToSend} (${i + 1}/${customers.length})`);
@@ -513,7 +518,7 @@ export default function Cobranca() {
               action: 'send-text', 
               tenant_id: tenant.id,
               phone: phoneToSend,
-              message: personalizedMessage
+              message: variedMessage
             }
           });
 
@@ -547,7 +552,7 @@ export default function Cobranca() {
           // Registrar no banco de dados
           await supabaseTenant.from('whatsapp_messages').insert({
             phone: phoneToSend,
-            message: personalizedMessage,
+            message: variedMessage,
             type: 'bulk',
             sent_at: new Date().toISOString(),
             processed: true
@@ -567,15 +572,18 @@ export default function Cobranca() {
           errorCount++;
         }
 
-        // Sistema de delay customizado
+        // Sistema de delay customizado com jitter humanizado (anti-bloqueio)
         if (i < customers.length - 1) {
-          // Delay entre cada mensagem
-          await new Promise(resolve => setTimeout(resolve, delayBetweenMessages * 1000));
-          
+          // Delay entre cada mensagem com variação 0.7x-1.3x para parecer humano
+          const humanDelay = getHumanizedDelayMs(delayBetweenMessages);
+          console.log(`⏱️ Aguardando ${(humanDelay / 1000).toFixed(1)}s (humanizado)`);
+          await new Promise(resolve => setTimeout(resolve, humanDelay));
+
           // Pausa maior a cada X mensagens
           if ((i + 1) % messagesBeforePause === 0) {
-            console.log(`⏸️ Pausa de ${pauseDuration}s após ${i + 1} mensagens`);
-            await new Promise(resolve => setTimeout(resolve, pauseDuration * 1000));
+            const humanPause = getHumanizedDelayMs(pauseDuration);
+            console.log(`⏸️ Pausa de ${(humanPause / 1000).toFixed(1)}s após ${i + 1} mensagens`);
+            await new Promise(resolve => setTimeout(resolve, humanPause));
           }
         }
       }
