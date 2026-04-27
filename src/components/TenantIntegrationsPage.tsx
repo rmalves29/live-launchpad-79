@@ -16,6 +16,7 @@ import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
+import SuperFreteIntegration from '@/components/integrations/SuperFreteIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
