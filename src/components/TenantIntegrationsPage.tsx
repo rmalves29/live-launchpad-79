@@ -283,6 +283,12 @@ export default function TenantIntegrationsPage() {
             <span className="sm:hidden">MD</span>
             {mandaeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          <TabsTrigger value="superfrete" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            <span className="hidden sm:inline">SuperFrete</span>
+            <span className="sm:hidden">SF</span>
+            {superfreteIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
           <TabsTrigger value="correios" className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
             <span className="hidden sm:inline">Correios</span>
