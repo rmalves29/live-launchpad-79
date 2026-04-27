@@ -137,6 +137,8 @@ serve(async (req) => {
     const fromCep = integration.from_cep.replace(/\D/g, "");
     const toCep = to_postal_code.replace(/\D/g, "");
 
+    const shouldUseInsurance = totalValue >= 25.63;
+
     const requestBody = {
       from: { postal_code: fromCep },
       to: { postal_code: toCep },
@@ -144,8 +146,8 @@ serve(async (req) => {
       options: {
         own_hand: false,
         receipt: false,
-        insurance_value: totalValue,
-        use_insurance_value: totalValue > 0,
+        insurance_value: shouldUseInsurance ? totalValue : 0,
+        use_insurance_value: shouldUseInsurance,
       },
       products: sfProducts,
     };
