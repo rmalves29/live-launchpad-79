@@ -39,6 +39,17 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
 
     console.log("[shipping-utils] Integrações encontradas para tenant", tenantId, ":", integrations);
 
+    // Verificar se SuperFrete está ativo (prioridade alta)
+    const superfreteIntegration = integrations.find(i => i.provider === 'superfrete');
+    if (superfreteIntegration) {
+      console.log("[shipping-utils] Integração SuperFrete ativa para tenant:", tenantId);
+      return {
+        provider: 'superfrete',
+        functionName: 'superfrete-shipping',
+        testFunctionName: null
+      };
+    }
+
     // Verificar se Mandae está ativa (prioridade)
     const mandaeIntegration = integrations.find(i => i.provider === 'mandae');
     if (mandaeIntegration) {
