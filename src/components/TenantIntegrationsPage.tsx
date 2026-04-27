@@ -71,6 +71,15 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
+  const { data: superfreteIntegration } = useQuery({
+    queryKey: ['superfrete-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'superfrete').maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
   const { data: blingIntegration } = useQuery({
     queryKey: ['bling-status', tenantId],
     queryFn: async () => {
