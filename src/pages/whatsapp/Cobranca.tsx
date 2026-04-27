@@ -89,9 +89,9 @@ export default function Cobranca() {
   const [loadingTags, setLoadingTags] = useState(false);
   
   // Configurações de timer para envio
-  const [delayBetweenMessages, setDelayBetweenMessages] = useState(3); // segundos entre cada mensagem
+  const [delayBetweenMessages, setDelayBetweenMessages] = useState(15); // segundos entre cada mensagem (anti-bloqueio: 15s recomendado)
   const [messagesBeforePause, setMessagesBeforePause] = useState(10); // qtd de mensagens antes da pausa
-  const [pauseDuration, setPauseDuration] = useState(30); // segundos de pausa a cada X mensagens
+  const [pauseDuration, setPauseDuration] = useState(120); // segundos de pausa a cada X mensagens (2min recomendado)
 
   // Estado para agendamento
   const [isScheduled, setIsScheduled] = useState(false);
