@@ -530,7 +530,7 @@ const Checkout = () => {
     return `${handlingDays} dias para postagem + ${originalTime}`;
   };
 
-  const filterShippingOptions = (options: any[], activeProvider: 'melhor_envio' | 'mandae' | null) => {
+  const filterShippingOptions = (options: any[], activeProvider: 'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'superfrete' | null) => {
     const normalizeText = (value: unknown) =>
       String(value || '')
         .toLowerCase()
@@ -543,6 +543,20 @@ const Checkout = () => {
       
       // Allow pickup option
       if (option.id === 'retirada') return true;
+
+      // SuperFrete pode retornar Correios, Mini Envios e Jadlog
+      if (activeProvider === 'superfrete') {
+        return (
+          companyName.includes('superfrete') ||
+          companyName.includes('correios') ||
+          companyName.includes('jadlog') ||
+          serviceName.includes('pac') ||
+          serviceName.includes('sedex') ||
+          serviceName.includes('mini') ||
+          serviceName.includes('jadlog') ||
+          serviceName.includes('package')
+        );
+      }
       
       // IMPORTANTE: só permitir serviços "Mandae" quando a integração ativa do tenant for Mandae.
       const isMandaeService =
@@ -735,7 +749,10 @@ const Checkout = () => {
             });
             
             // SEMPRE exibe o nome da integração ativa do tenant, não da transportadora
-            const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae' : 'Melhor Envio';
+            const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae'
+              : activeIntegration.provider === 'superfrete' ? 'SuperFrete'
+              : (activeIntegration.provider === 'meuscorreios' || activeIntegration.provider === 'correios') ? 'Correios'
+              : 'Melhor Envio';
 
             return {
               id: String(option.service_id || option.id || Math.random()),
