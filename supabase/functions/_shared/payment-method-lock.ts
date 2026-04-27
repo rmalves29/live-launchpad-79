@@ -100,6 +100,11 @@ export function applyPaymentMethodLock(
     case "mercado_pago": {
       payload.payment_methods = payload.payment_methods || {};
       if (normalized === "pix") {
+        // Bloqueia tudo que NÃO seja PIX. Não definimos default_payment_method_id
+        // porque, se a conta MP não tiver PIX habilitado, o MP retorna
+        // "invalid default_payment_method_id. The default payment method is excluded".
+        // Excluindo apenas os outros tipos, o MP abre direto no PIX quando disponível
+        // ou mostra mensagem clara se não estiver habilitado.
         payload.payment_methods.excluded_payment_types = [
           { id: "credit_card" },
           { id: "debit_card" },
@@ -110,7 +115,6 @@ export function applyPaymentMethodLock(
           { id: "bolbradesco" },
           { id: "pec" },
         ];
-        payload.payment_methods.default_payment_method_id = "pix";
       } else {
         // card → bloqueia PIX, boleto e transferência
         payload.payment_methods.excluded_payment_types = [
