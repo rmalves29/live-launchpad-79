@@ -726,10 +726,25 @@ const Checkout = () => {
 
       if (shippingResponse.error) {
         console.error('❌ Erro na função de frete:', shippingResponse.error);
-        throw new Error('Erro ao calcular frete');
+        toast({
+          title: 'Frete não disponível',
+          description: 'Não foi possível consultar a transportadora para este CEP.',
+          variant: 'destructive'
+        });
+        return;
       }
 
       const data = shippingResponse.data;
+      if (data?.success === false) {
+        console.warn('⚠️ Frete não disponível:', data.error, data.details);
+        toast({
+          title: 'Frete não disponível',
+          description: data.error || 'A transportadora não retornou opções para este CEP.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
       if (data && data.success && data.shipping_options && Array.isArray(data.shipping_options)) {
         // Log para debug da estrutura de dados
         console.log('📊 Estrutura dos dados de frete recebidos:', data.shipping_options.slice(0, 2));

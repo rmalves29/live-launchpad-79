@@ -543,10 +543,25 @@ const PublicCheckout = () => {
 
       if (shippingResponse.error) {
         console.error('[PublicCheckout] Erro na função de frete:', shippingResponse.error);
-        throw new Error('Erro ao calcular frete');
+        toast({
+          title: 'Frete não disponível',
+          description: 'Não foi possível consultar a transportadora para este CEP.',
+          variant: 'destructive'
+        });
+        return;
       }
 
       const data = shippingResponse.data;
+      if (data && data.success === false) {
+        console.warn('[PublicCheckout] Frete não disponível:', data.error, data.details);
+        toast({
+          title: 'Frete não disponível',
+          description: data.error || 'A transportadora não retornou opções para este CEP.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
       if (data?.success && Array.isArray(data.shipping_options)) {
          const validOptions = data.shipping_options
            .filter((option: any) => option && !option.error && option.price)
@@ -578,7 +593,17 @@ const PublicCheckout = () => {
             title: 'Frete calculado',
             description: `${allOptions.length} opções de frete encontradas`,
           });
+        } else {
+          toast({
+            title: 'Frete não disponível',
+            description: 'A transportadora não retornou opções para este CEP.',
+          });
         }
+      } else {
+        toast({
+          title: 'Frete não disponível',
+          description: 'Apenas opções de frete configuradas manualmente estão disponíveis para este CEP.',
+        });
       }
     } catch (error) {
       console.error('Erro no cálculo de frete:', error);
