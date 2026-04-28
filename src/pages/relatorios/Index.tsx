@@ -342,24 +342,37 @@ const Relatorios = () => {
       const { start: monthStart } = getBrasiliaDayBoundsISO(startOfMonthStr);
       const { start: yearStart } = getBrasiliaDayBoundsISO(startOfYearStr);
 
-      // Vendas do dia - apenas hoje
-      const dailyOrders = await supabaseTenant
-        .from('orders')
-        .select('total_amount, cart_id, is_paid')
-        .gte('created_at', todayStart)
-        .lt('created_at', tomorrowStart);
+      // Vendas do dia - apenas hoje (paginado + ignora cancelados)
+      const dailyData = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('total_amount, cart_id, is_paid')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .gte('created_at', todayStart)
+          .lt('created_at', tomorrowStart)
+      );
 
       // Vendas do mês - do início do mês até agora
-      const monthlyOrders = await supabaseTenant
-        .from('orders')
-        .select('total_amount, cart_id, is_paid')
-        .gte('created_at', monthStart);
+      const monthlyData = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('total_amount, cart_id, is_paid')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .gte('created_at', monthStart)
+      );
 
       // Vendas do ano - do início do ano até agora
-      const yearlyOrders = await supabaseTenant
-        .from('orders')
-        .select('total_amount, cart_id, is_paid')
-        .gte('created_at', yearStart);
+      const yearlyData = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('total_amount, cart_id, is_paid')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .gte('created_at', yearStart)
+      );
+
+      const dailyOrders = { data: dailyData };
+      const monthlyOrders = { data: monthlyData };
+      const yearlyOrders = { data: yearlyData };
 
       console.log('📊 Orders loaded:', {
         daily: dailyOrders.data?.length || 0,
