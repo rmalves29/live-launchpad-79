@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Menu, MessageSquare, ChevronDown, Zap, LogOut, User } from 'lucide-react';
+import { Menu, MessageSquare, ChevronDown, Zap, LogOut, User, Settings, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
@@ -19,6 +19,10 @@ const Navbar = () => {
   const enableSendflow = tenant?.enable_sendflow ?? true;
   
   const isWhatsappActive = location.pathname.startsWith('/whatsapp');
+  const isConfigActive = location.pathname.startsWith('/config');
+
+  const SUPABASE_DASHBOARD_URL = 'https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/reports/database';
+  const LOVABLE_CLOUD_URL = 'https://lovable.dev/projects/154035f9-093b-4aed-ac82-a01434f3c19b';
 
   const isSuperAdmin = profile?.role === 'super_admin';
 
@@ -37,7 +41,6 @@ const Navbar = () => {
     { path: '/etiquetas', label: 'Etiquetas' },
     { path: '/integracoes', label: 'Integrações' },
     ...(isSuperAdmin ? [{ path: '/empresas', label: 'Empresas' }] : []),
-    { path: '/config', label: 'Config' }
   ];
 
   return (
@@ -159,6 +162,45 @@ const Navbar = () => {
                           </NavLink>
                         ))}
                       </div>
+
+                      {/* Config Section Mobile */}
+                      <div className="border-t border-border/30 pt-4">
+                        <div className="flex items-center gap-2 px-4 py-2 text-sm font-display font-semibold text-foreground">
+                          <Settings className="h-4 w-4 text-primary" />
+                          Config
+                        </div>
+                        <NavLink
+                          to="/config"
+                          onClick={() => setOpen(false)}
+                          className={({ isActive }) =>
+                            `px-8 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 block ${
+                              isActive
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                            }`
+                          }
+                        >
+                          Configurações
+                        </NavLink>
+                        {isSuperAdmin && (
+                          <>
+                            <button
+                              onClick={() => { window.open(SUPABASE_DASHBOARD_URL, '_blank', 'noopener,noreferrer'); setOpen(false); }}
+                              className="w-full text-left px-8 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-200 flex items-center justify-between"
+                            >
+                              Métricas Supabase
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => { window.open(LOVABLE_CLOUD_URL, '_blank', 'noopener,noreferrer'); setOpen(false); }}
+                              className="w-full text-left px-8 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-200 flex items-center justify-between"
+                            >
+                              Cloud Lovable
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                       
                       <div className="border-t border-border/30 pt-4">
                         {user ? (
@@ -239,6 +281,46 @@ const Navbar = () => {
                   <DropdownMenuItem onClick={() => navigate('/whatsapp/cobranca')} className="cursor-pointer">
                     Cobrança em Massa
                   </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {/* Config Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={isConfigActive ? "default" : "ghost"}
+                    size="sm"
+                    className={`flex items-center gap-1.5 h-9 px-4 text-base rounded-lg ${
+                      isConfigActive ? 'shadow-glow-sm' : ''
+                    }`}
+                  >
+                    <Settings className="h-3 w-3" />
+                    Config
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-56 bg-popover/95 backdrop-blur-xl border-border/50">
+                  <DropdownMenuItem onClick={() => navigate('/config')} className="cursor-pointer">
+                    Configurações
+                  </DropdownMenuItem>
+                  {isSuperAdmin && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => window.open(SUPABASE_DASHBOARD_URL, '_blank', 'noopener,noreferrer')}
+                        className="cursor-pointer flex items-center justify-between"
+                      >
+                        Métricas Supabase
+                        <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => window.open(LOVABLE_CLOUD_URL, '_blank', 'noopener,noreferrer')}
+                        className="cursor-pointer flex items-center justify-between"
+                      >
+                        Cloud Lovable
+                        <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
