@@ -142,6 +142,8 @@ function appendCustomerAndAddressParams(
     return `${baseUrl}${sep}${qs}`;
   }
 }
+
+serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const requestOrigin = req.headers.get("origin") || req.headers.get("referer")?.replace(/\/[^/]*$/, "") || "";
