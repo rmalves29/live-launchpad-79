@@ -741,28 +741,32 @@ const Relatorios = () => {
         }
       }
       
-      // Aplicar filtros de data
+      // Aplicar filtros de data (sempre em horário Brasília)
       let dateFilter = '';
       let endDateFilter = '';
-      
+      const todayBrasWA = getBrasiliaDate();
+
       switch (whatsappFilter) {
         case 'today':
-          dateFilter = new Date().toISOString().split('T')[0];
+          dateFilter = getBrasiliaDateISO();
           break;
-        case 'yesterday':
-          const yesterdayWA = new Date();
+        case 'yesterday': {
+          const yesterdayWA = new Date(todayBrasWA);
           yesterdayWA.setDate(yesterdayWA.getDate() - 1);
-          dateFilter = yesterdayWA.toISOString().split('T')[0];
-          endDateFilter = yesterdayWA.toISOString().split('T')[0];
+          dateFilter = toBrasiliaDateISO(yesterdayWA);
+          endDateFilter = dateFilter;
           break;
-        case 'month':
-          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-          dateFilter = startOfMonth.toISOString().split('T')[0];
+        }
+        case 'month': {
+          const startOfMonth = new Date(todayBrasWA.getFullYear(), todayBrasWA.getMonth(), 1);
+          dateFilter = toBrasiliaDateISO(startOfMonth);
           break;
-        case 'year':
-          const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-          dateFilter = startOfYear.toISOString().split('T')[0];
+        }
+        case 'year': {
+          const startOfYear = new Date(todayBrasWA.getFullYear(), 0, 1);
+          dateFilter = toBrasiliaDateISO(startOfYear);
           break;
+        }
         case 'custom':
           if (!whatsappStartDate || !whatsappEndDate) return;
           dateFilter = whatsappStartDate;
@@ -773,32 +777,36 @@ const Relatorios = () => {
           break;
       }
 
-      // Buscar pedidos com informação de grupo do carrinho (LEFT JOIN para incluir todos os pedidos)
-      let query = supabaseTenant
-        .from('orders')
-        .select(`
-          id, 
-          total_amount, 
-          is_paid, 
-          cart_id, 
-          customer_phone,
-          whatsapp_group_name,
-          carts(whatsapp_group_name)
-        `);
+      // Buscar pedidos com informação de grupo do carrinho (paginado + ignora cancelados)
+      const buildWAQuery = () => {
+        let q = supabaseTenant
+          .from('orders')
+          .select(`
+            id, 
+            total_amount, 
+            is_paid, 
+            cart_id, 
+            customer_phone,
+            whatsapp_group_name,
+            carts(whatsapp_group_name)
+          `)
+          .or('is_cancelled.is.null,is_cancelled.eq.false');
 
-      if ((whatsappFilter === 'custom' || whatsappFilter === 'yesterday') && dateFilter && endDateFilter) {
-        query = query
-          .gte('created_at', `${dateFilter}T00:00:00`)
-          .lte('created_at', `${endDateFilter}T23:59:59`);
-      } else if (dateFilter) {
-        query = query.gte('created_at', `${dateFilter}T00:00:00`);
-      }
+        if ((whatsappFilter === 'custom' || whatsappFilter === 'yesterday') && dateFilter && endDateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          const { end } = getBrasiliaDayBoundsISO(endDateFilter);
+          q = q.gte('created_at', start).lte('created_at', end);
+        } else if (dateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          q = q.gte('created_at', start);
+        }
+        return q;
+      };
 
-      const { data: orders, error } = await query;
-
-      if (error) throw error;
+      const orders = await fetchAllPaginated<any>(buildWAQuery);
 
       console.log('📦 Orders encontrados:', orders?.length);
+
 
       // Criar mapa para agrupar estatísticas por grupo
       const groupMap = new Map<string, WhatsAppGroupStats>();
