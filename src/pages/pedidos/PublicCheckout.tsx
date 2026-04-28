@@ -300,14 +300,23 @@ const PublicCheckout = () => {
         ]);
 
         let discount = 0;
-        if (appmaxRes.data?.is_active && appmaxRes.data?.pix_discount_percent) {
-          discount = Number(appmaxRes.data.pix_discount_percent);
-        } else if (pagarmeRes.data?.is_active && pagarmeRes.data?.pix_discount_percent) {
-          discount = Number(pagarmeRes.data.pix_discount_percent);
-        } else if (mpRes.data?.is_active && mpRes.data?.pix_discount_percent) {
-          discount = Number(mpRes.data.pix_discount_percent);
-        } else if (infRes.data?.is_active && infRes.data?.pix_discount_percent) {
-          discount = Number(infRes.data.pix_discount_percent);
+        let provider: 'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null = null;
+        if (appmaxRes.data?.is_active) {
+          provider = 'appmax';
+          if (appmaxRes.data?.pix_discount_percent) discount = Number(appmaxRes.data.pix_discount_percent);
+        } else if (pagarmeRes.data?.is_active) {
+          provider = 'pagarme';
+          if (pagarmeRes.data?.pix_discount_percent) discount = Number(pagarmeRes.data.pix_discount_percent);
+        } else if (mpRes.data?.is_active) {
+          provider = 'mp';
+          if (mpRes.data?.pix_discount_percent) discount = Number(mpRes.data.pix_discount_percent);
+        } else if (infRes.data?.is_active) {
+          provider = 'infinitepay';
+          if (infRes.data?.pix_discount_percent) discount = Number(infRes.data.pix_discount_percent);
+        }
+        setActivePaymentProvider(provider);
+        if (provider === 'infinitepay') {
+          setPaymentMethod('pix');
         }
 
         console.log('[PublicCheckout] Desconto PIX (backend):', discount + '%');
