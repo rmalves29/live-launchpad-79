@@ -309,7 +309,20 @@ serve(async (req) => {
       };
     }
 
-    console.log("[create-infinitepay-payment] Creating link for handle:", handle, "order_nsu:", orderNsu);
+    console.log(
+      "[create-infinitepay-payment] Creating link for handle:",
+      handle,
+      "order_nsu:",
+      orderNsu,
+      "email_sent:",
+      isRealEmail ? "yes" : "no",
+      "cpf_sent:",
+      customerCpf.length === 11 ? "yes" : "no",
+      "items_count:",
+      productItems.length,
+      "total_cents:",
+      productItems.reduce((s, it) => s + it.price * it.quantity, 0),
+    );
 
     const infRes = await fetch("https://api.checkout.infinitepay.io/links", {
       method: "POST",
