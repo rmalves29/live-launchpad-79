@@ -4,7 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { buildLockedCheckoutUrl } from "../_shared/payment-method-lock.ts";
+
 import { resolvePixDiscount } from "../_shared/pix-discount.ts";
 
 const corsHeaders = {
@@ -410,8 +410,10 @@ serve(async (req) => {
       address: body.addressData,
     });
 
-    // Trava método de pagamento (PIX-only ou Cartão-only) via query string
-    const checkoutUrl = buildLockedCheckoutUrl(urlWithPrefill, body.payment_method);
+    // NÃO travamos método de pagamento na InfinitePay: a seleção PIX/Cartão
+    // é apenas interna do Orderzaps (para aplicar desconto PIX). Na tela da
+    // InfinitePay, o cliente vê a experiência padrão do provedor.
+    const checkoutUrl = urlWithPrefill;
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
