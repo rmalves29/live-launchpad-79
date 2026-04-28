@@ -563,25 +563,25 @@ const Relatorios = () => {
           break;
       }
 
-      // First, get orders in the date range
-      let ordersQuery = supabaseTenant
-        .from('orders')
-        .select('id, cart_id');
+      // First, get orders in the date range (paginado + ignora cancelados)
+      const buildOrdersQuery = () => {
+        let q = supabaseTenant
+          .from('orders')
+          .select('id, cart_id')
+          .or('is_cancelled.is.null,is_cancelled.eq.false');
 
-      if ((selectedPeriod === 'custom' || selectedPeriod === 'yesterday') && dateFilter && endDateFilter) {
-        const { start } = getBrasiliaDayBoundsISO(dateFilter);
-        const { end } = getBrasiliaDayBoundsISO(endDateFilter);
-        ordersQuery = ordersQuery
-          .gte('created_at', start)
-          .lte('created_at', end);
-      } else if (dateFilter) {
-        const { start } = getBrasiliaDayBoundsISO(dateFilter);
-        ordersQuery = ordersQuery.gte('created_at', start);
-      }
+        if ((selectedPeriod === 'custom' || selectedPeriod === 'yesterday') && dateFilter && endDateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          const { end } = getBrasiliaDayBoundsISO(endDateFilter);
+          q = q.gte('created_at', start).lte('created_at', end);
+        } else if (dateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          q = q.gte('created_at', start);
+        }
+        return q;
+      };
 
-      const { data: ordersData, error: ordersError } = await ordersQuery;
-      
-      if (ordersError) throw ordersError;
+      const ordersData = await fetchAllPaginated<any>(buildOrdersQuery);
 
       if (!ordersData || ordersData.length === 0) {
         setTopProducts([]);
