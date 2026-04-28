@@ -1,53 +1,37 @@
 ## Objetivo
 
-Quando o gateway de pagamento ativo do tenant for **InfinitePay**:
-1. O quadro "Forma de Pagamento" (PIX / Cartão de Crédito) **não aparece** no checkout público.
-2. O cliente consegue finalizar o pedido normalmente, **sem precisar selecionar nada** — vai direto para o checkout da InfinitePay, onde escolherá PIX, Cartão ou Boleto.
+Copiar os 8 templates de WhatsApp da **Mania de Mulher** (`08f2b1b9...`) para:
+- **Cabello Mania** → link `https://app.orderzaps.com/t/cabellomania/checkout`
+- **Revele Semi Jóias** → link `https://app.orderzaps.com/t/revelesemijoias/checkout`
+- **La Grandame** → link `https://app.orderzaps.com/t/lagrandame/checkout`
 
-Para os demais gateways (Mercado Pago, Pagar.me, Appmax) o quadro continua aparecendo como hoje.
+A única diferença entre os tenants é a substituição do link de checkout `https://app.orderzaps.com/t/app/checkout` (Mania de Mulher) e da menção "Mania de Mulher" no template ITEM_ADDED, que será trocada pelo nome de cada empresa.
 
-## Mudanças
+## Templates a replicar (8 tipos)
 
-### `src/pages/pedidos/PublicCheckout.tsx`
+1. `ITEM_ADDED` — Item Adicionado ao Pedido (contém link e nome da loja)
+2. `PRODUCT_CANCELED` — produto cancelado
+3. `PAID_ORDER` — Pedido Pago
+4. `MSG_MASSA` — Mensagem em Massa (contém link)
+5. `SENDFLOW` — SendFlow Divulgação em Grupos
+6. `TRACKING` — Código de Rastreio
+7. `BLOCKED_CUSTOMER` — Mensagem de Cliente Bloqueado
+8. `DM_INSTAGRAM_CADASTRO` — Cadastro Sistema
 
-**1) Detectar qual gateway está ativo**
+## Como será aplicado (técnico)
 
-No `useEffect` que já consulta as 4 integrações de pagamento (linhas ~292-326), aproveitar a mesma resposta para definir um novo estado:
+Migration SQL única que para cada tenant destino:
 
-```ts
-const [activePaymentProvider, setActivePaymentProvider] =
-  useState<'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null>(null);
-```
+1. **Apaga** todos os templates existentes daqueles 8 tipos (limpa também as duplicatas de `MSG_MASSA` já presentes — ver memória `persistencia-e-deduplicacao-templates`).
+2. **Insere** as 8 novas linhas copiadas do tenant Mania de Mulher, aplicando `REPLACE` no campo `content`:
+   - `https://app.orderzaps.com/t/app/checkout` → link do tenant destino
+   - Em `ITEM_ADDED`, substituir "Mania de Mulher" pelo nome da loja destino (Cabello Mania / Revele Semi Jóias / La Grandame).
+3. Mantém os mesmos `title` e `type`. Define `updated_at = now()`.
 
-Preencher dentro do `Promise.all` existente — sem nova requisição ao banco.
+Resultado: cada tenant destino fica com exatamente 1 template por tipo (8 no total), idêntico ao original exceto pelo link e nome da loja.
 
-**2) Esconder o quadro quando for InfinitePay**
+## Observações
 
-Envolver o bloco "Forma de Pagamento" (linhas 1701-1749, incluindo o `<Separator />` que vem antes) com:
-
-```tsx
-{activePaymentProvider !== 'infinitepay' && (
-  <>
-    <Separator />
-    {/* Forma de Pagamento ... */}
-  </>
-)}
-```
-
-Resultado: o quadro azul com PIX/Cartão simplesmente não é renderizado quando InfinitePay está ativa.
-
-**3) Garantir que o envio funcione sem interação**
-
-Quando `activePaymentProvider === 'infinitepay'`, definir automaticamente `paymentMethod = 'pix'` via `useEffect`. Isso:
-- Permite que `handleSubmit` rode sem o cliente clicar em nada.
-- Mantém o cálculo do desconto PIX da InfinitePay (se configurado em `integration_infinitepay.pix_discount_percent`) sendo aplicado no resumo.
-- A InfinitePay ignora esse valor e mostra todas as formas de pagamento dela (PIX, Cartão, Boleto) na própria tela.
-
-### Backend
-
-Sem alterações. A edge function `create-infinitepay-payment` já funciona com qualquer `payment_method` recebido — ela só monta o link e a InfinitePay cuida da seleção real.
-
-## Resultado visual
-
-- **Tenant com InfinitePay ativa**: o quadro azul "Forma de Pagamento" desaparece completamente. O cliente vê: Itens → Frete → Cupom → Resumo → botão Finalizar.
-- **Tenant com MP / Pagar.me / Appmax**: nada muda — o quadro continua sendo exibido normalmente.
+- Não há alteração de código (frontend/edge functions). Apenas SQL.
+- Operação é idempotente: pode ser reexecutada com segurança.
+- Nenhum template da Mania de Mulher é alterado.
