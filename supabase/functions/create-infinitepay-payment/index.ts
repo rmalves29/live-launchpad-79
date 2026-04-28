@@ -330,8 +330,16 @@ serve(async (req) => {
 
     const rawCheckoutUrl: string = checkoutUrlFromApi;
 
+    // Anexa dados de cliente + endereço como query string para pré-preencher
+    // os campos no checkout da InfinitePay. A API /links não persiste esses
+    // dados no body — a tela de pagamento lê via querystring.
+    const urlWithPrefill = appendCustomerAndAddressParams(rawCheckoutUrl, {
+      customer: body.customerData,
+      address: body.addressData,
+    });
+
     // Trava método de pagamento (PIX-only ou Cartão-only) via query string
-    const checkoutUrl = buildLockedCheckoutUrl(rawCheckoutUrl, body.payment_method);
+    const checkoutUrl = buildLockedCheckoutUrl(urlWithPrefill, body.payment_method);
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
