@@ -71,6 +71,78 @@ function buildFreightNote(shipping: ShippingData, shippingCost: number) {
   return `[FRETE] ${shipping.company_name || "Transportadora"} - ${shipping.service_name} | R$ ${price.toFixed(2)}${prazo}`;
 }
 
+/**
+ * Anexa dados de cliente + endereço como query string na URL do checkout
+ * da InfinitePay para pré-preencher os campos automaticamente.
+ *
+ * A API /links não aceita endereço no body — os dados precisam vir na URL
+ * para que a página de pagamento já abra com tudo preenchido.
+ *
+ * Inclui múltiplas variações de nomes de parâmetros (camelCase, snake_case
+ * e com/sem prefixo) para maximizar compatibilidade, já que a InfinitePay
+ * não documenta publicamente todos os nomes aceitos.
+ */
+function appendCustomerAndAddressParams(
+  baseUrl: string,
+  data: {
+    customer: { name?: string; phone?: string; cpf?: string; email?: string };
+    address?: AddressData;
+  },
+): string {
+  const { customer, address } = data;
+  const params: Record<string, string> = {};
+
+  const setIf = (key: string, value: string | undefined | null) => {
+    if (value && String(value).trim()) params[key] = String(value).trim();
+  };
+
+  // Cliente
+  setIf("customer_name", customer.name);
+  setIf("name", customer.name);
+  setIf("customer_email", customer.email);
+  setIf("email", customer.email);
+  setIf("customer_phone", customer.phone);
+  setIf("phone", customer.phone);
+  setIf("phone_number", customer.phone);
+  setIf("customer_cpf", customer.cpf);
+  setIf("cpf", customer.cpf);
+
+  // Endereço
+  if (address?.cep) {
+    const cepDigits = address.cep.replace(/\D/g, "");
+    setIf("address_zip_code", cepDigits);
+    setIf("zip_code", cepDigits);
+    setIf("cep", cepDigits);
+    setIf("address_street", address.street);
+    setIf("street", address.street);
+    setIf("address_number", address.number);
+    setIf("number", address.number);
+    setIf("address_complement", address.complement || "");
+    setIf("complement", address.complement || "");
+    setIf("address_district", address.neighborhood);
+    setIf("district", address.neighborhood);
+    setIf("neighborhood", address.neighborhood);
+    setIf("address_city", address.city);
+    setIf("city", address.city);
+    setIf("address_state", address.state);
+    setIf("state", address.state);
+  }
+
+  if (Object.keys(params).length === 0) return baseUrl;
+
+  try {
+    const url = new URL(baseUrl);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    return url.toString();
+  } catch {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const qs = Object.entries(params)
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .join("&");
+    return `${baseUrl}${sep}${qs}`;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -330,8 +402,16 @@ serve(async (req) => {
 
     const rawCheckoutUrl: string = checkoutUrlFromApi;
 
+    // Anexa dados de cliente + endereço como query string para pré-preencher
+    // os campos no checkout da InfinitePay. A API /links não persiste esses
+    // dados no body — a tela de pagamento lê via querystring.
+    const urlWithPrefill = appendCustomerAndAddressParams(rawCheckoutUrl, {
+      customer: body.customerData,
+      address: body.addressData,
+    });
+
     // Trava método de pagamento (PIX-only ou Cartão-only) via query string
-    const checkoutUrl = buildLockedCheckoutUrl(rawCheckoutUrl, body.payment_method);
+    const checkoutUrl = buildLockedCheckoutUrl(urlWithPrefill, body.payment_method);
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
