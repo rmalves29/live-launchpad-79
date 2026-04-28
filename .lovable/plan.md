@@ -1,42 +1,47 @@
 ## Problema
 
-Ao clicar em **Pix** (ou qualquer outro método) no checkout do InfinitePay, aparece o modal "Algo deu errado". O backend está OK — o link é gerado normalmente. O erro acontece **dentro do checkout hospedado da InfinitePay** ao tentar criar a transação.
+O template do SendFlow é cadastrado com **linhas em branco** entre os blocos (nome/código, cor/tamanho, valores, observação, instrução final), mas a mensagem chega no grupo com tudo grudado, sem respeitar o espaçamento.
 
-## Causa raiz
+## Diagnóstico
 
-Em `supabase/functions/create-infinitepay-payment/index.ts` o payload enviado para `https://api.checkout.infinitepay.io/links` tem dois problemas que a InfinitePay aceita silenciosamente na criação do link, mas rejeita na hora de processar o pagamento:
+Confirmado no banco — o template salvo tem inclusive duas linhas em branco entre alguns blocos:
 
-1. **E-mail inválido (`@checkout.local`)** — quando o cliente não informa e-mail, fazemos fallback para `${phone}@checkout.local`. A InfinitePay valida o domínio na hora do pagamento e bloqueia a transação.
-2. **CPF não é enviado no objeto `customer`** — a InfinitePay exige CPF do pagador para Pix (e para cartão acima de certos valores). Hoje o `body.customerData.cpf` chega na função mas não é repassado.
-3. **Valor mínimo R$ 1,00** — para cartão, a InfinitePay rejeita valores abaixo de ~R$ 2,00. Para Pix funciona, mas vale validar.
+```
+{{nome}} ({{codigo}})
+                            ← 1 linha em branco
+Cor: {{cor}}
+Tamanho: {{tamanho}}
+                            ← 1 linha em branco
+De: {{valor_original}}  Por: {{valor_promo}}
+                            ← 2 linhas em branco
+*{{observacao}}*
+                            ← 2 linhas em branco
+Para comprar, digite apenas o código: *{{codigo}}*
+```
 
-## O que fazer
+Três pontos no `supabase/functions/sendflow-process/index.ts` destroem a estrutura:
 
-### 1. Corrigir `create-infinitepay-payment/index.ts`
+1. **Linha 134** — `message.replace(/\n{3,}/g, '\n\n')` colapsa qualquer sequência de 3+ quebras (ou seja, 2+ linhas em branco) para apenas 1 linha em branco. As "duas linhas em branco" propositais do template viram uma só.
+2. **Linhas 117/123/130** — quando `cor`, `tamanho` ou `observacao` estão vazios, a regex `^.*\{\{...\}\}.*$/gim` apaga o conteúdo da linha mas deixa um `\n` órfão, que somado às quebras vizinhas gera mais quebras do que o template original — depois sofre o colapso da linha 134 e perde estrutura.
+3. **Envio como legenda de imagem** (`send-image` com `caption`) — a Z-API normaliza whitespace em legendas, removendo quebras múltiplas. É a causa principal da mensagem chegar "grudada" mesmo quando o texto enviado tem `\n\n`.
 
-- **Remover o fallback `@checkout.local`**. Se o cliente não tem e-mail real, simplesmente **omitir** o campo `email` do objeto `customer` (a InfinitePay aceita customer sem e-mail).
-- **Incluir o CPF** no objeto `customer` (campo `tax_id` ou `document`, conforme a API aceita) quando `body.customerData.cpf` estiver preenchido.
-- **Logar a resposta completa** da InfinitePay quando `infRes.ok` for `false` ou quando o link gerado for usado e falhar — hoje só logamos em erro 4xx/5xx; a InfinitePay retorna 200 mesmo com link "viciado".
+## Solução
 
-### 2. Validações no checkout (frontend)
+Reescrever o pipeline de personalização para **preservar 100% as quebras de linha do template original**, e contornar a normalização da Z-API em legendas usando um caractere invisível como "âncora" de linha em branco.
 
-- Tornar o **e-mail obrigatório** quando a integração ativa for InfinitePay (ou pelo menos avisar o cliente que sem e-mail real o pagamento pode falhar).
-- Tornar o **CPF obrigatório** para Pix via InfinitePay.
+### Mudanças em `supabase/functions/sendflow-process/index.ts`
 
-### 3. Testar com handle real
+1. **Remover variáveis vazias sem destruir a estrutura**: ao detectar `{{cor}}`, `{{tamanho}}` ou `{{observacao}}` sem valor, remover a **linha inteira incluindo o `\n` final** (regex com `\n?` no final), em vez de deixar a linha vazia.
+2. **Eliminar o colapso `\n{3,}` → `\n\n`**: respeitar exatamente o número de linhas em branco que o usuário cadastrou. Se ele quis 2 linhas em branco entre dois blocos, mantemos 2.
+3. **Anti-colapso da Z-API em legendas**: para qualquer linha que ficar **vazia** (entre dois blocos de conteúdo), inserir um caractere invisível (zero-width space `\u200B`) nessa linha. WhatsApp/Z-API só colapsam linhas **completamente vazias**; uma linha contendo `\u200B` é tratada como linha "com conteúdo" e a quebra é mantida na renderização — sem aparecer nada visível para o destinatário.
+4. **Manter o `addMessageVariation` apenas com `invisibleVariation: true`**, mas garantir que a inserção do zero-width space aleatório não caia em cima de uma quebra de linha (já é o caso atual).
 
-Após o deploy, testar novamente com:
-- Valor mínimo de R$ 5,00 (acima do limite de cartão)
-- E-mail real do cliente preenchido
-- CPF preenchido
+### Verificação
 
-Se ainda falhar, capturar o `payment_check` da InfinitePay (a função `infinitepay-webhook` já tem essa chamada) para ver o motivo exato da recusa.
+Reenviar o mesmo produto (Anel Dourado Love – C4090810) sem observação para um grupo de teste e confirmar que a mensagem chega com a mesma estrutura visual do template cadastrado: 1 linha em branco após o nome, 1 linha em branco antes de "De:", e como não há observação, o bloco de observação some inteiro (sem deixar buraco extra).
 
-## Arquivos afetados
+## Arquivos
 
-- `supabase/functions/create-infinitepay-payment/index.ts` — ajustar payload `customer` (remover e-mail fake, adicionar CPF, melhorar logs)
-- `src/pages/Checkout.tsx` (ou componente de checkout do storefront) — validar e-mail/CPF obrigatórios quando InfinitePay estiver ativo
+- `supabase/functions/sendflow-process/index.ts` — refatorar `personalizeMessage` e `applyPromotionalPriceFallback` conforme acima e redeployar a função.
 
-## Riscos
-
-- Nenhum. As mudanças são aditivas (mais validação) e corrigem um bug que afeta 100% dos pagamentos via InfinitePay sem e-mail real.
+Sem alterações no frontend, no banco ou em outras integrações.

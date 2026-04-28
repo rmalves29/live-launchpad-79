@@ -66,6 +66,9 @@ function applyPromotionalPriceFallback(template: string, product: Product): stri
   const promoRegex = /\{\{?\s*valor_promo\s*\}?\}/gi;
   const hasPromotionalPrice = !!(product.promotional_price && product.promotional_price > 0);
 
+  // IMPORTANTE: preservamos linhas em branco do template (não filtramos por trim().length).
+  // Apenas linhas que continham SOMENTE {{valor_promo}} (sem preço base) e que ficariam
+  // sem nenhum conteúdo são removidas — junto com o \n da própria linha (feito depois).
   return template
     .split('\n')
     .map((line): string | null => {
@@ -82,58 +85,86 @@ function applyPromotionalPriceFallback(template: string, product: Product): stri
       const hasBasePriceOnSameLine = /\{\{?\s*(valor|valor_original)\s*\}?\}/i.test(line);
 
       if (!hasBasePriceOnSameLine) {
-        // Sem preço promocional e {{valor_promo}} sozinho na linha → remove a linha inteira
+        // Sem preço promocional e {{valor_promo}} sozinho na linha → marca para remoção total
         return null;
       }
 
       return removePromotionalSegment(line);
     })
-    .filter((line): line is string => line !== null && line.trim().length > 0)
+    .filter((line): line is string => line !== null)
+    .join('\n');
+}
+
+/**
+ * Remove a linha inteira (incluindo o \n final) quando uma variável vazia é encontrada.
+ * Preserva 100% da estrutura de quebras do template original ao redor.
+ */
+function removeLineWithVariable(message: string, variableName: string): string {
+  const re = new RegExp(`^[^\\n]*\\{\\{?\\s*${variableName}\\s*\\}?\\}[^\\n]*\\n?`, 'gim');
+  return message.replace(re, '');
+}
+
+/**
+ * Z-API/WhatsApp colapsam linhas COMPLETAMENTE vazias em legendas de imagem.
+ * Inserir um zero-width space (\u200B) em cada linha vazia força o WhatsApp
+ * a tratá-la como linha "com conteúdo" e renderizar a quebra — invisível para o usuário.
+ * Preserva exatamente o número de linhas em branco do template original.
+ */
+function preserveBlankLines(message: string): string {
+  return message
+    .split('\n')
+    .map((line) => (line.length === 0 ? '\u200B' : line))
     .join('\n');
 }
 
 function personalizeMessage(template: string, product: Product): string {
   let message = applyPromotionalPriceFallback(template, product);
-  
+
   // {{valor}} and {{valor_original}} always show the BASE price (without discount)
   message = message
     .replace(/\{\{?\s*codigo\s*\}?\}/gi, product.code.trim())
     .replace(/\{\{?\s*nome\s*\}?\}/gi, product.name.trim())
     .replace(/\{\{?\s*valor\s*\}?\}/gi, formatPrice(product.price));
-  
-  // {{valor_original}} always shows the base price
-  // {{valor_promo}} shows promo price if available, otherwise falls back to base price
-  // or removes only the promo segment when the same line already contains {{valor}}/{{valor_original}}
+
   message = message.replace(/\{\{?\s*valor_original\s*\}?\}/gi, formatPrice(product.price));
-  
+
   if (product.promotional_price && product.promotional_price > 0) {
     message = message.replace(/\{\{?\s*valor_promo\s*\}?\}/gi, formatPrice(product.promotional_price));
   }
-  
+
+  // Para variáveis vazias, removemos a LINHA INTEIRA (incluindo o \n) para
+  // não deixar uma linha em branco extra que distorce a estrutura do template.
   if (product.color && product.color.trim()) {
     message = message.replace(/\{\{?\s*cor\s*\}?\}/gi, product.color.trim());
   } else {
-    // Remove só a linha (sem consumir o \n seguinte) para preservar quebras estruturais
-    message = message.replace(/^.*\{\{?\s*cor\s*\}?\}.*$/gim, '');
+    message = removeLineWithVariable(message, 'cor');
   }
-  
+
   if (product.size && product.size.trim()) {
     message = message.replace(/\{\{?\s*tamanho\s*\}?\}/gi, product.size.trim());
   } else {
-    message = message.replace(/^.*\{\{?\s*tamanho\s*\}?\}.*$/gim, '');
+    message = removeLineWithVariable(message, 'tamanho');
   }
-  
-  // {{observacao}} — remove line if empty (tolerates spaces like {{ observacao }})
+
   if (product.observation && product.observation.trim()) {
     message = message.replace(/\{\{?\s*observacao\s*\}?\}/gi, product.observation.trim());
   } else {
-    message = message.replace(/^.*\{\{?\s*observacao\s*\}?\}.*$/gim, '');
+    message = removeLineWithVariable(message, 'observacao');
   }
-  
-  // Consolida no MÁXIMO 1 linha em branco entre blocos (preserva estrutura do template)
-  message = message.replace(/\n{3,}/g, '\n\n');
-  
-  return message.trim();
+
+  // NÃO colapsamos múltiplas quebras — respeitamos exatamente o que o usuário cadastrou.
+  // Apenas removemos espaços em branco no final das linhas e do final da mensagem.
+  message = message
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+$/g, ''))
+    .join('\n')
+    .replace(/\s+$/g, '');
+
+  // Anti-colapso da Z-API: garante que linhas em branco sobrevivam à renderização
+  // tanto em send-text quanto em send-image (caption).
+  message = preserveBlankLines(message);
+
+  return message;
 }
 
 async function getZAPICredentials(supabase: any, tenantId: string) {
