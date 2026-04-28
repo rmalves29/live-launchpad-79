@@ -283,6 +283,46 @@ const Navbar = () => {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {/* Config Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={isConfigActive ? "default" : "ghost"}
+                    size="sm"
+                    className={`flex items-center gap-1.5 h-9 px-4 text-base rounded-lg ${
+                      isConfigActive ? 'shadow-glow-sm' : ''
+                    }`}
+                  >
+                    <Settings className="h-3 w-3" />
+                    Config
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-56 bg-popover/95 backdrop-blur-xl border-border/50">
+                  <DropdownMenuItem onClick={() => navigate('/config')} className="cursor-pointer">
+                    Configurações
+                  </DropdownMenuItem>
+                  {isSuperAdmin && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => window.open(SUPABASE_DASHBOARD_URL, '_blank', 'noopener,noreferrer')}
+                        className="cursor-pointer flex items-center justify-between"
+                      >
+                        Métricas Supabase
+                        <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => window.open(LOVABLE_CLOUD_URL, '_blank', 'noopener,noreferrer')}
+                        className="cursor-pointer flex items-center justify-between"
+                      >
+                        Cloud Lovable
+                        <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
