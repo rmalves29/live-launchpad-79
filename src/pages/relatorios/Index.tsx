@@ -1776,8 +1776,14 @@ const Relatorios = () => {
                         return (
                           <TableRow key={customer.customer_phone} className={podium?.rowClass ?? ''}>
                             <TableCell className="pl-6">
-                              <div className="flex flex-col items-center gap-1">
+                              <div
+                                className="flex flex-col items-center gap-1"
+                                title={`Score RFM = Valor (${customer.score_value ?? '-'}) + Frequência (${customer.score_frequency ?? '-'}) + Recência (${customer.score_recency ?? '-'})`}
+                              >
                                 <span className="text-lg font-bold text-foreground">{score}</span>
+                                <span className="text-[10px] font-mono text-muted-foreground tracking-wider">
+                                  V{customer.score_value ?? '-'}·F{customer.score_frequency ?? '-'}·R{customer.score_recency ?? '-'}
+                                </span>
                                 {podium && (
                                   <Badge
                                     variant="outline"
