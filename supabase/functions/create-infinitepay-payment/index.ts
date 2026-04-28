@@ -314,6 +314,9 @@ serve(async (req) => {
 
     console.log("[create-infinitepay-payment] Creating link for handle:", handle, "order_nsu:", orderNsu);
 
+    const totalCents = productItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+    const manualCheckoutUrl = buildManualCheckoutUrl({ handle, orderNsu, redirectUrl, webhookUrl, totalCents });
+
     const infRes = await fetch("https://api.checkout.infinitepay.io/links", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -326,7 +329,10 @@ serve(async (req) => {
       console.error("[create-infinitepay-payment] Resposta não-JSON:", text.slice(0, 300));
       return new Response(
         JSON.stringify({
-          error: "InfinitePay retornou resposta inválida. Verifique se o handle (InfiniteTag) está correto.",
+          init_point: manualCheckoutUrl,
+          provider: "infinitepay",
+          order_nsu: orderNsu,
+          warning: "InfinitePay retornou resposta inválida; usando link manual documentado.",
           details: `Status ${infRes.status}`,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -336,23 +342,13 @@ serve(async (req) => {
     const infJson = await infRes.json();
     const checkoutUrlFromApi: string | undefined = infJson?.url || infJson?.link;
     if (!infRes.ok || !checkoutUrlFromApi) {
-      console.error("[create-infinitepay-payment] Erro InfinitePay:", infJson);
-      return new Response(
-        JSON.stringify({
-          error: infJson?.message || infJson?.error || "Erro ao criar link de pagamento no InfinitePay. Verifique sua InfiniteTag.",
-          details: infJson,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      console.error("[create-infinitepay-payment] Erro InfinitePay; usando link manual:", infJson);
     }
 
-    const rawCheckoutUrl: string = checkoutUrlFromApi;
-
-    // IMPORTANTE: NÃO anexamos dados de cliente/endereço como query string.
-    // O Cloudflare da InfinitePay bloqueia URLs com muitos parâmetros suspeitos
-    // (erro "You are unable to access infinitepay.io"). Os dados de cliente e
-    // endereço já são enviados no body da API (customer + address acima).
-    const checkoutUrl = rawCheckoutUrl;
+    // O link com `lenc` retornado pela API pode ser bloqueado pelo Cloudflare da
+    // InfinitePay em alguns dispositivos. Usamos o formato manual documentado,
+    // com poucos parâmetros e sem dados pessoais na URL.
+    const checkoutUrl = manualCheckoutUrl;
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
@@ -366,7 +362,7 @@ serve(async (req) => {
         init_point: checkoutUrl,
         provider: "infinitepay",
         order_nsu: orderNsu,
-        slug: infJson.slug,
+        slug: infJson?.slug,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
