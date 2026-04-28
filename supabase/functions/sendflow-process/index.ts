@@ -550,17 +550,23 @@ async function processTaskQueue({
     // Mark task as running
     await supabase.from('sendflow_tasks').update({ status: 'running', started_at: new Date().toISOString() }).eq('id', task.id);
 
-    // Idempotency check - 8 hour window
-    const { data: alreadySent } = await supabase.rpc('is_product_recently_sent', {
-      p_tenant_id: tenantId,
-      p_product_id: task.product_id,
-      p_group_id: task.group_id,
-      p_hours: 8,
-    });
+    // Idempotency check - 15 minutes window (anti-spam Z-API).
+    // Consulta direta no histórico para suportar janela em minutos sem depender de RPC.
+    const DUPLICATE_WINDOW_MINUTES = 15;
+    const cutoffIso = new Date(Date.now() - DUPLICATE_WINDOW_MINUTES * 60 * 1000).toISOString();
+    const { data: recentSends } = await supabase
+      .from('sendflow_history')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('product_id', task.product_id)
+      .eq('group_id', task.group_id)
+      .gte('sent_at', cutoffIso)
+      .limit(1);
+    const alreadySent = Array.isArray(recentSends) && recentSends.length > 0;
 
     if (alreadySent) {
-      console.log(`[${timestamp}] [sendflow-process] SKIP duplicate: ${product.code} -> ${task.group_id}`);
-      await supabase.from('sendflow_tasks').update({ status: 'skipped', completed_at: new Date().toISOString(), error_message: 'Duplicata (8h)' }).eq('id', task.id);
+      console.log(`[${timestamp}] [sendflow-process] SKIP duplicate (${DUPLICATE_WINDOW_MINUTES}min): ${product.code} -> ${task.group_id}`);
+      await supabase.from('sendflow_tasks').update({ status: 'skipped', completed_at: new Date().toISOString(), error_message: `Duplicata (${DUPLICATE_WINDOW_MINUTES}min)` }).eq('id', task.id);
       await updateJobProgress();
 
       // Still apply group delay even for skipped
