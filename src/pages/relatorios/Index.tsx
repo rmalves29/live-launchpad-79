@@ -137,6 +137,24 @@ const Relatorios = () => {
     return formatBrasiliaDate(dateString);
   };
 
+  // Helper: pagina queries do PostgREST em blocos de 1000 para superar o limite default.
+  // Sem isso, qualquer empresa com >1000 pedidos no período tem números truncados.
+  const fetchAllPaginated = async <T,>(buildQuery: () => any): Promise<T[]> => {
+    const PAGE = 1000;
+    let from = 0;
+    const all: T[] = [];
+    // Hard cap de segurança: 200k linhas
+    while (from < 200000) {
+      const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all.push(...(data as T[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  };
+
   const loadTodaySales = async () => {
     try {
       let dateFilter = '';
