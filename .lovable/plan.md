@@ -1,56 +1,74 @@
-## Diagnóstico do problema
 
-A FL Semi Joias enviou o produto **C00692** com sucesso às 19:29 para 7 grupos (job `3fcd8a41`). Em seguida, o usuário tentou reenviar 5 vezes (19:34 a 19:50). Todas as tentativas foram **silenciosamente puladas** pela proteção anti-duplicata de **8 horas** existente em `sendflow-process` (linha 553-574: chama RPC `is_product_recently_sent` com `p_hours: 8`).
+## Diagnóstico
 
-Resultado: as tasks ficam como `status='skipped'` com `error_message='Duplicata (8h)'`, o job vira `completed`, e a UI mostra apenas **"Envio Finalizado!"** com Enviadas: 0, Erros: 0 — sem indicar que tudo foi pulado por duplicata. Para o usuário, parece que "o sistema disse que enviou mas a mensagem não chegou".
+A página de Relatórios da Mania de Mulher mostra **R$ 58.840,35** em vendas pagas no ano, **1000 pedidos** e **1060 produtos**. Os dados reais no banco para 2026:
 
-## O que será feito
+- **Vendas pagas: R$ 148.975,77** (1352 pedidos não cancelados)
+- **Vendas pendentes: R$ 51.995,81**
+- **Pedidos cancelados ignorados:** 171 pedidos / R$ 24.659,96
 
-### 1. Reduzir a janela anti-duplicata para 15 minutos
-- Em `supabase/functions/sendflow-process/index.ts` (linhas 553-574), trocar `p_hours: 8` pela nova janela.
-- Como a RPC `is_product_recently_sent` recebe horas, vou alterar a chamada para usar uma fração (`0.25`) **ou** criar uma versão com parâmetro em minutos.
-- Verificar a assinatura atual da RPC no banco. Se ela só aceita `integer hours`, criar nova função `is_product_recently_sent_minutes(p_tenant_id, p_product_id, p_group_id, p_minutes)` via migration e usar ela.
-- Atualizar a `error_message` da task pulada de `'Duplicata (8h)'` para `'Duplicata (15min)'`.
+### Causa raiz
 
-### 2. Mostrar duplicatas puladas na UI do SendFlow
-Hoje a tela só mostra os contadores: Enviadas, Erros, Total, Duração. Vou adicionar:
-- Um quarto card **"Puladas"** (cor amarela/âmbar) ao lado de Erros, mostrando a quantidade de tasks com `status='skipped'`.
-- Quando puladas > 0, exibir uma mensagem amarela abaixo do "Envio Finalizado!": *"X mensagens foram puladas porque o mesmo produto já foi enviado para o(s) mesmo(s) grupo(s) nos últimos 15 minutos. Aguarde alguns minutos para reenviar."*
-- A contagem de puladas vem de uma query a `sendflow_tasks` filtrando `status='skipped'` para o `job_id` atual (ou via somatório no `job_data`).
+**1. Limite de 1000 linhas do PostgREST (causa principal).** Todas as queries de `orders` em `loadPeriodStats`, `loadTodaySales`, `loadTopProducts`, `loadWhatsAppGroupStats` e `loadTopCustomers` carregam pedidos sem paginação. O Supabase corta silenciosamente em 1000 linhas — por isso aparece exatamente "1000 pedidos" e o ticket médio de R$135,46 bate com `(58.840 + 76.615) / 1000`. Qualquer empresa com mais de 1000 pedidos no período tem números truncados.
 
-Arquivos do front a tocar (a confirmar lendo o código):
-- `src/hooks/useBackendSendFlow.ts` — incluir contagem de skipped no estado retornado.
-- `src/pages/sendflow/Index.tsx` ou componente de progresso (`src/components/SendingProgressLive.tsx`) — renderizar o card e a mensagem.
+**2. Pedidos cancelados sendo somados.** As queries não filtram `is_cancelled = false`, então pedidos cancelados (que zeraram estoque e foram estornados) inflam os totais de "Vendas Pendentes" e "Pedidos".
 
-### 3. Não alterar nada em job_data nem na lógica de delay
-- Os delays entre grupos/produtos continuam iguais.
-- O fluxo de pausar/retomar/cancelar continua igual.
-- A tabela `sendflow_history` continua registrando tudo igual (serve de base para a checagem).
+**3. Pequenos ruídos.** Em algumas funções as datas usam `new Date().toISOString()` (UTC) em vez de helpers Brasília, causando off-by-one perto da meia-noite.
+
+## O que vou alterar
+
+Arquivo único: `src/pages/relatorios/Index.tsx`
+
+### A. Paginação batched (resolve o "1000 pedidos")
+
+Criar um helper local `fetchAllOrders(query)` que pagina em blocos de 1000 via `.range(from, to)` até esgotar o resultado (padrão já usado em outras partes do projeto, conforme memória `paginacao-batch-postgrest`). Aplicar nas 5 funções de carregamento:
+
+- `loadTodaySales`
+- `loadPeriodStats` (3 queries: dia, mês, ano)
+- `loadTopProducts`
+- `loadWhatsAppGroupStats`
+- `loadTopCustomers`
+
+### B. Ignorar pedidos cancelados
+
+Adicionar `.eq('is_cancelled', false)` (ou `.or('is_cancelled.is.null,is_cancelled.eq.false')` para cobrir nulos antigos) em todas as queries de `orders` das 5 funções acima. Isso alinha a página com o comportamento já praticado no resto do sistema (memória `cancelamento-automatico-por-estorno`).
+
+### C. Padronizar datas para Brasília
+
+Substituir os `new Date().toISOString().split('T')[0]` em `loadWhatsAppGroupStats` e `loadTopCustomers` pelos helpers já usados nas outras funções: `getBrasiliaDateISO()`, `getBrasiliaDate()`, `toBrasiliaDateISO()`, `getBrasiliaDayBoundsISO()`. Aderente à core rule de UTC-3.
+
+### D. Verificação após o ajuste
+
+Vou rodar uma query SQL comparando o que a página mostra com a realidade do banco para Mania de Mulher (ano atual) e confirmar que:
+- Vendas pagas ≈ R$ 148.975,77
+- Pedidos ≈ 1352
+- Produtos refletem a soma real de `cart_items.qty`
 
 ## Detalhes técnicos
 
-**Migration SQL** (será criada se a RPC atual só aceitar `integer hours`):
-```sql
-CREATE OR REPLACE FUNCTION public.is_product_recently_sent_minutes(
-  p_tenant_id uuid,
-  p_product_id bigint,
-  p_group_id text,
-  p_minutes integer
-) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.sendflow_history
-    WHERE tenant_id = p_tenant_id
-      AND product_id = p_product_id
-      AND group_id  = p_group_id
-      AND sent_at >= (now() AT TIME ZONE 'UTC') - (p_minutes || ' minutes')::interval
-  );
-$$;
+Helper de paginação (esboço):
+
+```ts
+async function fetchAllOrders(buildQuery: () => any) {
+  const PAGE = 1000;
+  let from = 0;
+  const all: any[] = [];
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
 ```
 
-**Impacto**: nenhuma quebra. Reenviar o mesmo produto para o mesmo grupo após 15min passa a funcionar normalmente. Antes de 15min continua sendo bloqueado (proteção anti-spam Z-API), mas agora **com aviso visível na UI**.
+Cada chamada existente do tipo `await ordersQuery` passa a usar `await fetchAllOrders(() => baseQuery)`.
 
-## Pós-implementação
+## Fora do escopo
 
-Vou pedir para você testar: reenviar agora o mesmo C00692 para os mesmos grupos — deve aparecer card amarelo "Puladas: 7" com a mensagem explicativa. Espere 15min e reenvie — deve enviar normalmente.
+- Não vou mexer no Agente IA (que já tem seu próprio carregamento e está fora da reclamação).
+- Não vou alterar layout, filtros ou abas — apenas a integridade dos números.
+- Não vou tocar em outras páginas (Pedidos, Clientes, etc.).

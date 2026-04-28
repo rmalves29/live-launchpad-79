@@ -137,6 +137,24 @@ const Relatorios = () => {
     return formatBrasiliaDate(dateString);
   };
 
+  // Helper: pagina queries do PostgREST em blocos de 1000 para superar o limite default.
+  // Sem isso, qualquer empresa com >1000 pedidos no período tem números truncados.
+  const fetchAllPaginated = async <T,>(buildQuery: () => any): Promise<T[]> => {
+    const PAGE = 1000;
+    let from = 0;
+    const all: T[] = [];
+    // Hard cap de segurança: 200k linhas
+    while (from < 200000) {
+      const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all.push(...(data as T[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  };
+
   const loadTodaySales = async () => {
     try {
       let dateFilter = '';
@@ -172,24 +190,26 @@ const Relatorios = () => {
           break;
       }
       
-      let query = supabaseTenant
-        .from('orders')
-        .select('id, total_amount, is_paid, cart_id');
+      const buildQuery = () => {
+        let query = supabaseTenant
+          .from('orders')
+          .select('id, total_amount, is_paid, cart_id')
+          .or('is_cancelled.is.null,is_cancelled.eq.false');
 
-      if ((salesFilter === 'custom' || salesFilter === 'yesterday') && dateFilter && endDateFilter) {
-        const { start } = getBrasiliaDayBoundsISO(dateFilter);
-        const { end } = getBrasiliaDayBoundsISO(endDateFilter);
-        query = query
-          .gte('created_at', start)
-          .lte('created_at', end);
-      } else if (dateFilter) {
-        const { start } = getBrasiliaDayBoundsISO(dateFilter);
-        query = query.gte('created_at', start);
-      }
+        if ((salesFilter === 'custom' || salesFilter === 'yesterday') && dateFilter && endDateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          const { end } = getBrasiliaDayBoundsISO(endDateFilter);
+          query = query
+            .gte('created_at', start)
+            .lte('created_at', end);
+        } else if (dateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          query = query.gte('created_at', start);
+        }
+        return query;
+      };
 
-      const { data: orders, error } = await query;
-
-      if (error) throw error;
+      const orders = await fetchAllPaginated<any>(buildQuery);
 
       // Se temos filtro de tipo de venda, precisamos filtrar as orders que têm produtos do tipo selecionado
       let filteredOrders = orders || [];
@@ -322,24 +342,37 @@ const Relatorios = () => {
       const { start: monthStart } = getBrasiliaDayBoundsISO(startOfMonthStr);
       const { start: yearStart } = getBrasiliaDayBoundsISO(startOfYearStr);
 
-      // Vendas do dia - apenas hoje
-      const dailyOrders = await supabaseTenant
-        .from('orders')
-        .select('total_amount, cart_id, is_paid')
-        .gte('created_at', todayStart)
-        .lt('created_at', tomorrowStart);
+      // Vendas do dia - apenas hoje (paginado + ignora cancelados)
+      const dailyData = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('total_amount, cart_id, is_paid')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .gte('created_at', todayStart)
+          .lt('created_at', tomorrowStart)
+      );
 
       // Vendas do mês - do início do mês até agora
-      const monthlyOrders = await supabaseTenant
-        .from('orders')
-        .select('total_amount, cart_id, is_paid')
-        .gte('created_at', monthStart);
+      const monthlyData = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('total_amount, cart_id, is_paid')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .gte('created_at', monthStart)
+      );
 
       // Vendas do ano - do início do ano até agora
-      const yearlyOrders = await supabaseTenant
-        .from('orders')
-        .select('total_amount, cart_id, is_paid')
-        .gte('created_at', yearStart);
+      const yearlyData = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('total_amount, cart_id, is_paid')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .gte('created_at', yearStart)
+      );
+
+      const dailyOrders = { data: dailyData };
+      const monthlyOrders = { data: monthlyData };
+      const yearlyOrders = { data: yearlyData };
 
       console.log('📊 Orders loaded:', {
         daily: dailyOrders.data?.length || 0,
@@ -530,25 +563,25 @@ const Relatorios = () => {
           break;
       }
 
-      // First, get orders in the date range
-      let ordersQuery = supabaseTenant
-        .from('orders')
-        .select('id, cart_id');
+      // First, get orders in the date range (paginado + ignora cancelados)
+      const buildOrdersQuery = () => {
+        let q = supabaseTenant
+          .from('orders')
+          .select('id, cart_id')
+          .or('is_cancelled.is.null,is_cancelled.eq.false');
 
-      if ((selectedPeriod === 'custom' || selectedPeriod === 'yesterday') && dateFilter && endDateFilter) {
-        const { start } = getBrasiliaDayBoundsISO(dateFilter);
-        const { end } = getBrasiliaDayBoundsISO(endDateFilter);
-        ordersQuery = ordersQuery
-          .gte('created_at', start)
-          .lte('created_at', end);
-      } else if (dateFilter) {
-        const { start } = getBrasiliaDayBoundsISO(dateFilter);
-        ordersQuery = ordersQuery.gte('created_at', start);
-      }
+        if ((selectedPeriod === 'custom' || selectedPeriod === 'yesterday') && dateFilter && endDateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          const { end } = getBrasiliaDayBoundsISO(endDateFilter);
+          q = q.gte('created_at', start).lte('created_at', end);
+        } else if (dateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          q = q.gte('created_at', start);
+        }
+        return q;
+      };
 
-      const { data: ordersData, error: ordersError } = await ordersQuery;
-      
-      if (ordersError) throw ordersError;
+      const ordersData = await fetchAllPaginated<any>(buildOrdersQuery);
 
       if (!ordersData || ordersData.length === 0) {
         setTopProducts([]);
@@ -708,28 +741,32 @@ const Relatorios = () => {
         }
       }
       
-      // Aplicar filtros de data
+      // Aplicar filtros de data (sempre em horário Brasília)
       let dateFilter = '';
       let endDateFilter = '';
-      
+      const todayBrasWA = getBrasiliaDate();
+
       switch (whatsappFilter) {
         case 'today':
-          dateFilter = new Date().toISOString().split('T')[0];
+          dateFilter = getBrasiliaDateISO();
           break;
-        case 'yesterday':
-          const yesterdayWA = new Date();
+        case 'yesterday': {
+          const yesterdayWA = new Date(todayBrasWA);
           yesterdayWA.setDate(yesterdayWA.getDate() - 1);
-          dateFilter = yesterdayWA.toISOString().split('T')[0];
-          endDateFilter = yesterdayWA.toISOString().split('T')[0];
+          dateFilter = toBrasiliaDateISO(yesterdayWA);
+          endDateFilter = dateFilter;
           break;
-        case 'month':
-          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-          dateFilter = startOfMonth.toISOString().split('T')[0];
+        }
+        case 'month': {
+          const startOfMonth = new Date(todayBrasWA.getFullYear(), todayBrasWA.getMonth(), 1);
+          dateFilter = toBrasiliaDateISO(startOfMonth);
           break;
-        case 'year':
-          const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-          dateFilter = startOfYear.toISOString().split('T')[0];
+        }
+        case 'year': {
+          const startOfYear = new Date(todayBrasWA.getFullYear(), 0, 1);
+          dateFilter = toBrasiliaDateISO(startOfYear);
           break;
+        }
         case 'custom':
           if (!whatsappStartDate || !whatsappEndDate) return;
           dateFilter = whatsappStartDate;
@@ -740,32 +777,36 @@ const Relatorios = () => {
           break;
       }
 
-      // Buscar pedidos com informação de grupo do carrinho (LEFT JOIN para incluir todos os pedidos)
-      let query = supabaseTenant
-        .from('orders')
-        .select(`
-          id, 
-          total_amount, 
-          is_paid, 
-          cart_id, 
-          customer_phone,
-          whatsapp_group_name,
-          carts(whatsapp_group_name)
-        `);
+      // Buscar pedidos com informação de grupo do carrinho (paginado + ignora cancelados)
+      const buildWAQuery = () => {
+        let q = supabaseTenant
+          .from('orders')
+          .select(`
+            id, 
+            total_amount, 
+            is_paid, 
+            cart_id, 
+            customer_phone,
+            whatsapp_group_name,
+            carts(whatsapp_group_name)
+          `)
+          .or('is_cancelled.is.null,is_cancelled.eq.false');
 
-      if ((whatsappFilter === 'custom' || whatsappFilter === 'yesterday') && dateFilter && endDateFilter) {
-        query = query
-          .gte('created_at', `${dateFilter}T00:00:00`)
-          .lte('created_at', `${endDateFilter}T23:59:59`);
-      } else if (dateFilter) {
-        query = query.gte('created_at', `${dateFilter}T00:00:00`);
-      }
+        if ((whatsappFilter === 'custom' || whatsappFilter === 'yesterday') && dateFilter && endDateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          const { end } = getBrasiliaDayBoundsISO(endDateFilter);
+          q = q.gte('created_at', start).lte('created_at', end);
+        } else if (dateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          q = q.gte('created_at', start);
+        }
+        return q;
+      };
 
-      const { data: orders, error } = await query;
-
-      if (error) throw error;
+      const orders = await fetchAllPaginated<any>(buildWAQuery);
 
       console.log('📦 Orders encontrados:', orders?.length);
+
 
       // Criar mapa para agrupar estatísticas por grupo
       const groupMap = new Map<string, WhatsAppGroupStats>();
@@ -890,25 +931,29 @@ const Relatorios = () => {
     try {
       let dateFilter = '';
       let endDateFilter = '';
-      
+      const todayBrasCust = getBrasiliaDate();
+
       switch (customersFilter) {
         case 'today':
-          dateFilter = new Date().toISOString().split('T')[0];
+          dateFilter = getBrasiliaDateISO();
           break;
-        case 'yesterday':
-          const yesterdayCust = new Date();
+        case 'yesterday': {
+          const yesterdayCust = new Date(todayBrasCust);
           yesterdayCust.setDate(yesterdayCust.getDate() - 1);
-          dateFilter = yesterdayCust.toISOString().split('T')[0];
-          endDateFilter = yesterdayCust.toISOString().split('T')[0];
+          dateFilter = toBrasiliaDateISO(yesterdayCust);
+          endDateFilter = dateFilter;
           break;
-        case 'month':
-          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-          dateFilter = startOfMonth.toISOString().split('T')[0];
+        }
+        case 'month': {
+          const startOfMonth = new Date(todayBrasCust.getFullYear(), todayBrasCust.getMonth(), 1);
+          dateFilter = toBrasiliaDateISO(startOfMonth);
           break;
-        case 'year':
-          const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-          dateFilter = startOfYear.toISOString().split('T')[0];
+        }
+        case 'year': {
+          const startOfYear = new Date(todayBrasCust.getFullYear(), 0, 1);
+          dateFilter = toBrasiliaDateISO(startOfYear);
           break;
+        }
         case 'custom':
           if (!customersStartDate || !customersEndDate) return;
           dateFilter = customersStartDate;
@@ -919,30 +964,33 @@ const Relatorios = () => {
           break;
       }
 
-      // Buscar pedidos com filtro de data
-      let query = supabaseTenant
-        .from('orders')
-        .select(`
-          id, 
-          customer_phone,
-          customer_name,
-          total_amount, 
-          is_paid, 
-          cart_id,
-          created_at
-        `);
+      // Buscar pedidos (paginado + ignora cancelados)
+      const buildCustQuery = () => {
+        let q = supabaseTenant
+          .from('orders')
+          .select(`
+            id, 
+            customer_phone,
+            customer_name,
+            total_amount, 
+            is_paid, 
+            cart_id,
+            created_at
+          `)
+          .or('is_cancelled.is.null,is_cancelled.eq.false');
 
-      if ((customersFilter === 'custom' || customersFilter === 'yesterday') && dateFilter && endDateFilter) {
-        query = query
-          .gte('created_at', `${dateFilter}T00:00:00`)
-          .lte('created_at', `${endDateFilter}T23:59:59`);
-      } else if (dateFilter) {
-        query = query.gte('created_at', `${dateFilter}T00:00:00`);
-      }
+        if ((customersFilter === 'custom' || customersFilter === 'yesterday') && dateFilter && endDateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          const { end } = getBrasiliaDayBoundsISO(endDateFilter);
+          q = q.gte('created_at', start).lte('created_at', end);
+        } else if (dateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          q = q.gte('created_at', start);
+        }
+        return q;
+      };
 
-      const { data: orders, error } = await query;
-
-      if (error) throw error;
+      const orders = await fetchAllPaginated<any>(buildCustQuery);
 
       console.log('📦 Orders encontrados para clientes:', orders?.length);
 
