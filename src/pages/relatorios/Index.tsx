@@ -85,7 +85,11 @@ interface CustomerStats {
   unpaid_revenue: number;
   first_order_date: string;
   last_order_date: string;
+  last_paid_order_date?: string | null;
   score?: number;
+  score_value?: number;
+  score_frequency?: number;
+  score_recency?: number;
 }
 
 const Relatorios = () => {
@@ -1098,7 +1102,8 @@ const Relatorios = () => {
             paid_revenue: 0,
             unpaid_revenue: 0,
             first_order_date: order.created_at,
-            last_order_date: order.created_at
+            last_order_date: order.created_at,
+            last_paid_order_date: null,
           });
         }
 
@@ -1118,29 +1123,82 @@ const Relatorios = () => {
         if (order.is_paid) {
           customer.paid_orders += 1;
           customer.paid_revenue += amount;
+          if (!customer.last_paid_order_date || order.created_at > customer.last_paid_order_date) {
+            customer.last_paid_order_date = order.created_at;
+          }
         } else {
           customer.unpaid_orders += 1;
           customer.unpaid_revenue += amount;
         }
       });
 
-      // Calcular score: 40% volume (paid_orders) + 60% valor (paid_revenue)
+      // ========= RANKING RFM (Recência, Frequência, Valor) =========
+      // Cada pilar recebe nota 1–5; score final = V + F + R (3–15).
       const customersRaw = Array.from(customerMap.values());
-      const maxPaidOrders = Math.max(...customersRaw.map(c => c.paid_orders), 1);
-      const maxPaidRevenue = Math.max(...customersRaw.map(c => c.paid_revenue), 1);
+
+      // Quintis para Valor (paid_revenue) e Frequência (paid_orders).
+      // Considera apenas clientes com algum valor positivo para o cálculo dos cortes,
+      // assim quem tem 0 não puxa os percentis pra baixo. Quem tem 0 recebe nota 1.
+      const buildQuintileScorer = (values: number[]) => {
+        const positives = values.filter((v) => v > 0).sort((a, b) => a - b);
+        if (positives.length === 0) {
+          return (_v: number) => 1;
+        }
+        const quantile = (p: number) => {
+          const idx = Math.min(positives.length - 1, Math.max(0, Math.floor(p * positives.length)));
+          return positives[idx];
+        };
+        // Cortes: <=q20 → 1, <=q40 → 2, ... > q80 → 5
+        const q20 = quantile(0.2);
+        const q40 = quantile(0.4);
+        const q60 = quantile(0.6);
+        const q80 = quantile(0.8);
+        return (v: number): number => {
+          if (v <= 0) return 1;
+          if (v <= q20) return 1;
+          if (v <= q40) return 2;
+          if (v <= q60) return 3;
+          if (v <= q80) return 4;
+          return 5;
+        };
+      };
+
+      const scoreValue = buildQuintileScorer(customersRaw.map((c) => c.paid_revenue));
+      const scoreFreq = buildQuintileScorer(customersRaw.map((c) => c.paid_orders));
+
+      const nowBras = getBrasiliaDate().getTime();
+      const scoreRecency = (lastPaidISO: string | null | undefined, lastAnyISO: string): number => {
+        const ref = lastPaidISO ?? lastAnyISO;
+        if (!ref) return 1;
+        const diffDays = Math.floor((nowBras - new Date(ref).getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 7) return 5;
+        if (diffDays <= 30) return 4;
+        if (diffDays <= 60) return 3;
+        if (diffDays <= 180) return 2;
+        return 1;
+      };
 
       const customersArray = customersRaw
-        .map(c => ({
-          ...c,
-          score: Math.round(
-            ((c.paid_orders / maxPaidOrders) * 40) +
-            ((c.paid_revenue / maxPaidRevenue) * 60)
-          )
-        }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 50); // Top 50 clientes
+        .map((c) => {
+          const sv = scoreValue(c.paid_revenue);
+          const sf = scoreFreq(c.paid_orders);
+          const sr = scoreRecency(c.last_paid_order_date, c.last_order_date);
+          return {
+            ...c,
+            score_value: sv,
+            score_frequency: sf,
+            score_recency: sr,
+            score: sv + sf + sr, // 3–15
+          };
+        })
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          if (b.paid_revenue !== a.paid_revenue) return b.paid_revenue - a.paid_revenue;
+          return b.paid_orders - a.paid_orders;
+        })
+        .slice(0, 50);
       
-      console.log('📊 Top clientes:', customersArray);
+      console.log('📊 Top clientes (RFM):', customersArray);
       setTopCustomers(customersArray);
     } catch (error: any) {
       console.error('Error loading top customers:', error);
@@ -1684,7 +1742,12 @@ const Relatorios = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="pl-6 text-center w-28">Score</TableHead>
+                        <TableHead
+                          className="pl-6 text-center w-28"
+                          title="Score RFM (3–15) = Valor + Frequência + Recência. Cada pilar vale 1 a 5."
+                        >
+                          Score (RFM)
+                        </TableHead>
                         <TableHead className="text-center w-20">Posição</TableHead>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Telefone</TableHead>
@@ -1718,8 +1781,14 @@ const Relatorios = () => {
                         return (
                           <TableRow key={customer.customer_phone} className={podium?.rowClass ?? ''}>
                             <TableCell className="pl-6">
-                              <div className="flex flex-col items-center gap-1">
+                              <div
+                                className="flex flex-col items-center gap-1"
+                                title={`Score RFM = Valor (${customer.score_value ?? '-'}) + Frequência (${customer.score_frequency ?? '-'}) + Recência (${customer.score_recency ?? '-'})`}
+                              >
                                 <span className="text-lg font-bold text-foreground">{score}</span>
+                                <span className="text-[10px] font-mono text-muted-foreground tracking-wider">
+                                  V{customer.score_value ?? '-'}·F{customer.score_frequency ?? '-'}·R{customer.score_recency ?? '-'}
+                                </span>
                                 {podium && (
                                   <Badge
                                     variant="outline"
