@@ -1,47 +1,56 @@
-## Problema
+## Diagnóstico do problema
 
-O template do SendFlow é cadastrado com **linhas em branco** entre os blocos (nome/código, cor/tamanho, valores, observação, instrução final), mas a mensagem chega no grupo com tudo grudado, sem respeitar o espaçamento.
+A FL Semi Joias enviou o produto **C00692** com sucesso às 19:29 para 7 grupos (job `3fcd8a41`). Em seguida, o usuário tentou reenviar 5 vezes (19:34 a 19:50). Todas as tentativas foram **silenciosamente puladas** pela proteção anti-duplicata de **8 horas** existente em `sendflow-process` (linha 553-574: chama RPC `is_product_recently_sent` com `p_hours: 8`).
 
-## Diagnóstico
+Resultado: as tasks ficam como `status='skipped'` com `error_message='Duplicata (8h)'`, o job vira `completed`, e a UI mostra apenas **"Envio Finalizado!"** com Enviadas: 0, Erros: 0 — sem indicar que tudo foi pulado por duplicata. Para o usuário, parece que "o sistema disse que enviou mas a mensagem não chegou".
 
-Confirmado no banco — o template salvo tem inclusive duas linhas em branco entre alguns blocos:
+## O que será feito
 
+### 1. Reduzir a janela anti-duplicata para 15 minutos
+- Em `supabase/functions/sendflow-process/index.ts` (linhas 553-574), trocar `p_hours: 8` pela nova janela.
+- Como a RPC `is_product_recently_sent` recebe horas, vou alterar a chamada para usar uma fração (`0.25`) **ou** criar uma versão com parâmetro em minutos.
+- Verificar a assinatura atual da RPC no banco. Se ela só aceita `integer hours`, criar nova função `is_product_recently_sent_minutes(p_tenant_id, p_product_id, p_group_id, p_minutes)` via migration e usar ela.
+- Atualizar a `error_message` da task pulada de `'Duplicata (8h)'` para `'Duplicata (15min)'`.
+
+### 2. Mostrar duplicatas puladas na UI do SendFlow
+Hoje a tela só mostra os contadores: Enviadas, Erros, Total, Duração. Vou adicionar:
+- Um quarto card **"Puladas"** (cor amarela/âmbar) ao lado de Erros, mostrando a quantidade de tasks com `status='skipped'`.
+- Quando puladas > 0, exibir uma mensagem amarela abaixo do "Envio Finalizado!": *"X mensagens foram puladas porque o mesmo produto já foi enviado para o(s) mesmo(s) grupo(s) nos últimos 15 minutos. Aguarde alguns minutos para reenviar."*
+- A contagem de puladas vem de uma query a `sendflow_tasks` filtrando `status='skipped'` para o `job_id` atual (ou via somatório no `job_data`).
+
+Arquivos do front a tocar (a confirmar lendo o código):
+- `src/hooks/useBackendSendFlow.ts` — incluir contagem de skipped no estado retornado.
+- `src/pages/sendflow/Index.tsx` ou componente de progresso (`src/components/SendingProgressLive.tsx`) — renderizar o card e a mensagem.
+
+### 3. Não alterar nada em job_data nem na lógica de delay
+- Os delays entre grupos/produtos continuam iguais.
+- O fluxo de pausar/retomar/cancelar continua igual.
+- A tabela `sendflow_history` continua registrando tudo igual (serve de base para a checagem).
+
+## Detalhes técnicos
+
+**Migration SQL** (será criada se a RPC atual só aceitar `integer hours`):
+```sql
+CREATE OR REPLACE FUNCTION public.is_product_recently_sent_minutes(
+  p_tenant_id uuid,
+  p_product_id bigint,
+  p_group_id text,
+  p_minutes integer
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.sendflow_history
+    WHERE tenant_id = p_tenant_id
+      AND product_id = p_product_id
+      AND group_id  = p_group_id
+      AND sent_at >= (now() AT TIME ZONE 'UTC') - (p_minutes || ' minutes')::interval
+  );
+$$;
 ```
-{{nome}} ({{codigo}})
-                            ← 1 linha em branco
-Cor: {{cor}}
-Tamanho: {{tamanho}}
-                            ← 1 linha em branco
-De: {{valor_original}}  Por: {{valor_promo}}
-                            ← 2 linhas em branco
-*{{observacao}}*
-                            ← 2 linhas em branco
-Para comprar, digite apenas o código: *{{codigo}}*
-```
 
-Três pontos no `supabase/functions/sendflow-process/index.ts` destroem a estrutura:
+**Impacto**: nenhuma quebra. Reenviar o mesmo produto para o mesmo grupo após 15min passa a funcionar normalmente. Antes de 15min continua sendo bloqueado (proteção anti-spam Z-API), mas agora **com aviso visível na UI**.
 
-1. **Linha 134** — `message.replace(/\n{3,}/g, '\n\n')` colapsa qualquer sequência de 3+ quebras (ou seja, 2+ linhas em branco) para apenas 1 linha em branco. As "duas linhas em branco" propositais do template viram uma só.
-2. **Linhas 117/123/130** — quando `cor`, `tamanho` ou `observacao` estão vazios, a regex `^.*\{\{...\}\}.*$/gim` apaga o conteúdo da linha mas deixa um `\n` órfão, que somado às quebras vizinhas gera mais quebras do que o template original — depois sofre o colapso da linha 134 e perde estrutura.
-3. **Envio como legenda de imagem** (`send-image` com `caption`) — a Z-API normaliza whitespace em legendas, removendo quebras múltiplas. É a causa principal da mensagem chegar "grudada" mesmo quando o texto enviado tem `\n\n`.
+## Pós-implementação
 
-## Solução
-
-Reescrever o pipeline de personalização para **preservar 100% as quebras de linha do template original**, e contornar a normalização da Z-API em legendas usando um caractere invisível como "âncora" de linha em branco.
-
-### Mudanças em `supabase/functions/sendflow-process/index.ts`
-
-1. **Remover variáveis vazias sem destruir a estrutura**: ao detectar `{{cor}}`, `{{tamanho}}` ou `{{observacao}}` sem valor, remover a **linha inteira incluindo o `\n` final** (regex com `\n?` no final), em vez de deixar a linha vazia.
-2. **Eliminar o colapso `\n{3,}` → `\n\n`**: respeitar exatamente o número de linhas em branco que o usuário cadastrou. Se ele quis 2 linhas em branco entre dois blocos, mantemos 2.
-3. **Anti-colapso da Z-API em legendas**: para qualquer linha que ficar **vazia** (entre dois blocos de conteúdo), inserir um caractere invisível (zero-width space `\u200B`) nessa linha. WhatsApp/Z-API só colapsam linhas **completamente vazias**; uma linha contendo `\u200B` é tratada como linha "com conteúdo" e a quebra é mantida na renderização — sem aparecer nada visível para o destinatário.
-4. **Manter o `addMessageVariation` apenas com `invisibleVariation: true`**, mas garantir que a inserção do zero-width space aleatório não caia em cima de uma quebra de linha (já é o caso atual).
-
-### Verificação
-
-Reenviar o mesmo produto (Anel Dourado Love – C4090810) sem observação para um grupo de teste e confirmar que a mensagem chega com a mesma estrutura visual do template cadastrado: 1 linha em branco após o nome, 1 linha em branco antes de "De:", e como não há observação, o bloco de observação some inteiro (sem deixar buraco extra).
-
-## Arquivos
-
-- `supabase/functions/sendflow-process/index.ts` — refatorar `personalizeMessage` e `applyPromotionalPriceFallback` conforme acima e redeployar a função.
-
-Sem alterações no frontend, no banco ou em outras integrações.
+Vou pedir para você testar: reenviar agora o mesmo C00692 para os mesmos grupos — deve aparecer card amarelo "Puladas: 7" com a mensagem explicativa. Espere 15min e reenvie — deve enviar normalmente.
