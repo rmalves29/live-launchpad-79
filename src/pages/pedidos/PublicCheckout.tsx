@@ -819,6 +819,20 @@ const PublicCheckout = () => {
       return;
     }
 
+    // InfinitePay exige e-mail real válido — sem isso o checkout retorna "Algo deu errado"
+    if (activePaymentProvider === 'infinitepay') {
+      const email = (customerData.email || '').trim();
+      const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      if (!isValidEmail) {
+        toast({
+          title: 'E-mail obrigatório',
+          description: 'Informe um e-mail válido para concluir o pagamento via InfinitePay.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     setLoadingPayment(true);
 
     try {
