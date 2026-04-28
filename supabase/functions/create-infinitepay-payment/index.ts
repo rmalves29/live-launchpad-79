@@ -111,7 +111,12 @@ serve(async (req) => {
       );
     }
 
-    const handle = String(integration.handle).replace(/^@/, "").trim();
+    // Sanitiza o handle: remove @, $, espaços e qualquer sufixo após "/" (links fixos)
+    const handle = String(integration.handle)
+      .trim()
+      .replace(/^[@$]+/, "")
+      .split("/")[0]
+      .trim();
 
     // 2) Persistir cliente (best-effort)
     await sb.from("customers").upsert(
