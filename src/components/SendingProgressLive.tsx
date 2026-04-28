@@ -373,26 +373,45 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
   if (completedJob) {
     const finalSent = completedJob.job_data?.sentMessages || 0;
     const finalErrors = completedJob.job_data?.errorMessages || 0;
+    const finalSkipped = Math.max(
+      0,
+      (completedJob.total_items || 0) - finalSent - finalErrors
+    );
     const completedAt = completedJob.completed_at ? new Date(completedJob.completed_at) : new Date();
     const startedAt = new Date(completedJob.started_at);
     const durationSec = Math.floor((completedAt.getTime() - startedAt.getTime()) / 1000);
     const durationMin = Math.floor(durationSec / 60);
     const durationSecRemainder = durationSec % 60;
+    const allSkipped = finalSkipped > 0 && finalSent === 0 && finalErrors === 0;
 
     return (
-      <Card className="animate-fade-in border-success bg-success/5">
+      <Card className={`animate-fade-in ${allSkipped ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20' : 'border-success bg-success/5'}`}>
         <CardContent className="py-8 space-y-6 text-center">
           <div className="flex flex-col items-center gap-3">
-            <div className="rounded-full bg-success/20 p-4">
-              <CheckCircle2 className="h-10 w-10 text-success" />
+            <div className={`rounded-full p-4 ${allSkipped ? 'bg-amber-500/20' : 'bg-success/20'}`}>
+              {allSkipped ? (
+                <AlertCircle className="h-10 w-10 text-amber-600" />
+              ) : (
+                <CheckCircle2 className="h-10 w-10 text-success" />
+              )}
             </div>
-            <h2 className="text-2xl font-bold">Envio Finalizado!</h2>
+            <h2 className="text-2xl font-bold">
+              {allSkipped ? 'Nenhuma mensagem foi enviada' : 'Envio Finalizado!'}
+            </h2>
             <p className="text-muted-foreground">
-              Todos os produtos foram enviados para os grupos selecionados.
+              {allSkipped
+                ? 'Todas as mensagens foram puladas porque o(s) mesmo(s) produto(s) já foram enviados para o(s) mesmo(s) grupo(s) há menos de 15 minutos.'
+                : 'Todos os produtos foram enviados para os grupos selecionados.'}
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm max-w-lg mx-auto">
+          {finalSkipped > 0 && !allSkipped && (
+            <div className="max-w-lg mx-auto p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-sm text-amber-900 dark:text-amber-200">
+              <strong>{finalSkipped}</strong> {finalSkipped === 1 ? 'mensagem foi pulada' : 'mensagens foram puladas'} por duplicata (mesmo produto/grupo enviado nos últimos 15 min). Aguarde alguns minutos para reenviar.
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm max-w-2xl mx-auto">
             <div className="p-3 rounded-lg bg-background border">
               <div className="text-muted-foreground text-xs">Enviadas</div>
               <div className="font-bold text-xl text-success">{finalSent}</div>
@@ -400,6 +419,10 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
             <div className="p-3 rounded-lg bg-background border">
               <div className="text-muted-foreground text-xs">Erros</div>
               <div className="font-bold text-xl text-destructive">{finalErrors}</div>
+            </div>
+            <div className="p-3 rounded-lg bg-background border">
+              <div className="text-muted-foreground text-xs">Puladas</div>
+              <div className="font-bold text-xl text-amber-600">{finalSkipped}</div>
             </div>
             <div className="p-3 rounded-lg bg-background border">
               <div className="text-muted-foreground text-xs">Total</div>
