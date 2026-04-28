@@ -74,8 +74,9 @@ serve(async (req) => {
 
     if (!orders || orders.length === 0) {
       console.warn("[infinitepay-webhook] Pedido não encontrado para nsu:", nsuToFind);
-      return new Response(JSON.stringify({ ok: true, ignored: "order not found" }), {
-        status: 200,
+      // Retorna 400 para que o InfinitePay tente reenviar (pode ser race condition)
+      return new Response(JSON.stringify({ success: false, message: "Pedido não encontrado" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
