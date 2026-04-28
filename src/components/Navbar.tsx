@@ -19,6 +19,10 @@ const Navbar = () => {
   const enableSendflow = tenant?.enable_sendflow ?? true;
   
   const isWhatsappActive = location.pathname.startsWith('/whatsapp');
+  const isConfigActive = location.pathname.startsWith('/config');
+
+  const SUPABASE_DASHBOARD_URL = 'https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/reports/database';
+  const LOVABLE_CLOUD_URL = 'https://lovable.dev/projects/154035f9-093b-4aed-ac82-a01434f3c19b';
 
   const isSuperAdmin = profile?.role === 'super_admin';
 
