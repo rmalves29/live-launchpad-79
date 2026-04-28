@@ -162,6 +162,45 @@ const Navbar = () => {
                           </NavLink>
                         ))}
                       </div>
+
+                      {/* Config Section Mobile */}
+                      <div className="border-t border-border/30 pt-4">
+                        <div className="flex items-center gap-2 px-4 py-2 text-sm font-display font-semibold text-foreground">
+                          <Settings className="h-4 w-4 text-primary" />
+                          Config
+                        </div>
+                        <NavLink
+                          to="/config"
+                          onClick={() => setOpen(false)}
+                          className={({ isActive }) =>
+                            `px-8 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 block ${
+                              isActive
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                            }`
+                          }
+                        >
+                          Configurações
+                        </NavLink>
+                        {isSuperAdmin && (
+                          <>
+                            <button
+                              onClick={() => { window.open(SUPABASE_DASHBOARD_URL, '_blank', 'noopener,noreferrer'); setOpen(false); }}
+                              className="w-full text-left px-8 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-200 flex items-center justify-between"
+                            >
+                              Métricas Supabase
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => { window.open(LOVABLE_CLOUD_URL, '_blank', 'noopener,noreferrer'); setOpen(false); }}
+                              className="w-full text-left px-8 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all duration-200 flex items-center justify-between"
+                            >
+                              Cloud Lovable
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                       
                       <div className="border-t border-border/30 pt-4">
                         {user ? (
