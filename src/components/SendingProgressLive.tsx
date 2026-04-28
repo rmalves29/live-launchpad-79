@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Radio, Clock, Pause, XCircle, Timer, Play, AlertTriangle, CheckCircle2, Package, Users, ArrowRight } from 'lucide-react';
+import { Loader2, Radio, Clock, Pause, XCircle, Timer, Play, AlertTriangle, AlertCircle, CheckCircle2, Package, Users, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { useToast } from '@/hooks/use-toast';
