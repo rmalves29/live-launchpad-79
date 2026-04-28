@@ -286,69 +286,13 @@ serve(async (req) => {
     const redirectUrl = `${appBaseUrl}/pagamento/retorno?status=success&provider=infinitepay${tenantParam}&order_nsu=${orderNsu}`;
     const webhookUrl = `${supabaseUrl}/functions/v1/infinitepay-webhook?tenant_id=${body.tenant_id}&order_nsu=${orderNsu}`;
 
-    // 6) Chamar API do InfinitePay
-    const infBody: Record<string, unknown> = {
-      handle,
-      order_nsu: orderNsu,
-      redirect_url: redirectUrl,
-      webhook_url: webhookUrl,
-      items: productItems,
-      customer: {
-        name: body.customerData.name,
-        email: body.customerData.email || `${body.customerData.phone}@checkout.local`,
-        phone_number: body.customerData.phone,
-      },
-    };
-
-    if (body.addressData?.cep) {
-      infBody.address = {
-        zip_code: body.addressData.cep.replace(/\D/g, ""),
-        street: body.addressData.street,
-        number: body.addressData.number,
-        complement: body.addressData.complement || "",
-        district: body.addressData.neighborhood,
-        city: body.addressData.city,
-        state: body.addressData.state,
-      };
-    }
-
-    console.log("[create-infinitepay-payment] Creating link for handle:", handle, "order_nsu:", orderNsu);
+    // 6) Gerar URL manual documentada pela InfinitePay.
+    // Evita o link com `lenc` retornado pela API, que vem causando bloqueio Cloudflare
+    // em alguns clientes/dispositivos.
+    console.log("[create-infinitepay-payment] Creating manual link for handle:", handle, "order_nsu:", orderNsu);
 
     const totalCents = productItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
-    const manualCheckoutUrl = buildManualCheckoutUrl({ handle, orderNsu, redirectUrl, webhookUrl, totalCents });
-
-    const infRes = await fetch("https://api.checkout.infinitepay.io/links", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify(infBody),
-    });
-
-    const contentType = infRes.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      const text = await infRes.text();
-      console.error("[create-infinitepay-payment] Resposta não-JSON:", text.slice(0, 300));
-      return new Response(
-        JSON.stringify({
-          init_point: manualCheckoutUrl,
-          provider: "infinitepay",
-          order_nsu: orderNsu,
-          warning: "InfinitePay retornou resposta inválida; usando link manual documentado.",
-          details: `Status ${infRes.status}`,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const infJson = await infRes.json();
-    const checkoutUrlFromApi: string | undefined = infJson?.url || infJson?.link;
-    if (!infRes.ok || !checkoutUrlFromApi) {
-      console.error("[create-infinitepay-payment] Erro InfinitePay; usando link manual:", infJson);
-    }
-
-    // O link com `lenc` retornado pela API pode ser bloqueado pelo Cloudflare da
-    // InfinitePay em alguns dispositivos. Usamos o formato manual documentado,
-    // com poucos parâmetros e sem dados pessoais na URL.
-    const checkoutUrl = manualCheckoutUrl;
+    const checkoutUrl = buildManualCheckoutUrl({ handle, orderNsu, redirectUrl, webhookUrl, totalCents });
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
@@ -362,7 +306,6 @@ serve(async (req) => {
         init_point: checkoutUrl,
         provider: "infinitepay",
         order_nsu: orderNsu,
-        slug: infJson?.slug,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
