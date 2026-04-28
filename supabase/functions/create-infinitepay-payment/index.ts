@@ -71,76 +71,23 @@ function buildFreightNote(shipping: ShippingData, shippingCost: number) {
   return `[FRETE] ${shipping.company_name || "Transportadora"} - ${shipping.service_name} | R$ ${price.toFixed(2)}${prazo}`;
 }
 
-/**
- * Anexa dados de cliente + endereço como query string na URL do checkout
- * da InfinitePay para pré-preencher os campos automaticamente.
- *
- * A API /links não aceita endereço no body — os dados precisam vir na URL
- * para que a página de pagamento já abra com tudo preenchido.
- *
- * Inclui múltiplas variações de nomes de parâmetros (camelCase, snake_case
- * e com/sem prefixo) para maximizar compatibilidade, já que a InfinitePay
- * não documenta publicamente todos os nomes aceitos.
- */
-function appendCustomerAndAddressParams(
-  baseUrl: string,
-  data: {
-    customer: { name?: string; phone?: string; cpf?: string; email?: string };
-    address?: AddressData;
-  },
-): string {
-  const { customer, address } = data;
-  const params: Record<string, string> = {};
-
-  const setIf = (key: string, value: string | undefined | null) => {
-    if (value && String(value).trim()) params[key] = String(value).trim();
-  };
-
-  // Cliente
-  setIf("customer_name", customer.name);
-  setIf("name", customer.name);
-  setIf("customer_email", customer.email);
-  setIf("email", customer.email);
-  setIf("customer_phone", customer.phone);
-  setIf("phone", customer.phone);
-  setIf("phone_number", customer.phone);
-  setIf("customer_cpf", customer.cpf);
-  setIf("cpf", customer.cpf);
-
-  // Endereço
-  if (address?.cep) {
-    const cepDigits = address.cep.replace(/\D/g, "");
-    setIf("address_zip_code", cepDigits);
-    setIf("zip_code", cepDigits);
-    setIf("cep", cepDigits);
-    setIf("address_street", address.street);
-    setIf("street", address.street);
-    setIf("address_number", address.number);
-    setIf("number", address.number);
-    setIf("address_complement", address.complement || "");
-    setIf("complement", address.complement || "");
-    setIf("address_district", address.neighborhood);
-    setIf("district", address.neighborhood);
-    setIf("neighborhood", address.neighborhood);
-    setIf("address_city", address.city);
-    setIf("city", address.city);
-    setIf("address_state", address.state);
-    setIf("state", address.state);
-  }
-
-  if (Object.keys(params).length === 0) return baseUrl;
-
-  try {
-    const url = new URL(baseUrl);
-    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-    return url.toString();
-  } catch {
-    const sep = baseUrl.includes("?") ? "&" : "?";
-    const qs = Object.entries(params)
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join("&");
-    return `${baseUrl}${sep}${qs}`;
-  }
+function buildManualCheckoutUrl(params: {
+  handle: string;
+  orderNsu: string;
+  redirectUrl: string;
+  webhookUrl: string;
+  totalCents: number;
+}) {
+  const url = new URL(`https://checkout.infinitepay.io/${encodeURIComponent(params.handle)}`);
+  const description = `Pedido Orderzaps ${params.orderNsu}`;
+  url.searchParams.set(
+    "items",
+    JSON.stringify([{ quantity: 1, price: params.totalCents, name: description, description }]),
+  );
+  url.searchParams.set("order_nsu", params.orderNsu);
+  url.searchParams.set("redirect_url", params.redirectUrl);
+  url.searchParams.set("webhook_url", params.webhookUrl);
+  return url.toString();
 }
 
 serve(async (req) => {
@@ -340,73 +287,13 @@ serve(async (req) => {
     const redirectUrl = `${appBaseUrl}/pagamento/retorno?status=success&provider=infinitepay${tenantParam}&order_nsu=${orderNsu}`;
     const webhookUrl = `${supabaseUrl}/functions/v1/infinitepay-webhook?tenant_id=${body.tenant_id}&order_nsu=${orderNsu}`;
 
-    // 6) Chamar API do InfinitePay
-    const infBody: Record<string, unknown> = {
-      handle,
-      order_nsu: orderNsu,
-      redirect_url: redirectUrl,
-      webhook_url: webhookUrl,
-      items: productItems,
-      customer: {
-        name: body.customerData.name,
-        email: body.customerData.email || `${body.customerData.phone}@checkout.local`,
-        phone_number: body.customerData.phone,
-      },
-    };
+    // 6) Gerar URL manual documentada pela InfinitePay.
+    // Evita o link com `lenc` retornado pela API, que vem causando bloqueio Cloudflare
+    // em alguns clientes/dispositivos.
+    console.log("[create-infinitepay-payment] Creating manual link for handle:", handle, "order_nsu:", orderNsu);
 
-    if (body.addressData?.cep) {
-      infBody.address = {
-        zip_code: body.addressData.cep.replace(/\D/g, ""),
-        street: body.addressData.street,
-        number: body.addressData.number,
-        complement: body.addressData.complement || "",
-        district: body.addressData.neighborhood,
-        city: body.addressData.city,
-        state: body.addressData.state,
-      };
-    }
-
-    console.log("[create-infinitepay-payment] Creating link for handle:", handle, "order_nsu:", orderNsu);
-
-    const infRes = await fetch("https://api.checkout.infinitepay.io/links", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify(infBody),
-    });
-
-    const contentType = infRes.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      const text = await infRes.text();
-      console.error("[create-infinitepay-payment] Resposta não-JSON:", text.slice(0, 300));
-      return new Response(
-        JSON.stringify({
-          error: "InfinitePay retornou resposta inválida. Verifique se o handle (InfiniteTag) está correto.",
-          details: `Status ${infRes.status}`,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const infJson = await infRes.json();
-    const checkoutUrlFromApi: string | undefined = infJson?.url || infJson?.link;
-    if (!infRes.ok || !checkoutUrlFromApi) {
-      console.error("[create-infinitepay-payment] Erro InfinitePay:", infJson);
-      return new Response(
-        JSON.stringify({
-          error: infJson?.message || infJson?.error || "Erro ao criar link de pagamento no InfinitePay. Verifique sua InfiniteTag.",
-          details: infJson,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const rawCheckoutUrl: string = checkoutUrlFromApi;
-
-    // IMPORTANTE: NÃO anexamos dados de cliente/endereço como query string.
-    // O Cloudflare da InfinitePay bloqueia URLs com muitos parâmetros suspeitos
-    // (erro "You are unable to access infinitepay.io"). Os dados de cliente e
-    // endereço já são enviados no body da API (customer + address acima).
-    const checkoutUrl = rawCheckoutUrl;
+    const totalCents = productItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+    const checkoutUrl = buildManualCheckoutUrl({ handle, orderNsu, redirectUrl, webhookUrl, totalCents });
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
@@ -420,7 +307,6 @@ serve(async (req) => {
         init_point: checkoutUrl,
         provider: "infinitepay",
         order_nsu: orderNsu,
-        slug: infJson.slug,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
