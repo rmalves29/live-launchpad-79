@@ -85,7 +85,12 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const cleanHandle = formData.handle.trim().replace(/^@/, '');
+      // Sanitiza: remove @, $, espaços e qualquer sufixo após "/" (links fixos não servem aqui)
+      const cleanHandle = formData.handle
+        .trim()
+        .replace(/^[@$]+/, '')
+        .split('/')[0]
+        .trim();
       if (!cleanHandle) throw new Error('Informe o handle (InfiniteTag)');
 
       const dataToSave = {
