@@ -79,9 +79,10 @@ function buildManualCheckoutUrl(params: {
   totalCents: number;
 }) {
   const url = new URL(`https://checkout.infinitepay.io/${encodeURIComponent(params.handle)}`);
+  const description = `Pedido Orderzaps ${params.orderNsu}`;
   url.searchParams.set(
     "items",
-    JSON.stringify([{ quantity: 1, price: params.totalCents, description: `Pedido Orderzaps ${params.orderNsu}` }]),
+    JSON.stringify([{ quantity: 1, price: params.totalCents, name: description, description }]),
   );
   url.searchParams.set("order_nsu", params.orderNsu);
   url.searchParams.set("redirect_url", params.redirectUrl);
