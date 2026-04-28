@@ -85,7 +85,12 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const cleanHandle = formData.handle.trim().replace(/^@/, '');
+      // Sanitiza: remove @, $, espaços e qualquer sufixo após "/" (links fixos não servem aqui)
+      const cleanHandle = formData.handle
+        .trim()
+        .replace(/^[@$]+/, '')
+        .split('/')[0]
+        .trim();
       if (!cleanHandle) throw new Error('Informe o handle (InfiniteTag)');
 
       const dataToSave = {
@@ -246,13 +251,19 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
                   id="handle"
                   type="text"
                   value={formData.handle}
-                  onChange={(e) => setFormData({ ...formData, handle: e.target.value.replace(/^@/, '') })}
+                  onChange={(e) => {
+                    // Limpa @, $ e tudo após "/" automaticamente
+                    const cleaned = e.target.value
+                      .replace(/^[@$]+/, '')
+                      .split('/')[0];
+                    setFormData({ ...formData, handle: cleaned });
+                  }}
                   placeholder="seu_handle"
                   required
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Seu identificador público no InfinitePay (visto em <code>infinitepay.io/seu_handle</code>). Acesse o app InfinitePay → Perfil para encontrá-lo.
+                Apenas sua <strong>InfiniteTag</strong> (ex: <code>lagrandame</code>), sem <code>@</code>, <code>$</code> ou barras. Encontre no app InfinitePay → topo da tela ou Perfil. <strong>Não cole o link completo de checkout</strong> (ex: <code>checkout.infinitepay.io/seu_handle/XYZ123</code>) — apenas o nome do handle.
               </p>
             </div>
 

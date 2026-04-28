@@ -74,8 +74,9 @@ serve(async (req) => {
 
     if (!orders || orders.length === 0) {
       console.warn("[infinitepay-webhook] Pedido não encontrado para nsu:", nsuToFind);
-      return new Response(JSON.stringify({ ok: true, ignored: "order not found" }), {
-        status: 200,
+      // Retorna 400 para que o InfinitePay tente reenviar (pode ser race condition)
+      return new Response(JSON.stringify({ success: false, message: "Pedido não encontrado" }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -98,18 +99,24 @@ serve(async (req) => {
     }
 
     // Validar pagamento via payment_check (defesa contra webhook spoofado)
+    const cleanHandle = String(integration.handle)
+      .trim()
+      .replace(/^[@$]+/, "")
+      .split("/")[0]
+      .trim();
+
     let confirmedPaid = false;
     try {
       const checkRes = await fetch(
-        "https://api.infinitepay.io/invoices/public/checkout/payment_check",
+        "https://api.checkout.infinitepay.io/payment_check",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
-            handle: String(integration.handle).replace(/^@/, "").trim(),
+            handle: cleanHandle,
             order_nsu: nsuToFind,
             ...(transactionNsu ? { transaction_nsu: transactionNsu } : {}),
-            ...(slug ? { invoice_slug: slug } : {}),
+            ...(slug ? { slug } : {}),
           }),
         },
       );
@@ -136,7 +143,7 @@ serve(async (req) => {
     }
 
     if (!confirmedPaid) {
-      return new Response(JSON.stringify({ ok: true, ignored: "not paid" }), {
+      return new Response(JSON.stringify({ success: true, message: null }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -166,7 +173,7 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ ok: true, processed: orders.length }), {
+    return new Response(JSON.stringify({ success: true, message: null }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
