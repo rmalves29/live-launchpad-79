@@ -1,37 +1,26 @@
-## Objetivo
+# Adicionar atalhos de monitoramento no menu Config
 
-Copiar os 8 templates de WhatsApp da **Mania de Mulher** (`08f2b1b9...`) para:
-- **Cabello Mania** → link `https://app.orderzaps.com/t/cabellomania/checkout`
-- **Revele Semi Jóias** → link `https://app.orderzaps.com/t/revelesemijoias/checkout`
-- **La Grandame** → link `https://app.orderzaps.com/t/lagrandame/checkout`
+Converter o item "Config" do navbar em um dropdown com 3 opções (visíveis apenas para `super_admin`, exceto a primeira):
 
-A única diferença entre os tenants é a substituição do link de checkout `https://app.orderzaps.com/t/app/checkout` (Mania de Mulher) e da menção "Mania de Mulher" no template ITEM_ADDED, que será trocada pelo nome de cada empresa.
+1. **Configurações** → navega para `/config` (todos os usuários)
+2. **Métricas Supabase** → abre painel oficial em nova aba (super_admin)
+3. **Cloud Lovable** → abre dashboard do projeto em nova aba (super_admin)
 
-## Templates a replicar (8 tipos)
+## Mudanças técnicas
 
-1. `ITEM_ADDED` — Item Adicionado ao Pedido (contém link e nome da loja)
-2. `PRODUCT_CANCELED` — produto cancelado
-3. `PAID_ORDER` — Pedido Pago
-4. `MSG_MASSA` — Mensagem em Massa (contém link)
-5. `SENDFLOW` — SendFlow Divulgação em Grupos
-6. `TRACKING` — Código de Rastreio
-7. `BLOCKED_CUSTOMER` — Mensagem de Cliente Bloqueado
-8. `DM_INSTAGRAM_CADASTRO` — Cadastro Sistema
+**Arquivo único:** `src/components/Navbar.tsx`
 
-## Como será aplicado (técnico)
+- Remover `{ path: '/config', label: 'Config' }` do array `navItems`.
+- Adicionar `isConfigActive = location.pathname.startsWith('/config')`.
+- Adicionar novo `DropdownMenu` "Config" ao lado do dropdown de WhatsApp na nav desktop, seguindo exatamente o mesmo padrão visual:
+  - Item "Configurações" sempre visível
+  - Itens "Métricas Supabase" e "Cloud Lovable" apenas se `isSuperAdmin`, com ícone `ExternalLink` e `window.open(url, '_blank', 'noopener,noreferrer')`
+- No menu mobile (Sheet), adicionar uma seção "Config" com a mesma lógica de visibilidade, seguindo o padrão da seção WhatsApp atual.
 
-Migration SQL única que para cada tenant destino:
+**URLs alvo:**
+- Supabase: `https://supabase.com/dashboard/project/<PROJECT_REF>/reports/database`
+- Lovable Cloud: `https://lovable.dev/projects/154035f9-093b-4aed-ac82-a01434f3c19b`
 
-1. **Apaga** todos os templates existentes daqueles 8 tipos (limpa também as duplicatas de `MSG_MASSA` já presentes — ver memória `persistencia-e-deduplicacao-templates`).
-2. **Insere** as 8 novas linhas copiadas do tenant Mania de Mulher, aplicando `REPLACE` no campo `content`:
-   - `https://app.orderzaps.com/t/app/checkout` → link do tenant destino
-   - Em `ITEM_ADDED`, substituir "Mania de Mulher" pelo nome da loja destino (Cabello Mania / Revele Semi Jóias / La Grandame).
-3. Mantém os mesmos `title` e `type`. Define `updated_at = now()`.
+O `PROJECT_REF` do Supabase será extraído de `src/integrations/supabase/client.ts` (campo `SUPABASE_URL`) durante a implementação.
 
-Resultado: cada tenant destino fica com exatamente 1 template por tipo (8 no total), idêntico ao original exceto pelo link e nome da loja.
-
-## Observações
-
-- Não há alteração de código (frontend/edge functions). Apenas SQL.
-- Operação é idempotente: pode ser reexecutada com segurança.
-- Nenhum template da Mania de Mulher é alterado.
+Nenhuma outra rota, função ou tabela é afetada.
