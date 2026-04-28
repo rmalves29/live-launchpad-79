@@ -163,6 +163,7 @@ const PublicCheckout = () => {
   const [pixDiscountPercent, setPixDiscountPercent] = useState<number | null>(null);
   const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
   const [pixDiscountValue, setPixDiscountValue] = useState(0);
+  const [activePaymentProvider, setActivePaymentProvider] = useState<'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null>(null);
 
   // Cupom
   const [couponCode, setCouponCode] = useState('');
@@ -299,14 +300,23 @@ const PublicCheckout = () => {
         ]);
 
         let discount = 0;
-        if (appmaxRes.data?.is_active && appmaxRes.data?.pix_discount_percent) {
-          discount = Number(appmaxRes.data.pix_discount_percent);
-        } else if (pagarmeRes.data?.is_active && pagarmeRes.data?.pix_discount_percent) {
-          discount = Number(pagarmeRes.data.pix_discount_percent);
-        } else if (mpRes.data?.is_active && mpRes.data?.pix_discount_percent) {
-          discount = Number(mpRes.data.pix_discount_percent);
-        } else if (infRes.data?.is_active && infRes.data?.pix_discount_percent) {
-          discount = Number(infRes.data.pix_discount_percent);
+        let provider: 'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null = null;
+        if (appmaxRes.data?.is_active) {
+          provider = 'appmax';
+          if (appmaxRes.data?.pix_discount_percent) discount = Number(appmaxRes.data.pix_discount_percent);
+        } else if (pagarmeRes.data?.is_active) {
+          provider = 'pagarme';
+          if (pagarmeRes.data?.pix_discount_percent) discount = Number(pagarmeRes.data.pix_discount_percent);
+        } else if (mpRes.data?.is_active) {
+          provider = 'mp';
+          if (mpRes.data?.pix_discount_percent) discount = Number(mpRes.data.pix_discount_percent);
+        } else if (infRes.data?.is_active) {
+          provider = 'infinitepay';
+          if (infRes.data?.pix_discount_percent) discount = Number(infRes.data.pix_discount_percent);
+        }
+        setActivePaymentProvider(provider);
+        if (provider === 'infinitepay') {
+          setPaymentMethod('pix');
         }
 
         console.log('[PublicCheckout] Desconto PIX (backend):', discount + '%');
@@ -1698,54 +1708,57 @@ const PublicCheckout = () => {
                     </div>
                   </div>
 
-                  <Separator />
+                  {activePaymentProvider !== 'infinitepay' && (
+                    <>
+                      <Separator />
 
-                  {/* Forma de Pagamento */}
-                  <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-                    <h4 className="font-medium mb-3 flex items-center gap-2">
-                      <CreditCard className="h-4 w-4 text-blue-600" />
-                      Forma de Pagamento
-                    </h4>
-                    <div className="space-y-2">
-                      <div 
-                        className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                          paymentMethod === 'pix' 
-                            ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
-                            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                        }`}
-                        onClick={() => setPaymentMethod('pix')}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input type="radio" checked={paymentMethod === 'pix'} onChange={() => setPaymentMethod('pix')} className="w-4 h-4" />
-                          <div>
-                            <span className="font-medium">PIX</span>
-                            {pixDiscountLoading ? (
-                              <Badge variant="secondary" className="ml-2 text-xs">Carregando…</Badge>
-                            ) : effectivePixPercent > 0 ? (
-                              <Badge className="ml-2 bg-emerald-500 text-white text-xs">{effectivePixPercent}% OFF</Badge>
-                            ) : null}
+                      {/* Forma de Pagamento */}
+                      <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                        <h4 className="font-medium mb-3 flex items-center gap-2">
+                          <CreditCard className="h-4 w-4 text-blue-600" />
+                          Forma de Pagamento
+                        </h4>
+                        <div className="space-y-2">
+                          <div 
+                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                              paymentMethod === 'pix' 
+                                ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                            onClick={() => setPaymentMethod('pix')}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input type="radio" checked={paymentMethod === 'pix'} onChange={() => setPaymentMethod('pix')} className="w-4 h-4" />
+                              <div>
+                                <span className="font-medium">PIX</span>
+                                {pixDiscountLoading ? (
+                                  <Badge variant="secondary" className="ml-2 text-xs">Carregando…</Badge>
+                                ) : effectivePixPercent > 0 ? (
+                                  <Badge className="ml-2 bg-emerald-500 text-white text-xs">{effectivePixPercent}% OFF</Badge>
+                                ) : null}
+                              </div>
+                            </div>
+                            {currentPixDiscount > 0 && (
+                              <span className="text-emerald-600 font-semibold text-sm">- {formatCurrency(currentPixDiscount)}</span>
+                            )}
+                          </div>
+                          <div 
+                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                              paymentMethod === 'card' 
+                                ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20' 
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                            onClick={() => setPaymentMethod('card')}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input type="radio" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="w-4 h-4" />
+                              <span className="font-medium">Cartão de Crédito</span>
+                            </div>
                           </div>
                         </div>
-                        {currentPixDiscount > 0 && (
-                          <span className="text-emerald-600 font-semibold text-sm">- {formatCurrency(currentPixDiscount)}</span>
-                        )}
                       </div>
-                      <div 
-                        className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                          paymentMethod === 'card' 
-                            ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20' 
-                            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                        }`}
-                        onClick={() => setPaymentMethod('card')}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input type="radio" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="w-4 h-4" />
-                          <span className="font-medium">Cartão de Crédito</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
+                    </>
+                  )}
                   <Separator />
 
                   {/* Cupom de Desconto ou Brinde */}
