@@ -98,18 +98,24 @@ serve(async (req) => {
     }
 
     // Validar pagamento via payment_check (defesa contra webhook spoofado)
+    const cleanHandle = String(integration.handle)
+      .trim()
+      .replace(/^[@$]+/, "")
+      .split("/")[0]
+      .trim();
+
     let confirmedPaid = false;
     try {
       const checkRes = await fetch(
-        "https://api.infinitepay.io/invoices/public/checkout/payment_check",
+        "https://api.checkout.infinitepay.io/payment_check",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
           body: JSON.stringify({
-            handle: String(integration.handle).replace(/^@/, "").trim(),
+            handle: cleanHandle,
             order_nsu: nsuToFind,
             ...(transactionNsu ? { transaction_nsu: transactionNsu } : {}),
-            ...(slug ? { invoice_slug: slug } : {}),
+            ...(slug ? { slug } : {}),
           }),
         },
       );
