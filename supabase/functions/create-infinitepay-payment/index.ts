@@ -402,18 +402,11 @@ serve(async (req) => {
 
     const rawCheckoutUrl: string = checkoutUrlFromApi;
 
-    // Anexa dados de cliente + endereço como query string para pré-preencher
-    // os campos no checkout da InfinitePay. A API /links não persiste esses
-    // dados no body — a tela de pagamento lê via querystring.
-    const urlWithPrefill = appendCustomerAndAddressParams(rawCheckoutUrl, {
-      customer: body.customerData,
-      address: body.addressData,
-    });
-
-    // NÃO travamos método de pagamento na InfinitePay: a seleção PIX/Cartão
-    // é apenas interna do Orderzaps (para aplicar desconto PIX). Na tela da
-    // InfinitePay, o cliente vê a experiência padrão do provedor.
-    const checkoutUrl = urlWithPrefill;
+    // IMPORTANTE: NÃO anexamos dados de cliente/endereço como query string.
+    // O Cloudflare da InfinitePay bloqueia URLs com muitos parâmetros suspeitos
+    // (erro "You are unable to access infinitepay.io"). Os dados de cliente e
+    // endereço já são enviados no body da API (customer + address acima).
+    const checkoutUrl = rawCheckoutUrl;
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
