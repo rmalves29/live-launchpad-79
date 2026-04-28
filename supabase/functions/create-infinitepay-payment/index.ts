@@ -179,6 +179,7 @@ serve(async (req) => {
         .replace(/\n?\[FRETE\][^\n]*/g, "")
         .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
         .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
+        .replace(/\n?\[MERGE\][^\n]*/g, "")
         .trim();
 
       const pixNote = pixDiscountValue > 0 ? `[PIX_DISCOUNT] R$ ${pixDiscountValue.toFixed(2)}` : "";

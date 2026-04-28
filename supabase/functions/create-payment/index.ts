@@ -282,6 +282,7 @@ serve(async (req) => {
           .replace(/\n?\[FRETE\][^\n]*/g, "")
           .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
           .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
+          .replace(/\n?\[MERGE\][^\n]*/g, "")
           .trim();
         
         // Adicionar observação de merge se existir
