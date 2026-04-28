@@ -1,26 +1,42 @@
-# Adicionar atalhos de monitoramento no menu Config
+## Problema
 
-Converter o item "Config" do navbar em um dropdown com 3 opções (visíveis apenas para `super_admin`, exceto a primeira):
+Ao clicar em **Pix** (ou qualquer outro método) no checkout do InfinitePay, aparece o modal "Algo deu errado". O backend está OK — o link é gerado normalmente. O erro acontece **dentro do checkout hospedado da InfinitePay** ao tentar criar a transação.
 
-1. **Configurações** → navega para `/config` (todos os usuários)
-2. **Métricas Supabase** → abre painel oficial em nova aba (super_admin)
-3. **Cloud Lovable** → abre dashboard do projeto em nova aba (super_admin)
+## Causa raiz
 
-## Mudanças técnicas
+Em `supabase/functions/create-infinitepay-payment/index.ts` o payload enviado para `https://api.checkout.infinitepay.io/links` tem dois problemas que a InfinitePay aceita silenciosamente na criação do link, mas rejeita na hora de processar o pagamento:
 
-**Arquivo único:** `src/components/Navbar.tsx`
+1. **E-mail inválido (`@checkout.local`)** — quando o cliente não informa e-mail, fazemos fallback para `${phone}@checkout.local`. A InfinitePay valida o domínio na hora do pagamento e bloqueia a transação.
+2. **CPF não é enviado no objeto `customer`** — a InfinitePay exige CPF do pagador para Pix (e para cartão acima de certos valores). Hoje o `body.customerData.cpf` chega na função mas não é repassado.
+3. **Valor mínimo R$ 1,00** — para cartão, a InfinitePay rejeita valores abaixo de ~R$ 2,00. Para Pix funciona, mas vale validar.
 
-- Remover `{ path: '/config', label: 'Config' }` do array `navItems`.
-- Adicionar `isConfigActive = location.pathname.startsWith('/config')`.
-- Adicionar novo `DropdownMenu` "Config" ao lado do dropdown de WhatsApp na nav desktop, seguindo exatamente o mesmo padrão visual:
-  - Item "Configurações" sempre visível
-  - Itens "Métricas Supabase" e "Cloud Lovable" apenas se `isSuperAdmin`, com ícone `ExternalLink` e `window.open(url, '_blank', 'noopener,noreferrer')`
-- No menu mobile (Sheet), adicionar uma seção "Config" com a mesma lógica de visibilidade, seguindo o padrão da seção WhatsApp atual.
+## O que fazer
 
-**URLs alvo:**
-- Supabase: `https://supabase.com/dashboard/project/<PROJECT_REF>/reports/database`
-- Lovable Cloud: `https://lovable.dev/projects/154035f9-093b-4aed-ac82-a01434f3c19b`
+### 1. Corrigir `create-infinitepay-payment/index.ts`
 
-O `PROJECT_REF` do Supabase será extraído de `src/integrations/supabase/client.ts` (campo `SUPABASE_URL`) durante a implementação.
+- **Remover o fallback `@checkout.local`**. Se o cliente não tem e-mail real, simplesmente **omitir** o campo `email` do objeto `customer` (a InfinitePay aceita customer sem e-mail).
+- **Incluir o CPF** no objeto `customer` (campo `tax_id` ou `document`, conforme a API aceita) quando `body.customerData.cpf` estiver preenchido.
+- **Logar a resposta completa** da InfinitePay quando `infRes.ok` for `false` ou quando o link gerado for usado e falhar — hoje só logamos em erro 4xx/5xx; a InfinitePay retorna 200 mesmo com link "viciado".
 
-Nenhuma outra rota, função ou tabela é afetada.
+### 2. Validações no checkout (frontend)
+
+- Tornar o **e-mail obrigatório** quando a integração ativa for InfinitePay (ou pelo menos avisar o cliente que sem e-mail real o pagamento pode falhar).
+- Tornar o **CPF obrigatório** para Pix via InfinitePay.
+
+### 3. Testar com handle real
+
+Após o deploy, testar novamente com:
+- Valor mínimo de R$ 5,00 (acima do limite de cartão)
+- E-mail real do cliente preenchido
+- CPF preenchido
+
+Se ainda falhar, capturar o `payment_check` da InfinitePay (a função `infinitepay-webhook` já tem essa chamada) para ver o motivo exato da recusa.
+
+## Arquivos afetados
+
+- `supabase/functions/create-infinitepay-payment/index.ts` — ajustar payload `customer` (remover e-mail fake, adicionar CPF, melhorar logs)
+- `src/pages/Checkout.tsx` (ou componente de checkout do storefront) — validar e-mail/CPF obrigatórios quando InfinitePay estiver ativo
+
+## Riscos
+
+- Nenhum. As mudanças são aditivas (mais validação) e corrigem um bug que afeta 100% dos pagamentos via InfinitePay sem e-mail real.

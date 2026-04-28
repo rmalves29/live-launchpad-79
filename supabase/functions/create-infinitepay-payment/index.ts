@@ -268,17 +268,33 @@ serve(async (req) => {
     const webhookUrl = `${supabaseUrl}/functions/v1/infinitepay-webhook?tenant_id=${body.tenant_id}&order_nsu=${orderNsu}`;
 
     // 6) Chamar API do InfinitePay
+    // IMPORTANTE: NÃO enviar e-mail "fake" (@checkout.local) — a InfinitePay valida
+    // o domínio na hora de criar a transação e bloqueia o pagamento ("Algo deu errado").
+    // Se o cliente não tem e-mail real, omitimos o campo (a API aceita).
+    // CPF deve ser enviado em `customer.cpf` quando disponível (obrigatório p/ Pix).
+    const customerPayload: Record<string, unknown> = {
+      name: body.customerData.name,
+      phone_number: body.customerData.phone,
+    };
+    const customerEmail = (body.customerData.email || "").trim();
+    const isRealEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail) &&
+      !customerEmail.endsWith("@checkout.local");
+    if (isRealEmail) {
+      customerPayload.email = customerEmail;
+    }
+    const customerCpf = (body.customerData.cpf || "").replace(/\D/g, "");
+    if (customerCpf.length === 11) {
+      customerPayload.cpf = customerCpf;
+      customerPayload.tax_id = customerCpf;
+    }
+
     const infBody: Record<string, unknown> = {
       handle,
       order_nsu: orderNsu,
       redirect_url: redirectUrl,
       webhook_url: webhookUrl,
       items: productItems,
-      customer: {
-        name: body.customerData.name,
-        email: body.customerData.email || `${body.customerData.phone}@checkout.local`,
-        phone_number: body.customerData.phone,
-      },
+      customer: customerPayload,
     };
 
     if (body.addressData?.cep) {
