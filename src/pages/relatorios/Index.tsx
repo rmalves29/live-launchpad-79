@@ -190,24 +190,26 @@ const Relatorios = () => {
           break;
       }
       
-      let query = supabaseTenant
-        .from('orders')
-        .select('id, total_amount, is_paid, cart_id');
+      const buildQuery = () => {
+        let query = supabaseTenant
+          .from('orders')
+          .select('id, total_amount, is_paid, cart_id')
+          .or('is_cancelled.is.null,is_cancelled.eq.false');
 
-      if ((salesFilter === 'custom' || salesFilter === 'yesterday') && dateFilter && endDateFilter) {
-        const { start } = getBrasiliaDayBoundsISO(dateFilter);
-        const { end } = getBrasiliaDayBoundsISO(endDateFilter);
-        query = query
-          .gte('created_at', start)
-          .lte('created_at', end);
-      } else if (dateFilter) {
-        const { start } = getBrasiliaDayBoundsISO(dateFilter);
-        query = query.gte('created_at', start);
-      }
+        if ((salesFilter === 'custom' || salesFilter === 'yesterday') && dateFilter && endDateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          const { end } = getBrasiliaDayBoundsISO(endDateFilter);
+          query = query
+            .gte('created_at', start)
+            .lte('created_at', end);
+        } else if (dateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          query = query.gte('created_at', start);
+        }
+        return query;
+      };
 
-      const { data: orders, error } = await query;
-
-      if (error) throw error;
+      const orders = await fetchAllPaginated<any>(buildQuery);
 
       // Se temos filtro de tipo de venda, precisamos filtrar as orders que têm produtos do tipo selecionado
       let filteredOrders = orders || [];
