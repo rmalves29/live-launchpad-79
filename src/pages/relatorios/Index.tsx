@@ -931,25 +931,29 @@ const Relatorios = () => {
     try {
       let dateFilter = '';
       let endDateFilter = '';
-      
+      const todayBrasCust = getBrasiliaDate();
+
       switch (customersFilter) {
         case 'today':
-          dateFilter = new Date().toISOString().split('T')[0];
+          dateFilter = getBrasiliaDateISO();
           break;
-        case 'yesterday':
-          const yesterdayCust = new Date();
+        case 'yesterday': {
+          const yesterdayCust = new Date(todayBrasCust);
           yesterdayCust.setDate(yesterdayCust.getDate() - 1);
-          dateFilter = yesterdayCust.toISOString().split('T')[0];
-          endDateFilter = yesterdayCust.toISOString().split('T')[0];
+          dateFilter = toBrasiliaDateISO(yesterdayCust);
+          endDateFilter = dateFilter;
           break;
-        case 'month':
-          const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-          dateFilter = startOfMonth.toISOString().split('T')[0];
+        }
+        case 'month': {
+          const startOfMonth = new Date(todayBrasCust.getFullYear(), todayBrasCust.getMonth(), 1);
+          dateFilter = toBrasiliaDateISO(startOfMonth);
           break;
-        case 'year':
-          const startOfYear = new Date(new Date().getFullYear(), 0, 1);
-          dateFilter = startOfYear.toISOString().split('T')[0];
+        }
+        case 'year': {
+          const startOfYear = new Date(todayBrasCust.getFullYear(), 0, 1);
+          dateFilter = toBrasiliaDateISO(startOfYear);
           break;
+        }
         case 'custom':
           if (!customersStartDate || !customersEndDate) return;
           dateFilter = customersStartDate;
@@ -960,30 +964,33 @@ const Relatorios = () => {
           break;
       }
 
-      // Buscar pedidos com filtro de data
-      let query = supabaseTenant
-        .from('orders')
-        .select(`
-          id, 
-          customer_phone,
-          customer_name,
-          total_amount, 
-          is_paid, 
-          cart_id,
-          created_at
-        `);
+      // Buscar pedidos (paginado + ignora cancelados)
+      const buildCustQuery = () => {
+        let q = supabaseTenant
+          .from('orders')
+          .select(`
+            id, 
+            customer_phone,
+            customer_name,
+            total_amount, 
+            is_paid, 
+            cart_id,
+            created_at
+          `)
+          .or('is_cancelled.is.null,is_cancelled.eq.false');
 
-      if ((customersFilter === 'custom' || customersFilter === 'yesterday') && dateFilter && endDateFilter) {
-        query = query
-          .gte('created_at', `${dateFilter}T00:00:00`)
-          .lte('created_at', `${endDateFilter}T23:59:59`);
-      } else if (dateFilter) {
-        query = query.gte('created_at', `${dateFilter}T00:00:00`);
-      }
+        if ((customersFilter === 'custom' || customersFilter === 'yesterday') && dateFilter && endDateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          const { end } = getBrasiliaDayBoundsISO(endDateFilter);
+          q = q.gte('created_at', start).lte('created_at', end);
+        } else if (dateFilter) {
+          const { start } = getBrasiliaDayBoundsISO(dateFilter);
+          q = q.gte('created_at', start);
+        }
+        return q;
+      };
 
-      const { data: orders, error } = await query;
-
-      if (error) throw error;
+      const orders = await fetchAllPaginated<any>(buildCustQuery);
 
       console.log('📦 Orders encontrados para clientes:', orders?.length);
 
