@@ -143,7 +143,7 @@ serve(async (req) => {
     }
 
     if (!confirmedPaid) {
-      return new Response(JSON.stringify({ ok: true, ignored: "not paid" }), {
+      return new Response(JSON.stringify({ success: true, message: null }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
