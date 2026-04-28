@@ -296,9 +296,9 @@ serve(async (req) => {
 
     console.log("[create-infinitepay-payment] Creating link for handle:", handle, "order_nsu:", orderNsu);
 
-    const infRes = await fetch("https://api.infinitepay.io/invoices/public/checkout/links", {
+    const infRes = await fetch("https://api.checkout.infinitepay.io/links", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
       body: JSON.stringify(infBody),
     });
 
@@ -308,26 +308,27 @@ serve(async (req) => {
       console.error("[create-infinitepay-payment] Resposta não-JSON:", text.slice(0, 300));
       return new Response(
         JSON.stringify({
-          error: "InfinitePay retornou resposta inválida. Verifique se o handle está correto.",
+          error: "InfinitePay retornou resposta inválida. Verifique se o handle (InfiniteTag) está correto.",
           details: `Status ${infRes.status}`,
         }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
     const infJson = await infRes.json();
-    if (!infRes.ok || !infJson?.link) {
+    const checkoutUrlFromApi: string | undefined = infJson?.url || infJson?.link;
+    if (!infRes.ok || !checkoutUrlFromApi) {
       console.error("[create-infinitepay-payment] Erro InfinitePay:", infJson);
       return new Response(
         JSON.stringify({
-          error: infJson?.message || infJson?.error || "Erro ao criar link de pagamento no InfinitePay",
+          error: infJson?.message || infJson?.error || "Erro ao criar link de pagamento no InfinitePay. Verifique sua InfiniteTag.",
           details: infJson,
         }),
-        { status: infRes.status || 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const rawCheckoutUrl: string = infJson.link;
+    const rawCheckoutUrl: string = checkoutUrlFromApi;
 
     // Trava método de pagamento (PIX-only ou Cartão-only) via query string
     const checkoutUrl = buildLockedCheckoutUrl(rawCheckoutUrl, body.payment_method);
