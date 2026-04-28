@@ -1742,7 +1742,12 @@ const Relatorios = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="pl-6 text-center w-28">Score</TableHead>
+                        <TableHead
+                          className="pl-6 text-center w-28"
+                          title="Score RFM (3–15) = Valor + Frequência + Recência. Cada pilar vale 1 a 5."
+                        >
+                          Score (RFM)
+                        </TableHead>
                         <TableHead className="text-center w-20">Posição</TableHead>
                         <TableHead>Cliente</TableHead>
                         <TableHead>Telefone</TableHead>
