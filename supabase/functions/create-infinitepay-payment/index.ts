@@ -4,7 +4,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
+import { buildLockedCheckoutUrl } from "../_shared/payment-method-lock.ts";
 import { resolvePixDiscount } from "../_shared/pix-discount.ts";
 
 const corsHeaders = {
@@ -69,25 +69,6 @@ function buildFreightNote(shipping: ShippingData, shippingCost: number) {
   const price = toNumber(shipping.price, shippingCost);
   const prazo = shipping.delivery_time ? ` | Prazo: ${shipping.delivery_time}` : "";
   return `[FRETE] ${shipping.company_name || "Transportadora"} - ${shipping.service_name} | R$ ${price.toFixed(2)}${prazo}`;
-}
-
-function buildManualCheckoutUrl(params: {
-  handle: string;
-  orderNsu: string;
-  redirectUrl: string;
-  webhookUrl: string;
-  totalCents: number;
-}) {
-  const url = new URL(`https://checkout.infinitepay.io/${encodeURIComponent(params.handle)}`);
-  const description = `Pedido Orderzaps ${params.orderNsu}`;
-  url.searchParams.set(
-    "items",
-    JSON.stringify([{ quantity: 1, price: params.totalCents, name: description, description }]),
-  );
-  url.searchParams.set("order_nsu", params.orderNsu);
-  url.searchParams.set("redirect_url", params.redirectUrl);
-  url.searchParams.set("webhook_url", params.webhookUrl);
-  return url.toString();
 }
 
 serve(async (req) => {
@@ -287,13 +268,70 @@ serve(async (req) => {
     const redirectUrl = `${appBaseUrl}/pagamento/retorno?status=success&provider=infinitepay${tenantParam}&order_nsu=${orderNsu}`;
     const webhookUrl = `${supabaseUrl}/functions/v1/infinitepay-webhook?tenant_id=${body.tenant_id}&order_nsu=${orderNsu}`;
 
-    // 6) Gerar URL manual documentada pela InfinitePay.
-    // Evita o link com `lenc` retornado pela API, que vem causando bloqueio Cloudflare
-    // em alguns clientes/dispositivos.
-    console.log("[create-infinitepay-payment] Creating manual link for handle:", handle, "order_nsu:", orderNsu);
+    // 6) Chamar API do InfinitePay
+    const infBody: Record<string, unknown> = {
+      handle,
+      order_nsu: orderNsu,
+      redirect_url: redirectUrl,
+      webhook_url: webhookUrl,
+      items: productItems,
+      customer: {
+        name: body.customerData.name,
+        email: body.customerData.email || `${body.customerData.phone}@checkout.local`,
+        phone_number: body.customerData.phone,
+      },
+    };
 
-    const totalCents = productItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
-    const checkoutUrl = buildManualCheckoutUrl({ handle, orderNsu, redirectUrl, webhookUrl, totalCents });
+    if (body.addressData?.cep) {
+      infBody.address = {
+        zip_code: body.addressData.cep.replace(/\D/g, ""),
+        street: body.addressData.street,
+        number: body.addressData.number,
+        complement: body.addressData.complement || "",
+        district: body.addressData.neighborhood,
+        city: body.addressData.city,
+        state: body.addressData.state,
+      };
+    }
+
+    console.log("[create-infinitepay-payment] Creating link for handle:", handle, "order_nsu:", orderNsu);
+
+    const infRes = await fetch("https://api.checkout.infinitepay.io/links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify(infBody),
+    });
+
+    const contentType = infRes.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const text = await infRes.text();
+      console.error("[create-infinitepay-payment] Resposta não-JSON:", text.slice(0, 300));
+      return new Response(
+        JSON.stringify({
+          error: "InfinitePay retornou resposta inválida. Verifique se o handle (InfiniteTag) está correto.",
+          details: `Status ${infRes.status}`,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const infJson = await infRes.json();
+    const checkoutUrlFromApi: string | undefined = infJson?.url || infJson?.link;
+    if (!infRes.ok || !checkoutUrlFromApi) {
+      console.error("[create-infinitepay-payment] Erro InfinitePay:", infJson);
+      return new Response(
+        JSON.stringify({
+          error: infJson?.message || infJson?.error || "Erro ao criar link de pagamento no InfinitePay. Verifique sua InfiniteTag.",
+          details: infJson,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const rawCheckoutUrl: string = checkoutUrlFromApi;
+
+    // Trava método de pagamento (PIX-only ou Cartão-only) via query string
+    const checkoutUrl = buildLockedCheckoutUrl(rawCheckoutUrl, body.payment_method);
 
     // 7) Salvar payment_link e order_nsu (no campo payment_link com sufixo)
     await sb
@@ -307,6 +345,7 @@ serve(async (req) => {
         init_point: checkoutUrl,
         provider: "infinitepay",
         order_nsu: orderNsu,
+        slug: infJson.slug,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

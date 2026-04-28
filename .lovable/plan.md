@@ -1,51 +1,112 @@
-# Enviar endereço para a InfinitePay
 
-## Situação atual
 
-A função `create-infinitepay-payment` **já está montando** um objeto `address` e anexando ao payload enviado para `https://api.checkout.infinitepay.io/links`:
+## Identificação progressiva no /t/app: IP/localStorage → @Instagram → Telefone
 
-```ts
-infBody.address = {
-  zip_code, street, number, complement, district, city, state
-}
+### Resposta direta
+
+Sim. Vou transformar o modal único atual em um fluxo de 3 passos progressivos, sempre tentando o caminho menos invasivo primeiro:
+
+```text
+1. Cliente clica "Adicionar"
+   ↓
+2. Sistema tenta identificar por IP + localStorage  (silencioso)
+   ├─ Encontrou → adiciona ao carrinho direto, sem modal ✅
+   └─ Não encontrou ↓
+3. Modal abre pedindo SÓ o @ do Instagram
+   ├─ Cliente digita @ → backend busca em customers (tenant_id, instagram)
+   │   ├─ Encontrou cliente → "Olá, @fulano! Vamos continuar." ✅
+   │   │   adiciona ao carrinho direto, salva identidade
+   │   └─ Não encontrou → modal expande pedindo o WhatsApp ↓
+4. Cliente digita WhatsApp
+   ├─ Telefone já existe em customers → reusa cadastro, atualiza @
+   └─ Telefone novo → cria customer novo
 ```
 
-Porém, a documentação oficial da InfinitePay (Checkout via link) **não lista o campo `address` como aceito** no endpoint `/links`. Os campos suportados são apenas:
-- `handle`, `redirect_url`, `webhook_url`, `order_nsu`
-- `customer` (name, email, phone_number)
-- `items` (description, quantity, price)
+### Camada 1 — Tentativa silenciosa (já existe, mantida)
 
-A página de checkout da InfinitePay coleta o endereço diretamente do cliente final (CEP, rua, número, etc.), por isso o campo enviado pela API hoje é simplesmente **ignorado** pelo servidor deles.
+`TenantStorefront.tsx` já consulta `localStorage.storefront_identity_<slug>` e a função `storefront-resolve-visitor` (que casa por hash de IP). Sem mudanças aqui.
 
-## O que pode ser feito
+### Camada 2 — Lookup por @Instagram (novo)
 
-### Opção A — Pré-preencher via query string (recomendada)
-A InfinitePay aceita parâmetros na URL final do checkout para pré-preencher dados do cliente. Vou:
+Nova edge function `storefront-lookup-by-instagram`:
 
-1. Após receber `checkoutUrl` da API, anexar parâmetros como:
-   - `?customer_name=...&customer_email=...&customer_phone=...`
-   - `&address_zip_code=...&address_street=...&address_number=...&address_complement=...&address_district=...&address_city=...&address_state=...`
-2. Combinar com os parâmetros já existentes (lock de método de pagamento PIX/cartão).
-3. Garantir URL-encoding correto de cada valor.
+- Recebe `{ tenant_slug, instagram }`
+- Normaliza o @ (remove `@`, espaços, lowercase opcional dependendo do dado salvo)
+- Busca `customers` por `(tenant_id, instagram)` usando `ilike` para ser case-insensitive
+- Se `is_blocked = true` → retorna `{ blocked: true }` (modal mostra mensagem de contato com a loja)
+- Se encontrou → retorna `{ found: true, phone, instagram, name }`
+- Se não encontrou → retorna `{ found: false }`
 
-Resultado: o cliente cai no checkout da InfinitePay com **todos os campos de endereço já preenchidos**, só precisando confirmar e pagar.
+A função **não cria nada** — é só lookup. A criação continua no `storefront-add-to-cart` que já recebe `customer_phone`.
 
-### Opção B — Manter envio no body (status quo)
-Manter o `address` no body para o caso da InfinitePay passar a aceitar oficialmente esse campo no futuro. Já está implementado, sem custo adicional.
+### Camada 3 — Modal progressivo (substitui o atual)
 
-## Plano de implementação
+Refatorar `IdentifyCustomerDialog.tsx` para ter 2 estados internos:
 
-1. Manter o `infBody.address` atual (não atrapalha — é ignorado).
-2. Criar função utilitária `appendAddressToCheckoutUrl(url, customer, address)` que:
-   - Faz parse da URL retornada pela API
-   - Adiciona parâmetros `customer_*` e `address_*` via `URLSearchParams`
-   - Preserva parâmetros existentes (PIX/cartão lock)
-3. Integrar essa função no fluxo, **antes** do `buildLockedCheckoutUrl`, ou ajustar `buildLockedCheckoutUrl` para receber esses extras.
-4. Redeploy da função `create-infinitepay-payment`.
-5. Teste no checkout da La Grandame: valor ≥ R$ 1,00, conferir que ao chegar na página da InfinitePay os campos de endereço já vêm preenchidos.
+**Estado A — "Identifique-se"** (estado inicial)
+- Único campo: `@ do Instagram`
+- Botão: "Continuar"
+- Texto auxiliar: "Use o mesmo @ que você usa nas nossas lives"
+- Ao clicar → chama `storefront-lookup-by-instagram`
+  - `found: true` → fecha modal, salva identidade no localStorage, dispara `onConfirm({ instagram, phone })`
+  - `found: false` → transição suave para Estado B (mantém o @ digitado)
+  - `blocked: true` → mostra erro vermelho "Cliente bloqueado. Entre em contato com a loja."
 
-## Observação importante
+**Estado B — "Primeira compra? Bem-vindo!"** (após @ não encontrado)
+- Mostra o @ digitado em destaque (chip ou linha "Cadastrando @fulano")
+- Campo único: `WhatsApp` (com máscara BR existente)
+- Link discreto "← usar outro @" volta ao Estado A
+- Botão: "Confirmar e adicionar"
+- Ao clicar → dispara `onConfirm({ instagram, phone })` que vai para `storefront-add-to-cart` (cria cliente novo)
 
-A InfinitePay **não documenta publicamente** todos os parâmetros de query string aceitos na página de checkout. Os mais comuns (`customer_name`, `customer_email`, `customer_phone`) são amplamente usados, mas os de endereço podem não funcionar 100%. Se após o deploy alguns campos não preencherem, posso ajustar os nomes dos parâmetros conforme o comportamento observado, ou abrir um chamado com o suporte da InfinitePay para confirmar a nomenclatura oficial.
+### Garantias e edge cases
 
-**Posso prosseguir com a implementação?**
+- **Telefone já cadastrado com outro @**: o `storefront-add-to-cart` continua respeitando a regra atual — busca por `(tenant_id, phone)`, e se já existir customer com Instagram preenchido, **não sobrescreve** (preserva o histórico). Se o Instagram estiver vazio, atualiza com o novo @.
+- **Cliente bloqueado**: tanto no lookup por @ quanto no add-to-cart final, retorna 403 / `blocked: true` e o modal mostra a mensagem "Cliente bloqueado. Entre em contato com a loja."
+- **Identidade persistente**: após qualquer sucesso (Estado A ou B), salva `localStorage.storefront_identity_<slug> = { phone, instagram }` e o backend já atualiza `storefront_visitors` com o IP hash. Próximas adições não pedem nada.
+- **Múltiplos clientes com mesmo @**: improvável, mas se acontecer pega o mais recente (`order by id desc limit 1`).
+- **@ vazio ou inválido no Estado A**: validação já existente (sanitiza, exige pelo menos 1 caractere).
+
+### O que NÃO muda
+
+- `storefront-add-to-cart/index.ts` — continua igual, ainda recebe `{ tenant_slug, product_id, qty, customer_phone, customer_instagram }`.
+- `storefront-resolve-visitor/index.ts` — Camada 1 silenciosa permanece intacta.
+- Fluxo de checkout, pagamento, estoque, total — nenhuma mudança.
+- Tabelas, RLS, triggers — sem migrações.
+
+### Detalhes técnicos
+
+**Arquivos editados:**
+
+- `src/components/storefront/IdentifyCustomerDialog.tsx`
+  - Adicionar estado interno `step: 'instagram' | 'phone'`
+  - Estado A renderiza só o input de @ + botão "Continuar"
+  - Estado B renderiza chip do @ + input de telefone + link "usar outro @" + botão "Confirmar e adicionar"
+  - No "Continuar" do Estado A, chama a nova função e decide o próximo passo
+  - Manter prop `onConfirm({ instagram, phone })` igual para não quebrar `TenantStorefront.tsx`
+  - Loading states distintos para lookup (Estado A) e add-to-cart (Estado B)
+  - Mensagem de "Bem-vindo de volta, @fulano!" via toast quando lookup encontra cliente
+
+- `supabase/functions/storefront-lookup-by-instagram/index.ts` (novo)
+  - Body: `{ tenant_slug: string, instagram: string }`
+  - Resolve tenant ativo, normaliza @, busca em `customers`
+  - Retorna `{ found, phone?, instagram?, name?, blocked? }`
+  - CORS padrão, sem autenticação (público), service role internamente
+  - Logs estruturados para debug
+
+- `supabase/config.toml`
+  - Adicionar `[functions.storefront-lookup-by-instagram] verify_jwt = false`
+
+- `src/pages/TenantStorefront.tsx`
+  - Quando o `IdentifyCustomerDialog` confirmar via Estado A (cliente encontrado por @), persistir no `localStorage.storefront_identity_<slug>` igual ao fluxo atual — nenhuma mudança de lógica externa, só passa a receber `{ phone, instagram }` resolvido pelo dialog.
+
+**Sem migrações de banco. Sem novos secrets.**
+
+### Validação após deploy
+
+1. **Cliente conhecido por IP**: abrir vitrine de um tenant onde já comprou antes → clicar "Adicionar" → produto cai no carrinho sem modal.
+2. **Cliente novo, mas registrado**: limpar localStorage + abrir em rede diferente (4G no celular) → clicar "Adicionar" → modal pede @ → digitar @ existente → toast "Bem-vindo de volta, @fulano!" e produto adicionado sem pedir telefone.
+3. **Cliente totalmente novo**: digitar @ que não existe → modal expande para pedir WhatsApp → confirmar → produto adicionado, customer criado.
+4. **Cliente bloqueado**: digitar @ de cliente com `is_blocked = true` → mensagem "Cliente bloqueado. Entre em contato com a loja." (mesmo no Estado A, antes de chegar no add-to-cart).
+5. **Voltar e trocar @**: no Estado B, clicar "← usar outro @" → volta ao Estado A com input limpo.
+
