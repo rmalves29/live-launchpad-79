@@ -1360,6 +1360,7 @@ serve(async (req) => {
       const existingItem = existingItems && existingItems.length > 0 ? existingItems[0] : null;
 
       let cartItem;
+      let shouldSendItemAddedMessage = false;
       let wasSkipped = false;
       
       if (existingItem) {
@@ -1445,6 +1446,7 @@ serve(async (req) => {
           continue;
         }
         cartItem = updatedItem;
+        shouldSendItemAddedMessage = true;
         
         // ATOMIC STOCK DECREMENT: Only decrement by requestedQty
         const { data: stockRows, error: stockError } = await supabase
@@ -1549,6 +1551,7 @@ serve(async (req) => {
         }
         
         cartItem = newItem;
+        shouldSendItemAddedMessage = true;
         
         // ATOMIC STOCK DECREMENT: Re-read fresh stock then decrement only if stock > 0
         const { data: freshStockForNew } = await supabase
@@ -1581,7 +1584,17 @@ serve(async (req) => {
       // Update order total
       await updateOrderTotal(supabase, order.id);
 
-      // The trigger on cart_items will automatically send the item added message
+      if (shouldSendItemAddedMessage && cartItem) {
+        queueItemAddedMessage(
+          tenantId,
+          normalizedPhone,
+          product,
+          requestedQty,
+          cartItem.unit_price,
+          order.id,
+        );
+      }
+
       results.push({ 
         code, 
         success: true, 
