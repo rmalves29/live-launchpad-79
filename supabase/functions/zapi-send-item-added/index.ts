@@ -422,9 +422,11 @@ serve(async (req) => {
       );
     }
 
-    const formattedPhone = formatPhoneNumber(customer_phone);
     const { instanceId, token, clientToken, consentProtectionEnabled, templateSolicitacao, templateComLink } = credentials;
-    const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
+    const baseUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}`;
+    const formattedPhone = await resolveWhatsAppPhone(baseUrl, clientToken, customer_phone);
+    const { instanceId, token, clientToken, consentProtectionEnabled, templateSolicitacao, templateComLink } = credentials;
+    const sendUrl = `${baseUrl}/send-text`;
     
     let message: string;
     let templateType: 'A' | 'B' | 'legacy' = 'legacy';
