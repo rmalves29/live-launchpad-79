@@ -168,6 +168,15 @@ async function checkCustomerConsent(supabase: any, tenantId: string, phone: stri
 function formatPhoneNumber(phone: string): string {
   let cleaned = phone.replace(/\D/g, '');
   cleaned = cleaned.replace(/^0+/, '');
+  if (cleaned.startsWith('55')) {
+    cleaned = cleaned.slice(2);
+  }
+  if (cleaned.length === 11) {
+    const ddd = Number(cleaned.slice(0, 2));
+    if (ddd > 30 && cleaned[2] === '9') {
+      cleaned = cleaned.slice(0, 2) + cleaned.slice(3);
+    }
+  }
   if (!cleaned.startsWith('55')) {
     cleaned = '55' + cleaned;
   }
