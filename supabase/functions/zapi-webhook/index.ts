@@ -111,6 +111,60 @@ function normalizeParticipantPhone(value?: string | null): string {
   return digits;
 }
 
+async function triggerItemAddedMessage(
+  tenantId: string,
+  customerPhone: string,
+  product: any,
+  quantity: number,
+  unitPrice: number,
+  orderId: number | string | null,
+) {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const response = await fetch(`${supabaseUrl}/functions/v1/zapi-send-item-added`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        customer_phone: customerPhone,
+        product_name: product.name,
+        product_code: product.code,
+        quantity,
+        unit_price: unitPrice,
+        original_price: product.price,
+        order_id: orderId,
+      }),
+    });
+
+    const responseText = await response.text();
+    console.log(`[zapi-webhook] 📤 Item-added dispatch for ${customerPhone} (${product.code}): status=${response.status} body=${responseText.substring(0, 300)}`);
+  } catch (error: any) {
+    console.error(`[zapi-webhook] ❌ Item-added dispatch failed for ${customerPhone} (${product?.code || 'unknown'}):`, error?.message || error);
+  }
+}
+
+function queueItemAddedMessage(
+  tenantId: string,
+  customerPhone: string,
+  product: any,
+  quantity: number,
+  unitPrice: number,
+  orderId: number | string | null,
+) {
+  const task = triggerItemAddedMessage(tenantId, customerPhone, product, quantity, unitPrice, orderId);
+  const edgeRuntime = (globalThis as any).EdgeRuntime;
+
+  if (edgeRuntime?.waitUntil) {
+    edgeRuntime.waitUntil(task);
+  } else {
+    task.catch((error: any) => console.error('[zapi-webhook] Background item-added dispatch error:', error?.message || error));
+  }
+}
+
 function hashMessage(text: string): string {
   let hash = 0;
   for (let i = 0; i < text.length; i++) {
@@ -1306,6 +1360,7 @@ serve(async (req) => {
       const existingItem = existingItems && existingItems.length > 0 ? existingItems[0] : null;
 
       let cartItem;
+      let shouldSendItemAddedMessage = false;
       let wasSkipped = false;
       
       if (existingItem) {
@@ -1391,6 +1446,7 @@ serve(async (req) => {
           continue;
         }
         cartItem = updatedItem;
+        shouldSendItemAddedMessage = true;
         
         // ATOMIC STOCK DECREMENT: Only decrement by requestedQty
         const { data: stockRows, error: stockError } = await supabase
@@ -1495,6 +1551,7 @@ serve(async (req) => {
         }
         
         cartItem = newItem;
+        shouldSendItemAddedMessage = true;
         
         // ATOMIC STOCK DECREMENT: Re-read fresh stock then decrement only if stock > 0
         const { data: freshStockForNew } = await supabase
@@ -1527,7 +1584,17 @@ serve(async (req) => {
       // Update order total
       await updateOrderTotal(supabase, order.id);
 
-      // The trigger on cart_items will automatically send the item added message
+      if (shouldSendItemAddedMessage && cartItem) {
+        queueItemAddedMessage(
+          tenantId,
+          normalizedPhone,
+          product,
+          requestedQty,
+          cartItem.unit_price,
+          order.id,
+        );
+      }
+
       results.push({ 
         code, 
         success: true, 
