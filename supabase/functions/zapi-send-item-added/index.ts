@@ -331,7 +331,7 @@ serve(async (req) => {
       );
     }
 
-    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id } = body;
+    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id, source_instance_id, source_connected_phone } = body;
 
     console.log(`[${timestamp}] [zapi-send-item-added] Processing for tenant ${tenant_id}`);
 
@@ -354,7 +354,7 @@ serve(async (req) => {
       );
     }
 
-    const credentials = await getZAPICredentials(supabase, tenant_id);
+    const credentials = await getZAPICredentials(supabase, tenant_id, source_instance_id, source_connected_phone);
     if (!credentials) {
       console.log("[zapi-send-item-added] Z-API not configured for this tenant");
       return new Response(
