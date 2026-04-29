@@ -584,7 +584,7 @@ export function ZAPISettings() {
              />
            </div>
 
-           {consentProtectionEnabled && (
+           {true && (
              <div className="space-y-4 pl-4 border-l-2 border-primary/20">
                <div className="space-y-2">
                  <Label className="text-sm font-medium">
@@ -647,7 +647,7 @@ Qualquer dúvida, estou à disposição! ✨`}
          </div>
 
          {/* Confirmation Message Template Section - LEGACY (quando proteção está OFF) */}
-         {!consentProtectionEnabled && (
+         {false && !consentProtectionEnabled && (
            <div className="pt-4 border-t space-y-4">
              <div className="flex items-center gap-2">
                <MessageSquare className="h-4 w-4 text-muted-foreground" />
