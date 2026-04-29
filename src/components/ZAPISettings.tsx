@@ -145,10 +145,10 @@ export function ZAPISettings() {
          if (typedData.template_item_added) setTemplateItemAdded(typedData.template_item_added);
          if (typedData.item_added_confirmation_template) setConfirmationTemplate(typedData.item_added_confirmation_template);
          setConfirmationTimeout(typedData.confirmation_timeout_minutes || 30);
-         // Proteção por consentimento
+         // Proteção por consentimento - respeitar valor salvo (incluindo vazio/null)
          setConsentProtectionEnabled(typedData.consent_protection_enabled ?? false);
-         if (typedData.template_solicitacao) setTemplateSolicitacao(typedData.template_solicitacao);
-         if (typedData.template_com_link) setTemplateComLink(typedData.template_com_link);
+         setTemplateSolicitacao(typedData.template_solicitacao ?? '');
+         setTemplateComLink(typedData.template_com_link ?? '');
       }
     } catch (error: any) {
       console.error('Error loading Z-API integration:', error);
