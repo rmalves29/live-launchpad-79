@@ -46,6 +46,7 @@ interface ZAPIWebhookPayload {
   status?: string;
   ids?: string[];
   instanceId?: string;
+  connectedPhone?: string;
   messageId?: string;
   zapiMessageId?: string;
   notification?: string;
@@ -109,6 +110,61 @@ function normalizeParticipantPhone(value?: string | null): string {
   }
 
   return digits;
+}
+
+async function resolveZapiIntegration(supabase: any, instanceId?: string, connectedPhone?: string | null) {
+  const connectedDigits = normalizeDigits(connectedPhone);
+
+  if (connectedDigits) {
+    const phoneVariants = new Set<string>([connectedDigits]);
+    if (connectedDigits.startsWith('55') && connectedDigits.length > 11) {
+      phoneVariants.add(connectedDigits.slice(2));
+    } else if (connectedDigits.length <= 11) {
+      phoneVariants.add(`55${connectedDigits}`);
+    }
+
+    const { data: phoneMatches, error: phoneErr } = await supabase
+      .from('integration_whatsapp')
+      .select('tenant_id, zapi_instance_id, zapi_token, zapi_client_token')
+      .eq('provider', 'zapi')
+      .eq('is_active', true)
+      .in('connected_phone', Array.from(phoneVariants))
+      .limit(2);
+
+    if (phoneErr) {
+      console.log('[zapi-webhook] Error looking up tenant by connectedPhone:', phoneErr);
+    } else if ((phoneMatches?.length || 0) === 1) {
+      const match = phoneMatches![0];
+      if (instanceId && match.zapi_instance_id && match.zapi_instance_id !== instanceId) {
+        console.warn(`[zapi-webhook] ⚠️ instanceId ${instanceId} conflicts with connectedPhone ${connectedDigits}; using connectedPhone tenant ${match.tenant_id}`);
+      }
+      return match;
+    } else if ((phoneMatches?.length || 0) > 1) {
+      console.warn(`[zapi-webhook] connectedPhone ${connectedDigits} matched multiple active integrations; falling back to instanceId`);
+    }
+  }
+
+  if (instanceId) {
+    const { data: integrations, error: instErr } = await supabase
+      .from('integration_whatsapp')
+      .select('tenant_id, zapi_instance_id, zapi_token, zapi_client_token')
+      .eq('provider', 'zapi')
+      .eq('is_active', true)
+      .eq('zapi_instance_id', instanceId)
+      .limit(2);
+
+    if (instErr) {
+      console.log('[zapi-webhook] Error looking up tenant by instanceId:', instErr);
+    } else if ((integrations?.length || 0) === 1) {
+      return integrations![0];
+    } else if ((integrations?.length || 0) > 1) {
+      throw new Error(`instance_id_conflict:${instanceId}`);
+    } else {
+      console.log(`[zapi-webhook] No active integration found for instanceId ${instanceId}`);
+    }
+  }
+
+  return null;
 }
 
 async function triggerItemAddedMessage(
