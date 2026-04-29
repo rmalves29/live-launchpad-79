@@ -25,6 +25,8 @@ interface ItemAddedRequest {
   unit_price: number;
   original_price?: number;
   order_id?: number;
+  source_instance_id?: string;
+  source_connected_phone?: string;
 }
 
 // Validate that request comes from internal source (database trigger)
@@ -51,10 +53,39 @@ function validateInternalRequest(req: Request): boolean {
   return true;
 }
 
-async function getZAPICredentials(supabase: any, tenantId: string) {
+function hasServiceRoleAuthorization(req: Request): boolean {
+  const authHeader = req.headers.get("authorization") || "";
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  return Boolean(supabaseServiceKey && authHeader.includes(supabaseServiceKey.substring(0, 50)));
+}
+
+function normalizeDigits(value?: string | null): string {
+  return (value || '').replace(/\D/g, '');
+}
+
+function phoneMatches(a?: string | null, b?: string | null): boolean {
+  const buildVariants = (value?: string | null) => {
+    const digits = normalizeDigits(value);
+    const variants = new Set<string>();
+    if (!digits) return variants;
+    variants.add(digits);
+    if (digits.startsWith('55') && digits.length > 11) {
+      variants.add(digits.slice(2));
+    } else if (digits.length <= 11) {
+      variants.add(`55${digits}`);
+    }
+    return variants;
+  };
+
+  const aVariants = buildVariants(a);
+  const bVariants = buildVariants(b);
+  return [...aVariants].some((variant) => bVariants.has(variant));
+}
+
+async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanceId?: string, sourceConnectedPhone?: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-     .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link")
+     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -69,10 +100,36 @@ async function getZAPICredentials(supabase: any, tenantId: string) {
     return { disabled: true };
   }
 
+  let selectedIntegration = integration;
+
+  if (sourceInstanceId && sourceInstanceId !== integration.zapi_instance_id) {
+    const { data: sourceIntegration, error: sourceError } = await supabase
+      .from("integration_whatsapp")
+      .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider")
+      .eq("provider", "zapi")
+      .eq("is_active", true)
+      .eq("zapi_instance_id", sourceInstanceId)
+      .maybeSingle();
+
+    const sourcePhoneMatchesTenant = phoneMatches(sourceConnectedPhone, integration.connected_phone);
+
+    if (!sourceError && sourceIntegration?.zapi_instance_id && sourceIntegration?.zapi_token && sourcePhoneMatchesTenant) {
+      console.warn(`[zapi-send-item-added] ⚠️ Using webhook source instance ${sourceInstanceId} because connectedPhone matches tenant ${tenantId}; tenant configured instance is ${integration.zapi_instance_id}`);
+      selectedIntegration = {
+        ...integration,
+        zapi_instance_id: sourceIntegration.zapi_instance_id,
+        zapi_token: sourceIntegration.zapi_token,
+        zapi_client_token: sourceIntegration.zapi_client_token,
+      };
+    } else {
+      console.warn(`[zapi-send-item-added] Ignoring source instance override for tenant ${tenantId}; phone match=${sourcePhoneMatchesTenant}, source found=${!!sourceIntegration}`);
+    }
+  }
+
   return {
-    instanceId: integration.zapi_instance_id,
-    token: integration.zapi_token,
-    clientToken: integration.zapi_client_token || '',
+    instanceId: selectedIntegration.zapi_instance_id,
+    token: selectedIntegration.zapi_token,
+    clientToken: selectedIntegration.zapi_client_token || '',
      disabled: false,
      confirmationTimeoutMinutes: integration.confirmation_timeout_minutes || 30,
      // Campos de proteção por consentimento
@@ -281,6 +338,8 @@ serve(async (req) => {
     }
 
     const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id } = body;
+    const source_instance_id = hasServiceRoleAuthorization(req) ? body.source_instance_id : undefined;
+    const source_connected_phone = hasServiceRoleAuthorization(req) ? body.source_connected_phone : undefined;
 
     console.log(`[${timestamp}] [zapi-send-item-added] Processing for tenant ${tenant_id}`);
 
@@ -303,7 +362,7 @@ serve(async (req) => {
       );
     }
 
-    const credentials = await getZAPICredentials(supabase, tenant_id);
+    const credentials = await getZAPICredentials(supabase, tenant_id, source_instance_id, source_connected_phone);
     if (!credentials) {
       console.log("[zapi-send-item-added] Z-API not configured for this tenant");
       return new Response(
