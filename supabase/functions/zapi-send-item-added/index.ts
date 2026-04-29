@@ -222,22 +222,55 @@ async function checkCustomerConsent(supabase: any, tenantId: string, phone: stri
   return { hasConsent: true, customerId: customer.id };
 }
 
-function formatPhoneNumber(phone: string): string {
-  let cleaned = phone.replace(/\D/g, '');
-  cleaned = cleaned.replace(/^0+/, '');
-  if (cleaned.startsWith('55')) {
+function buildPhoneCandidates(phone: string): string[] {
+  let cleaned = phone.replace(/\D/g, '').replace(/^0+/, '');
+  if (cleaned.startsWith('55') && cleaned.length > 11) {
     cleaned = cleaned.slice(2);
   }
-  if (cleaned.length === 11) {
-    const ddd = Number(cleaned.slice(0, 2));
-    if (ddd > 30 && cleaned[2] === '9') {
-      cleaned = cleaned.slice(0, 2) + cleaned.slice(3);
+
+  const candidates = new Set<string>();
+
+  if (cleaned.length === 10) {
+    const withNinthDigit = `${cleaned.slice(0, 2)}9${cleaned.slice(2)}`;
+    candidates.add(`55${withNinthDigit}`);
+    candidates.add(`55${cleaned}`);
+  } else if (cleaned.length === 11 && cleaned[2] === '9') {
+    candidates.add(`55${cleaned}`);
+    candidates.add(`55${cleaned.slice(0, 2)}${cleaned.slice(3)}`);
+  } else {
+    candidates.add(cleaned.startsWith('55') ? cleaned : `55${cleaned}`);
+  }
+
+  return Array.from(candidates);
+}
+
+async function resolveWhatsAppPhone(baseUrl: string, clientToken: string, phone: string): Promise<string> {
+  const candidates = buildPhoneCandidates(phone);
+  const headers: Record<string, string> = {};
+  if (clientToken) headers['Client-Token'] = clientToken;
+
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(`${baseUrl}/phone-exists/${candidate}`, { headers });
+      const text = await response.text();
+      if (!response.ok) {
+        console.warn(`[zapi-send-item-added] phone-exists failed for ${candidate}: ${response.status} ${text.substring(0, 120)}`);
+        continue;
+      }
+
+      const data = JSON.parse(text);
+      const canonicalPhone = (data?.phone || '').replace(/\D/g, '');
+      console.log(`[zapi-send-item-added] phone-exists ${candidate}: exists=${data?.exists} canonical=${canonicalPhone || 'n/a'}`);
+
+      if (data?.exists === true) {
+        return canonicalPhone || candidate;
+      }
+    } catch (error: any) {
+      console.warn(`[zapi-send-item-added] phone-exists error for ${candidate}: ${error?.message || error}`);
     }
   }
-  if (!cleaned.startsWith('55')) {
-    cleaned = '55' + cleaned;
-  }
-  return cleaned;
+
+  return candidates[0];
 }
 
 function formatMessage(template: string, data: ItemAddedRequest): string {
