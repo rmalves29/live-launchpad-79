@@ -880,11 +880,19 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           }
         }
 
+        const orderIds = Array.from(selectedOrders);
+
+        // Remover dependências que bloqueiam o DELETE (FK sem CASCADE)
+        await supabaseTenant
+          .from('pending_message_confirmations')
+          .delete()
+          .in('order_id', orderIds);
+
         // Delete orders
         const { error } = await supabaseTenant
           .from('orders')
           .delete()
-          .in('id', Array.from(selectedOrders));
+          .in('id', orderIds);
 
         if (error) throw error;
 
