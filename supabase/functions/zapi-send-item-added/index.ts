@@ -85,7 +85,7 @@ function phoneMatches(a?: string | null, b?: string | null): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanceId?: string, sourceConnectedPhone?: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link")
+     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -132,8 +132,7 @@ async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanc
     clientToken: selectedIntegration.zapi_client_token || '',
      disabled: false,
      confirmationTimeoutMinutes: integration.confirmation_timeout_minutes || 30,
-     // Campos de proteção por consentimento
-     consentProtectionEnabled: integration.consent_protection_enabled || false,
+     // Templates da própria tenant (mantemos o que ela já configurou)
      templateSolicitacao: integration.template_solicitacao || null,
      templateComLink: integration.template_com_link || null,
   };
@@ -181,45 +180,151 @@ async function getTemplate(supabase: any, tenantId: string) {
   return getDefaultTemplateSolicitacao();
 }
 
-// Verifica se o cliente tem consentimento ativo (< 3 dias)
-async function checkCustomerConsent(supabase: any, tenantId: string, phone: string): Promise<{ hasConsent: boolean; customerId?: number }> {
-  // Normaliza telefone para busca
-  let normalizedPhone = phone.replace(/\D/g, '');
-  if (normalizedPhone.startsWith('55') && normalizedPhone.length > 11) {
-    normalizedPhone = normalizedPhone.substring(2);
+type ConsentDecision =
+  | { action: 'send_request'; reason: string; previousId?: string }
+  | { action: 'send_with_link'; stateId: string }
+  | { action: 'silence'; reason: string; stateId: string };
+
+// Constrói lista de telefones equivalentes (com/sem 55, com/sem 9) para
+// procurar/persistir o estado de consentimento de forma resiliente.
+function buildConsentPhoneVariants(phone: string): string[] {
+  const variants = new Set<string>();
+  let p = (phone || '').replace(/\D/g, '');
+  if (!p) return [];
+
+  let baseWithoutCountry = p;
+  if (p.startsWith('55') && p.length >= 12) {
+    baseWithoutCountry = p.slice(2);
+  }
+  const baseWithCountry = baseWithoutCountry.startsWith('55') ? baseWithoutCountry : '55' + baseWithoutCountry;
+
+  variants.add(baseWithoutCountry);
+  variants.add(baseWithCountry);
+
+  if (baseWithoutCountry.length === 11 && baseWithoutCountry[2] === '9') {
+    const without9 = baseWithoutCountry.slice(0, 2) + baseWithoutCountry.slice(3);
+    variants.add(without9);
+    variants.add('55' + without9);
+  } else if (baseWithoutCountry.length === 10) {
+    const with9 = baseWithoutCountry.slice(0, 2) + '9' + baseWithoutCountry.slice(2);
+    variants.add(with9);
+    variants.add('55' + with9);
   }
 
-  // Busca cliente
-  const { data: customer } = await supabase
-    .from("customers")
-    .select("id, consentimento_ativo, data_permissao")
-    .eq("tenant_id", tenantId)
-    .eq("phone", normalizedPhone)
-    .maybeSingle();
+  return Array.from(variants);
+}
 
-  if (!customer) {
-    console.log(`[zapi-send-item-added] Cliente não encontrado para ${normalizedPhone}`);
-    return { hasConsent: false };
+// Forma canônica para gravação: 55 + DDD + número (com 9 quando móvel)
+function canonicalConsentPhone(phone: string): string {
+  const variants = buildConsentPhoneVariants(phone);
+  // Prioriza variante "55 + 11 dígitos" (com 9), depois "55 + 10", depois qualquer com 55
+  const with55_11 = variants.find(v => v.startsWith('55') && v.length === 13);
+  if (with55_11) return with55_11;
+  const with55_10 = variants.find(v => v.startsWith('55') && v.length === 12);
+  if (with55_10) return with55_10;
+  return variants.find(v => v.startsWith('55')) || variants[0];
+}
+
+// Avalia o estado da máquina de consentimento para decidir o que fazer
+// com a próxima notificação de "item adicionado".
+async function evaluateConsent(
+  supabase: any,
+  tenantId: string,
+  phone: string
+): Promise<ConsentDecision> {
+  const variants = buildConsentPhoneVariants(phone);
+  const { data: rows } = await supabase
+    .from('whatsapp_consent_state')
+    .select('id, status, request_expires_at, consent_expires_at, consent_granted_at')
+    .eq('tenant_id', tenantId)
+    .in('customer_phone', variants)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  const state = rows && rows[0];
+  const now = new Date();
+
+  if (!state) {
+    return { action: 'send_request', reason: 'no_state' };
   }
 
-  // Verifica se tem consentimento ativo e se está dentro de 3 dias
-  if (!customer.consentimento_ativo || !customer.data_permissao) {
-    console.log(`[zapi-send-item-added] Cliente ${customer.id} sem consentimento ativo`);
-    return { hasConsent: false, customerId: customer.id };
+  const reqExp = state.request_expires_at ? new Date(state.request_expires_at) : null;
+  const consExp = state.consent_expires_at ? new Date(state.consent_expires_at) : null;
+
+  if (state.status === 'active') {
+    if (consExp && consExp > now) {
+      return { action: 'send_with_link', stateId: state.id };
+    }
+    return { action: 'send_request', reason: 'consent_expired', previousId: state.id };
   }
 
-  const dataPermissao = new Date(customer.data_permissao);
-  const agora = new Date();
-  const diffMs = agora.getTime() - dataPermissao.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-  if (diffDays > 3) {
-    console.log(`[zapi-send-item-added] Consentimento expirado para cliente ${customer.id} (${diffDays.toFixed(1)} dias)`);
-    return { hasConsent: false, customerId: customer.id };
+  if (state.status === 'awaiting') {
+    if (reqExp && reqExp > now) {
+      return { action: 'silence', reason: 'awaiting_response', stateId: state.id };
+    }
+    return { action: 'send_request', reason: 'awaiting_window_passed', previousId: state.id };
   }
 
-  console.log(`[zapi-send-item-added] ✅ Consentimento válido para cliente ${customer.id} (${diffDays.toFixed(1)} dias atrás)`);
-  return { hasConsent: true, customerId: customer.id };
+  if (state.status === 'silenced') {
+    if (reqExp && reqExp > now) {
+      return { action: 'silence', reason: 'silenced_window', stateId: state.id };
+    }
+    return { action: 'send_request', reason: 'silenced_window_passed', previousId: state.id };
+  }
+
+  if (state.status === 'declined') {
+    if (reqExp && reqExp > now) {
+      return { action: 'silence', reason: 'declined_window', stateId: state.id };
+    }
+    return { action: 'send_request', reason: 'declined_window_passed', previousId: state.id };
+  }
+
+  return { action: 'send_request', reason: 'unknown_status', previousId: state.id };
+}
+
+// Persiste o estado após enviar uma SOLICITAÇÃO (status='awaiting', expira em 1h).
+async function markRequestSent(supabase: any, tenantId: string, phone: string) {
+  const canonical = canonicalConsentPhone(phone);
+  const now = new Date();
+  const expires = new Date(now.getTime() + 60 * 60 * 1000); // +1h
+
+  const { error } = await supabase
+    .from('whatsapp_consent_state')
+    .upsert(
+      {
+        tenant_id: tenantId,
+        customer_phone: canonical,
+        status: 'awaiting',
+        request_sent_at: now.toISOString(),
+        request_expires_at: expires.toISOString(),
+        last_message_at: now.toISOString(),
+      },
+      { onConflict: 'tenant_id,customer_phone' }
+    );
+  if (error) {
+    console.error('[zapi-send-item-added] markRequestSent error:', error);
+  }
+}
+
+// Persiste o estado após enviar uma mensagem COM LINK (mantém active).
+async function markActiveMessageSent(supabase: any, tenantId: string, stateId: string) {
+  const now = new Date();
+  await supabase
+    .from('whatsapp_consent_state')
+    .update({ last_message_at: now.toISOString() })
+    .eq('id', stateId);
+}
+
+// Atualiza estado para "silenced" quando o cliente está em janela de espera
+// e adicionou outro item (mensagem não foi enviada).
+async function markSilenced(supabase: any, stateId: string) {
+  await supabase
+    .from('whatsapp_consent_state')
+    .update({
+      status: 'silenced',
+      last_message_at: new Date().toISOString(),
+    })
+    .eq('id', stateId);
 }
 
 function buildPhoneCandidates(phone: string): string[] {
@@ -422,127 +527,72 @@ serve(async (req) => {
       );
     }
 
-    const { instanceId, token, clientToken, consentProtectionEnabled, templateSolicitacao, templateComLink } = credentials;
+    const { instanceId, token, clientToken, templateSolicitacao, templateComLink } = credentials;
     const baseUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}`;
     const formattedPhone = await resolveWhatsAppPhone(baseUrl, clientToken, customer_phone);
     const sendUrl = `${baseUrl}/send-text`;
-    
+
     let message: string;
-    let templateType: 'A' | 'B' | 'legacy' = 'legacy';
+    let templateType: 'A' | 'B' = 'A';
     let skipPendingConfirmation = false;
+    let consentDecisionAfterSend: 'request_sent' | 'active_sent' | null = null;
+    let activeStateId: string | null = null;
 
     // ============================================================
-    // LÓGICA DE PROTEÇÃO POR CONSENTIMENTO
+    // MÁQUINA DE ESTADOS GLOBAL DE CONSENTIMENTO (todos os tenants)
     // ============================================================
-    if (consentProtectionEnabled) {
-      console.log(`[zapi-send-item-added] 🛡️ Modo de Proteção por Consentimento ATIVADO`);
-      
-      // Verificar consentimento do cliente
-      const { hasConsent, customerId } = await checkCustomerConsent(supabase, tenant_id, formattedPhone);
-      
-      if (hasConsent) {
-        // Template B - Com link (cliente tem consentimento válido < 3 dias)
-        console.log(`[zapi-send-item-added] ✅ Usando Template B (com link) para cliente ${customerId}`);
-        templateType = 'B';
-        
-        const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-        const template = templateComLink || getDefaultTemplateComLink();
-        const baseMessage = formatMessage(template, body)
-          .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
-          .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
-        message = addMessageVariation(baseMessage);
-        
-        // Com Template B, não precisamos criar pending_message_confirmations
-        skipPendingConfirmation = true;
-        
-      } else {
-        // Template A - Solicitar permissão (cliente novo ou expirado)
-        // IMPORTANTE: Se já existe uma solicitação pendente para este telefone,
-        // NÃO enviar nova mensagem (evita spam quando cliente não respondeu SIM)
-        const now = new Date().toISOString();
-        const { data: existingPending } = await supabase
-          .from("pending_message_confirmations")
-          .select("id, created_at, expires_at")
-          .eq("tenant_id", tenant_id)
-          .eq("customer_phone", formattedPhone)
-          .eq("status", "pending")
-          .eq("confirmation_type", "item_added")
-          .maybeSingle();
+    const decision = await evaluateConsent(supabase, tenant_id, formattedPhone);
+    console.log(`[zapi-send-item-added] 🧭 Consent decision for ${formattedPhone}: ${decision.action} (${('reason' in decision) ? decision.reason : ''})`);
 
-        if (existingPending) {
-          const isExpired = existingPending.expires_at && existingPending.expires_at < now;
-          
-          if (isExpired) {
-            // Confirmação expirada: limpar e enviar nova solicitação
-            console.log(`[zapi-send-item-added] ⏰ Confirmação expirada (${existingPending.id}) para ${formattedPhone}. Limpando e reenviando.`);
-            await supabase
-              .from("pending_message_confirmations")
-              .update({ status: "expired" })
-              .eq("id", existingPending.id);
-            // Continua o fluxo para enviar nova mensagem (não retorna aqui)
-          } else {
-            // Cliente ainda não respondeu SIM mas prazo não expirou:
-            // Pedido já foi criado normalmente pelo sistema. Apenas NÃO enviamos mensagem.
-            // NÃO bloqueamos o pedido - apenas silenciamos o WhatsApp.
-            console.log(`[zapi-send-item-added] 🔇 Consentimento pendente para ${formattedPhone}. Pedido criado, mensagem silenciada (cliente ainda não respondeu SIM).`);
+    if (decision.action === 'silence') {
+      // Cliente está dentro da janela de espera (1h). Pedido foi criado normalmente
+      // pelo trigger; aqui apenas silenciamos a mensagem.
+      await markSilenced(supabase, decision.stateId);
 
-            // Atualiza metadados com o produto mais recente
-            await supabase
-              .from("pending_message_confirmations")
-              .update({
-                metadata: { 
-                  product_name, 
-                  product_code, 
-                  unit_price, 
-                  quantity,
-                  consent_protection_enabled: true
-                }
-              })
-              .eq("id", existingPending.id);
+      await supabase.from('whatsapp_messages').insert({
+        tenant_id,
+        phone: formattedPhone,
+        message: `[SILENCIADO - ${decision.reason}] ${product_name} (${product_code})`,
+        type: 'item_added',
+        product_name: product_name.substring(0, 100),
+        sent_at: new Date().toISOString(),
+        order_id: order_id || null,
+        delivery_status: 'SKIPPED',
+      });
 
-            // Registra no log de mensagens como silenciado (para rastreabilidade)
-            await supabase.from('whatsapp_messages').insert({
-              tenant_id,
-              phone: formattedPhone,
-              message: `[SILENCIADO - aguardando consentimento] ${product_name} (${product_code})`,
-              type: 'item_added',
-              product_name: product_name.substring(0, 100),
-              sent_at: new Date().toISOString(),
-              order_id: order_id || null,
-              delivery_status: 'SKIPPED'
-            });
+      return new Response(
+        JSON.stringify({
+          sent: false,
+          skipped: true,
+          order_created: true,
+          reason: `Mensagem silenciada (${decision.reason}). Pedido foi registrado normalmente.`,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-            return new Response(
-              JSON.stringify({ 
-                sent: false, 
-                skipped: true, 
-                order_created: true,
-                reason: "Mensagem silenciada - cliente ainda não respondeu SIM ao consentimento. Pedido foi registrado normalmente.",
-                existing_confirmation_id: existingPending.id
-              }),
-              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
-        }
-
-        console.log(`[zapi-send-item-added] 📝 Usando Template A (solicitação) para cliente ${customerId || 'novo'}`);
-        templateType = 'A';
-        
-        const template = templateSolicitacao || getDefaultTemplateSolicitacao();
-        const baseMessage = formatMessage(template, body);
-        message = addMessageVariation(baseMessage);
-        
-        // Com proteção ativada, ao receber "SIM" apenas atualiza DB (não envia link)
-        // Por isso ainda criamos pending confirmation, mas com flag especial
-      }
-    } else {
-      // ============================================================
-      // MODO LEGADO (sem proteção por consentimento)
-      // ============================================================
-      console.log(`[zapi-send-item-added] 📨 Modo legado (proteção desativada)`);
-      const template = await getTemplate(supabase, tenant_id);
+    if (decision.action === 'send_request') {
+      // 1ª mensagem (ou janela passou): envia SOLICITAÇÃO única
+      templateType = 'A';
+      const template = templateSolicitacao || getDefaultTemplateSolicitacao();
       const baseMessage = formatMessage(template, body);
       message = addMessageVariation(baseMessage);
+      consentDecisionAfterSend = 'request_sent';
+      // Com solicitação, NÃO criamos pending_message_confirmations:
+      // a fonte de verdade do estado é whatsapp_consent_state.
+      skipPendingConfirmation = true;
+    } else {
+      // send_with_link: cliente com consentimento ativo (< 3 dias) — envia COM LINK
+      templateType = 'B';
+      activeStateId = decision.stateId;
+      const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
+      const template = templateComLink || getDefaultTemplateComLink();
+      const baseMessage = formatMessage(template, body)
+        .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
+        .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
+      message = addMessageVariation(baseMessage);
+      consentDecisionAfterSend = 'active_sent';
+      skipPendingConfirmation = true;
     }
 
     // Check for throttling (multiple messages to same phone)
@@ -587,72 +637,14 @@ serve(async (req) => {
       console.log(`[zapi-send-item-added] Could not parse Z-API response for message ID`);
     }
 
-     // Create pending confirmation record (apenas se não for Template B ou se for modo legado)
-     if (response.ok && !skipPendingConfirmation) {
-       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-       const timeoutMinutes = credentials.confirmationTimeoutMinutes || 30;
-       const expiresAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
-       
-       console.log(`[zapi-send-item-added] Creating pending confirmation for ${formattedPhone}, expires in ${timeoutMinutes} min`);
-       
-       // Check if there's already a pending confirmation for this phone
-       const { data: existingConfirmation } = await supabase
-         .from("pending_message_confirmations")
-         .select("id")
-         .eq("tenant_id", tenant_id)
-         .eq("customer_phone", formattedPhone)
-         .eq("status", "pending")
-         .maybeSingle();
-       
-       if (existingConfirmation) {
-         // Update existing confirmation with new expiry
-         await supabase
-           .from("pending_message_confirmations")
-           .update({
-             expires_at: expiresAt.toISOString(),
-             checkout_url: checkoutUrl,
-             order_id: order_id || null,
-             metadata: { 
-               product_name, 
-               product_code, 
-               unit_price, 
-               quantity,
-               consent_protection_enabled: consentProtectionEnabled // Flag para webhook saber como tratar
-             }
-           })
-           .eq("id", existingConfirmation.id);
-         console.log(`[zapi-send-item-added] Updated existing pending confirmation ${existingConfirmation.id}`);
-       } else {
-         // Create new pending confirmation
-         const { data: newConfirmation, error: confError } = await supabase
-           .from("pending_message_confirmations")
-           .insert({
-             tenant_id,
-             customer_phone: formattedPhone,
-             order_id: order_id || null,
-             confirmation_type: 'item_added',
-             status: 'pending',
-             expires_at: expiresAt.toISOString(),
-             checkout_url: checkoutUrl,
-             metadata: { 
-               product_name, 
-               product_code, 
-               unit_price, 
-               quantity,
-               consent_protection_enabled: consentProtectionEnabled // Flag para webhook saber como tratar
-             }
-           })
-           .select()
-           .single();
-         
-         if (confError) {
-           console.error(`[zapi-send-item-added] Error creating pending confirmation:`, confError);
-         } else {
-           console.log(`[zapi-send-item-added] Created pending confirmation ${newConfirmation.id}`);
-         }
-       }
+     // Persistir estado da máquina de consentimento
+     if (response.ok && consentDecisionAfterSend === 'request_sent') {
+       await markRequestSent(supabase, tenant_id, formattedPhone);
+       console.log(`[zapi-send-item-added] 📝 Estado registrado: awaiting (1h) para ${formattedPhone}`);
+     } else if (response.ok && consentDecisionAfterSend === 'active_sent' && activeStateId) {
+       await markActiveMessageSent(supabase, tenant_id, activeStateId);
      }
- 
+
     // Insert message record with Z-API message ID for tracking
     await supabase.from('whatsapp_messages').insert({
       tenant_id,
