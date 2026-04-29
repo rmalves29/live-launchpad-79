@@ -1639,6 +1639,8 @@ serve(async (req) => {
           requestedQty,
           cartItem.unit_price,
           order.id,
+          payload.instanceId,
+          payload.connectedPhone,
         );
       }
 
