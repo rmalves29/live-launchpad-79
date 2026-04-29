@@ -87,9 +87,6 @@ interface CustomerStats {
   last_order_date: string;
   last_paid_order_date?: string | null;
   score?: number;
-  score_value?: number;
-  score_frequency?: number;
-  score_recency?: number;
 }
 
 const Relatorios = () => {
