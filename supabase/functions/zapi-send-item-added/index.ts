@@ -132,8 +132,7 @@ async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanc
     clientToken: selectedIntegration.zapi_client_token || '',
      disabled: false,
      confirmationTimeoutMinutes: integration.confirmation_timeout_minutes || 30,
-     // Campos de proteção por consentimento
-     consentProtectionEnabled: integration.consent_protection_enabled || false,
+     // Templates da própria tenant (mantemos o que ela já configurou)
      templateSolicitacao: integration.template_solicitacao || null,
      templateComLink: integration.template_com_link || null,
   };
