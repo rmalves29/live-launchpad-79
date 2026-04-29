@@ -1,5 +1,6 @@
--- Permite que administradores do tenant vejam/removam confirmações pendentes
--- vinculadas aos seus próprios pedidos antes de deletar o pedido.
+-- Corrige o bloqueio ao deletar pedidos com confirmações pendentes.
+-- 1) Permite limpeza manual pelo usuário autenticado do mesmo tenant.
+-- 2) Garante integridade no banco com ON DELETE CASCADE para a FK order_id.
 do $$
 begin
   if not exists (
@@ -36,3 +37,12 @@ begin
       );
   end if;
 end $$;
+
+alter table public.pending_message_confirmations
+  drop constraint if exists pending_message_confirmations_order_id_fkey;
+
+alter table public.pending_message_confirmations
+  add constraint pending_message_confirmations_order_id_fkey
+  foreign key (order_id)
+  references public.orders(id)
+  on delete cascade;
