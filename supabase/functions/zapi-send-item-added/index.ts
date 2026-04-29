@@ -637,72 +637,14 @@ serve(async (req) => {
       console.log(`[zapi-send-item-added] Could not parse Z-API response for message ID`);
     }
 
-     // Create pending confirmation record (apenas se não for Template B ou se for modo legado)
-     if (response.ok && !skipPendingConfirmation) {
-       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-       const timeoutMinutes = credentials.confirmationTimeoutMinutes || 30;
-       const expiresAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
-       
-       console.log(`[zapi-send-item-added] Creating pending confirmation for ${formattedPhone}, expires in ${timeoutMinutes} min`);
-       
-       // Check if there's already a pending confirmation for this phone
-       const { data: existingConfirmation } = await supabase
-         .from("pending_message_confirmations")
-         .select("id")
-         .eq("tenant_id", tenant_id)
-         .eq("customer_phone", formattedPhone)
-         .eq("status", "pending")
-         .maybeSingle();
-       
-       if (existingConfirmation) {
-         // Update existing confirmation with new expiry
-         await supabase
-           .from("pending_message_confirmations")
-           .update({
-             expires_at: expiresAt.toISOString(),
-             checkout_url: checkoutUrl,
-             order_id: order_id || null,
-             metadata: { 
-               product_name, 
-               product_code, 
-               unit_price, 
-               quantity,
-               consent_protection_enabled: consentProtectionEnabled // Flag para webhook saber como tratar
-             }
-           })
-           .eq("id", existingConfirmation.id);
-         console.log(`[zapi-send-item-added] Updated existing pending confirmation ${existingConfirmation.id}`);
-       } else {
-         // Create new pending confirmation
-         const { data: newConfirmation, error: confError } = await supabase
-           .from("pending_message_confirmations")
-           .insert({
-             tenant_id,
-             customer_phone: formattedPhone,
-             order_id: order_id || null,
-             confirmation_type: 'item_added',
-             status: 'pending',
-             expires_at: expiresAt.toISOString(),
-             checkout_url: checkoutUrl,
-             metadata: { 
-               product_name, 
-               product_code, 
-               unit_price, 
-               quantity,
-               consent_protection_enabled: consentProtectionEnabled // Flag para webhook saber como tratar
-             }
-           })
-           .select()
-           .single();
-         
-         if (confError) {
-           console.error(`[zapi-send-item-added] Error creating pending confirmation:`, confError);
-         } else {
-           console.log(`[zapi-send-item-added] Created pending confirmation ${newConfirmation.id}`);
-         }
-       }
+     // Persistir estado da máquina de consentimento
+     if (response.ok && consentDecisionAfterSend === 'request_sent') {
+       await markRequestSent(supabase, tenant_id, formattedPhone);
+       console.log(`[zapi-send-item-added] 📝 Estado registrado: awaiting (1h) para ${formattedPhone}`);
+     } else if (response.ok && consentDecisionAfterSend === 'active_sent' && activeStateId) {
+       await markActiveMessageSent(supabase, tenant_id, activeStateId);
      }
- 
+
     // Insert message record with Z-API message ID for tracking
     await supabase.from('whatsapp_messages').insert({
       tenant_id,
