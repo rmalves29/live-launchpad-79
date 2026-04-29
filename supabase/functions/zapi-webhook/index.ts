@@ -111,6 +111,60 @@ function normalizeParticipantPhone(value?: string | null): string {
   return digits;
 }
 
+async function triggerItemAddedMessage(
+  tenantId: string,
+  customerPhone: string,
+  product: any,
+  quantity: number,
+  unitPrice: number,
+  orderId: number | string | null,
+) {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const response = await fetch(`${supabaseUrl}/functions/v1/zapi-send-item-added`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        tenant_id: tenantId,
+        customer_phone: customerPhone,
+        product_name: product.name,
+        product_code: product.code,
+        quantity,
+        unit_price: unitPrice,
+        original_price: product.price,
+        order_id: orderId,
+      }),
+    });
+
+    const responseText = await response.text();
+    console.log(`[zapi-webhook] 📤 Item-added dispatch for ${customerPhone} (${product.code}): status=${response.status} body=${responseText.substring(0, 300)}`);
+  } catch (error: any) {
+    console.error(`[zapi-webhook] ❌ Item-added dispatch failed for ${customerPhone} (${product?.code || 'unknown'}):`, error?.message || error);
+  }
+}
+
+function queueItemAddedMessage(
+  tenantId: string,
+  customerPhone: string,
+  product: any,
+  quantity: number,
+  unitPrice: number,
+  orderId: number | string | null,
+) {
+  const task = triggerItemAddedMessage(tenantId, customerPhone, product, quantity, unitPrice, orderId);
+  const edgeRuntime = (globalThis as any).EdgeRuntime;
+
+  if (edgeRuntime?.waitUntil) {
+    edgeRuntime.waitUntil(task);
+  } else {
+    task.catch((error: any) => console.error('[zapi-webhook] Background item-added dispatch error:', error?.message || error));
+  }
+}
+
 function hashMessage(text: string): string {
   let hash = 0;
   for (let i = 0; i < text.length; i++) {
