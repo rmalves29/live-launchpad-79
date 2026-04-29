@@ -1739,12 +1739,9 @@ const Relatorios = () => {
                             <TableCell className="pl-6">
                               <div
                                 className="flex flex-col items-center gap-1"
-                                title={`Score RFM = Valor (${customer.score_value ?? '-'}) + Frequência (${customer.score_frequency ?? '-'}) + Recência (${customer.score_recency ?? '-'})`}
+                                title="Score = (Receita Paga / Máx Receita Paga) × 70 + (Total Pedidos / Máx Total Pedidos) × 30"
                               >
-                                <span className="text-lg font-bold text-foreground">{score}</span>
-                                <span className="text-[10px] font-mono text-muted-foreground tracking-wider">
-                                  V{customer.score_value ?? '-'}·F{customer.score_frequency ?? '-'}·R{customer.score_recency ?? '-'}
-                                </span>
+                                <span className="text-lg font-bold text-foreground">{score.toFixed(1)}</span>
                                 {podium && (
                                   <Badge
                                     variant="outline"
