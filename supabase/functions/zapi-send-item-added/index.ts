@@ -53,6 +53,12 @@ function validateInternalRequest(req: Request): boolean {
   return true;
 }
 
+function hasServiceRoleAuthorization(req: Request): boolean {
+  const authHeader = req.headers.get("authorization") || "";
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  return Boolean(supabaseServiceKey && authHeader.includes(supabaseServiceKey.substring(0, 50)));
+}
+
 function normalizeDigits(value?: string | null): string {
   return (value || '').replace(/\D/g, '');
 }
@@ -331,7 +337,9 @@ serve(async (req) => {
       );
     }
 
-    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id, source_instance_id, source_connected_phone } = body;
+    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id } = body;
+    const source_instance_id = hasServiceRoleAuthorization(req) ? body.source_instance_id : undefined;
+    const source_connected_phone = hasServiceRoleAuthorization(req) ? body.source_connected_phone : undefined;
 
     console.log(`[${timestamp}] [zapi-send-item-added] Processing for tenant ${tenant_id}`);
 
