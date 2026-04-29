@@ -2256,17 +2256,91 @@ async function updateOrderTotal(supabase: any, orderId: number) {
                consent_expires_at: expires.toISOString(),
              })
              .eq('id', stateRow.id);
-           console.log(`[zapi-webhook] ✅ Consentimento ATIVO por 3 dias (state ${stateRow.id})`);
+            console.log(`[zapi-webhook] ✅ Consentimento ATIVO por 3 dias (state ${stateRow.id})`);
 
-           await supabase.from('whatsapp_messages').insert({
-             tenant_id: resolvedTenantId,
-             phone: normalizedPhone,
-             message: '[SISTEMA] Cliente respondeu SIM. Consentimento ativo por 3 dias.',
-             type: 'system_log',
-             sent_at: now.toISOString(),
-           });
-           // NÃO envia mensagem de volta — próxima adição é que vai com link.
-           return { handled: true, action: 'consent_granted_silent' };
+            await supabase.from('whatsapp_messages').insert({
+              tenant_id: resolvedTenantId,
+              phone: normalizedPhone,
+              message: '[SISTEMA] Cliente respondeu SIM. Consentimento ativo por 3 dias.',
+              type: 'system_log',
+              sent_at: now.toISOString(),
+            });
+
+            // Se a loja tiver Template B (Com Link) configurado, envia agora.
+            // Se estiver em branco, NÃO envia nada (próxima adição que vai com link).
+            try {
+              const { data: integ } = await supabase
+                .from('whatsapp_integrations')
+                .select('zapi_instance_id, zapi_token, zapi_client_token, template_com_link, is_active')
+                .eq('tenant_id', resolvedTenantId)
+                .eq('is_active', true)
+                .maybeSingle();
+
+              const tplB = (integ?.template_com_link || '').trim();
+              if (integ && tplB) {
+                // Monta link de checkout do tenant
+                const { data: tenantRow } = await supabase
+                  .from('tenants')
+                  .select('slug')
+                  .eq('id', resolvedTenantId)
+                  .maybeSingle();
+                const { data: settings } = await supabase
+                  .from('app_settings')
+                  .select('public_base_url')
+                  .limit(1)
+                  .maybeSingle();
+                const baseUrlPublic = settings?.public_base_url || 'https://live-launchpad-79.lovable.app';
+                const slug = tenantRow?.slug || resolvedTenantId;
+                const checkoutUrl = `${baseUrlPublic}/t/${slug}/checkout`;
+
+                // Substitui variáveis básicas (sem dados de produto: cliente respondeu SIM "solto").
+                // Remove linhas que dependem exclusivamente de variáveis de produto.
+                let body = tplB
+                  .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
+                  .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
+                body = body
+                  .split('\n')
+                  .filter((line: string) => !/\{\{(produto|quantidade|qtd_aleatoria|valor|preco|total|subtotal|codigo|valor_original|valor_promo)\}\}/.test(line))
+                  .join('\n')
+                  .trim();
+
+                if (body) {
+                  const zInstance = integ.zapi_instance_id;
+                  const zToken = integ.zapi_token;
+                  const zClient = integ.zapi_client_token;
+                  if (zInstance && zToken) {
+                    const sendUrl = `https://api.z-api.io/instances/${zInstance}/token/${zToken}/send-text`;
+                    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                    if (zClient) headers['Client-Token'] = zClient;
+                    const finalMsg = addMessageVariation(body);
+                    const resp = await fetch(sendUrl, {
+                      method: 'POST',
+                      headers,
+                      body: JSON.stringify({ phone: normalizedPhone, message: finalMsg }),
+                    });
+                    const respText = await resp.text();
+                    console.log(`[zapi-webhook] 📤 Template B enviado pós-SIM (${resp.status}): ${respText.substring(0, 200)}`);
+
+                    await supabase.from('whatsapp_messages').insert({
+                      tenant_id: resolvedTenantId,
+                      phone: normalizedPhone,
+                      message: finalMsg.substring(0, 500),
+                      type: 'consent_link',
+                      sent_at: new Date().toISOString(),
+                      delivery_status: resp.ok ? 'SENT' : 'FAILED',
+                    });
+                  }
+                } else {
+                  console.log('[zapi-webhook] ℹ️ Template B ficou vazio após filtrar variáveis de produto. Não enviando.');
+                }
+              } else {
+                console.log('[zapi-webhook] ℹ️ Template B (Com Link) em branco ou integração inativa. Não envia mensagem pós-SIM.');
+              }
+            } catch (e) {
+              console.error('[zapi-webhook] ⚠️ Erro ao tentar enviar Template B pós-SIM:', e);
+            }
+
+            return { handled: true, action: 'consent_granted_silent' };
          } else {
            // isDecline → silencia por 1h, próxima adição depois disso pede de novo
            const expires = new Date(now.getTime() + 60 * 60 * 1000); // +1h
