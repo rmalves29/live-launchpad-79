@@ -1700,9 +1700,9 @@ const Relatorios = () => {
                       <TableRow>
                         <TableHead
                           className="pl-6 text-center w-28"
-                          title="Score RFM (3–15) = Valor + Frequência + Recência. Cada pilar vale 1 a 5."
+                          title="Score Composto Ponderado = (Receita Paga / Máx) × 70 + (Total Pedidos / Máx) × 30"
                         >
-                          Score (RFM)
+                          Score
                         </TableHead>
                         <TableHead className="text-center w-20">Posição</TableHead>
                         <TableHead>Cliente</TableHead>
