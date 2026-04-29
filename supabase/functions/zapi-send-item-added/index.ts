@@ -180,45 +180,151 @@ async function getTemplate(supabase: any, tenantId: string) {
   return getDefaultTemplateSolicitacao();
 }
 
-// Verifica se o cliente tem consentimento ativo (< 3 dias)
-async function checkCustomerConsent(supabase: any, tenantId: string, phone: string): Promise<{ hasConsent: boolean; customerId?: number }> {
-  // Normaliza telefone para busca
-  let normalizedPhone = phone.replace(/\D/g, '');
-  if (normalizedPhone.startsWith('55') && normalizedPhone.length > 11) {
-    normalizedPhone = normalizedPhone.substring(2);
+type ConsentDecision =
+  | { action: 'send_request'; reason: string; previousId?: string }
+  | { action: 'send_with_link'; stateId: string }
+  | { action: 'silence'; reason: string; stateId: string };
+
+// Constrói lista de telefones equivalentes (com/sem 55, com/sem 9) para
+// procurar/persistir o estado de consentimento de forma resiliente.
+function buildConsentPhoneVariants(phone: string): string[] {
+  const variants = new Set<string>();
+  let p = (phone || '').replace(/\D/g, '');
+  if (!p) return [];
+
+  let baseWithoutCountry = p;
+  if (p.startsWith('55') && p.length >= 12) {
+    baseWithoutCountry = p.slice(2);
+  }
+  const baseWithCountry = baseWithoutCountry.startsWith('55') ? baseWithoutCountry : '55' + baseWithoutCountry;
+
+  variants.add(baseWithoutCountry);
+  variants.add(baseWithCountry);
+
+  if (baseWithoutCountry.length === 11 && baseWithoutCountry[2] === '9') {
+    const without9 = baseWithoutCountry.slice(0, 2) + baseWithoutCountry.slice(3);
+    variants.add(without9);
+    variants.add('55' + without9);
+  } else if (baseWithoutCountry.length === 10) {
+    const with9 = baseWithoutCountry.slice(0, 2) + '9' + baseWithoutCountry.slice(2);
+    variants.add(with9);
+    variants.add('55' + with9);
   }
 
-  // Busca cliente
-  const { data: customer } = await supabase
-    .from("customers")
-    .select("id, consentimento_ativo, data_permissao")
-    .eq("tenant_id", tenantId)
-    .eq("phone", normalizedPhone)
-    .maybeSingle();
+  return Array.from(variants);
+}
 
-  if (!customer) {
-    console.log(`[zapi-send-item-added] Cliente não encontrado para ${normalizedPhone}`);
-    return { hasConsent: false };
+// Forma canônica para gravação: 55 + DDD + número (com 9 quando móvel)
+function canonicalConsentPhone(phone: string): string {
+  const variants = buildConsentPhoneVariants(phone);
+  // Prioriza variante "55 + 11 dígitos" (com 9), depois "55 + 10", depois qualquer com 55
+  const with55_11 = variants.find(v => v.startsWith('55') && v.length === 13);
+  if (with55_11) return with55_11;
+  const with55_10 = variants.find(v => v.startsWith('55') && v.length === 12);
+  if (with55_10) return with55_10;
+  return variants.find(v => v.startsWith('55')) || variants[0];
+}
+
+// Avalia o estado da máquina de consentimento para decidir o que fazer
+// com a próxima notificação de "item adicionado".
+async function evaluateConsent(
+  supabase: any,
+  tenantId: string,
+  phone: string
+): Promise<ConsentDecision> {
+  const variants = buildConsentPhoneVariants(phone);
+  const { data: rows } = await supabase
+    .from('whatsapp_consent_state')
+    .select('id, status, request_expires_at, consent_expires_at, consent_granted_at')
+    .eq('tenant_id', tenantId)
+    .in('customer_phone', variants)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  const state = rows && rows[0];
+  const now = new Date();
+
+  if (!state) {
+    return { action: 'send_request', reason: 'no_state' };
   }
 
-  // Verifica se tem consentimento ativo e se está dentro de 3 dias
-  if (!customer.consentimento_ativo || !customer.data_permissao) {
-    console.log(`[zapi-send-item-added] Cliente ${customer.id} sem consentimento ativo`);
-    return { hasConsent: false, customerId: customer.id };
+  const reqExp = state.request_expires_at ? new Date(state.request_expires_at) : null;
+  const consExp = state.consent_expires_at ? new Date(state.consent_expires_at) : null;
+
+  if (state.status === 'active') {
+    if (consExp && consExp > now) {
+      return { action: 'send_with_link', stateId: state.id };
+    }
+    return { action: 'send_request', reason: 'consent_expired', previousId: state.id };
   }
 
-  const dataPermissao = new Date(customer.data_permissao);
-  const agora = new Date();
-  const diffMs = agora.getTime() - dataPermissao.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-  if (diffDays > 3) {
-    console.log(`[zapi-send-item-added] Consentimento expirado para cliente ${customer.id} (${diffDays.toFixed(1)} dias)`);
-    return { hasConsent: false, customerId: customer.id };
+  if (state.status === 'awaiting') {
+    if (reqExp && reqExp > now) {
+      return { action: 'silence', reason: 'awaiting_response', stateId: state.id };
+    }
+    return { action: 'send_request', reason: 'awaiting_window_passed', previousId: state.id };
   }
 
-  console.log(`[zapi-send-item-added] ✅ Consentimento válido para cliente ${customer.id} (${diffDays.toFixed(1)} dias atrás)`);
-  return { hasConsent: true, customerId: customer.id };
+  if (state.status === 'silenced') {
+    if (reqExp && reqExp > now) {
+      return { action: 'silence', reason: 'silenced_window', stateId: state.id };
+    }
+    return { action: 'send_request', reason: 'silenced_window_passed', previousId: state.id };
+  }
+
+  if (state.status === 'declined') {
+    if (reqExp && reqExp > now) {
+      return { action: 'silence', reason: 'declined_window', stateId: state.id };
+    }
+    return { action: 'send_request', reason: 'declined_window_passed', previousId: state.id };
+  }
+
+  return { action: 'send_request', reason: 'unknown_status', previousId: state.id };
+}
+
+// Persiste o estado após enviar uma SOLICITAÇÃO (status='awaiting', expira em 1h).
+async function markRequestSent(supabase: any, tenantId: string, phone: string) {
+  const canonical = canonicalConsentPhone(phone);
+  const now = new Date();
+  const expires = new Date(now.getTime() + 60 * 60 * 1000); // +1h
+
+  const { error } = await supabase
+    .from('whatsapp_consent_state')
+    .upsert(
+      {
+        tenant_id: tenantId,
+        customer_phone: canonical,
+        status: 'awaiting',
+        request_sent_at: now.toISOString(),
+        request_expires_at: expires.toISOString(),
+        last_message_at: now.toISOString(),
+      },
+      { onConflict: 'tenant_id,customer_phone' }
+    );
+  if (error) {
+    console.error('[zapi-send-item-added] markRequestSent error:', error);
+  }
+}
+
+// Persiste o estado após enviar uma mensagem COM LINK (mantém active).
+async function markActiveMessageSent(supabase: any, tenantId: string, stateId: string) {
+  const now = new Date();
+  await supabase
+    .from('whatsapp_consent_state')
+    .update({ last_message_at: now.toISOString() })
+    .eq('id', stateId);
+}
+
+// Atualiza estado para "silenced" quando o cliente está em janela de espera
+// e adicionou outro item (mensagem não foi enviada).
+async function markSilenced(supabase: any, stateId: string) {
+  await supabase
+    .from('whatsapp_consent_state')
+    .update({
+      status: 'silenced',
+      last_message_at: new Date().toISOString(),
+    })
+    .eq('id', stateId);
 }
 
 function buildPhoneCandidates(phone: string): string[] {
