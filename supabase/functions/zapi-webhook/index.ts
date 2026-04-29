@@ -174,6 +174,8 @@ async function triggerItemAddedMessage(
   quantity: number,
   unitPrice: number,
   orderId: number | string | null,
+  sourceInstanceId?: string,
+  sourceConnectedPhone?: string | null,
 ) {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -193,6 +195,8 @@ async function triggerItemAddedMessage(
         unit_price: unitPrice,
         original_price: product.price,
         order_id: orderId,
+        source_instance_id: sourceInstanceId || null,
+        source_connected_phone: sourceConnectedPhone || null,
       }),
     });
 
@@ -210,8 +214,10 @@ function queueItemAddedMessage(
   quantity: number,
   unitPrice: number,
   orderId: number | string | null,
+  sourceInstanceId?: string,
+  sourceConnectedPhone?: string | null,
 ) {
-  const task = triggerItemAddedMessage(tenantId, customerPhone, product, quantity, unitPrice, orderId);
+  const task = triggerItemAddedMessage(tenantId, customerPhone, product, quantity, unitPrice, orderId, sourceInstanceId, sourceConnectedPhone);
   const edgeRuntime = (globalThis as any).EdgeRuntime;
 
   if (edgeRuntime?.waitUntil) {
