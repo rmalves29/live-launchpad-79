@@ -2915,6 +2915,48 @@ export type Database = {
           },
         ]
       }
+      whatsapp_consent_state: {
+        Row: {
+          consent_expires_at: string | null
+          consent_granted_at: string | null
+          created_at: string | null
+          customer_phone: string
+          id: string
+          last_message_at: string | null
+          request_expires_at: string | null
+          request_sent_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          consent_expires_at?: string | null
+          consent_granted_at?: string | null
+          created_at?: string | null
+          customer_phone: string
+          id?: string
+          last_message_at?: string | null
+          request_expires_at?: string | null
+          request_sent_at?: string | null
+          status: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          consent_expires_at?: string | null
+          consent_granted_at?: string | null
+          created_at?: string | null
+          customer_phone?: string
+          id?: string
+          last_message_at?: string | null
+          request_expires_at?: string | null
+          request_sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_group_ownership: {
         Row: {
           created_at: string
