@@ -2189,14 +2189,120 @@ async function updateOrderTotal(supabase: any, orderId: number) {
     const phoneVariants = buildPhoneVariantsForConfirmation(normalizedPhone);
     const phoneVariants55 = phoneVariants.filter((v) => v.startsWith('55'));
    
-   // Check if message is a confirmation response
+   // Check if message is a confirmation response (SIM) or decline (NÃO)
    const cleanMessage = messageText.trim().toLowerCase();
    const isConfirmation = ['sim', 'ok', 'yes', 's', 'simmm', 'simm', 'si', 'okay', 'pode'].includes(cleanMessage);
-   
-   if (!isConfirmation) {
-     console.log(`[zapi-webhook] Message "${cleanMessage}" is not a confirmation response`);
+   const isDecline = ['nao', 'não', 'no', 'n', 'naum', 'nope', 'pare', 'parar', 'sair', 'cancela', 'cancelar', 'stop'].includes(cleanMessage);
+
+   if (!isConfirmation && !isDecline) {
+     console.log(`[zapi-webhook] Message "${cleanMessage}" is not a SIM/NÃO response`);
      return { handled: false };
    }
+
+   // ============================================================
+   // NOVA REGRA: Atualizar diretamente whatsapp_consent_state
+   // (não depende mais de pending_message_confirmations para item_added)
+   // ============================================================
+   {
+     // Resolver tenant via instanceId quando possível
+     let resolvedTenantId: string | null = null;
+     if (instanceId) {
+       const { data: integration } = await supabase
+         .from('integration_whatsapp')
+         .select('tenant_id')
+         .eq('zapi_instance_id', instanceId)
+         .eq('is_active', true)
+         .maybeSingle();
+       if (integration) resolvedTenantId = integration.tenant_id;
+     }
+
+     if (resolvedTenantId) {
+       // Variantes de telefone (com/sem 55, com/sem 9)
+       const variants = new Set<string>();
+       const p = (normalizedPhone || '').replace(/\D/g, '');
+       const baseWithoutCountry = (p.startsWith('55') && p.length >= 12) ? p.slice(2) : p;
+       const baseWithCountry = baseWithoutCountry.startsWith('55') ? baseWithoutCountry : '55' + baseWithoutCountry;
+       variants.add(baseWithoutCountry);
+       variants.add(baseWithCountry);
+       if (baseWithoutCountry.length === 11 && baseWithoutCountry[2] === '9') {
+         const without9 = baseWithoutCountry.slice(0, 2) + baseWithoutCountry.slice(3);
+         variants.add(without9);
+         variants.add('55' + without9);
+       } else if (baseWithoutCountry.length === 10) {
+         const with9 = baseWithoutCountry.slice(0, 2) + '9' + baseWithoutCountry.slice(2);
+         variants.add(with9);
+         variants.add('55' + with9);
+       }
+
+       const { data: stateRows } = await supabase
+         .from('whatsapp_consent_state')
+         .select('id')
+         .eq('tenant_id', resolvedTenantId)
+         .in('customer_phone', Array.from(variants))
+         .order('updated_at', { ascending: false })
+         .limit(1);
+
+       const stateRow = stateRows && stateRows[0];
+
+       if (stateRow) {
+         const now = new Date();
+         if (isConfirmation) {
+           const expires = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // +3 dias
+           await supabase
+             .from('whatsapp_consent_state')
+             .update({
+               status: 'active',
+               consent_granted_at: now.toISOString(),
+               consent_expires_at: expires.toISOString(),
+             })
+             .eq('id', stateRow.id);
+           console.log(`[zapi-webhook] ✅ Consentimento ATIVO por 3 dias (state ${stateRow.id})`);
+
+           await supabase.from('whatsapp_messages').insert({
+             tenant_id: resolvedTenantId,
+             phone: normalizedPhone,
+             message: '[SISTEMA] Cliente respondeu SIM. Consentimento ativo por 3 dias.',
+             type: 'system_log',
+             sent_at: now.toISOString(),
+           });
+           // NÃO envia mensagem de volta — próxima adição é que vai com link.
+           return { handled: true, action: 'consent_granted_silent' };
+         } else {
+           // isDecline → silencia por 1h, próxima adição depois disso pede de novo
+           const expires = new Date(now.getTime() + 60 * 60 * 1000); // +1h
+           await supabase
+             .from('whatsapp_consent_state')
+             .update({
+               status: 'declined',
+               request_sent_at: now.toISOString(),
+               request_expires_at: expires.toISOString(),
+             })
+             .eq('id', stateRow.id);
+           console.log(`[zapi-webhook] 🚫 Cliente recusou. Silenciado por 1h (state ${stateRow.id})`);
+
+           await supabase.from('whatsapp_messages').insert({
+             tenant_id: resolvedTenantId,
+             phone: normalizedPhone,
+             message: '[SISTEMA] Cliente respondeu NÃO. Silenciado por 1h.',
+             type: 'system_log',
+             sent_at: now.toISOString(),
+           });
+           return { handled: true, action: 'consent_declined' };
+         }
+       } else {
+         console.log(`[zapi-webhook] ℹ️ Nenhum estado de consentimento encontrado para ${normalizedPhone} (tenant ${resolvedTenantId}). Continuando fluxo legado.`);
+       }
+     }
+
+     // Se não conseguimos resolver/atualizar o estado novo, NÃO seguimos
+     // o fluxo legado para resposta SIM/NÃO de item_added: apenas marcamos
+     // como tratado para evitar respostas inesperadas.
+     if (isDecline) {
+       return { handled: true, action: 'decline_no_state' };
+     }
+     // Para SIM, deixamos o fluxo legado abaixo continuar (compatibilidade).
+   }
+
    
    console.log(`[zapi-webhook] 🔔 Detected confirmation response "${cleanMessage}" from ${normalizedPhone}`);
    
