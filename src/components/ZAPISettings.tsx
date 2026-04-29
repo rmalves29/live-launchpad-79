@@ -584,7 +584,7 @@ export function ZAPISettings() {
              />
            </div>
 
-           {consentProtectionEnabled && (
+           {true && (
              <div className="space-y-4 pl-4 border-l-2 border-primary/20">
                <div className="space-y-2">
                  <Label className="text-sm font-medium">
