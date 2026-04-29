@@ -2270,7 +2270,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
             // Se estiver em branco, NÃO envia nada (próxima adição que vai com link).
             try {
               const { data: integ } = await supabase
-                .from('whatsapp_integrations')
+                .from('integration_whatsapp')
                 .select('zapi_instance_id, zapi_token, zapi_client_token, template_com_link, is_active')
                 .eq('tenant_id', resolvedTenantId)
                 .eq('is_active', true)
