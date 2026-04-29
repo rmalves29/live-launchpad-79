@@ -904,11 +904,11 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           title: 'Sucesso',
           description: `${selectedOrders.size} pedido(s) deletado(s) e estoque devolvido`
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error deleting orders:', error);
         toast({
           title: 'Erro',
-          description: 'Erro ao deletar pedidos',
+          description: `Erro ao deletar pedidos: ${error?.message || 'erro desconhecido'}`,
           variant: 'destructive'
         });
       }
