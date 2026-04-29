@@ -403,17 +403,10 @@ serve(async (req) => {
       let eventTenantId: string | null = null;
       let zapiCreds: { zapi_instance_id: string | null; zapi_token: string | null; zapi_client_token: string | null } | null = null;
 
-      if (instanceId) {
-        const { data: integ } = await supabase
-          .from('integration_whatsapp')
-          .select('tenant_id, zapi_instance_id, zapi_token, zapi_client_token')
-          .eq('zapi_instance_id', instanceId)
-          .eq('is_active', true)
-          .maybeSingle();
-        if (integ) {
-          eventTenantId = integ.tenant_id;
-          zapiCreds = { zapi_instance_id: integ.zapi_instance_id, zapi_token: integ.zapi_token, zapi_client_token: integ.zapi_client_token };
-        }
+      const integ = await resolveZapiIntegration(supabase, instanceId, payload.connectedPhone);
+      if (integ) {
+        eventTenantId = integ.tenant_id;
+        zapiCreds = { zapi_instance_id: integ.zapi_instance_id, zapi_token: integ.zapi_token, zapi_client_token: integ.zapi_client_token };
       }
 
       const isJoinEvent = ['add', 'join', 'invite', 'introduced'].includes(normalizedAction);
@@ -858,27 +851,19 @@ serve(async (req) => {
     // 3) customer phone mapping (customers)
     let tenantId: string | null = null;
 
-    if (payload.instanceId) {
-      const { data: integrations, error: instErr } = await supabase
-        .from('integration_whatsapp')
-        .select('tenant_id')
-        .eq('provider', 'zapi')
-        .eq('is_active', true)
-        .eq('zapi_instance_id', payload.instanceId);
-
-      if (instErr) {
-        console.log('[zapi-webhook] Error looking up tenant by instanceId:', instErr);
-      } else if ((integrations?.length || 0) === 1) {
-        tenantId = integrations![0].tenant_id;
-        console.log(`[zapi-webhook] Found tenant by instanceId (${payload.instanceId}): ${tenantId}`);
-      } else if ((integrations?.length || 0) > 1) {
-        console.log(`[zapi-webhook] ERROR: instanceId ${payload.instanceId} is linked to multiple tenants (${integrations?.length}). Aborting.`);
+    if (payload.instanceId || payload.connectedPhone) {
+      try {
+        const integration = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone);
+        if (integration) {
+          tenantId = integration.tenant_id;
+          console.log(`[zapi-webhook] Found tenant by Z-API identity (instance=${payload.instanceId || 'N/A'}, connected=${payload.connectedPhone || 'N/A'}): ${tenantId}`);
+        }
+      } catch (error: any) {
+        console.log(`[zapi-webhook] ERROR resolving Z-API identity: ${error?.message || error}`);
         return new Response(JSON.stringify({ success: false, error: 'instance_id_conflict' }), {
           status: 409,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
-      } else {
-        console.log(`[zapi-webhook] No active integration found for instanceId ${payload.instanceId}`);
       }
     }
 
