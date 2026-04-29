@@ -85,7 +85,7 @@ function phoneMatches(a?: string | null, b?: string | null): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanceId?: string, sourceConnectedPhone?: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link")
+     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
