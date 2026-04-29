@@ -107,8 +107,8 @@ export function ZAPISettings() {
    
    // Proteção por consentimento
    const [consentProtectionEnabled, setConsentProtectionEnabled] = useState(false);
-   const [templateSolicitacao, setTemplateSolicitacao] = useState(DEFAULT_TEMPLATE_SOLICITACAO);
-   const [templateComLink, setTemplateComLink] = useState(DEFAULT_TEMPLATE_COM_LINK);
+   const [templateSolicitacao, setTemplateSolicitacao] = useState('');
+   const [templateComLink, setTemplateComLink] = useState('');
 
   useEffect(() => {
     loadIntegration();
