@@ -880,11 +880,19 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           }
         }
 
+        const orderIds = Array.from(selectedOrders);
+
+        // Remover dependências que bloqueiam o DELETE (FK sem CASCADE)
+        await supabaseTenant
+          .from('pending_message_confirmations')
+          .delete()
+          .in('order_id', orderIds);
+
         // Delete orders
         const { error } = await supabaseTenant
           .from('orders')
           .delete()
-          .in('id', Array.from(selectedOrders));
+          .in('id', orderIds);
 
         if (error) throw error;
 
@@ -896,11 +904,11 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           title: 'Sucesso',
           description: `${selectedOrders.size} pedido(s) deletado(s) e estoque devolvido`
         });
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error deleting orders:', error);
         toast({
           title: 'Erro',
-          description: 'Erro ao deletar pedidos',
+          description: `Erro ao deletar pedidos: ${error?.message || 'erro desconhecido'}`,
           variant: 'destructive'
         });
       }
