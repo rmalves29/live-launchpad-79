@@ -816,7 +816,7 @@ const Produtos = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
+            <Button variant="outline" onClick={openLabelsDialog}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
             </Button>
