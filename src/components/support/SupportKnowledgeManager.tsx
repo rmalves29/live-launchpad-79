@@ -16,6 +16,7 @@ import { useTenant } from '@/hooks/useTenant';
 import { toast } from 'sonner';
 import { KnowledgeFileUpload } from './KnowledgeFileUpload';
 import { cn } from '@/lib/utils';
+import { optimizedImageUrl } from '@/lib/image-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 interface KnowledgeItem {
   id: string;
@@ -496,8 +497,10 @@ export function SupportKnowledgeManager() {
                       {/* File preview */}
                       {item.file_type === 'image' && item.file_url && (
                         <img 
-                          src={item.file_url} 
+                          src={optimizedImageUrl(item.file_url, { width: 400 })} 
                           alt={item.title} 
+                          loading="lazy"
+                          decoding="async"
                           className="mt-3 rounded-lg max-h-24 md:max-h-32 object-cover"
                         />
                       )}

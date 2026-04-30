@@ -21,6 +21,7 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
+import { optimizedImageUrl } from '@/lib/image-utils';
 import {
   DndContext,
   closestCenter,
@@ -147,8 +148,10 @@ function SortableProductItem({
         )}
         {product.image_url ? (
           <img
-            src={product.image_url}
+            src={optimizedImageUrl(product.image_url, { width: 96 })}
             alt={product.name}
+            loading="lazy"
+            decoding="async"
             className="w-8 h-8 object-cover rounded"
           />
         ) : (

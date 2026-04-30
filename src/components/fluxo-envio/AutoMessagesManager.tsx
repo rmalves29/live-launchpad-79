@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Plus, Trash2, UserPlus, UserMinus, MessageSquare, Upload, X, Pencil } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import { optimizedImageUrl, STORAGE_CACHE_CONTROL } from '@/lib/image-utils';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -120,7 +121,7 @@ export default function AutoMessagesManager() {
 
     const { error } = await supabase.storage
       .from('product-images')
-      .upload(path, file, { upsert: true });
+      .upload(path, file, { upsert: true, cacheControl: STORAGE_CACHE_CONTROL });
 
     if (error) {
       toast({ title: 'Erro no upload', description: error.message, variant: 'destructive' });
@@ -332,7 +333,7 @@ export default function AutoMessagesManager() {
                 />
                 {form.media_url ? (
                   <div className="relative rounded-lg border border-border overflow-hidden">
-                    <img src={form.media_url} alt="Preview" className="w-full h-32 object-cover" />
+                    <img src={optimizedImageUrl(form.media_url, { width: 600 })} alt="Preview" loading="lazy" decoding="async" className="w-full h-32 object-cover" />
                     <Button
                       variant="destructive"
                       size="icon"
@@ -401,7 +402,7 @@ export default function AutoMessagesManager() {
                   <p className="text-sm text-foreground whitespace-pre-wrap line-clamp-3">{msg.content_text}</p>
                   {msg.media_url && (
                     <div className="mt-2 flex items-center gap-2">
-                      <img src={msg.media_url} alt="" className="h-10 w-10 rounded object-cover border border-border" />
+                      <img src={optimizedImageUrl(msg.media_url, { width: 96 })} alt="" loading="lazy" decoding="async" className="h-10 w-10 rounded object-cover border border-border" />
                       <span className="text-xs text-muted-foreground">Imagem anexada</span>
                     </div>
                   )}

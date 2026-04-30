@@ -19,6 +19,7 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatCurrency } from '@/lib/utils';
+import { optimizedImageUrl, STORAGE_CACHE_CONTROL } from '@/lib/image-utils';
 import * as XLSX from 'xlsx';
 
 interface Product {
@@ -322,7 +323,7 @@ const Produtos = () => {
 
       const { data, error } = await supabaseTenant.storage
         .from('product-images')
-        .upload(filePath, file);
+        .upload(filePath, file, { cacheControl: STORAGE_CACHE_CONTROL });
 
       if (error) throw error;
 
@@ -1036,8 +1037,10 @@ const Produtos = () => {
                     {formData.image_url && !selectedFile && (
                       <div className="flex items-center space-x-2">
                         <img 
-                          src={formData.image_url} 
+                          src={optimizedImageUrl(formData.image_url, { width: 96 })} 
                           alt="Preview" 
+                          loading="lazy"
+                          decoding="async"
                           className="h-10 w-10 object-cover rounded"
                           onError={(e) => {
                             e.currentTarget.style.display = 'none';
