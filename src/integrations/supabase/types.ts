@@ -209,6 +209,57 @@ export type Database = {
           },
         ]
       }
+      cleanup_runs: {
+        Row: {
+          batches: number
+          count_after: number | null
+          count_before: number | null
+          cutoff_at: string
+          date_column: string
+          deleted: number
+          error: string | null
+          finished_at: string | null
+          id: number
+          policy: string
+          size_after: string | null
+          size_before: string | null
+          started_at: string
+          table_name: string
+        }
+        Insert: {
+          batches?: number
+          count_after?: number | null
+          count_before?: number | null
+          cutoff_at: string
+          date_column: string
+          deleted?: number
+          error?: string | null
+          finished_at?: string | null
+          id?: number
+          policy: string
+          size_after?: string | null
+          size_before?: string | null
+          started_at?: string
+          table_name: string
+        }
+        Update: {
+          batches?: number
+          count_after?: number | null
+          count_before?: number | null
+          cutoff_at?: string
+          date_column?: string
+          deleted?: number
+          error?: string | null
+          finished_at?: string | null
+          id?: number
+          policy?: string
+          size_after?: string | null
+          size_before?: string | null
+          started_at?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
       coupons: {
         Row: {
           code: string
