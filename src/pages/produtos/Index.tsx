@@ -496,42 +496,59 @@ const Produtos = () => {
     }).format(value);
   };
 
-  // Exportar produtos para Excel
-  const handleExportProducts = () => {
-    const dataToExport = (filteredProducts.length > 0 ? filteredProducts : products).map(p => ({
-      codigo: p.code,
-      nome: p.name,
-      preco: p.price,
-      preco_promocional: p.promotional_price || '',
-      observacao: p.observation || '',
-      sku_erp: p.sku_erp || '',
-      estoque: p.stock,
-      cor: p.color || '',
-      tamanho: p.size || '',
-      tipo_venda: p.sale_type || 'BAZAR',
-      ativo: p.is_active ? 'Sim' : 'Não',
-      imagem_url: p.image_url || '',
-    }));
+  // Exportar produtos para Excel — busca TODOS os produtos que casam com filtros atuais
+  const handleExportProducts = async () => {
+    try {
+      toast({ title: 'Preparando exportação...', description: 'Buscando produtos.' });
+      const allMatching = await fetchAllProducts();
+      const dataToExport = allMatching.map(p => ({
+        codigo: p.code,
+        nome: p.name,
+        preco: p.price,
+        preco_promocional: p.promotional_price || '',
+        observacao: p.observation || '',
+        sku_erp: p.sku_erp || '',
+        estoque: p.stock,
+        cor: p.color || '',
+        tamanho: p.size || '',
+        tipo_venda: p.sale_type || 'BAZAR',
+        ativo: p.is_active ? 'Sim' : 'Não',
+        imagem_url: p.image_url || '',
+      }));
 
-    if (dataToExport.length === 0) {
-      toast({
-        title: 'Nenhum produto',
-        description: 'Não há produtos para exportar.',
-        variant: 'destructive',
-      });
-      return;
+      if (dataToExport.length === 0) {
+        toast({
+          title: 'Nenhum produto',
+          description: 'Não há produtos para exportar.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 18 },
+        { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Produtos');
+      XLSX.writeFile(wb, `produtos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+      toast({ title: 'Exportação concluída', description: `${dataToExport.length} produto(s) exportado(s).` });
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error?.message || 'Erro na exportação', variant: 'destructive' });
     }
+  };
 
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    ws['!cols'] = [
-      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 18 },
-      { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Produtos');
-    XLSX.writeFile(wb, `produtos_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
-    toast({ title: 'Exportação concluída', description: `${dataToExport.length} produto(s) exportado(s).` });
+  // Open labels — fetch all on demand
+  const openLabelsDialog = async () => {
+    try {
+      const all = await fetchAllProducts();
+      setLabelsProducts(all);
+      setIsLabelsOpen(true);
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error?.message || 'Erro ao carregar etiquetas', variant: 'destructive' });
+    }
   };
 
   // Download template Excel
