@@ -1631,17 +1631,13 @@ serve(async (req) => {
       // Update order total
       await updateOrderTotal(supabase, order.id);
 
+      // ⚠️ NÃO chamar zapi-send-item-added daqui!
+      // O DB trigger `trigger_send_whatsapp_on_item_added` (AFTER INSERT em cart_items)
+      // já dispara a mensagem automaticamente. Chamar de novo aqui causava 2 mensagens
+      // idênticas para o mesmo cliente (uma do trigger sem order_id, outra desta
+      // chamada com order_id). Mantemos apenas o trigger como fonte única.
       if (shouldSendItemAddedMessage && cartItem) {
-        queueItemAddedMessage(
-          tenantId,
-          normalizedPhone,
-          product,
-          requestedQty,
-          cartItem.unit_price,
-          order.id,
-          payload.instanceId,
-          payload.connectedPhone,
-        );
+        console.log(`[zapi-webhook] ✅ Item adicionado em cart_items (id=${cartItem.id}); envio WhatsApp delegado ao DB trigger.`);
       }
 
       results.push({ 
