@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, ChevronLeft, ChevronRight } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,6 +22,9 @@ import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatCurrency } from '@/lib/utils';
 import { optimizedImageUrl, STORAGE_CACHE_CONTROL } from '@/lib/image-utils';
 import * as XLSX from 'xlsx';
+
+const PRODUCT_COLUMNS = 'id,code,name,price,promotional_price,observation,sku_erp,stock,color,size,image_url,is_active,sale_type,created_at';
+const PAGE_SIZE = 48;
 
 interface Product {
   id: number;
@@ -62,12 +66,16 @@ const Produtos = () => {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 350);
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'LIVE' | 'BAZAR'>('ALL');
   const [importing, setImporting] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[]; skipped: number; skippedDetails: string[] } | null>(null);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [labelsProducts, setLabelsProducts] = useState<Product[]>([]);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -92,7 +100,6 @@ const Produtos = () => {
     if (currentTenantId) {
       loadProducts();
     } else {
-      // Verificar novamente após um breve delay (tenant pode estar carregando)
       const checkTenant = setInterval(() => {
         const tenantId = (supabaseTenant as any).getTenantId?.();
         if (tenantId) {
@@ -100,63 +107,62 @@ const Produtos = () => {
           loadProducts();
         }
       }, 100);
-      
-      // Limpar intervalo após 5 segundos se tenant não carregar
       setTimeout(() => {
         clearInterval(checkTenant);
         setLoading(false);
       }, 5000);
-      
       return () => clearInterval(checkTenant);
     }
   }, []);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch, saleTypeFilter]);
+
+  // Reload when pagination/filters change
+  useEffect(() => {
+    const tenantId = (supabaseTenant as any).getTenantId?.();
+    if (tenantId) loadProducts();
+  }, [debouncedSearch, saleTypeFilter, page]);
+
+  const buildBaseQuery = (forCount = false) => {
+    let query = supabaseTenant
+      .from('products')
+      .select(forCount ? 'id' : PRODUCT_COLUMNS, forCount ? { count: 'exact', head: true } : { count: 'exact' });
+
+    if (saleTypeFilter !== 'ALL') {
+      // 'AMBOS' products should appear in both BAZAR and LIVE filters
+      query = query.in('sale_type', [saleTypeFilter, 'AMBOS']);
+    }
+
+    const q = debouncedSearch.trim();
+    if (q) {
+      const safe = q.replace(/[,()]/g, ' ');
+      query = query.or(`name.ilike.%${safe}%,code.ilike.%${safe}%`);
+    }
+
+    return query;
+  };
+
   const loadProducts = async () => {
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
-    console.log('🔍 [Produtos] Carregando produtos para tenant:', currentTenantId);
-    
+    console.log('🔍 [Produtos] Carregando produtos para tenant:', currentTenantId, '| page:', page);
+
     try {
       setLoading(true);
-      // ATENÇÃO: mesmo com range grande, o PostgREST pode impor um max-rows (comum: 1000).
-      // Então buscamos em páginas de 1000 e concatenamos até completar ou atingir 9999.
-      const pageSize = 1000;
-      const maxTotal = 9999;
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
-      let all: Product[] = [];
-      let from = 0;
-      let totalCount: number | null = null;
+      const query = buildBaseQuery(false)
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-      while (all.length < maxTotal) {
-        const to = Math.min(from + pageSize - 1, maxTotal - 1);
+      const { data, error, count } = await query;
+      if (error) throw error;
 
-        const { data, error, count } = await supabaseTenant
-          .from('products')
-          .select('*', { count: from === 0 ? 'exact' : undefined })
-          .order('created_at', { ascending: false })
-          .range(from, to);
-
-        if (error) throw error;
-        if (from === 0) totalCount = count ?? null;
-
-        const chunk = (data ?? []) as Product[];
-        all = all.concat(chunk);
-
-        // Se veio menos do que pageSize, acabou.
-        if (chunk.length < pageSize) break;
-
-        from += pageSize;
-      }
-
-      console.log(
-        '📦 [Produtos] Produtos carregados:',
-        all.length,
-        '| count(exact):',
-        totalCount,
-        '| pagesize:',
-        pageSize
-      );
-
-      setProducts(all);
+      setProducts((data ?? []) as Product[]);
+      setTotalCount(count ?? 0);
     } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
@@ -167,6 +173,37 @@ const Produtos = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Fetch ALL matching products (used by export & labels) — bypasses pagination
+  const fetchAllProducts = async (): Promise<Product[]> => {
+    const pageSize = 1000;
+    let all: Product[] = [];
+    let from = 0;
+    while (true) {
+      let query = supabaseTenant
+        .from('products')
+        .select(PRODUCT_COLUMNS)
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (saleTypeFilter !== 'ALL') {
+        query = query.in('sale_type', [saleTypeFilter, 'AMBOS']);
+      }
+      const q = debouncedSearch.trim();
+      if (q) {
+        const safe = q.replace(/[,()]/g, ' ');
+        query = query.or(`name.ilike.%${safe}%,code.ilike.%${safe}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const chunk = (data ?? []) as Product[];
+      all = all.concat(chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
   };
 
   const handleSave = async () => {
@@ -449,14 +486,8 @@ const Produtos = () => {
     }
   };
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.code.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = saleTypeFilter === 'ALL' || 
-      product.sale_type === saleTypeFilter || 
-      (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));
-    return matchesSearch && matchesType;
-  });
+  // Search/filter happens server-side now; keep alias for minimal JSX changes
+  const filteredProducts = products;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -465,42 +496,59 @@ const Produtos = () => {
     }).format(value);
   };
 
-  // Exportar produtos para Excel
-  const handleExportProducts = () => {
-    const dataToExport = (filteredProducts.length > 0 ? filteredProducts : products).map(p => ({
-      codigo: p.code,
-      nome: p.name,
-      preco: p.price,
-      preco_promocional: p.promotional_price || '',
-      observacao: p.observation || '',
-      sku_erp: p.sku_erp || '',
-      estoque: p.stock,
-      cor: p.color || '',
-      tamanho: p.size || '',
-      tipo_venda: p.sale_type || 'BAZAR',
-      ativo: p.is_active ? 'Sim' : 'Não',
-      imagem_url: p.image_url || '',
-    }));
+  // Exportar produtos para Excel — busca TODOS os produtos que casam com filtros atuais
+  const handleExportProducts = async () => {
+    try {
+      toast({ title: 'Preparando exportação...', description: 'Buscando produtos.' });
+      const allMatching = await fetchAllProducts();
+      const dataToExport = allMatching.map(p => ({
+        codigo: p.code,
+        nome: p.name,
+        preco: p.price,
+        preco_promocional: p.promotional_price || '',
+        observacao: p.observation || '',
+        sku_erp: p.sku_erp || '',
+        estoque: p.stock,
+        cor: p.color || '',
+        tamanho: p.size || '',
+        tipo_venda: p.sale_type || 'BAZAR',
+        ativo: p.is_active ? 'Sim' : 'Não',
+        imagem_url: p.image_url || '',
+      }));
 
-    if (dataToExport.length === 0) {
-      toast({
-        title: 'Nenhum produto',
-        description: 'Não há produtos para exportar.',
-        variant: 'destructive',
-      });
-      return;
+      if (dataToExport.length === 0) {
+        toast({
+          title: 'Nenhum produto',
+          description: 'Não há produtos para exportar.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 18 },
+        { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Produtos');
+      XLSX.writeFile(wb, `produtos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+      toast({ title: 'Exportação concluída', description: `${dataToExport.length} produto(s) exportado(s).` });
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error?.message || 'Erro na exportação', variant: 'destructive' });
     }
+  };
 
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
-    ws['!cols'] = [
-      { wch: 12 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 30 }, { wch: 18 },
-      { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 8 }, { wch: 50 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Produtos');
-    XLSX.writeFile(wb, `produtos_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
-    toast({ title: 'Exportação concluída', description: `${dataToExport.length} produto(s) exportado(s).` });
+  // Open labels — fetch all on demand
+  const openLabelsDialog = async () => {
+    try {
+      const all = await fetchAllProducts();
+      setLabelsProducts(all);
+      setIsLabelsOpen(true);
+    } catch (error: any) {
+      toast({ title: 'Erro', description: error?.message || 'Erro ao carregar etiquetas', variant: 'destructive' });
+    }
   };
 
   // Download template Excel
@@ -768,7 +816,7 @@ const Produtos = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
+            <Button variant="outline" onClick={openLabelsDialog}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
             </Button>
@@ -1086,7 +1134,7 @@ const Produtos = () => {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <span>Lista de Produtos ({filteredProducts.length})</span>
+                <span>Lista de Produtos ({totalCount})</span>
                 {selectedProducts.length > 0 && (
                   <Button
                     variant="destructive"
@@ -1225,11 +1273,37 @@ const Produtos = () => {
                   </Table>
               </div>
             )}
+
+            {totalCount > PAGE_SIZE && (
+              <div className="flex items-center justify-between pt-4 mt-4 border-t">
+                <div className="text-sm text-muted-foreground">
+                  Página {page + 1} de {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))} • {totalCount} produtos
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0 || loading}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => p + 1)}
+                    disabled={page >= Math.ceil(totalCount / PAGE_SIZE) - 1 || loading}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
       {confirmDialogElement}
-      <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} preSelectedIds={selectedProducts} />
+      <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={labelsProducts} preSelectedIds={selectedProducts} />
     </div>
   );
 };
