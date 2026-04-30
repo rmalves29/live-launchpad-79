@@ -100,7 +100,6 @@ const Produtos = () => {
     if (currentTenantId) {
       loadProducts();
     } else {
-      // Verificar novamente após um breve delay (tenant pode estar carregando)
       const checkTenant = setInterval(() => {
         const tenantId = (supabaseTenant as any).getTenantId?.();
         if (tenantId) {
@@ -108,63 +107,62 @@ const Produtos = () => {
           loadProducts();
         }
       }, 100);
-      
-      // Limpar intervalo após 5 segundos se tenant não carregar
       setTimeout(() => {
         clearInterval(checkTenant);
         setLoading(false);
       }, 5000);
-      
       return () => clearInterval(checkTenant);
     }
   }, []);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch, saleTypeFilter]);
+
+  // Reload when pagination/filters change
+  useEffect(() => {
+    const tenantId = (supabaseTenant as any).getTenantId?.();
+    if (tenantId) loadProducts();
+  }, [debouncedSearch, saleTypeFilter, page]);
+
+  const buildBaseQuery = (forCount = false) => {
+    let query = supabaseTenant
+      .from('products')
+      .select(forCount ? 'id' : PRODUCT_COLUMNS, forCount ? { count: 'exact', head: true } : { count: 'exact' });
+
+    if (saleTypeFilter !== 'ALL') {
+      // 'AMBOS' products should appear in both BAZAR and LIVE filters
+      query = query.in('sale_type', [saleTypeFilter, 'AMBOS']);
+    }
+
+    const q = debouncedSearch.trim();
+    if (q) {
+      const safe = q.replace(/[,()]/g, ' ');
+      query = query.or(`name.ilike.%${safe}%,code.ilike.%${safe}%`);
+    }
+
+    return query;
+  };
+
   const loadProducts = async () => {
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
-    console.log('🔍 [Produtos] Carregando produtos para tenant:', currentTenantId);
-    
+    console.log('🔍 [Produtos] Carregando produtos para tenant:', currentTenantId, '| page:', page);
+
     try {
       setLoading(true);
-      // ATENÇÃO: mesmo com range grande, o PostgREST pode impor um max-rows (comum: 1000).
-      // Então buscamos em páginas de 1000 e concatenamos até completar ou atingir 9999.
-      const pageSize = 1000;
-      const maxTotal = 9999;
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
-      let all: Product[] = [];
-      let from = 0;
-      let totalCount: number | null = null;
+      const query = buildBaseQuery(false)
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-      while (all.length < maxTotal) {
-        const to = Math.min(from + pageSize - 1, maxTotal - 1);
+      const { data, error, count } = await query;
+      if (error) throw error;
 
-        const { data, error, count } = await supabaseTenant
-          .from('products')
-          .select('*', { count: from === 0 ? 'exact' : undefined })
-          .order('created_at', { ascending: false })
-          .range(from, to);
-
-        if (error) throw error;
-        if (from === 0) totalCount = count ?? null;
-
-        const chunk = (data ?? []) as Product[];
-        all = all.concat(chunk);
-
-        // Se veio menos do que pageSize, acabou.
-        if (chunk.length < pageSize) break;
-
-        from += pageSize;
-      }
-
-      console.log(
-        '📦 [Produtos] Produtos carregados:',
-        all.length,
-        '| count(exact):',
-        totalCount,
-        '| pagesize:',
-        pageSize
-      );
-
-      setProducts(all);
+      setProducts((data ?? []) as Product[]);
+      setTotalCount(count ?? 0);
     } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
@@ -175,6 +173,37 @@ const Produtos = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Fetch ALL matching products (used by export & labels) — bypasses pagination
+  const fetchAllProducts = async (): Promise<Product[]> => {
+    const pageSize = 1000;
+    let all: Product[] = [];
+    let from = 0;
+    while (true) {
+      let query = supabaseTenant
+        .from('products')
+        .select(PRODUCT_COLUMNS)
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (saleTypeFilter !== 'ALL') {
+        query = query.in('sale_type', [saleTypeFilter, 'AMBOS']);
+      }
+      const q = debouncedSearch.trim();
+      if (q) {
+        const safe = q.replace(/[,()]/g, ' ');
+        query = query.or(`name.ilike.%${safe}%,code.ilike.%${safe}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const chunk = (data ?? []) as Product[];
+      all = all.concat(chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
   };
 
   const handleSave = async () => {
