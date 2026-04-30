@@ -529,9 +529,12 @@ Deno.serve(async (req) => {
           console.log(`[${timestamp}] [instagram-webhook] No page_access_token, skipping DM`);
         }
 
-        // WhatsApp direto se tem telefone
+        // ⚠️ NÃO chamar zapi-send-item-added daqui!
+        // O DB trigger `trigger_send_whatsapp_on_item_added` (AFTER INSERT em cart_items)
+        // já dispara a mensagem automaticamente respeitando a máquina de consentimento
+        // (whatsapp_consent_state). Chamar de novo aqui causava 2 mensagens idênticas.
         if (hasPhone && order) {
-          await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp, requestedQty);
+          console.log(`[${timestamp}] [instagram-webhook] Item adicionado em cart_items; envio WhatsApp delegado ao DB trigger.`);
         }
       }
     }
