@@ -1639,7 +1639,9 @@ serve(async (req) => {
         }
         
         cartItem = newItem;
-        shouldSendItemAddedMessage = true;
+        // INSERT em cart_items já dispara o trigger do banco `send_whatsapp_on_item_added`.
+        // Não enfileirar outro envio aqui, senão a primeira adição do produto envia duplicado.
+        shouldSendItemAddedMessage = false;
         
         // ATOMIC STOCK DECREMENT: Re-read fresh stock then decrement only if stock > 0
         const { data: freshStockForNew } = await supabase
