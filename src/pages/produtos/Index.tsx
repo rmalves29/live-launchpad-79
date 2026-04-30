@@ -486,14 +486,8 @@ const Produtos = () => {
     }
   };
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.code.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = saleTypeFilter === 'ALL' || 
-      product.sale_type === saleTypeFilter || 
-      (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));
-    return matchesSearch && matchesType;
-  });
+  // Search/filter happens server-side now; keep alias for minimal JSX changes
+  const filteredProducts = products;
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
