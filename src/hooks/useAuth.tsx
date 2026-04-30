@@ -51,7 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!isMounted) return;
       
-      // Se houve erro de refresh token, não fazer logout - manter estado atual
       if (error) {
         console.warn('Session error (ignoring):', error.message);
         setIsLoading(false);
@@ -62,7 +61,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        // Se já temos profile em cache para este user, usar
         if (profileCache && profileCache.id === session.user.id) {
           setProfile(profileCache);
           setIsLoading(false);
@@ -72,32 +70,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setIsLoading(false);
       }
+    }).catch((err) => {
+      console.error('[useAuth] getSession failed:', err);
+      if (isMounted) setIsLoading(false);
     });
 
-    // Listen for auth changes - only respond to explicit user actions
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         if (!isMounted) return;
         
-        // Ignorar eventos que não são ações explícitas do usuário
-        // TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED podem causar re-renders desnecessários
-        if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
+        console.log('[LOGIN-DIAG] auth event:', event, 'hasSession:', !!newSession);
+        
+        // TOKEN_REFRESHED e USER_UPDATED não exigem reload de profile
+        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          if (newSession) setSession(newSession);
           return;
         }
         
-        // Só responder a login/logout explícitos
+        // INITIAL_SESSION: garantir que isLoading vire false
+        if (event === 'INITIAL_SESSION') {
+          if (!newSession) {
+            setIsLoading(false);
+          }
+          return;
+        }
+        
         if (event === 'SIGNED_IN') {
           setSession(newSession);
           setUser(newSession?.user ?? null);
           if (newSession?.user) {
-            // Se já temos profile em cache para este user, usar
+            // Invalidar cache se for outro usuário
+            if (profileCache && profileCache.id !== newSession.user.id) {
+              profileCache = null;
+              setProfile(null);
+            }
             if (profileCache && profileCache.id === newSession.user.id) {
               setProfile(profileCache);
+              setIsLoading(false);
             } else {
               setTimeout(() => {
                 if (isMounted) loadProfile(newSession.user.id);
               }, 0);
             }
+          } else {
+            setIsLoading(false);
           }
         } else if (event === 'SIGNED_OUT') {
           // Limpar tudo ao fazer logout
