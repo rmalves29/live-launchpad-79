@@ -170,10 +170,11 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
       try {
         setLoading(true);
         
-        // 1. Buscar pedidos com filtros aplicados (query otimizada)
+        // 1. Buscar pedidos com filtros aplicados (query otimizada com colunas explícitas)
+        const ORDER_COLUMNS = 'id,tenant_order_number,tenant_id,cart_id,customer_phone,customer_name,customer_cep,customer_street,customer_number,customer_complement,customer_neighborhood,customer_city,customer_state,event_type,event_date,total_amount,is_paid,is_cancelled,payment_link,observation,whatsapp_group_name,printed,item_added_message_sent,payment_confirmation_sent,item_added_delivered,payment_confirmation_delivered,unique_order_id,melhor_envio_tracking_code,bling_order_id,created_at';
         let query = supabaseTenant
           .from('orders')
-          .select('*')
+          .select(ORDER_COLUMNS)
           .order('created_at', { ascending: false })
           .limit(500); // Limitar para performance
 
