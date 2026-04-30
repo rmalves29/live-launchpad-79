@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
-import { Plus, Edit, Trash2, Package, Tags } from 'lucide-react';
+import { useDebounce } from '@/hooks/useDebounce';
+import { Plus, Edit, Trash2, Package, Tags, ChevronLeft, ChevronRight } from 'lucide-react';
 import PrintLabelsDialog from './PrintLabelsDialog';
 
 interface Product {
@@ -38,8 +39,15 @@ interface ProductForm {
   is_active: boolean;
 }
 
+const PRODUCT_COLUMNS = 'id,tenant_id,code,name,price,promotional_price,observation,stock,is_active,image_url,created_at,updated_at';
+const PAGE_SIZE = 48;
+
 export default function TenantProducts() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [allProductsForLabels, setAllProductsForLabels] = useState<Product[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -47,51 +55,93 @@ export default function TenantProducts() {
     code: '',
     name: '',
     price: '',
+    promotional_price: '',
+    observation: '',
     stock: '0',
     is_active: true
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 350);
   const { profile } = useAuth();
   const { toast } = useToast();
+
+  // Reset to first page when search changes
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     if (profile?.tenant_id) {
       loadProducts();
     }
-  }, [profile?.tenant_id]);
+  }, [profile?.tenant_id, debouncedSearch, page]);
 
   const loadProducts = async () => {
     if (!profile?.tenant_id) return;
-
+    setLoading(true);
     try {
-      // Paginar para contornar max-rows (comum: 1000)
-      const pageSize = 1000;
-      const maxTotal = 9999;
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
-      let all: any[] = [];
-      let from = 0;
-      while (all.length < maxTotal) {
-        const to = Math.min(from + pageSize - 1, maxTotal - 1);
-        const { data, error } = await supabaseTenant
-          .from('products')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .range(from, to);
+      let query = supabaseTenant
+        .from('products')
+        .select(PRODUCT_COLUMNS, { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
-        if (error) throw error;
-        const chunk = data ?? [];
-        all = all.concat(chunk);
-        if (chunk.length < pageSize) break;
-        from += pageSize;
+      const q = debouncedSearch.trim();
+      if (q) {
+        const safe = q.replace(/[,()]/g, ' ');
+        query = query.or(`name.ilike.%${safe}%,code.ilike.%${safe}%`);
       }
-      setProducts(all || []);
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+      setProducts((data ?? []) as Product[]);
+      setTotalCount(count ?? 0);
     } catch (error: any) {
       toast({
         title: 'Erro',
         description: error?.message || 'Erro ao carregar produtos',
         variant: 'destructive'
       });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // Load all products on demand (only when opening labels dialog)
+  const loadAllProductsForLabels = async () => {
+    if (!profile?.tenant_id) return;
+    try {
+      const pageSize = 1000;
+      let all: Product[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabaseTenant
+          .from('products')
+          .select(PRODUCT_COLUMNS)
+          .order('created_at', { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const chunk = (data ?? []) as Product[];
+        all = all.concat(chunk);
+        if (chunk.length < pageSize) break;
+        from += pageSize;
+      }
+      setAllProductsForLabels(all);
+    } catch (error: any) {
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao carregar produtos para etiquetas',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const openLabelsDialog = async () => {
+    await loadAllProductsForLabels();
+    setIsLabelsOpen(true);
   };
 
   const resetForm = () => {
@@ -145,24 +195,14 @@ export default function TenantProducts() {
           .from('products')
           .update(productData)
           .eq('id', editingProduct.id);
-
         if (error) throw error;
-        
-        toast({
-          title: 'Sucesso',
-          description: 'Produto atualizado com sucesso!'
-        });
+        toast({ title: 'Sucesso', description: 'Produto atualizado com sucesso!' });
       } else {
         const { error } = await supabaseTenant
           .from('products')
           .insert([productData]);
-
         if (error) throw error;
-        
-        toast({
-          title: 'Sucesso',
-          description: 'Produto criado com sucesso!'
-        });
+        toast({ title: 'Sucesso', description: 'Produto criado com sucesso!' });
       }
 
       setIsDialogOpen(false);
@@ -179,20 +219,13 @@ export default function TenantProducts() {
 
   const deleteProduct = async (productId: number) => {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
-
     try {
       const { error } = await supabaseTenant
         .from('products')
         .delete()
         .eq('id', productId);
-
       if (error) throw error;
-
-      toast({
-        title: 'Sucesso',
-        description: 'Produto excluído com sucesso!'
-      });
-
+      toast({ title: 'Sucesso', description: 'Produto excluído com sucesso!' });
       loadProducts();
     } catch (error: any) {
       toast({
@@ -209,14 +242,11 @@ export default function TenantProducts() {
         .from('products')
         .update({ is_active: isActive })
         .eq('id', productId);
-
       if (error) throw error;
-
       toast({
         title: 'Sucesso',
         description: `Produto ${isActive ? 'ativado' : 'desativado'} com sucesso!`
       });
-
       loadProducts();
     } catch (error: any) {
       toast({
@@ -227,10 +257,7 @@ export default function TenantProducts() {
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return (
     <Card>
@@ -246,7 +273,7 @@ export default function TenantProducts() {
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
+            <Button variant="outline" onClick={openLabelsDialog}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas
             </Button>
@@ -267,14 +294,16 @@ export default function TenantProducts() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {filteredProducts.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">Carregando...</div>
+          ) : products.length === 0 ? (
             <div className="text-center py-8">
               <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">Nenhum produto encontrado</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm ? 'Tente ajustar os termos da busca.' : 'Comece criando seu primeiro produto.'}
+                {debouncedSearch ? 'Tente ajustar os termos da busca.' : 'Comece criando seu primeiro produto.'}
               </p>
-              {!searchTerm && (
+              {!debouncedSearch && (
                 <Button onClick={openCreateDialog}>
                   <Plus className="h-4 w-4 mr-2" />
                   Criar Primeiro Produto
@@ -282,7 +311,7 @@ export default function TenantProducts() {
               )}
             </div>
           ) : (
-            filteredProducts.map((product) => (
+            products.map((product) => (
               <div key={product.id} className="flex items-center justify-between p-4 border rounded-lg">
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center">
@@ -315,23 +344,41 @@ export default function TenantProducts() {
                     checked={product.is_active}
                     onCheckedChange={(checked) => toggleProductActive(product.id, checked)}
                   />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openEditDialog(product)}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => openEditDialog(product)}>
                     <Edit className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => deleteProduct(product.id)}
-                  >
+                  <Button variant="destructive" size="sm" onClick={() => deleteProduct(product.id)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             ))
+          )}
+
+          {totalCount > PAGE_SIZE && (
+            <div className="flex items-center justify-between pt-4">
+              <div className="text-sm text-muted-foreground">
+                Página {page + 1} de {totalPages} • {totalCount} produtos
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0 || loading}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={page >= totalPages - 1 || loading}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           )}
         </div>
 
@@ -430,7 +477,7 @@ export default function TenantProducts() {
         <PrintLabelsDialog
           open={isLabelsOpen}
           onOpenChange={setIsLabelsOpen}
-          products={products}
+          products={allProductsForLabels}
         />
       </CardContent>
     </Card>
