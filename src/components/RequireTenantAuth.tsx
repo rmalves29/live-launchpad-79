@@ -43,6 +43,7 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     const checkSubscription = async () => {
       if (!tenant?.id || !profile || profile.role === 'super_admin') {
         setSubscriptionExpired(false);
+        setCheckingSubscription(false);
         return;
       }
 
@@ -57,6 +58,7 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
         return;
       }
 
+      setSubscriptionExpired(null);
       setCheckingSubscription(true);
 
       // Fail-open: se demorar mais que 3s, libera acesso
