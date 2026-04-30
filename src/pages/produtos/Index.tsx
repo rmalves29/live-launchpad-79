@@ -1277,7 +1277,7 @@ const Produtos = () => {
         </Card>
       </div>
       {confirmDialogElement}
-      <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} preSelectedIds={selectedProducts} />
+      <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={labelsProducts} preSelectedIds={selectedProducts} />
     </div>
   );
 };
