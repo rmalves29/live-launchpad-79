@@ -260,7 +260,7 @@ const Live = () => {
       if (cartIds.length > 0) {
         const { data: items } = await supabaseTenant.raw
           .from('cart_items')
-          .select('*')
+          .select('id,cart_id,product_id,product_name,product_code,product_image_url,qty,unit_price')
           .in('cart_id', cartIds);
         allCartItems = (items || []) as CartItem[];
       }
