@@ -666,21 +666,52 @@ serve(async (req) => {
 
     // Extract message text
     const messageText = payload.text?.message || payload.message || '';
-    const isGroup = payload.isGroup || payload.chatId?.includes('@g.us') || false;
+    const isGroup = payload.isGroup || (payload.phone && String(payload.phone).includes('-group')) || (payload.chatId && payload.chatId.includes('@g.us')) || false;
     const fromMe = payload.fromMe || false;
-    
-    // Skip messages sent by us
+    const fromApi = (payload as any).fromApi || false;
+
+    // Heurística: detectar se a mensagem traz códigos de produto (C123, c123x2, 2xC123, C370/24, C014-1)
+    // Usamos uma regex leve aqui — a extração final continua mais abaixo.
+    const hasProductCodeQuick = /\b[Cc]\d{1,6}([\/\-]\d{1,3})?\b/.test(messageText || '');
+
+    // Skip messages sent by us — EXCEÇÃO: comentários do próprio atendimento em GRUPO
+    // que contenham código de produto devem ser processados normalmente, pois muitas
+    // lojas usam o número conectado para "lançar" pedidos no grupo.
+    // Nunca processamos mensagens vindas da API (fromApi=true), para evitar loop.
     if (fromMe) {
-      console.log('[zapi-webhook] Ignoring message sent by us');
-      return new Response(JSON.stringify({ success: true, skipped: 'fromMe' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      if (fromApi) {
+        console.log('[zapi-webhook] Ignoring message sent via API (fromApi=true) to avoid loop');
+        return new Response(JSON.stringify({ success: true, skipped: 'fromApi' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (!isGroup) {
+        console.log('[zapi-webhook] Ignoring private message sent by us (fromMe in DM)');
+        return new Response(JSON.stringify({ success: true, skipped: 'fromMe_private' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (!hasProductCodeQuick) {
+        console.log('[zapi-webhook] Ignoring fromMe group message without product code');
+        return new Response(JSON.stringify({ success: true, skipped: 'fromMe_group_no_code' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      console.log('[zapi-webhook] ✅ Accepting fromMe group message with product code (lançamento manual do atendimento)');
     }
 
     // Extract phone number (participantPhone for groups, phone for direct chat)
-    const senderPhone = payload.participantPhone || payload.senderPhone || payload.phone || '';
+    // Em mensagens fromMe de grupo, participantPhone costuma vir vazio ou ser o
+    // próprio número conectado. Nesses casos usamos o connectedPhone como autor
+    // (o pedido será lançado em nome do número da loja).
+    let senderPhone = payload.participantPhone || payload.senderPhone || payload.phone || '';
+    if (fromMe && isGroup) {
+      const candidate = payload.participantPhone || payload.senderPhone || payload.connectedPhone || '';
+      senderPhone = candidate || senderPhone;
+      console.log(`[zapi-webhook] 📌 fromMe group: usando senderPhone=${senderPhone} (participant=${payload.participantPhone || 'N/A'}, connected=${payload.connectedPhone || 'N/A'})`);
+    }
     const groupName = payload.chatName || '';
-    const groupId = payload.chatId || '';
+    const groupId = payload.chatId || payload.phone || '';
 
     // Get messageId for deduplication (Z-API may send messageId or zapiMessageId)
     const messageId = payload.messageId || payload.zapiMessageId;
