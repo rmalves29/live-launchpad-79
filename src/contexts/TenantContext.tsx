@@ -49,7 +49,6 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
     async function loadTenant() {
       // Aguarda auth carregar
       if (authLoading) {
-        setLoading(true);
         return;
       }
 
@@ -181,30 +180,19 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
       }
       
       // Super admin sem preview - carrega primeiro tenant disponível
-      try {
-        const { data: tenants } = await supabase.rpc('list_active_tenants_basic');
-        if (tenants && tenants.length > 0) {
-          const firstTenant = tenants[0];
-          localStorage.setItem(PREVIEW_TENANT_KEY, firstTenant.id);
-          tenantCache.set(firstTenant.id, firstTenant);
-          console.log('👁️ [TenantContext] Super admin carregou primeiro tenant:', firstTenant.name);
-          setTenant(firstTenant);
-          supabaseTenant.setTenantId(firstTenant.id);
-          lastUserId.current = user.id;
-          lastTenantId.current = firstTenant.id;
-          isInitialized.current = true;
-        } else {
-          setTenant(null);
-          supabaseTenant.setTenantId(null);
-        }
-      } catch (err) {
-        console.error('Erro ao listar tenants para super admin:', err);
-        setError('Erro ao carregar empresas');
-        setTenant(null);
-        supabaseTenant.setTenantId(null);
-      } finally {
-        setLoading(false);
+      const { data: tenants } = await supabase.rpc('list_active_tenants_basic');
+      if (tenants && tenants.length > 0) {
+        const firstTenant = tenants[0];
+        localStorage.setItem(PREVIEW_TENANT_KEY, firstTenant.id);
+        tenantCache.set(firstTenant.id, firstTenant);
+        console.log('👁️ [TenantContext] Super admin carregou primeiro tenant:', firstTenant.name);
+        setTenant(firstTenant);
+        supabaseTenant.setTenantId(firstTenant.id);
+        lastUserId.current = user.id;
+        lastTenantId.current = firstTenant.id;
+        isInitialized.current = true;
       }
+      setLoading(false);
     }
 
     loadTenant();

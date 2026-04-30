@@ -8,7 +8,6 @@ import { Loader2, Instagram, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Toaster as Sonner } from '@/components/ui/sonner';
-import { optimizedImageUrl } from '@/lib/image-utils';
 
 interface Tenant {
   id: string;
@@ -129,10 +128,8 @@ export default function CadastroInstagram() {
         {tenant.logo_url && (
           <div className="flex justify-center">
             <img
-              src={optimizedImageUrl(tenant.logo_url, { width: 192 })}
+              src={tenant.logo_url}
               alt={tenant.name}
-              loading="eager"
-              decoding="async"
               className="h-20 w-auto object-contain drop-shadow-md"
             />
           </div>

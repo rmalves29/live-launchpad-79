@@ -14,7 +14,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import { optimizedImageUrl, STORAGE_CACHE_CONTROL } from '@/lib/image-utils';
 
 interface FeGroup {
   id: string;
@@ -91,7 +90,7 @@ export default function MessageComposer() {
 
       const { error: uploadError } = await supabase.storage
         .from('product-images')
-        .upload(path, file, { upsert: true, cacheControl: STORAGE_CACHE_CONTROL });
+        .upload(path, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
@@ -513,7 +512,7 @@ export default function MessageComposer() {
                   <div>
                     <Label className="text-xs text-muted-foreground">Mídia</Label>
                     {viewMessage.content_type === 'image' ? (
-                      <img src={optimizedImageUrl(viewMessage.media_url, { width: 600 })} alt="Mídia" loading="lazy" decoding="async" className="mt-1 rounded-lg max-h-64 object-contain" />
+                      <img src={viewMessage.media_url} alt="Mídia" className="mt-1 rounded-lg max-h-64 object-contain" />
                     ) : viewMessage.content_type === 'video' ? (
                       <video src={viewMessage.media_url} controls className="mt-1 rounded-lg max-h-64" />
                     ) : viewMessage.content_type === 'audio' ? (

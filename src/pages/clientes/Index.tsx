@@ -22,7 +22,6 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { normalizeForStorage, formatPhoneForDisplay } from '@/lib/phone-utils';
-import { optimizedImageUrl } from '@/lib/image-utils';
 import * as XLSX from 'xlsx';
 interface Customer {
   id: number;
@@ -1814,10 +1813,8 @@ const Clientes = () => {
                       <div key={index} className="flex items-start gap-4 p-4 border rounded-lg">
                         {item.product.image_url ? (
                           <img 
-                            src={optimizedImageUrl(item.product.image_url, { width: 200 })} 
+                            src={item.product.image_url} 
                             alt={item.product.name}
-                            loading="lazy"
-                            decoding="async"
                             className="w-16 h-16 object-cover rounded-lg border"
                           />
                         ) : (

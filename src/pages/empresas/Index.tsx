@@ -146,7 +146,7 @@ export default function EmpresasIndex() {
 
       const { error: uploadError } = await supabase.storage
         .from('tenant-logos')
-        .upload(filePath, file, { upsert: true, cacheControl: '31536000' });
+        .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
@@ -785,8 +785,6 @@ export default function EmpresasIndex() {
                       <img 
                         src={formLogoUrl} 
                         alt="Logo" 
-                        loading="lazy"
-                        decoding="async"
                         className="h-16 w-16 object-contain border rounded"
                       />
                       <div className="flex flex-col gap-2">

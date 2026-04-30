@@ -12,7 +12,6 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2, Plus, Trash2, Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
-import { optimizedImageUrl } from '@/lib/image-utils';
 import { getBrasiliaDateISO } from '@/lib/date-utils';
 
 interface Product {
@@ -560,10 +559,8 @@ useEffect(() => {
                           <div className="flex-shrink-0">
                             {productImage ? (
                               <img 
-                                src={optimizedImageUrl(productImage, { width: 96 })} 
+                                src={productImage} 
                                 alt={productName}
-                                loading="lazy"
-                                decoding="async"
                                 className="w-12 h-12 object-cover rounded border"
                               />
                             ) : (

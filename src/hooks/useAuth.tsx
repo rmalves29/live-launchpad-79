@@ -51,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (!isMounted) return;
       
+      // Se houve erro de refresh token, não fazer logout - manter estado atual
       if (error) {
         console.warn('Session error (ignoring):', error.message);
         setIsLoading(false);
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
+        // Se já temos profile em cache para este user, usar
         if (profileCache && profileCache.id === session.user.id) {
           setProfile(profileCache);
           setIsLoading(false);
@@ -70,64 +72,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setIsLoading(false);
       }
-    }).catch((err) => {
-      console.error('[useAuth] getSession failed:', err);
-      if (isMounted) setIsLoading(false);
     });
 
-    // Listen for auth changes
+    // Listen for auth changes - only respond to explicit user actions
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, newSession) => {
+      async (event, newSession) => {
         if (!isMounted) return;
         
-        console.log('[LOGIN-DIAG] auth event:', event, 'hasSession:', !!newSession);
-        
-        // TOKEN_REFRESHED e USER_UPDATED não exigem reload de profile
-        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-          if (newSession) setSession(newSession);
+        // Ignorar eventos que não são ações explícitas do usuário
+        // TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED podem causar re-renders desnecessários
+        if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
           return;
         }
         
-        // INITIAL_SESSION pode chegar antes/depois do getSession.
-        // Sempre sincronizar estado aqui para evitar tela presa em carregamento.
-        if (event === 'INITIAL_SESSION') {
-          setSession(newSession);
-          setUser(newSession?.user ?? null);
-
-          if (newSession?.user) {
-            if (profileCache && profileCache.id === newSession.user.id) {
-              setProfile(profileCache);
-              setIsLoading(false);
-            } else {
-              setTimeout(() => {
-                if (isMounted) loadProfile(newSession.user.id);
-              }, 0);
-            }
-          } else {
-            setIsLoading(false);
-          }
-          return;
-        }
-        
+        // Só responder a login/logout explícitos
         if (event === 'SIGNED_IN') {
           setSession(newSession);
           setUser(newSession?.user ?? null);
           if (newSession?.user) {
-            // Invalidar cache se for outro usuário
-            if (profileCache && profileCache.id !== newSession.user.id) {
-              profileCache = null;
-              setProfile(null);
-            }
+            // Se já temos profile em cache para este user, usar
             if (profileCache && profileCache.id === newSession.user.id) {
               setProfile(profileCache);
-              setIsLoading(false);
             } else {
               setTimeout(() => {
                 if (isMounted) loadProfile(newSession.user.id);
               }, 0);
             }
-          } else {
-            setIsLoading(false);
           }
         } else if (event === 'SIGNED_OUT') {
           // Limpar tudo ao fazer logout
@@ -152,19 +122,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Evitar carregamentos simultâneos
     if (loadingProfile.current) return;
     loadingProfile.current = true;
-    const profileTimeout = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout ao carregar perfil do usuário')), 5000);
-    });
     
     try {
-      const { data: profileData, error } = await Promise.race([
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle(),
-        profileTimeout,
-      ]);
+      const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
 
       if (error) throw error;
       

@@ -5,7 +5,6 @@ import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { optimizedImageUrl } from '@/lib/image-utils';
 
 interface KnowledgeFileUploadProps {
   tenantId: string;
@@ -136,7 +135,7 @@ export function KnowledgeFileUpload({
       const { data, error } = await supabase.storage
         .from('knowledge-files')
         .upload(fileName, file, {
-          cacheControl: '31536000',
+          cacheControl: '3600',
           upsert: false
         });
 
@@ -197,10 +196,8 @@ export function KnowledgeFileUpload({
         {/* Preview for images and videos */}
         {currentFile.file_type === 'image' && (
           <img 
-            src={optimizedImageUrl(currentFile.file_url, { width: 600 })} 
+            src={currentFile.file_url} 
             alt={currentFile.file_name} 
-            loading="lazy"
-            decoding="async"
             className="mt-3 rounded-lg max-h-48 object-cover w-full"
           />
         )}

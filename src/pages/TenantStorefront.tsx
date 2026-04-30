@@ -17,7 +17,6 @@ import { Input } from '@/components/ui/input';
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/utils';
-import { optimizedImageUrl } from '@/lib/image-utils';
 import { toast } from '@/hooks/use-toast';
 import IdentifyCustomerDialog, { type StorefrontIdentity } from '@/components/storefront/IdentifyCustomerDialog';
 
@@ -289,7 +288,7 @@ export default function TenantStorefront() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center gap-4">
             {tenant.logo_url && (
-              <img src={optimizedImageUrl(tenant.logo_url, { width: 128 })} alt={tenant.name} loading="eager" decoding="async" className="h-16 w-16 object-contain rounded-lg" />
+              <img src={tenant.logo_url} alt={tenant.name} className="h-16 w-16 object-contain rounded-lg" />
             )}
             <div className="flex-1">
               <h1 className="text-3xl font-bold text-gray-900">{tenant.name}</h1>
@@ -378,7 +377,7 @@ export default function TenantStorefront() {
                       <div key={product.id} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow flex flex-col">
                         <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden relative">
                           {product.image_url ? (
-                            <img src={optimizedImageUrl(product.image_url, { width: 400 })} alt={product.name} loading="lazy" decoding="async" className={`w-full h-full object-cover ${isOutOfStock ? 'opacity-60' : ''}`} />
+                            <img src={product.image_url} alt={product.name} className={`w-full h-full object-cover ${isOutOfStock ? 'opacity-60' : ''}`} loading="lazy" />
                           ) : (
                             <ShoppingBag className="h-12 w-12 text-gray-300" />
                           )}

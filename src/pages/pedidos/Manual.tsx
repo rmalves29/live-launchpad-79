@@ -14,7 +14,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
-import { optimizedImageUrl } from '@/lib/image-utils';
 
 
 interface Product {
@@ -578,10 +577,8 @@ const PedidosManual = () => {
                       <TableCell>
                         {product.image_url ? (
                           <img 
-                            src={optimizedImageUrl(product.image_url, { width: 200 })} 
+                            src={product.image_url} 
                             alt={product.name}
-                            loading="lazy"
-                            decoding="async"
                             className="w-12 h-12 object-cover rounded"
                           />
                         ) : (

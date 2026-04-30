@@ -3,7 +3,6 @@ import { useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ZoomIn } from "lucide-react";
-import { optimizedImageUrl } from "@/lib/image-utils";
 
 interface ZoomableImageProps {
   src: string;
@@ -11,8 +10,6 @@ interface ZoomableImageProps {
   className?: string;
   containerClassName?: string;
   fallback?: React.ReactNode;
-  /** Largura alvo da thumbnail (default 400px). Original é usada no modal. */
-  thumbWidth?: number;
 }
 
 export const ZoomableImage = ({
@@ -20,10 +17,8 @@ export const ZoomableImage = ({
   alt,
   className,
   containerClassName,
-  fallback,
-  thumbWidth = 400,
+  fallback
 }: ZoomableImageProps) => {
-  const thumbSrc = optimizedImageUrl(src, { width: thumbWidth });
   const [isOpen, setIsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [lensPosition, setLensPosition] = useState({ x: 0, y: 0 });
@@ -63,10 +58,8 @@ export const ZoomableImage = ({
         onClick={() => setIsOpen(true)}
       >
         <img
-          src={thumbSrc}
+          src={src}
           alt={alt}
-          loading="lazy"
-          decoding="async"
           className={cn(
             "object-cover transition-transform duration-300",
             isHovered && "scale-110",

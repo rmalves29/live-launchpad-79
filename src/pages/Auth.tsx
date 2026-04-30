@@ -135,9 +135,31 @@ export default function Auth() {
       const { data, error } = await signInWithPasswordResilient(email, password);
       if (error) throw error;
 
-      console.log('[LOGIN-DIAG] Login bem-sucedido, navegando para:', from);
-      // Deixar RequireTenantAuth fazer toda a validação de tenant/assinatura.
-      // Aqui só navegamos. Isso elimina race condition.
+      // Verificar se a tenant do usuário tem acesso
+      if (data.user) {
+        const accessCheck = await checkTenantAccess(data.user.id);
+        console.log('[Auth] Resultado da verificação:', accessCheck);
+        
+        if (!accessCheck.allowed) {
+          // Se assinatura expirou, redirecionar para página de renovação
+          if (accessCheck.reason === 'subscription_expired') {
+            console.log('[Auth] Redirecionando para /renovar-assinatura');
+            toast({ 
+              title: "Assinatura Expirada", 
+              description: "Você será redirecionado para renovar seu plano." 
+            });
+            // NÃO fazer logout - manter o usuário logado para a página de renovação
+            navigate("/renovar-assinatura", { replace: true });
+            return;
+          }
+          
+          // Outros casos: fazer logout
+          await supabase.auth.signOut();
+          setAccessError(accessCheck.reason || 'Acesso negado.');
+          return;
+        }
+      }
+
       toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
       navigate(from, { replace: true });
     } catch (err: any) {

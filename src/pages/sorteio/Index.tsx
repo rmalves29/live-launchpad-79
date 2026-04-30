@@ -14,7 +14,6 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatBrasiliaDate } from '@/lib/date-utils';
-import { optimizedImageUrl } from '@/lib/image-utils';
 
 interface Candidate {
   customer_phone: string;
@@ -429,10 +428,8 @@ const Sorteio = () => {
                     <div className="w-32 h-32 rounded-2xl shadow-2xl overflow-hidden transform hover:scale-105 transition-all duration-300 rotate-3 hover:rotate-6">
                       {winner.profile_image ? (
                         <img
-                          src={optimizedImageUrl(winner.profile_image, { width: 256 })}
+                          src={winner.profile_image}
                           alt={`Foto de ${winner.customer_name}`}
-                          loading="lazy"
-                          decoding="async"
                           className="w-full h-full object-cover"
                         />
                       ) : (
