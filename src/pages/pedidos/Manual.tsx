@@ -49,7 +49,7 @@ const PedidosManual = () => {
       setLoading(true);
       let query = supabaseTenant
         .from('products')
-        .select('*')
+        .select('id,code,name,price,promotional_price,stock,image_url,is_active,sale_type,color,size')
         .eq('is_active', true)
         .in('sale_type', ['BAZAR', 'AMBOS'])
         .order('code');
