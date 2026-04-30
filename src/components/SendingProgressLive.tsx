@@ -98,11 +98,14 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     }
   }, [activeJob?.job_data?.countdownSeconds, activeJob?.job_data?.isWaitingForNextProduct, activeJob?.job_data?.isWaitingForNextGroup]);
 
-  // Fetch tasks for active job
+  // Colunas mínimas usadas pelo componente (omite tenant_id, created_at, started_at)
+  const TASK_COLUMNS = 'id, job_id, product_id, product_code, group_id, group_name, sequence, status, error_message, completed_at';
+
+  // Fetch tasks for active job — usado no mount e como fallback manual (reconnect realtime / stuck recovery)
   const fetchTasks = useCallback(async (jobId: string) => {
     const { data, error } = await supabase
       .from('sendflow_tasks')
-      .select('*')
+      .select(TASK_COLUMNS)
       .eq('job_id', jobId)
       .order('sequence', { ascending: true });
 
@@ -112,6 +115,30 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     }
     return null;
   }, []);
+
+  // Polling leve: só conta tasks finalizadas (HEAD request, zero linhas no payload)
+  const fetchProgressCount = useCallback(async (jobId: string): Promise<number | null> => {
+    const { count, error } = await supabase
+      .from('sendflow_tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_id', jobId)
+      .in('status', ['completed', 'skipped', 'error']);
+    if (error) return null;
+    return count ?? 0;
+  }, []);
+
+  // Visibilidade da aba — pausa polling quando aba está oculta
+  const [isTabVisible, setIsTabVisible] = useState(
+    typeof document !== 'undefined' ? document.visibilityState === 'visible' : true
+  );
+  useEffect(() => {
+    const onVisibility = () => setIsTabVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  // Health do canal Realtime — se cair, fallback para refetch completo
+  const realtimeHealthyRef = useRef(true);
 
   // Fetch job from DB (used by polling)
   const fetchJobFromDb = useCallback(async (jobId: string): Promise<SendingJob | null> => {
