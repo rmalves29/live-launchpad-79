@@ -352,7 +352,7 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id, jobType, activeJob?.id]);
 
-  // Real-time subscription for task updates (supplement to polling)
+  // Real-time subscription for task updates — atualiza estado local via payload sem refetch
   useEffect(() => {
     if (!activeJob?.id) return;
     const channel = supabase
@@ -362,12 +362,24 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
         schema: 'public',
         table: 'sendflow_tasks',
         filter: `job_id=eq.${activeJob.id}`,
-      }, () => {
-        fetchTasks(activeJob.id);
+      }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const newTask = payload.new as SendFlowTask;
+          setTasks(prev => {
+            if (prev.some(t => t.id === newTask.id)) return prev;
+            return [...prev, newTask].sort((a, b) => a.sequence - b.sequence);
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as SendFlowTask;
+          setTasks(prev => prev.map(t => (t.id === updated.id ? { ...t, ...updated } : t)));
+        } else if (payload.eventType === 'DELETE') {
+          const oldTask = payload.old as SendFlowTask;
+          setTasks(prev => prev.filter(t => t.id !== oldTask.id));
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [activeJob?.id, fetchTasks]);
+  }, [activeJob?.id]);
 
   // Completed job screen
   if (completedJob) {
