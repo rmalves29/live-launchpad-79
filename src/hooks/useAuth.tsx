@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
+      (event, newSession) => {
         if (!isMounted) return;
         
         console.log('[LOGIN-DIAG] auth event:', event, 'hasSession:', !!newSession);
@@ -88,9 +88,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         
-        // INITIAL_SESSION: garantir que isLoading vire false
+        // INITIAL_SESSION pode chegar antes/depois do getSession.
+        // Sempre sincronizar estado aqui para evitar tela presa em carregamento.
         if (event === 'INITIAL_SESSION') {
-          if (!newSession) {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
+
+          if (newSession?.user) {
+            if (profileCache && profileCache.id === newSession.user.id) {
+              setProfile(profileCache);
+              setIsLoading(false);
+            } else {
+              setTimeout(() => {
+                if (isMounted) loadProfile(newSession.user.id);
+              }, 0);
+            }
+          } else {
             setIsLoading(false);
           }
           return;
