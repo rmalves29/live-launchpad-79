@@ -391,9 +391,11 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id, jobType, activeJob?.id]);
 
-  // Real-time subscription for task updates — atualiza estado local via payload sem refetch
+  // Real-time subscription for task updates — merge parcial só com campos mutáveis (status/error_message/completed_at).
+  // Se o canal cair, marca realtimeHealthyRef=false e o próximo poll faz refetch completo como fallback.
   useEffect(() => {
     if (!activeJob?.id) return;
+    realtimeHealthyRef.current = true;
     const channel = supabase
       .channel(`sendflow-tasks-${activeJob.id}`)
       .on('postgres_changes', {
@@ -409,15 +411,35 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
             return [...prev, newTask].sort((a, b) => a.sequence - b.sequence);
           });
         } else if (payload.eventType === 'UPDATE') {
-          const updated = payload.new as SendFlowTask;
-          setTasks(prev => prev.map(t => (t.id === updated.id ? { ...t, ...updated } : t)));
+          const u = payload.new as SendFlowTask;
+          // Aplica apenas campos mutáveis — preserva referência dos imutáveis (product_code, group_name, sequence)
+          // e evita re-render se status/error_message/completed_at não mudarem de fato.
+          setTasks(prev => prev.map(t => {
+            if (t.id !== u.id) return t;
+            if (
+              t.status === u.status &&
+              t.error_message === u.error_message &&
+              t.completed_at === u.completed_at
+            ) return t;
+            return { ...t, status: u.status, error_message: u.error_message, completed_at: u.completed_at };
+          }));
         } else if (payload.eventType === 'DELETE') {
           const oldTask = payload.old as SendFlowTask;
           setTasks(prev => prev.filter(t => t.id !== oldTask.id));
         }
       })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      .subscribe((status) => {
+        // SUBSCRIBED = saudável; CHANNEL_ERROR/TIMED_OUT/CLOSED = degradado → próximo poll faz fallback completo
+        if (status === 'SUBSCRIBED') {
+          realtimeHealthyRef.current = true;
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          realtimeHealthyRef.current = false;
+        }
+      });
+    return () => {
+      realtimeHealthyRef.current = false;
+      supabase.removeChannel(channel);
+    };
   }, [activeJob?.id]);
 
   // Completed job screen
