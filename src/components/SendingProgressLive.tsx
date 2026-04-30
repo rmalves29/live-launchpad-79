@@ -152,12 +152,18 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
   }, []);
 
   // ─── Resilient Polling (every 15s) ───
+  // Garantias:
+  //  - Não roda sem job ativo (early return)
+  //  - Não roda quando aba está oculta (pausa para economizar egress)
+  //  - Usa COUNT agregado (HEAD request, payload ~0 bytes) em vez de refetch das tasks
+  //  - Se realtime estiver caído, faz refetch completo como fallback
   useEffect(() => {
     if (!activeJob?.id) return;
+    if (!isTabVisible) return;
 
     const poll = async () => {
       try {
-        // 1. Re-fetch the job itself
+        // 1. Re-fetch the job itself (necessário para countdown e job_data)
         const freshJob = await fetchJobFromDb(activeJob.id);
         if (!freshJob) return;
 
@@ -179,34 +185,40 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
         // 4. Update job data (countdown, progress, etc.)
         setActiveJob(freshJob);
 
-        // 5. Re-fetch tasks to get latest progress
-        const freshTasks = await fetchTasks(freshJob.id);
-        if (freshTasks) {
-          const doneCount = freshTasks.filter(
-            (t: SendFlowTask) => ['completed', 'skipped', 'error'].includes(t.status)
-          ).length;
+        // 5. Fallback: se realtime caiu, refetch completo das tasks
+        //    Caso contrário, apenas count agregado (HEAD, ~0 bytes)
+        let doneCount: number | null = null;
+        if (!realtimeHealthyRef.current) {
+          const freshTasks = await fetchTasks(freshJob.id);
+          if (freshTasks) {
+            doneCount = freshTasks.filter(
+              (t: SendFlowTask) => ['completed', 'skipped', 'error'].includes(t.status)
+            ).length;
+          }
+          // marca como saudável de novo até próxima desconexão
+          realtimeHealthyRef.current = true;
+        } else {
+          doneCount = await fetchProgressCount(freshJob.id);
+        }
 
-          // Track progress changes for stuck detection
-          if (doneCount > lastProgressRef.current.count) {
-            // Progress was made — reset the stuck timer
+        if (doneCount === null) return;
+
+        // Track progress changes for stuck detection
+        if (doneCount > lastProgressRef.current.count) {
+          lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
+          setIsJobStuck(false);
+        } else {
+          const isIntentionalWait =
+            (freshJob.job_data?.isWaitingForNextProduct === true) ||
+            (freshJob.job_data?.isWaitingForNextGroup === true) ||
+            ((freshJob.job_data?.countdownSeconds ?? 0) > 0);
+
+          if (isIntentionalWait) {
             lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
             setIsJobStuck(false);
           } else {
-            // No new tasks completed — but check if we're in an intentional waiting period
-            const isIntentionalWait =
-              (freshJob.job_data?.isWaitingForNextProduct === true) ||
-              (freshJob.job_data?.isWaitingForNextGroup === true) ||
-              ((freshJob.job_data?.countdownSeconds ?? 0) > 0);
-
-            if (isIntentionalWait) {
-              // We're waiting intentionally between groups or products — reset stuck timer
-              lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
-              setIsJobStuck(false);
-            } else {
-              // Truly no progress and not waiting — check threshold
-              const elapsed = Date.now() - lastProgressRef.current.timestamp;
-              setIsJobStuck(elapsed > STUCK_THRESHOLD_MS);
-            }
+            const elapsed = Date.now() - lastProgressRef.current.timestamp;
+            setIsJobStuck(elapsed > STUCK_THRESHOLD_MS);
           }
         }
       } catch (err) {
@@ -216,7 +228,7 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
 
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, [activeJob?.id, fetchJobFromDb, fetchTasks]);
+  }, [activeJob?.id, isTabVisible, fetchJobFromDb, fetchTasks, fetchProgressCount]);
 
   // ─── Initialize lastProgressRef when tasks first load ───
   useEffect(() => {
