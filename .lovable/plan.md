@@ -1,63 +1,73 @@
-## Diagnóstico do "número travado"
+## Contexto
 
-### Estado real do banco
+Por causa do bug de roteamento Z-API (chip físico compartilhado), 53 pedidos do dia 30/04/2026 foram criados na **MANIA DE MULHER** quando deveriam ter sido criados na **OF Beauty**. O catálogo das duas empresas usa o mesmo padrão de código (`C111`, `C178`, etc.), mas os produtos por trás de cada code são **completamente diferentes** (MdM = bijuteria, OF Beauty = cosméticos).
 
-| Tenant | instance_name | zapi_instance_id | connected_phone (DB) |
-|---|---|---|---|
-| **OF Beauty** | OF Beauty | `3EE357CFEFA671068B786A3724C122CF` | **NULL** ✅ |
-| **MANIA DE MULHER** | MdM | `3EDEE98CBD67B27EEFAABE5CCAAE0F16` | `553496540724` ✅ |
+## Decisões já tomadas pelo usuário
 
-**No banco está limpo e correto** — não há duplicidade, não há "trava" do número entre os tenants.
+1. Mover os pedidos para OF Beauty.
+2. Remapear cada `cart_item` por `product_code` para o produto correspondente da OF Beauty (recalculando preço, nome, product_id, image_url).
+3. **Manter na MdM** o pedido `#6565` (Maria Madalena, R$ 67, **PAGO**) — não mexer.
+4. Pedido `#6567` (Marina Bessas, código C282 inexistente na OF Beauty) será movido mesmo assim, mantendo o item original (workaround pontual).
+5. O pedido cancelado (`#6587`) também será movido junto.
 
-### Por que a tela da OF Beauty mostra "Número Conectado: 553496540724"
+## Escopo final
 
-Essa tela busca o número **direto da Z-API** (não do nosso banco). Como a instância Z-API da OF Beauty (`3EE357CFE...`) está com **o mesmo aparelho/chip da MdM (553496540724) conectado fisicamente via QR Code**, a Z-API responde com esse número.
+- **52 pedidos** a serem transferidos (todos do dia 30/04 exceto `#6565`).
+- **Carts** correspondentes (52) também migram.
+- **Cart_items** (≈52+) serão remapeados pelo `product_code` em produtos da OF Beauty.
+- C282 do pedido `#6567` será mantido como está (não existe na OF Beauty), mas o `tenant_id` do item será atualizado.
 
-Esse é também o motivo do conflito do webhook que vimos antes: o payload que chega traz `connectedPhone = 553496540724` e nossa função estava roteando pelo telefone em vez do instanceId.
+## Plano de execução (em uma migration única, transacional)
 
-## Para "destravar" / limpar — duas frentes
+```text
+BEGIN
 
-### Frente 1 — Desconectar o WhatsApp do chip duplicado (ação na Z-API)
+1) Para cada cart_item dos 52 pedidos:
+     - Buscar produto da OF Beauty pelo product_code do item.
+     - Se encontrado:
+         UPDATE cart_items SET
+           tenant_id = OF_BEAUTY,
+           product_id = p_of.id,
+           product_name = p_of.name,
+           unit_price = COALESCE(p_of.promotional_price, p_of.price),
+           product_image_url = p_of.image_url
+     - Se NÃO encontrado (caso C282):
+         UPDATE cart_items SET tenant_id = OF_BEAUTY  -- mantém snapshot original
 
-Esta é a única forma de o número parar de aparecer na OF Beauty. **Tem que ser feito pelo dono da conta**, não dá pra fazer só pelo banco:
+2) UPDATE carts SET tenant_id = OF_BEAUTY WHERE id IN (...)
 
-1. Entrar no painel Z-API com a conta da OF Beauty.
-2. Acessar a instância `3EE357CFEFA671068B786A3724C122CF`.
-3. Clicar em **"Desconectar"** (ou ler o QR Code com **outro celular/chip**, dedicado à OF Beauty).
-4. Após desconectar, a Z-API vai parar de enviar `connectedPhone=553496540724` nos webhooks da OF Beauty.
+3) Para cada order, recalcular total_amount baseado nos novos cart_items
+   (mantendo frete/pix_discount/coupon do observation, se houver):
+     UPDATE orders SET
+       tenant_id = OF_BEAUTY,
+       total_amount = (novo_subtotal - desc_pix - desc_cupom) + frete
 
-Alternativa rápida via app: também posso adicionar um botão **"Desconectar instância"** na tela de configurações que chama o endpoint `/disconnect` da Z-API, para o cliente fazer isso direto pelo nosso painel.
+4) INSERT em audit_logs: registro completo da operação por pedido
+   (tenant_origem, tenant_destino, total_anterior, total_novo, items_remapeados)
 
-### Frente 2 — Blindar o sistema para esse cenário não dar problema (ação no código)
-
-Mesmo que o cliente continue com o chip compartilhado por agora, o roteamento do webhook precisa **sempre confiar no `instanceId`** (que é único e correto), nunca no `connectedPhone`:
-
-#### 2.1 — Corrigir `resolveZapiIntegration` em `supabase/functions/zapi-webhook/index.ts`
-Inverter a ordem de prioridade: `instanceId` primeiro, `connectedPhone` só como fallback. Em caso de divergência, **manter o tenant do instanceId** e apenas logar (sem trocar de tenant).
-
-#### 2.2 — Migration: índice único parcial em `zapi_instance_id`
-```sql
-CREATE UNIQUE INDEX idx_integration_whatsapp_zapi_instance_active
-  ON integration_whatsapp (zapi_instance_id)
-  WHERE is_active = true AND zapi_instance_id IS NOT NULL;
+COMMIT
 ```
-Garante que uma mesma instância Z-API nunca possa ser cadastrada como ativa em dois tenants ao mesmo tempo.
 
-#### 2.3 — (opcional) Botão "Limpar número conectado" na tela
-Um botão pequeno na seção "Número Conectado" da OF Beauty que chama o endpoint `/disconnect` da Z-API. Após desconectar, o cliente lê o QR Code com o chip correto. Posso incluir junto.
+## Salvaguardas
 
-## Resumo do que vou fazer ao aprovar
+- Tudo dentro de uma única transação — se algo falhar, rollback completo.
+- Pedido pago `#6565` **explicitamente excluído** do escopo.
+- Backup/snapshot via `audit_logs` com payload completo de cada item antes/depois.
+- Trigger `validate_order_total_on_payment` não dispara (pedidos não estão sendo marcados como pagos).
+- Trigger `set_tenant_id` não atrapalha (só roda em INSERT, não UPDATE).
 
-1. Corrigir `resolveZapiIntegration` no `zapi-webhook` (prioriza instanceId).
-2. Criar migration com o índice único.
-3. (Se aprovar) Adicionar botão "Desconectar WhatsApp" na tela de configurações da integração WhatsApp, que chama `POST /instances/{instanceId}/token/{token}/disconnect` na Z-API.
-4. Te orientar a desconectar a instância da OF Beauty e reler o QR Code com o chip definitivo da OF Beauty.
+## Impactos esperados
 
-## O que NÃO vou fazer (e por quê)
+- Os 52 pedidos somem do painel da MdM e aparecem no painel da OF Beauty.
+- **Os valores dos pedidos vão mudar drasticamente**, porque os preços da OF Beauty são muito menores que os da MdM (ex: C111 vai de R$ 55 → R$ 0,99). A maioria dos pedidos abertos hoje somando R$ ~3.000 deve cair para R$ ~500 após o remapeamento.
+- Clientes (`customers`) **não serão movidos** — eles continuam vinculados à MdM. Se desejar replicar o cliente na OF Beauty, é uma etapa separada.
+- Carrinhos abertos: os pagamentos pendentes referenciarão o tenant novo. Se o cliente clicar no link antigo, o pagamento vai cair como OF Beauty.
+- Não vou disparar nenhum WhatsApp como efeito colateral (operação é só `UPDATE` em tabelas de dados).
 
-- ❌ **Não vou alterar `connected_phone` da MANIA DE MULHER** — está correto, é o número real dela.
-- ❌ **Não vou setar `connected_phone` da OF Beauty manualmente** — esse campo deve ser populado automaticamente pela função `fe-list-groups` quando a Z-API reporta o número conectado real. Setar manualmente um número errado só vai mascarar o problema.
+## Confirmação final necessária
 
----
+Antes de eu executar, me confirma duas coisas:
 
-**Aprova essas 3 ações (correção do webhook + índice único + botão de desconectar)?** Ou prefere que eu faça só as duas primeiras agora e o botão depois?
+1. **Os preços vão mudar drasticamente** (cair muito). Tudo bem? Ou prefere **manter os preços/nomes originais** que foram cobrados (snapshot de bijuteria) e só trocar o `tenant_id` para a OF Beauty?
+2. **Quero gravar um audit_log completo** do estado anterior pra você poder reverter caso necessário. Pode ser?
+
