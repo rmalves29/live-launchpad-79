@@ -152,13 +152,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Evitar carregamentos simultâneos
     if (loadingProfile.current) return;
     loadingProfile.current = true;
+    const profileTimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Timeout ao carregar perfil do usuário')), 5000);
+    });
     
     try {
-      const { data: profileData, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
+      const { data: profileData, error } = await Promise.race([
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle(),
+        profileTimeout,
+      ]);
 
       if (error) throw error;
       
