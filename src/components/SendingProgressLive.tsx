@@ -98,11 +98,14 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     }
   }, [activeJob?.job_data?.countdownSeconds, activeJob?.job_data?.isWaitingForNextProduct, activeJob?.job_data?.isWaitingForNextGroup]);
 
-  // Fetch tasks for active job
+  // Colunas mínimas usadas pelo componente (omite tenant_id, created_at, started_at)
+  const TASK_COLUMNS = 'id, job_id, product_id, product_code, group_id, group_name, sequence, status, error_message, completed_at';
+
+  // Fetch tasks for active job — usado no mount e como fallback manual (reconnect realtime / stuck recovery)
   const fetchTasks = useCallback(async (jobId: string) => {
     const { data, error } = await supabase
       .from('sendflow_tasks')
-      .select('*')
+      .select(TASK_COLUMNS)
       .eq('job_id', jobId)
       .order('sequence', { ascending: true });
 
@@ -112,6 +115,30 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     }
     return null;
   }, []);
+
+  // Polling leve: só conta tasks finalizadas (HEAD request, zero linhas no payload)
+  const fetchProgressCount = useCallback(async (jobId: string): Promise<number | null> => {
+    const { count, error } = await supabase
+      .from('sendflow_tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('job_id', jobId)
+      .in('status', ['completed', 'skipped', 'error']);
+    if (error) return null;
+    return count ?? 0;
+  }, []);
+
+  // Visibilidade da aba — pausa polling quando aba está oculta
+  const [isTabVisible, setIsTabVisible] = useState(
+    typeof document !== 'undefined' ? document.visibilityState === 'visible' : true
+  );
+  useEffect(() => {
+    const onVisibility = () => setIsTabVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  // Health do canal Realtime — se cair, fallback para refetch completo
+  const realtimeHealthyRef = useRef(true);
 
   // Fetch job from DB (used by polling)
   const fetchJobFromDb = useCallback(async (jobId: string): Promise<SendingJob | null> => {
@@ -125,12 +152,18 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
   }, []);
 
   // ─── Resilient Polling (every 15s) ───
+  // Garantias:
+  //  - Não roda sem job ativo (early return)
+  //  - Não roda quando aba está oculta (pausa para economizar egress)
+  //  - Usa COUNT agregado (HEAD request, payload ~0 bytes) em vez de refetch das tasks
+  //  - Se realtime estiver caído, faz refetch completo como fallback
   useEffect(() => {
     if (!activeJob?.id) return;
+    if (!isTabVisible) return;
 
     const poll = async () => {
       try {
-        // 1. Re-fetch the job itself
+        // 1. Re-fetch the job itself (necessário para countdown e job_data)
         const freshJob = await fetchJobFromDb(activeJob.id);
         if (!freshJob) return;
 
@@ -152,34 +185,40 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
         // 4. Update job data (countdown, progress, etc.)
         setActiveJob(freshJob);
 
-        // 5. Re-fetch tasks to get latest progress
-        const freshTasks = await fetchTasks(freshJob.id);
-        if (freshTasks) {
-          const doneCount = freshTasks.filter(
-            (t: SendFlowTask) => ['completed', 'skipped', 'error'].includes(t.status)
-          ).length;
+        // 5. Fallback: se realtime caiu, refetch completo das tasks
+        //    Caso contrário, apenas count agregado (HEAD, ~0 bytes)
+        let doneCount: number | null = null;
+        if (!realtimeHealthyRef.current) {
+          const freshTasks = await fetchTasks(freshJob.id);
+          if (freshTasks) {
+            doneCount = freshTasks.filter(
+              (t: SendFlowTask) => ['completed', 'skipped', 'error'].includes(t.status)
+            ).length;
+          }
+          // marca como saudável de novo até próxima desconexão
+          realtimeHealthyRef.current = true;
+        } else {
+          doneCount = await fetchProgressCount(freshJob.id);
+        }
 
-          // Track progress changes for stuck detection
-          if (doneCount > lastProgressRef.current.count) {
-            // Progress was made — reset the stuck timer
+        if (doneCount === null) return;
+
+        // Track progress changes for stuck detection
+        if (doneCount > lastProgressRef.current.count) {
+          lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
+          setIsJobStuck(false);
+        } else {
+          const isIntentionalWait =
+            (freshJob.job_data?.isWaitingForNextProduct === true) ||
+            (freshJob.job_data?.isWaitingForNextGroup === true) ||
+            ((freshJob.job_data?.countdownSeconds ?? 0) > 0);
+
+          if (isIntentionalWait) {
             lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
             setIsJobStuck(false);
           } else {
-            // No new tasks completed — but check if we're in an intentional waiting period
-            const isIntentionalWait =
-              (freshJob.job_data?.isWaitingForNextProduct === true) ||
-              (freshJob.job_data?.isWaitingForNextGroup === true) ||
-              ((freshJob.job_data?.countdownSeconds ?? 0) > 0);
-
-            if (isIntentionalWait) {
-              // We're waiting intentionally between groups or products — reset stuck timer
-              lastProgressRef.current = { count: doneCount, timestamp: Date.now() };
-              setIsJobStuck(false);
-            } else {
-              // Truly no progress and not waiting — check threshold
-              const elapsed = Date.now() - lastProgressRef.current.timestamp;
-              setIsJobStuck(elapsed > STUCK_THRESHOLD_MS);
-            }
+            const elapsed = Date.now() - lastProgressRef.current.timestamp;
+            setIsJobStuck(elapsed > STUCK_THRESHOLD_MS);
           }
         }
       } catch (err) {
@@ -189,7 +228,7 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
 
     const intervalId = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, [activeJob?.id, fetchJobFromDb, fetchTasks]);
+  }, [activeJob?.id, isTabVisible, fetchJobFromDb, fetchTasks, fetchProgressCount]);
 
   // ─── Initialize lastProgressRef when tasks first load ───
   useEffect(() => {
@@ -352,9 +391,11 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
     return () => { supabase.removeChannel(channel); };
   }, [tenant?.id, jobType, activeJob?.id]);
 
-  // Real-time subscription for task updates — atualiza estado local via payload sem refetch
+  // Real-time subscription for task updates — merge parcial só com campos mutáveis (status/error_message/completed_at).
+  // Se o canal cair, marca realtimeHealthyRef=false e o próximo poll faz refetch completo como fallback.
   useEffect(() => {
     if (!activeJob?.id) return;
+    realtimeHealthyRef.current = true;
     const channel = supabase
       .channel(`sendflow-tasks-${activeJob.id}`)
       .on('postgres_changes', {
@@ -370,15 +411,35 @@ export default function SendingProgressLive({ jobType, onResumeJob, onNewSend }:
             return [...prev, newTask].sort((a, b) => a.sequence - b.sequence);
           });
         } else if (payload.eventType === 'UPDATE') {
-          const updated = payload.new as SendFlowTask;
-          setTasks(prev => prev.map(t => (t.id === updated.id ? { ...t, ...updated } : t)));
+          const u = payload.new as SendFlowTask;
+          // Aplica apenas campos mutáveis — preserva referência dos imutáveis (product_code, group_name, sequence)
+          // e evita re-render se status/error_message/completed_at não mudarem de fato.
+          setTasks(prev => prev.map(t => {
+            if (t.id !== u.id) return t;
+            if (
+              t.status === u.status &&
+              t.error_message === u.error_message &&
+              t.completed_at === u.completed_at
+            ) return t;
+            return { ...t, status: u.status, error_message: u.error_message, completed_at: u.completed_at };
+          }));
         } else if (payload.eventType === 'DELETE') {
           const oldTask = payload.old as SendFlowTask;
           setTasks(prev => prev.filter(t => t.id !== oldTask.id));
         }
       })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      .subscribe((status) => {
+        // SUBSCRIBED = saudável; CHANNEL_ERROR/TIMED_OUT/CLOSED = degradado → próximo poll faz fallback completo
+        if (status === 'SUBSCRIBED') {
+          realtimeHealthyRef.current = true;
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          realtimeHealthyRef.current = false;
+        }
+      });
+    return () => {
+      realtimeHealthyRef.current = false;
+      supabase.removeChannel(channel);
+    };
   }, [activeJob?.id]);
 
   // Completed job screen
