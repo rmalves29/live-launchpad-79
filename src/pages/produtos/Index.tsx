@@ -1134,7 +1134,7 @@ const Produtos = () => {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <span>Lista de Produtos ({filteredProducts.length})</span>
+                <span>Lista de Produtos ({totalCount})</span>
                 {selectedProducts.length > 0 && (
                   <Button
                     variant="destructive"
