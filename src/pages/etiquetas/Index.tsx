@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '@/components/ui/label';
 import { getActiveShippingIntegration, type ShippingProvider } from '@/lib/shipping-utils';
 import { getBrasiliaDate, getBrasiliaDateISO, getBrasiliaDayBoundsISO, toBrasiliaDateISO, formatBrasiliaDate, formatBrasiliaDateTime } from '@/lib/date-utils';
+import { optimizedImageUrl } from '@/lib/image-utils';
 
 interface Order {
   id: number;
@@ -1525,8 +1526,10 @@ const Etiquetas = () => {
                                   <div className="flex items-center gap-2">
                                     {item.product?.image_url && (
                                       <img 
-                                        src={item.product.image_url} 
+                                        src={optimizedImageUrl(item.product.image_url, { width: 96 })} 
                                         alt={item.product?.name}
+                                        loading="lazy"
+                                        decoding="async"
                                         className="w-8 h-8 rounded object-cover"
                                       />
                                     )}

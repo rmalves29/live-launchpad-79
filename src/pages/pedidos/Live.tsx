@@ -24,6 +24,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { normalizeForStorage, normalizeForSending, formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
+import { optimizedImageUrl } from '@/lib/image-utils';
 
 
 interface Product {
@@ -1219,7 +1220,7 @@ const Live = () => {
                                             <div key={item.id} className="flex items-center justify-between bg-background rounded p-2 text-sm">
                                               <div className="flex items-center gap-3 flex-wrap">
                                                 {item.product_image_url ? (
-                                                  <img src={item.product_image_url} alt="" className="w-8 h-8 rounded object-cover" />
+                                                  <img src={optimizedImageUrl(item.product_image_url, { width: 96 })} alt="" loading="lazy" decoding="async" className="w-8 h-8 rounded object-cover" />
                                                 ) : (
                                                   <div className="w-8 h-8 bg-muted rounded flex items-center justify-center">
                                                     <Package className="h-3 w-3 text-muted-foreground" />
