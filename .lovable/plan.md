@@ -1,44 +1,63 @@
-Pelo que verifiquei, há indício claro de falha na integração quando o comentário é feito pelo próprio número conectado/atendimento da empresa no grupo.
+## Diagnóstico do "número travado"
 
-O que encontrei agora:
+### Estado real do banco
 
-- A empresa OF Beauty é o tenant `4247aa21-4a46-4988-8845-fa15aa202310`.
-- A integração Z-API está ativa e com `send_item_added_msg = true`.
-- O consentimento agora está desativado (`consent_protection_enabled = false`), então deveria mandar o link direto após inserir item.
-- Os produtos `C139` e `C113` existem e estão ativos.
-- Para o comentário `C139`, o sistema inseriu produto e enviou mensagem para outro cliente (`553193226100`), então a integração em si está funcionando para mensagens recebidas de clientes comuns.
-- Para os seus comentários mostrados no print, não encontrei registro no `whatsapp_messages`, `carts` ou `cart_items` para os telefones `31992904210` / variações dentro da OF Beauty no horário do teste.
-- A lógica atual do webhook descarta qualquer payload com `fromMe = true` antes de reconhecer produto. Em grupos, quando o número conectado/atendimento comenta manualmente, a Z-API tende a enviar como `fromMe: true`. Isso explica por que seus comentários enviados pelo WhatsApp Web do atendimento não entram no funil.
+| Tenant | instance_name | zapi_instance_id | connected_phone (DB) |
+|---|---|---|---|
+| **OF Beauty** | OF Beauty | `3EE357CFEFA671068B786A3724C122CF` | **NULL** ✅ |
+| **MANIA DE MULHER** | MdM | `3EDEE98CBD67B27EEFAABE5CCAAE0F16` | `553496540724` ✅ |
 
-Plano de correção:
+**No banco está limpo e correto** — não há duplicidade, não há "trava" do número entre os tenants.
 
-1. Ajustar o `zapi-webhook` para não descartar automaticamente mensagens `fromMe` quando forem mensagens de grupo com código de produto.
-   - Manter o bloqueio para mensagens privadas enviadas pela própria instância.
-   - Manter o bloqueio para mensagens automáticas/API, para evitar loop.
-   - Permitir somente mensagens de grupo com texto contendo código de produto (`C123`, `C113`, `C139`, variações com quantidade etc.).
+### Por que a tela da OF Beauty mostra "Número Conectado: 553496540724"
 
-2. Corrigir a identificação do telefone do comprador em mensagens de grupo `fromMe`.
-   - Quando `fromMe = true`, `participantPhone` pode vir vazio ou vir como número conectado.
-   - Se a Z-API não fornecer o autor real do comentário, o sistema deve registrar com o melhor telefone disponível e logar explicitamente quando não conseguir identificar o participante.
-   - Se o payload trouxer `senderPhone`, `participantPhone`, `participantLid` ou campos similares, priorizar o autor real do comentário.
+Essa tela busca o número **direto da Z-API** (não do nosso banco). Como a instância Z-API da OF Beauty (`3EE357CFE...`) está com **o mesmo aparelho/chip da MdM (553496540724) conectado fisicamente via QR Code**, a Z-API responde com esse número.
 
-3. Melhorar o log de diagnóstico do webhook para esses casos.
-   - Registrar quando uma mensagem de grupo `fromMe` foi aceita para processamento.
-   - Registrar qual telefone foi usado como comprador.
-   - Registrar quando foi descartada por não ter código ou por ser mensagem automática.
+Esse é também o motivo do conflito do webhook que vimos antes: o payload que chega traz `connectedPhone = 553496540724` e nossa função estava roteando pelo telefone em vez do instanceId.
 
-4. Validar a extração de código do comentário.
-   - Confirmar que `C139`, `c139`, `C113`, `Quero c139`, `2xC113`, `C113x2`, `C113 - 2 unidades` continuam reconhecidos.
-   - Adicionar suporte seguro a formatos do print caso necessário, sem capturar números soltos que poderiam gerar pedidos indevidos.
+## Para "destravar" / limpar — duas frentes
 
-5. Testar com payload simulado de grupo da OF Beauty.
-   - Um payload normal de cliente (`fromMe=false`) deve continuar criando carrinho, pedido e item.
-   - Um payload de grupo enviado pelo atendimento (`fromMe=true`) com `C139` ou `C113` deve criar/atualizar o pedido e disparar `zapi-send-item-added`.
-   - Um payload privado `fromMe=true` deve continuar sendo ignorado.
+### Frente 1 — Desconectar o WhatsApp do chip duplicado (ação na Z-API)
 
-Resultado esperado após aprovação:
+Esta é a única forma de o número parar de aparecer na OF Beauty. **Tem que ser feito pelo dono da conta**, não dá pra fazer só pelo banco:
 
-- Comentários feitos no grupo da OF Beauty pelo atendimento/número conectado também serão reconhecidos quando tiverem código de produto.
-- O produto será inserido no carrinho/pedido.
-- Como o consentimento está desativado, a mensagem de item adicionado com link deverá ser enviada direto.
-- Os logs ficarão mais claros para diferenciar: comentário ignorado, código não encontrado, produto sem estoque, pedido criado e mensagem enviada.
+1. Entrar no painel Z-API com a conta da OF Beauty.
+2. Acessar a instância `3EE357CFEFA671068B786A3724C122CF`.
+3. Clicar em **"Desconectar"** (ou ler o QR Code com **outro celular/chip**, dedicado à OF Beauty).
+4. Após desconectar, a Z-API vai parar de enviar `connectedPhone=553496540724` nos webhooks da OF Beauty.
+
+Alternativa rápida via app: também posso adicionar um botão **"Desconectar instância"** na tela de configurações que chama o endpoint `/disconnect` da Z-API, para o cliente fazer isso direto pelo nosso painel.
+
+### Frente 2 — Blindar o sistema para esse cenário não dar problema (ação no código)
+
+Mesmo que o cliente continue com o chip compartilhado por agora, o roteamento do webhook precisa **sempre confiar no `instanceId`** (que é único e correto), nunca no `connectedPhone`:
+
+#### 2.1 — Corrigir `resolveZapiIntegration` em `supabase/functions/zapi-webhook/index.ts`
+Inverter a ordem de prioridade: `instanceId` primeiro, `connectedPhone` só como fallback. Em caso de divergência, **manter o tenant do instanceId** e apenas logar (sem trocar de tenant).
+
+#### 2.2 — Migration: índice único parcial em `zapi_instance_id`
+```sql
+CREATE UNIQUE INDEX idx_integration_whatsapp_zapi_instance_active
+  ON integration_whatsapp (zapi_instance_id)
+  WHERE is_active = true AND zapi_instance_id IS NOT NULL;
+```
+Garante que uma mesma instância Z-API nunca possa ser cadastrada como ativa em dois tenants ao mesmo tempo.
+
+#### 2.3 — (opcional) Botão "Limpar número conectado" na tela
+Um botão pequeno na seção "Número Conectado" da OF Beauty que chama o endpoint `/disconnect` da Z-API. Após desconectar, o cliente lê o QR Code com o chip correto. Posso incluir junto.
+
+## Resumo do que vou fazer ao aprovar
+
+1. Corrigir `resolveZapiIntegration` no `zapi-webhook` (prioriza instanceId).
+2. Criar migration com o índice único.
+3. (Se aprovar) Adicionar botão "Desconectar WhatsApp" na tela de configurações da integração WhatsApp, que chama `POST /instances/{instanceId}/token/{token}/disconnect` na Z-API.
+4. Te orientar a desconectar a instância da OF Beauty e reler o QR Code com o chip definitivo da OF Beauty.
+
+## O que NÃO vou fazer (e por quê)
+
+- ❌ **Não vou alterar `connected_phone` da MANIA DE MULHER** — está correto, é o número real dela.
+- ❌ **Não vou setar `connected_phone` da OF Beauty manualmente** — esse campo deve ser populado automaticamente pela função `fe-list-groups` quando a Z-API reporta o número conectado real. Setar manualmente um número errado só vai mascarar o problema.
+
+---
+
+**Aprova essas 3 ações (correção do webhook + índice único + botão de desconectar)?** Ou prefere que eu faça só as duas primeiras agora e o botão depois?
