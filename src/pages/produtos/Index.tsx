@@ -66,12 +66,16 @@ const Produtos = () => {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 350);
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'LIVE' | 'BAZAR'>('ALL');
   const [importing, setImporting] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[]; skipped: number; skippedDetails: string[] } | null>(null);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const [labelsProducts, setLabelsProducts] = useState<Product[]>([]);
 
   const [formData, setFormData] = useState({
     code: '',
