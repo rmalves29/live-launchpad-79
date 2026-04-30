@@ -115,6 +115,39 @@ function normalizeParticipantPhone(value?: string | null): string {
 async function resolveZapiIntegration(supabase: any, instanceId?: string, connectedPhone?: string | null) {
   const connectedDigits = normalizeDigits(connectedPhone);
 
+  // ⚡ PRIORIDADE 1: instanceId é a fonte da verdade (imutável e único por tenant).
+  // O connectedPhone pode estar compartilhado entre instâncias Z-API (mesmo chip
+  // conectado em duas instâncias diferentes), então NUNCA confiar nele primeiro.
+  if (instanceId) {
+    const { data: integrations, error: instErr } = await supabase
+      .from('integration_whatsapp')
+      .select('tenant_id, zapi_instance_id, zapi_token, zapi_client_token, connected_phone')
+      .eq('provider', 'zapi')
+      .eq('is_active', true)
+      .eq('zapi_instance_id', instanceId)
+      .limit(2);
+
+    if (instErr) {
+      console.log('[zapi-webhook] Error looking up tenant by instanceId:', instErr);
+    } else if ((integrations?.length || 0) === 1) {
+      const match = integrations![0];
+      // Se o connectedPhone do payload diverge do que está cadastrado, apenas logar.
+      // NÃO trocar de tenant — instanceId é soberano.
+      if (connectedDigits && match.connected_phone) {
+        const storedDigits = normalizeDigits(match.connected_phone);
+        if (storedDigits && storedDigits !== connectedDigits && !storedDigits.endsWith(connectedDigits) && !connectedDigits.endsWith(storedDigits)) {
+          console.warn(`[zapi-webhook] ℹ️ instanceId ${instanceId} mapped to tenant ${match.tenant_id} (stored phone ${storedDigits}), but payload connectedPhone is ${connectedDigits}. Trusting instanceId.`);
+        }
+      }
+      return match;
+    } else if ((integrations?.length || 0) > 1) {
+      throw new Error(`instance_id_conflict:${instanceId}`);
+    } else {
+      console.log(`[zapi-webhook] No active integration found for instanceId ${instanceId}, will try connectedPhone fallback`);
+    }
+  }
+
+  // 🔁 FALLBACK: só usa connectedPhone se instanceId não veio ou não bateu.
   if (connectedDigits) {
     const phoneVariants = new Set<string>([connectedDigits]);
     if (connectedDigits.startsWith('55') && connectedDigits.length > 11) {
@@ -134,33 +167,10 @@ async function resolveZapiIntegration(supabase: any, instanceId?: string, connec
     if (phoneErr) {
       console.log('[zapi-webhook] Error looking up tenant by connectedPhone:', phoneErr);
     } else if ((phoneMatches?.length || 0) === 1) {
-      const match = phoneMatches![0];
-      if (instanceId && match.zapi_instance_id && match.zapi_instance_id !== instanceId) {
-        console.warn(`[zapi-webhook] ⚠️ instanceId ${instanceId} conflicts with connectedPhone ${connectedDigits}; using connectedPhone tenant ${match.tenant_id}`);
-      }
-      return match;
+      console.log(`[zapi-webhook] Resolved tenant via connectedPhone fallback: ${phoneMatches![0].tenant_id}`);
+      return phoneMatches![0];
     } else if ((phoneMatches?.length || 0) > 1) {
-      console.warn(`[zapi-webhook] connectedPhone ${connectedDigits} matched multiple active integrations; falling back to instanceId`);
-    }
-  }
-
-  if (instanceId) {
-    const { data: integrations, error: instErr } = await supabase
-      .from('integration_whatsapp')
-      .select('tenant_id, zapi_instance_id, zapi_token, zapi_client_token')
-      .eq('provider', 'zapi')
-      .eq('is_active', true)
-      .eq('zapi_instance_id', instanceId)
-      .limit(2);
-
-    if (instErr) {
-      console.log('[zapi-webhook] Error looking up tenant by instanceId:', instErr);
-    } else if ((integrations?.length || 0) === 1) {
-      return integrations![0];
-    } else if ((integrations?.length || 0) > 1) {
-      throw new Error(`instance_id_conflict:${instanceId}`);
-    } else {
-      console.log(`[zapi-webhook] No active integration found for instanceId ${instanceId}`);
+      console.warn(`[zapi-webhook] connectedPhone ${connectedDigits} matched multiple active integrations; cannot resolve without instanceId`);
     }
   }
 
