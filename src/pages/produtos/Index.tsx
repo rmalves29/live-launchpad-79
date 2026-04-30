@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, ChevronLeft, ChevronRight } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
@@ -21,6 +22,9 @@ import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatCurrency } from '@/lib/utils';
 import { optimizedImageUrl, STORAGE_CACHE_CONTROL } from '@/lib/image-utils';
 import * as XLSX from 'xlsx';
+
+const PRODUCT_COLUMNS = 'id,code,name,price,promotional_price,observation,sku_erp,stock,color,size,image_url,is_active,sale_type,created_at';
+const PAGE_SIZE = 48;
 
 interface Product {
   id: number;
