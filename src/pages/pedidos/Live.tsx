@@ -189,7 +189,7 @@ const Live = () => {
       // Then get paginated data
       let query = supabaseTenant
         .from('products')
-        .select('id,code,name,price,promotional_price,stock,image_url,is_active,sale_type,color,size')
+        .select('*')
         .eq('is_active', true)
         .in('sale_type', ['LIVE', 'AMBOS'])
         .order('created_at', { ascending: false })
@@ -235,10 +235,9 @@ const Live = () => {
       setOrdersLoading(true);
       let query = supabaseTenant
         .from('orders')
-        .select('id,customer_phone,customer_name,event_type,event_date,total_amount,is_paid,created_at,cart_id')
+        .select('*')
         .eq('event_type', 'LIVE')
-        .order('created_at', { ascending: false })
-        .limit(500);
+        .order('created_at', { ascending: false });
 
       // Filtrar por datas selecionadas
       if (orderFilterDates.length === 1) {
@@ -260,7 +259,7 @@ const Live = () => {
       if (cartIds.length > 0) {
         const { data: items } = await supabaseTenant.raw
           .from('cart_items')
-          .select('id,cart_id,product_id,product_name,product_code,product_image_url,qty,unit_price')
+          .select('*')
           .in('cart_id', cartIds);
         allCartItems = (items || []) as CartItem[];
       }

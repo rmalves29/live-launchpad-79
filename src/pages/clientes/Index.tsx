@@ -175,7 +175,7 @@ const Clientes = () => {
     try {
       const { data: customersData, error: customersError } = await supabaseTenant
         .from('customers')
-        .select('id,phone,name,email,instagram,cpf,street,number,complement,neighborhood,city,state,cep,is_blocked,created_at,updated_at')
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (customersError) throw customersError;
