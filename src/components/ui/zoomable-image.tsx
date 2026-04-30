@@ -63,8 +63,10 @@ export const ZoomableImage = ({
         onClick={() => setIsOpen(true)}
       >
         <img
-          src={src}
+          src={thumbSrc}
           alt={alt}
+          loading="lazy"
+          decoding="async"
           className={cn(
             "object-cover transition-transform duration-300",
             isHovered && "scale-110",
