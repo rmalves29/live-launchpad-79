@@ -235,9 +235,10 @@ const Live = () => {
       setOrdersLoading(true);
       let query = supabaseTenant
         .from('orders')
-        .select('*')
+        .select('id,customer_phone,customer_name,event_type,event_date,total_amount,is_paid,created_at,cart_id')
         .eq('event_type', 'LIVE')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(500);
 
       // Filtrar por datas selecionadas
       if (orderFilterDates.length === 1) {
