@@ -1,73 +1,109 @@
-## Contexto
+## Objetivo
 
-Por causa do bug de roteamento Z-API (chip físico compartilhado), 53 pedidos do dia 30/04/2026 foram criados na **MANIA DE MULHER** quando deveriam ter sido criados na **OF Beauty**. O catálogo das duas empresas usa o mesmo padrão de código (`C111`, `C178`, etc.), mas os produtos por trás de cada code são **completamente diferentes** (MdM = bijuteria, OF Beauty = cosméticos).
+Diferenciar **"mensagem aceita pela Z-API"** de **"mensagem entregue no WhatsApp"** sem risco — apenas leitura na Z-API e leitura no banco. Nenhum schema é alterado, nenhum trigger é tocado, nenhuma mensagem é enviada.
 
-## Decisões já tomadas pelo usuário
+Isto cobre exatamente o teste técnico que você pediu: enviar para um número e depois consultar o status real pelo `messageId`.
 
-1. Mover os pedidos para OF Beauty.
-2. Remapear cada `cart_item` por `product_code` para o produto correspondente da OF Beauty (recalculando preço, nome, product_id, image_url).
-3. **Manter na MdM** o pedido `#6565` (Maria Madalena, R$ 67, **PAGO**) — não mexer.
-4. Pedido `#6567` (Marina Bessas, código C282 inexistente na OF Beauty) será movido mesmo assim, mantendo o item original (workaround pontual).
-5. O pedido cancelado (`#6587`) também será movido junto.
+---
 
-## Escopo final
+## O que será criado
 
-- **52 pedidos** a serem transferidos (todos do dia 30/04 exceto `#6565`).
-- **Carts** correspondentes (52) também migram.
-- **Cart_items** (≈52+) serão remapeados pelo `product_code` em produtos da OF Beauty.
-- C282 do pedido `#6567` será mantido como está (não existe na OF Beauty), mas o `tenant_id` do item será atualizado.
+### 1. Edge function `zapi-check-message-status` (nova, isolada)
 
-## Plano de execução (em uma migration única, transacional)
+Endpoint para auditoria pontual ou em lote. Aceita 3 modos:
 
-```text
-BEGIN
-
-1) Para cada cart_item dos 52 pedidos:
-     - Buscar produto da OF Beauty pelo product_code do item.
-     - Se encontrado:
-         UPDATE cart_items SET
-           tenant_id = OF_BEAUTY,
-           product_id = p_of.id,
-           product_name = p_of.name,
-           unit_price = COALESCE(p_of.promotional_price, p_of.price),
-           product_image_url = p_of.image_url
-     - Se NÃO encontrado (caso C282):
-         UPDATE cart_items SET tenant_id = OF_BEAUTY  -- mantém snapshot original
-
-2) UPDATE carts SET tenant_id = OF_BEAUTY WHERE id IN (...)
-
-3) Para cada order, recalcular total_amount baseado nos novos cart_items
-   (mantendo frete/pix_discount/coupon do observation, se houver):
-     UPDATE orders SET
-       tenant_id = OF_BEAUTY,
-       total_amount = (novo_subtotal - desc_pix - desc_cupom) + frete
-
-4) INSERT em audit_logs: registro completo da operação por pedido
-   (tenant_origem, tenant_destino, total_anterior, total_novo, items_remapeados)
-
-COMMIT
+**Modo A — Por messageId específico** (seu teste técnico controlado):
+```json
+POST /zapi-check-message-status
+{ "tenant_id": "...", "message_id": "3EB086A02370BA484D89F5" }
+```
+Retorna o status real consultado direto na Z-API:
+```json
+{
+  "message_id": "3EB086A02370BA484D89F5",
+  "phone": "557599986869",
+  "zapi_accepted": true,
+  "zapi_status": "SENT",          // SENT | RECEIVED | READ | PLAYED
+  "delivered": false,
+  "read": false,
+  "moment_sent": "...",
+  "moment_delivered": null,
+  "moment_read": null,
+  "raw": { ...resposta crua da Z-API... }
+}
 ```
 
-## Salvaguardas
+**Modo B — Auditoria das últimas N horas** (relatório):
+```json
+POST /zapi-check-message-status
+{ "tenant_id": "...", "hours": 24, "limit": 200 }
+```
+Para cada mensagem com `zapi_message_id` no período, consulta a Z-API e devolve um resumo:
+```json
+{
+  "total_checked": 200,
+  "accepted_only": 125,    // Z-API aceitou mas WhatsApp NUNCA confirmou entrega
+  "delivered": 60,
+  "read": 12,
+  "rejected_by_whatsapp": 3,
+  "details": [ ... ]
+}
+```
 
-- Tudo dentro de uma única transação — se algo falhar, rollback completo.
-- Pedido pago `#6565` **explicitamente excluído** do escopo.
-- Backup/snapshot via `audit_logs` com payload completo de cada item antes/depois.
-- Trigger `validate_order_total_on_payment` não dispara (pedidos não estão sendo marcados como pagos).
-- Trigger `set_tenant_id` não atrapalha (só roda em INSERT, não UPDATE).
+**Modo C — Por telefone + intervalo** (debug do seu número):
+```json
+{ "tenant_id": "...", "phone": "5575...", "hours": 1 }
+```
 
-## Impactos esperados
+### 2. Como ela funciona internamente
 
-- Os 52 pedidos somem do painel da MdM e aparecem no painel da OF Beauty.
-- **Os valores dos pedidos vão mudar drasticamente**, porque os preços da OF Beauty são muito menores que os da MdM (ex: C111 vai de R$ 55 → R$ 0,99). A maioria dos pedidos abertos hoje somando R$ ~3.000 deve cair para R$ ~500 após o remapeamento.
-- Clientes (`customers`) **não serão movidos** — eles continuam vinculados à MdM. Se desejar replicar o cliente na OF Beauty, é uma etapa separada.
-- Carrinhos abertos: os pagamentos pendentes referenciarão o tenant novo. Se o cliente clicar no link antigo, o pagamento vai cair como OF Beauty.
-- Não vou disparar nenhum WhatsApp como efeito colateral (operação é só `UPDATE` em tabelas de dados).
+- Lê credenciais de `integration_whatsapp` (mesmo padrão do `fe-send-message` e `zapi-broadcast`).
+- Chama `GET https://api.z-api.io/instances/{instanceId}/token/{token}/message-status/{messageId}` com header `Client-Token`.
+- Interpreta o retorno da Z-API:
+  - `status: "SENT"` + sem `momment` de delivered → **Aceito mas não entregue**
+  - `status: "RECEIVED"` → **Entregue no aparelho**
+  - `status: "READ"` / `"PLAYED"` → **Lido**
+  - Erro / `notification: "rejected"` → **Rejeitado pelo WhatsApp**
+- **Nada é gravado no banco.** Apenas leitura e resposta JSON.
 
-## Confirmação final necessária
+### 3. Endpoint chamável de duas formas
 
-Antes de eu executar, me confirma duas coisas:
+- Via `supabase.functions.invoke('zapi-check-message-status', { body: {...} })` no frontend (futuro) ou
+- Via curl direto pelo Supabase (que é como faremos o teste agora).
 
-1. **Os preços vão mudar drasticamente** (cair muito). Tudo bem? Ou prefere **manter os preços/nomes originais** que foram cobrados (snapshot de bijuteria) e só trocar o `tenant_id` para a OF Beauty?
-2. **Quero gravar um audit_log completo** do estado anterior pra você poder reverter caso necessário. Pode ser?
+---
 
+## O que NÃO será feito nesta etapa
+
+- Nenhuma migração de banco (sem novas colunas `zaap_id`, `delivered_at`, etc.)
+- Nenhuma mudança no `zapi-webhook` (continua igual, com o bug de ID mismatch)
+- Nenhuma mudança no `fe-send-message`, `zapi-broadcast`, `zapi-send-paid-order`, `zapi-send-tracking`
+- Nenhum trigger novo
+- Nenhum status atualizado em `whatsapp_messages` ou `fe_messages`
+
+Essa etapa é estritamente **observabilidade**. Depois que ela rodar e confirmarmos a discrepância, voltamos para discutir o Passo 2 (corrigir o webhook) e Passo 3 (migração).
+
+---
+
+## Plano de teste após implementação
+
+1. Você me dá um número de teste (o seu).
+2. Eu chamo `fe-send-message` ou `zapi-send-message` para enviar uma mensagem qualquer e capturo o `messageId` retornado.
+3. Aguardo ~30s.
+4. Chamo `zapi-check-message-status` com esse `messageId`.
+5. Te mostro lado a lado: o que o sistema gravou (provavelmente "sent") vs o que a Z-API realmente diz (`SENT` puro = não entregue, ou `RECEIVED` = entregue).
+6. Em seguida rodo o Modo B nas últimas 24h e te entrego o número exato de mensagens que estão "sent" no banco mas nunca foram entregues no WhatsApp.
+
+---
+
+## Detalhes técnicos
+
+- Arquivo: `supabase/functions/zapi-check-message-status/index.ts`
+- Config: adicionar `[functions.zapi-check-message-status] verify_jwt = false` em `supabase/config.toml` (mesmo padrão das outras zapi-*)
+- Usa `SUPABASE_SERVICE_ROLE_KEY` apenas para ler `integration_whatsapp` e `whatsapp_messages` (Modos B e C). Nenhuma escrita.
+- Validação de input com checagem manual (tenant_id obrigatório; um de message_id/phone/hours obrigatório).
+- CORS padrão do projeto.
+- Timeout por requisição à Z-API: 8s. Em modo lote, máximo 200 mensagens por chamada com delay de 200ms entre cada para não estourar rate limit.
+- Logs estruturados para acompanhar pelo painel de Edge Functions.
+
+Posso prosseguir?

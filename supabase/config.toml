@@ -18,6 +18,9 @@ verify_jwt = false
 [functions.zapi-send-tracking]
 verify_jwt = false
 
+[functions.zapi-check-message-status]
+verify_jwt = false
+
 [functions.omie-test-connection]
 verify_jwt = false
 
