@@ -6,10 +6,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ZAPI_BASE_URL = "https://api.z-api.io";
-const ZAPI_TIMEOUT_MS = 8000;
-const BATCH_DELAY_MS = 200;
-const MAX_BATCH = 200;
+/**
+ * zapi-check-message-status
+ *
+ * IMPORTANTE: A Z-API (versão Multi-Device, que é a usada hoje) NÃO oferece
+ * endpoint REST para consultar o status de uma mensagem por messageId.
+ * A documentação oficial diz: "Este método não está disponível na versão
+ * Multi Device, pois o Z-API não armazena as mensagens. A única maneira de
+ * obter o status é via Webhook (DeliveryCallback / MessageStatusCallback)".
+ *
+ * Esta função, portanto, audita o GAP entre:
+ *   - mensagens que o sistema marcou como enviadas (registradas com zapi_message_id)
+ *   - mensagens para as quais a Z-API efetivamente confirmou entrega
+ *     (delivery_status RECEIVED / READ / PLAYED via webhook)
+ *
+ * Tudo é leitura. Nada é gravado.
+ */
 
 interface CheckRequest {
   tenant_id: string;
@@ -19,150 +31,21 @@ interface CheckRequest {
   limit?: number;
 }
 
-interface ZapiCreds {
-  instanceId: string;
-  token: string;
-  clientToken: string;
+const DELIVERED_STATUSES = ["RECEIVED", "DELIVERED", "READ", "PLAYED"];
+const READ_STATUSES = ["READ", "PLAYED"];
+const FAILED_STATUSES = ["FAILED", "REJECTED", "ERROR"];
+
+function classify(status: string | null) {
+  const s = (status || "").toUpperCase();
+  if (READ_STATUSES.includes(s)) return "read";
+  if (DELIVERED_STATUSES.includes(s)) return "delivered";
+  if (FAILED_STATUSES.includes(s)) return "rejected_by_whatsapp";
+  if (s === "SENT" || s === "PENDING" || s === "" || s === "QUEUED") return "accepted_only";
+  return "unknown";
 }
-
-async function getZAPICredentials(supabase: any, tenantId: string): Promise<ZapiCreds | null> {
-  const { data, error } = await supabase
-    .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token")
-    .eq("tenant_id", tenantId)
-    .eq("provider", "zapi")
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (error || !data?.zapi_instance_id || !data?.zapi_token) return null;
-  return {
-    instanceId: data.zapi_instance_id,
-    token: data.zapi_token,
-    clientToken: data.zapi_client_token || "",
-  };
-}
-
-async function fetchWithTimeout(url: string, opts: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...opts, signal: controller.signal });
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-interface NormalizedStatus {
-  zapi_accepted: boolean;
-  zapi_status: string;            // SENT | RECEIVED | READ | PLAYED | REJECTED | UNKNOWN
-  delivered: boolean;
-  read: boolean;
-  rejected: boolean;
-  moment_sent: number | null;
-  moment_delivered: number | null;
-  moment_read: number | null;
-  raw: any;
-  http_status: number;
-  error?: string;
-}
-
-async function checkOneMessage(
-  creds: ZapiCreds,
-  messageId: string,
-  phone?: string
-): Promise<NormalizedStatus> {
-  const baseUrl = `${ZAPI_BASE_URL}/instances/${creds.instanceId}/token/${creds.token}`;
-  // Z-API endpoint: GET /message-status/{messageId}?phone={phone}
-  const url = phone
-    ? `${baseUrl}/message-status/${encodeURIComponent(messageId)}?phone=${encodeURIComponent(phone)}`
-    : `${baseUrl}/message-status/${encodeURIComponent(messageId)}`;
-
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (creds.clientToken) headers["Client-Token"] = creds.clientToken;
-
-  try {
-    const res = await fetchWithTimeout(url, { method: "GET", headers }, ZAPI_TIMEOUT_MS);
-    const text = await res.text();
-    let raw: any = null;
-    try { raw = text ? JSON.parse(text) : null; } catch { raw = { _text: text }; }
-
-    if (!res.ok) {
-      return {
-        zapi_accepted: false,
-        zapi_status: "UNKNOWN",
-        delivered: false,
-        read: false,
-        rejected: false,
-        moment_sent: null,
-        moment_delivered: null,
-        moment_read: null,
-        raw,
-        http_status: res.status,
-        error: typeof raw?.error === "string" ? raw.error : `HTTP ${res.status}`,
-      };
-    }
-
-    // Possible Z-API shapes:
-    //   { status: "SENT" | "RECEIVED" | "READ" | "PLAYED", momment / momments... }
-    //   { status: { ... } } or array
-    // Be defensive.
-    const node = Array.isArray(raw) ? raw[0] : raw;
-    const statusRaw =
-      (node?.status && typeof node.status === "string" ? node.status : null) ||
-      node?.status?.status ||
-      node?.messageStatus ||
-      "UNKNOWN";
-    const status = String(statusRaw).toUpperCase();
-
-    const moments = node?.momments || node?.moments || node?.status?.momments || {};
-    const momentSent = node?.momment ?? node?.moment ?? moments.sent ?? null;
-    const momentDelivered = moments.delivered ?? node?.deliveredAt ?? null;
-    const momentRead = moments.read ?? moments.played ?? node?.readAt ?? null;
-
-    const rejected =
-      status === "REJECTED" ||
-      status === "FAILED" ||
-      String(node?.notification || "").toLowerCase().includes("rejected") ||
-      String(node?.error || "").toLowerCase().includes("rejected");
-
-    const delivered = ["RECEIVED", "READ", "PLAYED", "DELIVERED"].includes(status) || !!momentDelivered;
-    const read = ["READ", "PLAYED"].includes(status) || !!momentRead;
-
-    return {
-      zapi_accepted: !rejected,
-      zapi_status: rejected ? "REJECTED" : status,
-      delivered,
-      read,
-      rejected,
-      moment_sent: momentSent,
-      moment_delivered: momentDelivered,
-      moment_read: momentRead,
-      raw,
-      http_status: res.status,
-    };
-  } catch (err: any) {
-    return {
-      zapi_accepted: false,
-      zapi_status: "UNKNOWN",
-      delivered: false,
-      read: false,
-      rejected: false,
-      moment_sent: null,
-      moment_delivered: null,
-      moment_read: null,
-      raw: null,
-      http_status: 0,
-      error: err?.name === "AbortError" ? "timeout" : (err?.message || "fetch_error"),
-    };
-  }
-}
-
-function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const t0 = Date.now();
   try {
@@ -186,39 +69,80 @@ serve(async (req) => {
       );
     }
 
-    const creds = await getZAPICredentials(supabase, tenant_id);
-    if (!creds) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Z-API não configurada para este tenant" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // ============ MODO A: messageId específico ============
     if (message_id) {
-      console.log(`[zapi-check-message-status] MODE_A tenant=${tenant_id} mid=${message_id}`);
-      const result = await checkOneMessage(creds, message_id, phone);
+      const { data: row, error } = await supabase
+        .from("whatsapp_messages")
+        .select("id, tenant_id, phone, type, message, sent_at, created_at, zapi_message_id, delivery_status")
+        .eq("tenant_id", tenant_id)
+        .eq("zapi_message_id", message_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        return new Response(
+          JSON.stringify({ success: false, error: `DB: ${error.message}` }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!row) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            mode: "single",
+            message_id,
+            found: false,
+            note: "Nenhum registro com este zapi_message_id. Pode ser ID mismatch (callback usa zaapId diferente) ou mensagem nunca registrada.",
+            elapsed_ms: Date.now() - t0,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const bucket = classify(row.delivery_status);
       return new Response(
         JSON.stringify({
           success: true,
           mode: "single",
+          found: true,
           message_id,
-          phone: phone || null,
-          ...result,
+          whatsapp_messages_id: row.id,
+          phone: row.phone,
+          type: row.type,
+          created_at: row.created_at,
+          sent_at: row.sent_at,
+          delivery_status_db: row.delivery_status,
+          interpretation: bucket,
+          accepted_by_zapi: true, // tem zapi_message_id, então a Z-API aceitou
+          delivered_to_handset: bucket === "delivered" || bucket === "read",
+          read_by_recipient: bucket === "read",
+          rejected_by_whatsapp: bucket === "rejected_by_whatsapp",
+          note:
+            bucket === "accepted_only"
+              ? "Z-API aceitou mas o WhatsApp NUNCA confirmou entrega. Pode estar realmente entregue (e o webhook falhou em atualizar) ou pode estar realmente travada."
+              : bucket === "delivered"
+                ? "Entregue no aparelho do destinatário."
+                : bucket === "read"
+                  ? "Lida pelo destinatário."
+                  : bucket === "rejected_by_whatsapp"
+                    ? "WhatsApp REJEITOU a mensagem após aceite da Z-API."
+                    : "Status indefinido.",
           elapsed_ms: Date.now() - t0,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // ============ MODO B / C: lote por intervalo (e opcionalmente por phone) ============
+    // ============ MODO B / C: lote por intervalo ============
     const safeHours = Math.min(Math.max(Number(hours) || 24, 1), 168);
-    const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), MAX_BATCH);
+    const safeLimit = Math.min(Math.max(Number(limit) || 500, 1), 2000);
     const since = new Date(Date.now() - safeHours * 3600 * 1000).toISOString();
 
     let q = supabase
       .from("whatsapp_messages")
-      .select("id, phone, type, message, sent_at, created_at, zapi_message_id")
+      .select("id, phone, type, sent_at, created_at, zapi_message_id, delivery_status")
       .eq("tenant_id", tenant_id)
       .not("zapi_message_id", "is", null)
       .gte("created_at", since)
@@ -232,73 +156,63 @@ serve(async (req) => {
 
     const { data: rows, error: qErr } = await q;
     if (qErr) {
-      console.error(`[zapi-check-message-status] DB error:`, qErr.message);
       return new Response(
-        JSON.stringify({ success: false, error: `Erro ao consultar mensagens: ${qErr.message}` }),
+        JSON.stringify({ success: false, error: `DB: ${qErr.message}` }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const messages = rows || [];
-    console.log(`[zapi-check-message-status] MODE_B tenant=${tenant_id} hours=${safeHours} limit=${safeLimit} found=${messages.length}`);
+    const counts: Record<string, number> = {
+      accepted_only: 0,
+      delivered: 0,
+      read: 0,
+      rejected_by_whatsapp: 0,
+      unknown: 0,
+    };
+    const samplePerBucket: Record<string, any[]> = {
+      accepted_only: [],
+      delivered: [],
+      read: [],
+      rejected_by_whatsapp: [],
+      unknown: [],
+    };
 
-    const details: any[] = [];
-    let acceptedOnly = 0;
-    let delivered = 0;
-    let read = 0;
-    let rejected = 0;
-    let unknown = 0;
-
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i];
-      const status = await checkOneMessage(creds, m.zapi_message_id, m.phone);
-      const bucket = status.rejected
-        ? "rejected_by_whatsapp"
-        : status.read
-          ? "read"
-          : status.delivered
-            ? "delivered"
-            : status.zapi_status === "UNKNOWN"
-              ? "unknown"
-              : "accepted_only";
-
-      if (bucket === "accepted_only") acceptedOnly++;
-      else if (bucket === "delivered") delivered++;
-      else if (bucket === "read") read++;
-      else if (bucket === "rejected_by_whatsapp") rejected++;
-      else unknown++;
-
-      details.push({
-        whatsapp_messages_id: m.id,
-        message_id: m.zapi_message_id,
-        phone: m.phone,
-        type: m.type,
-        created_at: m.created_at,
-        sent_at: m.sent_at,
-        bucket,
-        zapi_status: status.zapi_status,
-        delivered: status.delivered,
-        read: status.read,
-        rejected: status.rejected,
-        error: status.error,
-      });
-
-      if (i < messages.length - 1) await sleep(BATCH_DELAY_MS);
+    for (const m of messages) {
+      const bucket = classify(m.delivery_status);
+      counts[bucket]++;
+      if (samplePerBucket[bucket].length < 5) {
+        samplePerBucket[bucket].push({
+          whatsapp_messages_id: m.id,
+          message_id: m.zapi_message_id,
+          phone: m.phone,
+          type: m.type,
+          created_at: m.created_at,
+          delivery_status_db: m.delivery_status,
+        });
+      }
     }
 
     const total = messages.length;
+    const deliveryConfirmed = counts.delivered + counts.read;
     const summary = {
       total_checked: total,
-      accepted_only: acceptedOnly,
-      delivered,
-      read,
-      rejected_by_whatsapp: rejected,
-      unknown,
-      delivery_rate_pct: total ? Math.round(((delivered + read) / total) * 1000) / 10 : 0,
-      acceptance_only_pct: total ? Math.round((acceptedOnly / total) * 1000) / 10 : 0,
+      accepted_only: counts.accepted_only,
+      delivered: counts.delivered,
+      read: counts.read,
+      rejected_by_whatsapp: counts.rejected_by_whatsapp,
+      unknown: counts.unknown,
+      delivery_confirmed_pct: total ? Math.round((deliveryConfirmed / total) * 1000) / 10 : 0,
+      accepted_only_pct: total ? Math.round((counts.accepted_only / total) * 1000) / 10 : 0,
+      diagnosis:
+        total === 0
+          ? "Nenhuma mensagem com zapi_message_id no período."
+          : counts.accepted_only / total > 0.3
+            ? "ALERTA: mais de 30% das mensagens têm apenas aceite da Z-API, sem confirmação de entrega via webhook. Pode ser webhook quebrado (ID mismatch) ou entrega realmente falhando."
+            : "Taxa de confirmação dentro do esperado.",
     };
 
-    console.log(`[zapi-check-message-status] DONE tenant=${tenant_id} ${JSON.stringify(summary)}`);
+    console.log(`[zapi-check-message-status] tenant=${tenant_id} ${JSON.stringify(summary)}`);
 
     return new Response(
       JSON.stringify({
@@ -308,8 +222,10 @@ serve(async (req) => {
         hours: safeHours,
         phone_filter: phone || null,
         ...summary,
-        details,
+        samples: samplePerBucket,
         elapsed_ms: Date.now() - t0,
+        important_note:
+          "A Z-API Multi-Device NÃO oferece endpoint REST para consultar status por messageId. O status só chega via webhook (DeliveryCallback). Se o webhook estiver com bug (ex.: ID mismatch zapiMessageId vs zaapId), mensagens entregues aparecerão para sempre como 'accepted_only' aqui.",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
