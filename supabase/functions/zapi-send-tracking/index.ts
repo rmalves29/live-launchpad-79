@@ -201,6 +201,8 @@ Obrigado pela preferência! 💚`;
       order_id: order.id,
       sent_at: new Date().toISOString(),
       zapi_message_id: zapiResult.messageId || null,
+      zapi_zaap_id: zapiResult.zaapId || zapiResult.id || null,
+      delivery_status: 'SENT',
     });
 
     console.log("✅ [TRACKING] Mensagem de rastreio enviada com sucesso!");
