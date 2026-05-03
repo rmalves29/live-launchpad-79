@@ -205,6 +205,10 @@ serve(async (req) => {
 
     const isSuccess = response.status >= 200 && response.status < 300;
 
+    const zapiMessageId = responseData.messageId || responseData.zapiMessageId || null;
+    const zapiZaapId = responseData.zaapId || responseData.id || null;
+    console.log(`[zapi-send-message] IDs captured: messageId=${zapiMessageId} zaapId=${zapiZaapId}`);
+
     // Log the message in database
     try {
       await supabase.from('whatsapp_messages').insert({
@@ -212,7 +216,10 @@ serve(async (req) => {
         phone: formattedPhone,
         message: message.substring(0, 500),
         type: 'outgoing',
-        sent_at: new Date().toISOString()
+        sent_at: new Date().toISOString(),
+        zapi_message_id: zapiMessageId,
+        zapi_zaap_id: zapiZaapId,
+        delivery_status: isSuccess ? 'SENT' : 'FAILED'
       });
     } catch (logError) {
       console.error('[zapi-send-message] Error logging message:', logError);
@@ -223,7 +230,8 @@ serve(async (req) => {
         sent: isSuccess,
         status: response.status,
         phone: formattedPhone,
-        messageId: responseData.messageId || responseData.zapiMessageId || null,
+        messageId: zapiMessageId,
+        zaapId: zapiZaapId,
         response: responseData
       }),
       { 
