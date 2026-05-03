@@ -231,17 +231,18 @@ serve(async (req) => {
     const responseText = await response.text();
     console.log(`[zapi-send-paid-order] Response: ${response.status} - ${responseText.substring(0, 200)}`);
 
-    // Parse response to get message ID
-    let zapiMessageId = null;
+    // Parse response to get message ID and zaap ID
+    let zapiMessageId: string | null = null;
+    let zapiZaapId: string | null = null;
     try {
       const responseJson = JSON.parse(responseText);
-      zapiMessageId = responseJson.messageId || responseJson.id || null;
-      console.log(`[zapi-send-paid-order] Z-API Message ID: ${zapiMessageId}`);
+      zapiMessageId = responseJson.messageId || null;
+      zapiZaapId = responseJson.zaapId || responseJson.id || null;
+      console.log(`[zapi-send-paid-order] Z-API IDs: messageId=${zapiMessageId} zaapId=${zapiZaapId}`);
     } catch (e) {
-      console.log(`[zapi-send-paid-order] Could not parse Z-API response for message ID`);
+      console.log(`[zapi-send-paid-order] Could not parse Z-API response`);
     }
 
-    // Insert message record with Z-API message ID for tracking
     await supabase.from('whatsapp_messages').insert({
       tenant_id,
       phone: formattedPhone,
@@ -250,6 +251,7 @@ serve(async (req) => {
       order_id,
       sent_at: new Date().toISOString(),
       zapi_message_id: zapiMessageId,
+      zapi_zaap_id: zapiZaapId,
       delivery_status: response.ok ? 'SENT' : 'FAILED'
     });
 
