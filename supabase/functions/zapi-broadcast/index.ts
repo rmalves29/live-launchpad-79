@@ -241,6 +241,15 @@ serve(async (req) => {
           body: JSON.stringify({ phone, message: variedMessage })
         });
 
+        const responseText = await response.text();
+        let zapiMessageId: string | null = null;
+        let zapiZaapId: string | null = null;
+        try {
+          const j = JSON.parse(responseText);
+          zapiMessageId = j.messageId || j.zapiMessageId || null;
+          zapiZaapId = j.zaapId || j.id || null;
+        } catch (_) {}
+
         if (response.ok) {
           sent++;
           results.push({ phone, success: true });
@@ -250,12 +259,14 @@ serve(async (req) => {
             phone,
             message: variedMessage.substring(0, 500),
             type: 'mass',
-            sent_at: new Date().toISOString()
+            sent_at: new Date().toISOString(),
+            zapi_message_id: zapiMessageId,
+            zapi_zaap_id: zapiZaapId,
+            delivery_status: 'SENT'
           });
         } else {
-          const errorText = await response.text();
           failed++;
-          results.push({ phone, success: false, error: errorText.substring(0, 100) });
+          results.push({ phone, success: false, error: responseText.substring(0, 100) });
         }
 
         console.log(`[zapi-broadcast] Progress: ${sent + failed}/${targetPhones.length}`);
