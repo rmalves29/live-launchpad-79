@@ -1,109 +1,88 @@
-## Objetivo
+## Plano: Correção do tracking de entrega Z-API + Relatório de impacto
 
-Diferenciar **"mensagem aceita pela Z-API"** de **"mensagem entregue no WhatsApp"** sem risco — apenas leitura na Z-API e leitura no banco. Nenhum schema é alterado, nenhum trigger é tocado, nenhuma mensagem é enviada.
+Dois entregáveis nesta etapa, na ordem:
 
-Isto cobre exatamente o teste técnico que você pediu: enviar para um número e depois consultar o status real pelo `messageId`.
-
----
-
-## O que será criado
-
-### 1. Edge function `zapi-check-message-status` (nova, isolada)
-
-Endpoint para auditoria pontual ou em lote. Aceita 3 modos:
-
-**Modo A — Por messageId específico** (seu teste técnico controlado):
-```json
-POST /zapi-check-message-status
-{ "tenant_id": "...", "message_id": "3EB086A02370BA484D89F5" }
-```
-Retorna o status real consultado direto na Z-API:
-```json
-{
-  "message_id": "3EB086A02370BA484D89F5",
-  "phone": "557599986869",
-  "zapi_accepted": true,
-  "zapi_status": "SENT",          // SENT | RECEIVED | READ | PLAYED
-  "delivered": false,
-  "read": false,
-  "moment_sent": "...",
-  "moment_delivered": null,
-  "moment_read": null,
-  "raw": { ...resposta crua da Z-API... }
-}
-```
-
-**Modo B — Auditoria das últimas N horas** (relatório):
-```json
-POST /zapi-check-message-status
-{ "tenant_id": "...", "hours": 24, "limit": 200 }
-```
-Para cada mensagem com `zapi_message_id` no período, consulta a Z-API e devolve um resumo:
-```json
-{
-  "total_checked": 200,
-  "accepted_only": 125,    // Z-API aceitou mas WhatsApp NUNCA confirmou entrega
-  "delivered": 60,
-  "read": 12,
-  "rejected_by_whatsapp": 3,
-  "details": [ ... ]
-}
-```
-
-**Modo C — Por telefone + intervalo** (debug do seu número):
-```json
-{ "tenant_id": "...", "phone": "5575...", "hours": 1 }
-```
-
-### 2. Como ela funciona internamente
-
-- Lê credenciais de `integration_whatsapp` (mesmo padrão do `fe-send-message` e `zapi-broadcast`).
-- Chama `GET https://api.z-api.io/instances/{instanceId}/token/{token}/message-status/{messageId}` com header `Client-Token`.
-- Interpreta o retorno da Z-API:
-  - `status: "SENT"` + sem `momment` de delivered → **Aceito mas não entregue**
-  - `status: "RECEIVED"` → **Entregue no aparelho**
-  - `status: "READ"` / `"PLAYED"` → **Lido**
-  - Erro / `notification: "rejected"` → **Rejeitado pelo WhatsApp**
-- **Nada é gravado no banco.** Apenas leitura e resposta JSON.
-
-### 3. Endpoint chamável de duas formas
-
-- Via `supabase.functions.invoke('zapi-check-message-status', { body: {...} })` no frontend (futuro) ou
-- Via curl direto pelo Supabase (que é como faremos o teste agora).
+1. **Relatório imediato (Modo B)** — diagnóstico do estrago histórico antes de mexer em qualquer código.
+2. **Correção definitiva** — schema + 8 edge functions + webhook com lookup em 3 níveis.
 
 ---
 
-## O que NÃO será feito nesta etapa
+## Parte 1 — Relatório de impacto (executado primeiro, antes de qualquer mudança)
 
-- Nenhuma migração de banco (sem novas colunas `zaap_id`, `delivered_at`, etc.)
-- Nenhuma mudança no `zapi-webhook` (continua igual, com o bug de ID mismatch)
-- Nenhuma mudança no `fe-send-message`, `zapi-broadcast`, `zapi-send-paid-order`, `zapi-send-tracking`
-- Nenhum trigger novo
-- Nenhum status atualizado em `whatsapp_messages` ou `fe_messages`
+Objetivo: para cada tenant com Z-API ativa, mostrar quantas mensagens das últimas 30 dias estão marcadas como "enviadas" no banco mas **nunca foram confirmadas como entregues** pelo WhatsApp.
 
-Essa etapa é estritamente **observabilidade**. Depois que ela rodar e confirmarmos a discrepância, voltamos para discutir o Passo 2 (corrigir o webhook) e Passo 3 (migração).
+Como será gerado:
+- Consulta SQL agregada em `whatsapp_messages` cruzando `sent_at`, `delivery_status` e presença de `zapi_message_id`.
+- Para uma amostra (até 50 mensagens por tenant das últimas 24h que tenham `zapi_message_id`), chamar `zapi-check-message-status` (Modo A) e comparar status real vs status no banco.
+- Saída: tabela por tenant com colunas `total_enviadas`, `sem_zapi_message_id` (órfãs - bug 1), `status_pending_no_banco`, `confirmadas_entregues_amostra`, `nao_entregues_amostra`, `taxa_entrega_real_estimada`.
+- Entregue como mensagem no chat + arquivo CSV em `/mnt/documents/relatorio_zapi_entrega.csv`.
 
----
-
-## Plano de teste após implementação
-
-1. Você me dá um número de teste (o seu).
-2. Eu chamo `fe-send-message` ou `zapi-send-message` para enviar uma mensagem qualquer e capturo o `messageId` retornado.
-3. Aguardo ~30s.
-4. Chamo `zapi-check-message-status` com esse `messageId`.
-5. Te mostro lado a lado: o que o sistema gravou (provavelmente "sent") vs o que a Z-API realmente diz (`SENT` puro = não entregue, ou `RECEIVED` = entregue).
-6. Em seguida rodo o Modo B nas últimas 24h e te entrego o número exato de mensagens que estão "sent" no banco mas nunca foram entregues no WhatsApp.
+Nada é gravado, nada é alterado. Só leitura.
 
 ---
 
-## Detalhes técnicos
+## Parte 2 — Correção definitiva
 
-- Arquivo: `supabase/functions/zapi-check-message-status/index.ts`
-- Config: adicionar `[functions.zapi-check-message-status] verify_jwt = false` em `supabase/config.toml` (mesmo padrão das outras zapi-*)
-- Usa `SUPABASE_SERVICE_ROLE_KEY` apenas para ler `integration_whatsapp` e `whatsapp_messages` (Modos B e C). Nenhuma escrita.
-- Validação de input com checagem manual (tenant_id obrigatório; um de message_id/phone/hours obrigatório).
-- CORS padrão do projeto.
-- Timeout por requisição à Z-API: 8s. Em modo lote, máximo 200 mensagens por chamada com delay de 200ms entre cada para não estourar rate limit.
-- Logs estruturados para acompanhar pelo painel de Edge Functions.
+### 2.1 Migration de schema
+
+Adicionar em `whatsapp_messages`:
+- `zapi_zaap_id text` — ID interno do Z-API que vem nos webhooks `DeliveryCallback` / `MessageStatusCallback` (campo `zaapId`).
+- `zapi_message_id text` — confirmar que existe; se não, criar. É o `messageId` que a Z-API retorna no envio (formato WhatsApp `3EB0...`).
+- `delivered_at timestamptz` — quando o webhook confirmou entrega no aparelho.
+- `read_at timestamptz` — quando o webhook confirmou leitura.
+- Índices: `idx_wm_zaap_id` em `zapi_zaap_id`, `idx_wm_msg_id` em `zapi_message_id`, ambos parciais (`WHERE ... IS NOT NULL`).
+
+### 2.2 Edge functions de envio (8 arquivos)
+
+Padronizar todas para:
+1. Capturar do response do Z-API tanto `messageId` quanto `zaapId` (a Z-API retorna os dois no JSON de sucesso).
+2. Persistir os dois no `INSERT` em `whatsapp_messages` junto com `delivery_status='sent'` e `sent_at=now()`.
+3. Logar o response cru no console para debug futuro.
+
+Arquivos afetados:
+- `supabase/functions/zapi-send-message/index.ts` (corrigir o INSERT existente que hoje grava sem IDs)
+- `supabase/functions/fe-send-message/index.ts` (hoje grava só em `fe_messages`; adicionar IDs lá também — `fe_messages` precisa das mesmas colunas — incluir na migration)
+- `supabase/functions/zapi-broadcast/index.ts`
+- `supabase/functions/zapi-send-paid-order/index.ts`
+- `supabase/functions/zapi-send-tracking/index.ts`
+- `supabase/functions/zapi-send-item-added/index.ts`
+- `supabase/functions/zapi-send-confirmation-link/index.ts`
+- `supabase/functions/zapi-send-product-canceled/index.ts`
+
+### 2.3 Webhook `zapi-webhook` — lookup em 3 níveis
+
+Quando chegar um callback de status, tentar localizar a mensagem nesta ordem:
+1. **Primário**: `WHERE zapi_zaap_id = payload.zaapId` (o que a Z-API realmente referencia nos callbacks).
+2. **Fallback**: `WHERE zapi_message_id = payload.messageId` (caso o envio tenha sido feito antes da migration ou o callback venha com formato antigo).
+3. **Último recurso**: `WHERE phone = payload.phone AND sent_at BETWEEN now()-interval '10 min' AND now()` ordenado por `sent_at desc limit 1`.
+
+Quando achar:
+- Atualizar `delivery_status` (`delivered`/`read`/`failed`).
+- Setar `delivered_at` ou `read_at` conforme o evento.
+- Se a mensagem não foi achada em nenhum dos 3 níveis, gravar em uma nova tabela `whatsapp_webhook_orphans` para inspeção (raw payload + timestamp).
+
+### 2.4 Validação pós-deploy
+
+- Enviar 1 mensagem de teste pelo `zapi-send-message` no MANIA DE MULHER → confirmar que `zapi_message_id` E `zapi_zaap_id` ficam gravados.
+- Aguardar 30s → consultar a row → confirmar que `delivery_status` virou `delivered` (não mais `sent`/`pending`) e que `delivered_at` foi preenchido.
+- Rodar de novo o Modo B e mostrar a taxa de entrega "antes vs depois".
+
+---
+
+## O que NÃO está incluído nesta etapa
+
+- Reprocessamento retroativo das mensagens órfãs antigas (não dá para recuperar IDs perdidos).
+- Mudanças no fluxo de retry de mensagens não entregues — fica para uma etapa 3 se você quiser.
+- Mexer no anti-block delay ou na lógica de envio em si — só observabilidade e tracking.
+
+---
+
+## Ordem de execução após aprovação
+
+1. Rodar Parte 1 e te entregar o CSV + resumo no chat.
+2. Aplicar a migration (2.1).
+3. Atualizar as 8 edge functions (2.2) — deploy automático.
+4. Atualizar o webhook (2.3) — deploy automático.
+5. Rodar a validação (2.4) e te mostrar o resultado.
 
 Posso prosseguir?
