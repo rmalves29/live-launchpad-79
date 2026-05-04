@@ -3050,6 +3050,7 @@ export type Database = {
         Row: {
           amount: number | null
           created_at: string | null
+          delivered_at: string | null
           delivery_status: string | null
           group_name: string | null
           id: number
@@ -3058,6 +3059,7 @@ export type Database = {
           phone: string
           processed: boolean | null
           product_name: string | null
+          read_at: string | null
           received_at: string | null
           sent_at: string | null
           tenant_id: string
@@ -3065,10 +3067,12 @@ export type Database = {
           updated_at: string | null
           whatsapp_group_name: string | null
           zapi_message_id: string | null
+          zapi_zaap_id: string | null
         }
         Insert: {
           amount?: number | null
           created_at?: string | null
+          delivered_at?: string | null
           delivery_status?: string | null
           group_name?: string | null
           id?: number
@@ -3077,6 +3081,7 @@ export type Database = {
           phone: string
           processed?: boolean | null
           product_name?: string | null
+          read_at?: string | null
           received_at?: string | null
           sent_at?: string | null
           tenant_id: string
@@ -3084,10 +3089,12 @@ export type Database = {
           updated_at?: string | null
           whatsapp_group_name?: string | null
           zapi_message_id?: string | null
+          zapi_zaap_id?: string | null
         }
         Update: {
           amount?: number | null
           created_at?: string | null
+          delivered_at?: string | null
           delivery_status?: string | null
           group_name?: string | null
           id?: number
@@ -3096,6 +3103,7 @@ export type Database = {
           phone?: string
           processed?: boolean | null
           product_name?: string | null
+          read_at?: string | null
           received_at?: string | null
           sent_at?: string | null
           tenant_id?: string
@@ -3103,6 +3111,7 @@ export type Database = {
           updated_at?: string | null
           whatsapp_group_name?: string | null
           zapi_message_id?: string | null
+          zapi_zaap_id?: string | null
         }
         Relationships: [
           {
@@ -3191,6 +3200,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      whatsapp_webhook_orphans: {
+        Row: {
+          id: number
+          ids: string[] | null
+          message_id: string | null
+          phone: string | null
+          raw_payload: Json | null
+          received_at: string
+          status: string | null
+          zaap_id: string | null
+        }
+        Insert: {
+          id?: number
+          ids?: string[] | null
+          message_id?: string | null
+          phone?: string | null
+          raw_payload?: Json | null
+          received_at?: string
+          status?: string | null
+          zaap_id?: string | null
+        }
+        Update: {
+          id?: number
+          ids?: string[] | null
+          message_id?: string | null
+          phone?: string | null
+          raw_payload?: Json | null
+          received_at?: string
+          status?: string | null
+          zaap_id?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {
