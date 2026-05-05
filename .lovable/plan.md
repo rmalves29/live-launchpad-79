@@ -1,66 +1,72 @@
-## Aplicar paleta Cartzy
+## Ajustar cores do sistema para combinar com a logo Cartzy
 
-A ideia é trocar a paleta atual (cyan-teal + violeta) pela nova paleta Cartzy (navy + cyan brilhante + azul elétrico) **somente nos tokens globais do design system** — sem precisar mexer em cada componente. Como todo o app usa `hsl(var(--primary))`, `bg-card`, `text-foreground`, etc., a mudança propaga automaticamente.
+A logo enviada usa **navy escuro como cor dominante** das letras, com **cyan brilhante apenas como glow/contorno** e fundo branco. Hoje o sistema está com a lógica invertida: o cyan vibrante virou fundo principal (`--background: 189 100% 50%`), o que cansa a vista e não reflete a hierarquia da marca.
 
-Isso permite você avaliar e, se não gostar, reverter em 1 mensagem.
+A proposta é **reorganizar os tokens** em `src/index.css` para que o sistema espelhe a logo: base clara/neutra, navy como cor de texto e estrutura, cyan e azul elétrico apenas como destaque (botões, links, glows).
 
-### O que muda
+### Mudanças no modo claro (`:root`)
 
-**1. `src/index.css` — tokens HSL (modo claro e escuro)**
+| Token | Hoje | Novo | Equivalente |
+|---|---|---|---|
+| `--background` | `189 100% 50%` (cyan puro) | `0 0% 100%` | Branco puro (fundo da logo) |
+| `--foreground` | `189 100% 50%` (cyan) | `217 60% 10%` | Navy `#0A1628` (cor das letras) |
+| `--primary` | `217 60% 10%` (navy) | `189 100% 50%` | Cyan `#00D9FF` (CTAs/botões) |
+| `--primary-foreground` | `189 100% 50%` | `217 60% 10%` | Navy sobre cyan |
+| `--accent` | `204 100% 50%` | `204 100% 50%` | Electric Blue (mantém) |
+| `--secondary` | `200 60% 95%` | `216 25% 97%` | Light Gray `#F5F7FA` |
+| `--muted` | `216 20% 93%` | `216 20% 95%` | Cinza muito sutil |
+| `--border` | `216 20% 88%` | `216 20% 90%` | Borda mais clara |
+| `--ring` | `217 60% 10%` | `189 100% 50%` | Foco cyan |
+| `--card` | `0 0% 100%` | `0 0% 100%` | Branco (mantém) |
+| `--card-foreground` | `217 32% 15%` | `217 60% 10%` | Navy puro |
 
-Conversão da paleta para HSL:
-- `#0A1628` Navy → `217 60% 10%`
-- `#00D9FF` Cyan Bright → `189 100% 50%`
-- `#0099FF` Electric Blue → `204 100% 50%`
-- `#1A2332` Dark Gray → `217 32% 15%`
-- `#F5F7FA` Light Gray → `216 25% 97%`
-- `#6B7280` Medium Gray → `220 9% 46%`
+### Sidebar (alinhada à logo)
+A sidebar volta a ter **fundo navy** com textos brancos e accent cyan — exatamente como a logo (letras navy "destacadas" pelo cyan):
 
-Modo claro (`:root`):
-- `--background`: Light Gray `216 25% 97%`
-- `--foreground`: Navy `217 60% 10%`
-- `--primary`: Cyan Bright `189 100% 50%` (CTAs)
-- `--accent`: Electric Blue `204 100% 50%` (hover/destaque secundário)
-- `--secondary`: tom claro derivado do azul
-- `--ring`: Cyan Bright
-- Sidebar: fundo Navy `217 60% 10%` com texto branco e accent Cyan (segue a recomendação "Header/Navbar fundo Navy")
+| Token | Novo |
+|---|---|
+| `--sidebar-background` | `217 60% 10%` (Navy) |
+| `--sidebar-foreground` | `0 0% 100%` (branco) |
+| `--sidebar-primary` | `189 100% 50%` (Cyan) |
+| `--sidebar-primary-foreground` | `217 60% 10%` (Navy) |
+| `--sidebar-accent` | `217 32% 18%` |
+| `--sidebar-accent-foreground` | `189 100% 70%` |
 
-Modo escuro (`.dark`):
-- `--background`: Navy `217 60% 10%`
-- `--card`: Dark Gray `217 32% 15%`
-- `--foreground`: branco
-- `--primary`: Cyan Bright
-- `--accent`: Electric Blue
-- `--muted-foreground`: Medium Gray
+### Modo escuro (`.dark`)
 
-**2. Gradientes e classes utilitárias** (mesmo arquivo)
+| Token | Novo | Equivalente |
+|---|---|---|
+| `--background` | `217 60% 10%` | Navy `#0A1628` (fundo dark) |
+| `--foreground` | `0 0% 100%` | Branco |
+| `--card` | `217 32% 15%` | Dark Gray `#1A2332` |
+| `--primary` | `189 100% 50%` | Cyan (CTAs continuam vibrantes) |
+| `--primary-foreground` | `217 60% 10%` | Navy sobre cyan |
+| `--ring` | `189 100% 50%` | Foco cyan |
 
-Atualizar:
-- `.btn-gradient-primary` → `linear-gradient(90deg, #00D9FF 0%, #0099FF 100%)` com `box-shadow: 0 4px 12px rgba(0,217,255,.3)` no estado normal e `.5` no hover (exatamente como na sua spec).
-- `.btn-gradient-accent` → gradiente com glow `linear-gradient(135deg, #00D9FF 0%, #0066FF 50%, #0099FF 100%)`.
-- `.glow-primary` / `.glow-accent` → sombra cyan ao invés de teal/violeta.
-- `.text-gradient-primary` / `.text-gradient-mixed` → mesmas cores Cartzy.
-- `.glass-card` no modo escuro → base Navy/Dark Gray.
-- `@keyframes glowPulse` → glow cyan.
+### Gradientes e utilidades
 
-**3. `tailwind.config.ts` — sombras `glow-*`**
+Ajustes para refletir a hierarquia **navy → cyan** (igual ao fluxo visual da logo, das letras escuras para o glow):
 
-Já usam `hsl(var(--primary))`, então herdam automaticamente o cyan novo. Sem alteração necessária.
+- `.btn-gradient-primary`: `linear-gradient(90deg, #00D9FF 0%, #0099FF 50%, #0A1628 100%)` — começa cyan vibrante e finaliza no navy (inversão do atual, que começa navy).
+- `.btn-gradient-accent`: mantém `cyan → electric blue → deep blue` (já está bom).
+- `.text-gradient-primary`: `navy → electric blue` (mantém).
+- `.text-gradient-mixed`: `cyan → electric blue → navy` para títulos hero.
+- `.glow-primary` / `.glow-accent`: mantêm glow cyan/azul.
+- `.glass-card` (modo claro): trocar o tint cyan saturado por um tint mais sutil (`hsl(189 100% 97%)` no lugar de `hsl(189 100% 95%)`) para não competir com os botões.
+- `.bg-grid`: já usa azul elétrico com baixa opacidade — mantém.
 
 ### O que NÃO muda
-- Nenhum componente `.tsx` é tocado.
-- Cores de status (`success`, `warning`, `destructive`, `info`) ficam como estão — verde/amarelo/vermelho continuam fazendo sentido para feedback.
-- Tipografia (Inter + Space Grotesk) mantida.
-- Layout, espaçamentos, animações: idênticos.
+- Tipografia (Inter + Space Grotesk).
+- Cores de status (`success`, `warning`, `destructive`, `info`).
+- Layout, espaçamentos, animações, componentes `.tsx`.
+- `tailwind.config.ts` (todos os tokens já são derivados via `hsl(var(--*))`).
+
+### Resultado visual esperado
+- **Tela de login / dashboard**: fundo branco/cinza claro, textos navy, botões cyan vibrante com glow — exatamente o "feeling" da logo sobre fundo branco.
+- **Sidebar**: navy escuro com itens ativos em cyan — reproduz o contraste navy+cyan da logo.
+- **Modo escuro**: fundo navy profundo, cyan como destaque — versão "noturna" da mesma identidade.
 
 ### Como reverter
-Se você não gostar, basta pedir "voltar paleta antiga" — restauro o `index.css` em uma única edição.
-
-### Áreas onde você verá impacto imediato
-- Botões primários (login, salvar, CTAs) → gradiente cyan→azul
-- Sidebar/Navbar → fundo navy com links cyan no hover
-- Cards e bordas → tom mais frio, azulado
-- Modo escuro → fundo navy profundo (em vez do azul-acinzentado atual)
-- Tela de Auth (onde você está agora) → primeiro lugar onde verá a mudança
+Basta pedir "voltar paleta cyan invertida" — restauro `index.css` em uma única edição.
 
 Posso aplicar?
