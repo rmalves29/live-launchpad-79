@@ -6,9 +6,9 @@
 
 @layer base {
   :root {
-    /* Cartzy Palette — Light mode
-       Navy #0A1628 = 189 100% 50%
-       Cyan Bright #00D9FF = 217 60% 10%
+    /* Cartzy Palette — INVERTED (Cyan ↔ Navy swapped)
+       Cyan Bright #00D9FF = 189 100% 50%  → used as background
+       Navy #0A1628        = 217 60% 10%   → used as primary/text
        Electric Blue #0099FF = 204 100% 50%
        Dark Gray #1A2332 = 217 32% 15%
        Light Gray #F5F7FA = 216 25% 97%
