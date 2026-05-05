@@ -50,7 +50,7 @@ const Navbar = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center justify-between">
             <NavLink to="/" className="flex items-center gap-3 group">
-              <div className="flex items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 px-4 py-2 rounded-2xl border border-primary/20 group-hover:border-primary/40 transition-all duration-300 group-hover:shadow-glow-sm">
+              <div className="items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 py-2 rounded-2xl border border-primary/20 group-hover:border-primary/40 transition-all duration-300 group-hover:shadow-glow-sm px-[19px] flex flex-row pr-[20px] pl-[20px]">
                 <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-xl shadow-lg">
                   <Zap className="h-6 w-6 text-white" />
                 </div>
