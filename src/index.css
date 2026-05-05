@@ -229,13 +229,13 @@
     box-shadow: 0 20px 40px -12px hsl(var(--foreground) / 0.1);
   }
 
-  /* Glow Effects */
+  /* Glow Effects - Cartzy cyan/electric blue */
   .glow-primary {
-    box-shadow: 0 0 30px hsl(172 66% 50% / 0.25);
+    box-shadow: 0 0 30px hsl(189 100% 50% / 0.3);
   }
 
   .glow-accent {
-    box-shadow: 0 0 30px hsl(265 80% 60% / 0.25);
+    box-shadow: 0 0 30px hsl(204 100% 50% / 0.3);
   }
 
   /* Futuristic Input */
