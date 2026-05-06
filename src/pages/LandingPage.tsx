@@ -335,13 +335,13 @@ export default function LandingPage() {
           </div>
 
           {/* Dashboard screenshot */}
-          <div className="mt-20 relative max-w-5xl mx-auto">
-            <div className="absolute -inset-1 bg-gradient-to-r from-sky-500/20 via-cyan-500/5 to-blue-500/20 rounded-2xl blur-xl" />
-            <div className="relative rounded-2xl border border-sky-500/15 shadow-2xl overflow-hidden">
+          <div className="mt-20 relative max-w-4xl mx-auto">
+            <div className="absolute -inset-1 bg-gradient-to-r from-sky-500/20 via-cyan-500/5 to-blue-500/20 rounded-3xl blur-xl" />
+            <div className="relative rounded-3xl border border-sky-500/15 shadow-2xl overflow-hidden">
               <img
                 src="/dashboard.png"
                 alt="Painel de Pedidos Cartzy"
-                className="w-full h-auto rounded-2xl"
+                className="w-full h-auto rounded-3xl"
               />
             </div>
           </div>
