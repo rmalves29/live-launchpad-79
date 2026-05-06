@@ -678,7 +678,12 @@ const Produtos = () => {
           promotional_price: isNaN(promoPrice as number) ? null : promoPrice,
           observation: row.observacao ? String(row.observacao).trim() : null,
           sku_erp: row.sku_erp ? String(row.sku_erp).trim() : null,
-          stock: row.estoque ? parseInt(String(row.estoque)) : 0,
+          stock: (() => {
+            const raw = String(row.estoque ?? '').trim();
+            if (raw === '') return 0;
+            const n = parseInt(raw, 10);
+            return Number.isFinite(n) && n >= 0 ? n : 0;
+          })(),
           color: row.cor ? String(row.cor).trim() : null,
           size: row.tamanho ? String(row.tamanho).trim() : null,
           image_url: row.imagem_url ? String(row.imagem_url).trim() : null,
