@@ -291,18 +291,18 @@ export default function LandingPage() {
 
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-sky-500/10 border border-sky-500/20 mb-8">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="text-sm text-cyan-300 font-medium">Sistema completo para vendas em live e WhatsApp</span>
+              <span className="text-sm text-cyan-300 font-medium">Sistema completo para vendas em lives do Instagram e Grupos de WhatsApp</span>
             </div>
 
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold leading-[1.1] mb-6 tracking-tight">
-              Venda em lives sem{" "}
+              Venda em lives e Grupos{" "}
               <span className="bg-gradient-to-r from-cyan-300 via-sky-400 to-blue-400 bg-clip-text text-transparent">
-                perder um pedido
+                sem perder um pedido
               </span>
             </h1>
 
             <p className="text-lg md:text-xl text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-              O Cartzy captura pedidos automaticamente durante suas lives, envia cobranças e rastreio via WhatsApp — tudo sem você precisar fazer nada manualmente.
+              O Cartzy captura pedidos automaticamente em seu Grupo de WhatsApp, envia cobranças e rastreio via WhatsApp — tudo sem você precisar fazer nada manualmente.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
@@ -334,60 +334,15 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Dashboard mockup */}
+          {/* Dashboard screenshot */}
           <div className="mt-20 relative max-w-5xl mx-auto">
             <div className="absolute -inset-1 bg-gradient-to-r from-sky-500/20 via-cyan-500/5 to-blue-500/20 rounded-2xl blur-xl" />
-            <div className="relative bg-[#040f20] rounded-2xl border border-sky-500/15 p-3 md:p-5 shadow-2xl">
-              <div className="flex items-center gap-2 mb-4 px-1">
-                <span className="w-3 h-3 rounded-full bg-red-500/70" />
-                <span className="w-3 h-3 rounded-full bg-yellow-500/70" />
-                <span className="w-3 h-3 rounded-full bg-sky-500/70" />
-                <span className="ml-4 text-xs text-gray-600">cartzy.app — Painel de Pedidos</span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                {[
-                  { label: "Pedidos Hoje", value: "47", sub: "+12% vs ontem", color: "cyan" },
-                  { label: "Faturamento", value: "R$ 8.450", sub: "Live de hoje", color: "blue" },
-                  { label: "Ticket Médio", value: "R$ 179", sub: "Últimos 30 dias", color: "sky" },
-                ].map((stat, i) => (
-                  <div key={i} className="bg-white/5 rounded-xl p-4 border border-white/5">
-                    <p className="text-xs text-gray-500 mb-1">{stat.label}</p>
-                    <p className={`text-xl md:text-2xl font-bold mb-1 ${
-                      stat.color === "cyan" ? "text-cyan-400" :
-                      stat.color === "blue" ? "text-blue-400" : "text-sky-400"
-                    }`}>{stat.value}</p>
-                    <p className="text-xs text-gray-600">{stat.sub}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                {[
-                  { id: 231, name: "Maria Silva", value: "R$ 189,90", status: "Pago", color: "cyan" },
-                  { id: 232, name: "João Pereira", value: "R$ 349,00", status: "Enviado", color: "blue" },
-                  { id: 233, name: "Ana Costa", value: "R$ 99,90", status: "Aguardando", color: "yellow" },
-                ].map((order) => (
-                  <div key={order.id} className="flex items-center justify-between bg-white/5 rounded-xl p-3 border border-white/5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-sky-500/15 flex items-center justify-center">
-                        <Package className="w-4 h-4 text-sky-400" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Pedido #{order.id}</p>
-                        <p className="text-xs text-gray-500">{order.name} • {order.value}</p>
-                      </div>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                      order.color === "cyan" ? "bg-cyan-500/15 text-cyan-400" :
-                      order.color === "blue" ? "bg-blue-500/15 text-blue-400" :
-                      "bg-yellow-500/15 text-yellow-400"
-                    }`}>
-                      {order.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            <div className="relative rounded-2xl border border-sky-500/15 shadow-2xl overflow-hidden">
+              <img
+                src="/dashboard.png"
+                alt="Painel de Pedidos Cartzy"
+                className="w-full h-auto rounded-2xl"
+              />
             </div>
           </div>
         </div>
