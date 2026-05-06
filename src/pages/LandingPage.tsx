@@ -27,7 +27,7 @@ import { useState } from "react";
 const WHATSAPP_URL = "http://api.whatsapp.com/send?l=pt&phone=5531992904210";
 
 function CartzyLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
-  const sizes = { sm: "h-7", md: "h-9", lg: "h-14" };
+  const sizes = { sm: "h-7", md: "h-9", lg: "h-24" };
   return (
     <img
       src="/logo.png"
