@@ -63,7 +63,6 @@ const Navbar = () => {
 
             {/* Right side - User & Tenant */}
             <div className="flex items-center gap-3">
-              <ThemeToggle />
               <TenantSwitcher />
               
               {user ? (
