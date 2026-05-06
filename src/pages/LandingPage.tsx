@@ -61,7 +61,7 @@ export default function LandingPage() {
       icon: Package,
       title: "Gestão de Pedidos",
       description:
-        "Capture, organize e acompanhe todos os pedidos em tempo real durante suas lives e grupos de WhatsApp. Zero pedido perdido.",
+        "Capture, organize e acompanhe todos os pedidos em tempo real durante suas Lives e Grupos de WhatsApp. Zero pedido perdido.",
     },
     {
       icon: MessageSquare,
@@ -125,7 +125,7 @@ export default function LandingPage() {
   const steps = [
     { step: 1, title: "Configure sua loja", description: "Cadastre seus produtos, preços e personalize em minutos. Sem conhecimento técnico." },
     { step: 2, title: "Conecte o WhatsApp", description: "Integre seu número em segundos. Sem precisar de API oficial ou custo extra por mensagem." },
-    { step: 3, title: "Comece a vender", description: "Sistema captura pedidos automaticamente durante a live e nos grupos de WhatsApp." },
+    { step: 3, title: "Comece a vender", description: "Sistema captura pedidos automaticamente durante a Live e nos Grupos de WhatsApp." },
     { step: 4, title: "Cobrança automática", description: "Links de pagamento enviados instantaneamente. Cliente paga, sistema confirma." },
     { step: 5, title: "Envio com rastreio", description: "Etiquetas geradas automaticamente. Código de rastreio enviado ao cliente sem você fazer nada." },
   ];
@@ -134,7 +134,7 @@ export default function LandingPage() {
     {
       name: "Camila Rocha",
       role: "Loja de moda feminina",
-      text: "Antes eu perdia pelo menos 30% dos pedidos nas lives e no grupo. Com o Cartzy, zero pedido perdido. Meu faturamento dobrou em 2 meses.",
+      text: "Antes eu perdia pelo menos 30% dos pedidos nas Lives e no Grupo Vip. Com o Cartzy, zero pedido perdido. Meu faturamento dobrou em 2 meses.",
       stars: 5,
     },
     {
@@ -146,7 +146,7 @@ export default function LandingPage() {
     {
       name: "Fernanda Lima",
       role: "Artesanato e presentes",
-      text: "Sistema incrível! Consigo fazer lives e gerenciar o grupo ao mesmo tempo, acompanhando todos os pedidos em tempo real. Nunca mais errei um pedido.",
+      text: "Sistema incrível! Consigo fazer Lives e gerenciar o Grupo Vip ao mesmo tempo, acompanhando todos os pedidos em tempo real. Nunca mais errei um pedido.",
       stars: 5,
     },
   ];
@@ -163,7 +163,7 @@ export default function LandingPage() {
       name: "Basic",
       price: "R$ 499,00",
       period: "30 dias de acesso",
-      description: "Para quem está começando nas lives e grupos de WhatsApp",
+      description: "Para quem está começando nas Lives e Grupos de WhatsApp",
       features: [
         "Acesso completo ao sistema",
         "Suporte por WhatsApp horário comercial",
@@ -210,12 +210,12 @@ export default function LandingPage() {
       answer: "Não. O Cartzy integra com seu WhatsApp sem custo adicional por mensagem e sem precisar de aprovação do Meta.",
     },
     {
-      question: "Como funciona a captura de pedidos na live e nos grupos?",
-      answer: "Durante sua live no Instagram, o sistema monitora os comentários e captura automaticamente os pedidos. Nos grupos de WhatsApp, os pedidos são lançados de forma simples e organizada direto no painel.",
+      question: "Como funciona a captura de pedidos na Live e nos Grupos?",
+      answer: "Durante sua Live no Instagram, o sistema monitora os comentários e captura automaticamente os pedidos. Nos Grupos de WhatsApp, os pedidos são lançados de forma simples e organizada direto no painel.",
     },
     {
-      question: "Funciona para vendas em grupos de WhatsApp?",
-      answer: "Sim! Além das lives, o sistema é integrado a grupos de WhatsApp. Você consegue lançar pedidos manualmente ou capturar de forma semi-automática.",
+      question: "Funciona para vendas em Grupos de WhatsApp?",
+      answer: "Sim! Além das Lives, o sistema é integrado a Grupos de WhatsApp. Você consegue lançar pedidos manualmente ou capturar de forma semi-automática.",
     },
     {
       question: "Como faço para contratar?",
@@ -367,8 +367,8 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-3 gap-5 max-w-4xl mx-auto">
             {[
-              { icon: MessageSquare, title: "Pedidos perdidos no chat", description: "O chat corre rápido durante a live e os grupos ficam cheios de mensagens. Sem captura automática, pedidos somem." },
-              { icon: Clock, title: "Horas de trabalho manual", description: "Copiar nome, produto, endereço, cobrar um a um... isso toma horas do seu dia após cada live ou ação no grupo." },
+              { icon: MessageSquare, title: "Pedidos perdidos no chat", description: "O chat corre rápido durante a Live e os Grupos ficam cheios de mensagens. Sem captura automática, pedidos somem." },
+              { icon: Clock, title: "Horas de trabalho manual", description: "Copiar nome, produto, endereço, cobrar um a um... isso toma horas do seu dia após cada Live ou ação no Grupo Vip." },
               { icon: TrendingUp, title: "Clientes que desistem", description: "Quem espera resposta por muito tempo simplesmente vai embora e compra na concorrência." },
             ].map((p, i) => (
               <div key={i} className="group bg-red-500/5 border border-red-500/15 rounded-2xl p-6 hover:border-red-500/30 transition-all">
@@ -391,14 +391,14 @@ export default function LandingPage() {
               <div>
                 <p className="text-sky-400 text-sm font-semibold uppercase tracking-widest mb-3">A solução</p>
                 <h2 className="text-3xl md:text-4xl font-bold mb-5 leading-tight">
-                  O sistema completo para quem vende em live e grupos de WhatsApp
+                  O sistema completo para quem vende em Live e Grupos de WhatsApp
                 </h2>
                 <p className="text-gray-400 mb-6 leading-relaxed">
                   O Cartzy automatiza todo o processo de venda — da captura do pedido ao rastreio de entrega. Integrado ao WhatsApp, seu cliente é notificado em cada etapa sem você precisar enviar uma mensagem sequer.
                 </p>
                 <div className="space-y-3">
                   {[
-                    "Captura pedidos automaticamente durante a live e nos grupos de WhatsApp",
+                    "Captura pedidos automaticamente durante a Live e nos Grupos de WhatsApp",
                     "Envia link de pagamento via WhatsApp",
                     "Gera etiqueta e envia rastreio ao cliente",
                     "Tudo registrado e organizado no seu painel",
@@ -671,7 +671,7 @@ export default function LandingPage() {
                 Pronto para nunca mais<br />perder um pedido?
               </h2>
               <p className="text-gray-400 mb-10 max-w-lg mx-auto">
-                Fale com nossa equipe e descubra como o Cartzy pode transformar suas vendas em live e nos grupos de WhatsApp.
+                Fale com nossa equipe e descubra como o Cartzy pode transformar suas vendas em Live e nos Grupos de WhatsApp.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
