@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { TenantSwitcher } from '@/components/TenantSwitcher';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
@@ -63,6 +64,7 @@ const Navbar = () => {
 
             {/* Right side - User & Tenant */}
             <div className="flex items-center gap-3">
+              <ThemeToggle />
               <TenantSwitcher />
               
               {user ? (
