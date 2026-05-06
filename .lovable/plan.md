@@ -1,72 +1,72 @@
-## Ajustar cores do sistema para combinar com a logo Cartzy
+## Objetivo
 
-A logo enviada usa **navy escuro como cor dominante** das letras, com **cyan brilhante apenas como glow/contorno** e fundo branco. Hoje o sistema está com a lógica invertida: o cyan vibrante virou fundo principal (`--background: 189 100% 50%`), o que cansa a vista e não reflete a hierarquia da marca.
+Replicar a **identidade visual da página `/landing`** (fundo deep navy `#020c1b`, acentos cyan/sky, glow rings, tipografia bold tracking-tight) em todo o sistema, sem alterar a estrutura das páginas (Pedidos, Produtos, Clientes, Navbar, tabelas, formulários permanecem como estão). O escuro vira o tema padrão e o usuário pode alternar para claro.
 
-A proposta é **reorganizar os tokens** em `src/index.css` para que o sistema espelhe a logo: base clara/neutra, navy como cor de texto e estrutura, cyan e azul elétrico apenas como destaque (botões, links, glows).
+## Paleta-alvo (extraída da landing)
 
-### Mudanças no modo claro (`:root`)
-
-| Token | Hoje | Novo | Equivalente |
-|---|---|---|---|
-| `--background` | `189 100% 50%` (cyan puro) | `0 0% 100%` | Branco puro (fundo da logo) |
-| `--foreground` | `189 100% 50%` (cyan) | `217 60% 10%` | Navy `#0A1628` (cor das letras) |
-| `--primary` | `217 60% 10%` (navy) | `189 100% 50%` | Cyan `#00D9FF` (CTAs/botões) |
-| `--primary-foreground` | `189 100% 50%` | `217 60% 10%` | Navy sobre cyan |
-| `--accent` | `204 100% 50%` | `204 100% 50%` | Electric Blue (mantém) |
-| `--secondary` | `200 60% 95%` | `216 25% 97%` | Light Gray `#F5F7FA` |
-| `--muted` | `216 20% 93%` | `216 20% 95%` | Cinza muito sutil |
-| `--border` | `216 20% 88%` | `216 20% 90%` | Borda mais clara |
-| `--ring` | `217 60% 10%` | `189 100% 50%` | Foco cyan |
-| `--card` | `0 0% 100%` | `0 0% 100%` | Branco (mantém) |
-| `--card-foreground` | `217 32% 15%` | `217 60% 10%` | Navy puro |
-
-### Sidebar (alinhada à logo)
-A sidebar volta a ter **fundo navy** com textos brancos e accent cyan — exatamente como a logo (letras navy "destacadas" pelo cyan):
-
-| Token | Novo |
-|---|---|
-| `--sidebar-background` | `217 60% 10%` (Navy) |
-| `--sidebar-foreground` | `0 0% 100%` (branco) |
-| `--sidebar-primary` | `189 100% 50%` (Cyan) |
-| `--sidebar-primary-foreground` | `217 60% 10%` (Navy) |
-| `--sidebar-accent` | `217 32% 18%` |
-| `--sidebar-accent-foreground` | `189 100% 70%` |
-
-### Modo escuro (`.dark`)
-
-| Token | Novo | Equivalente |
+| Token | Escuro (padrão) | Claro (toggle) |
 |---|---|---|
-| `--background` | `217 60% 10%` | Navy `#0A1628` (fundo dark) |
-| `--foreground` | `0 0% 100%` | Branco |
-| `--card` | `217 32% 15%` | Dark Gray `#1A2332` |
-| `--primary` | `189 100% 50%` | Cyan (CTAs continuam vibrantes) |
-| `--primary-foreground` | `217 60% 10%` | Navy sobre cyan |
-| `--ring` | `189 100% 50%` | Foco cyan |
+| `--background` | `#020c1b` (deep navy) | branco atual |
+| `--foreground` | branco | navy atual |
+| `--card` | `rgba(255,255,255,0.02)` sobre navy | branco atual |
+| `--border` | `rgba(255,255,255,0.05)` | atual |
+| `--primary` (CTAs) | sky-500 `#0ea5e9` | sky-500 |
+| `--accent` (gradiente) | cyan-400 `#22d3ee` → blue-400 | atual |
+| `--muted-foreground` | gray-400 `#9ca3af` | atual |
 
-### Gradientes e utilidades
+Glow ambiente (radial blur sky-500/8, cyan-500/5) aplicado uma vez no body em modo escuro.
 
-Ajustes para refletir a hierarquia **navy → cyan** (igual ao fluxo visual da logo, das letras escuras para o glow):
+## Mudanças
 
-- `.btn-gradient-primary`: `linear-gradient(90deg, #00D9FF 0%, #0099FF 50%, #0A1628 100%)` — começa cyan vibrante e finaliza no navy (inversão do atual, que começa navy).
-- `.btn-gradient-accent`: mantém `cyan → electric blue → deep blue` (já está bom).
-- `.text-gradient-primary`: `navy → electric blue` (mantém).
-- `.text-gradient-mixed`: `cyan → electric blue → navy` para títulos hero.
-- `.glow-primary` / `.glow-accent`: mantêm glow cyan/azul.
-- `.glass-card` (modo claro): trocar o tint cyan saturado por um tint mais sutil (`hsl(189 100% 97%)` no lugar de `hsl(189 100% 95%)`) para não competir com os botões.
-- `.bg-grid`: já usa azul elétrico com baixa opacidade — mantém.
+### 1. `src/index.css` — redefinir tokens
 
-### O que NÃO muda
-- Tipografia (Inter + Space Grotesk).
-- Cores de status (`success`, `warning`, `destructive`, `info`).
-- Layout, espaçamentos, animações, componentes `.tsx`.
-- `tailwind.config.ts` (todos os tokens já são derivados via `hsl(var(--*))`).
+- Reescrever bloco `:root` (claro) e `.dark` (escuro) com as cores acima.
+- Tornar `.dark` o tema **padrão** adicionando a classe no `<html>` via `index.html` ou `main.tsx`.
+- Acrescentar gradiente de fundo global no `body.dark` (radial sky/cyan blurs fixos, pointer-events none).
+- Atualizar `.glass-card`, `.btn-gradient-primary`, `.glow-primary`, `.text-gradient-primary` para usar a nova paleta sky/cyan no escuro.
+- Headings continuam Space Grotesk; aumentar `tracking-tight` global em h1/h2.
 
-### Resultado visual esperado
-- **Tela de login / dashboard**: fundo branco/cinza claro, textos navy, botões cyan vibrante com glow — exatamente o "feeling" da logo sobre fundo branco.
-- **Sidebar**: navy escuro com itens ativos em cyan — reproduz o contraste navy+cyan da logo.
-- **Modo escuro**: fundo navy profundo, cyan como destaque — versão "noturna" da mesma identidade.
+### 2. Tema padrão escuro + toggle
 
-### Como reverter
-Basta pedir "voltar paleta cyan invertida" — restauro `index.css` em uma única edição.
+- `index.html`: adicionar `class="dark"` em `<html>`.
+- Criar `src/components/ThemeToggle.tsx` (Sun/Moon, persistência em `localStorage`).
+- Inserir o `ThemeToggle` na Navbar, ao lado do `TenantSwitcher` (`src/components/Navbar.tsx`, área "Right side - User & Tenant").
+- Pequeno script inline no `index.html` que lê `localStorage.theme` antes do React montar (evita flash claro).
 
-Posso aplicar?
+### 3. Ajustes pontuais de Navbar
+
+- Trocar `bg-card/90` por classes que respondem ao tema (já respondem via tokens — só validar contraste).
+- Botão "Entrar" passa a usar `bg-sky-500 hover:bg-sky-400` para casar com a landing.
+- Logo OrderZap mantém o layout atual (sem mexer no chip já editado).
+
+### 4. Ajustes globais leves
+
+- `src/App.css`: remover `max-width: 1280px` do `#root` que conflita com fundo escuro (regra antiga do template Vite).
+- Verificar componentes shadcn (`Button`, `Card`, `Input`) — todos já consomem tokens CSS, então herdarão o tema automaticamente.
+- Páginas internas: **não alterar JSX**. A mudança nos tokens propaga para todas.
+
+### 5. Exclusões (não mudam)
+
+- `/landing` continua com seu CSS hard-coded próprio (`bg-[#020c1b]`).
+- Storefront público (`/t/:slug`) — não afetado, já tem tema próprio.
+- Checkout público — mantém aparência atual para não quebrar conversão.
+- PrivacyPolicy/TermsOfUse — checar e manter em claro se for melhor para leitura (decisão durante implementação).
+
+## Arquivos editados
+
+```
+src/index.css                        (paleta + utilitários)
+src/App.css                          (remover max-width legado)
+index.html                           (class="dark" + script anti-flash)
+src/components/Navbar.tsx            (ThemeToggle + cor do botão Entrar)
+src/components/ThemeToggle.tsx       (novo)
+```
+
+## Riscos
+
+- Componentes que usam cores hard-coded (`bg-white`, `text-black`, `bg-gray-50`) ao invés de tokens vão "vazar" no escuro. Vou rodar `rg "bg-white|text-black|bg-gray-[0-9]"` em `src/` durante a implementação e converter para tokens (`bg-background`, `text-foreground`, `bg-muted`).
+- Modais/Dialogs do Radix já usam tokens — devem ficar ok.
+
+## Resultado esperado
+
+Sistema inteiro com a estética da landing (fundo navy profundo, cards sutis com borda cyan, botões sky com glow), mantendo todos os fluxos e funcionalidades. Toggle no canto superior direito permite voltar ao tema claro a qualquer momento.
