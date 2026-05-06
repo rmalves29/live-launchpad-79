@@ -312,10 +312,6 @@ export default function LandingPage() {
                   <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
               </a>
-              <Button size="lg" variant="outline" className="border-white/10 text-gray-300 hover:bg-white/5 hover:text-white px-8 h-13 text-base">
-                <Play className="mr-2 w-4 h-4 fill-current" />
-                Ver demonstração
-              </Button>
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-500">
