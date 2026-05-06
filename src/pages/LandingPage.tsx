@@ -295,9 +295,9 @@ export default function LandingPage() {
             </div>
 
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold leading-[1.1] mb-6 tracking-tight">
-              Venda em lives e Grupos{" "}
+              Chega de 5 dias para fechar uma venda.{" "}
               <span className="bg-gradient-to-r from-cyan-300 via-sky-400 to-blue-400 bg-clip-text text-transparent">
-                sem perder um pedido
+                Do pedido ao pagamento em minutos.
               </span>
             </h1>
 
