@@ -361,8 +361,8 @@ export default function LandingPage() {
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
             <p className="text-sky-400 text-sm font-semibold uppercase tracking-widest mb-3">O problema</p>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4">Vender em live é caótico<br />sem a ferramenta certa</h2>
-            <p className="text-gray-400 max-w-xl mx-auto">Milhares de vendedores perdem dinheiro todo dia por falta de organização durante as lives</p>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4">Vender em live e Grupos Vip é caótico<br />sem a ferramenta certa</h2>
+            <p className="text-gray-400 max-w-xl mx-auto">Milhares de vendedores perdem dinheiro todo dia por falta de organização durante as lives e ações de Grupo Vip</p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-5 max-w-4xl mx-auto">
