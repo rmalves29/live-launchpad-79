@@ -41,8 +41,8 @@ export function useTenantBySlug(slug: string | undefined) {
         setLoading(true);
         setError(null);
 
-        const { data, error: fetchError } = await supabase
-          .from('tenants')
+        const { data, error: fetchError } = await (supabase as any)
+          .from('tenants_public')
           .select('*')
           .eq('slug', slug)
           .eq('is_active', true)

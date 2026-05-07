@@ -193,9 +193,9 @@ const PublicCheckout = () => {
 
       try {
         // Buscar diretamente da tabela para obter todos os campos incluindo logo_url
-        const { data: tenantData, error } = await supabase
-          .from('tenants')
-          .select('id, name, slug, logo_url, primary_color, phone, is_active')
+        const { data: tenantData, error } = await (supabase as any)
+          .from('tenants_public')
+          .select('id, name, slug, logo_url, primary_color, is_active')
           .eq('slug', slug)
           .eq('is_active', true)
           .maybeSingle();
