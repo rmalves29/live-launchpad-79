@@ -31,24 +31,31 @@ export default function CadastroInstagram() {
 
   useEffect(() => {
     const loadTenant = async () => {
-      if (!slug) {
+      const normalizedSlug = decodeURIComponent(slug || '').trim().toLowerCase();
+
+      if (!normalizedSlug) {
         setTenantError('Loja não especificada');
         setLoadingTenant(false);
         return;
       }
       try {
-        const { data, error } = await (supabase as any)
-          .from('tenants_public')
-          .select('id, name, slug, logo_url, primary_color')
-          .eq('slug', slug)
-          .eq('is_active', true)
-          .maybeSingle();
+        const { data, error } = await supabase.rpc('get_tenant_by_slug' as any, {
+          slug_param: normalizedSlug,
+        });
 
         if (error) throw error;
-        if (!data) {
+        const tenantData = Array.isArray(data) ? data[0] : data;
+
+        if (!tenantData) {
           setTenantError('Loja não encontrada');
         } else {
-          setTenant(data as Tenant);
+          setTenant({
+            id: tenantData.id,
+            name: tenantData.name,
+            slug: tenantData.slug,
+            logo_url: null,
+            primary_color: null,
+          });
         }
       } catch {
         setTenantError('Erro ao carregar dados da loja');
@@ -77,7 +84,7 @@ export default function CadastroInstagram() {
     setSubmitting(true);
     try {
       const { data, error } = await supabase.rpc('public_register_instagram' as any, {
-        p_tenant_slug: slug,
+        p_tenant_slug: decodeURIComponent(slug || '').trim().toLowerCase(),
         p_instagram: cleanInstagram,
         p_phone: cleanPhone,
         p_name: name.trim() || null,
