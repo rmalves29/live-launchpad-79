@@ -37,8 +37,8 @@ export default function CadastroInstagram() {
         return;
       }
       try {
-        const { data, error } = await supabase
-          .from('tenants')
+        const { data, error } = await (supabase as any)
+          .from('tenants_public')
           .select('id, name, slug, logo_url, primary_color')
           .eq('slug', slug)
           .eq('is_active', true)
@@ -48,7 +48,7 @@ export default function CadastroInstagram() {
         if (!data) {
           setTenantError('Loja não encontrada');
         } else {
-          setTenant(data);
+          setTenant(data as Tenant);
         }
       } catch {
         setTenantError('Erro ao carregar dados da loja');
