@@ -92,8 +92,8 @@ export default function TenantStorefront() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await supabase
-          .from('tenants')
+        const { data } = await (supabase as any)
+          .from('tenants_public')
           .select('company_address, company_number, company_complement, company_district, company_city, company_state, company_cep')
           .eq('id', tenant.id)
           .maybeSingle();
