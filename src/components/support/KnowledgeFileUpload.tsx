@@ -143,12 +143,13 @@ export function KnowledgeFileUpload({
         throw error;
       }
 
-      const { data: urlData } = supabase.storage
+      const { data: urlData, error: signErr } = await supabase.storage
         .from('knowledge-files')
-        .getPublicUrl(data.path);
+        .createSignedUrl(data.path, 60 * 60 * 24 * 365 * 10); // 10 anos
+      if (signErr || !urlData) throw signErr ?? new Error('Falha ao gerar URL assinada');
 
       onUploadComplete({
-        file_url: urlData.publicUrl,
+        file_url: urlData.signedUrl,
         file_name: file.name,
         file_type: fileType,
         file_size: file.size
