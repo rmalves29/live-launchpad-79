@@ -211,7 +211,7 @@ const PublicCheckout = () => {
             slug: tenantData.slug,
             logo_url: tenantData.logo_url,
             primary_color: tenantData.primary_color,
-            phone: tenantData.phone,
+            phone: null,
           });
         }
       } catch (error) {
