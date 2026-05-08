@@ -166,6 +166,9 @@ serve(async (req) => {
     const couponDiscountValue = toNumber(body.coupon_discount, 0);
     const shippingValue = toNumber(body.shippingCost, 0);
 
+    // Pré-carregar pedidos do merge p/ rateio proporcional do desconto
+    type OrderCtx = { id: number; observation: string | null; cart_id: number | null; productsTotal: number };
+    const orderCtxs: OrderCtx[] = [];
     for (const orderId of orderIds) {
       const { data: existingOrder } = await sb
         .from("orders")
@@ -173,22 +176,6 @@ serve(async (req) => {
         .eq("id", orderId)
         .single();
       if (!existingOrder) continue;
-
-      const cleaned = (existingOrder.observation ?? "")
-        .toString()
-        .replace(/\n?\[FRETE\][^\n]*/g, "")
-        .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
-        .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
-        .replace(/\n?\[MERGE\][^\n]*/g, "")
-        .trim();
-
-      const pixNote = pixDiscountValue > 0 ? `[PIX_DISCOUNT] R$ ${pixDiscountValue.toFixed(2)}` : "";
-      const couponNote = couponDiscountValue > 0
-        ? `[COUPON_DISCOUNT] R$ ${couponDiscountValue.toFixed(2)}${body.coupon_code ? ` (${body.coupon_code})` : ""}`
-        : "";
-      const mergeNote = body.merge_observation ? `[MERGE] ${body.merge_observation}` : "";
-      const nextObs = [cleaned, freightNote, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
-
       let productsTotal = 0;
       if (existingOrder.cart_id) {
         const { data: cartItems } = await sb
@@ -196,14 +183,64 @@ serve(async (req) => {
           .select("unit_price, qty")
           .eq("cart_id", existingOrder.cart_id);
         if (cartItems?.length) {
-          productsTotal = cartItems.reduce((sum, it) => sum + Number(it.unit_price) * Number(it.qty), 0);
+          productsTotal = cartItems.reduce((s, it) => s + Number(it.unit_price) * Number(it.qty), 0);
         }
       }
-      if (productsTotal === 0) {
-        productsTotal = body.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
+      orderCtxs.push({ id: existingOrder.id, observation: existingOrder.observation, cart_id: existingOrder.cart_id, productsTotal });
+    }
+
+    const combinedSubtotal = orderCtxs.reduce((s, o) => s + o.productsTotal, 0);
+    const fallbackPayloadSubtotal = body.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
+    const pixShares: number[] = [];
+    const couponShares: number[] = [];
+    let pixRemaining = Math.round(pixDiscountValue * 100);
+    let couponRemaining = Math.round(couponDiscountValue * 100);
+    for (let i = 0; i < orderCtxs.length; i++) {
+      const isLast = i === orderCtxs.length - 1;
+      if (combinedSubtotal <= 0 || orderCtxs.length === 1) {
+        pixShares.push(isLast ? pixRemaining / 100 : 0);
+        couponShares.push(isLast ? couponRemaining / 100 : 0);
+        if (isLast) { pixRemaining = 0; couponRemaining = 0; }
+      } else if (isLast) {
+        pixShares.push(pixRemaining / 100);
+        couponShares.push(couponRemaining / 100);
+        pixRemaining = 0;
+        couponRemaining = 0;
+      } else {
+        const ratio = orderCtxs[i].productsTotal / combinedSubtotal;
+        const pixCents = Math.round(pixDiscountValue * 100 * ratio);
+        const couponCents = Math.round(couponDiscountValue * 100 * ratio);
+        pixShares.push(pixCents / 100);
+        couponShares.push(couponCents / 100);
+        pixRemaining -= pixCents;
+        couponRemaining -= couponCents;
       }
-      const newTotal = Math.max(0, productsTotal - pixDiscountValue - couponDiscountValue) + shippingValue;
+    }
+
+    for (let i = 0; i < orderCtxs.length; i++) {
+      const ctx = orderCtxs[i];
+      const cleaned = (ctx.observation ?? "")
+        .toString()
+        .replace(/\n?\[FRETE\][^\n]*/g, "")
+        .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
+        .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
+        .replace(/\n?\[MERGE\][^\n]*/g, "")
+        .trim();
+
+      const pixShare = pixShares[i] ?? 0;
+      const couponShare = couponShares[i] ?? 0;
+      const pixNote = pixShare > 0 ? `[PIX_DISCOUNT] R$ ${pixShare.toFixed(2)}` : "";
+      const couponNote = couponShare > 0
+        ? `[COUPON_DISCOUNT] R$ ${couponShare.toFixed(2)}${body.coupon_code ? ` (${body.coupon_code})` : ""}`
+        : "";
+      const mergeNote = body.merge_observation ? `[MERGE] ${body.merge_observation}` : "";
+      const nextObs = [cleaned, freightNote, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
+
+      const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : fallbackPayloadSubtotal;
+      const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + shippingValue;
       const shippingServiceId = body.shippingData?.service_id ? Number(body.shippingData.service_id) : null;
+
+      console.log(`[create-infinitepay-payment] Order ${ctx.id}: products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)}/${pixDiscountValue.toFixed(2)}, couponShare=${couponShare.toFixed(2)}, total=${newTotal.toFixed(2)}`);
 
       await sb
         .from("orders")
@@ -220,7 +257,7 @@ serve(async (req) => {
           total_amount: newTotal,
           shipping_service_id: shippingServiceId,
         })
-        .eq("id", orderId);
+        .eq("id", ctx.id);
     }
 
     // 4) Montar itens para o InfinitePay (valores em CENTAVOS)
