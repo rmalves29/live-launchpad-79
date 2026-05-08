@@ -266,95 +266,123 @@ serve(async (req) => {
     const freightNote = buildFreightNote(payload.shippingData, payload.shippingCost);
     const orderIds = (payload.order_ids && payload.order_ids.length > 0 ? payload.order_ids : [payload.order_id]).filter(Boolean);
 
-    // Atualizar cada pedido individualmente com os dados de endereço, frete e total atualizado
+    // Pré-carregar todos os pedidos do merge e calcular subtotal de cada um (a partir dos cart_items)
+    type OrderCtx = {
+      id: number;
+      observation: string | null;
+      cart_id: number | null;
+      productsTotal: number;
+    };
+    const orderCtxs: OrderCtx[] = [];
     for (const orderId of orderIds) {
-      // Buscar pedido atual com os itens do carrinho para recalcular corretamente
       const { data: existingOrder } = await sb
         .from("orders")
         .select("id, observation, total_amount, cart_id")
         .eq("id", orderId)
         .single();
+      if (!existingOrder) continue;
 
-      if (existingOrder) {
-        // Montar observação com frete, PIX discount e merge (se aplicável)
-        let obs = (existingOrder.observation ?? "").toString();
-        const cleaned = obs
-          .replace(/\n?\[FRETE\][^\n]*/g, "")
-          .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
-          .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
-          .replace(/\n?\[MERGE\][^\n]*/g, "")
-          .trim();
-        
-        // Adicionar observação de merge se existir
-        let mergeNote = "";
-        if (payload.merge_observation) {
-          mergeNote = `[MERGE] ${payload.merge_observation}`;
+      let productsTotal = 0;
+      if (existingOrder.cart_id) {
+        const { data: cartItems } = await sb
+          .from("cart_items")
+          .select("unit_price, qty")
+          .eq("cart_id", existingOrder.cart_id);
+        if (cartItems && cartItems.length > 0) {
+          productsTotal = cartItems.reduce((s, it) => s + Number(it.unit_price) * Number(it.qty), 0);
         }
+      }
+      orderCtxs.push({
+        id: existingOrder.id,
+        observation: existingOrder.observation,
+        cart_id: existingOrder.cart_id,
+        productsTotal,
+      });
+    }
 
-        // Nota de desconto PIX
-        const pixDiscountValue = toNumber(payload.pix_discount, 0);
-        let pixNote = "";
-        if (pixDiscountValue > 0) {
-          pixNote = `[PIX_DISCOUNT] R$ ${pixDiscountValue.toFixed(2)}`;
-        }
+    // Subtotal combinado p/ rateio
+    const combinedSubtotal = orderCtxs.reduce((s, o) => s + o.productsTotal, 0);
+    const fallbackPayloadSubtotal = payload.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
+    const totalPixDiscount = toNumber(payload.pix_discount, 0);
+    const totalCouponDiscount = toNumber(payload.coupon_discount, 0);
+    const shippingValue = toNumber(payload.shippingCost, 0);
 
-        // Nota de desconto cupom
-        const couponDiscountValue = toNumber(payload.coupon_discount, 0);
-        let couponNote = "";
-        if (couponDiscountValue > 0) {
-          couponNote = `[COUPON_DISCOUNT] R$ ${couponDiscountValue.toFixed(2)}${payload.coupon_code ? ` (${payload.coupon_code})` : ""}`;
-        }
-        
-        const parts = [cleaned, freightNote, pixNote, couponNote, mergeNote].filter(Boolean);
-        const nextObs = parts.join("\n");
+    // Distribuir desconto proporcionalmente ao subtotal de cada pedido (ajuste de resto no último)
+    const pixShares: number[] = [];
+    const couponShares: number[] = [];
+    let pixRemaining = Math.round(totalPixDiscount * 100);
+    let couponRemaining = Math.round(totalCouponDiscount * 100);
+    const subtotalForShare = combinedSubtotal > 0 ? combinedSubtotal : 0;
+    for (let i = 0; i < orderCtxs.length; i++) {
+      const isLast = i === orderCtxs.length - 1;
+      if (subtotalForShare <= 0 || orderCtxs.length === 1) {
+        // único pedido — recebe tudo
+        pixShares.push(isLast ? pixRemaining / 100 : 0);
+        couponShares.push(isLast ? couponRemaining / 100 : 0);
+        if (isLast) { pixRemaining = 0; couponRemaining = 0; }
+      } else if (isLast) {
+        pixShares.push(pixRemaining / 100);
+        couponShares.push(couponRemaining / 100);
+        pixRemaining = 0;
+        couponRemaining = 0;
+      } else {
+        const ratio = orderCtxs[i].productsTotal / subtotalForShare;
+        const pixCents = Math.round(totalPixDiscount * 100 * ratio);
+        const couponCents = Math.round(totalCouponDiscount * 100 * ratio);
+        pixShares.push(pixCents / 100);
+        couponShares.push(couponCents / 100);
+        pixRemaining -= pixCents;
+        couponRemaining -= couponCents;
+      }
+    }
 
-        // CORREÇÃO: Calcular total a partir dos PRODUTOS (cart_items) + frete - descontos
-        let productsTotal = 0;
-        
-        if (existingOrder.cart_id) {
-          const { data: cartItems } = await sb
-            .from("cart_items")
-            .select("unit_price, qty")
-            .eq("cart_id", existingOrder.cart_id);
-          
-          if (cartItems && cartItems.length > 0) {
-            productsTotal = cartItems.reduce((sum, item) => sum + (Number(item.unit_price) * Number(item.qty)), 0);
-          }
-        }
-        
-        if (productsTotal === 0) {
-          productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
-        }
-        
-        const shippingValue = toNumber(payload.shippingCost, 0);
-        const newTotal = Math.max(0, productsTotal - pixDiscountValue - couponDiscountValue) + shippingValue;
+    for (let i = 0; i < orderCtxs.length; i++) {
+      const ctx = orderCtxs[i];
+      const orderId = ctx.id;
+      const obs = (ctx.observation ?? "").toString();
+      const cleaned = obs
+        .replace(/\n?\[FRETE\][^\n]*/g, "")
+        .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
+        .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
+        .replace(/\n?\[MERGE\][^\n]*/g, "")
+        .trim();
 
-        console.log(`[create-payment] Order ${orderId}: products=${productsTotal.toFixed(2)}, pixDiscount=${pixDiscountValue.toFixed(2)}, couponDiscount=${couponDiscountValue.toFixed(2)}, shipping=${shippingValue.toFixed(2)}, total=${newTotal.toFixed(2)}`);
+      const mergeNote = payload.merge_observation ? `[MERGE] ${payload.merge_observation}` : "";
+      const pixShare = pixShares[i] ?? 0;
+      const couponShare = couponShares[i] ?? 0;
+      const pixNote = pixShare > 0 ? `[PIX_DISCOUNT] R$ ${pixShare.toFixed(2)}` : "";
+      const couponNote = couponShare > 0
+        ? `[COUPON_DISCOUNT] R$ ${couponShare.toFixed(2)}${payload.coupon_code ? ` (${payload.coupon_code})` : ""}`
+        : "";
 
-        const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
+      const nextObs = [cleaned, freightNote, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
 
-        const { error: updateError } = await sb
-          .from("orders")
-          .update({
-            customer_name: payload.customerData.name,
-            customer_cep: payload.addressData.cep,
-            customer_street: payload.addressData.street,
-            customer_number: payload.addressData.number,
-            customer_complement: payload.addressData.complement ?? null,
-            customer_neighborhood: payload.addressData.neighborhood ?? null,
-            customer_city: payload.addressData.city,
-            customer_state: payload.addressData.state,
-            observation: nextObs,
-            total_amount: newTotal,
-            shipping_service_id: shippingServiceId,
-          })
-          .eq("id", orderId);
+      const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : fallbackPayloadSubtotal;
+      const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + shippingValue;
 
-        if (updateError) {
-          console.log(`[create-payment] Error updating order ${orderId}:`, updateError);
-        } else {
-          console.log(`[create-payment] Order ${orderId} updated - total: ${newTotal.toFixed(2)}`);
-        }
+      console.log(`[create-payment] Order ${orderId}: products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)} (totalPix=${totalPixDiscount.toFixed(2)}), couponShare=${couponShare.toFixed(2)}, shipping=${shippingValue.toFixed(2)}, total=${newTotal.toFixed(2)}`);
+
+      const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
+
+      const { error: updateError } = await sb
+        .from("orders")
+        .update({
+          customer_name: payload.customerData.name,
+          customer_cep: payload.addressData.cep,
+          customer_street: payload.addressData.street,
+          customer_number: payload.addressData.number,
+          customer_complement: payload.addressData.complement ?? null,
+          customer_neighborhood: payload.addressData.neighborhood ?? null,
+          customer_city: payload.addressData.city,
+          customer_state: payload.addressData.state,
+          observation: nextObs,
+          total_amount: newTotal,
+          shipping_service_id: shippingServiceId,
+        })
+        .eq("id", orderId);
+
+      if (updateError) {
+        console.log(`[create-payment] Error updating order ${orderId}:`, updateError);
       }
     }
 
