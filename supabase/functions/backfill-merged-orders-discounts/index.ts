@@ -220,6 +220,7 @@ serve(async (req) => {
           freight_total: freightTotal,
           pix_original: pixOriginal,
           pix_percent_detected: pixPercent,
+          pix_percent_source: pixPercentSource,
           combined_subtotal: combinedSubtotal,
         };
 
