@@ -12,12 +12,21 @@ import { Loader2, CheckCircle2, AlertCircle, Package, Truck } from 'lucide-react
 import ShippingServiceSelector from '@/components/integrations/ShippingServiceSelector';
 
 const MELHOR_ENVIO_SERVICES = [
-  { key: 'PAC', name: 'PAC', description: 'Econômico – entrega em até 10 dias úteis' },
-  { key: 'SEDEX', name: 'SEDEX', description: 'Rápido – entrega em até 3 dias úteis' },
-  { key: '.Package', name: '.Package', description: 'Jadlog – entrega econômica' },
-  { key: '.Com', name: '.Com', description: 'Jadlog – entrega expressa' },
+  { key: 'PAC', name: 'PAC', description: 'Correios – econômico' },
+  { key: 'SEDEX', name: 'SEDEX', description: 'Correios – rápido' },
   { key: 'Mini Envios', name: 'Mini Envios', description: 'Correios – até 300g' },
   { key: 'SEDEX Hoje', name: 'SEDEX Hoje', description: 'Correios – entrega no mesmo dia' },
+  { key: '.Package', name: '.Package', description: 'Jadlog – entrega econômica' },
+  { key: '.Com', name: '.Com', description: 'Jadlog – entrega expressa' },
+  { key: '.Package Centralizado', name: '.Package Centralizado', description: 'Jadlog – centralizado' },
+  { key: 'éFácil', name: 'éFácil', description: 'LATAM Cargo – éFácil' },
+  { key: 'Expresso', name: 'Expresso', description: 'Azul Cargo – Expresso' },
+  { key: 'e-commerce', name: 'e-commerce', description: 'Azul Cargo – e-commerce' },
+  { key: 'Rodoviário', name: 'Rodoviário', description: 'Buslog – Rodoviário' },
+  { key: 'Express', name: 'Express', description: 'Loggi – Express' },
+  { key: 'Coleta', name: 'Coleta', description: 'Loggi – Coleta' },
+  { key: 'Standard', name: 'Standard', description: 'Loggi/J&T – Standard' },
+  { key: 'Loggi Ponto', name: 'Loggi Ponto', description: 'Loggi – Ponto' },
 ];
 
 interface ShippingIntegrationsProps {
