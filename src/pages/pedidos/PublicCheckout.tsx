@@ -428,7 +428,12 @@ const PublicCheckout = () => {
       
       // Allow pickup option
       if (option.id === 'retirada') return true;
-      
+
+      // Para Melhor Envio, exibir TODAS as opções retornadas (Correios, Jadlog,
+      // Loggi, Azul Cargo, LATAM, Buslog, Total Express etc). O tenant que
+      // escolheu Melhor Envio quer todas as transportadoras disponíveis.
+      if (activeProvider === 'melhor_envio') return true;
+
       // For meuscorreios/correios, allow all Correios services
       if (activeProvider === 'meuscorreios' || activeProvider === 'correios') {
         return (
