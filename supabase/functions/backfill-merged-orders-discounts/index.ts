@@ -87,12 +87,22 @@ serve(async (req) => {
       LIMIT ${limit}
     `;
 
-    // PostgREST não roda SQL bruto — usar select agrupado em duas etapas
-    let qBase = sb.from("orders").select("id, tenant_id, payment_link, created_at").not("payment_link", "is", null).neq("payment_link", "");
-    if (tenantFilter) qBase = qBase.eq("tenant_id", tenantFilter);
-    if (paymentLinkFilter) qBase = qBase.eq("payment_link", paymentLinkFilter);
-    const { data: allRows, error: errAll } = await qBase.limit(20000);
-    if (errAll) throw errAll;
+    // PostgREST não roda SQL bruto — paginar manualmente para ultrapassar o limite default
+    const allRows: { id: number; tenant_id: string; payment_link: string; created_at: string }[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      let qPage = sb.from("orders").select("id, tenant_id, payment_link, created_at").not("payment_link", "is", null).neq("payment_link", "");
+      if (tenantFilter) qPage = qPage.eq("tenant_id", tenantFilter);
+      if (paymentLinkFilter) qPage = qPage.eq("payment_link", paymentLinkFilter);
+      const { data: page, error: errPage } = await qPage.order("id", { ascending: true }).range(from, from + pageSize - 1);
+      if (errPage) throw errPage;
+      if (!page || page.length === 0) break;
+      allRows.push(...page);
+      if (page.length < pageSize) break;
+      from += pageSize;
+      if (from > 50000) break;
+    }
 
     const groupsMap = new Map<string, { tenant_id: string; ids: number[]; created_ats: string[] }>();
     for (const r of allRows || []) {
