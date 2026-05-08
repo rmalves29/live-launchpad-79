@@ -69,7 +69,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
   const [cartId, setCartId] = useState<number | null>(null);
-  const [showGifts, setShowGifts] = useState(false);
+  
 
 useEffect(() => {
   if (open && order) {
