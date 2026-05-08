@@ -65,6 +65,7 @@ serve(async (req) => {
     const tenantFilter: string | null = body.tenant_id || null;
     const paymentLinkFilter: string | null = body.payment_link || null;
     const limit: number = Number(body.limit) || 1000;
+    const offset: number = Number(body.offset) || 0;
 
     const sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
