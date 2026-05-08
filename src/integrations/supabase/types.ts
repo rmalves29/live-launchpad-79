@@ -3594,6 +3594,13 @@ export type Database = {
       }
       bytea_to_text: { Args: { data: string }; Returns: string }
       cleanup_stale_sessions: { Args: never; Returns: undefined }
+      get_active_shipping_provider: {
+        Args: { tenant_uuid: string }
+        Returns: {
+          is_active: boolean
+          provider: string
+        }[]
+      }
       get_current_tenant_id: { Args: never; Returns: string }
       get_tenant_by_id: {
         Args: { tenant_id_param: string }
