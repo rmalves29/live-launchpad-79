@@ -475,14 +475,6 @@ useEffect(() => {
                     className="pl-10"
                   />
                 </div>
-                <label className="flex items-center gap-2 mt-2 text-xs text-muted-foreground cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showGifts}
-                    onChange={(e) => setShowGifts(e.target.checked)}
-                  />
-                  Mostrar presentes (R$ 0,00) — gerencie por Presentes
-                </label>
               </div>
 
               <div>
