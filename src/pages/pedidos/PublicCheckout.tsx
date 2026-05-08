@@ -374,6 +374,21 @@ const PublicCheckout = () => {
     }
   }, [selectedOrderIds, orders, activeGifts]);
 
+  // Auto-calcular frete quando o checkout abre / CEP muda / pedidos selecionados mudam
+  useEffect(() => {
+    if (!showCheckout) return;
+    if (!tenant) return;
+    if (!customerData.cep || customerData.cep.replace(/[^0-9]/g, '').length !== 8) return;
+    if (selectedOrderIds.length === 0) return;
+    // Só dispara se ainda não houver opções "reais" de frete (além do merge)
+    const hasRealOptions = shippingOptions.some(opt => opt.id !== 'merge_order');
+    if (hasRealOptions || loadingShipping) return;
+    const ordersToCalc = orders.filter(o => selectedOrderIds.includes(o.id));
+    const t = setTimeout(() => calculateShipping(customerData.cep, ordersToCalc), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCheckout, customerData.cep, selectedOrderIds, tenant?.id]);
+
   // Adicionar opção de merge quando há pedido pago recente
   useEffect(() => {
     if (hasPaidOrderWithinPeriod && mergeableOrders.length > 0) {
