@@ -35,9 +35,10 @@ function extractAmount(line: string | null): number {
 
 function extractTagLine(observation: string | null, tag: string): string | null {
   if (!observation) return null;
-  const re = new RegExp(`\\[${tag}\\][^\\n]*`);
+  // Para ANTES do próximo [ (tags coladas sem \n) ou antes do \n
+  const re = new RegExp(`\\[${tag}\\][^\\n\\[]*`);
   const m = observation.match(re);
-  return m ? m[0] : null;
+  return m ? m[0].trimEnd() : null;
 }
 
 function rewriteObservation(
@@ -47,9 +48,10 @@ function rewriteObservation(
   couponLine: string,
 ): string {
   const cleaned = (observation ?? "")
-    .replace(/\n?\[FRETE\][^\n]*/g, "")
-    .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
-    .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
+    .replace(/\n?\[FRETE\][^\n\[]*/g, "")
+    .replace(/\n?\[PIX_DISCOUNT\][^\n\[]*/g, "")
+    .replace(/\n?\[COUPON_DISCOUNT\][^\n\[]*/g, "")
+    .replace(/\n+/g, "\n")
     .trim();
   return [cleaned, freightLine, pixLine, couponLine].filter(Boolean).join("\n");
 }
