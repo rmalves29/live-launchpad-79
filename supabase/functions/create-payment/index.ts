@@ -217,8 +217,7 @@ serve(async (req) => {
 
     // === BLINDAGEM SERVIDOR: recalcular desconto PIX a partir das integrações ativas ===
     // Ignoramos qualquer valor enviado pelo frontend — fonte de verdade é o backend.
-    // Isso garante que mesmo se o front mandar pix_discount=0 por race condition / cache ruim,
-    // o desconto PIX configurado seja sempre aplicado corretamente.
+    let pixDiscountPercent = 0;
     {
       const productsSubtotalForDiscount = payload.cartItems.reduce(
         (s, it) => s + Number(it.unit_price) * Number(it.qty),
@@ -233,10 +232,11 @@ serve(async (req) => {
       const incoming = toNumber(payload.pix_discount, 0);
       if (Math.abs(incoming - resolved.value) > 0.01) {
         console.log(
-          `[create-payment] PIX discount override: incoming=${incoming.toFixed(2)} → server=${resolved.value.toFixed(2)} (source=${resolved.source})`,
+          `[create-payment] PIX discount override: incoming=${incoming.toFixed(2)} → server=${resolved.value.toFixed(2)} (source=${resolved.source}, percent=${resolved.percent})`,
         );
       }
       payload.pix_discount = resolved.value;
+      pixDiscountPercent = resolved.percent;
     }
 
 
@@ -272,12 +272,13 @@ serve(async (req) => {
       observation: string | null;
       cart_id: number | null;
       productsTotal: number;
+      created_at: string | null;
     };
     const orderCtxs: OrderCtx[] = [];
     for (const orderId of orderIds) {
       const { data: existingOrder } = await sb
         .from("orders")
-        .select("id, observation, total_amount, cart_id")
+        .select("id, observation, total_amount, cart_id, created_at")
         .eq("id", orderId)
         .single();
       if (!existingOrder) continue;
@@ -297,41 +298,48 @@ serve(async (req) => {
         observation: existingOrder.observation,
         cart_id: existingOrder.cart_id,
         productsTotal,
+        created_at: existingOrder.created_at ?? null,
       });
     }
 
-    // Subtotal combinado p/ rateio
+    // Ordenar do mais antigo para o mais novo — frete inteiro vai no primeiro (mais antigo)
+    orderCtxs.sort((a, b) => {
+      const ta = a.created_at ? Date.parse(a.created_at) : a.id;
+      const tb = b.created_at ? Date.parse(b.created_at) : b.id;
+      if (ta !== tb) return ta - tb;
+      return a.id - b.id;
+    });
+
     const combinedSubtotal = orderCtxs.reduce((s, o) => s + o.productsTotal, 0);
     const fallbackPayloadSubtotal = payload.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
-    const totalPixDiscount = toNumber(payload.pix_discount, 0);
     const totalCouponDiscount = toNumber(payload.coupon_discount, 0);
     const shippingValue = toNumber(payload.shippingCost, 0);
 
-    // Distribuir desconto proporcionalmente ao subtotal de cada pedido (ajuste de resto no último)
+    // PIX: cada pedido recebe % sobre o seu próprio subtotal (igual ao caso de pedido único)
+    // CUPOM: rateado proporcionalmente (não há % por pedido — é valor fixo do checkout)
     const pixShares: number[] = [];
     const couponShares: number[] = [];
-    let pixRemaining = Math.round(totalPixDiscount * 100);
     let couponRemaining = Math.round(totalCouponDiscount * 100);
-    const subtotalForShare = combinedSubtotal > 0 ? combinedSubtotal : 0;
     for (let i = 0; i < orderCtxs.length; i++) {
+      const ctx = orderCtxs[i];
+      const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : (orderCtxs.length === 1 ? fallbackPayloadSubtotal : 0);
+      // PIX por pedido = subtotal próprio × percent
+      const pixCents = pixDiscountPercent > 0
+        ? Math.round(productsTotal * pixDiscountPercent)
+        : 0;
+      pixShares.push(pixCents / 100);
+
       const isLast = i === orderCtxs.length - 1;
-      if (subtotalForShare <= 0 || orderCtxs.length === 1) {
-        // único pedido — recebe tudo
-        pixShares.push(isLast ? pixRemaining / 100 : 0);
+      if (combinedSubtotal <= 0 || orderCtxs.length === 1) {
         couponShares.push(isLast ? couponRemaining / 100 : 0);
-        if (isLast) { pixRemaining = 0; couponRemaining = 0; }
+        if (isLast) couponRemaining = 0;
       } else if (isLast) {
-        pixShares.push(pixRemaining / 100);
         couponShares.push(couponRemaining / 100);
-        pixRemaining = 0;
         couponRemaining = 0;
       } else {
-        const ratio = orderCtxs[i].productsTotal / subtotalForShare;
-        const pixCents = Math.round(totalPixDiscount * 100 * ratio);
+        const ratio = ctx.productsTotal / combinedSubtotal;
         const couponCents = Math.round(totalCouponDiscount * 100 * ratio);
-        pixShares.push(pixCents / 100);
         couponShares.push(couponCents / 100);
-        pixRemaining -= pixCents;
         couponRemaining -= couponCents;
       }
     }
@@ -347,20 +355,24 @@ serve(async (req) => {
         .replace(/\n?\[MERGE\][^\n]*/g, "")
         .trim();
 
+      const isFirst = i === 0;
       const mergeNote = payload.merge_observation ? `[MERGE] ${payload.merge_observation}` : "";
       const pixShare = pixShares[i] ?? 0;
       const couponShare = couponShares[i] ?? 0;
+      // Frete inteiro só no primeiro pedido (mais antigo); demais ficam sem frete
+      const freightForThisOrder = isFirst ? shippingValue : 0;
+      const freightNoteForThisOrder = isFirst ? freightNote : "";
       const pixNote = pixShare > 0 ? `[PIX_DISCOUNT] R$ ${pixShare.toFixed(2)}` : "";
       const couponNote = couponShare > 0
         ? `[COUPON_DISCOUNT] R$ ${couponShare.toFixed(2)}${payload.coupon_code ? ` (${payload.coupon_code})` : ""}`
         : "";
 
-      const nextObs = [cleaned, freightNote, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
+      const nextObs = [cleaned, freightNoteForThisOrder, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
 
       const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : fallbackPayloadSubtotal;
-      const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + shippingValue;
+      const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + freightForThisOrder;
 
-      console.log(`[create-payment] Order ${orderId}: products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)} (totalPix=${totalPixDiscount.toFixed(2)}), couponShare=${couponShare.toFixed(2)}, shipping=${shippingValue.toFixed(2)}, total=${newTotal.toFixed(2)}`);
+      console.log(`[create-payment] Order ${orderId} (${isFirst ? "FIRST" : "merged"}): products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)} (percent=${pixDiscountPercent}), couponShare=${couponShare.toFixed(2)}, freight=${freightForThisOrder.toFixed(2)}, total=${newTotal.toFixed(2)}`);
 
       const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
 
