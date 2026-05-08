@@ -194,18 +194,22 @@ serve(async (req) => {
         const subtotals = orderedIds.map((id) => subtotalByCart.get(ordersById.get(id)!.cart_id ?? -1) ?? 0);
         const combinedSubtotal = subtotals.reduce((s, v) => s + v, 0);
 
-        // Detectar pix_percent: se temos pixOriginal e combinedSubtotal coerente, derivar; senão buscar do tenant
+        // Detectar pix_percent: PRIMEIRO tenta config do tenant (fonte de verdade);
+        // SÓ usa derivado (pix_original/subtotal) como fallback.
+        // Carrinhos podem ter mudado pós-pagamento, fazendo o derivado mentir.
         let pixPercent = 0;
-        if (pixOriginal > 0 && combinedSubtotal > 0) {
-          const ratio = (pixOriginal / combinedSubtotal) * 100;
-          // arredondar pra inteiro mais próximo se estiver muito próximo (5%, 10%, 15% comuns)
-          const rounded = Math.round(ratio);
-          if (Math.abs(ratio - rounded) < 0.6) pixPercent = rounded;
-          else pixPercent = round2(ratio);
-        }
-        if (pixPercent <= 0 && pixOriginal > 0) {
-          // tentar tenant config
-          pixPercent = await getTenantPixPercent(g.tenant_id);
+        let pixPercentSource: string = "none";
+        if (pixOriginal > 0) {
+          const tenantPct = await getTenantPixPercent(g.tenant_id);
+          if (tenantPct > 0) {
+            pixPercent = tenantPct;
+            pixPercentSource = "tenant_config";
+          } else if (combinedSubtotal > 0) {
+            const ratio = (pixOriginal / combinedSubtotal) * 100;
+            const rounded = Math.round(ratio);
+            pixPercent = (Math.abs(ratio - rounded) < 0.6) ? rounded : round2(ratio);
+            pixPercentSource = "derived_from_observation";
+          }
         }
 
         // Calcular novos valores
