@@ -169,6 +169,18 @@ useEffect(() => {
   const addProductToOrder = async () => {
     if (!selectedProduct || !order) return;
 
+    // BLOCK GIFTS: products with price 0 must be added via Gifts manager
+    const isGift = (Number(selectedProduct.price) || 0) === 0
+      && (!selectedProduct.promotional_price || Number(selectedProduct.promotional_price) === 0);
+    if (isGift) {
+      toast({
+        title: 'Produto é um presente',
+        description: 'Produtos com preço R$ 0,00 devem ser adicionados pelo gerenciador de Presentes, não pelo Editar Pedido.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       // STOCK VALIDATION: Fresh read from DB to prevent race conditions
