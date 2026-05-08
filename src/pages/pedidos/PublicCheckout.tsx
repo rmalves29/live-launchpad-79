@@ -380,14 +380,41 @@ const PublicCheckout = () => {
     if (!tenant) return;
     if (!customerData.cep || customerData.cep.replace(/[^0-9]/g, '').length !== 8) return;
     if (selectedOrderIds.length === 0) return;
-    // Só dispara se ainda não houver opções "reais" de frete (além do merge)
-    const hasRealOptions = shippingOptions.some(opt => opt.id !== 'merge_order');
-    if (hasRealOptions || loadingShipping) return;
+    // Só dispara se ainda não houver opções "reais" (transportadora) de frete
+    const hasCarrierOptions = shippingOptions.some(
+      opt => opt.id !== 'merge_order' && !String(opt.id).startsWith('custom_') && opt.id !== 'retirada'
+    );
+    if (hasCarrierOptions || loadingShipping) return;
     const ordersToCalc = orders.filter(o => selectedOrderIds.includes(o.id));
     const t = setTimeout(() => calculateShipping(customerData.cep, ordersToCalc), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showCheckout, customerData.cep, selectedOrderIds, tenant?.id]);
+
+  // Pré-carregar opções de frete CUSTOMIZADAS assim que o checkout abre
+  // (independente de CEP — garante que "Retirada" e fretes manuais apareçam sempre)
+  useEffect(() => {
+    if (!showCheckout || !tenant) return;
+    let cancelled = false;
+    (async () => {
+      const customs = await fetchCustomShippingOptions(
+        tenant.id,
+        customerData.state || undefined,
+        customerData.city || undefined
+      );
+      if (cancelled || customs.length === 0) return;
+      setShippingOptions(prev => {
+        // Manter merge + transportadora; substituir os custom_* por novos
+        const nonCustom = prev.filter(
+          opt => opt.id === 'merge_order' || (!String(opt.id).startsWith('custom_') && opt.id !== 'retirada')
+        );
+        const mergeOpt = nonCustom.find(o => o.id === 'merge_order');
+        const others = nonCustom.filter(o => o.id !== 'merge_order');
+        return mergeOpt ? [mergeOpt, ...customs, ...others] : [...customs, ...others];
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [showCheckout, tenant?.id, customerData.state, customerData.city]);
 
   // Adicionar opção de merge quando há pedido pago recente
   useEffect(() => {
