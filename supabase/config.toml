@@ -69,5 +69,8 @@ verify_jwt = false
 [functions.storefront-add-to-cart]
 verify_jwt = false
 
+[functions.public-checkout-customer-address]
+verify_jwt = false
+
 [functions.admin-update-user-email]
 verify_jwt = false
