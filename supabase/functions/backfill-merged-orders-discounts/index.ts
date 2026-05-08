@@ -102,9 +102,8 @@ serve(async (req) => {
       g.created_ats.push(r.created_at);
       groupsMap.set(key, g);
     }
-    const groups = Array.from(groupsMap.entries())
-      .filter(([, g]) => g.ids.length > 1)
-      .slice(0, limit);
+    const allGroups = Array.from(groupsMap.entries()).filter(([, g]) => g.ids.length > 1);
+    const groups = allGroups.slice(offset, offset + limit);
 
     const results: any[] = [];
     let updated = 0;
