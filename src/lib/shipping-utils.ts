@@ -19,13 +19,11 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
       return { provider: null, functionName: '', testFunctionName: null };
     }
 
-    // Buscar integrações ativas do tenant específico
-    // IMPORTANTE: Filtra explicitamente por tenant_id para garantir isolamento
+    // IMPORTANTE: usamos uma função SECURITY DEFINER (get_active_shipping_provider)
+    // para que o checkout público (anon) consiga ler o provider sem precisar de
+    // policy SELECT na tabela shipping_integrations (que contém tokens sensíveis).
     const { data: integrations, error } = await supabase
-      .from("shipping_integrations")
-      .select("provider, is_active")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true);
+      .rpc("get_active_shipping_provider" as any, { tenant_uuid: tenantId });
 
     if (error) {
       console.error("[shipping-utils] Erro ao buscar integrações:", error);
