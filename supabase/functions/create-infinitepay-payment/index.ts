@@ -142,6 +142,7 @@ serve(async (req) => {
     const freightNote = buildFreightNote(body.shippingData, body.shippingCost);
 
     // === BLINDAGEM SERVIDOR: recalcular desconto PIX (fonte de verdade) ===
+    let pixDiscountPercent = 0;
     {
       const productsSubtotalForDiscount = body.cartItems.reduce(
         (s, it) => s + Number(it.unit_price) * Number(it.qty),
@@ -156,23 +157,24 @@ serve(async (req) => {
       const incoming = toNumber(body.pix_discount, 0);
       if (Math.abs(incoming - resolved.value) > 0.01) {
         console.log(
-          `[create-infinitepay-payment] PIX discount override: incoming=${incoming.toFixed(2)} → server=${resolved.value.toFixed(2)} (source=${resolved.source})`,
+          `[create-infinitepay-payment] PIX discount override: incoming=${incoming.toFixed(2)} → server=${resolved.value.toFixed(2)} (source=${resolved.source}, percent=${resolved.percent})`,
         );
       }
       body.pix_discount = resolved.value;
+      pixDiscountPercent = resolved.percent;
     }
 
     const pixDiscountValue = toNumber(body.pix_discount, 0);
     const couponDiscountValue = toNumber(body.coupon_discount, 0);
     const shippingValue = toNumber(body.shippingCost, 0);
 
-    // Pré-carregar pedidos do merge p/ rateio proporcional do desconto
-    type OrderCtx = { id: number; observation: string | null; cart_id: number | null; productsTotal: number };
+    // Pré-carregar pedidos do merge
+    type OrderCtx = { id: number; observation: string | null; cart_id: number | null; productsTotal: number; created_at: string | null };
     const orderCtxs: OrderCtx[] = [];
     for (const orderId of orderIds) {
       const { data: existingOrder } = await sb
         .from("orders")
-        .select("id, observation, cart_id")
+        .select("id, observation, cart_id, created_at")
         .eq("id", orderId)
         .single();
       if (!existingOrder) continue;
@@ -186,33 +188,41 @@ serve(async (req) => {
           productsTotal = cartItems.reduce((s, it) => s + Number(it.unit_price) * Number(it.qty), 0);
         }
       }
-      orderCtxs.push({ id: existingOrder.id, observation: existingOrder.observation, cart_id: existingOrder.cart_id, productsTotal });
+      orderCtxs.push({ id: existingOrder.id, observation: existingOrder.observation, cart_id: existingOrder.cart_id, productsTotal, created_at: existingOrder.created_at ?? null });
     }
+
+    // Mais antigo primeiro — frete fica 100% no primeiro
+    orderCtxs.sort((a, b) => {
+      const ta = a.created_at ? Date.parse(a.created_at) : a.id;
+      const tb = b.created_at ? Date.parse(b.created_at) : b.id;
+      if (ta !== tb) return ta - tb;
+      return a.id - b.id;
+    });
 
     const combinedSubtotal = orderCtxs.reduce((s, o) => s + o.productsTotal, 0);
     const fallbackPayloadSubtotal = body.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
+
+    // PIX por pedido = % sobre o próprio subtotal; cupom proporcional
     const pixShares: number[] = [];
     const couponShares: number[] = [];
-    let pixRemaining = Math.round(pixDiscountValue * 100);
     let couponRemaining = Math.round(couponDiscountValue * 100);
     for (let i = 0; i < orderCtxs.length; i++) {
+      const ctx = orderCtxs[i];
+      const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : (orderCtxs.length === 1 ? fallbackPayloadSubtotal : 0);
+      const pixCents = pixDiscountPercent > 0 ? Math.round(productsTotal * pixDiscountPercent) : 0;
+      pixShares.push(pixCents / 100);
+
       const isLast = i === orderCtxs.length - 1;
       if (combinedSubtotal <= 0 || orderCtxs.length === 1) {
-        pixShares.push(isLast ? pixRemaining / 100 : 0);
         couponShares.push(isLast ? couponRemaining / 100 : 0);
-        if (isLast) { pixRemaining = 0; couponRemaining = 0; }
+        if (isLast) couponRemaining = 0;
       } else if (isLast) {
-        pixShares.push(pixRemaining / 100);
         couponShares.push(couponRemaining / 100);
-        pixRemaining = 0;
         couponRemaining = 0;
       } else {
-        const ratio = orderCtxs[i].productsTotal / combinedSubtotal;
-        const pixCents = Math.round(pixDiscountValue * 100 * ratio);
+        const ratio = ctx.productsTotal / combinedSubtotal;
         const couponCents = Math.round(couponDiscountValue * 100 * ratio);
-        pixShares.push(pixCents / 100);
         couponShares.push(couponCents / 100);
-        pixRemaining -= pixCents;
         couponRemaining -= couponCents;
       }
     }
@@ -227,20 +237,23 @@ serve(async (req) => {
         .replace(/\n?\[MERGE\][^\n]*/g, "")
         .trim();
 
+      const isFirst = i === 0;
       const pixShare = pixShares[i] ?? 0;
       const couponShare = couponShares[i] ?? 0;
+      const freightForThisOrder = isFirst ? shippingValue : 0;
+      const freightNoteForThisOrder = isFirst ? freightNote : "";
       const pixNote = pixShare > 0 ? `[PIX_DISCOUNT] R$ ${pixShare.toFixed(2)}` : "";
       const couponNote = couponShare > 0
         ? `[COUPON_DISCOUNT] R$ ${couponShare.toFixed(2)}${body.coupon_code ? ` (${body.coupon_code})` : ""}`
         : "";
       const mergeNote = body.merge_observation ? `[MERGE] ${body.merge_observation}` : "";
-      const nextObs = [cleaned, freightNote, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
+      const nextObs = [cleaned, freightNoteForThisOrder, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
 
       const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : fallbackPayloadSubtotal;
-      const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + shippingValue;
+      const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + freightForThisOrder;
       const shippingServiceId = body.shippingData?.service_id ? Number(body.shippingData.service_id) : null;
 
-      console.log(`[create-infinitepay-payment] Order ${ctx.id}: products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)}/${pixDiscountValue.toFixed(2)}, couponShare=${couponShare.toFixed(2)}, total=${newTotal.toFixed(2)}`);
+      console.log(`[create-infinitepay-payment] Order ${ctx.id} (${isFirst ? "FIRST" : "merged"}): products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)} (percent=${pixDiscountPercent}), couponShare=${couponShare.toFixed(2)}, freight=${freightForThisOrder.toFixed(2)}, total=${newTotal.toFixed(2)}`);
 
       await sb
         .from("orders")
