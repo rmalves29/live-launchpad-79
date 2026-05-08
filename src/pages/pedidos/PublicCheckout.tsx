@@ -1056,12 +1056,22 @@ const PublicCheckout = () => {
         setCouponPreApplied(true);
       }
 
-      const { data: customer } = await supabase
+      let customer: any = null;
+      const { data: customerDataDirect } = await supabase
         .from('customers')
         .select('*')
         .eq('phone', normalizedPhone)
         .eq('tenant_id', tenant.id)
         .maybeSingle();
+
+      customer = customerDataDirect;
+
+      if (!customer) {
+        const { data: customerAddress } = await supabase.functions.invoke('public-checkout-customer-address', {
+          body: { tenant_id: tenant.id, phone: normalizedPhone }
+        });
+        customer = customerAddress?.address ?? null;
+      }
 
       if (customer) {
         setCustomerData({
