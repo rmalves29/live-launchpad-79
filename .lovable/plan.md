@@ -1,53 +1,79 @@
-# Rateio proporcional do desconto PIX/cupom em pedidos mesclados
 
-## Problema
+# Corrigir frete e desconto duplicados em pedidos mesclados
 
-Quando o checkout mescla 2+ pedidos (ex.: 6430 + 6508), o backend grava o **valor cheio** do `pix_discount` em **cada** pedido, em vez de ratear proporcionalmente ao subtotal de cada um. Resultado: a soma dos `[PIX_DISCOUNT]` é o dobro/triplo do desconto realmente concedido pelo gateway, e o `total_amount` de cada pedido fica abaixo do correto.
+## Regra de negócio (definida pelo usuário)
 
-Exemplo (6430/6508): desconto real cobrado pelo MP = R$ 38,67. Hoje cada pedido carrega "−38,67", total combinado dos pedidos R$ 248,86, quando o correto seria R$ 287,53.
+Quando 2+ pedidos são mesclados num único checkout:
+- **Frete**: cobrado uma única vez, atribuído **integralmente ao pedido mais antigo** (menor `id`/`created_at`). Os demais ficam com frete = 0.
+- **Desconto PIX/cupom**: cada pedido recebe o desconto calculado **sobre o seu próprio subtotal** (mesma fórmula de quando o cliente paga 1 pedido só — ex.: PIX 10% → cada pedido subtrai 10% do seu subtotal de itens).
 
-## Solução
+Resultado: cada pedido fica auto-consistente (`subtotal − desconto_próprio + frete_se_for_o_primeiro = total_amount`) e a soma dos totais reflete o que o cliente realmente pagou (desde que o carrinho não tenha mudado pós-pagamento).
+
+## Bugs atuais
+
+1. **Frete duplicado**: cada pedido grava `[FRETE] R$ X` integral → soma de fretes = N × frete_real.
+2. **Desconto PIX duplicado**: cada pedido grava `[PIX_DISCOUNT] R$ Y` com o valor cheio enviado ao gateway (10% do subtotal combinado), em vez de 10% do próprio subtotal.
+
+Exemplo 6430/6508 (subtotais hoje 223,20 e 53,00, frete 25, PIX 10%):
+- Hoje: 6430 = 209,53 / 6508 = 39,33 → soma 248,86 ❌
+- Correto: 6430 = 223,20 − 22,32 + 25,00 = **225,88** / 6508 = 53,00 − 5,30 + 0 = **47,70** → soma **273,58**
+
+> Observação: o pagamento real do MP foi R$ 262,53 (= 276,20 − 38,67 + 25). A diferença pra R$ 273,58 acontece porque o PIX cobrado pelo gateway foi 10% do subtotal **combinado** (R$ 38,67), enquanto a nova regra calcula 10% por pedido individual (soma = R$ 27,62, R$ 11,05 a menos de desconto). Essa é a consequência intencional da regra escolhida — cada pedido fica igual ao que seria sozinho. Se o usuário quiser que a soma bata exatamente com o gateway, a alternativa seria rateio proporcional (não foi a opção escolhida).
+
+## Mudanças
 
 ### 1. `supabase/functions/create-payment/index.ts` (Mercado Pago)
-No loop `for (const orderId of orderIds)` (linhas ~270–340):
-- Antes do loop, calcular `productsTotalAllOrders` somando os `cart_items` de **todos** os `orderIds`.
-- Dentro do loop, para cada pedido:
-  - calcular `orderProductsTotal` (subtotal só desse pedido);
-  - `share = orderProductsTotal / productsTotalAllOrders` (se total > 0);
-  - `pixShare = round2(pix_discount_total * share)` e `couponShare = round2(coupon_discount_total * share)`;
-  - aplicar **ajuste de resto** no último pedido para que a soma bata exatamente com o total (evita arredondamento perdendo/sobrando 1 centavo);
-  - gravar `[PIX_DISCOUNT] R$ pixShare` e `[COUPON_DISCOUNT] R$ couponShare` na observação;
-  - `total_amount = max(0, orderProductsTotal − pixShare − couponShare) + freteDesseObjeto` (frete continua por pedido, igual hoje).
-- Frete por pedido permanece como está.
+
+No loop `for (const orderId of orderIds)`:
+- Ordenar `orderIds` por `created_at ASC` (ou menor id) antes do loop.
+- Para cada pedido:
+  - `orderProductsTotal` = soma dos `cart_items` desse pedido.
+  - `pixShare` = `round2(orderProductsTotal × pix_discount_percent)` (usar o **percentual** configurado, não o valor absoluto enviado ao gateway).
+  - `couponShare` = aplicar mesma lógica do cupom (% ou valor fixo rateado proporcionalmente — confirmar regra atual do cupom).
+  - `freightForThisOrder` = frete total **só** se for o primeiro pedido da lista; senão `0`.
+  - Gravar `[FRETE]` somente no 1º pedido; nos demais, omitir ou gravar `R$ 0,00`.
+  - Gravar `[PIX_DISCOUNT] R$ pixShare` por pedido.
+  - `total_amount = max(0, orderProductsTotal − pixShare − couponShare) + freightForThisOrder`.
 
 ### 2. `supabase/functions/create-infinitepay-payment/index.ts`
-Aplicar exatamente a mesma lógica de rateio (o arquivo tem o mesmo loop, linhas ~140–200).
 
-### 3. (opcional, defesa) `validate_order_total_on_payment` trigger
-Continua válida — ela recalcula `total_amount` a partir do que está em `[PIX_DISCOUNT]`/`[COUPON_DISCOUNT]` na observação. Como agora gravamos o valor já rateado, o trigger naturalmente passa a validar o valor correto. Sem mudança necessária.
+Mesma lógica.
 
-### 4. Correção dos pedidos já afetados
-Rodar uma varredura SQL para identificar e corrigir pedidos antigos com merge cujo `[PIX_DISCOUNT]` foi duplicado:
+### 3. Trigger `validate_order_total_on_payment`
 
-- **Critério de detecção**: agrupar `orders` por `payment_link` (mesmo link compartilhado = merge) e verificar onde a soma dos `[PIX_DISCOUNT]` extraídos da observação > desconto real esperado (10% × subtotal combinado).
-- Para cada grupo afetado:
-  - recalcular `pixShare` e `couponShare` por pedido (mesma fórmula acima);
-  - reescrever a linha `[PIX_DISCOUNT]` da observação;
-  - atualizar `total_amount`.
-- Apresentar lista de pedidos antes de executar (preview), depois aplicar via tool de insert/update.
-- Pedidos 6430 e 6508 já confirmados como afetados — corrigir para:
-  - 6430: PIX_DISCOUNT = R$ 31,26 → total = 223,20 − 31,26 + 25,00 = **R$ 216,94**
-  - 6508: PIX_DISCOUNT = R$ 7,42 → total = 53,00 − 7,42 + 25,00 = **R$ 70,58**
-  - (rateio: 38,67 × 223,20/276,20 e 38,67 × 53,00/276,20)
+Continua válida — recalcula a partir do que está em `[FRETE]`, `[PIX_DISCOUNT]`, `[COUPON_DISCOUNT]` na observação. Como passamos a gravar valores corretos por pedido, a trigger naturalmente valida o valor certo. Sem mudança.
 
-## Validação
+### 4. Backfill dos pedidos mesclados antigos
 
-- Após mudança, simular no preview um checkout mesclando 2 pedidos e conferir que:
-  - soma dos `[PIX_DISCOUNT]` nos pedidos = desconto enviado ao gateway;
-  - soma dos `total_amount` = (subtotal combinado − desconto) + soma dos fretes.
-- Conferir logs de `create-payment` (linha de override do PIX) para garantir que o `resolved.value` único está sendo dividido corretamente.
+Script SQL (preview antes de aplicar):
+
+```text
+1. Identificar grupos: orders agrupadas por payment_link onde COUNT(*) > 1
+2. Para cada grupo:
+   a. Ordenar por created_at ASC
+   b. Extrair frete_total (frete da 1ª linha [FRETE] de qualquer pedido — todos têm o mesmo)
+   c. Extrair pix_percent: detectar via pix_discount / subtotal_combinado (ex.: 38,67 / 386,70 = 10%)
+      — se não for possível detectar (carrinho mudou), usar config do tenant (`integration_*.pix_discount_percent`)
+   d. Para cada pedido do grupo:
+      - novo_pix = round2(subtotal_proprio × pix_percent)
+      - novo_frete = frete_total se for o 1º, senão 0
+      - novo_total = max(0, subtotal_proprio − novo_pix − novo_coupon) + novo_frete
+      - reescrever linhas [FRETE] e [PIX_DISCOUNT] na observation
+      - UPDATE orders SET total_amount = novo_total, observation = nova_obs
+3. Apresentar lista (id, antes, depois, delta) ao usuário antes de gravar
+```
+
+Pedidos 6430/6508 entrarão automaticamente nessa varredura. Resultado esperado:
+- 6430: total_amount 209,53 → **225,88**, observation com `[FRETE] R$ 25,00` e `[PIX_DISCOUNT] R$ 22,32`
+- 6508: total_amount 39,33 → **47,70**, observation **sem [FRETE]** (ou R$ 0,00) e `[PIX_DISCOUNT] R$ 5,30`
+
+## Validação pós-implementação
+
+- Conferir que cada pedido satisfaz `total_amount = subtotal − pix − coupon + frete_proprio`.
+- Conferir que dentro do grupo: `SUM(frete_proprio) = frete_unico_do_gateway`.
+- Simular novo checkout com 2 pedidos no preview e validar que o gateway recebe um único `shipping` e descontos corretos.
 
 ## Fora de escopo
 
-- Não alterar a UI do checkout nem o cálculo do desconto em si (continua 10% × subtotal combinado).
-- Não mexer em pedidos individuais (sem merge) — eles já estão corretos.
+- Não mexer em pedidos individuais (sem merge) — já estão corretos.
+- Não alterar UI do checkout nem cálculo do desconto enviado ao gateway (continua 10% × subtotal combinado, que é o que o cliente vê e paga).
