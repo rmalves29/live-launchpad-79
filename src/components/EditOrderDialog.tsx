@@ -69,6 +69,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
   const [cartId, setCartId] = useState<number | null>(null);
+  const [showGifts, setShowGifts] = useState(false);
 
 useEffect(() => {
   if (open && order) {
@@ -167,6 +168,18 @@ useEffect(() => {
 
   const addProductToOrder = async () => {
     if (!selectedProduct || !order) return;
+
+    // BLOCK GIFTS: products with price 0 must be added via Gifts manager
+    const isGift = (Number(selectedProduct.price) || 0) === 0
+      && (!selectedProduct.promotional_price || Number(selectedProduct.promotional_price) === 0);
+    if (isGift) {
+      toast({
+        title: 'Produto é um presente',
+        description: 'Produtos com preço R$ 0,00 devem ser adicionados pelo gerenciador de Presentes, não pelo Editar Pedido.',
+        variant: 'destructive'
+      });
+      return;
+    }
 
     setLoading(true);
     try {
@@ -442,10 +455,16 @@ useEffect(() => {
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredProducts = products.filter(product => {
+    const matchesSearch =
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.code.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    const isGift = (Number(product.price) || 0) === 0
+      && (!product.promotional_price || Number(product.promotional_price) === 0);
+    if (isGift && !showGifts) return false;
+    return true;
+  });
 
   const currentTotal = cartItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0);
 
@@ -474,6 +493,14 @@ useEffect(() => {
                     className="pl-10"
                   />
                 </div>
+                <label className="flex items-center gap-2 mt-2 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showGifts}
+                    onChange={(e) => setShowGifts(e.target.checked)}
+                  />
+                  Mostrar presentes (R$ 0,00) — gerencie por Presentes
+                </label>
               </div>
 
               <div>
