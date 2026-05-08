@@ -455,10 +455,16 @@ useEffect(() => {
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.code.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredProducts = products.filter(product => {
+    const matchesSearch =
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.code.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+    const isGift = (Number(product.price) || 0) === 0
+      && (!product.promotional_price || Number(product.promotional_price) === 0);
+    if (isGift && !showGifts) return false;
+    return true;
+  });
 
   const currentTotal = cartItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0);
 
