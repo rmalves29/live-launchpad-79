@@ -3617,9 +3617,8 @@ export type Database = {
           id: number
           is_cancelled: boolean
           is_paid: boolean
-          merged_order_ids: Json
+          observation: string
           payment_link: string
-          pix_discount: number
           tenant_id: string
           total_amount: number
         }[]
