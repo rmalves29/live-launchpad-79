@@ -3602,6 +3602,41 @@ export type Database = {
         }[]
       }
       get_current_tenant_id: { Args: never; Returns: string }
+      get_orders_by_phone_public: {
+        Args: { p_customer_phone: string; p_tenant_slug: string }
+        Returns: {
+          cart_id: number
+          coupon_code: string
+          coupon_discount: number
+          created_at: string
+          customer_name: string
+          customer_phone: string
+          event_date: string
+          event_type: string
+          gift_name: string
+          id: number
+          is_cancelled: boolean
+          is_paid: boolean
+          merged_order_ids: Json
+          payment_link: string
+          pix_discount: number
+          tenant_id: string
+          total_amount: number
+        }[]
+      }
+      get_paid_orders_for_merge: {
+        Args: {
+          p_customer_phone: string
+          p_from_date?: string
+          p_tenant_id: string
+        }
+        Returns: {
+          created_at: string
+          customer_phone: string
+          id: number
+          total_amount: number
+        }[]
+      }
       get_tenant_by_id: {
         Args: { tenant_id_param: string }
         Returns: {
