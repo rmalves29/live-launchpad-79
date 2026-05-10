@@ -1007,17 +1007,19 @@ const PublicCheckout = () => {
     setShowCheckout(false);
 
     try {
-      // Buscar apenas pedidos não pagos E não cancelados para seleção
-      const { data: customerOrders, error: ordersError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('tenant_id', tenant.id)
-        .eq('customer_phone', normalizedPhone)
-        .eq('is_paid', false)
-        .or('is_cancelled.is.null,is_cancelled.eq.false')
-        .order('created_at', { ascending: false });
+      // Buscar pedidos via RPC segura (evita policy USING(true) na tabela orders)
+      const { data: allOrders, error: ordersError } = await supabase
+        .rpc('get_orders_by_phone_public', {
+          p_tenant_slug: slug!,
+          p_customer_phone: normalizedPhone
+        });
 
       if (ordersError) throw ordersError;
+
+      // Filtrar apenas pedidos não pagos E não cancelados para seleção
+      const customerOrders = (allOrders || [])
+        .filter((o: any) => !o.is_paid && !o.is_cancelled)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       const ordersWithItems = await Promise.all(
         (customerOrders || []).map(async (order) => {
@@ -1177,16 +1179,19 @@ const PublicCheckout = () => {
 
     setLoadingHistory(true);
     try {
-      // Buscar pedidos pagos OU cancelados para o histórico
-      const { data: paidOrdersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('tenant_id', tenant.id)
-        .eq('customer_phone', normalizedPhone)
-        .or('is_paid.eq.true,is_cancelled.eq.true')
-        .order('created_at', { ascending: false });
+      // Buscar pedidos via RPC segura (evita policy USING(true) na tabela orders)
+      const { data: allOrders, error: ordersError } = await supabase
+        .rpc('get_orders_by_phone_public', {
+          p_tenant_slug: slug!,
+          p_customer_phone: normalizedPhone
+        });
 
       if (ordersError) throw ordersError;
+
+      // Filtrar apenas pedidos pagos OU cancelados para o histórico
+      const paidOrdersData = (allOrders || [])
+        .filter((o: any) => o.is_paid || o.is_cancelled)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       const ordersWithItems = await Promise.all(
         (paidOrdersData || []).map(async (order) => {

@@ -5,13 +5,7 @@ import CampaignsManager from '@/components/fluxo-envio/CampaignsManager';
 import MessageComposer from '@/components/fluxo-envio/MessageComposer';
 import ReportsPanel from '@/components/fluxo-envio/ReportsPanel';
 import AutoMessagesManager from '@/components/fluxo-envio/AutoMessagesManager';
-import { useTenantContext } from '@/contexts/TenantContext';
-import { useAuth } from '@/hooks/useAuth';
-import { Navigate } from 'react-router-dom';
-
 export default function FluxoEnvioIndex() {
-  const { tenant } = useTenantContext();
-  const { profile } = useAuth();
   // Fluxo de Envio liberado para todas as empresas
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">

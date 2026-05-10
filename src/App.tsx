@@ -229,8 +229,14 @@ const AppContent = () => {
           <RequireAuth><RenovarAssinatura /></RequireAuth>
         } />
         
-        {/* Rota de debug */}
-        <Route path="/debug" element={<Debug />} />
+        {/* Rota de debug - apenas super_admin autenticado */}
+        <Route path="/debug" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <Debug />
+            </SuperAdminOnly>
+          </RequireAuth>
+        } />
         
         {/* Páginas públicas legais */}
         <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />

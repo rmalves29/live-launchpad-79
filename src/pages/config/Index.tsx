@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, ArrowLeft, BarChart3, TrendingUp, Building2, Users, Printer } from 'lucide-react';
+import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, Building2, Users, Printer } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { CompanySettings } from '@/components/CompanySettings';
@@ -57,8 +57,6 @@ const Config = () => {
   const [mercadoPagoIntegration, setMercadoPagoIntegration] = useState<MercadoPagoIntegration | null>(null);
   const [melhorEnvioIntegration, setMelhorEnvioIntegration] = useState<MelhorEnvioIntegration | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
-  // Sempre iniciar na view de config (configurações gerais)
-  const [activeView, setActiveView] = useState<'dashboard' | 'config'>('config');
   const [appSettings, setAppSettings] = useState<any>(null);
 
   const loadSettings = async () => {
@@ -216,8 +214,29 @@ const Config = () => {
     }
   };
 
-  if (activeView === 'config') {
+  if (isLoading) {
     return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Acesso Negado</h1>
+          <p className="text-muted-foreground">Você precisa estar logado para acessar esta página.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
           <div className="mb-6">
@@ -394,177 +413,6 @@ const Config = () => {
           </div>
         </div>
       </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Acesso Negado</h1>
-          <p className="text-muted-foreground">Você precisa estar logado para acessar esta página.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Dashboard view
-  return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center">
-              <Settings className="h-8 w-8 mr-3 text-primary" />
-              Dashboard de Configurações
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Visão geral do sistema e configurações
-            </p>
-          </div>
-          <Button onClick={() => setActiveView('config')}>
-            <Settings className="h-4 w-4 mr-2" />
-            Configurações Detalhadas
-          </Button>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Mercado Pago</p>
-                  <p className="text-2xl font-bold">
-                    {mercadoPagoIntegration?.is_active ? 'Ativo' : 'Inativo'}
-                  </p>
-                </div>
-                <CreditCard className="h-8 w-8 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Melhor Envio</p>
-                  <p className="text-2xl font-bold">
-                    {melhorEnvioIntegration?.is_active ? 'Ativo' : 'Inativo'}
-                  </p>
-                </div>
-                <Truck className="h-8 w-8 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Cupons</p>
-                  <p className="text-2xl font-bold">-</p>
-                </div>
-                <Percent className="h-8 w-8 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Brindes</p>
-                  <p className="text-2xl font-bold">-</p>
-                </div>
-                <Gift className="h-8 w-8 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Card className="cursor-pointer hover:shadow-md transition-shadow" 
-                onClick={() => window.location.href = '/config?tab=config'}>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Settings className="h-5 w-5 mr-2" />
-                Configurações Gerais
-              </CardTitle>
-              <CardDescription>
-                Configure integrações e parâmetros do sistema
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => window.location.href = '/config?tab=company'}>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Building2 className="h-5 w-5 mr-2" />
-                Dados da Empresa
-              </CardTitle>
-              <CardDescription>
-                Gerencie informações da sua empresa
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => window.location.href = '/config?tab=coupons'}>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Percent className="h-5 w-5 mr-2" />
-                Cupons de Desconto
-              </CardTitle>
-              <CardDescription>
-                Crie e gerencie cupons promocionais
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => window.location.href = '/config?tab=gifts'}>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Gift className="h-5 w-5 mr-2" />
-                Brindes
-              </CardTitle>
-              <CardDescription>
-                Configure brindes por valor de compra
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          {isMaster && (
-            <Card className="cursor-pointer hover:shadow-md transition-shadow"
-                  onClick={() => window.location.href = '/config?tab=tenants'}>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <BarChart3 className="h-5 w-5 mr-2" />
-                  Gerenciar Empresas
-                </CardTitle>
-                <CardDescription>
-                  Administre empresas do sistema (Master)
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          )}
-        </div>
-      </div>
-    </div>
   );
 };
 

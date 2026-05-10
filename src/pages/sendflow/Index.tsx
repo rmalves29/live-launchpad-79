@@ -4,7 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/hooks/useTenant';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useBackendSendFlow } from '@/hooks/useBackendSendFlow';
-import { SendingJob } from '@/hooks/useSendingJob';
+import type { SendingJob } from '@/hooks/useSendingJob';
 import { getLatestWhatsAppTemplate, saveWhatsAppTemplate } from '@/lib/whatsapp-templates';
 import SendingControl from '@/components/SendingControl';
 import SendingProgressLive from '@/components/SendingProgressLive';
