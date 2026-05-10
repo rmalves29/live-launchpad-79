@@ -73,30 +73,23 @@ export function useOrderMerge(
 
       const normalizedPhone = normalizeForStorage(customerPhone);
 
-      // Buscar pedidos PAGOS do cliente dentro do período
-      const { data: orders, error: ordersError } = await supabase
-        .from('orders')
-        .select('id, created_at, total_amount, customer_phone')
-        .eq('tenant_id', tenantId)
-        .eq('is_paid', true)
-        .eq('is_cancelled', false)
-        .gte('created_at', limitDateISO)
-        .order('created_at', { ascending: false });
+      // Buscar pedidos PAGOS do cliente dentro do período via RPC (SECURITY DEFINER)
+      // Necessário pois a tabela orders tem RLS que bloqueia acesso anônimo direto
+      const { data: matchingOrders, error: ordersError } = await supabase
+        .rpc('get_paid_orders_for_merge', {
+          p_tenant_id: tenantId,
+          p_customer_phone: normalizedPhone,
+          p_from_date: limitDateISO
+        });
 
       if (ordersError) {
         console.error('Erro ao buscar pedidos pagos:', ordersError);
         throw ordersError;
       }
 
-      // Filtrar pedidos que correspondem ao telefone normalizado
-      const matchingOrders = (orders || []).filter(order => {
-        const orderPhone = normalizeForStorage(order.customer_phone);
-        return orderPhone === normalizedPhone;
-      });
-
-      if (matchingOrders.length > 0) {
+      if ((matchingOrders || []).length > 0) {
         setHasPaidOrderWithinPeriod(true);
-        setMergeableOrders(matchingOrders.map(o => ({
+        setMergeableOrders((matchingOrders || []).map(o => ({
           id: o.id,
           created_at: o.created_at,
           total_amount: o.total_amount
