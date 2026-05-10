@@ -2,13 +2,11 @@
 <html lang="pt-BR">
   <head>
     <script>
-      // Anti-flash: aplica tema salvo antes do React montar
+      // Tema claro forçado em todo o sistema (branco + sky/cyan da logo)
       (function () {
         try {
-          var t = localStorage.getItem('theme');
-          var d = document.documentElement;
-          if (t === 'dark') { d.classList.add('dark'); }
-          else { d.classList.remove('dark'); }
+          document.documentElement.classList.remove('dark');
+          localStorage.setItem('theme', 'light');
         } catch (e) {}
       })();
     </script>
