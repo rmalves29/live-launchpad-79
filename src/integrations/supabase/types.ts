@@ -3617,7 +3617,6 @@ export type Database = {
           id: number
           is_cancelled: boolean
           is_paid: boolean
-          observation: string
           payment_link: string
           tenant_id: string
           total_amount: number
