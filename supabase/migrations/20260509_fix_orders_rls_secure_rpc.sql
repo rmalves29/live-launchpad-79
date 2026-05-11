@@ -7,31 +7,31 @@
 -- ============================================================
 -- ETAPA 1: Criar função RPC segura para o checkout público
 -- O PublicCheckout.tsx irá usar esta função em vez de .from('orders') direto
+-- Colunas baseadas no schema real da tabela orders (sem items, pix_discount, merged_order_ids)
 -- ============================================================
+
+DROP FUNCTION IF EXISTS get_orders_by_phone_public(text, text);
 
 CREATE OR REPLACE FUNCTION get_orders_by_phone_public(
   p_tenant_slug text,
   p_customer_phone text
 )
 RETURNS TABLE (
-  id          bigint,
-  tenant_id   uuid,
-  customer_phone text,
-  customer_name  text,
-  event_type     text,
-  event_date     text,
-  total_amount   numeric,
-  is_paid        boolean,
-  is_cancelled   boolean,
-  payment_link   text,
-  cart_id        bigint,
-  items          jsonb,
-  coupon_code    text,
+  id              bigint,
+  tenant_id       uuid,
+  customer_phone  text,
+  customer_name   text,
+  event_type      text,
+  event_date      date,
+  total_amount    numeric,
+  is_paid         boolean,
+  is_cancelled    boolean,
+  payment_link    text,
+  cart_id         bigint,
+  coupon_code     text,
   coupon_discount numeric,
   gift_name       text,
-  created_at      timestamptz,
-  pix_discount    numeric,
-  merged_order_ids jsonb
+  created_at      timestamptz
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -66,13 +66,10 @@ BEGIN
     COALESCE(o.is_cancelled, false) AS is_cancelled,
     o.payment_link,
     o.cart_id,
-    o.items,
     o.coupon_code,
     o.coupon_discount,
     o.gift_name,
-    o.created_at,
-    o.pix_discount,
-    o.merged_order_ids
+    o.created_at
   FROM orders o
   WHERE o.tenant_id = v_tenant_id
     AND (
@@ -83,13 +80,12 @@ BEGIN
 END;
 $$;
 
--- Garantir que apenas usuários anônimos (e autenticados) podem chamar esta função
+-- Garantir que usuários anônimos (checkout público) e autenticados podem chamar esta função
 GRANT EXECUTE ON FUNCTION get_orders_by_phone_public(text, text) TO anon;
 GRANT EXECUTE ON FUNCTION get_orders_by_phone_public(text, text) TO authenticated;
 
 -- ============================================================
 -- ETAPA 2: Substituir policy insegura por policy restrita
--- ATENÇÃO: Só executar após confirmar que o frontend usa a RPC acima
 -- ============================================================
 
 -- Remover policy insegura (USING true)
