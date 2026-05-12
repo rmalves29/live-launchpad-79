@@ -967,6 +967,11 @@ const PublicCheckout = () => {
 
       if (error) throw error;
 
+      if (data?.success === false && data?.error) {
+        toast({ title: 'Não foi possível processar o pagamento', description: data.error, variant: 'destructive' });
+        return;
+      }
+
       if (data && (data.init_point || data.sandbox_init_point)) {
         const paymentUrl = data.init_point || data.sandbox_init_point;
         window.location.href = paymentUrl;

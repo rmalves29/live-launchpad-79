@@ -950,6 +950,39 @@ serve(async (req) => {
       auto_return: "approved",
     };
 
+    // Se cliente escolheu PIX, validar antes que a conta MP da loja tem PIX habilitado.
+    // Sem isso, o MP ignora as exclusões e mostra cartão — cliente paga com desconto PIX
+    // indevido. Ver mp-diagnose para inspecionar métodos ativos da conta.
+    const normalizedChoice = String(payload.payment_method || "").toLowerCase().trim();
+    if (normalizedChoice === "pix") {
+      try {
+        const pmRes = await fetch("https://api.mercadopago.com/v1/payment_methods", {
+          headers: { Authorization: `Bearer ${effectiveMpAccessToken}` },
+        });
+        if (pmRes.ok) {
+          const methods = await pmRes.json();
+          const hasPixActive = Array.isArray(methods) && methods.some(
+            (m: any) => (m?.id === "pix" || m?.payment_type_id === "bank_transfer") && m?.status === "active",
+          );
+          if (!hasPixActive) {
+            console.log("[create-payment] MP account has no active PIX for tenant:", payload.tenant_id);
+            return new Response(
+              JSON.stringify({
+                success: false,
+                error: "PIX não está habilitado na conta Mercado Pago desta loja. Escolha pagar com cartão ou peça à loja para ativar o PIX no painel do Mercado Pago (Configurações → Meios de cobrança).",
+              }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        } else {
+          console.log("[create-payment] Could not verify MP payment_methods, status:", pmRes.status);
+        }
+      } catch (e) {
+        console.log("[create-payment] Error verifying MP payment_methods:", e);
+        // Em caso de falha na verificação, segue o fluxo normal (não bloqueia checkout).
+      }
+    }
+
     // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
     applyPaymentMethodLock("mercado_pago", preferenceBody, payload.payment_method);
 
