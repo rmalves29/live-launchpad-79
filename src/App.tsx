@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { ReactNode } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import Navbar from "./components/Navbar";
 import { AppShell } from "./components/layout/AppShell";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
