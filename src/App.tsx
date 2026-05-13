@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-route
 import { ReactNode } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Navbar from "./components/Navbar";
+import { AppShell } from "./components/layout/AppShell";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
@@ -72,7 +73,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
+  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
