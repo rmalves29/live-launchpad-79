@@ -52,6 +52,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfUse from "./pages/TermsOfUse";
 import SuporteIA from "./pages/suporte-ia/Index";
 import RequireAuth from "./components/RequireAuth";
+import DesignPreview from "./pages/design-preview/Index";
 import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
@@ -71,7 +72,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
+  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
@@ -238,6 +239,11 @@ const AppContent = () => {
           </RequireAuth>
         } />
         
+        {/* Preview do novo design (isolado, dados mockados) */}
+        <Route path="/design-preview" element={
+          <RequireAuth><DesignPreview /></RequireAuth>
+        } />
+
         {/* Páginas públicas legais */}
         <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
         <Route path="/termos-de-uso" element={<TermsOfUse />} />
