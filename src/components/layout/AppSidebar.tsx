@@ -109,8 +109,8 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex flex-col h-full bg-white">
       {/* Brand + user */}
       <div className="p-4 border-b border-[#f3f4f6]">
-        <NavLink to="/" onClick={onNavigate} className="flex items-center gap-2">
-          <img src={cartzyLogo} alt="Cartzy" className="h-8 w-auto object-contain" />
+        <NavLink to="/" onClick={onNavigate} className="flex items-center justify-center">
+          <img src={cartzyLogo} alt="Cartzy" className="h-[2.2rem] w-auto object-contain" />
         </NavLink>
 
         <div className="mt-3">
