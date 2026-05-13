@@ -73,8 +73,6 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         { path: '/whatsapp/zapi', label: 'WhatsApp Z-API', icon: MessageSquare },
         { path: '/whatsapp/templates', label: 'Templates', icon: MessageSquare },
         { path: '/whatsapp/cobranca', label: 'Cobrança', icon: MessageSquare },
-        { path: '/agente-ia', label: 'Agente IA', icon: Bot },
-        { path: '/suporte-ia', label: 'Suporte IA', icon: HeadphonesIcon },
       ],
     },
     {
