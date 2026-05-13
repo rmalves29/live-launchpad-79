@@ -331,6 +331,40 @@ serve(async (req) => {
     if (!isReadStatus) {
       console.log(`[zapi-webhook] 📋 EVENT type=${evtType} notification=${evtNotif} action=${evtAction} phone=${evtPhone} isGroup=${evtIsGroup} participant=${evtParticipant} participants=${JSON.stringify(evtParticipants)} instanceId=${payload.instanceId || ''}`);
     }
+
+    // ─── AUDITORIA: Eventos de conexão/desconexão Z-API ──────────────────
+    // Persiste em whatsapp_messages (type=system_log) toda vez que a Z-API
+    // notifica conexão/desconexão, para diagnosticar quedas frequentes.
+    const isConnectionEvent =
+      evtType === 'DisconnectedCallback' ||
+      evtType === 'ConnectedCallback' ||
+      evtType === 'NotificationDisconnectedCallback';
+    if (isConnectionEvent) {
+      try {
+        const integ = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone);
+        if (integ?.tenant_id) {
+          const reason = (payload as any).reason || (payload as any).cause || (payload as any).error || '';
+          const connectedPhoneStr = payload.connectedPhone || '';
+          const msg = `Z-API ${evtType}${reason ? ` | reason=${reason}` : ''} | phone=${connectedPhoneStr} | instanceId=${payload.instanceId || ''}`;
+          await supabase.from('whatsapp_messages').insert({
+            tenant_id: integ.tenant_id,
+            phone: connectedPhoneStr || 'system',
+            message: msg,
+            type: 'system_log',
+            created_at: new Date().toISOString(),
+          });
+          console.log(`[zapi-webhook] 🔌 ${msg}`);
+        } else {
+          console.log(`[zapi-webhook] 🔌 ${evtType} (no tenant resolved) instanceId=${payload.instanceId}`);
+        }
+      } catch (logErr: any) {
+        console.error('[zapi-webhook] Failed to log connection event:', logErr?.message);
+      }
+      return new Response(JSON.stringify({ ok: true, logged: true }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     
     // Log detalhado APENAS para eventos de grupo (participantes)
     const isGroupParticipantEvent = 
