@@ -261,8 +261,9 @@ const AppContent = () => {
         
         <Route path="*" element={<NotFound />} />
       </Routes>
-    </>
   );
+
+  return showShell ? <AppShell>{routes}</AppShell> : routes;
 };
 
 
