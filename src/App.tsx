@@ -98,12 +98,11 @@ const AppContent = () => {
     return <>{children}</>;
   };
 
-  return (
-    <>
-      {showNavbar && <Navbar />}
-      <Routes>
-        {/* Landing page pública institucional */}
-        <Route path="/landing" element={<LandingPage />} />
+  const routes = (
+    <Routes>
+      {/* Landing page pública institucional */}
+      <Route path="/landing" element={<LandingPage />} />
+
         
         {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
         <Route path="/" element={
