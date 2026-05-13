@@ -1,35 +1,38 @@
-# Página de teste do novo design
+# Ajustar `/design-preview` para ficar igual ao mockup enviado
 
-Criar uma rota isolada `/design-preview` para você visualizar exatamente como o sistema ficaria com o layout dos dois mockups que você enviou (Pedidos + Pedido Manual), **sem alterar nada do sistema atual**.
+O preview atual está com um layout "genérico" (cards de stats grandes, tabela com colunas erradas). O mockup que você acabou de mandar (`mockup-pedidos-v2-2.html`) é completamente diferente: é a tela **Gestão de Pedidos** com tabela densa, bulk actions no topo, card de filtros com botões de período e sidebar fina "Cartzy". Vou refazer pixel-a-pixel.
 
-## O que será criado
+## O que muda (apenas dentro de `src/pages/design-preview/`)
 
-1. **Nova rota `/design-preview`** em `src/App.tsx`
-   - Protegida por `RequireAuth` (só você logado vê)
-   - Sem Navbar atual (mostra a sidebar nova do mockup)
+### 1. `_components/PreviewSidebar.tsx` — refazer
+- Largura **220px** (não 256px)
+- Logo: quadrado indigo + texto **"Cartzy"** (não "OrderZap")
+- Card de usuário logo abaixo: avatar redondo "FL" + "FL Semi Joias" + e-mail
+- Grupos com label cinza ("Principal", "Outras páginas")
+- Itens: **Pedidos** (ativo), Produtos / Clientes / Relatórios marcados como "(em breve)" desabilitados
+- Bloco rodapé indigo claro: "Mockup — Página 1/11 · Testando: Pedidos"
+- Remover badge "PRO" e botão "Gerenciar plano"
 
-2. **Página `src/pages/design-preview/Index.tsx`**
-   - Toggle no topo para alternar entre as duas telas: **"Pedidos"** e **"Pedido Manual"**
-   - Botão "Abrir modal de edição" para ver o modal de pedido também
-   - Dados 100% mockados (hardcoded) — nenhuma chamada ao banco
+### 2. `_components/PedidosPreview.tsx` — reescrever do zero
+- **Header**: "Gestão de Pedidos" + subtítulo "Live de Sábado — 09/05/2026 · FL Semi Joias"
+- **Bulk actions** alinhadas à direita: Imprimir Selecionados (0), Marcar como Impresso, Cancelar Selecionados (0) (laranja outline), Deletar Selecionados (0) (vermelho outline), Exportar CSV
+- **Card de filtros**: ícone funil + "Filtros", linha com busca por telefone, select Status Pagamento, select Tipo Evento, botão Limpar Filtros
+- Linha **Período**: chips Hoje / Semana / Mês (ativo) / Ano / Período + input date
+- **Tabela densa** com colunas: checkbox, #Pedido (mono), Telefone (com badge "2 pedidos" laranja quando aplicável), Total, Pago? (toggle verde + badge), Impresso? (texto + lápis), Tipo Evento (badge azul/roxo), Data Evento, Disparo (botão WhatsApp verde + link pagamento amarelo), Rastreio (badge azul truncado), Observação (truncado), Ações (imprimir, editar, visualizar azul, cancelar laranja)
+- ~6 linhas mock variando status (pago/pendente/cancelado), impresso/não impresso, com/sem rastreio, evento LIVE/Bazar
+- Toggle custom (bolinha 22x40, verde quando ligado) implementado com Tailwind
+- Remover totalmente os 4 cards de stats (Pedidos hoje, Faturamento, etc) — não existem no mockup
 
-3. **Componentes locais de preview** (isolados em `src/pages/design-preview/_components/`)
-   - `PreviewSidebar.tsx` — sidebar lateral igual ao mockup (logo OrderZap, menu, badge "PRO")
-   - `PedidosPreview.tsx` — tela de listagem de pedidos (cards de stats, filtros, tabela)
-   - `ManualPreview.tsx` — tela de pedido manual (busca cliente, carrinho, totais)
-   - `EditOrderModalPreview.tsx` — modal de edição
+### 3. `Index.tsx` — pequeno ajuste
+- Manter toggle topo entre Pedidos / Pedido Manual
+- Mudar bg para `#f9fafb` (já está)
 
-## O que NÃO será alterado
+### 4. Não mexer
+- `ManualPreview.tsx` (continua como está)
+- `EditOrderModalPreview.tsx` (continua)
+- Nada fora de `src/pages/design-preview/`
 
-- Nenhuma página existente (Pedidos, Manual, Config, etc.)
-- `index.css`, `tailwind.config.ts`, Navbar atual
-- Hooks, queries, edge functions, RLS
-- Tema (continua light/dark como está)
+## Observação técnica
+Cores hex diretas do mockup (`#4f46e5`, `#dcfce7`/`#16a34a`, `#fef9c3`/`#ca8a04`, `#fee2e2`/`#dc2626`, `#dbeafe`/`#2563eb`, `#ffedd5`/`#ea580c`, `#f3e8ff`/`#9333ea`, `#f9fafb`, `#e5e7eb`) — isolado no preview, sem tocar no design system global.
 
-## Estilo
-
-Pixel-a-pixel fiel aos mockups: cores hex diretas (`#4f46e5` indigo, `#dcfce7`/`#16a34a` verde status, `#f9fafb` bg, etc.) usadas localmente apenas nesses componentes de preview, sem tocar no design system global.
-
-## Como você verá
-
-Após implementar, basta acessar `/design-preview` no navegador. Se aprovar, eu faço a refatoração global usando esse padrão.
+Posso aplicar?
