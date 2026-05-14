@@ -1334,33 +1334,32 @@ const PublicCheckout = () => {
 
         {/* Card de busca pedidos em aberto */}
         <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
-          <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-b border-slate-100 dark:border-slate-700/50 pb-5">
+          <CardHeader className="border-b border-slate-100 dark:border-slate-700/50 pb-5">
             <CardTitle className="flex items-center gap-3 text-lg">
-              <div className="p-2 bg-emerald-500/10 rounded-lg">
-                <ShoppingCart className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
+              <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               Buscar Pedidos em Aberto
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
+            <label className="text-sm font-medium mb-2 block">Telefone do cliente</label>
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="(31) 99999-9999"
+                  placeholder="(11) 98765-4321"
                   value={phone}
                   onChange={(e) => handlePhoneChange(e.target.value, setPhone)}
                   onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
-                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500/20"
+                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
               <Button 
                 onClick={searchOrders} 
                 disabled={loadingOrders} 
-                className="h-12 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200"
+                className="h-12 px-6 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all duration-200"
               >
                 {loadingOrders ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
-                <span className="ml-2 font-medium">Buscar</span>
+                <span className="ml-2 font-medium">Buscar Pedidos</span>
               </Button>
             </div>
             {!searched && (
