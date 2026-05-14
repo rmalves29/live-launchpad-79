@@ -947,10 +947,15 @@ export default function SendFlow() {
       </Card>
 
       {/* Configurações de Envio */}
-      <Card>
+      <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
-          <CardTitle>Configurações de Envio</CardTitle>
-          <CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 text-primary rounded-lg">
+              <Clock className="h-5 w-5" />
+            </div>
+            <CardTitle>Configurações de Envio</CardTitle>
+          </div>
+          <CardDescription className="pt-1">
             Configure os intervalos entre mensagens para evitar bloqueios do WhatsApp
           </CardDescription>
         </CardHeader>
