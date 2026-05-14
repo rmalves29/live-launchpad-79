@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,8 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { supabaseTenant } from "@/lib/supabase-tenant";
 import { deleteWhatsAppTemplate, listLatestWhatsAppTemplates, saveWhatsAppTemplate, type WhatsAppTemplateType } from "@/lib/whatsapp-templates";
-import { Plus, Edit2, Trash2, Save, X } from "lucide-react";
-import { formatBrasiliaDateTime } from '@/lib/date-utils';
+import { Plus, Trash2 } from "lucide-react";
 
 interface Template {
   id: number;
@@ -23,66 +21,129 @@ interface Template {
 }
 
 const TEMPLATE_TYPES = [
-  { 
-    value: 'ITEM_ADDED', 
+  {
+    value: 'ITEM_ADDED',
     label: 'Item Adicionado',
     description: 'Enviado quando um item é adicionado ao pedido',
-    variables: ['{{produto}}', '{{codigo}}', '{{quantidade}}', '{{valor}}', '{{valor_original}}', '{{valor_promo}}', '{{customer_name}}']
+    variables: ['{nome}', '{produto}', '{codigo}', '{quantidade}', '{valor}'],
+    color: {
+      badgeBg: 'bg-[#dbeafe]',
+      badgeText: 'text-[#2563eb]',
+      border: 'border-l-[#3b82f6]',
+      ring: 'ring-[#3b82f6]/30',
+    },
   },
-  { 
-    value: 'PAID_ORDER', 
+  {
+    value: 'PAID_ORDER',
     label: 'Pedido Pago',
     description: 'Enviado quando um pedido é marcado como pago',
-    variables: ['{{order_id}}', '{{total}}', '{{valor_original}}', '{{valor_promo}}', '{{customer_name}}']
+    variables: ['{nome}', '{order_id}', '{total}'],
+    color: {
+      badgeBg: 'bg-[#dcfce7]',
+      badgeText: 'text-[#16a34a]',
+      border: 'border-l-[#22c55e]',
+      ring: 'ring-[#22c55e]/30',
+    },
   },
-  { 
-    value: 'PRODUCT_CANCELED', 
+  {
+    value: 'PRODUCT_CANCELED',
     label: 'Item Cancelado',
     description: 'Enviado quando um item é removido do pedido',
-    variables: ['{{produto}}', '{{codigo}}', '{{quantidade}}', '{{customer_name}}']
+    variables: ['{nome}', '{produto}', '{codigo}', '{quantidade}'],
+    color: {
+      badgeBg: 'bg-[#fee2e2]',
+      badgeText: 'text-[#dc2626]',
+      border: 'border-l-[#ef4444]',
+      ring: 'ring-[#ef4444]/30',
+    },
   },
-  { 
-    value: 'MSG_MASSA', 
-    label: 'Cobrança em Massa',
+  {
+    value: 'MSG_MASSA',
+    label: 'Mensagem em massa',
     description: 'Template para envio em massa de cobranças',
-    variables: ['{{customer_name}}', '{{total}}', '{{order_id}}']
+    variables: ['{nome}', '{total}', '{order_id}'],
+    color: {
+      badgeBg: 'bg-[#fef9c3]',
+      badgeText: 'text-[#ca8a04]',
+      border: 'border-l-[#eab308]',
+      ring: 'ring-[#eab308]/30',
+    },
   },
-  { 
-    value: 'SENDFLOW', 
-    label: 'SendFlow MSG',
+  {
+    value: 'SENDFLOW',
+    label: 'Fluxo de envio',
     description: 'Mensagem de divulgação de produtos',
-    variables: ['{{codigo}}', '{{nome}}', '{{cor}}', '{{tamanho}}', '{{valor}}']
+    variables: ['{codigo}', '{nome}', '{cor}', '{tamanho}', '{valor}'],
+    color: {
+      badgeBg: 'bg-[#f3e8ff]',
+      badgeText: 'text-[#9333ea]',
+      border: 'border-l-[#a855f7]',
+      ring: 'ring-[#a855f7]/30',
+    },
   },
-  { 
-    value: 'TRACKING', 
-    label: 'Código de Rastreio',
+  {
+    value: 'TRACKING',
+    label: 'Rastreamento do pedido',
     description: 'Enviado quando o código de rastreio é adicionado',
-    variables: ['{{customer_name}}', '{{order_id}}', '{{tracking_code}}', '{{shipped_at}}']
+    variables: ['{nome}', '{order_id}', '{tracking_code}', '{shipped_at}'],
+    color: {
+      badgeBg: 'bg-[#cffafe]',
+      badgeText: 'text-[#0891b2]',
+      border: 'border-l-[#06b6d4]',
+      ring: 'ring-[#06b6d4]/30',
+    },
   },
-  { 
-    value: 'BLOCKED_CUSTOMER', 
+  {
+    value: 'BLOCKED_CUSTOMER',
     label: 'Cliente Bloqueado',
     description: 'Enviado automaticamente quando um cliente bloqueado tenta fazer pedido',
-    variables: ['{{customer_name}}']
+    variables: ['{nome}'],
+    color: {
+      badgeBg: 'bg-[#f1f5f9]',
+      badgeText: 'text-[#475569]',
+      border: 'border-l-[#64748b]',
+      ring: 'ring-[#64748b]/30',
+    },
   },
-  { 
-    value: 'DM_INSTAGRAM_CADASTRO', 
+  {
+    value: 'DM_INSTAGRAM_CADASTRO',
     label: 'DM Instagram Cadastro',
-    description: 'DM enviada no Instagram quando o cliente não tem cadastro ou telefone. Ative/desative a flag na integração Instagram.',
-    variables: ['{{produto}}', '{{quantidade}}', '{{valor_unitario}}', '{{total}}', '{{link_cadastro}}']
-  }
+    description: 'DM enviada no Instagram quando o cliente não tem cadastro ou telefone.',
+    variables: ['{produto}', '{quantidade}', '{valor_unitario}', '{total}', '{link_cadastro}'],
+    color: {
+      badgeBg: 'bg-[#fce7f3]',
+      badgeText: 'text-[#db2777]',
+      border: 'border-l-[#ec4899]',
+      ring: 'ring-[#ec4899]/30',
+    },
+  },
 ];
+
+const getTypeMeta = (type: string) =>
+  TEMPLATE_TYPES.find((t) => t.value === type) ?? {
+    value: type,
+    label: type,
+    description: '',
+    variables: [] as string[],
+    color: {
+      badgeBg: 'bg-muted',
+      badgeText: 'text-muted-foreground',
+      border: 'border-l-border',
+      ring: 'ring-border',
+    },
+  };
 
 export default function WhatsappTemplates() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     type: '',
     title: '',
-    content: ''
+    content: '',
+    isActive: true,
   });
 
   const [sendCadastroDm, setSendCadastroDm] = useState(false);
@@ -121,69 +182,39 @@ export default function WhatsappTemplates() {
     }
   };
 
-
-  // Templates padrão que serão criados automaticamente
   const DEFAULT_TEMPLATES = [
     {
       type: 'PAID_ORDER',
       title: 'Confirmação de Pagamento',
-      content: `🎉 *Pagamento Confirmado - Pedido #{{order_id}}*
-
-✅ Recebemos seu pagamento!
-💰 Valor: *R$ {{total}}*
-
-Seu pedido está sendo preparado para envio.
-
-Obrigado pela preferência! 💚`
+      content: `🎉 *Pagamento Confirmado - Pedido #{{order_id}}*\n\n✅ Recebemos seu pagamento!\n💰 Valor: *R$ {{total}}*\n\nSeu pedido está sendo preparado para envio.\n\nObrigado pela preferência! 💚`,
     },
     {
       type: 'TRACKING',
       title: 'Código de Rastreio',
-      content: `📦 *Pedido Enviado!*
-
-Olá{{customer_name}}! 🎉
-
-Seu pedido *#{{order_id}}* foi enviado!
-
-🚚 *Código de Rastreio:* {{tracking_code}}
-📅 *Data de Envio:* {{shipped_at}}
-
-🔗 *Rastreie seu pedido:*
-https://www.melhorrastreio.com.br/rastreio/{{tracking_code}}
-
-⏳ _O rastreio pode demorar até 2 dias úteis para aparecer no sistema._
-
-Obrigado pela preferência! 💚`
+      content: `📦 *Pedido Enviado!*\n\nOlá{{customer_name}}! 🎉\n\nSeu pedido *#{{order_id}}* foi enviado!\n\n🚚 *Código de Rastreio:* {{tracking_code}}\n📅 *Data de Envio:* {{shipped_at}}\n\n🔗 *Rastreie seu pedido:*\nhttps://www.melhorrastreio.com.br/rastreio/{{tracking_code}}\n\n⏳ _O rastreio pode demorar até 2 dias úteis para aparecer no sistema._\n\nObrigado pela preferência! 💚`,
     },
     {
       type: 'BLOCKED_CUSTOMER',
       title: 'Mensagem de Cliente Bloqueado',
-      content: `Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔
-
-Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.`
+      content: `Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔\n\nPara entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.`,
     },
     {
       type: 'DM_INSTAGRAM_CADASTRO',
       title: 'DM Instagram - Solicitação de Cadastro',
-      content: `✅ *{{produto}}* ({{quantidade}}x) foi adicionado ao seu pedido!\n\n💰 Valor: {{valor_unitario}}\n🛒 Total: {{total}}\n\n📋 Para confirmar seu produto, faça seu cadastro:\n{{link_cadastro}}\n\nApós o cadastro, você receberá o link para finalizar o pedido. ✨`
-    }
+      content: `✅ *{{produto}}* ({{quantidade}}x) foi adicionado ao seu pedido!\n\n💰 Valor: {{valor_unitario}}\n🛒 Total: {{total}}\n\n📋 Para confirmar seu produto, faça seu cadastro:\n{{link_cadastro}}\n\nApós o cadastro, você receberá o link para finalizar o pedido. ✨`,
+    },
   ];
 
   const initializeTemplates = async () => {
     try {
       setLoading(true);
-      
-      const templates = await listLatestWhatsAppTemplates();
-      const existingTypes = templates.map(t => t.type);
+      const tpls = await listLatestWhatsAppTemplates();
+      const existingTypes = tpls.map((t) => t.type);
+      const toCreate = DEFAULT_TEMPLATES.filter((dt) => !existingTypes.includes(dt.type));
 
-      // Criar templates padrão que não existem
-      const templatesToCreate = DEFAULT_TEMPLATES.filter(
-        dt => !existingTypes.includes(dt.type)
-      );
-
-      if (templatesToCreate.length > 0) {
+      if (toCreate.length > 0) {
         await Promise.all(
-          templatesToCreate.map((template) =>
+          toCreate.map((template) =>
             saveWhatsAppTemplate({
               content: template.content,
               title: template.title,
@@ -191,13 +222,14 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
             })
           )
         );
-
-        console.log(`Criados ${templatesToCreate.length} templates padrão`);
-        setTemplates(await listLatestWhatsAppTemplates());
+        const refreshed = await listLatestWhatsAppTemplates();
+        setTemplates(refreshed);
+        if (refreshed[0]) selectTemplate(refreshed[0]);
         return;
       }
 
-      setTemplates(templates);
+      setTemplates(tpls);
+      if (tpls[0]) selectTemplate(tpls[0]);
     } catch (error: any) {
       console.error('Erro ao carregar templates:', error);
       toast.error(error?.message || 'Erro ao carregar templates');
@@ -208,15 +240,31 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
 
   const loadTemplates = async () => {
     try {
-      setLoading(true);
       const data = await listLatestWhatsAppTemplates();
       setTemplates(data || []);
+      return data || [];
     } catch (error: any) {
       console.error('Erro ao carregar templates:', error);
       toast.error(error?.message || 'Erro ao carregar templates');
-    } finally {
-      setLoading(false);
+      return [];
     }
+  };
+
+  const selectTemplate = (template: Template) => {
+    setFormData({
+      type: template.type,
+      title: template.title || '',
+      content: template.content,
+      isActive: true,
+    });
+    setEditingId(template.id);
+    setIsCreating(false);
+  };
+
+  const handleNew = () => {
+    setFormData({ type: '', title: '', content: '', isActive: true });
+    setEditingId(null);
+    setIsCreating(true);
   };
 
   const handleSave = async () => {
@@ -224,241 +272,227 @@ Para entender melhor o motivo ou solicitar uma reavaliação, por favor, entre e
       toast.error('Preencha todos os campos');
       return;
     }
-
     try {
-      const originalTemplate = editingId
-        ? templates.find((template) => template.id === editingId)
-        : null;
-
+      const original = editingId ? templates.find((t) => t.id === editingId) : null;
       await saveWhatsAppTemplate({
         content: formData.content,
         editingId,
-        originalType: originalTemplate?.type,
+        originalType: original?.type,
         title: formData.title,
         type: formData.type as WhatsAppTemplateType,
       });
-
-      if (editingId) {
-        toast.success('Template atualizado com sucesso');
-      } else {
-        toast.success('Template criado com sucesso');
-      }
-
-      setFormData({ type: '', title: '', content: '' });
-      setEditingId(null);
-      setIsCreating(false);
-      await loadTemplates();
+      toast.success(editingId ? 'Template atualizado' : 'Template criado');
+      const refreshed = await loadTemplates();
+      const next = refreshed.find((t) => t.type === formData.type);
+      if (next) selectTemplate(next);
+      else setIsCreating(false);
     } catch (error: any) {
       console.error('Erro ao salvar template:', error);
       toast.error(error?.message || 'Erro ao salvar template');
     }
   };
 
-  const handleEdit = (template: Template) => {
-    setFormData({
-      type: template.type,
-      title: template.title || '',
-      content: template.content
-    });
-    setEditingId(template.id);
-    setIsCreating(true);
-    // Scroll to top so user can see the edit form
-    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
-  };
-
   const handleDelete = async (template: Template) => {
     if (!confirm('Tem certeza que deseja excluir este template?')) return;
-
     try {
       await deleteWhatsAppTemplate(template.type);
-      toast.success('Template excluído com sucesso');
-      await loadTemplates();
+      toast.success('Template excluído');
+      const refreshed = await loadTemplates();
+      if (editingId === template.id) {
+        if (refreshed[0]) selectTemplate(refreshed[0]);
+        else {
+          setEditingId(null);
+          setFormData({ type: '', title: '', content: '', isActive: true });
+        }
+      }
     } catch (error: any) {
       console.error('Erro ao excluir template:', error);
       toast.error(error?.message || 'Erro ao excluir template');
     }
   };
 
-  const handleCancel = () => {
-    setFormData({ type: '', title: '', content: '' });
-    setEditingId(null);
-    setIsCreating(false);
-  };
-
-  const getTemplateTypeLabel = (type: string) => {
-    return TEMPLATE_TYPES.find(t => t.value === type)?.label || type;
-  };
-
-  const getSelectedTemplateInfo = () => {
-    return TEMPLATE_TYPES.find(t => t.value === formData.type);
-  };
+  const selectedMeta = getTypeMeta(formData.type);
+  const editing = !!editingId || isCreating;
 
   if (loading) {
     return (
       <div className="container mx-auto p-6">
-        <Card className="p-6">
-          <p className="text-muted-foreground">Carregando templates...</p>
-        </Card>
+        <p className="text-muted-foreground">Carregando templates...</p>
       </div>
     );
   }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Header */}
+      <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold">Templates de WhatsApp</h1>
-          <p className="text-muted-foreground mt-1">
-            Gerencie os templates de mensagens do WhatsApp
+          <h1 className="text-2xl font-bold tracking-tight">WhatsApp — Templates</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Mensagens automáticas por tipo de evento
           </p>
         </div>
-        {!isCreating && (
-          <Button onClick={() => setIsCreating(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Novo Template
-          </Button>
-        )}
+        <Button
+          onClick={handleNew}
+          className="bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl h-11 px-5"
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Novo Template
+        </Button>
       </div>
 
-      {isCreating && (
-        <Card className="p-6">
-          <div className="space-y-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">
-                {editingId ? 'Editar Template' : 'Novo Template'}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* List */}
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+            Templates Cadastrados
+          </p>
+
+          {templates.length === 0 ? (
+            <div className="p-8 text-center bg-[#f9fafb] rounded-xl border border-[#e5e7eb]">
+              <p className="text-muted-foreground text-sm">
+                Nenhum template cadastrado.
+              </p>
+            </div>
+          ) : (
+            templates.map((template) => {
+              const meta = getTypeMeta(template.type);
+              const isSelected = editingId === template.id;
+              return (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => selectTemplate(template)}
+                  className={`w-full text-left bg-white rounded-xl border border-[#e5e7eb] border-l-4 ${meta.color.border} p-4 transition-all hover:shadow-sm ${
+                    isSelected ? `ring-2 ${meta.color.ring} shadow-sm` : ''
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.color.badgeBg} ${meta.color.badgeText}`}
+                        >
+                          {template.type}
+                        </span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-foreground truncate">
+                        {template.title || meta.label}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                        {template.content}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#dcfce7] text-[#16a34a]">
+                        Ativo
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(template);
+                        }}
+                        className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* Editor */}
+        <div className="bg-white rounded-xl border border-[#e5e7eb] p-6 h-fit sticky top-6">
+          {!editing ? (
+            <div className="text-center py-12">
+              <p className="text-sm text-muted-foreground">
+                Selecione um template para editar ou crie um novo.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <h2 className="text-lg font-semibold">
+                {editingId ? `Editar Template — ${formData.type || ''}` : 'Novo Template'}
               </h2>
-              <Button variant="ghost" size="icon" onClick={handleCancel}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="type">Tipo de Template</Label>
-              <Select
-                value={formData.type}
-                onValueChange={(value) => setFormData({ ...formData, type: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TEMPLATE_TYPES.map((type) => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-2">
+                <Label className="text-sm">Tipo do Template</Label>
+                <Select
+                  value={formData.type}
+                  onValueChange={(value) => setFormData({ ...formData, type: value })}
+                >
+                  <SelectTrigger className="h-11 rounded-xl border-[#e5e7eb]">
+                    <SelectValue placeholder="Selecione o tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TEMPLATE_TYPES.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.value} — {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="title">Título</Label>
-              <Input
-                id="title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Ex: Mensagem de item adicionado"
-              />
-            </div>
+              <div className="space-y-2">
+                <Label className="text-sm">Título / Identificador</Label>
+                <Input
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="Ex: Item adicionado ao carrinho"
+                  className="h-11 rounded-xl border-[#e5e7eb]"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="content">Conteúdo da Mensagem</Label>
-              <Textarea
-                id="content"
-                value={formData.content}
-                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                placeholder="Digite o conteúdo do template..."
-                className="min-h-[200px]"
-              />
-              {getSelectedTemplateInfo() ? (
-                <div className="p-3 bg-muted/50 rounded-lg border border-border/50">
-                  <p className="text-sm text-muted-foreground mb-2">
-                    <strong>Descrição:</strong> {getSelectedTemplateInfo()?.description}
+              <div className="space-y-2">
+                <Label className="text-sm">Conteúdo da Mensagem</Label>
+                <Textarea
+                  value={formData.content}
+                  onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                  placeholder="Digite o conteúdo do template..."
+                  className="min-h-[200px] rounded-xl border-[#e5e7eb] resize-none"
+                />
+                {selectedMeta.variables.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Variáveis: {selectedMeta.variables.join(', ')}
                   </p>
-                  <p className="text-sm text-muted-foreground">
-                    <strong>Variáveis disponíveis:</strong>{' '}
-                    <code className="text-xs bg-primary/10 text-primary px-1 py-0.5 rounded">
-                      {getSelectedTemplateInfo()?.variables.join(', ')}
-                    </code>
-                  </p>
+                )}
+              </div>
+
+              {formData.type === 'DM_INSTAGRAM_CADASTRO' ? (
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={sendCadastroDm}
+                    onCheckedChange={toggleCadastroDm}
+                    disabled={loadingFlag}
+                  />
+                  <span className="text-sm text-foreground">DM Instagram Cadastro ativa</span>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  Selecione um tipo de template para ver as variáveis disponíveis
-                </p>
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={formData.isActive}
+                    onCheckedChange={(v) => setFormData({ ...formData, isActive: v })}
+                  />
+                  <span className="text-sm text-foreground">Template ativo</span>
+                </div>
               )}
-            </div>
 
-            <div className="flex gap-2">
-              <Button onClick={handleSave}>
-                <Save className="mr-2 h-4 w-4" />
-                Salvar Template
-              </Button>
-              <Button variant="outline" onClick={handleCancel}>
-                Cancelar
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <div className="grid gap-4">
-        {templates.length === 0 ? (
-          <Card className="p-8 text-center">
-            <p className="text-muted-foreground">
-              Nenhum template cadastrado. Clique em "Novo Template" para começar.
-            </p>
-          </Card>
-        ) : (
-          templates.map((template) => (
-            <Card key={template.id} className="p-6">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-xs font-medium px-2 py-1 bg-primary/10 text-primary rounded">
-                      {getTemplateTypeLabel(template.type)}
-                    </span>
-                    <h3 className="text-lg font-semibold">{template.title || getTemplateTypeLabel(template.type)}</h3>
-                    {template.type === 'DM_INSTAGRAM_CADASTRO' && (
-                      <div className="flex items-center gap-2 ml-auto">
-                        <span className="text-xs text-muted-foreground">
-                          {sendCadastroDm ? 'Ativo' : 'Inativo'}
-                        </span>
-                        <Switch
-                          checked={sendCadastroDm}
-                          onCheckedChange={toggleCadastroDm}
-                          disabled={loadingFlag}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-muted-foreground whitespace-pre-wrap mt-2">
-                    {template.content}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-3">
-                    Atualizado em: {formatBrasiliaDateTime(template.updated_at || template.created_at || new Date().toISOString())}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleEdit(template)}
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                      onClick={() => handleDelete(template)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+              <div className="flex gap-3 pt-2">
+                <Button
+                  onClick={handleSave}
+                  className="flex-1 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl h-11"
+                >
+                  Salvar Template
+                </Button>
               </div>
-            </Card>
-          ))
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
