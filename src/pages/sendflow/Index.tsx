@@ -917,10 +917,15 @@ export default function SendFlow() {
       )}
 
       {/* Template de Mensagem */}
-      <Card>
+      <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
-          <CardTitle>Template de Mensagem</CardTitle>
-          <CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 text-primary rounded-lg">
+              <Send className="h-5 w-5" />
+            </div>
+            <CardTitle>Template de Mensagem</CardTitle>
+          </div>
+          <CardDescription className="pt-1">
             Use as variáveis: {'{'}{'{'} codigo {'}'}{'}'}, {'{'}{'{'} nome {'}'}{'}'}, {'{'}{'{'} cor {'}'}{'}'}, {'{'}{'{'} tamanho {'}'}{'}'}, {'{'}{'{'} valor {'}'}{'}'}, {'{'}{'{'} valor_original {'}'}{'}'}, {'{'}{'{'} valor_promo {'}'}{'}'}, {'{'}{'{'} observacao {'}'}{'}'}
           </CardDescription>
         </CardHeader>
@@ -930,6 +935,7 @@ export default function SendFlow() {
             onChange={(e) => setMessageTemplate(e.target.value)}
             rows={8}
             placeholder="Digite o template da mensagem..."
+            className="font-mono text-sm rounded-xl"
           />
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={saveTemplate}>
