@@ -1325,11 +1325,9 @@ const PublicCheckout = () => {
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 pb-12 space-y-8">
         {/* Título da página */}
-        <div className="text-center space-y-2 pt-4">
-          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/60 bg-clip-text">
-            Finalizar Compra
-          </h1>
-          <p className="text-muted-foreground text-lg">
+        <div className="space-y-1 pt-2">
+          <h1 className="text-3xl font-bold tracking-tight">Checkout</h1>
+          <p className="text-muted-foreground">
             Localize seus pedidos e finalize o pagamento
           </p>
         </div>
