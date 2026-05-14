@@ -147,33 +147,33 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
         {isSuperAdmin && (
           <div className="mb-2">
-            <div className="text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
+            <div className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
               Super admin
             </div>
             <button
               onClick={() => window.open(SUPABASE_DASHBOARD_URL, '_blank', 'noopener,noreferrer')}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
             >
-              <ExternalLink className="w-4 h-4 shrink-0" />
+              <ExternalLink className="w-[18px] h-[18px] shrink-0" />
               <span className="truncate flex-1 text-left">Métricas Supabase</span>
             </button>
             <button
               onClick={() => window.open(LOVABLE_CLOUD_URL, '_blank', 'noopener,noreferrer')}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
             >
-              <ExternalLink className="w-4 h-4 shrink-0" />
+              <ExternalLink className="w-[18px] h-[18px] shrink-0" />
               <span className="truncate flex-1 text-left">Cloud Lovable</span>
             </button>
             <NavLink
               to="/debug"
               onClick={onNavigate}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] ${
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] ${
                 isActive('/debug')
                   ? 'bg-[#eef2ff] text-[#4f46e5] font-semibold'
                   : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]'
               }`}
             >
-              <Settings className="w-4 h-4 shrink-0" />
+              <Settings className="w-[18px] h-[18px] shrink-0" />
               <span className="truncate">Debug</span>
             </NavLink>
           </div>
