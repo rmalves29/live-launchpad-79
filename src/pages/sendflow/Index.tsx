@@ -872,11 +872,13 @@ export default function SendFlow() {
 
       {/* Ordem de Envio / Priorização com Drag & Drop */}
       {prioritizedProducts.length > 0 && (
-        <Card>
+        <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
           <CardHeader>
             <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <GripVertical className="h-5 w-5" />
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                  <GripVertical className="h-5 w-5" />
+                </div>
                 <CardTitle>Ordem de Envio</CardTitle>
               </div>
               <Badge variant="outline">
