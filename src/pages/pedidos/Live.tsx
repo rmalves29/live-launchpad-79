@@ -984,9 +984,18 @@ const Live = () => {
                               </TableCell>
                               <TableCell>{formatCurrency(product.price)}</TableCell>
                               <TableCell>
-                                <Badge variant={product.stock > 0 ? "default" : "destructive"}>
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center justify-center h-7 w-7 rounded-full text-xs font-semibold text-white",
+                                    product.stock === 0
+                                      ? "bg-red-500"
+                                      : product.stock <= 3
+                                        ? "bg-amber-500"
+                                        : "bg-indigo-600"
+                                  )}
+                                >
                                   {product.stock}
-                                </Badge>
+                                </span>
                               </TableCell>
                               <TableCell>
                                 <Input
