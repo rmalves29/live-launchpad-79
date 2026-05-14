@@ -1235,33 +1235,96 @@ const Relatorios = () => {
       const range = computeGlobalRange();
       if (!range) {
         setDailySeries([]);
+        setGlobalStats(null);
         return;
       }
-      const orders = await fetchAllPaginated<any>(() =>
+      let orders = await fetchAllPaginated<any>(() =>
         supabaseTenant
           .from('orders')
-          .select('id, total_amount, is_paid, created_at')
+          .select('id, total_amount, is_paid, cart_id, created_at')
           .or('is_cancelled.is.null,is_cancelled.eq.false')
           .gte('created_at', range.startISO)
           .lte('created_at', range.endISO)
           .order('created_at', { ascending: true })
       );
 
+      // Aplica filtro por tipo de venda (BAZAR/LIVE) usando cart_items + products.sale_type
+      if (saleTypeFilter !== 'ALL' && orders.length > 0) {
+        const cartIds = orders.map((o) => o.cart_id).filter(Boolean);
+        if (cartIds.length === 0) {
+          orders = [];
+        } else {
+          const { data: cartItems } = await supabaseTenant
+            .from('cart_items')
+            .select('cart_id, product_code')
+            .in('cart_id', cartIds);
+          const codes = [...new Set((cartItems || []).map((ci: any) => ci.product_code).filter(Boolean))];
+          const { data: products } = codes.length
+            ? await supabaseTenant.from('products').select('code, sale_type').in('code', codes)
+            : { data: [] as any[] };
+          const stMap: Record<string, string> = {};
+          (products || []).forEach((p: any) => { stMap[p.code] = p.sale_type; });
+          const validCartIds = new Set<number>();
+          (cartItems || []).forEach((ci: any) => {
+            const st = ci.product_code ? stMap[ci.product_code] : null;
+            if (st === saleTypeFilter || st === 'AMBOS') validCartIds.add(ci.cart_id);
+          });
+          orders = orders.filter((o) => o.cart_id && validCartIds.has(o.cart_id));
+        }
+      }
+
       const byDay = new Map<string, { paid: number; unpaid: number; total: number; orders: number }>();
+      let totalSales = 0, paidSales = 0, unpaidSales = 0;
+      let paidOrdersCount = 0, unpaidOrdersCount = 0;
       orders.forEach((o) => {
         const day = o.created_at.slice(0, 10);
         const cur = byDay.get(day) || { paid: 0, unpaid: 0, total: 0, orders: 0 };
         const amt = Number(o.total_amount) || 0;
-        if (o.is_paid) cur.paid += amt;
-        else cur.unpaid += amt;
+        if (o.is_paid) { cur.paid += amt; paidSales += amt; paidOrdersCount += 1; }
+        else { cur.unpaid += amt; unpaidSales += amt; unpaidOrdersCount += 1; }
         cur.total += amt;
         cur.orders += 1;
+        totalSales += amt;
         byDay.set(day, cur);
       });
       const arr = Array.from(byDay.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, v]) => ({ date, ...v }));
       setDailySeries(arr);
+
+      // Conta produtos vendidos no período (qty em cart_items dos pedidos filtrados)
+      const allCartIds = orders.map((o) => o.cart_id).filter(Boolean);
+      const paidCartIds = orders.filter((o) => o.is_paid).map((o) => o.cart_id).filter(Boolean);
+      let totalProducts = 0, paidProducts = 0, unpaidProducts = 0;
+      if (allCartIds.length > 0) {
+        const { data: ci } = await supabaseTenant
+          .from('cart_items')
+          .select('cart_id, qty')
+          .in('cart_id', allCartIds);
+        const paidSet = new Set(paidCartIds);
+        (ci || []).forEach((it: any) => {
+          const q = Number(it.qty) || 0;
+          totalProducts += q;
+          if (paidSet.has(it.cart_id)) paidProducts += q;
+          else unpaidProducts += q;
+        });
+      }
+
+      const totalOrdersCount = orders.length;
+      setGlobalStats({
+        total_sales: totalSales,
+        paid_sales: paidSales,
+        unpaid_sales: unpaidSales,
+        total_orders: totalOrdersCount,
+        paid_orders: paidOrdersCount,
+        unpaid_orders: unpaidOrdersCount,
+        total_products: totalProducts,
+        paid_products: paidProducts,
+        unpaid_products: unpaidProducts,
+        avg_ticket: totalOrdersCount > 0 ? totalSales / totalOrdersCount : 0,
+        paid_avg_ticket: paidOrdersCount > 0 ? paidSales / paidOrdersCount : 0,
+        unpaid_avg_ticket: unpaidOrdersCount > 0 ? unpaidSales / unpaidOrdersCount : 0,
+      });
     } catch (err) {
       console.error('Error loading daily series:', err);
     }
