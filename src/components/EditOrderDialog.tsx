@@ -10,7 +10,9 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Plus, Trash2, Search } from 'lucide-react';
+import { Loader2, Plus, Trash2, Search, Package, Truck } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { formatCurrency } from '@/lib/utils';
 import { getBrasiliaDateISO } from '@/lib/date-utils';
 
@@ -39,6 +41,11 @@ interface Order {
   event_date: string;
   total_amount: number;
   cart_id?: number;
+  is_paid?: boolean;
+  printed?: boolean;
+  observation?: string;
+  melhor_envio_tracking_code?: string;
+  order_status?: string | null;
   cart_items?: {
     id: number;
     qty: number;
@@ -69,11 +76,22 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
   const [cartId, setCartId] = useState<number | null>(null);
-  
+  const [isPaid, setIsPaid] = useState<boolean>(false);
+  const [trackingCode, setTrackingCode] = useState<string>('');
+  const [observation, setObservation] = useState<string>('');
+  const [printed, setPrinted] = useState<boolean>(false);
+  const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'enviado' | ''>('');
+  const [savingMeta, setSavingMeta] = useState(false);
+
 
 useEffect(() => {
   if (open && order) {
     setCartId(order.cart_id ?? null);
+    setIsPaid(!!order.is_paid);
+    setTrackingCode(order.melhor_envio_tracking_code || '');
+    setObservation(order.observation || '');
+    setPrinted(!!order.printed);
+    setOrderStatus((order.order_status as any) || '');
     loadProducts();
   }
 }, [open, order]);
@@ -605,11 +623,114 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* Status / Rastreio / Observação / Impresso */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+          <div>
+            <Label>Status Pagamento</Label>
+            <Select value={isPaid ? 'pago' : 'pendente'} onValueChange={(v) => setIsPaid(v === 'pago')}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pago">Pago</SelectItem>
+                <SelectItem value="pendente">Pendente</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'em_separacao' ? '' : 'em_separacao')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'em_separacao'
+                    ? 'bg-[#fef3c7] text-[#b45309] border-[#fcd34d]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Package className="w-3 h-3" /> Em Separação
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'enviado' ? '' : 'enviado')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'enviado'
+                    ? 'bg-[#dcfce7] text-[#15803d] border-[#86efac]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Truck className="w-3 h-3" /> Enviado
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <Label>Código de Rastreio</Label>
+            <Input
+              value={trackingCode}
+              onChange={(e) => setTrackingCode(e.target.value)}
+              placeholder="Ex.: AA123456789BR"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Ao preencher o rastreio o status muda automaticamente para "Enviado".
+            </p>
+          </div>
+
+          <div className="md:col-span-2">
+            <Label>Observação</Label>
+            <Textarea
+              rows={3}
+              value={observation}
+              onChange={(e) => setObservation(e.target.value)}
+              placeholder="Ex.: [FRETE] Envio Fedex Express"
+            />
+          </div>
+
+          <div className="md:col-span-2 flex items-center gap-2">
+            <Checkbox id="printed-check" checked={printed} onCheckedChange={(c) => setPrinted(!!c)} />
+            <Label htmlFor="printed-check" className="cursor-pointer">Marcar como Impresso</Label>
+          </div>
+        </div>
+
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={savingMeta}>
             Cancelar
           </Button>
-          <Button onClick={() => { onOrderUpdated(); onOpenChange(false); }}>
+          <Button
+            disabled={savingMeta}
+            onClick={async () => {
+              if (!order) return;
+              setSavingMeta(true);
+              try {
+                const trimmedTracking = trackingCode.trim();
+                // Auto-status: se rastreio preenchido, marca como enviado
+                const finalStatus = trimmedTracking ? 'enviado' : (orderStatus || null);
+
+                const { error } = await (supabaseTenant as any)
+                  .from('orders')
+                  .update({
+                    is_paid: isPaid,
+                    melhor_envio_tracking_code: trimmedTracking || null,
+                    observation: observation || null,
+                    printed,
+                    order_status: finalStatus,
+                  })
+                  .eq('id', order.id);
+
+                if (error) throw error;
+
+                toast({ title: 'Pedido atualizado', description: 'Alterações salvas com sucesso.' });
+                onOrderUpdated();
+                onOpenChange(false);
+              } catch (e: any) {
+                console.error('Erro ao salvar pedido:', e);
+                toast({
+                  title: 'Erro ao salvar',
+                  description: e?.message || 'Não foi possível atualizar o pedido.',
+                  variant: 'destructive',
+                });
+              } finally {
+                setSavingMeta(false);
+              }
+            }}
+          >
+            {savingMeta && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Salvar Alterações
           </Button>
         </div>
