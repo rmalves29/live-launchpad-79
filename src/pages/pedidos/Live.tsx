@@ -1280,44 +1280,61 @@ const Live = () => {
             </TabsContent>
 
             <TabsContent value="cadastrar" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <UserPlus className="h-5 w-5" />
-                    Cadastrar Novo Cliente
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
-                      placeholder="Telefone (obrigatório)"
-                      value={newClientPhone}
-                      onChange={(e) => setNewClientPhone(e.target.value)}
-                    />
-                    <Input
-                      placeholder="Nome completo (opcional)"
-                      value={newClientName}
-                      onChange={(e) => setNewClientName(e.target.value)}
-                    />
-                    <Input
-                      placeholder="@usuario (Instagram)"
-                      value={newClientInstagram}
-                      onChange={(e) => setNewClientInstagram(e.target.value)}
-                    />
-                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <UserPlus className="h-5 w-5 text-indigo-600" />
+                      Cadastrar Novo Cliente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">
+                          Telefone <span className="text-destructive">*</span>
+                        </label>
+                        <Input
+                          placeholder="(00) 00000-0000"
+                          value={newClientPhone}
+                          onChange={(e) => setNewClientPhone(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">
+                          Nome completo <span className="text-muted-foreground font-normal">(opcional)</span>
+                        </label>
+                        <Input
+                          placeholder="Nome do cliente"
+                          value={newClientName}
+                          onChange={(e) => setNewClientName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">
+                          Instagram <span className="text-muted-foreground font-normal">(@usuario)</span>
+                        </label>
+                        <Input
+                          placeholder="@usuario"
+                          value={newClientInstagram}
+                          onChange={(e) => setNewClientInstagram(e.target.value)}
+                        />
+                      </div>
+                    </div>
 
-                  <div className="flex justify-end mt-4">
-                    <Button onClick={handleCreateClient} disabled={savingClient}>
-                      {savingClient ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <UserPlus className="h-4 w-4 mr-2" />
-                      )}
-                      Cadastrar Cliente
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                    <div className="flex justify-end pt-2">
+                      <Button onClick={handleCreateClient} disabled={savingClient} className="bg-indigo-600 hover:bg-indigo-700">
+                        {savingClient ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <UserPlus className="h-4 w-4 mr-2" />
+                        )}
+                        Cadastrar Cliente
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </div>
