@@ -857,18 +857,27 @@ const Live = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#f9fafb]">
       <div className="p-6">
         <div className="container mx-auto space-y-6">
-          <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold">Vendas Live</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Vendas Live</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Lançamento por Instagram{tenant?.name ? <> · <span className="font-semibold text-foreground">{tenant.name}</span></> : null}
+            </p>
           </div>
 
           <Tabs defaultValue="vendas" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="vendas">Lançar Vendas</TabsTrigger>
-              <TabsTrigger value="pedidos">Pedidos Live</TabsTrigger>
-              <TabsTrigger value="cadastrar" className="flex items-center gap-1">
+            <TabsList className="grid w-full grid-cols-3 bg-muted/60 p-1 h-12 rounded-xl">
+              <TabsTrigger value="vendas" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg">
+                <Video className="h-4 w-4" />
+                Lançar Vendas
+              </TabsTrigger>
+              <TabsTrigger value="pedidos" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg">
+                <ClipboardList className="h-4 w-4" />
+                Pedidos Live
+              </TabsTrigger>
+              <TabsTrigger value="cadastrar" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg">
                 <UserPlus className="h-4 w-4" />
                 Cadastrar Cliente
               </TabsTrigger>
