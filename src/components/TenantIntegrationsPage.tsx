@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer, MessageSquare, ShoppingBag, Sparkles } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
+import SipagIntegration from '@/components/integrations/SipagIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
@@ -94,6 +95,15 @@ export default function TenantIntegrationsPage() {
     queryFn: async () => {
       const { data } = await supabase.from('integration_pagarme').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const { data: sipagIntegration } = useQuery({
+    queryKey: ['sipag-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('integration_sipag' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
+      return data as { is_active: boolean } | null;
     },
     enabled: !!tenantId,
   });
@@ -259,6 +269,12 @@ export default function TenantIntegrationsPage() {
             <span className="sm:hidden">PG</span>
             {pagarmeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          <TabsTrigger value="sipag" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Sipag (Sicoob)</span>
+            <span className="sm:hidden">SP</span>
+            {sipagIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
           <TabsTrigger value="appmax" className="flex items-center gap-2">
             <Zap className="h-4 w-4" />
             <span className="hidden sm:inline">App Max</span>
@@ -325,6 +341,9 @@ export default function TenantIntegrationsPage() {
         </TabsContent>
         <TabsContent value="pagarme" className="mt-6">
           <PagarMeIntegration tenantId={tenantId} />
+        </TabsContent>
+        <TabsContent value="sipag" className="mt-6">
+          <SipagIntegration tenantId={tenantId} />
         </TabsContent>
         <TabsContent value="appmax" className="mt-6">
           <AppmaxIntegration tenantId={tenantId} />
