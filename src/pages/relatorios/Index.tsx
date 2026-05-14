@@ -1421,7 +1421,7 @@ const Relatorios = () => {
   useEffect(() => {
     if (tenantId) loadDailySeries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [globalPeriod, globalStart, globalEnd, tenantId]);
+  }, [globalPeriod, globalStart, globalEnd, saleTypeFilter, tenantId]);
 
   // ============ HELPERS DE FORMATAÇÃO PARA O REDESIGN ============
   const formatShortDate = (iso: string) => {
