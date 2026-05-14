@@ -1688,10 +1688,10 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
               </div>
             </div>
 
-            <Table className="text-xs w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40px] min-w-[40px] px-2 text-center">
+            <Table className="text-xs w-full [&_tbody_tr]:border-b [&_tbody_tr]:border-[#f3f4f6] [&_tbody_tr]:hover:bg-[#fafafa] [&_tbody_tr]:transition-colors">
+              <TableHeader className="bg-[#fafafa]">
+                <TableRow className="border-b border-[#e5e7eb] hover:bg-transparent">
+                  <TableHead className="w-[40px] min-w-[40px] px-3 py-3 text-center">
                     <input 
                       type="checkbox" 
                       onChange={(e) => {
@@ -1702,19 +1702,20 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                         }
                       }}
                       checked={selectedOrders.size === paginatedOrders.length && paginatedOrders.length > 0}
+                      className="w-[15px] h-[15px] accent-[#4f46e5] cursor-pointer"
                     />
                   </TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">#Pedido</TableHead>
-                  <TableHead className="w-[140px] min-w-[140px] px-2">Telefone</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-right">Total</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-center">Pago?</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-center">Impresso?</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] px-2 text-center">Tipo Evento</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] px-2 text-center">Data Evento</TableHead>
-                  <TableHead className="w-[120px] min-w-[120px] px-2 text-center">Rastreio</TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">Disparo</TableHead>
-                  <TableHead className="flex-1 min-w-[120px] px-2">Observação</TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">Ações</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">#Pedido</TableHead>
+                  <TableHead className="w-[160px] min-w-[160px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Telefone</TableHead>
+                  <TableHead className="w-[90px] min-w-[90px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Total</TableHead>
+                  <TableHead className="w-[140px] min-w-[140px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Pago?</TableHead>
+                  <TableHead className="w-[120px] min-w-[120px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Impresso?</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Tipo Evento</TableHead>
+                  <TableHead className="w-[110px] min-w-[110px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Data Evento</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Disparo</TableHead>
+                  <TableHead className="w-[130px] min-w-[130px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Rastreio</TableHead>
+                  <TableHead className="flex-1 min-w-[140px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Observação</TableHead>
+                  <TableHead className="w-[110px] min-w-[110px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
