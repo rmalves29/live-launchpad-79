@@ -1670,7 +1670,7 @@ const PublicCheckout = () => {
                   {/* Endereço */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
+                      <MapPin className="h-4 w-4 text-indigo-600" />
                       Endereço de Entrega
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
