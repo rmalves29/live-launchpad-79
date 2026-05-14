@@ -1826,6 +1826,13 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                         <span className="text-xs">{formatBrasiliaDate(order.event_date)}</span>
                       </TableCell>
                       
+                      {/* Disparo (Mensagens) */}
+                      <TableCell className="px-2 py-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <MessageCircle className={cn("h-4 w-4", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} title="Item adicionado" />
+                        </div>
+                      </TableCell>
+                      
                       {/* Rastreio */}
                       <TableCell className="px-2 py-2">
                         {editingTracking === order.id ? (
@@ -1874,13 +1881,6 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                             )}
                           </div>
                         )}
-                      </TableCell>
-                      
-                      {/* Disparo (Mensagens) */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <MessageCircle className={cn("h-4 w-4", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} title="Item adicionado" />
-                        </div>
                       </TableCell>
                       
                       {/* Observação */}
