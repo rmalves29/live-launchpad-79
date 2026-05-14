@@ -141,7 +141,7 @@ const Navbar = () => {
                         {[
                           { path: '/whatsapp/zapi', label: 'Z-API' },
                           { path: '/whatsapp/templates', label: 'Templates' },
-                          { path: '/whatsapp/cobranca', label: 'Cobrança' },
+                          { path: '/whatsapp/cobranca', label: 'Cobrança em Massa' },
                         ].map((item) => (
                           <NavLink
                             key={item.path}
