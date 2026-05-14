@@ -22,6 +22,7 @@ import {
   X,
   ExternalLink,
   ChevronDown,
+  ShoppingCart,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       items: [
         { path: '/pedidos', label: 'Pedidos', icon: ShoppingBag },
         { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle },
+        { path: '/checkout', label: 'Checkout', icon: ShoppingCart },
         ...(enableLive ? [{ path: '/live', label: 'Live', icon: Radio }] : []),
         { path: '/sorteio', label: 'Sorteio', icon: Trophy },
       ],
