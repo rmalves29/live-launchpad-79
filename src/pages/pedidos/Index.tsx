@@ -15,7 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck, RefreshCw, Ban, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatCurrency } from '@/lib/utils';
 import { formatPaymentMethodWithInstallments } from '@/lib/payment-method-utils';
@@ -1494,17 +1494,26 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         <div className="p-6">
           <div className="container mx-auto space-y-6">
             <div className="space-y-4">
-              <h1 className="text-3xl font-bold">Gestão de Pedidos</h1>
-              <div className="flex flex-wrap gap-2">
-                <Button 
-                  onClick={exportSelectedOrders} 
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <h1 className="text-2xl font-bold tracking-tight">Gestão de Pedidos</h1>
+                <Button onClick={loadOrders} variant="ghost" size="sm" disabled={loading} className="text-muted-foreground">
+                  <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+                  Atualizar
+                </Button>
+              </div>
+
+              {/* Action buttons row */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={exportSelectedOrders}
                   variant="outline"
                   disabled={selectedOrders.size === 0}
+                  className="h-10 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] hover:text-[#111827] shadow-none font-medium"
                 >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Imprimir Selecionados ({selectedOrders.size})
+                  <Printer className="h-4 w-4 mr-2 text-[#6b7280]" />
+                  Imprimir Selecionados ( {selectedOrders.size} )
                 </Button>
-                <Button 
+                <Button
                   onClick={() => {
                     const selectedOrdersData = orders.filter(order => selectedOrders.has(order.id));
                     if (selectedOrdersData.length === 0) {
@@ -1512,159 +1521,196 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       return;
                     }
                     printMultipleThermalReceipts(selectedOrdersData);
-                  }} 
+                  }}
                   variant="outline"
                   disabled={selectedOrders.size === 0}
+                  className="h-10 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] hover:text-[#111827] shadow-none font-medium"
                 >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Imprimir - Térmica ({selectedOrders.size})
+                  <Printer className="h-4 w-4 mr-2 text-[#6b7280]" />
+                  Imprimir Térmica ( {selectedOrders.size} )
                 </Button>
-                <Button 
-                  onClick={markOrdersAsPrinted} 
+                <Button
+                  onClick={markOrdersAsPrinted}
                   variant="outline"
                   disabled={selectedOrders.size === 0}
+                  className="h-10 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] hover:text-[#111827] shadow-none font-medium"
                 >
-                  <Printer className="h-4 w-4 mr-2" />
+                  <Check className="h-4 w-4 mr-2 text-[#6b7280]" />
                   Marcar como Impresso
                 </Button>
-                <Button 
-                  onClick={cancelSelectedOrders} 
+                <Button
+                  onClick={cancelSelectedOrders}
                   variant="outline"
                   disabled={selectedOrders.size === 0}
-                  className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                  className="h-10 rounded-xl bg-white border-[#fed7aa] text-[#ea580c] hover:bg-[#fff7ed] hover:text-[#c2410c] shadow-none font-medium disabled:opacity-50"
                 >
                   <Ban className="h-4 w-4 mr-2" />
-                  Cancelar ({selectedOrders.size})
+                  Cancelar Selecionados ( {selectedOrders.size} )
                 </Button>
-                <Button 
-                  onClick={deleteSelectedOrders} 
-                  variant="destructive"
+                <Button
+                  onClick={deleteSelectedOrders}
+                  variant="outline"
                   disabled={selectedOrders.size === 0}
+                  className="h-10 rounded-xl bg-white border-[#fecaca] text-[#dc2626] hover:bg-[#fef2f2] hover:text-[#b91c1c] shadow-none font-medium disabled:opacity-50"
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Deletar ({selectedOrders.size})
+                  Deletar Selecionados ( {selectedOrders.size} )
                 </Button>
-                <Button onClick={exportToCSV} variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
+                <Button
+                  onClick={exportToCSV}
+                  variant="outline"
+                  className="h-10 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] hover:text-[#111827] shadow-none font-medium"
+                >
+                  <Download className="h-4 w-4 mr-2 text-[#6b7280]" />
                   Exportar CSV
-                </Button>
-                <Button onClick={loadOrders} variant="outline" disabled={loading}>
-                  <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-                  Atualizar
                 </Button>
               </div>
             </div>
 
         {/* Filters */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Filter className="h-5 w-5 mr-2" />
-              Filtros
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Campo de busca por telefone */}
-              <div className="flex items-center space-x-2">
-                <Search className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-[#e5e7eb] shadow-sm rounded-2xl">
+          <CardContent className="p-5 space-y-4">
+            <div className="flex items-center gap-2 text-[#374151]">
+              <Filter className="h-4 w-4" />
+              <span className="text-sm font-semibold">Filtros</span>
+            </div>
+
+            {/* Linha principal: busca + selects + limpar */}
+            <div className="flex flex-col lg:flex-row gap-3">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
                 <Input
                   placeholder="Buscar por nome, telefone, CPF, @ Instagram ou nº do pedido..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="max-w-sm"
+                  className="h-11 pl-10 rounded-xl bg-[#f9fafb] border-[#e5e7eb] focus-visible:ring-1 focus-visible:ring-[#4f46e5]"
                 />
               </div>
 
-              <Separator />
+              <Select value={filterPaid} onValueChange={(value) => setFilterPaid(value)}>
+                <SelectTrigger className="h-11 lg:w-[230px] rounded-xl bg-[#f9fafb] border-[#e5e7eb]">
+                  <SelectValue>
+                    <span className="text-[#6b7280]">Status Pagamento — </span>
+                    <span className="text-[#111827] font-medium">
+                      {filterPaid === 'all' ? 'Todos'
+                        : filterPaid === 'paid' ? 'Pagos'
+                        : filterPaid === 'em_separacao' ? 'Em Separação'
+                        : filterPaid === 'enviado' ? 'Enviados'
+                        : filterPaid === 'unpaid' ? 'Não pagos'
+                        : 'Cancelados'}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="paid">Pagos</SelectItem>
+                  <SelectItem value="em_separacao">Em Separação</SelectItem>
+                  <SelectItem value="enviado">Enviados</SelectItem>
+                  <SelectItem value="unpaid">Não pagos</SelectItem>
+                  <SelectItem value="cancelled">Cancelados</SelectItem>
+                </SelectContent>
+              </Select>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Status</label>
-                  <Select 
-                    value={filterPaid} 
-                    onValueChange={(value) => setFilterPaid(value)}
+              <Select value={filterEventType} onValueChange={setFilterEventType}>
+                <SelectTrigger className="h-11 lg:w-[220px] rounded-xl bg-[#f9fafb] border-[#e5e7eb]">
+                  <SelectValue>
+                    <span className="text-[#6b7280]">Tipo do Evento — </span>
+                    <span className="text-[#111827] font-medium">
+                      {filterEventType === 'all' ? 'Todos' : filterEventType}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="BAZAR">BAZAR</SelectItem>
+                  <SelectItem value="LIVE">LIVE</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterPrinted} onValueChange={setFilterPrinted}>
+                <SelectTrigger className="h-11 lg:w-[200px] rounded-xl bg-[#f9fafb] border-[#e5e7eb]">
+                  <SelectValue>
+                    <span className="text-[#6b7280]">Impressão — </span>
+                    <span className="text-[#111827] font-medium">
+                      {filterPrinted === 'all' ? 'Todos'
+                        : filterPrinted === 'printed' ? 'Impressos'
+                        : 'Não impressos'}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="not_printed">Não impressos</SelectItem>
+                  <SelectItem value="printed">Impressos</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button
+                onClick={clearFilters}
+                variant="outline"
+                className="h-11 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] font-medium"
+              >
+                Limpar Filtros
+              </Button>
+            </div>
+
+            {/* Linha de período */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-sm text-[#6b7280] mr-1">Período:</span>
+              {([
+                { key: 'hoje', label: 'Hoje', range: () => { const d = new Date(); return { from: d, to: d }; } },
+                { key: 'semana', label: 'Semana', range: () => { const d = new Date(); return { from: startOfWeek(d, { weekStartsOn: 0 }), to: endOfWeek(d, { weekStartsOn: 0 }) }; } },
+                { key: 'mes', label: 'Mês', range: () => { const d = new Date(); return { from: startOfMonth(d), to: endOfMonth(d) }; } },
+                { key: 'ano', label: 'Ano', range: () => { const d = new Date(); return { from: startOfYear(d), to: endOfYear(d) }; } },
+              ] as const).map((preset) => {
+                const r = preset.range();
+                const active = filterDate?.from && filterDate?.to
+                  && format(filterDate.from, 'yyyy-MM-dd') === format(r.from, 'yyyy-MM-dd')
+                  && format(filterDate.to, 'yyyy-MM-dd') === format(r.to, 'yyyy-MM-dd');
+                return (
+                  <Button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => setFilterDate(r)}
+                    className={cn(
+                      "h-9 px-4 rounded-xl text-sm font-medium border shadow-none",
+                      active
+                        ? "bg-[#4f46e5] text-white border-[#4f46e5] hover:bg-[#4338ca]"
+                        : "bg-white text-[#374151] border-[#e5e7eb] hover:bg-[#f9fafb]"
+                    )}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="paid">Pagos</SelectItem>
-                      <SelectItem value="em_separacao">Em Separação</SelectItem>
-                      <SelectItem value="enviado">Enviados</SelectItem>
-                      <SelectItem value="unpaid">Não pagos</SelectItem>
-                      <SelectItem value="cancelled">Cancelados</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Impressão</label>
-                  <Select value={filterPrinted} onValueChange={setFilterPrinted}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="not_printed">Não impressos</SelectItem>
-                      <SelectItem value="printed">Impressos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Tipo do Evento</label>
-                  <Select value={filterEventType} onValueChange={setFilterEventType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todos os tipos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="BAZAR">BAZAR</SelectItem>
-                      <SelectItem value="LIVE">LIVE</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Data do Evento</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !filterDate?.from && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {filterDate?.from ? (
-                          filterDate.to
-                            ? `${format(filterDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterDate.to, "dd/MM/yy", { locale: ptBR })}`
-                            : format(filterDate.from, "PPP", { locale: ptBR })
-                        ) : "Selecionar data"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="range"
-                        selected={filterDate}
-                        onSelect={setFilterDate}
-                        initialFocus
-                        numberOfMonths={1}
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium invisible">Ações</label>
-                  <Button onClick={clearFilters} variant="outline" className="w-full">
-                    Limpar Filtros
+                    {preset.label}
                   </Button>
+                );
+              })}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 px-4 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] font-medium"
+                  >
+                    Período
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={filterDate}
+                    onSelect={setFilterDate}
+                    initialFocus
+                    numberOfMonths={1}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+              <div className="flex items-center gap-2 ml-1">
+                <div className="h-9 px-3 inline-flex items-center gap-2 rounded-xl bg-white border border-[#e5e7eb] text-sm text-[#374151] min-w-[150px]">
+                  <CalendarIcon className="h-4 w-4 text-[#9ca3af]" />
+                  {filterDate?.from
+                    ? (filterDate.to
+                        ? `${format(filterDate.from, 'dd/MM/yyyy')} – ${format(filterDate.to, 'dd/MM/yyyy')}`
+                        : format(filterDate.from, 'dd/MM/yyyy'))
+                    : <span className="text-[#9ca3af]">Selecionar data</span>}
                 </div>
               </div>
             </div>
