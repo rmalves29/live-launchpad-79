@@ -112,7 +112,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Brand */}
       <div className="p-4 border-b border-[#f3f4f6]">
         <NavLink to="/" onClick={onNavigate} className="flex items-center justify-center">
-          <img src={cartzyLogo} alt="Cartzy" className="h-[3.3rem] w-auto object-contain" />
+          <img src={cartzyLogo} alt="Cartzy" className="h-[4.3rem] w-auto object-contain" />
         </NavLink>
       </div>
 
