@@ -112,7 +112,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Brand */}
       <div className="p-4 border-b border-[#f3f4f6]">
         <NavLink to="/" onClick={onNavigate} className="flex items-center justify-center">
-          <img src={cartzyLogo} alt="Cartzy" className="h-[3.3rem] w-auto object-contain" />
+          <img src={cartzyLogo} alt="Cartzy" className="h-[4.3rem] w-auto object-contain" />
         </NavLink>
       </div>
 
@@ -120,7 +120,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <nav className="flex-1 p-2 overflow-y-auto scrollbar-thin">
         {groups.map((group) => (
           <div key={group.label} className="mb-2">
-            <div className="text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
+            <div className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
               {group.label}
             </div>
             {group.items.map((item) => {
@@ -131,13 +131,13 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   key={item.path}
                   to={item.path}
                   onClick={onNavigate}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] transition-colors ${
                     active
                       ? 'bg-[#eef2ff] text-[#4f46e5] font-semibold'
                       : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]'
                   }`}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
+                  <Icon className="w-[18px] h-[18px] shrink-0" />
                   <span className="truncate">{item.label}</span>
                 </NavLink>
               );
@@ -147,33 +147,33 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
         {isSuperAdmin && (
           <div className="mb-2">
-            <div className="text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
+            <div className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
               Super admin
             </div>
             <button
               onClick={() => window.open(SUPABASE_DASHBOARD_URL, '_blank', 'noopener,noreferrer')}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
             >
-              <ExternalLink className="w-4 h-4 shrink-0" />
+              <ExternalLink className="w-[18px] h-[18px] shrink-0" />
               <span className="truncate flex-1 text-left">Métricas Supabase</span>
             </button>
             <button
               onClick={() => window.open(LOVABLE_CLOUD_URL, '_blank', 'noopener,noreferrer')}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
             >
-              <ExternalLink className="w-4 h-4 shrink-0" />
+              <ExternalLink className="w-[18px] h-[18px] shrink-0" />
               <span className="truncate flex-1 text-left">Cloud Lovable</span>
             </button>
             <NavLink
               to="/debug"
               onClick={onNavigate}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] ${
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] ${
                 isActive('/debug')
                   ? 'bg-[#eef2ff] text-[#4f46e5] font-semibold'
                   : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]'
               }`}
             >
-              <Settings className="w-4 h-4 shrink-0" />
+              <Settings className="w-[18px] h-[18px] shrink-0" />
               <span className="truncate">Debug</span>
             </NavLink>
           </div>
@@ -185,16 +185,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {user ? (
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[#dc2626] hover:bg-[#fef2f2] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#dc2626] hover:bg-[#fef2f2] transition-colors"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-[18px] h-[18px]" />
             Sair
           </button>
         ) : (
           <NavLink
             to="/auth"
             onClick={onNavigate}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[13px] bg-[#4f46e5] text-white font-semibold hover:bg-[#4338ca]"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[14px] bg-[#4f46e5] text-white font-semibold hover:bg-[#4338ca]"
           >
             Entrar
           </NavLink>
@@ -211,25 +211,25 @@ export function AppSidebar() {
     <>
       {/* Desktop sidebar */}
       <aside
-        style={{ width: 220, flexShrink: 0 }}
+        style={{ width: 240, flexShrink: 0 }}
         className="hidden lg:block border-r border-[#e5e7eb] h-screen sticky top-0"
       >
         <SidebarContent />
       </aside>
 
       {/* Mobile top bar + drawer */}
-      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-[#e5e7eb] flex items-center justify-between px-3 h-12">
+      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-[#e5e7eb] flex items-center justify-between px-3 h-14">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-[260px]">
+          <SheetContent side="left" className="p-0 w-[280px]">
             <SidebarContent onNavigate={() => setMobileOpen(false)} />
           </SheetContent>
         </Sheet>
-        <img src={cartzyLogo} alt="Cartzy" className="h-[2.625rem] w-auto object-contain" />
+        <img src={cartzyLogo} alt="Cartzy" className="h-[3.4rem] w-auto object-contain" />
         <div className="w-9" />
       </div>
     </>
