@@ -255,7 +255,9 @@ serve(async (req) => {
         break;
 
       case "list-tags":
-        endpoint = "/tags";
+        // Z-API: /labels retorna as Etiquetas do WhatsApp Business (criadas no celular).
+        // /tags retorna os Filtros nativos do WhatsApp (Não lidas, Favoritos, Grupos).
+        endpoint = "/labels";
         method = "GET";
         break;
 
@@ -266,7 +268,8 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        endpoint = `/chats/${phone}/tags/${tagId}/add`;
+        // Z-API: PUT /labels/{labelId}/add/{phone} adiciona etiqueta ao contato.
+        endpoint = `/labels/${tagId}/add/${phone}`;
         method = "PUT";
         break;
 
