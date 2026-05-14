@@ -255,7 +255,9 @@ serve(async (req) => {
         break;
 
       case "list-tags":
-        endpoint = "/tags";
+        // Z-API: /labels retorna as Etiquetas do WhatsApp Business (criadas no celular).
+        // /tags retorna os Filtros nativos do WhatsApp (Não lidas, Favoritos, Grupos).
+        endpoint = "/labels";
         method = "GET";
         break;
 
@@ -266,7 +268,8 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        endpoint = `/chats/${phone}/tags/${tagId}/add`;
+        // Z-API: PUT /labels/{labelId}/add/{phone} adiciona etiqueta ao contato.
+        endpoint = `/labels/${tagId}/add/${phone}`;
         method = "PUT";
         break;
 
@@ -496,11 +499,32 @@ serve(async (req) => {
       );
     }
 
+    // Normaliza resposta de list-tags (Z-API /labels) para sempre devolver array de {id, name, color}
+    if (action === "list-tags") {
+      let arr: any[] = [];
+      if (Array.isArray(data)) arr = data;
+      else if (Array.isArray(data?.labels)) arr = data.labels;
+      else if (Array.isArray(data?.value)) arr = data.value;
+      else if (Array.isArray(data?.tags)) arr = data.tags;
+
+      const normalized = arr.map((t: any) => ({
+        id: String(t.id ?? t.labelId ?? t.value ?? ""),
+        name: t.name ?? t.label ?? t.title ?? "Sem nome",
+        color: typeof t.color === "number" ? t.color : 0,
+        colorHex: t.colorHex ?? t.hexColor ?? null,
+      })).filter((t: any) => t.id);
+
+      return new Response(
+        JSON.stringify(normalized),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify(data),
-      { 
-        status: response.ok ? 200 : response.status, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      {
+        status: response.ok ? 200 : response.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
       }
     );
 
