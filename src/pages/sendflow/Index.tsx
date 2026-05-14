@@ -760,11 +760,13 @@ export default function SendFlow() {
         </Card>
 
         {/* Produtos */}
-        <Card>
+        <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                <Package className="h-5 w-5" />
+              </div>
               <CardTitle>Produtos</CardTitle>
             </div>
             <div className="flex items-center gap-2">
