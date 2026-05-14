@@ -47,6 +47,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     tenant_id: string;
     unique_order_id?: string;
     melhor_envio_tracking_code?: string;
+    order_status?: 'em_separacao' | 'enviado' | null;
     customer_name?: string;
     bling_order_id?: number;
     customer?: {
@@ -178,11 +179,15 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           .limit(500); // Limitar para performance
 
         if (filterPaid === 'paid') {
-          query = query.eq('is_paid', true).eq('is_cancelled', false);
+          query = query.eq('is_paid', true).eq('is_cancelled', false).is('order_status', null);
         } else if (filterPaid === 'unpaid') {
           query = query.eq('is_paid', false).eq('is_cancelled', false);
         } else if (filterPaid === 'cancelled') {
           query = query.eq('is_cancelled', true);
+        } else if (filterPaid === 'em_separacao') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'em_separacao');
+        } else if (filterPaid === 'enviado') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'enviado');
         }
 
         if (filterEventType && filterEventType !== 'all') {
@@ -1586,6 +1591,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                     <SelectContent>
                       <SelectItem value="all">Todos</SelectItem>
                       <SelectItem value="paid">Pagos</SelectItem>
+                      <SelectItem value="em_separacao">Em Separação</SelectItem>
+                      <SelectItem value="enviado">Enviados</SelectItem>
                       <SelectItem value="unpaid">Não pagos</SelectItem>
                       <SelectItem value="cancelled">Cancelados</SelectItem>
                     </SelectContent>
@@ -1792,9 +1799,19 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               disabled={processingIds.has(order.id) || order.is_cancelled}
                               className="scale-75 data-[state=checked]:bg-[#16a34a]"
                             />
-                            <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
-                              {order.is_paid ? 'Pago' : 'Pendente'}
-                            </Badge>
+                            {(() => {
+                              if (order.is_paid && order.order_status === 'enviado') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]">Enviado</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'em_separacao') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309] hover:bg-[#fef3c7]">Em Separação</Badge>;
+                              }
+                              return (
+                                <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
+                                  {order.is_paid ? 'Pago' : 'Pendente'}
+                                </Badge>
+                              );
+                            })()}
                             {processingIds.has(order.id) && (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             )}
