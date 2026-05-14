@@ -1688,10 +1688,10 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
               </div>
             </div>
 
-            <Table className="text-xs w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40px] min-w-[40px] px-2 text-center">
+            <Table className="text-xs w-full [&_tbody_tr]:border-b [&_tbody_tr]:border-[#f3f4f6] [&_tbody_tr]:hover:bg-[#fafafa] [&_tbody_tr]:transition-colors">
+              <TableHeader className="bg-[#fafafa]">
+                <TableRow className="border-b border-[#e5e7eb] hover:bg-transparent">
+                  <TableHead className="w-[40px] min-w-[40px] px-3 py-3 text-center">
                     <input 
                       type="checkbox" 
                       onChange={(e) => {
@@ -1702,19 +1702,20 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                         }
                       }}
                       checked={selectedOrders.size === paginatedOrders.length && paginatedOrders.length > 0}
+                      className="w-[15px] h-[15px] accent-[#4f46e5] cursor-pointer"
                     />
                   </TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">#Pedido</TableHead>
-                  <TableHead className="w-[140px] min-w-[140px] px-2">Telefone</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-right">Total</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-center">Pago?</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-center">Impresso?</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] px-2 text-center">Tipo Evento</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] px-2 text-center">Data Evento</TableHead>
-                  <TableHead className="w-[120px] min-w-[120px] px-2 text-center">Rastreio</TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">Disparo</TableHead>
-                  <TableHead className="flex-1 min-w-[120px] px-2">Observação</TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">Ações</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">#Pedido</TableHead>
+                  <TableHead className="w-[160px] min-w-[160px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Telefone</TableHead>
+                  <TableHead className="w-[90px] min-w-[90px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Total</TableHead>
+                  <TableHead className="w-[140px] min-w-[140px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Pago?</TableHead>
+                  <TableHead className="w-[120px] min-w-[120px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Impresso?</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Tipo Evento</TableHead>
+                  <TableHead className="w-[110px] min-w-[110px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Data Evento</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Disparo</TableHead>
+                  <TableHead className="w-[130px] min-w-[130px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Rastreio</TableHead>
+                  <TableHead className="flex-1 min-w-[140px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Observação</TableHead>
+                  <TableHead className="w-[110px] min-w-[110px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1734,7 +1735,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                   paginatedOrders.map((order) => (
                     <TableRow key={order.id} className={order.is_cancelled ? 'opacity-50 bg-muted/30' : ''}>
                       {/* Checkbox */}
-                      <TableCell className="px-2 py-2 text-center">
+                      <TableCell className="px-3 py-3 text-center">
                         <input 
                           type="checkbox"
                           checked={selectedOrders.has(order.id)}
@@ -1743,14 +1744,12 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       </TableCell>
                       
                       {/* Número do Pedido (por tenant) */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <Badge variant="outline" className="text-xs font-mono font-semibold">
-                          #{order.tenant_order_number || order.id}
-                        </Badge>
+                      <TableCell className="px-3 py-3 text-center">
+                        <span className="font-mono text-[12px] text-[#6b7280] font-semibold">#{order.tenant_order_number || order.id}</span>
                       </TableCell>
                       
                       {/* Telefone + Badge múltiplos pedidos */}
-                      <TableCell className="px-2 py-2">
+                      <TableCell className="px-3 py-3">
                         <div className="flex flex-col gap-0.5">
                           <span className="text-xs font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
                           {order.customer?.instagram && (
@@ -1775,12 +1774,12 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       </TableCell>
                       
                       {/* Total */}
-                      <TableCell className="px-2 py-2 text-right">
+                      <TableCell className="px-3 py-3 text-right">
                         <span className="text-xs font-semibold">{formatCurrency(order.total_amount)}</span>
                       </TableCell>
                       
                       {/* Pago */}
-                      <TableCell className="px-2 py-2 text-center">
+                      <TableCell className="px-3 py-3 text-center">
                         {order.is_cancelled ? (
                           <Badge variant="destructive" className="text-[10px]">
                             Cancelado
@@ -1791,9 +1790,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               checked={order.is_paid}
                               onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
                               disabled={processingIds.has(order.id) || order.is_cancelled}
-                              className="scale-75"
+                              className="scale-75 data-[state=checked]:bg-[#16a34a]"
                             />
-                            <Badge variant={order.is_paid ? 'default' : 'secondary'} className="text-[10px]">
+                            <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
                               {order.is_paid ? 'Pago' : 'Pendente'}
                             </Badge>
                             {processingIds.has(order.id) && (
@@ -1804,29 +1803,35 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       </TableCell>
                       
                       {/* Impresso */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <Badge 
-                          variant={order.printed ? 'default' : 'outline'} 
-                          className={cn("text-[10px] cursor-pointer", !order.printed && "text-muted-foreground")}
+                      <TableCell className="px-3 py-3 text-center">
+                        <span
                           onClick={() => togglePrintedStatus(order.id, order.printed || false)}
                           title={order.printed ? "Impresso" : "Não impresso"}
+                          className={cn("text-[12px] cursor-pointer", order.printed ? "font-bold text-[#111827]" : "font-normal text-[#9ca3af]")}
                         >
                           {order.printed ? 'Impresso' : 'Não impresso'}
-                        </Badge>
+                        </span>
                       </TableCell>
                       
                       {/* Tipo Evento */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <Badge variant="outline" className="text-[10px]">{order.event_type}</Badge>
+                      <TableCell className="px-3 py-3 text-center">
+                        <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]' : 'bg-[#f3e8ff] text-[#9333ea] hover:bg-[#f3e8ff]'}`}>{order.event_type}</Badge>
                       </TableCell>
                       
                       {/* Data Evento */}
-                      <TableCell className="px-2 py-2 text-center">
+                      <TableCell className="px-3 py-3 text-center">
                         <span className="text-xs">{formatBrasiliaDate(order.event_date)}</span>
                       </TableCell>
                       
+                      {/* Disparo (Mensagens) */}
+                      <TableCell className="px-3 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <MessageCircle className={cn("h-4 w-4", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} title="Item adicionado" />
+                        </div>
+                      </TableCell>
+                      
                       {/* Rastreio */}
-                      <TableCell className="px-2 py-2">
+                      <TableCell className="px-3 py-3">
                         {editingTracking === order.id ? (
                           <div className="flex items-center gap-1">
                             <Input
@@ -1853,8 +1858,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                           <div className="flex items-center gap-1">
                             {order.melhor_envio_tracking_code ? (
                               <Badge 
-                                variant="outline" 
-                                className="text-[10px] font-mono cursor-pointer hover:bg-accent"
+                                className="text-[11px] font-mono font-semibold cursor-pointer rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb] hover:bg-[#bfdbfe]"
                                 onClick={() => { setEditingTracking(order.id); setTrackingText(order.melhor_envio_tracking_code || ''); }}
                                 title="Clique para editar"
                               >
@@ -1875,15 +1879,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                         )}
                       </TableCell>
                       
-                      {/* Disparo (Mensagens) */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <MessageCircle className={cn("h-4 w-4", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} title="Item adicionado" />
-                        </div>
-                      </TableCell>
-                      
                       {/* Observação */}
-                      <TableCell className="px-2 py-2">
+                      <TableCell className="px-3 py-3">
                         {editingObservation === order.id ? (
                           <div className="flex items-center gap-1">
                             <Input
@@ -1909,7 +1906,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       </TableCell>
                       
                       {/* Ações */}
-                      <TableCell className="px-2 py-2">
+                      <TableCell className="px-3 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingOrder(order); setEditOrderOpen(true); }} title="Editar">
                             <Edit className="h-3.5 w-3.5" />
