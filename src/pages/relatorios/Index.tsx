@@ -127,6 +127,16 @@ const Relatorios = () => {
   
   // Cache de nomes de grupos do WhatsApp
   const [groupNamesCache, setGroupNamesCache] = useState<Map<string, string>>(new Map());
+
+  // ============ NOVOS STATES (REDESIGN) ============
+  type GlobalPeriod = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'year' | 'custom';
+  const [globalPeriod, setGlobalPeriod] = useState<GlobalPeriod>('30d');
+  const [globalStart, setGlobalStart] = useState('');
+  const [globalEnd, setGlobalEnd] = useState('');
+  const [metricMode, setMetricMode] = useState<'value' | 'qty'>('value');
+  const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos'>('produtos');
+  const [dailySeries, setDailySeries] = useState<Array<{ date: string; paid: number; unpaid: number; total: number; orders: number }>>([]);
+  const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
