@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X, UserPlus, CalendarIcon } from 'lucide-react';
+import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X, UserPlus, CalendarIcon, Video, ClipboardList } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
