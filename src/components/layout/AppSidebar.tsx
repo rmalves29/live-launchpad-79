@@ -22,6 +22,7 @@ import {
   X,
   ExternalLink,
   ChevronDown,
+  ShoppingCart,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
