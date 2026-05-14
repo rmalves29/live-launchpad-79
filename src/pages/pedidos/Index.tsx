@@ -504,7 +504,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         // O trigger trg_send_tracking_whatsapp dispara automaticamente o envio via WhatsApp
         const { error: updateError } = await supabase
           .from('orders')
-          .update({ melhor_envio_tracking_code: trackingText.trim() })
+          .update({ melhor_envio_tracking_code: trackingText.trim(), order_status: 'enviado' })
           .eq('id', orderId)
           .eq('tenant_id', order.tenant_id);
 
@@ -526,7 +526,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         // Atualizar estado local
         setOrders(prev => prev.map(o => 
           o.id === orderId 
-            ? { ...o, melhor_envio_tracking_code: trackingText.trim() }
+            ? { ...o, melhor_envio_tracking_code: trackingText.trim(), order_status: 'enviado' as const }
             : o
         ));
 
