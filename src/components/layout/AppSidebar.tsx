@@ -8,8 +8,6 @@ import {
   Send,
   GitBranch,
   MessageSquare,
-  Bot,
-  HeadphonesIcon,
   Settings,
   Tag,
   Plug,
@@ -19,21 +17,24 @@ import {
   Radio,
   LogOut,
   Menu,
-  X,
   ExternalLink,
   ChevronDown,
+  ChevronRight,
   ShoppingCart,
+  Shield,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
-import { TenantSwitcher } from '@/components/TenantSwitcher';
 import { supabase } from '@/integrations/supabase/client';
 import cartzyLogo from '@/assets/cartzy-logo.png';
 
-type NavItem = { path: string; label: string; icon: any };
-type NavGroup = { label: string; items: NavItem[] };
+type NavItem = { path: string; label: string; icon?: any; external?: string };
+type NavEntry =
+  | { type: 'item'; item: NavItem }
+  | { type: 'collapsible'; key: string; label: string; icon: any; items: NavItem[] };
+type NavGroup = { label: string; entries: NavEntry[] };
 
 const SUPABASE_DASHBOARD_URL = 'https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/reports/database';
 const LOVABLE_CLOUD_URL = 'https://lovable.dev/projects/154035f9-093b-4aed-ac82-a01434f3c19b';
@@ -48,63 +49,130 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const enableSendflow = tenant?.enable_sendflow ?? true;
   const isSuperAdmin = profile?.role === 'super_admin';
 
-  const groups: NavGroup[] = [
-    {
-      label: 'Principal',
-      items: [
-        { path: '/pedidos', label: 'Pedidos', icon: ShoppingBag },
-        { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle },
-        ...(tenant?.slug ? [{ path: `/t/${tenant.slug}/checkout`, label: 'Checkout', icon: ShoppingCart }] : []),
-        ...(enableLive ? [{ path: '/live', label: 'Live', icon: Radio }] : []),
-        { path: '/sorteio', label: 'Sorteio', icon: Trophy },
-      ],
-    },
-    {
-      label: 'Gestão',
-      items: [
-        { path: '/produtos', label: 'Produtos', icon: Package },
-        { path: '/clientes', label: 'Clientes', icon: Users },
-        { path: '/relatorios', label: 'Relatórios', icon: BarChart3 },
-      ],
-    },
-    {
-      label: 'Comunicação',
-      items: [
-        ...(enableSendflow ? [{ path: '/sendflow', label: 'SendFlow', icon: Send }] : []),
-        { path: '/fluxo-envio', label: 'Fluxo de Envio', icon: GitBranch },
-        { path: '/whatsapp/zapi', label: 'WhatsApp Z-API', icon: MessageSquare },
-        { path: '/whatsapp/templates', label: 'Templates', icon: MessageSquare },
-        { path: '/whatsapp/cobranca', label: 'Cobrança', icon: MessageSquare },
-      ],
-    },
-    {
-      label: 'Sistema',
-      items: [
-        { path: '/integracoes', label: 'Integrações', icon: Plug },
-        { path: '/etiquetas', label: 'Etiquetas', icon: Tag },
-        { path: '/config', label: 'Configurações', icon: Settings },
-        ...(isSuperAdmin ? [{ path: '/empresas', label: 'Empresas', icon: Building2 }] : []),
-      ],
-    },
-  ];
-
   const isActive = (path: string) => {
     if (path === '/pedidos') return location.pathname === '/pedidos';
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
-  const initials =
-    (profile?.full_name || user?.email || '?')
-      .split(/[\s@]/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((s) => s[0]?.toUpperCase())
-      .join('') || '?';
+  const groups: NavGroup[] = [
+    {
+      label: 'Principal',
+      entries: [
+        { type: 'item', item: { path: '/pedidos', label: 'Pedidos', icon: ShoppingBag } },
+        { type: 'item', item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } },
+        ...(tenant?.slug
+          ? [{ type: 'item' as const, item: { path: `/t/${tenant.slug}/checkout`, label: 'Checkout', icon: ShoppingCart } }]
+          : []),
+        ...(enableLive ? [{ type: 'item' as const, item: { path: '/live', label: 'Live', icon: Radio } }] : []),
+        { type: 'item', item: { path: '/sorteio', label: 'Sorteio', icon: Trophy } },
+      ],
+    },
+    {
+      label: 'Gestão',
+      entries: [
+        { type: 'item', item: { path: '/produtos', label: 'Produtos', icon: Package } },
+        { type: 'item', item: { path: '/clientes', label: 'Clientes', icon: Users } },
+        { type: 'item', item: { path: '/relatorios', label: 'Relatórios', icon: BarChart3 } },
+      ],
+    },
+    {
+      label: 'Comunicação',
+      entries: [
+        ...(enableSendflow
+          ? [{ type: 'item' as const, item: { path: '/sendflow', label: 'SendFlow', icon: Send } }]
+          : []),
+        { type: 'item', item: { path: '/fluxo-envio', label: 'Fluxo de Envio', icon: GitBranch } },
+        {
+          type: 'collapsible',
+          key: 'whatsapp',
+          label: 'WhatsApp Z-API',
+          icon: MessageSquare,
+          items: [
+            { path: '/whatsapp/zapi', label: 'Conexão' },
+            { path: '/whatsapp/templates', label: 'Templates' },
+            { path: '/whatsapp/cobranca', label: 'Cobrança' },
+          ],
+        },
+      ],
+    },
+    {
+      label: 'Sistema',
+      entries: [
+        { type: 'item', item: { path: '/integracoes', label: 'Integrações', icon: Plug } },
+        { type: 'item', item: { path: '/etiquetas', label: 'Etiquetas', icon: Tag } },
+        { type: 'item', item: { path: '/config', label: 'Configurações', icon: Settings } },
+        ...(isSuperAdmin
+          ? [{ type: 'item' as const, item: { path: '/empresas', label: 'Empresas', icon: Building2 } }]
+          : []),
+      ],
+    },
+  ];
+
+  // Open state for collapsible groups - default open if any child active
+  const initialOpen: Record<string, boolean> = {};
+  groups.forEach((g) =>
+    g.entries.forEach((e) => {
+      if (e.type === 'collapsible') {
+        initialOpen[e.key] = e.items.some((i) => isActive(i.path));
+      }
+    }),
+  );
+  initialOpen['super_admin'] = ['/debug'].some((p) => isActive(p));
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(initialOpen);
+  const toggle = (k: string) => setOpenGroups((s) => ({ ...s, [k]: !s[k] }));
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     onNavigate?.();
     navigate('/auth');
+  };
+
+  const renderItem = (item: NavItem, indent = false) => {
+    const active = isActive(item.path);
+    const Icon = item.icon;
+    return (
+      <NavLink
+        key={item.path}
+        to={item.path}
+        onClick={onNavigate}
+        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] transition-colors ${
+          indent ? 'pl-10' : ''
+        } ${
+          active
+            ? 'bg-[#eef2ff] text-[#4f46e5] font-semibold'
+            : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]'
+        }`}
+      >
+        {Icon && <Icon className="w-[18px] h-[18px] shrink-0" />}
+        <span className="truncate">{item.label}</span>
+      </NavLink>
+    );
+  };
+
+  const renderCollapsible = (
+    key: string,
+    label: string,
+    Icon: any,
+    children: React.ReactNode,
+  ) => {
+    const open = !!openGroups[key];
+    return (
+      <div key={key}>
+        <button
+          onClick={() => toggle(key)}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827] transition-colors"
+        >
+          <Icon className="w-[18px] h-[18px] shrink-0" />
+          <span className="truncate flex-1 text-left">{label}</span>
+          {open ? (
+            <ChevronDown className="w-4 h-4 shrink-0" />
+          ) : (
+            <ChevronRight className="w-4 h-4 shrink-0" />
+          )}
+        </button>
+        {open && <div className="mt-1 space-y-0.5">{children}</div>}
+      </div>
+    );
   };
 
   return (
@@ -123,23 +191,13 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <div className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
               {group.label}
             </div>
-            {group.items.map((item) => {
-              const active = isActive(item.path);
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  onClick={onNavigate}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] transition-colors ${
-                    active
-                      ? 'bg-[#eef2ff] text-[#4f46e5] font-semibold'
-                      : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]'
-                  }`}
-                >
-                  <Icon className="w-[18px] h-[18px] shrink-0" />
-                  <span className="truncate">{item.label}</span>
-                </NavLink>
+            {group.entries.map((entry) => {
+              if (entry.type === 'item') return renderItem(entry.item);
+              return renderCollapsible(
+                entry.key,
+                entry.label,
+                entry.icon,
+                entry.items.map((i) => renderItem(i, true)),
               );
             })}
           </div>
@@ -150,32 +208,28 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
             <div className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
               Super admin
             </div>
-            <button
-              onClick={() => window.open(SUPABASE_DASHBOARD_URL, '_blank', 'noopener,noreferrer')}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
-            >
-              <ExternalLink className="w-[18px] h-[18px] shrink-0" />
-              <span className="truncate flex-1 text-left">Métricas Supabase</span>
-            </button>
-            <button
-              onClick={() => window.open(LOVABLE_CLOUD_URL, '_blank', 'noopener,noreferrer')}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
-            >
-              <ExternalLink className="w-[18px] h-[18px] shrink-0" />
-              <span className="truncate flex-1 text-left">Cloud Lovable</span>
-            </button>
-            <NavLink
-              to="/debug"
-              onClick={onNavigate}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] ${
-                isActive('/debug')
-                  ? 'bg-[#eef2ff] text-[#4f46e5] font-semibold'
-                  : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]'
-              }`}
-            >
-              <Settings className="w-[18px] h-[18px] shrink-0" />
-              <span className="truncate">Debug</span>
-            </NavLink>
+            {renderCollapsible(
+              'super_admin',
+              'Ferramentas Admin',
+              Shield,
+              <>
+                <button
+                  onClick={() => window.open(SUPABASE_DASHBOARD_URL, '_blank', 'noopener,noreferrer')}
+                  className="w-full flex items-center gap-2 px-3 py-2 pl-10 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
+                >
+                  <ExternalLink className="w-[18px] h-[18px] shrink-0" />
+                  <span className="truncate flex-1 text-left">Métricas Supabase</span>
+                </button>
+                <button
+                  onClick={() => window.open(LOVABLE_CLOUD_URL, '_blank', 'noopener,noreferrer')}
+                  className="w-full flex items-center gap-2 px-3 py-2 pl-10 rounded-lg text-[14px] text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]"
+                >
+                  <ExternalLink className="w-[18px] h-[18px] shrink-0" />
+                  <span className="truncate flex-1 text-left">Cloud Lovable</span>
+                </button>
+                {renderItem({ path: '/debug', label: 'Debug', icon: Settings }, true)}
+              </>,
+            )}
           </div>
         )}
       </nav>
