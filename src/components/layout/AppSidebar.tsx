@@ -211,25 +211,25 @@ export function AppSidebar() {
     <>
       {/* Desktop sidebar */}
       <aside
-        style={{ width: 220, flexShrink: 0 }}
+        style={{ width: 240, flexShrink: 0 }}
         className="hidden lg:block border-r border-[#e5e7eb] h-screen sticky top-0"
       >
         <SidebarContent />
       </aside>
 
       {/* Mobile top bar + drawer */}
-      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-[#e5e7eb] flex items-center justify-between px-3 h-12">
+      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-[#e5e7eb] flex items-center justify-between px-3 h-14">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-[260px]">
+          <SheetContent side="left" className="p-0 w-[280px]">
             <SidebarContent onNavigate={() => setMobileOpen(false)} />
           </SheetContent>
         </Sheet>
-        <img src={cartzyLogo} alt="Cartzy" className="h-[2.625rem] w-auto object-contain" />
+        <img src={cartzyLogo} alt="Cartzy" className="h-[3.4rem] w-auto object-contain" />
         <div className="w-9" />
       </div>
     </>
