@@ -90,7 +90,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           items: [
             { path: '/whatsapp/zapi', label: 'Conexão' },
             { path: '/whatsapp/templates', label: 'Templates' },
-            { path: '/whatsapp/cobranca', label: 'Cobrança' },
+            { path: '/whatsapp/cobranca', label: 'Cobrança em Massa' },
           ],
         },
       ],
