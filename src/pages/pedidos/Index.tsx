@@ -1846,7 +1846,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               className="scale-75 data-[state=checked]:bg-[#16a34a]"
                             />
                             {(() => {
-                              if (order.is_paid && order.order_status === 'enviado') {
+                              const hasTracking = !!(order.melhor_envio_tracking_code && order.melhor_envio_tracking_code.trim());
+                              if (order.is_paid && (order.order_status === 'enviado' || hasTracking)) {
                                 return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]">Enviado</Badge>;
                               }
                               if (order.is_paid && order.order_status === 'em_separacao') {
