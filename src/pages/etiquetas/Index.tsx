@@ -115,6 +115,9 @@ const Etiquetas = () => {
   
   // Estado para cancelamento de remessa
   const [cancellingOrders, setCancellingOrders] = useState<Set<number>>(new Set());
+
+  // Filtro por status da remessa
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'ready' | 'shipped'>('all');
   
 
   // Logs state (só usado por super_admin)
@@ -1079,22 +1082,56 @@ const Etiquetas = () => {
     );
   }
 
+  // Filtra os pedidos pelo status selecionado
+  const filteredOrders = orders.filter(o => {
+    if (statusFilter === 'all') return true;
+    const s = getShipmentStatus(o).status;
+    return s === statusFilter;
+  });
+
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="max-w-[1600px] mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Package className="h-8 w-8" />
-            Etiquetas de Envio
-          </h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-bold">Etiquetas de Envio</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             {isProviderHandledInLabelsPage
-              ? `Gerencie as etiquetas dos pedidos pagos no ${activeProviderLabel}`
+              ? `Gerencie remessas e rastreamentos via ${activeProviderLabel}`
               : isCorreiosProvider
                 ? `Para ${activeProviderLabel}, use o módulo específico na tela de Integrações`
                 : 'Gerencie as etiquetas dos pedidos pagos da sua integração de frete'}
           </p>
         </div>
+
+        {isProviderHandledInLabelsPage && (
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={syncAllOrdersStatus}
+              disabled={syncingAll}
+            >
+              {syncingAll ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Sincronizar Rastreios
+            </Button>
+            <Button
+              onClick={createBatchShipments}
+              disabled={selectedOrders.size === 0 || batchProcessing}
+            >
+              {batchProcessing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Criar Remessas em Lote
+              {selectedOrders.size > 0 && ` (${selectedOrders.size})`}
+            </Button>
+          </div>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1104,20 +1141,16 @@ const Etiquetas = () => {
             Etiquetas
           </TabsTrigger>
           {isSuperAdmin && isProviderHandledInLabelsPage && (
-            <>
-              <TabsTrigger value="logs" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Logs de Integração
-              </TabsTrigger>
-            </>
+            <TabsTrigger value="logs" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Logs
+            </TabsTrigger>
           )}
           {isSuperAdmin && activeShippingProvider === 'melhor_envio' && (
-            <>
-              <TabsTrigger value="config" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Configuração Webhook
-              </TabsTrigger>
-            </>
+            <TabsTrigger value="config" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Config Webhook
+            </TabsTrigger>
           )}
         </TabsList>
 
@@ -1138,520 +1171,390 @@ const Etiquetas = () => {
             </Alert>
           )}
 
-          {/* Busca por nome e filtro por data */}
-          <div className="flex flex-col gap-3">
-            {/* Campo de busca por nome */}
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-2 flex-1 max-w-md">
+          {/* Filtros: busca + status + data */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_220px_180px] gap-3 items-center">
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar pedido, cliente ou código de rastreio..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && searchOrders()}
+                    className="pl-9"
+                  />
+                </div>
+
+                <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos os status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os status</SelectItem>
+                    <SelectItem value="pending">Aguardando postagem</SelectItem>
+                    <SelectItem value="ready">Remessa Criada</SelectItem>
+                    <SelectItem value="shipped">Em trânsito / Enviado</SelectItem>
+                  </SelectContent>
+                </Select>
+
                 <Input
-                  placeholder="Buscar por nome do cliente..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && searchOrders()}
-                  className="flex-1"
+                  type="date"
+                  value={dateFilter ? format(dateFilter, 'yyyy-MM-dd') : ''}
+                  onChange={(e) => setDateFilter(e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined)}
+                  disabled={isSearchMode}
                 />
-                <Button onClick={searchOrders} disabled={loading}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <User className="h-4 w-4" />}
-                </Button>
               </div>
-              {isSearchMode && (
-                <Button variant="outline" size="sm" onClick={clearSearch}>
-                  <X className="h-4 w-4 mr-1" />
-                  Limpar busca
-                </Button>
-              )}
-            </div>
-            
-            {/* Filtro por data e sincronização */}
-            <div className="flex flex-wrap items-center gap-2">
-              {!isSearchMode && (
-                <>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-[200px] justify-start text-left font-normal",
-                          !dateFilter && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateFilter ? format(dateFilter, "dd/MM/yyyy", { locale: ptBR }) : "Últimos 10 dias"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={dateFilter}
-                        onSelect={setDateFilter}
-                        locale={ptBR}
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {dateFilter && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDateFilter(undefined)}
-                    >
-                      Limpar data
+
+              {(isSearchMode || dateFilter) && (
+                <div className="flex items-center gap-2 mt-3">
+                  {isSearchMode && (
+                    <Badge variant="secondary" className="text-xs">
+                      Busca: "{searchQuery}"
+                      <button onClick={clearSearch} className="ml-2 hover:text-destructive">
+                        <X className="h-3 w-3 inline" />
+                      </button>
+                    </Badge>
+                  )}
+                  {dateFilter && !isSearchMode && (
+                    <Button variant="ghost" size="sm" onClick={() => setDateFilter(undefined)}>
+                      <X className="h-3 w-3 mr-1" /> Limpar data
                     </Button>
                   )}
-                </>
-              )}
-              
-              {isSearchMode && (
-                <Badge variant="secondary" className="text-sm">
-                  Mostrando resultados da busca por "{searchQuery}"
-                </Badge>
-              )}
-              
-              <div className="flex-1" />
-              
-              {isProviderHandledInLabelsPage ? (
-                <>
-                  {/* Controles de seleção em lote */}
                   {selectableOrders.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={toggleSelectAll}
-                        disabled={validSelectableOrders.length === 0}
-                      >
-                        {selectedOrders.size === validSelectableOrders.length && validSelectableOrders.length > 0 ? (
-                          <CheckSquare className="h-4 w-4 mr-2" />
-                        ) : (
-                          <Square className="h-4 w-4 mr-2" />
-                        )}
-                        {selectedOrders.size > 0 ? `${selectedOrders.size} selecionado(s)` : 'Selecionar todos'}
-                      </Button>
-                      
-                      <Button
-                        size="sm"
-                        onClick={createBatchShipments}
-                        disabled={selectedOrders.size === 0 || batchProcessing}
-                        className="bg-primary"
-                      >
-                        {batchProcessing ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : (
-                          <Send className="h-4 w-4 mr-2" />
-                        )}
-                        {batchProcessing ? 'Enviando...' : 'Criar Remessas'}
-                      </Button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={toggleSelectAll}
+                      disabled={validSelectableOrders.length === 0}
+                      className="ml-auto"
+                    >
+                      {selectedOrders.size === validSelectableOrders.length && validSelectableOrders.length > 0 ? (
+                        <CheckSquare className="h-4 w-4 mr-2" />
+                      ) : (
+                        <Square className="h-4 w-4 mr-2" />
+                      )}
+                      {selectedOrders.size > 0 ? `${selectedOrders.size} selecionado(s)` : 'Selecionar todos'}
+                    </Button>
                   )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={syncAllOrdersStatus}
-                    disabled={syncingAll}
-                  >
-                    {syncingAll ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                    )}
-                    {syncingAll ? 'Sincronizando...' : 'Sincronizar Rastreios'}
-                  </Button>
-                </>
-              ) : isCorreiosProvider ? (
-                <Button variant="outline" size="sm" onClick={openIntegrationsPage}>
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Abrir Integrações
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          {orders.length === 0 ? (
+          {filteredOrders.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
                 <Package className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-semibold mb-2">Nenhum pedido pago encontrado</h3>
+                <h3 className="text-lg font-semibold mb-2">Nenhum pedido encontrado</h3>
                 <p className="text-muted-foreground">
                   Os pedidos pagos aparecerão aqui para gerar etiquetas de envio.
                 </p>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4">
-              {orders.map((order) => {
+            <div className="space-y-3">
+              {filteredOrders.map((order) => {
                 const shipmentStatus = getShipmentStatus(order);
                 const validation = validateOrderForShipment(order);
                 const canSelect = !order.melhor_envio_shipment_id;
                 const isSelected = selectedOrders.has(order.id);
-                
+                const isMandae = order.melhor_envio_shipment_id?.startsWith('mandae_');
+
+                const statusBadgeClass =
+                  shipmentStatus.status === 'shipped'
+                    ? 'bg-blue-100 text-blue-700 border-blue-200'
+                    : shipmentStatus.status === 'ready'
+                      ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                      : 'bg-amber-100 text-amber-700 border-amber-200';
+
+                const statusBadgeLabel =
+                  shipmentStatus.status === 'shipped'
+                    ? 'Em trânsito'
+                    : shipmentStatus.status === 'ready'
+                      ? 'Remessa criada'
+                      : 'Aguardando postagem';
+
                 return (
-                  <Card key={order.id} className={cn(
-                    "overflow-hidden transition-all",
-                    isSelected && "ring-2 ring-primary",
-                    !validation.valid && canSelect && "border-amber-400"
-                  )}>
-                    {/* Header com status */}
-                    <CardHeader className="bg-muted/30 pb-3">
-                      <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Checkbox para seleção */}
+                  <Card
+                    key={order.id}
+                    className={cn(
+                      "overflow-hidden transition-all hover:shadow-md",
+                      isSelected && "ring-2 ring-primary"
+                    )}
+                  >
+                    <CardContent className="p-5">
+                      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr_1.2fr_1.3fr_auto] gap-6">
+                        {/* CLIENTE */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
                             {canSelect && (
                               <Checkbox
                                 checked={isSelected}
                                 onCheckedChange={() => toggleOrderSelection(order.id)}
                                 disabled={!validation.valid || batchProcessing}
-                                className="h-5 w-5"
+                                className="h-4 w-4"
                               />
                             )}
-                            <CardTitle className="text-lg">
-                              Pedido #{order.unique_order_id || order.id}
-                            </CardTitle>
-                            <Badge variant="default" className="bg-green-600">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Pago
-                            </Badge>
-                            <Badge variant={shipmentStatus.variant}>
-                              <Truck className="h-3 w-3 mr-1" />
-                              {shipmentStatus.label}
-                            </Badge>
-                            {/* Badge de erro de validação */}
-                            {!validation.valid && canSelect && (
-                              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
-                                <AlertCircle className="h-3 w-3 mr-1" />
-                                Dados incompletos
-                              </Badge>
-                            )}
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                              Cliente
+                            </span>
                           </div>
-                          
-                          {/* Código de rastreio em destaque */}
-                          <div className="flex items-center gap-2 bg-primary/10 px-3 py-2 rounded-lg w-fit">
-                            <Truck className="h-4 w-4 text-primary" />
-                            <span className="text-sm font-medium">Rastreio:</span>
-                            
-                            {editingTrackingOrderId === order.id ? (
-                              <>
+                          <div className="font-semibold text-foreground">{order.customer_name || '—'}</div>
+                          <div className="text-sm text-muted-foreground">{formatPhone(order.customer_phone)}</div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <span className="text-muted-foreground">CPF:</span>
+                            {editingCpfOrderId === order.id ? (
+                              <div className="flex items-center gap-1">
                                 <Input
-                                  value={editingTrackingCode}
-                                  onChange={(e) => setEditingTrackingCode(e.target.value)}
-                                  placeholder="Digite o código"
-                                  className="h-7 w-40 text-sm font-mono"
+                                  value={editingCpf}
+                                  onChange={(e) => setEditingCpf(formatCpfInput(e.target.value))}
+                                  className="h-6 w-28 text-xs font-mono"
+                                  maxLength={14}
                                   autoFocus
                                 />
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-6 w-6 text-green-600 hover:text-green-700"
-                                  onClick={() => saveTrackingCode(order.id)}
-                                  disabled={savingTracking}
-                                >
-                                  {savingTracking ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <Save className="h-3 w-3" />
-                                  )}
+                                <Button size="icon" variant="ghost" className="h-5 w-5 text-green-600" onClick={() => saveCpf(order.id, order.customer_phone)} disabled={savingCpf}>
+                                  {savingCpf ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                                 </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-6 w-6 text-destructive hover:text-destructive"
-                                  onClick={cancelEditingTracking}
-                                >
+                                <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={cancelEditingCpf}>
                                   <X className="h-3 w-3" />
                                 </Button>
-                              </>
+                              </div>
                             ) : (
-                              <>
-                                <code className="bg-background px-2 py-0.5 rounded text-sm font-mono">
-                                  {order.melhor_envio_tracking_code || 'Não definido'}
-                                </code>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-6 w-6"
-                                  onClick={() => startEditingTracking(order.id, order.melhor_envio_tracking_code || '')}
-                                  title="Editar código de rastreio"
-                                >
+                              <div className="flex items-center gap-1">
+                                {order.customer_cpf ? (
+                                  <span className="font-mono">{formatCpfInput(order.customer_cpf)}</span>
+                                ) : (
+                                  <span className="text-amber-600 font-medium">Não informado</span>
+                                )}
+                                <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => startEditingCpf(order.id, order.customer_cpf || '')}>
                                   <Pencil className="h-3 w-3" />
                                 </Button>
-                                {order.melhor_envio_tracking_code && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6"
-                                    onClick={() => copyTrackingCode(order.melhor_envio_tracking_code!)}
-                                    title="Copiar código"
-                                  >
-                                    <Copy className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </>
+                              </div>
                             )}
                           </div>
+                          <Badge variant="outline" className={cn("mt-1 text-xs font-medium", statusBadgeClass)}>
+                            {statusBadgeLabel}
+                          </Badge>
+                          {!validation.valid && canSelect && (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[11px]">
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              Dados incompletos
+                            </Badge>
+                          )}
                         </div>
-                        
-                        <div className="text-sm text-muted-foreground space-y-1">
-                          <div>Criado: {formatDate(order.created_at)}</div>
-                          <div>Evento: {formatDate(order.event_date)}</div>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    
-                    <CardContent className="pt-4 space-y-4">
-                      <div className="grid md:grid-cols-2 gap-4">
-                        {/* Dados do Cliente */}
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                            <User className="h-4 w-4" />
-                            Dados do Cliente
+
+                        {/* ENDEREÇO */}
+                        <div className="space-y-1.5">
+                          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Endereço
                           </div>
-                          <div className={cn(
-                            "bg-muted/30 rounded-lg p-3 space-y-1.5",
-                            !order.customer_cpf && canSelect && "border border-amber-400 bg-amber-50/50"
-                          )}>
-                            <div className="font-medium">{order.customer_name}</div>
-                            <div className="text-sm text-muted-foreground flex items-center gap-1">
-                              <Phone className="h-3 w-3" />
-                              {formatPhone(order.customer_phone)}
+                          {validation.valid ? (
+                            <div className="text-sm space-y-0.5">
+                              <div>{order.customer_street}{order.customer_number ? `, ${order.customer_number}` : ''}</div>
+                              {order.customer_complement && (
+                                <div className="text-muted-foreground">{order.customer_complement}</div>
+                              )}
+                              <div>{order.customer_city} — {order.customer_state}</div>
+                              <div className="font-mono text-xs text-muted-foreground">CEP: {order.customer_cep}</div>
                             </div>
-                            
-                            {/* CPF com edição inline */}
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground">CPF:</span>
-                              {editingCpfOrderId === order.id ? (
+                          ) : (
+                            <div className="text-sm text-amber-700 flex items-start gap-2">
+                              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                              <div>
+                                <div className="font-medium">Endereço incompleto</div>
+                                <div className="text-xs mt-1">{validation.missingFields.join(', ')}</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* ITENS */}
+                        <div className="space-y-1.5">
+                          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                            Itens
+                          </div>
+                          {order.items && order.items.length > 0 ? (
+                            <ul className="text-sm space-y-0.5">
+                              {order.items.slice(0, 4).map((item, idx) => (
+                                <li key={idx}>
+                                  • {item.product?.name || item.product_name || 'Produto'}
+                                  {item.qty > 1 && <span className="text-muted-foreground"> ({item.qty}x)</span>}
+                                </li>
+                              ))}
+                              {order.items.length > 4 && (
+                                <li className="text-xs text-muted-foreground">+ {order.items.length - 4} item(ns)</li>
+                              )}
+                            </ul>
+                          ) : (
+                            <div className="text-sm text-muted-foreground">Sem itens</div>
+                          )}
+                          <div className="text-sm font-semibold pt-1">
+                            Total: {formatCurrency(order.total_amount)}
+                          </div>
+                        </div>
+
+                        {/* OBSERVAÇÃO ou RASTREIO */}
+                        <div className="space-y-1.5">
+                          {order.melhor_envio_tracking_code ? (
+                            <>
+                              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Rastreio
+                              </div>
+                              {editingTrackingOrderId === order.id ? (
                                 <div className="flex items-center gap-1">
                                   <Input
-                                    value={editingCpf}
-                                    onChange={(e) => setEditingCpf(formatCpfInput(e.target.value))}
-                                    placeholder="000.000.000-00"
-                                    className="h-7 w-32 text-xs font-mono"
-                                    maxLength={14}
+                                    value={editingTrackingCode}
+                                    onChange={(e) => setEditingTrackingCode(e.target.value)}
+                                    className="h-7 w-40 text-sm font-mono"
                                     autoFocus
                                   />
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 text-green-600 hover:text-green-700"
-                                    onClick={() => saveCpf(order.id, order.customer_phone)}
-                                    disabled={savingCpf}
-                                  >
-                                    {savingCpf ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Save className="h-3 w-3" />
-                                    )}
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-green-600" onClick={() => saveTrackingCode(order.id)} disabled={savingTracking}>
+                                    {savingTracking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                                   </Button>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 text-destructive hover:text-destructive"
-                                    onClick={cancelEditingCpf}
-                                  >
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={cancelEditingTracking}>
                                     <X className="h-3 w-3" />
                                   </Button>
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-1">
-                                  {order.customer_cpf ? (
-                                    <span className="text-xs font-mono">{formatCpfInput(order.customer_cpf)}</span>
-                                  ) : (
-                                    <span className="text-xs text-amber-600 font-medium">Não informado</span>
-                                  )}
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                                    onClick={() => startEditingCpf(order.id, order.customer_cpf || '')}
-                                  >
+                                <div className="flex items-center gap-2">
+                                  <code className="text-sm font-mono text-primary font-semibold">
+                                    {order.melhor_envio_tracking_code}
+                                  </code>
+                                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => copyTrackingCode(order.melhor_envio_tracking_code!)}>
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => startEditingTracking(order.id, order.melhor_envio_tracking_code || '')}>
                                     <Pencil className="h-3 w-3" />
                                   </Button>
                                 </div>
                               )}
-                            </div>
-                            
-                            <div className="text-sm font-semibold text-primary">
-                              {formatCurrency(order.total_amount)}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Endereço */}
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                            <MapPin className="h-4 w-4" />
-                            Endereço de Entrega
-                          </div>
-                          <div className={cn(
-                            "bg-muted/30 rounded-lg p-3 space-y-1 text-sm",
-                            !validation.valid && canSelect && "border border-amber-400 bg-amber-50/50"
-                          )}>
-                            {validation.valid ? (
-                              <>
-                                <div>{order.customer_street}, {order.customer_number}</div>
-                                {order.customer_complement && (
-                                  <div className="text-muted-foreground">{order.customer_complement}</div>
-                                )}
-                                <div>{order.customer_city} - {order.customer_state}</div>
-                                <div className="font-mono text-xs">CEP: {order.customer_cep}</div>
-                              </>
-                            ) : (
-                              <div className="text-amber-700 flex items-start gap-2">
-                                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                                <div>
-                                  <div className="font-medium">Dados de endereço incompletos. Campos faltando:</div>
-                                  <div className="text-xs mt-1">{validation.missingFields.join(', ')}</div>
-                                </div>
+                              <div className="text-xs text-muted-foreground">
+                                Pedido #{order.unique_order_id || order.id} · {formatDate(order.created_at)}
                               </div>
-                            )}
-                          </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                Observação
+                              </div>
+                              {order.observation ? (
+                                <div className="text-sm italic text-foreground/80">"{order.observation}"</div>
+                              ) : (
+                                <div className="text-sm text-muted-foreground italic">Sem observação</div>
+                              )}
+                              <div className="text-xs text-muted-foreground pt-1">
+                                Pedido #{order.unique_order_id || order.id} · {formatDate(order.created_at)}
+                              </div>
+                            </>
+                          )}
                         </div>
-                      </div>
 
-                      {/* Itens do Pedido */}
-                      {order.items && order.items.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                            <Package className="h-4 w-4" />
-                            Itens ({order.items.length})
-                          </div>
-                          <div className="bg-muted/30 rounded-lg p-3">
-                            <div className="grid gap-2">
-                              {order.items.map((item, index) => (
-                                <div 
-                                  key={index} 
-                                  className="flex items-center justify-between text-sm py-1 border-b border-border/50 last:border-0"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    {item.product?.image_url && (
-                                      <img 
-                                        src={item.product.image_url} 
-                                        alt={item.product?.name}
-                                        className="w-8 h-8 rounded object-cover"
-                                      />
-                                    )}
-                                    <span>{item.product?.name || item.product_name || 'Produto'}</span>
-                                    <Badge variant="outline" className="text-xs">
-                                      {item.product?.code || item.product_code || 'N/A'}
-                                    </Badge>
-                                  </div>
-                                  <span className="font-medium">
-                                    {item.qty}x {formatCurrency(item.unit_price)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                        {/* AÇÕES */}
+                        <div className="flex flex-col gap-2 min-w-[180px]">
+                          {!order.melhor_envio_shipment_id && isProviderHandledInLabelsPage && (
+                            <Button
+                              onClick={() => sendToShippingProvider(order.id)}
+                              disabled={processingOrders.has(order.id) || !validation.valid}
+                              size="sm"
+                              className="justify-center"
+                            >
+                              {processingOrders.has(order.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Send className="h-4 w-4 mr-2" />
+                              )}
+                              Criar Remessa
+                            </Button>
+                          )}
 
-                      {/* Observação do frete (se existir) */}
-                      {order.observation && (
-                        <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
-                          {order.observation}
-                        </div>
-                      )}
+                          {!order.melhor_envio_shipment_id && isCorreiosProvider && (
+                            <Button onClick={openIntegrationsPage} variant="outline" size="sm" className="justify-center">
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              Abrir {activeProviderLabel}
+                            </Button>
+                          )}
 
-                      {/* Botões de Ação */}
-                      <div className="flex flex-wrap gap-2 pt-2 border-t">
-                        {/* Botão Criar Remessa */}
-                        {!order.melhor_envio_shipment_id && isProviderHandledInLabelsPage && (
-                          <Button
-                            onClick={() => sendToShippingProvider(order.id)}
-                            disabled={processingOrders.has(order.id)}
-                            size="sm"
-                          >
-                            {processingOrders.has(order.id) ? (
-                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            ) : (
-                              <Send className="h-4 w-4 mr-2" />
-                            )}
-                            Criar Remessa
-                          </Button>
-                        )}
+                          {order.melhor_envio_shipment_id && !isMandae && (
+                            <Button
+                              onClick={() => buyShipment(order.id)}
+                              disabled={processingOrders.has(order.id)}
+                              variant="outline"
+                              size="sm"
+                              className="justify-center"
+                            >
+                              {processingOrders.has(order.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Truck className="h-4 w-4 mr-2" />
+                              )}
+                              Comprar Frete
+                            </Button>
+                          )}
 
-                        {!order.melhor_envio_shipment_id && isCorreiosProvider && (
-                          <Button onClick={openIntegrationsPage} variant="outline" size="sm">
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            Abrir módulo do {activeProviderLabel}
-                          </Button>
-                        )}
-
-                        {/* Status de remessa criada */}
-                        {order.melhor_envio_shipment_id && (
-                          <Badge variant="secondary" className="h-8 px-3 flex items-center gap-2">
-                            <CheckCircle className="h-3 w-3 text-green-600" />
-                            Remessa Criada
-                          </Badge>
-                        )}
-
-                        {/* Botão Cancelar Remessa - para recriar com transportadora correta */}
-                        {order.melhor_envio_shipment_id && !order.melhor_envio_tracking_code && (
-                          <Button
-                            onClick={() => cancelShipment(order.id)}
-                            disabled={cancellingOrders.has(order.id) || processingOrders.has(order.id)}
-                            variant="destructive"
-                            size="sm"
-                          >
-                            {cancellingOrders.has(order.id) ? (
-                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            ) : (
-                              <RotateCcw className="h-4 w-4 mr-2" />
-                            )}
-                            Cancelar Remessa
-                          </Button>
-                        )}
-
-                        {order.melhor_envio_shipment_id && !order.melhor_envio_tracking_code && (
-                          <Button
-                            onClick={() => checkOrderStatus(order.id)}
-                            disabled={processingOrders.has(order.id)}
-                            variant="outline"
-                            size="sm"
-                          >
-                            {processingOrders.has(order.id) ? (
-                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                            ) : (
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                            )}
-                            Consultar Status
-                          </Button>
-                        )}
-
-                        {order.melhor_envio_shipment_id && (
-                          <>
-                            {/* Botão Comprar Frete - apenas Melhor Envio (Mandae não tem essa etapa) */}
-                            {!order.melhor_envio_shipment_id.startsWith('mandae_') && (
-                              <Button
-                                onClick={() => buyShipment(order.id)}
-                                disabled={processingOrders.has(order.id)}
-                                variant="outline"
-                                size="sm"
-                              >
-                                {processingOrders.has(order.id) ? (
-                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                ) : (
-                                  <Truck className="h-4 w-4 mr-2" />
-                                )}
-                                Comprar Frete
-                              </Button>
-                            )}
-                            
+                          {order.melhor_envio_shipment_id && (
                             <Button
                               onClick={() => printLabel(order.id)}
                               disabled={processingOrders.has(order.id)}
                               variant="outline"
                               size="sm"
+                              className="justify-center"
                             >
                               {processingOrders.has(order.id) ? (
                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
                               ) : (
                                 <Printer className="h-4 w-4 mr-2" />
                               )}
-                              {order.melhor_envio_shipment_id.startsWith('mandae_') ? 'Ver Rastreio' : 'Imprimir Etiqueta'}
+                              {isMandae ? 'Ver Rastreio' : 'Imprimir Etiqueta'}
                             </Button>
-                          </>
-                        )}
+                          )}
+
+                          {order.melhor_envio_shipment_id && (
+                            <Button
+                              onClick={() => checkOrderStatus(order.id)}
+                              disabled={processingOrders.has(order.id)}
+                              variant="outline"
+                              size="sm"
+                              className="justify-center"
+                            >
+                              {processingOrders.has(order.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                              )}
+                              Consultar Status
+                            </Button>
+                          )}
+
+                          {order.melhor_envio_shipment_id && !order.melhor_envio_tracking_code && (
+                            <Button
+                              onClick={() => cancelShipment(order.id)}
+                              disabled={cancellingOrders.has(order.id) || processingOrders.has(order.id)}
+                              variant="outline"
+                              size="sm"
+                              className="justify-center text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
+                            >
+                              {cancellingOrders.has(order.id) ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Ban className="h-4 w-4 mr-2" />
+                              )}
+                              Cancelar Remessa
+                            </Button>
+                          )}
+
+                          {order.melhor_envio_tracking_code && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="justify-center"
+                              onClick={() => window.open(`https://www.melhorrastreio.com.br/rastreio/${order.melhor_envio_tracking_code}`, '_blank')}
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              Ver Rastreio
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
