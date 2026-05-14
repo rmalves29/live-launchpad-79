@@ -1969,7 +1969,7 @@ const PublicCheckout = () => {
                   </div>
 
                   <Button
-                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 text-lg shadow-lg shadow-emerald-500/25"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 text-lg shadow-md"
                     onClick={() => processMultipleOrdersPayment(selectedOrders)}
                     disabled={loadingPayment || (paymentMethod === 'pix' && pixDiscountLoading)}
                   >
