@@ -1614,8 +1614,8 @@ const PublicCheckout = () => {
                   {/* Dados do Cliente */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Seus Dados
+                      <User className="h-4 w-4 text-indigo-600" />
+                      Dados do Cliente
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
