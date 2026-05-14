@@ -179,11 +179,15 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           .limit(500); // Limitar para performance
 
         if (filterPaid === 'paid') {
-          query = query.eq('is_paid', true).eq('is_cancelled', false);
+          query = query.eq('is_paid', true).eq('is_cancelled', false).is('order_status', null);
         } else if (filterPaid === 'unpaid') {
           query = query.eq('is_paid', false).eq('is_cancelled', false);
         } else if (filterPaid === 'cancelled') {
           query = query.eq('is_cancelled', true);
+        } else if (filterPaid === 'em_separacao') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'em_separacao');
+        } else if (filterPaid === 'enviado') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'enviado');
         }
 
         if (filterEventType && filterEventType !== 'all') {
