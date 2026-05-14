@@ -1057,13 +1057,15 @@ export default function SendFlow() {
       {/* Status do Envio - Gerenciado pelo SendingProgressLive acima */}
 
       {/* Agendamento + Botão de Envio */}
-      <Card>
+      <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardContent className="pt-6 space-y-4">
           {/* Toggle de agendamento */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CalendarClock className="h-5 w-5 text-muted-foreground" />
-              <Label htmlFor="schedule-toggle" className="font-medium">Agendar envio</Label>
+          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                <CalendarClock className="h-5 w-5" />
+              </div>
+              <Label htmlFor="schedule-toggle" className="font-medium cursor-pointer">Agendar envio</Label>
             </div>
             <Switch
               id="schedule-toggle"
@@ -1073,7 +1075,7 @@ export default function SendFlow() {
           </div>
 
           {scheduleEnabled && (
-            <div className="flex gap-3 items-end p-3 rounded-lg border bg-muted/30">
+            <div className="flex gap-3 items-end p-3 rounded-xl border bg-muted/30">
               <div className="flex-1">
                 <Label htmlFor="schedule-date" className="text-sm">Data</Label>
                 <Input
@@ -1099,7 +1101,7 @@ export default function SendFlow() {
           )}
 
           {selectedProducts.size > 0 && selectedGroups.size > 0 && (
-            <div className="text-center text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-lg">
+            <div className="text-center text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-xl">
               <Clock className="inline h-4 w-4 mr-1" />
               <span>
                 Tempo estimado: {(() => {
@@ -1132,7 +1134,7 @@ export default function SendFlow() {
               (scheduleEnabled && (!scheduleDate || !scheduleTime))
             }
             size="lg"
-            className="w-full"
+            className="w-full h-14 rounded-xl text-base font-semibold shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
           >
             {sending ? (
               <>
