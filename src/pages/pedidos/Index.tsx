@@ -47,6 +47,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     tenant_id: string;
     unique_order_id?: string;
     melhor_envio_tracking_code?: string;
+    order_status?: 'em_separacao' | 'enviado' | null;
     customer_name?: string;
     bling_order_id?: number;
     customer?: {
