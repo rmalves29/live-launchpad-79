@@ -702,7 +702,7 @@ useEffect(() => {
                 // Auto-status: se rastreio preenchido, marca como enviado
                 const finalStatus = trimmedTracking ? 'enviado' : (orderStatus || null);
 
-                const { error } = await supabaseTenant
+                const { error } = await (supabaseTenant as any)
                   .from('orders')
                   .update({
                     is_paid: isPaid,
