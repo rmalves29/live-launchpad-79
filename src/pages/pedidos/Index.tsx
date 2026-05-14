@@ -1799,9 +1799,19 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               disabled={processingIds.has(order.id) || order.is_cancelled}
                               className="scale-75 data-[state=checked]:bg-[#16a34a]"
                             />
-                            <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
-                              {order.is_paid ? 'Pago' : 'Pendente'}
-                            </Badge>
+                            {(() => {
+                              if (order.is_paid && order.order_status === 'enviado') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]">Enviado</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'em_separacao') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309] hover:bg-[#fef3c7]">Em Separação</Badge>;
+                              }
+                              return (
+                                <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
+                                  {order.is_paid ? 'Pago' : 'Pendente'}
+                                </Badge>
+                              );
+                            })()}
                             {processingIds.has(order.id) && (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             )}
