@@ -622,375 +622,263 @@ export default function Cobranca() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Cobrança em Massa</h1>
-          <p className="text-muted-foreground">Envie mensagens para clientes filtrados por critérios</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">
+          WhatsApp <span className="text-muted-foreground font-semibold">— Cobrança Automática</span>
+        </h1>
+        <p className="text-muted-foreground mt-1">Configure o envio automático de cobranças para clientes pendentes</p>
       </div>
 
-      {/* Card de Filtros */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-5 h-5" />
-            Filtros de Clientes
-          </CardTitle>
-          <CardDescription>
-            Selecione os critérios para filtrar os clientes que receberão a mensagem
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Toggle para usar toda base */}
-          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
-            <div className="flex items-center gap-3">
-              <Database className="w-5 h-5 text-primary" />
-              <div>
-                <Label htmlFor="useAllCustomers" className="font-medium">
-                  Enviar para toda a base de clientes
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Ignora filtros de pedido e envia para todos os clientes cadastrados
-                </p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ============ COLUNA 1 — FILTROS DE CLIENTES ============ */}
+        <Card className="rounded-2xl border-[#e5e7eb] shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg font-semibold">Filtros de Clientes</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Toggle base completa */}
+            <div className="flex items-center justify-between p-3 bg-[#f9fafb] rounded-xl border border-[#e5e7eb]">
+              <div className="flex items-center gap-2 min-w-0">
+                <Database className="w-4 h-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <Label htmlFor="useAllCustomers" className="font-medium text-sm">Toda a base</Label>
+                  <p className="text-xs text-muted-foreground truncate">Ignora filtros e envia para todos</p>
+                </div>
               </div>
-            </div>
-            <Switch
-              id="useAllCustomers"
-              checked={useAllCustomers}
-              onCheckedChange={setUseAllCustomers}
-            />
-          </div>
-
-          {/* Filtros normais (desabilitados quando usa toda base) */}
-          <div className={cn(
-            "grid grid-cols-1 md:grid-cols-3 gap-4 transition-opacity",
-            useAllCustomers && "opacity-50 pointer-events-none"
-          )}>
-            {/* Filtro de Pagamento */}
-            <div className="space-y-2">
-              <Label htmlFor="isPaid">Status de Pagamento</Label>
-              <Select
-                value={filters.isPaid}
-                onValueChange={(value) => setFilters({ ...filters, isPaid: value })}
-                disabled={useAllCustomers}
-              >
-                <SelectTrigger id="isPaid">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="paid">Apenas Pagos</SelectItem>
-                  <SelectItem value="unpaid">Apenas Não Pagos</SelectItem>
-                </SelectContent>
-              </Select>
+              <Switch id="useAllCustomers" checked={useAllCustomers} onCheckedChange={setUseAllCustomers} />
             </div>
 
-            {/* Filtro de Tipo de Evento */}
-            <div className="space-y-2">
-              <Label htmlFor="eventType">Tipo de Evento</Label>
-              <Select
-                value={filters.eventType}
-                onValueChange={(value) => setFilters({ ...filters, eventType: value })}
-                disabled={useAllCustomers}
-              >
-                <SelectTrigger id="eventType">
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="bazar">Bazar</SelectItem>
-                  <SelectItem value="live">Live</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Filtro de Data do Pedido */}
-            <div className="space-y-2">
-              <Label>Data do Pedido</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !filters.orderDate?.from && "text-muted-foreground"
-                    )}
-                    disabled={useAllCustomers}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {filters.orderDate?.from ? (
-                      filters.orderDate.to
-                        ? `${format(filters.orderDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filters.orderDate.to, "dd/MM/yy", { locale: ptBR })}`
-                        : format(filters.orderDate.from, "PPP", { locale: ptBR })
-                    ) : "Selecionar data"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="range"
-                    selected={filters.orderDate}
-                    onSelect={(range) => setFilters({ ...filters, orderDate: range })}
-                    initialFocus
-                    numberOfMonths={1}
-                    className="pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Card de Agendamento */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Agendamento de Envio
-          </CardTitle>
-          <CardDescription>
-            Agende o envio para uma data e hora específica
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-primary" />
-              <div>
-                <Label htmlFor="isScheduled" className="font-medium">
-                  Agendar envio
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  As mensagens serão enviadas automaticamente na data e hora selecionadas
-                </p>
-              </div>
-            </div>
-            <Switch
-              id="isScheduled"
-              checked={isScheduled}
-              onCheckedChange={setIsScheduled}
-            />
-          </div>
-
-          {isScheduled && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
-              {/* Seletor de Data */}
+            <div className={cn("space-y-4 transition-opacity", useAllCustomers && "opacity-50 pointer-events-none")}>
               <div className="space-y-2">
-                <Label>Data do envio</Label>
+                <Label htmlFor="isPaid" className="text-sm">Status do Pedido</Label>
+                <Select value={filters.isPaid} onValueChange={(value) => setFilters({ ...filters, isPaid: value })} disabled={useAllCustomers}>
+                  <SelectTrigger id="isPaid" className="h-11 rounded-xl bg-white border-[#e5e7eb]">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="paid">Pago</SelectItem>
+                    <SelectItem value="unpaid">Pendente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="eventType" className="text-sm">Evento</Label>
+                <Select value={filters.eventType} onValueChange={(value) => setFilters({ ...filters, eventType: value })} disabled={useAllCustomers}>
+                  <SelectTrigger id="eventType" className="h-11 rounded-xl bg-white border-[#e5e7eb]">
+                    <SelectValue placeholder="Todos os eventos" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os eventos</SelectItem>
+                    <SelectItem value="bazar">Bazar</SelectItem>
+                    <SelectItem value="live">Live</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm">Data do Pedido</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !scheduledDate && "text-muted-foreground"
+                        "w-full h-11 justify-start text-left font-normal rounded-xl bg-white border-[#e5e7eb]",
+                        !filters.orderDate?.from && "text-muted-foreground"
                       )}
+                      disabled={useAllCustomers}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {scheduledDate ? (
-                        format(scheduledDate, "dd/MM/yyyy", { locale: ptBR })
-                      ) : (
-                        <span>Selecione a data...</span>
-                      )}
+                      {filters.orderDate?.from
+                        ? (filters.orderDate.to
+                            ? `${format(filters.orderDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filters.orderDate.to, "dd/MM/yy", { locale: ptBR })}`
+                            : format(filters.orderDate.from, "dd/MM/yyyy", { locale: ptBR }))
+                        : "dd/mm/aaaa"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
-                      mode="single"
-                      selected={scheduledDate}
-                      onSelect={setScheduledDate}
-                      disabled={(date) => date < new Date()}
+                      mode="range"
+                      selected={filters.orderDate}
+                      onSelect={(range) => setFilters({ ...filters, orderDate: range })}
                       initialFocus
-                      className={cn("p-3 pointer-events-auto")}
+                      numberOfMonths={1}
+                      className="pointer-events-auto"
                     />
                   </PopoverContent>
                 </Popover>
               </div>
 
-              {/* Seletor de Hora */}
               <div className="space-y-2">
-                <Label htmlFor="scheduledTime">Hora do envio</Label>
-                <Input
-                  id="scheduledTime"
-                  type="time"
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="tag" className="text-sm">Tag WhatsApp</Label>
+                  <Button variant="ghost" size="icon" onClick={loadTags} disabled={loadingTags} title="Recarregar tags" className="h-7 w-7">
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingTags ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+                <Select value={selectedTagId} onValueChange={setSelectedTagId}>
+                  <SelectTrigger id="tag" className="h-11 rounded-xl bg-white border-[#e5e7eb]">
+                    <SelectValue placeholder="Nenhuma tag" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhuma tag</SelectItem>
+                    {tags.filter(tag => tag.id && tag.id !== '').map((tag) => (
+                      <SelectItem key={tag.id} value={tag.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getTagColor(tag.color) }} />
+                          {tag.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-          )}
 
-          {isScheduled && scheduledDate && scheduledTime && (
-            <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-              <p className="text-sm font-medium flex items-center gap-2">
-                <Clock className="w-4 h-4 text-primary" />
-                <span>
-                  Envio agendado para: <strong>{format(scheduledDate, "dd/MM/yyyy", { locale: ptBR })}</strong> às <strong>{scheduledTime}</strong>
-                </span>
-              </p>
+            {/* Resumo: clientes encontrados */}
+            <div className="p-4 rounded-xl bg-[#eef2ff] border border-[#c7d2fe]">
+              {loading ? (
+                <div className="flex items-center gap-2 text-sm text-[#4338ca]">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Calculando...
+                </div>
+              ) : (
+                <>
+                  <div className="text-base font-semibold text-[#4338ca]">
+                    {customers.length} cliente{customers.length === 1 ? '' : 's'} encontrado{customers.length === 1 ? '' : 's'}
+                  </div>
+                  <div className="text-xs text-[#6366f1] mt-0.5">
+                    {useAllCustomers ? 'base completa' : (filters.isPaid === 'unpaid' ? 'com pedidos pendentes' : 'pelos filtros aplicados')}
+                  </div>
+                </>
+              )}
             </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Card de Tags */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Tag className="w-5 h-5" />
-            Tag do WhatsApp
-          </CardTitle>
-          <CardDescription>
-            Selecione uma tag para aplicar a todos os contatos que receberão a mensagem
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="tag">Tag (opcional)</Label>
-              <Select
-                value={selectedTagId}
-                onValueChange={setSelectedTagId}
-              >
-                <SelectTrigger id="tag" className="w-full">
-                  <SelectValue placeholder="Selecione uma tag..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhuma tag</SelectItem>
-                  {tags.filter(tag => tag.id && tag.id !== '').map((tag) => (
-                    <SelectItem key={tag.id} value={tag.id}>
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="w-3 h-3 rounded-full" 
-                          style={{ backgroundColor: getTagColor(tag.color) }}
-                        />
-                        {tag.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="pt-6">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={loadTags}
-                disabled={loadingTags}
-                title="Recarregar tags"
-              >
-                <RefreshCw className={`w-4 h-4 ${loadingTags ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
-          </div>
-          {tags.length === 0 && !loadingTags && (
-            <p className="text-sm text-muted-foreground mt-2">
-              Nenhuma tag encontrada. Crie tags no WhatsApp Business para utilizá-las aqui.
-            </p>
-          )}
-          {selectedTagId && selectedTagId !== 'none' && (
-            <div className="mt-3 flex items-center gap-2">
-              <Badge variant="secondary">
-                <Tag className="w-3 h-3 mr-1" />
-                Tag selecionada: {tags.find(t => t.id === selectedTagId)?.name}
-              </Badge>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Card de Preview de Clientes */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5" />
-            Clientes que Receberão a Mensagem
-            {useAllCustomers && (
-              <Badge variant="outline" className="ml-2">
-                <Database className="w-3 h-3 mr-1" />
-                Base completa
-              </Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <Badge variant="secondary" className="text-lg px-4 py-2">
-                  <Users className="w-4 h-4 mr-2" />
-                  {customers.length} cliente(s)
-                </Badge>
-                {!useAllCustomers && filters.orderDate?.from && (
-                  <Badge variant="outline" className="text-sm px-3 py-1">
-                    <CalendarIcon className="w-3 h-3 mr-2" />
-                    {filters.orderDate.to
-                      ? `${format(filters.orderDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filters.orderDate.to, "dd/MM/yy", { locale: ptBR })}`
-                      : format(filters.orderDate.from, "dd/MM/yy", { locale: ptBR })}
-                  </Badge>
-                )}
-              </div>
-
-              {customers.length > 0 && (
-                <div className="mt-4 max-h-60 overflow-y-auto border rounded-md p-4 space-y-2">
+            {/* Lista expandida (opcional) */}
+            {customers.length > 0 && (
+              <details className="group">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
+                  Ver lista de clientes
+                </summary>
+                <div className="mt-2 max-h-48 overflow-y-auto border rounded-xl p-3 space-y-1.5 bg-white">
                   {customers.map((customer, index) => {
                     const status = sendStatuses[customer.customer_phone];
                     return (
-                      <div key={index} className="flex items-center justify-between text-sm">
-                        <span className="font-medium">
-                          {customer.customer_name || customer.customer_phone}
-                        </span>
-                        <Badge 
+                      <div key={index} className="flex items-center justify-between text-xs">
+                        <span className="font-medium truncate">{customer.customer_name || customer.customer_phone}</span>
+                        <Badge
                           variant={
                             status?.status === 'sent' ? 'default' :
                             status?.status === 'sending' ? 'outline' :
                             status?.status === 'error' ? 'destructive' :
                             'secondary'
                           }
+                          className="text-[10px]"
                         >
-                          {status?.status === 'sent' ? '✓ Enviado' :
-                           status?.status === 'sending' ? '⏳ Enviando...' :
-                           status?.status === 'error' ? '✗ Erro' :
-                           'Pendente'}
+                          {status?.status === 'sent' ? '✓' :
+                           status?.status === 'sending' ? '⏳' :
+                           status?.status === 'error' ? '✗' :
+                           '•'}
                         </Badge>
                       </div>
                     );
                   })}
                 </div>
-              )}
+              </details>
+            )}
+          </CardContent>
+        </Card>
 
-              {!useAllCustomers && !filters.orderDate ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Selecione a data do pedido para visualizar os clientes
-                </p>
-              ) : customers.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhum cliente encontrado com os filtros aplicados
-                </p>
-              ) : null}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Card de Configurações de Envio */}
-      <Card>
-        <CardHeader>
-          <CardTitle>⏱️ Configurações de Timer (Anti-Bloqueio)</CardTitle>
-          <CardDescription>
-            Configure os intervalos de envio para evitar bloqueio do chip
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* ============ COLUNA 2 — MENSAGEM DE COBRANÇA ============ */}
+        <Card className="rounded-2xl border-[#e5e7eb] shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg font-semibold">Mensagem de Cobrança</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="delayBetweenMessages">
-                Delay entre mensagens (segundos)
-              </Label>
+              <Label className="text-sm">Mensagem personalizada</Label>
+              <Textarea
+                placeholder="Olá {nome}! 👋&#10;&#10;Você ainda tem um pedido pendente no valor de *R$ {valor}*."
+                value={messageTemplate}
+                onChange={(e) => setMessageTemplate(e.target.value)}
+                rows={9}
+                className="resize-none rounded-xl bg-white border-[#e5e7eb]"
+              />
+              <div className="text-xs text-muted-foreground text-right">{messageTemplate.length} caracteres</div>
+            </div>
+
+            <div className="pt-2">
+              <div className="flex items-center justify-between p-3 bg-[#f9fafb] rounded-xl border border-[#e5e7eb] mb-3">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-primary" />
+                  <Label htmlFor="isScheduled" className="font-medium text-sm">Agendar envio</Label>
+                </div>
+                <Switch id="isScheduled" checked={isScheduled} onCheckedChange={setIsScheduled} />
+              </div>
+
+              {isScheduled && (
+                <>
+                  <Label className="text-sm mb-2 block">Agendamento</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Data</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full h-11 justify-start text-left font-normal rounded-xl bg-white border-[#e5e7eb]",
+                              !scheduledDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {scheduledDate ? format(scheduledDate, "dd/MM/yyyy", { locale: ptBR }) : "dd/mm/aaaa"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={scheduledDate}
+                            onSelect={setScheduledDate}
+                            disabled={(date) => date < new Date()}
+                            initialFocus
+                            className={cn("p-3 pointer-events-auto")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="scheduledTime" className="text-xs text-muted-foreground">Hora</Label>
+                      <Input
+                        id="scheduledTime"
+                        type="time"
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                        className="h-11 rounded-xl bg-white border-[#e5e7eb]"
+                      />
+                    </div>
+                  </div>
+                  {scheduledDate && scheduledTime && (
+                    <p className="text-xs text-primary mt-2 flex items-center gap-1.5">
+                      <Clock className="w-3 h-3" />
+                      Agendado para <strong>{format(scheduledDate, "dd/MM/yyyy", { locale: ptBR })}</strong> às <strong>{scheduledTime}</strong>
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ============ COLUNA 3 — CONFIGURAÇÕES DE ENVIO ============ */}
+        <Card className="rounded-2xl border-[#e5e7eb] shadow-sm">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg font-semibold">Configurações de Envio</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="delayBetweenMessages" className="text-sm">Delay entre mensagens (segundos)</Label>
               <Input
                 id="delayBetweenMessages"
                 type="number"
@@ -998,76 +886,60 @@ export default function Cobranca() {
                 max="60"
                 value={delayBetweenMessages}
                 onChange={(e) => setDelayBetweenMessages(Number(e.target.value))}
+                className="h-11 rounded-xl bg-white border-[#e5e7eb]"
               />
-              <p className="text-xs text-muted-foreground">
-                Pausa após cada mensagem enviada
-              </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="messagesBeforePause">
-                Mensagens antes da pausa maior
-              </Label>
-              <Input
-                id="messagesBeforePause"
-                type="number"
-                min="1"
-                max="100"
-                value={messagesBeforePause}
-                onChange={(e) => setMessagesBeforePause(Number(e.target.value))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Quantidade de mensagens em lote
-              </p>
+              <Label htmlFor="messagesBeforePause" className="text-sm">Pausa a cada</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="messagesBeforePause"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={messagesBeforePause}
+                  onChange={(e) => setMessagesBeforePause(Number(e.target.value))}
+                  className="h-11 rounded-xl bg-white border-[#e5e7eb] w-24"
+                />
+                <span className="text-sm text-muted-foreground">mensagens</span>
+              </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="pauseDuration">
-                Duração da pausa maior (segundos)
-              </Label>
-              <Input
-                id="pauseDuration"
-                type="number"
-                min="5"
-                max="300"
-                value={pauseDuration}
-                onChange={(e) => setPauseDuration(Number(e.target.value))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Pausa a cada lote de mensagens
-              </p>
+              <Label htmlFor="pauseDuration" className="text-sm">Pausa por</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="pauseDuration"
+                  type="number"
+                  min="5"
+                  max="300"
+                  value={pauseDuration}
+                  onChange={(e) => setPauseDuration(Number(e.target.value))}
+                  className="h-11 rounded-xl bg-white border-[#e5e7eb] w-24"
+                />
+                <span className="text-sm text-muted-foreground">segundos</span>
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Card de Template de Mensagem */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Template de Mensagem</CardTitle>
-          <CardDescription>
-            Personalize a mensagem que será enviada. Use {'{{nome}}'} para incluir o nome do cliente.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            placeholder="Digite sua mensagem aqui..."
-            value={messageTemplate}
-            onChange={(e) => setMessageTemplate(e.target.value)}
-            rows={8}
-            className="resize-none"
-          />
-
-          <div className="flex items-center justify-between pt-4">
-            <div className="text-sm text-muted-foreground">
-              {messageTemplate.length} caracteres
+            {/* Progresso */}
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Progresso</span>
+                <span className="text-muted-foreground">{sendProgress.current} / {sendProgress.total || customers.length}</span>
+              </div>
+              <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-primary h-full transition-all duration-300"
+                  style={{ width: `${sendProgress.total ? (sendProgress.current / sendProgress.total) * 100 : 0}%` }}
+                />
+              </div>
             </div>
 
             <Button
               onClick={handleSendMessages}
               disabled={sending || customers.length === 0 || !messageTemplate.trim() || (isScheduled && (!scheduledDate || !scheduledTime))}
-              size="lg"
-              className="gap-2"
+              className="w-full h-12 rounded-xl gap-2 bg-[#4f46e5] hover:bg-[#4338ca] text-white font-semibold text-base shadow-sm"
             >
               {sending ? (
                 <>
@@ -1077,29 +949,27 @@ export default function Cobranca() {
               ) : isScheduled ? (
                 <>
                   <Clock className="w-4 h-4" />
-                  Agendar para {customers.length} Cliente(s)
+                  Agendar Envio
                 </>
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  Enviar para {customers.length} Cliente(s)
+                  Iniciar Envio
                 </>
               )}
             </Button>
-          </div>
 
-          {sending && (
-            <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
-              <div
-                className="bg-primary h-full transition-all duration-300"
-                style={{
-                  width: `${(sendProgress.current / sendProgress.total) * 100}%`
-                }}
-              />
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            <Button
+              variant="outline"
+              className="w-full h-11 rounded-xl border-[#e5e7eb] font-medium"
+              disabled={!sending}
+              onClick={() => { /* placeholder pause */ }}
+            >
+              ⏸ Pausar
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
