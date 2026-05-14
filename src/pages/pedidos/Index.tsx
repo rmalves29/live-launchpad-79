@@ -1591,6 +1591,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                     <SelectContent>
                       <SelectItem value="all">Todos</SelectItem>
                       <SelectItem value="paid">Pagos</SelectItem>
+                      <SelectItem value="em_separacao">Em Separação</SelectItem>
+                      <SelectItem value="enviado">Enviados</SelectItem>
                       <SelectItem value="unpaid">Não pagos</SelectItem>
                       <SelectItem value="cancelled">Cancelados</SelectItem>
                     </SelectContent>
