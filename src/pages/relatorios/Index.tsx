@@ -1464,7 +1464,7 @@ const Relatorios = () => {
   };
 
   // ============ DERIVADOS PARA OS WIDGETS ============
-  const stats = periodStats?.monthly; // KPIs usam o "mês" como base do mockup; se preferir, troque por daily/yearly
+  const stats = globalStats; // KPIs e donut respeitam o filtro global de período + tipo de venda
   const totalOrdersAll = stats?.total_orders ?? 0;
   const conversionRate = totalOrdersAll > 0 ? (stats!.paid_orders / totalOrdersAll) * 100 : 0;
 
