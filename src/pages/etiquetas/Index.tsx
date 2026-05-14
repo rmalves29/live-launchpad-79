@@ -115,6 +115,9 @@ const Etiquetas = () => {
   
   // Estado para cancelamento de remessa
   const [cancellingOrders, setCancellingOrders] = useState<Set<number>>(new Set());
+
+  // Filtro por status da remessa
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'ready' | 'shipped'>('all');
   
 
   // Logs state (só usado por super_admin)
