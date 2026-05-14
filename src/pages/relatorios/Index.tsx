@@ -1440,11 +1440,7 @@ const Relatorios = () => {
     { id: 'custom', label: 'Personalizado' },
   ];
 
-  const RechartsBlock = require('recharts');
-  const {
-    ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-    BarChart, Bar, Legend, PieChart, Pie, Cell,
-  } = RechartsBlock;
+  // recharts já importado no topo do arquivo
 
   return (
     <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
