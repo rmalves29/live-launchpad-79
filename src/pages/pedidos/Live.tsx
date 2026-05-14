@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X, UserPlus, CalendarIcon } from 'lucide-react';
+import { Loader2, Search, RefreshCw, Edit, Trash2, Plus, Package, ChevronDown, ChevronRight, X, UserPlus, CalendarIcon, Video, ClipboardList } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
@@ -857,18 +857,27 @@ const Live = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#f9fafb]">
       <div className="p-6">
         <div className="container mx-auto space-y-6">
-          <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold">Vendas Live</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Vendas Live</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Lançamento por Instagram{tenant?.name ? <> · <span className="font-semibold text-foreground">{tenant.name}</span></> : null}
+            </p>
           </div>
 
           <Tabs defaultValue="vendas" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="vendas">Lançar Vendas</TabsTrigger>
-              <TabsTrigger value="pedidos">Pedidos Live</TabsTrigger>
-              <TabsTrigger value="cadastrar" className="flex items-center gap-1">
+            <TabsList className="grid w-full grid-cols-3 bg-muted/60 p-1 h-12 rounded-xl">
+              <TabsTrigger value="vendas" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg">
+                <Video className="h-4 w-4" />
+                Lançar Vendas
+              </TabsTrigger>
+              <TabsTrigger value="pedidos" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg">
+                <ClipboardList className="h-4 w-4" />
+                Pedidos Live
+              </TabsTrigger>
+              <TabsTrigger value="cadastrar" className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg">
                 <UserPlus className="h-4 w-4" />
                 Cadastrar Cliente
               </TabsTrigger>
@@ -975,9 +984,18 @@ const Live = () => {
                               </TableCell>
                               <TableCell>{formatCurrency(product.price)}</TableCell>
                               <TableCell>
-                                <Badge variant={product.stock > 0 ? "default" : "destructive"}>
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center justify-center h-7 w-7 rounded-full text-xs font-semibold text-white",
+                                    product.stock === 0
+                                      ? "bg-red-500"
+                                      : product.stock <= 3
+                                        ? "bg-amber-500"
+                                        : "bg-indigo-600"
+                                  )}
+                                >
                                   {product.stock}
-                                </Badge>
+                                </span>
                               </TableCell>
                               <TableCell>
                                 <Input
@@ -1262,44 +1280,61 @@ const Live = () => {
             </TabsContent>
 
             <TabsContent value="cadastrar" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <UserPlus className="h-5 w-5" />
-                    Cadastrar Novo Cliente
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
-                      placeholder="Telefone (obrigatório)"
-                      value={newClientPhone}
-                      onChange={(e) => setNewClientPhone(e.target.value)}
-                    />
-                    <Input
-                      placeholder="Nome completo (opcional)"
-                      value={newClientName}
-                      onChange={(e) => setNewClientName(e.target.value)}
-                    />
-                    <Input
-                      placeholder="@usuario (Instagram)"
-                      value={newClientInstagram}
-                      onChange={(e) => setNewClientInstagram(e.target.value)}
-                    />
-                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <UserPlus className="h-5 w-5 text-indigo-600" />
+                      Cadastrar Novo Cliente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">
+                          Telefone <span className="text-destructive">*</span>
+                        </label>
+                        <Input
+                          placeholder="(00) 00000-0000"
+                          value={newClientPhone}
+                          onChange={(e) => setNewClientPhone(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">
+                          Nome completo <span className="text-muted-foreground font-normal">(opcional)</span>
+                        </label>
+                        <Input
+                          placeholder="Nome do cliente"
+                          value={newClientName}
+                          onChange={(e) => setNewClientName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">
+                          Instagram <span className="text-muted-foreground font-normal">(@usuario)</span>
+                        </label>
+                        <Input
+                          placeholder="@usuario"
+                          value={newClientInstagram}
+                          onChange={(e) => setNewClientInstagram(e.target.value)}
+                        />
+                      </div>
+                    </div>
 
-                  <div className="flex justify-end mt-4">
-                    <Button onClick={handleCreateClient} disabled={savingClient}>
-                      {savingClient ? (
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      ) : (
-                        <UserPlus className="h-4 w-4 mr-2" />
-                      )}
-                      Cadastrar Cliente
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                    <div className="flex justify-end pt-2">
+                      <Button onClick={handleCreateClient} disabled={savingClient} className="bg-indigo-600 hover:bg-indigo-700">
+                        {savingClient ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <UserPlus className="h-4 w-4 mr-2" />
+                        )}
+                        Cadastrar Cliente
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </div>
