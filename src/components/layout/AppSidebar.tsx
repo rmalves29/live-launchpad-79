@@ -107,29 +107,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      {/* Brand + user */}
+      {/* Brand */}
       <div className="p-4 border-b border-[#f3f4f6]">
         <NavLink to="/" onClick={onNavigate} className="flex items-center justify-center">
           <img src={cartzyLogo} alt="Cartzy" className="h-[2.2rem] w-auto object-contain" />
         </NavLink>
-
-        <div className="mt-3">
-          <TenantSwitcher />
-        </div>
-
-        {user && (
-          <div className="mt-3 flex items-center gap-2 p-2 bg-[#f9fafb] rounded-lg">
-            <div className="w-7 h-7 rounded-full bg-[#e0e7ff] flex items-center justify-center text-[11px] font-bold text-[#4f46e5] shrink-0">
-              {initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[12px] font-semibold text-[#374151] truncate">
-                {profile?.full_name || tenant?.name || 'Usuário'}
-              </p>
-              <p className="text-[11px] text-[#9ca3af] truncate">{user.email}</p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Nav */}
