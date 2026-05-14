@@ -185,16 +185,16 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {user ? (
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] text-[#dc2626] hover:bg-[#fef2f2] transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] text-[#dc2626] hover:bg-[#fef2f2] transition-colors"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-[18px] h-[18px]" />
             Sair
           </button>
         ) : (
           <NavLink
             to="/auth"
             onClick={onNavigate}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[13px] bg-[#4f46e5] text-white font-semibold hover:bg-[#4338ca]"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-[14px] bg-[#4f46e5] text-white font-semibold hover:bg-[#4338ca]"
           >
             Entrar
           </NavLink>
