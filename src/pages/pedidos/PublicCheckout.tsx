@@ -1754,35 +1754,50 @@ const PublicCheckout = () => {
                   {/* Opções de Frete */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <Truck className="h-4 w-4" />
+                      <Truck className="h-4 w-4 text-indigo-600" />
                       Opções de Frete *
                     </h4>
                     {!selectedShipping && (
                       <p className="text-xs text-red-500 mb-2">Selecione uma opção de frete para continuar</p>
                     )}
                     <div className="space-y-2">
-                      {shippingOptions.map((option) => (
-                        <div key={option.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="radio"
-                              id={option.id}
-                              name="frete"
-                              value={option.id}
-                              checked={selectedShipping === option.id}
-                              onChange={(e) => handleShippingChange(e.target.value)}
-                              className="w-4 h-4"
-                            />
-                            <label htmlFor={option.id} className="cursor-pointer">
-                              <span className="font-medium">{option.name}</span>
-                              <p className="text-sm text-muted-foreground">
-                                {option.company} - {formatDeliveryTime(option.delivery_time, option.company, option.id)}
-                              </p>
-                            </label>
+                      {shippingOptions.map((option) => {
+                        const isSelected = selectedShipping === option.id;
+                        const price = parseFloat(option.custom_price || option.price);
+                        const isFree = !price;
+                        return (
+                          <div
+                            key={option.id}
+                            onClick={() => handleShippingChange(option.id)}
+                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/20'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="radio"
+                                id={option.id}
+                                name="frete"
+                                value={option.id}
+                                checked={isSelected}
+                                onChange={(e) => handleShippingChange(e.target.value)}
+                                className="w-4 h-4 accent-indigo-600"
+                              />
+                              <label htmlFor={option.id} className="cursor-pointer">
+                                <span className="font-medium">{option.name}</span>
+                                <p className="text-sm text-muted-foreground">
+                                  {option.company} · {formatDeliveryTime(option.delivery_time, option.company, option.id)}
+                                </p>
+                              </label>
+                            </div>
+                            <span className={`font-bold ${isFree ? 'text-emerald-600' : ''}`}>
+                              {isFree ? 'Grátis' : formatCurrency(price)}
+                            </span>
                           </div>
-                          <span className="font-bold">{formatCurrency(parseFloat(option.custom_price || option.price))}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
