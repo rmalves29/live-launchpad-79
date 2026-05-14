@@ -120,7 +120,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <nav className="flex-1 p-2 overflow-y-auto scrollbar-thin">
         {groups.map((group) => (
           <div key={group.label} className="mb-2">
-            <div className="text-[10px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
+            <div className="text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider px-3 pt-3 pb-1">
               {group.label}
             </div>
             {group.items.map((item) => {
@@ -131,13 +131,13 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   key={item.path}
                   to={item.path}
                   onClick={onNavigate}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[14px] transition-colors ${
                     active
                       ? 'bg-[#eef2ff] text-[#4f46e5] font-semibold'
                       : 'text-[#6b7280] hover:bg-[#f3f4f6] hover:text-[#111827]'
                   }`}
                 >
-                  <Icon className="w-4 h-4 shrink-0" />
+                  <Icon className="w-[18px] h-[18px] shrink-0" />
                   <span className="truncate">{item.label}</span>
                 </NavLink>
               );
