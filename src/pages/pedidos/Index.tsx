@@ -526,7 +526,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         // Atualizar estado local
         setOrders(prev => prev.map(o => 
           o.id === orderId 
-            ? { ...o, melhor_envio_tracking_code: trackingText.trim() }
+            ? { ...o, melhor_envio_tracking_code: trackingText.trim(), order_status: 'enviado' as const }
             : o
         ));
 
