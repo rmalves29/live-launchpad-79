@@ -1899,6 +1899,7 @@ export type Database = {
           observation: string | null
           omie_order_id: number | null
           omie_sync_status: string | null
+          order_status: string | null
           payment_confirmation_delivered: boolean | null
           payment_confirmation_sent: boolean | null
           payment_installments: number | null
@@ -1944,6 +1945,7 @@ export type Database = {
           observation?: string | null
           omie_order_id?: number | null
           omie_sync_status?: string | null
+          order_status?: string | null
           payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
           payment_installments?: number | null
@@ -1989,6 +1991,7 @@ export type Database = {
           observation?: string | null
           omie_order_id?: number | null
           omie_sync_status?: string | null
+          order_status?: string | null
           payment_confirmation_delivered?: boolean | null
           payment_confirmation_sent?: boolean | null
           payment_installments?: number | null
