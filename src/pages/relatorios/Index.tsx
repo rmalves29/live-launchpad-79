@@ -25,6 +25,10 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatBrasiliaDate, getBrasiliaDateISO, getBrasiliaDate, toBrasiliaDateISO, getBrasiliaDayBoundsISO } from '@/lib/date-utils';
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  BarChart, Bar, PieChart, Pie, Cell,
+} from 'recharts';
 
 const AgenteIAContent = lazy(() => import('@/pages/agente-ia/Index'));
 
