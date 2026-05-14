@@ -609,11 +609,14 @@ export default function SendFlow() {
   }, [backendSendFlow]);
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">SendFlow</h1>
-          <p className="text-muted-foreground">Envio automatizado de produtos para grupos do WhatsApp</p>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
+            SendFlow
+          </h1>
+          <p className="text-muted-foreground mt-1">Envio automatizado de produtos para grupos do WhatsApp</p>
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -621,6 +624,7 @@ export default function SendFlow() {
             size="sm"
             onClick={checkWhatsAppConnection}
             disabled={checkingConnection}
+            className="rounded-xl"
           >
             {checkingConnection ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -629,19 +633,16 @@ export default function SendFlow() {
             )}
             <span className="ml-2">Verificar Conexão</span>
           </Button>
-          <Badge variant={whatsappConnected ? 'default' : 'destructive'}>
-            {whatsappConnected ? (
-              <>
-                <CheckCircle2 className="h-3 w-3 mr-1" />
-                WhatsApp Conectado
-              </>
-            ) : (
-              <>
-                <XCircle className="h-3 w-3 mr-1" />
-                WhatsApp Desconectado
-              </>
-            )}
-          </Badge>
+          <div
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium ${
+              whatsappConnected
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                : 'bg-destructive/10 border-destructive/20 text-destructive'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${whatsappConnected ? 'bg-emerald-500 animate-pulse' : 'bg-destructive'}`}></span>
+            {whatsappConnected ? 'WhatsApp Conectado' : 'WhatsApp Desconectado'}
+          </div>
         </div>
       </div>
 
