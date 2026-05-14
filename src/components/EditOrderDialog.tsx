@@ -41,6 +41,11 @@ interface Order {
   event_date: string;
   total_amount: number;
   cart_id?: number;
+  is_paid?: boolean;
+  printed?: boolean;
+  observation?: string;
+  melhor_envio_tracking_code?: string;
+  order_status?: string | null;
   cart_items?: {
     id: number;
     qty: number;
