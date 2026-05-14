@@ -140,6 +140,7 @@ const Relatorios = () => {
   const [metricMode, setMetricMode] = useState<'value' | 'qty'>('value');
   const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos'>('produtos');
   const [dailySeries, setDailySeries] = useState<Array<{ date: string; paid: number; unpaid: number; total: number; orders: number }>>([]);
+  const [globalStats, setGlobalStats] = useState<PeriodStats | null>(null);
   const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
