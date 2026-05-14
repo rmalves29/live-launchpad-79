@@ -673,11 +673,13 @@ export default function SendFlow() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
+        <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                <Users className="h-5 w-5" />
+              </div>
               <CardTitle>Grupos do WhatsApp</CardTitle>
             </div>
             <div className="flex gap-2">
