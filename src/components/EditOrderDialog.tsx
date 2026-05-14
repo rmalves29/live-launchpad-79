@@ -76,11 +76,22 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
   const [cartId, setCartId] = useState<number | null>(null);
-  
+  const [isPaid, setIsPaid] = useState<boolean>(false);
+  const [trackingCode, setTrackingCode] = useState<string>('');
+  const [observation, setObservation] = useState<string>('');
+  const [printed, setPrinted] = useState<boolean>(false);
+  const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'enviado' | ''>('');
+  const [savingMeta, setSavingMeta] = useState(false);
+
 
 useEffect(() => {
   if (open && order) {
     setCartId(order.cart_id ?? null);
+    setIsPaid(!!order.is_paid);
+    setTrackingCode(order.melhor_envio_tracking_code || '');
+    setObservation(order.observation || '');
+    setPrinted(!!order.printed);
+    setOrderStatus((order.order_status as any) || '');
     loadProducts();
   }
 }, [open, order]);
