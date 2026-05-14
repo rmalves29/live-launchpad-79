@@ -1325,44 +1325,41 @@ const PublicCheckout = () => {
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 pb-12 space-y-8">
         {/* Título da página */}
-        <div className="text-center space-y-2 pt-4">
-          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/60 bg-clip-text">
-            Finalizar Compra
-          </h1>
-          <p className="text-muted-foreground text-lg">
+        <div className="space-y-1 pt-2">
+          <h1 className="text-3xl font-bold tracking-tight">Checkout</h1>
+          <p className="text-muted-foreground">
             Localize seus pedidos e finalize o pagamento
           </p>
         </div>
 
         {/* Card de busca pedidos em aberto */}
         <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
-          <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-b border-slate-100 dark:border-slate-700/50 pb-5">
+          <CardHeader className="border-b border-slate-100 dark:border-slate-700/50 pb-5">
             <CardTitle className="flex items-center gap-3 text-lg">
-              <div className="p-2 bg-emerald-500/10 rounded-lg">
-                <ShoppingCart className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
+              <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               Buscar Pedidos em Aberto
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
+            <label className="text-sm font-medium mb-2 block">Telefone do cliente</label>
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="(31) 99999-9999"
+                  placeholder="(11) 98765-4321"
                   value={phone}
                   onChange={(e) => handlePhoneChange(e.target.value, setPhone)}
                   onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
-                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500/20"
+                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
               <Button 
                 onClick={searchOrders} 
                 disabled={loadingOrders} 
-                className="h-12 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200"
+                className="h-12 px-6 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all duration-200"
               >
                 {loadingOrders ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
-                <span className="ml-2 font-medium">Buscar</span>
+                <span className="ml-2 font-medium">Buscar Pedidos</span>
               </Button>
             </div>
             {!searched && (
@@ -1617,8 +1614,8 @@ const PublicCheckout = () => {
                   {/* Dados do Cliente */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Seus Dados
+                      <User className="h-4 w-4 text-indigo-600" />
+                      Dados do Cliente
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
@@ -1673,7 +1670,7 @@ const PublicCheckout = () => {
                   {/* Endereço */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
+                      <MapPin className="h-4 w-4 text-indigo-600" />
                       Endereço de Entrega
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1757,35 +1754,50 @@ const PublicCheckout = () => {
                   {/* Opções de Frete */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <Truck className="h-4 w-4" />
+                      <Truck className="h-4 w-4 text-indigo-600" />
                       Opções de Frete *
                     </h4>
                     {!selectedShipping && (
                       <p className="text-xs text-red-500 mb-2">Selecione uma opção de frete para continuar</p>
                     )}
                     <div className="space-y-2">
-                      {shippingOptions.map((option) => (
-                        <div key={option.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="radio"
-                              id={option.id}
-                              name="frete"
-                              value={option.id}
-                              checked={selectedShipping === option.id}
-                              onChange={(e) => handleShippingChange(e.target.value)}
-                              className="w-4 h-4"
-                            />
-                            <label htmlFor={option.id} className="cursor-pointer">
-                              <span className="font-medium">{option.name}</span>
-                              <p className="text-sm text-muted-foreground">
-                                {option.company} - {formatDeliveryTime(option.delivery_time, option.company, option.id)}
-                              </p>
-                            </label>
+                      {shippingOptions.map((option) => {
+                        const isSelected = selectedShipping === option.id;
+                        const price = parseFloat(option.custom_price || option.price);
+                        const isFree = !price;
+                        return (
+                          <div
+                            key={option.id}
+                            onClick={() => handleShippingChange(option.id)}
+                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/20'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="radio"
+                                id={option.id}
+                                name="frete"
+                                value={option.id}
+                                checked={isSelected}
+                                onChange={(e) => handleShippingChange(e.target.value)}
+                                className="w-4 h-4 accent-indigo-600"
+                              />
+                              <label htmlFor={option.id} className="cursor-pointer">
+                                <span className="font-medium">{option.name}</span>
+                                <p className="text-sm text-muted-foreground">
+                                  {option.company} · {formatDeliveryTime(option.delivery_time, option.company, option.id)}
+                                </p>
+                              </label>
+                            </div>
+                            <span className={`font-bold ${isFree ? 'text-emerald-600' : ''}`}>
+                              {isFree ? 'Grátis' : formatCurrency(price)}
+                            </span>
                           </div>
-                          <span className="font-bold">{formatCurrency(parseFloat(option.custom_price || option.price))}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1957,7 +1969,7 @@ const PublicCheckout = () => {
                   </div>
 
                   <Button
-                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 text-lg shadow-lg shadow-emerald-500/25"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 text-lg shadow-md"
                     onClick={() => processMultipleOrdersPayment(selectedOrders)}
                     disabled={loadingPayment || (paymentMethod === 'pix' && pixDiscountLoading)}
                   >
