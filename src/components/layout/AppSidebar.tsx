@@ -110,7 +110,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Brand */}
       <div className="p-4 border-b border-[#f3f4f6]">
         <NavLink to="/" onClick={onNavigate} className="flex items-center justify-center">
-          <img src={cartzyLogo} alt="Cartzy" className="h-[2.2rem] w-auto object-contain" />
+          <img src={cartzyLogo} alt="Cartzy" className="h-[3.3rem] w-auto object-contain" />
         </NavLink>
       </div>
 
@@ -227,7 +227,7 @@ export function AppSidebar() {
             <SidebarContent onNavigate={() => setMobileOpen(false)} />
           </SheetContent>
         </Sheet>
-        <img src={cartzyLogo} alt="Cartzy" className="h-7 w-auto object-contain" />
+        <img src={cartzyLogo} alt="Cartzy" className="h-[2.625rem] w-auto object-contain" />
         <div className="w-9" />
       </div>
     </>
