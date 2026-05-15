@@ -217,14 +217,15 @@ export default function TenantIntegrationsPage() {
   const showAdvancedIntegrations = ALLOWED_ADVANCED_SLUGS.includes(tenant.slug || '');
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <h1 className="text-3xl font-bold mb-2">Integrações</h1>
-      <p className="text-muted-foreground mb-6">
-        Configure suas integrações de pagamento, envio e ERP para a empresa <strong>{tenant.name}</strong>
-      </p>
+    <div className="bg-white -mx-4 sm:-mx-6 lg:-mx-8 -my-4 sm:-my-6 lg:-my-8 min-h-screen">
+      <div className="container mx-auto p-6 max-w-7xl">
+        <h1 className="text-3xl font-bold mb-2">Integrações</h1>
+        <p className="text-muted-foreground mb-6">
+          Configure suas integrações de pagamento, envio e ERP para a empresa <strong>{tenant.name}</strong>
+        </p>
 
-      <Tabs defaultValue={new URLSearchParams(window.location.search).get('instagram_success') || new URLSearchParams(window.location.search).get('instagram_error') ? 'instagram' : 'bling'} className="w-full">
-        <TabsList className="flex flex-wrap h-auto gap-1 w-full">
+        <Tabs defaultValue={new URLSearchParams(window.location.search).get('instagram_success') || new URLSearchParams(window.location.search).get('instagram_error') ? 'instagram' : 'bling'} className="w-full">
+          <TabsList className="flex flex-wrap h-auto gap-1 w-full bg-white border border-border">
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
@@ -366,7 +367,8 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="meuscorreios" className="mt-6">
           <MeusCorreiosIntegration tenantId={tenantId} />
         </TabsContent>
-      </Tabs>
+        </Tabs>
+      </div>
     </div>
   );
 }
