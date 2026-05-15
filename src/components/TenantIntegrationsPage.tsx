@@ -367,7 +367,8 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="meuscorreios" className="mt-6">
           <MeusCorreiosIntegration tenantId={tenantId} />
         </TabsContent>
-      </Tabs>
+        </Tabs>
+      </div>
     </div>
   );
 }
