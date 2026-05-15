@@ -1680,12 +1680,18 @@ serve(async (req) => {
 
         // Marcar como "processing" IMEDIATAMENTE para evitar envios paralelos
         const processingStatus = createProcessingStatus();
-        const { data: lockedOrder, error: lockError } = await supabase
+        let lockQuery = supabase
           .from('orders')
           .update({ bling_sync_status: processingStatus })
           .eq('id', order.id)
           .eq('tenant_id', tenant_id)
-          .is('bling_order_id', null)
+          .is('bling_order_id', null);
+
+        lockQuery = order.bling_sync_status
+          ? lockQuery.eq('bling_sync_status', order.bling_sync_status)
+          : lockQuery.is('bling_sync_status', null);
+
+        const { data: lockedOrder, error: lockError } = await lockQuery
           .select('id')
           .maybeSingle();
 
@@ -2012,12 +2018,18 @@ serve(async (req) => {
           try {
             // TRAVA DE CONCORRÊNCIA: Marcar como processing antes de enviar
             const processingStatus = createProcessingStatus();
-            const { data: lockedOrder, error: lockErr } = await supabase
+            let lockQuery = supabase
               .from('orders')
               .update({ bling_sync_status: processingStatus })
               .eq('id', order.id)
               .eq('tenant_id', tenant_id)
-              .is('bling_order_id', null)
+              .is('bling_order_id', null);
+
+            lockQuery = order.bling_sync_status
+              ? lockQuery.eq('bling_sync_status', order.bling_sync_status)
+              : lockQuery.is('bling_sync_status', null);
+
+            const { data: lockedOrder, error: lockErr } = await lockQuery
               .select('id')
               .maybeSingle();
 
