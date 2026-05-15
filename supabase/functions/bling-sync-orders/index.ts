@@ -12,6 +12,24 @@ const BLING_API_URL = 'https://api.bling.com.br/Api/v3';
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Normaliza UF: converte nome do estado (ex: "São Paulo", "Goias") para sigla de 2 letras (ex: "SP", "GO")
+const UF_MAP: Record<string, string> = {
+  'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
+  'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
+  'goias': 'GO', 'maranhao': 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS',
+  'minas gerais': 'MG', 'para': 'PA', 'paraiba': 'PB', 'parana': 'PR',
+  'pernambuco': 'PE', 'piaui': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN',
+  'rio grande do sul': 'RS', 'rondonia': 'RO', 'roraima': 'RR', 'santa catarina': 'SC',
+  'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO',
+};
+function normalizeUF(state: string | null | undefined): string {
+  if (!state) return '';
+  const trimmed = state.trim();
+  if (trimmed.length === 2) return trimmed.toUpperCase();
+  const key = trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return UF_MAP[key] || trimmed.toUpperCase().slice(0, 2);
+}
+
 /** Log a Bling sync operation to bling_sync_logs table */
 async function logBlingSync(
   supabase: any,
@@ -516,7 +534,7 @@ async function getOrCreateBlingContactId(
   const customerComplement = order.customer_complement || customer?.complement || '';
   const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
   const customerCity = order.customer_city || customer?.city || '';
-  const customerState = order.customer_state || customer?.state || '';
+  const customerState = normalizeUF(order.customer_state || customer?.state || '');
   const customerEmail = customer?.email || '';
 
   // Helper to build address data for updates
@@ -863,7 +881,7 @@ async function sendOrderToBling(
   const customerComplement = order.customer_complement || customer?.complement || '';
   const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
   const customerCity = order.customer_city || customer?.city || '';
-  const customerState = order.customer_state || customer?.state || '';
+  const customerState = normalizeUF(order.customer_state || customer?.state || '');
   const customerName = order.customer_name || customer?.name || 'Cliente';
 
   // Determinar CFOP com base no estado do cliente vs estado da loja
@@ -2364,7 +2382,7 @@ serve(async (req) => {
             bairro: testCustomer.neighborhood || '',
             cep: customerCep,
             municipio: testCustomer.city || '',
-            uf: testCustomer.state || '',
+            uf: normalizeUF(testCustomer.state),
           },
         };
 
@@ -2397,7 +2415,7 @@ serve(async (req) => {
               bairro: testCustomer.neighborhood || '',
               cep: customerCep,
               municipio: testCustomer.city || '',
-              uf: testCustomer.state || '',
+              uf: normalizeUF(testCustomer.state),
             },
           };
         }

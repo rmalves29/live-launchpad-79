@@ -122,7 +122,17 @@ serve(async (req) => {
     const neighborhood = order.customer_neighborhood || '';
     const cep = (order.customer_cep || '').replace(/\D/g, '');
     const city = order.customer_city || '';
-    const state = order.customer_state || '';
+    const rawState = order.customer_state || '';
+    const UF_MAP: Record<string, string> = {
+      'acre':'AC','alagoas':'AL','amapa':'AP','amazonas':'AM','bahia':'BA','ceara':'CE',
+      'distrito federal':'DF','espirito santo':'ES','goias':'GO','maranhao':'MA',
+      'mato grosso':'MT','mato grosso do sul':'MS','minas gerais':'MG','para':'PA',
+      'paraiba':'PB','parana':'PR','pernambuco':'PE','piaui':'PI','rio de janeiro':'RJ',
+      'rio grande do norte':'RN','rio grande do sul':'RS','rondonia':'RO','roraima':'RR',
+      'santa catarina':'SC','sao paulo':'SP','sergipe':'SE','tocantins':'TO'
+    };
+    const _t = rawState.trim();
+    const state = _t.length === 2 ? _t.toUpperCase() : (UF_MAP[_t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')] || _t.toUpperCase().slice(0,2));
     const customerName = order.customer_name || customer?.name || '';
 
     log(`Endereço do pedido: ${street}, ${number} - ${neighborhood} - ${city}/${state} - CEP: ${cep}`);
