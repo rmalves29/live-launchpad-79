@@ -1,107 +1,42 @@
+## Objetivo
 
-# Integração Sipag (Sicoob) como gateway de pagamento
+Reestilizar a página **Configurações** (`src/pages/config/Index.tsx`) seguindo o mockup enviado, mantendo **100% das funcionalidades** atuais e **sem alterar a barra lateral** (`AppSidebar`).
 
-Vou seguir exatamente o mesmo padrão das integrações Pagar.me, Appmax e InfinitePay já existentes no projeto, garantindo consistência de UX, exclusividade mútua entre gateways e reaproveitamento da rota universal `/pagamento/retorno`.
+## Escopo (somente visual)
 
-## 1. Banco de dados
+Alterações ficam restritas ao arquivo `src/pages/config/Index.tsx` — apenas o wrapper da página e a barra de abas. Os componentes internos de cada aba (`CompanySettings`, `ShippingOptionsManager`, `WhatsAppGroupsManager`, `CouponsManager`, `GiftsManager`, `PrinterSettings`, `TenantsManager`, `TenantSimulator`, `IntegrationsChecklist`, `WhatsAppSettings`, `MelhorEnvioStatus`, `AvailabilitySettings`) **não serão modificados** — assim nada de funcional quebra.
 
-Migração criando a tabela `integration_sipag` e ajustando o trigger de exclusividade mútua.
+## Mudanças visuais (espelhando o mockup)
 
-- `integration_sipag` (uma linha por tenant):
-  - `tenant_id` UUID UNIQUE
-  - `client_id`, `client_secret` (texto, criptografado em repouso pelo Supabase)
-  - `merchant_id`, `terminal_id`
-  - `certificate_base64` (o `.pfx` codificado — armazenado no banco para o tenant; a alternativa seria secret global, mas como cada tenant tem o seu, fica em tabela)
-  - `certificate_password`
-  - `pix_key` (chave PIX recebedora cadastrada no Sicoob)
-  - `enable_pix`, `enable_credit_card`, `enable_boleto` (booleans)
-  - `webhook_secret` (gerado por nós para validar callbacks)
-  - `environment` ('production' fixo agora; campo já preparado caso queira sandbox depois)
-  - `is_active` boolean
-- Política RLS igual às outras tabelas `integration_*` (tenant vê o seu, super_admin vê tudo).
-- Atualizar a função `deactivate_other_payment_integrations()` para incluir `integration_sipag` na regra de exclusividade mútua junto com MP, Pagar.me, Appmax e InfinitePay.
-- Trigger `BEFORE INSERT OR UPDATE OF is_active` em `integration_sipag` para chamar essa função.
+1. **Fundo da página**: branco / cinza muito claro (`bg-white`), sem o `container mx-auto px-4 py-8` antigo.
+2. **Cabeçalho**:
+   - Título "Configurações do Sistema" 24px bold + ícone Settings indigo.
+   - Subtítulo cinza menor logo abaixo.
+   - Padding `28px 32px 0`.
+3. **Barra de abas** (substitui a `TabsList` em grid):
+   - Layout horizontal com `border-b` cinza claro.
+   - Cada aba: padding `10px 18px`, fonte 13px, ícone à esquerda.
+   - Aba ativa: texto `text-[#4f46e5]` + `border-b-2 border-[#4f46e5]`.
+   - Hover: cor indigo no texto.
+   - Mantém ordem atual: Configurações (super admin), Empresa, Frete, Grupos, Cupons, Brindes, Impressora, Empresas (super admin).
+   - Scroll horizontal no mobile (`overflow-x-auto`).
+4. **Conteúdo** (`TabsContent`): padding `24px 32px`, espaçamento `space-y-5`. Cards internos continuam renderizando normalmente.
+5. **Cards de "configurações do evento" / "status das integrações"** (aba "Configurações"): apenas refino visual — bordas `#e2e8f0`, radius `10px`, padding 20px. Estrutura e dados permanecem idênticos.
 
-## 2. Edge Functions
+## Funcionalidades preservadas
 
-Quatro funções novas em `supabase/functions/`:
-
-| Função | Responsabilidade |
-|---|---|
-| `create-sipag-payment` | Recebe `order_id` + método (`pix`/`credit_card`/`boleto`), busca credenciais do tenant, autentica via OAuth2 + mTLS no Sipag, cria a cobrança e devolve `payment_link`/QR Code/linha digitável. Aplica desconto PIX e respeita o cálculo de total da memória `[Total do Pedido]`. |
-| `sipag-webhook` | Endpoint público que recebe callbacks do Sicoob, valida assinatura via `webhook_secret`, marca `orders.is_paid = true`, dispara confirmação WhatsApp existente. Retorna 200 sempre (padrão da memória). |
-| `sipag-cancel-payment` | Solicita estorno (PIX devolução / cartão chargeback). Usa o trigger `cancelamento-automatico-por-estorno` já existente. |
-| `sipag-test-connection` | Botão na UI para validar credenciais + certificado antes de salvar `is_active=true`. |
-
-Todas seguindo o padrão do projeto:
-- CORS headers conforme memória `[CORS Edge Functions]`
-- Retorno HTTP 200 com `{success, error}` em falhas
-- Auth via service role internamente
-- mTLS via `Deno.createHttpClient({ caCerts, cert, key })` — extraindo cert/key do `.pfx` em runtime
-
-## 3. Frontend
-
-Novo arquivo `src/components/integrations/SipagIntegration.tsx` espelhando o `PagarMeIntegration.tsx`:
-- Formulário com campos do tenant (incluindo upload do `.pfx` convertido para base64)
-- Toggle de ativação (avisa que desativa os outros gateways)
-- Switches para PIX / Cartão / Boleto
-- Botão "Testar conexão"
-
-Atualizar `src/components/TenantIntegrationsPage.tsx`:
-- Importar `SipagIntegration`
-- Adicionar nova `<TabsTrigger value="sipag">` com ícone `Building2` ou `Landmark`
-- Adicionar `<TabsContent value="sipag">`
-- Adicionar query `sipagIntegration` para mostrar o ✓ verde quando ativa
-
-## 4. Checkout
-
-Em `src/pages/pedidos/PublicCheckout.tsx` (e onde mais o checkout escolhe gateway):
-- Detectar se o tenant tem `integration_sipag.is_active = true`
-- Listar os métodos habilitados (PIX/Cartão/Boleto) como opções
-- No submit, chamar `create-sipag-payment` em vez do gateway atual
-- Reutilizar o retorno universal `/pagamento/retorno` (memória `[Retorno Universal]`)
-
-## 5. Pré-requisitos do usuário (fora do código)
-
-Você precisa providenciar antes de ativar em produção:
-1. Conta PJ Sicoob com **credenciamento e-commerce ativo** (solicitar na agência)
-2. Acesso ao portal https://developers.sicoob.com.br
-3. `client_id`, `client_secret`, `merchant_id`, `terminal_id` de produção
-4. Certificado digital `.pfx` + senha
-5. Chave PIX recebedora cadastrada
-6. URL do webhook a cadastrar no painel Sicoob (vou te passar pronta após deploy: `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/sipag-webhook`)
+- `Tabs` do shadcn continua orquestrando o estado (mantém `defaultValue` e `searchParams.get('tab')`).
+- Lógica de `isMaster` (super admin) para mostrar abas "Configurações" e "Empresas".
+- `loadSettings()`, `useEffect`, integrações com Supabase, toasts, loading e fallback de "Acesso Negado" — sem alteração.
+- Todos os sub-componentes recebem as mesmas props (nenhuma).
+- `AppSidebar` e `AppShell` ficam **intocados**.
 
 ## Detalhes técnicos
 
-```
-Fluxo PIX (mais simples - implementar primeiro)
-─────────────────────────────────────────────
-Checkout → create-sipag-payment
-  ├─ busca integration_sipag pelo tenant_id
-  ├─ POST /auth/oauth/v2/token (client_credentials, mTLS)
-  ├─ POST /pix/api/v2/cob (cria cobrança imediata)
-  ├─ GET  /pix/api/v2/cob/{txid}/qrcode
-  └─ retorna { qr_code_base64, copia_e_cola, expires_at }
-        ↓
-Cliente paga PIX
-        ↓
-Sicoob → POST /sipag-webhook
-  ├─ valida assinatura HMAC
-  ├─ UPDATE orders SET is_paid=true WHERE id=...
-  └─ trigger process_paid_order já dispara WhatsApp
-```
+- Implementação usando os componentes shadcn `Tabs / TabsList / TabsTrigger / TabsContent` com `className` customizado para reproduzir o visual de border-bottom (em vez do grid pill atual).
+- Utilizando classes Tailwind diretas com tokens hex do mockup (mesmo padrão já adotado em `etiquetas/Index.tsx` e `TenantIntegrationsPage.tsx` aprovados anteriormente).
+- Sem alterações em `index.css`, `tailwind.config.ts`, rotas, ou dependências.
 
-## Ordem de implementação sugerida
+## Riscos
 
-1. Migração da tabela + trigger de exclusividade
-2. Edge function `create-sipag-payment` (apenas PIX inicialmente)
-3. Edge function `sipag-webhook`
-4. UI `SipagIntegration.tsx` + aba na página de integrações
-5. Edge function `sipag-test-connection`
-6. Integração no `PublicCheckout`
-7. Adicionar Cartão de Crédito (após PIX validado em produção)
-8. Adicionar Boleto
-
-## O que NÃO vai mudar
-
-- Tabela `orders`, fluxo de cancelamento, cálculo de total, rota de retorno, mensagens WhatsApp, integração ERP (Bling) — tudo continua funcionando igual; o Sipag entra como mais uma opção plugada na arquitetura existente.
+- Mínimos. É um restyle isolado de 1 arquivo. Os filhos das abas continuam idênticos, então nada de funcional quebra.

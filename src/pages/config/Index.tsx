@@ -236,61 +236,64 @@ const Config = () => {
     );
   }
 
+  const tabTriggerClass =
+    "flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium text-slate-500 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent hover:text-[#4f46e5] data-[state=active]:text-[#4f46e5] data-[state=active]:border-[#4f46e5] data-[state=active]:shadow-none transition-colors";
+
   return (
-      <div className="min-h-screen bg-background">
-        <div className="container mx-auto px-4 py-8">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold flex items-center">
-              <Settings className="h-8 w-8 mr-3 text-primary" />
-              Configurações do Sistema
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Configure integrações, cupons, brindes e parâmetros do sistema
-            </p>
+      <div className="min-h-screen bg-white">
+        <div className="px-8 pt-7">
+          <div className="flex items-center gap-3 mb-1.5">
+            <Settings className="h-7 w-7 text-[#4f46e5]" />
+            <h1 className="text-[24px] font-bold text-slate-900">Configurações do Sistema</h1>
+          </div>
+          <p className="text-slate-500 text-[13px] mb-5">
+            Configure integrações, cupons, brindes e parâmetros do sistema
+          </p>
+        </div>
+
+        <Tabs defaultValue={searchParams.get('tab') || (isMaster ? 'config' : 'company')} className="w-full">
+          <div className="border-b border-slate-200 px-8 sticky top-0 bg-white z-10 overflow-x-auto">
+            <TabsList className="h-auto p-0 bg-transparent rounded-none gap-0 justify-start">
+              {isMaster && (
+                <TabsTrigger value="config" className={tabTriggerClass}>
+                  <Settings className="h-3.5 w-3.5" />
+                  Configurações
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="company" className={tabTriggerClass}>
+                <Building2 className="h-3.5 w-3.5" />
+                Empresa
+              </TabsTrigger>
+              <TabsTrigger value="shipping" className={tabTriggerClass}>
+                <Truck className="h-3.5 w-3.5" />
+                Frete
+              </TabsTrigger>
+              <TabsTrigger value="groups" className={tabTriggerClass}>
+                <Users className="h-3.5 w-3.5" />
+                Grupos
+              </TabsTrigger>
+              <TabsTrigger value="coupons" className={tabTriggerClass}>
+                <Percent className="h-3.5 w-3.5" />
+                Cupons
+              </TabsTrigger>
+              <TabsTrigger value="gifts" className={tabTriggerClass}>
+                <Gift className="h-3.5 w-3.5" />
+                Brindes
+              </TabsTrigger>
+              <TabsTrigger value="printer" className={tabTriggerClass}>
+                <Printer className="h-3.5 w-3.5" />
+                Impressora
+              </TabsTrigger>
+              {isMaster && (
+                <TabsTrigger value="tenants" className={tabTriggerClass}>
+                  <Building2 className="h-3.5 w-3.5" />
+                  Empresas
+                </TabsTrigger>
+              )}
+            </TabsList>
           </div>
 
-          <div className="space-y-6">
-            <Tabs defaultValue={searchParams.get('tab') || (isMaster ? 'config' : 'company')} className="w-full">
-              <TabsList className={`grid w-full ${isMaster ? 'grid-cols-8' : 'grid-cols-6'}`}>
-                {isMaster && (
-                  <TabsTrigger value="config" className="flex items-center text-xs sm:text-sm">
-                    <Settings className="h-4 w-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">Configurações</span>
-                    <span className="sm:hidden">Config</span>
-                  </TabsTrigger>
-                )}
-                <TabsTrigger value="company" className="flex items-center text-xs sm:text-sm">
-                  <Building2 className="h-4 w-4 mr-1 sm:mr-2" />
-                  Empresa
-                </TabsTrigger>
-                <TabsTrigger value="shipping" className="flex items-center text-xs sm:text-sm">
-                  <Truck className="h-4 w-4 mr-1 sm:mr-2" />
-                  Frete
-                </TabsTrigger>
-                <TabsTrigger value="groups" className="flex items-center text-xs sm:text-sm">
-                  <Users className="h-4 w-4 mr-1 sm:mr-2" />
-                  <span className="hidden sm:inline">Grupos</span>
-                  <span className="sm:hidden">Grupos</span>
-                </TabsTrigger>
-                <TabsTrigger value="coupons" className="flex items-center text-xs sm:text-sm">
-                  <Percent className="h-4 w-4 mr-1 sm:mr-2" />
-                  Cupons
-                </TabsTrigger>
-                <TabsTrigger value="gifts" className="flex items-center text-xs sm:text-sm">
-                  <Gift className="h-4 w-4 mr-1 sm:mr-2" />
-                  Brindes
-                </TabsTrigger>
-                <TabsTrigger value="printer" className="flex items-center text-xs sm:text-sm">
-                  <Printer className="h-4 w-4 mr-1 sm:mr-2" />
-                  <span className="hidden sm:inline">Impressora</span>
-                  <span className="sm:hidden">Impr.</span>
-                </TabsTrigger>
-                {isMaster && (
-                  <TabsTrigger value="tenants" className="flex items-center text-xs sm:text-sm">
-                    Empresas
-                  </TabsTrigger>
-                )}
-              </TabsList>
+          <div className="px-8 py-6">
 
               {isMaster && (
                 <TabsContent value="config" className="space-y-6 mt-6">
