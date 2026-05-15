@@ -881,7 +881,7 @@ async function sendOrderToBling(
   const customerComplement = order.customer_complement || customer?.complement || '';
   const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
   const customerCity = order.customer_city || customer?.city || '';
-  const customerState = order.customer_state || customer?.state || '';
+  const customerState = normalizeUF(order.customer_state || customer?.state || '');
   const customerName = order.customer_name || customer?.name || 'Cliente';
 
   // Determinar CFOP com base no estado do cliente vs estado da loja
@@ -2382,7 +2382,7 @@ serve(async (req) => {
             bairro: testCustomer.neighborhood || '',
             cep: customerCep,
             municipio: testCustomer.city || '',
-            uf: testCustomer.state || '',
+            uf: normalizeUF(testCustomer.state),
           },
         };
 
@@ -2415,7 +2415,7 @@ serve(async (req) => {
               bairro: testCustomer.neighborhood || '',
               cep: customerCep,
               municipio: testCustomer.city || '',
-              uf: testCustomer.state || '',
+              uf: normalizeUF(testCustomer.state),
             },
           };
         }
