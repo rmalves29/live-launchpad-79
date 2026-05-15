@@ -1675,6 +1675,75 @@ export type Database = {
           },
         ]
       }
+      integration_sipag: {
+        Row: {
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          enable_boleto: boolean
+          enable_credit_card: boolean
+          enable_pix: boolean
+          environment: string
+          id: string
+          is_active: boolean
+          merchant_id: string | null
+          pix_key: string | null
+          tenant_id: string
+          terminal_id: string | null
+          updated_at: string
+          webhook_secret: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          enable_boleto?: boolean
+          enable_credit_card?: boolean
+          enable_pix?: boolean
+          environment?: string
+          id?: string
+          is_active?: boolean
+          merchant_id?: string | null
+          pix_key?: string | null
+          tenant_id: string
+          terminal_id?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          enable_boleto?: boolean
+          enable_credit_card?: boolean
+          enable_pix?: boolean
+          environment?: string
+          id?: string
+          is_active?: boolean
+          merchant_id?: string | null
+          pix_key?: string | null
+          tenant_id?: string
+          terminal_id?: string | null
+          updated_at?: string
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_sipag_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_sipag_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_whatsapp: {
         Row: {
           api_url: string | null
