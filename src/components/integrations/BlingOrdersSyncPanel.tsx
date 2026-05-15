@@ -49,6 +49,7 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
         .eq('tenant_id', tenantId)
         .eq('is_paid', true)
         .is('bling_order_id', null)
+        .or('bling_sync_status.is.null,bling_sync_status.eq.error,bling_sync_status.eq.processing')
         .or('is_cancelled.is.null,is_cancelled.eq.false');
       
       if (error) {
@@ -166,10 +167,12 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
           setScopeError(scopeIssue.error);
         }
         
-        if (data.synced === 0 && data.failed === 0) {
+        if (data.synced === 0 && data.failed === 0 && data.skipped === 0) {
           toast.info('Nenhum pedido pendente para sincronizar!');
+        } else if (data.synced === 0 && data.failed === 0 && data.skipped > 0) {
+          toast.info(`${data.skipped} pedido(s) antigo(s) sem itens foram ignorados. Nenhuma falha no Bling.`);
         } else {
-          toast.success(`Sincronização concluída! ${data.synced} pedido(s) enviado(s), ${data.failed} falha(s).`);
+          toast.success(`Sincronização concluída! ${data.synced} pedido(s) enviado(s), ${data.failed} falha(s), ${data.skipped || 0} ignorado(s).`);
         }
         
         queryClient.invalidateQueries({ queryKey: ['bling-integration', tenantId] });

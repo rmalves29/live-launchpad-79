@@ -12,6 +12,9 @@ const BLING_API_URL = 'https://api.bling.com.br/Api/v3';
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const createProcessingStatus = () => `processing:${crypto.randomUUID()}`;
+const isActiveProcessingStatus = (status?: string | null) => Boolean(status?.startsWith('processing:'));
+
 // Normaliza UF: converte nome do estado (ex: "São Paulo", "Goias") para sigla de 2 letras (ex: "SP", "GO")
 const UF_MAP: Record<string, string> = {
   'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
@@ -1665,7 +1668,7 @@ serve(async (req) => {
         }
 
         // TRAVA DE CONCORRÊNCIA: Verificar se outro processo já está sincronizando este pedido
-        if (order.bling_sync_status === 'processing') {
+        if (isActiveProcessingStatus(order.bling_sync_status)) {
           console.log(`[bling-sync-orders] Order ${order.id} is already being processed by another request`);
           result = {
             skipped: true,
@@ -1676,15 +1679,30 @@ serve(async (req) => {
         }
 
         // Marcar como "processing" IMEDIATAMENTE para evitar envios paralelos
-        const { error: lockError } = await supabase
+        const processingStatus = createProcessingStatus();
+        let lockQuery = supabase
           .from('orders')
-          .update({ bling_sync_status: 'processing' })
+          .update({ bling_sync_status: processingStatus })
           .eq('id', order.id)
           .eq('tenant_id', tenant_id)
-          .is('bling_order_id', null); // Só trava se ainda não tem bling_order_id
+          .is('bling_order_id', null);
 
-        if (lockError) {
+        lockQuery = order.bling_sync_status
+          ? lockQuery.eq('bling_sync_status', order.bling_sync_status)
+          : lockQuery.is('bling_sync_status', null);
+
+        const { data: lockedOrder, error: lockError } = await lockQuery
+          .select('id')
+          .maybeSingle();
+
+        if (lockError || !lockedOrder) {
           console.error(`[bling-sync-orders] Failed to acquire lock for order ${order.id}:`, lockError);
+          result = {
+            skipped: true,
+            reason: 'order_already_processing',
+            order_id: order.id,
+          };
+          break;
         }
 
         let cartItems: any[] = [];
@@ -1928,6 +1946,14 @@ serve(async (req) => {
       }
 
       case 'sync_all': {
+        // Recuperar locks antigos do formato legado que podiam ficar presos em "processing" após timeout/interrupção.
+        await supabase
+          .from('orders')
+          .update({ bling_sync_status: 'error' })
+          .eq('tenant_id', tenant_id)
+          .is('bling_order_id', null)
+          .eq('bling_sync_status', 'processing');
+
         // Buscar pedidos pagos que ainda não foram sincronizados e não estão sendo processados
         let ordersQuery = supabase
           .from('orders')
@@ -1935,7 +1961,7 @@ serve(async (req) => {
           .eq('tenant_id', tenant_id)
           .eq('is_paid', true)
           .is('bling_order_id', null)
-          .or('bling_sync_status.is.null,bling_sync_status.eq.error'); // Ignorar pedidos em 'processing'
+          .or('bling_sync_status.is.null,bling_sync_status.eq.error'); // Ignorar pedidos em processamento ativo
         
         // Aplicar filtro de data se fornecido
         if (start_date) {
@@ -1991,14 +2017,23 @@ serve(async (req) => {
 
           try {
             // TRAVA DE CONCORRÊNCIA: Marcar como processing antes de enviar
-            const { error: lockErr } = await supabase
+            const processingStatus = createProcessingStatus();
+            let lockQuery = supabase
               .from('orders')
-              .update({ bling_sync_status: 'processing' })
+              .update({ bling_sync_status: processingStatus })
               .eq('id', order.id)
               .eq('tenant_id', tenant_id)
               .is('bling_order_id', null);
 
-            if (lockErr) {
+            lockQuery = order.bling_sync_status
+              ? lockQuery.eq('bling_sync_status', order.bling_sync_status)
+              : lockQuery.is('bling_sync_status', null);
+
+            const { data: lockedOrder, error: lockErr } = await lockQuery
+              .select('id')
+              .maybeSingle();
+
+            if (lockErr || !lockedOrder) {
               console.log(`[bling-sync-orders] Could not lock order ${order.id}, skipping`);
               results.push({ order_id: order.id, success: false, error: 'Lock failed' });
               continue;
@@ -2024,8 +2059,8 @@ serve(async (req) => {
             // Skip orders without items
             if (cartItems.length === 0) {
               console.log(`[bling-sync-orders] Skipping order ${order.id}: no items`);
-              await supabase.from('orders').update({ bling_sync_status: null }).eq('id', order.id);
-              results.push({ order_id: order.id, success: false, error: 'Pedido sem itens' });
+              await supabase.from('orders').update({ bling_sync_status: 'skipped_no_items' }).eq('id', order.id).eq('tenant_id', tenant_id);
+              results.push({ order_id: order.id, success: true, skipped: true, error: 'Pedido sem itens' });
               continue;
             }
 
@@ -2103,7 +2138,7 @@ serve(async (req) => {
           .eq('tenant_id', tenant_id);
 
         result = {
-          synced: results.filter(r => r.success).length,
+          synced: results.filter(r => r.success && !r.skipped).length,
           failed: results.filter(r => !r.success).length,
           skipped: results.filter(r => r.error === 'Pedido sem itens').length,
           details: results,
