@@ -534,7 +534,7 @@ async function getOrCreateBlingContactId(
   const customerComplement = order.customer_complement || customer?.complement || '';
   const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
   const customerCity = order.customer_city || customer?.city || '';
-  const customerState = order.customer_state || customer?.state || '';
+  const customerState = normalizeUF(order.customer_state || customer?.state || '');
   const customerEmail = customer?.email || '';
 
   // Helper to build address data for updates
