@@ -12,6 +12,9 @@ const BLING_API_URL = 'https://api.bling.com.br/Api/v3';
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const createProcessingStatus = () => `processing:${crypto.randomUUID()}`;
+const isActiveProcessingStatus = (status?: string | null) => Boolean(status?.startsWith('processing:'));
+
 // Normaliza UF: converte nome do estado (ex: "São Paulo", "Goias") para sigla de 2 letras (ex: "SP", "GO")
 const UF_MAP: Record<string, string> = {
   'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
@@ -1665,7 +1668,7 @@ serve(async (req) => {
         }
 
         // TRAVA DE CONCORRÊNCIA: Verificar se outro processo já está sincronizando este pedido
-        if (order.bling_sync_status === 'processing') {
+        if (isActiveProcessingStatus(order.bling_sync_status)) {
           console.log(`[bling-sync-orders] Order ${order.id} is already being processed by another request`);
           result = {
             skipped: true,
@@ -1676,15 +1679,25 @@ serve(async (req) => {
         }
 
         // Marcar como "processing" IMEDIATAMENTE para evitar envios paralelos
-        const { error: lockError } = await supabase
+        const processingStatus = createProcessingStatus();
+        const { data: lockedOrder, error: lockError } = await supabase
           .from('orders')
-          .update({ bling_sync_status: 'processing' })
+          .update({ bling_sync_status: processingStatus })
           .eq('id', order.id)
           .eq('tenant_id', tenant_id)
-          .is('bling_order_id', null); // Só trava se ainda não tem bling_order_id
+          .is('bling_order_id', null)
+          .or('bling_sync_status.is.null,bling_sync_status.eq.error,bling_sync_status.eq.processing')
+          .select('id')
+          .maybeSingle();
 
-        if (lockError) {
+        if (lockError || !lockedOrder) {
           console.error(`[bling-sync-orders] Failed to acquire lock for order ${order.id}:`, lockError);
+          result = {
+            skipped: true,
+            reason: 'order_already_processing',
+            order_id: order.id,
+          };
+          break;
         }
 
         let cartItems: any[] = [];
