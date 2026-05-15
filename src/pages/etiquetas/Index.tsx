@@ -1792,6 +1792,7 @@ const Etiquetas = () => {
       </Tabs>
 
     </div>
+    </div>
   );
 };
 
