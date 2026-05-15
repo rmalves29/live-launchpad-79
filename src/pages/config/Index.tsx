@@ -412,9 +412,8 @@ const Config = () => {
                   </div>
                 </TabsContent>
               )}
-            </Tabs>
           </div>
-        </div>
+        </Tabs>
       </div>
   );
 };
