@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Bling OAuth2 Token URL
-const BLING_TOKEN_URL = "https://www.bling.com.br/Api/v3/oauth/token";
+const BLING_TOKEN_URL = "https://api.bling.com.br/Api/v3/oauth/token";
 
 // URL base para redirecionamentos
 const getPublicBaseUrl = () => {
