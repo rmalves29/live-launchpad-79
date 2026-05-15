@@ -1090,6 +1090,7 @@ const Etiquetas = () => {
   });
 
   return (
+    <div className="bg-white -mx-4 sm:-mx-6 lg:-mx-8 -my-4 sm:-my-6 lg:-my-8 min-h-screen">
     <div className="max-w-[1600px] mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
@@ -1790,6 +1791,7 @@ const Etiquetas = () => {
         )}
       </Tabs>
 
+    </div>
     </div>
   );
 };
