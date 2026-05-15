@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BLING_API_URL = "https://www.bling.com.br/Api/v3";
+const BLING_API_URL = "https://api.bling.com.br/Api/v3";
 
 const SYNC_BATCH_LIMIT = 120;
 const REQUEST_DELAY_MS = 150;
@@ -40,7 +40,7 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
       if (!integration.refresh_token || !integration.client_id || !integration.client_secret) return null;
       try {
         const credentials = btoa(`${integration.client_id}:${integration.client_secret}`);
-        const response = await fetch("https://www.bling.com.br/Api/v3/oauth/token", {
+        const response = await fetch("https://api.bling.com.br/Api/v3/oauth/token", {
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",

@@ -7,7 +7,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const BLING_API_URL = 'https://www.bling.com.br/Api/v3';
+const BLING_API_URL = 'https://api.bling.com.br/Api/v3';
 
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -308,7 +308,7 @@ async function refreshBlingToken(supabase: any, integration: any): Promise<strin
   try {
     const credentials = btoa(`${integration.client_id}:${integration.client_secret}`);
 
-    const response = await fetch('https://www.bling.com.br/Api/v3/oauth/token', {
+    const response = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
