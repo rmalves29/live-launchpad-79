@@ -1686,7 +1686,6 @@ serve(async (req) => {
           .eq('id', order.id)
           .eq('tenant_id', tenant_id)
           .is('bling_order_id', null)
-          .or('bling_sync_status.is.null,bling_sync_status.eq.error,bling_sync_status.eq.processing')
           .select('id')
           .maybeSingle();
 
@@ -2019,7 +2018,6 @@ serve(async (req) => {
               .eq('id', order.id)
               .eq('tenant_id', tenant_id)
               .is('bling_order_id', null)
-              .or('bling_sync_status.is.null,bling_sync_status.eq.error,bling_sync_status.eq.processing')
               .select('id')
               .maybeSingle();
 
