@@ -7,9 +7,8 @@ const corsHeaders = {
 };
 
 const BLING_API_URL = "https://api.bling.com.br/Api/v3";
-
-const SYNC_BATCH_LIMIT = 120;
-const REQUEST_DELAY_MS = 150;
+const SYNC_BATCH_LIMIT = 40;
+const CONCURRENCY = 5;
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -36,7 +35,7 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
     const expiresAt = new Date(integration.token_expires_at);
     const now = new Date();
     if (expiresAt.getTime() - now.getTime() < 5 * 60 * 1000) {
-      console.log("[sync-bling-tracking] Token expired, refreshing...");
+      console.log("[sync-bling-tracking] Token expirado, renovando...");
       if (!integration.refresh_token || !integration.client_id || !integration.client_secret) return null;
       try {
         const credentials = btoa(`${integration.client_id}:${integration.client_secret}`);
@@ -61,12 +60,22 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
         }).eq("tenant_id", integration.tenant_id);
         return tokenData.access_token;
       } catch (e) {
-        console.error("[sync-bling-tracking] Token refresh error:", e);
+        console.error("[sync-bling-tracking] Erro ao renovar token:", e);
         return null;
       }
     }
   }
   return integration.access_token;
+}
+
+async function runConcurrent<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  concurrency: number
+): Promise<void> {
+  for (let i = 0; i < items.length; i += concurrency) {
+    await Promise.all(items.slice(i, i + concurrency).map(fn));
+  }
 }
 
 serve(async (req: Request) => {
@@ -75,17 +84,16 @@ serve(async (req: Request) => {
   }
 
   try {
-    // Accept optional filters
     let filterTenantId: string | null = null;
     let filterOrderId: number | null = null;
     try {
       const body = await req.json();
       filterTenantId = body?.tenant_id || null;
       filterOrderId = Number.isFinite(Number(body?.order_id)) ? Number(body.order_id) : null;
-    } catch { /* no body */ }
+    } catch { /* sem body */ }
 
     console.log(
-      "🔄 [sync-bling-tracking] Iniciando sincronização de rastreios do Bling...",
+      `🔄 [sync-bling-tracking] Iniciando...`,
       filterTenantId ? `Tenant: ${filterTenantId}` : "Todos os tenants",
       filterOrderId ? `Pedido: ${filterOrderId}` : ""
     );
@@ -94,7 +102,6 @@ serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Find orders synced to Bling but without tracking code
     let query = supabase
       .from("orders")
       .select("id, tenant_id, bling_order_id, customer_phone, customer_name, unique_order_id")
@@ -103,11 +110,7 @@ serve(async (req: Request) => {
       .eq("is_paid", true)
       .neq("is_cancelled", true);
 
-    if (filterTenantId) {
-      query = query.eq("tenant_id", filterTenantId);
-    }
-
-    // Process specific order when requested; otherwise process a larger batch to avoid starvation
+    if (filterTenantId) query = query.eq("tenant_id", filterTenantId);
     if (filterOrderId) {
       query = query.eq("id", filterOrderId).limit(1);
     } else {
@@ -115,13 +118,7 @@ serve(async (req: Request) => {
     }
 
     const { data: orders, error: ordersError } = await query;
-
-    if (ordersError) {
-      console.error("❌ [sync-bling-tracking] Erro ao buscar pedidos:", ordersError);
-      throw ordersError;
-    }
-
-    console.log(`📦 [sync-bling-tracking] Encontrados ${orders?.length || 0} pedidos para verificar`);
+    if (ordersError) throw ordersError;
 
     if (!orders || orders.length === 0) {
       return new Response(
@@ -130,131 +127,90 @@ serve(async (req: Request) => {
       );
     }
 
-    // Group by tenant
-    const tenantOrders = new Map<string, typeof orders>();
-    for (const order of orders) {
-      const existing = tenantOrders.get(order.tenant_id) || [];
-      existing.push(order);
-      tenantOrders.set(order.tenant_id, existing);
+    console.log(`📊 [sync-bling-tracking] ${orders.length} pedidos para verificar`);
+
+    const tenantIds = [...new Set(orders.map(o => o.tenant_id))];
+
+    const { data: blingIntegrations } = await supabase
+      .from("integration_bling")
+      .select("*")
+      .in("tenant_id", tenantIds)
+      .eq("is_active", true);
+
+    const integrationByTenant = new Map<string, any>();
+    for (const intg of blingIntegrations ?? []) {
+      integrationByTenant.set(intg.tenant_id, intg);
+    }
+
+    const tokenByTenant = new Map<string, string>();
+    for (const tenantId of tenantIds) {
+      const intg = integrationByTenant.get(tenantId);
+      if (!intg) continue;
+      const token = await getValidAccessToken(supabase, intg);
+      if (token) tokenByTenant.set(tenantId, token);
     }
 
     let syncedCount = 0;
-    let messagesCount = 0;
 
-    for (const [tenantId, tenantOrderList] of tenantOrders) {
-      // Get Bling integration
-      const { data: blingIntegration } = await supabase
-        .from("integration_bling")
-        .select("*")
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true)
-        .maybeSingle();
-
-      if (!blingIntegration) {
-        console.log(`⚠️ [sync-bling-tracking] Tenant ${tenantId} sem integração Bling ativa`);
-        continue;
-      }
-
-      const accessToken = await getValidAccessToken(supabase, blingIntegration);
+    await runConcurrent(orders, async (order) => {
+      const accessToken = tokenByTenant.get(order.tenant_id);
       if (!accessToken) {
-        console.error(`❌ [sync-bling-tracking] Não foi possível obter token para tenant ${tenantId}`);
-        continue;
+        console.log(`⚠️ Tenant ${order.tenant_id} sem token, pulando pedido ${order.id}`);
+        return;
       }
 
-      // Get Z-API integration for WhatsApp
-      const { data: zapiIntegration } = await supabase
-        .from("integration_whatsapp")
-        .select("zapi_instance_id, zapi_token, zapi_client_token")
-        .eq("tenant_id", tenantId)
-        .eq("provider", "zapi")
-        .eq("is_active", true)
-        .maybeSingle();
+      try {
+        const { response, text } = await blingFetchWithRetry(
+          `${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`,
+          { headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } }
+        );
 
-      for (const order of tenantOrderList) {
-        try {
-          console.log(`🔍 [sync-bling-tracking] Verificando pedido ${order.id} (Bling ID: ${order.bling_order_id})`);
-
-          // Add a small delay between API calls to reduce rate-limit errors
-          await delay(REQUEST_DELAY_MS);
-
-          const { response, text } = await blingFetchWithRetry(
-            `${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`,
-            {
-              headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Accept": "application/json",
-              },
-            }
-          );
-
-          if (!response.ok) {
-            console.log(`⚠️ [sync-bling-tracking] Erro ao consultar Bling para pedido ${order.id}: ${response.status}`);
-            continue;
-          }
-
-          const blingOrder = JSON.parse(text);
-          const transporte = blingOrder?.data?.transporte;
-          const volumes = transporte?.volumes || [];
-
-          let trackingCode: string | null = null;
-          for (const volume of volumes) {
-            if (volume?.codigoRastreamento) {
-              trackingCode = volume.codigoRastreamento;
-              break;
-            }
-          }
-
-          if (!trackingCode) {
-            console.log(`⏳ [sync-bling-tracking] Pedido ${order.id} ainda sem rastreio no Bling`);
-            continue;
-          }
-
-          console.log(`✅ [sync-bling-tracking] Rastreio encontrado para pedido ${order.id}: ${trackingCode}`);
-
-          // Update tracking code (trigger trg_send_tracking_whatsapp will auto-send WhatsApp)
-          const { data: updatedOrder, error: updateError } = await supabase
-            .from("orders")
-            .update({ melhor_envio_tracking_code: trackingCode })
-            .eq("id", order.id)
-            .eq("tenant_id", order.tenant_id)
-            .select("id, melhor_envio_tracking_code")
-            .maybeSingle();
-
-          if (updateError) {
-            console.error(`❌ [sync-bling-tracking] Erro ao salvar rastreio no pedido ${order.id}:`, updateError);
-            continue;
-          }
-
-          if (!updatedOrder) {
-            console.error(`❌ [sync-bling-tracking] Nenhuma linha atualizada para o pedido ${order.id}`);
-            continue;
-          }
-
-          syncedCount++;
-          console.log(`📱 [sync-bling-tracking] Rastreio salvo, trigger automático enviará WhatsApp para pedido ${order.id}`);
-        } catch (orderError) {
-          console.error(`❌ [sync-bling-tracking] Erro ao processar pedido ${order.id}:`, orderError);
+        if (!response.ok) {
+          console.log(`⚠️ Pedido ${order.id}: HTTP ${response.status} no Bling`);
+          return;
         }
-      }
-    }
 
-    console.log(`✅ [sync-bling-tracking] Concluído: ${syncedCount} rastreios atualizados, ${messagesCount} mensagens enviadas`);
+        const blingOrder = JSON.parse(text);
+        const volumes = blingOrder?.data?.transporte?.volumes || [];
+        let trackingCode: string | null = null;
+        for (const v of volumes) {
+          if (v?.codigoRastreamento) { trackingCode = v.codigoRastreamento; break; }
+        }
+
+        if (!trackingCode) {
+          console.log(`📦 Pedido ${order.id}: sem rastreio ainda`);
+          return;
+        }
+
+        const { error: updateError } = await supabase
+          .from("orders")
+          .update({ melhor_envio_tracking_code: trackingCode })
+          .eq("id", order.id)
+          .eq("tenant_id", order.tenant_id);
+
+        if (updateError) {
+          console.error(`❌ Pedido ${order.id}: erro ao salvar rastreio`, updateError);
+          return;
+        }
+
+        syncedCount++;
+        console.log(`✅ Pedido ${order.id}: rastreio ${trackingCode} salvo`);
+      } catch (e) {
+        console.error(`❌ Pedido ${order.id}: erro inesperado`, e);
+      }
+    }, CONCURRENCY);
+
+    console.log(`✅ [sync-bling-tracking] Concluído: ${syncedCount}/${orders.length} rastreios atualizados`);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Sincronização concluída`,
-        synced: syncedCount,
-        messagesSent: messagesCount,
-      }),
+      JSON.stringify({ success: true, message: "Sincronização concluída", synced: syncedCount }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("❌ [sync-bling-tracking] Erro crítico:", error);
-    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`❌ [sync-bling-tracking] Erro crítico:`, error);
     return new Response(
-      JSON.stringify({ success: false, error: msg }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
