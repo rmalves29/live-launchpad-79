@@ -82,25 +82,34 @@ Deno.serve(async (req) => {
         break;
       }
 
-      // 2) Build CSV
+      // 2) Build CSV and gzip
       const headers = Object.keys(rows[0]);
       const csv = rowsToCsv(rows, headers, true);
       const csvBytes = new TextEncoder().encode(csv);
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const fileName = `fe_group_events_${stamp}_chunk${i}_${rows.length}rows.csv`;
-      console.log(`[${runId}] chunk ${i}: rows=${rows.length} bytes=${csvBytes.length}`);
 
-      // 3) Upload to Drive
+      // gzip via CompressionStream
+      const cs = new CompressionStream("gzip");
+      const gzStream = new Response(new Blob([csvBytes]).stream().pipeThrough(cs)).arrayBuffer();
+      const gzBuf = new Uint8Array(await gzStream);
+
+      // Nome por data (UTC-3 Brasília): YYYY-MM-DD_HHMMSS
+      const now = new Date(Date.now() - 3 * 60 * 60 * 1000);
+      const datePart = now.toISOString().slice(0, 10);
+      const timePart = now.toISOString().slice(11, 19).replace(/:/g, "");
+      const fileName = `fe_group_events_${datePart}_${timePart}_chunk${i}_${rows.length}rows.csv.gz`;
+      console.log(`[${runId}] chunk ${i}: rows=${rows.length} csv=${csvBytes.length} gz=${gzBuf.length}`);
+
+      // 3) Upload to Drive (gzip)
       const boundary = "----lov" + crypto.randomUUID().replace(/-/g, "");
-      const metadata = { name: fileName, mimeType: "text/csv", parents: [folderId] };
+      const metadata = { name: fileName, mimeType: "application/gzip", parents: [folderId] };
       const enc = new TextEncoder();
       const head = enc.encode(
         `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
-        `--${boundary}\r\nContent-Type: text/csv\r\n\r\n`
+        `--${boundary}\r\nContent-Type: application/gzip\r\n\r\n`
       );
       const tail = enc.encode(`\r\n--${boundary}--\r\n`);
-      const mp = new Uint8Array(head.length + csvBytes.length + tail.length);
-      mp.set(head, 0); mp.set(csvBytes, head.length); mp.set(tail, head.length + csvBytes.length);
+      const mp = new Uint8Array(head.length + gzBuf.length + tail.length);
+      mp.set(head, 0); mp.set(gzBuf, head.length); mp.set(tail, head.length + gzBuf.length);
 
       const uploadRes = await fetch(`${GATEWAY_UPLOAD}?uploadType=multipart&fields=id,name,size,webViewLink`, {
         method: "POST",
@@ -137,7 +146,7 @@ Deno.serve(async (req) => {
         rows_exported: rows.length,
         drive_file_id: driveFile.id, drive_file_name: driveFile.name,
         drive_file_url: driveFile.webViewLink ?? null,
-        drive_file_size_bytes: driveFile.size ? Number(driveFile.size) : csvBytes.length,
+        drive_file_size_bytes: driveFile.size ? Number(driveFile.size) : gzBuf.length,
         deleted_rows: deleted, duration_ms: Date.now() - startedAt,
         success: true, dry_run: dryRun,
       });
