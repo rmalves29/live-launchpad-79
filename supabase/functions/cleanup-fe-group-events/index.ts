@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
         rows_exported: rows.length,
         drive_file_id: driveFile.id, drive_file_name: driveFile.name,
         drive_file_url: driveFile.webViewLink ?? null,
-        drive_file_size_bytes: driveFile.size ? Number(driveFile.size) : csvBytes.length,
+        drive_file_size_bytes: driveFile.size ? Number(driveFile.size) : gzBuf.length,
         deleted_rows: deleted, duration_ms: Date.now() - startedAt,
         success: true, dry_run: dryRun,
       });
