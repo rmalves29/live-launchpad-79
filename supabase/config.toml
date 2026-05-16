@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.admin-update-user-email]
 verify_jwt = false
+
+[functions.cleanup-fe-group-events]
+verify_jwt = false
