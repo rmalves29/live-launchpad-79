@@ -761,6 +761,57 @@ export type Database = {
           },
         ]
       }
+      fe_group_events_backups: {
+        Row: {
+          cutoff_at: string
+          deleted_rows: number | null
+          drive_file_id: string | null
+          drive_file_name: string | null
+          drive_file_size_bytes: number | null
+          drive_file_url: string | null
+          dry_run: boolean
+          duration_ms: number | null
+          error_message: string | null
+          executed_at: string
+          id: number
+          retention_days: number
+          rows_exported: number | null
+          success: boolean
+        }
+        Insert: {
+          cutoff_at: string
+          deleted_rows?: number | null
+          drive_file_id?: string | null
+          drive_file_name?: string | null
+          drive_file_size_bytes?: number | null
+          drive_file_url?: string | null
+          dry_run?: boolean
+          duration_ms?: number | null
+          error_message?: string | null
+          executed_at?: string
+          id?: number
+          retention_days: number
+          rows_exported?: number | null
+          success?: boolean
+        }
+        Update: {
+          cutoff_at?: string
+          deleted_rows?: number | null
+          drive_file_id?: string | null
+          drive_file_name?: string | null
+          drive_file_size_bytes?: number | null
+          drive_file_url?: string | null
+          dry_run?: boolean
+          duration_ms?: number | null
+          error_message?: string | null
+          executed_at?: string
+          id?: number
+          retention_days?: number
+          rows_exported?: number | null
+          success?: boolean
+        }
+        Relationships: []
+      }
       fe_groups: {
         Row: {
           created_at: string | null
