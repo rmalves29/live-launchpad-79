@@ -116,21 +116,20 @@ Deno.serve(async (req) => {
       const driveFile = JSON.parse(upText);
       console.log(`[${runId}] chunk ${i} uploaded id=${driveFile.id}`);
 
-      // 4) Delete the rows just backed up
+      // 4) Delete the rows just backed up (by id range, avoids huge IN clauses)
       let deleted = 0;
       if (!dryRun) {
-        const ids = rows.map((r: any) => r.id);
-        // delete in batches of 1000
-        for (let j = 0; j < ids.length; j += 1000) {
-          const slice = ids.slice(j, j + 1000);
-          const { error: delErr, count } = await supabase
-            .from("fe_group_events")
-            .delete({ count: "exact" })
-            .in("id", slice);
-          if (delErr) throw new Error(`delete chunk ${i} batch ${j}: ${delErr.message}`);
-          deleted += count ?? slice.length;
-        }
-        console.log(`[${runId}] chunk ${i} deleted=${deleted}`);
+        const minId = (rows[0] as any).id;
+        const maxId = (rows[rows.length - 1] as any).id;
+        const { error: delErr, count } = await supabase
+          .from("fe_group_events")
+          .delete({ count: "exact" })
+          .lt("created_at", cutoffISO)
+          .gte("id", minId)
+          .lte("id", maxId);
+        if (delErr) throw new Error(`delete chunk ${i} [${minId}..${maxId}]: ${delErr.message}`);
+        deleted = count ?? rows.length;
+        console.log(`[${runId}] chunk ${i} deleted=${deleted} range=[${minId}..${maxId}]`);
       }
 
       await supabase.from("fe_group_events_backups").insert({
