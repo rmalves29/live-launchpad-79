@@ -442,7 +442,7 @@ function validateRequest(body: any): body is ItemAddedRequest {
   if (!body.tenant_id || typeof body.tenant_id !== 'string') return false;
   if (!body.customer_phone || typeof body.customer_phone !== 'string') return false;
   if (!body.product_name || typeof body.product_name !== 'string') return false;
-  if (body.product_name.length > 200) return false;
+  if (body.product_name.length > 2000) return false;
   if (body.customer_phone.replace(/\D/g, '').length < 10) return false;
   if (body.customer_phone.replace(/\D/g, '').length > 15) return false;
   return true;
