@@ -341,6 +341,57 @@ export type Database = {
           },
         ]
       }
+      cron_logs_backups: {
+        Row: {
+          created_at: string
+          cutoff_at: string | null
+          deleted_rows: number | null
+          drive_file_id: string | null
+          drive_file_name: string | null
+          drive_file_size_bytes: number | null
+          drive_file_url: string | null
+          dry_run: boolean | null
+          duration_ms: number | null
+          error_message: string | null
+          id: number
+          retention_days: number | null
+          rows_exported: number | null
+          success: boolean | null
+        }
+        Insert: {
+          created_at?: string
+          cutoff_at?: string | null
+          deleted_rows?: number | null
+          drive_file_id?: string | null
+          drive_file_name?: string | null
+          drive_file_size_bytes?: number | null
+          drive_file_url?: string | null
+          dry_run?: boolean | null
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: number
+          retention_days?: number | null
+          rows_exported?: number | null
+          success?: boolean | null
+        }
+        Update: {
+          created_at?: string
+          cutoff_at?: string | null
+          deleted_rows?: number | null
+          drive_file_id?: string | null
+          drive_file_name?: string | null
+          drive_file_size_bytes?: number | null
+          drive_file_url?: string | null
+          dry_run?: boolean | null
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: number
+          retention_days?: number | null
+          rows_exported?: number | null
+          success?: boolean | null
+        }
+        Relationships: []
+      }
       custom_shipping_options: {
         Row: {
           carrier_service_id: number | null
@@ -3235,6 +3286,57 @@ export type Database = {
           },
         ]
       }
+      webhook_logs_backups: {
+        Row: {
+          created_at: string
+          cutoff_at: string | null
+          deleted_rows: number | null
+          drive_file_id: string | null
+          drive_file_name: string | null
+          drive_file_size_bytes: number | null
+          drive_file_url: string | null
+          dry_run: boolean | null
+          duration_ms: number | null
+          error_message: string | null
+          id: number
+          retention_days: number | null
+          rows_exported: number | null
+          success: boolean | null
+        }
+        Insert: {
+          created_at?: string
+          cutoff_at?: string | null
+          deleted_rows?: number | null
+          drive_file_id?: string | null
+          drive_file_name?: string | null
+          drive_file_size_bytes?: number | null
+          drive_file_url?: string | null
+          dry_run?: boolean | null
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: number
+          retention_days?: number | null
+          rows_exported?: number | null
+          success?: boolean | null
+        }
+        Update: {
+          created_at?: string
+          cutoff_at?: string | null
+          deleted_rows?: number | null
+          drive_file_id?: string | null
+          drive_file_name?: string | null
+          drive_file_size_bytes?: number | null
+          drive_file_url?: string | null
+          dry_run?: boolean | null
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: number
+          retention_days?: number | null
+          rows_exported?: number | null
+          success?: boolean | null
+        }
+        Relationships: []
+      }
       whatsapp_active_sessions: {
         Row: {
           connected_at: string
@@ -3716,12 +3818,37 @@ export type Database = {
         Returns: boolean
       }
       bytea_to_text: { Args: { data: string }; Returns: string }
+      cleanup_net_http_responses: {
+        Args: { older_than: string }
+        Returns: undefined
+      }
       cleanup_stale_sessions: { Args: never; Returns: undefined }
+      count_cron_logs: { Args: { cutoff: string }; Returns: number }
+      delete_cron_logs: {
+        Args: { cutoff: string; max_runid: number; min_runid: number }
+        Returns: number
+      }
       get_active_shipping_provider: {
         Args: { tenant_uuid: string }
         Returns: {
           is_active: boolean
           provider: string
+        }[]
+      }
+      get_admin_metrics: { Args: never; Returns: Json }
+      get_cron_logs_for_export: {
+        Args: { cutoff: string; lim: number; off: number }
+        Returns: {
+          command: string
+          database: string
+          end_time: string
+          job_pid: number
+          jobid: number
+          return_message: string
+          runid: number
+          start_time: string
+          status: string
+          username: string
         }[]
       }
       get_current_tenant_id: { Args: never; Returns: string }
