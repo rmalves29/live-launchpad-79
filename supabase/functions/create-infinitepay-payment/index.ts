@@ -275,10 +275,16 @@ serve(async (req) => {
 
     // 4) Montar itens para o InfinitePay (valores em CENTAVOS)
     // Distribuir desconto PIX + cupom proporcionalmente entre os produtos
+    // InfinitePay limita a descrição do item a 128 caracteres — truncamos com segurança
+    const truncateDesc = (s: string) => {
+      const clean = (s || "").toString().trim();
+      if (clean.length <= 128) return clean;
+      return clean.slice(0, 125).trimEnd() + "...";
+    };
     const productItems = body.cartItems
       .filter((it) => Number(it.unit_price) > 0)
       .map((it) => ({
-        description: it.product_name || it.product_code || "Produto",
+        description: truncateDesc(it.product_name || it.product_code || "Produto"),
         quantity: it.qty,
         price: Math.round(Number(it.unit_price) * 100), // centavos
       }));
