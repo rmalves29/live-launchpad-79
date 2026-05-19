@@ -476,13 +476,58 @@ const Produtos = () => {
     }
   };
 
+  const handleAssignCategory = async (categoryIdValue: string) => {
+    if (selectedProducts.length === 0) return;
+    // "__none__" significa remover categoria (set null)
+    const newCategoryId = categoryIdValue === '__none__' ? null : categoryIdValue;
+    const targetName =
+      newCategoryId === null
+        ? 'sem categoria'
+        : categorias.find((c) => c.id === newCategoryId)?.name || 'categoria';
+
+    const confirmed = await confirm({
+      description: `Aplicar "${targetName}" a ${selectedProducts.length} produto(s)?`,
+      confirmText: 'Aplicar',
+    });
+    if (!confirmed) return;
+
+    setAssigningCategory(true);
+    try {
+      const { error } = await (supabaseTenant as any)
+        .from('products')
+        .update({ category_id: newCategoryId })
+        .in('id', selectedProducts);
+      if (error) throw error;
+
+      toast({
+        title: 'Categoria atualizada',
+        description: `${selectedProducts.length} produto(s) atualizado(s).`,
+      });
+      setBulkCategoryValue('');
+      setSelectedProducts([]);
+      loadProducts();
+    } catch (e: any) {
+      console.error('Erro ao atribuir categoria:', e);
+      toast({
+        title: 'Erro',
+        description: e?.message || 'Falha ao atribuir categoria',
+        variant: 'destructive',
+      });
+    } finally {
+      setAssigningCategory(false);
+    }
+  };
+
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.code.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = saleTypeFilter === 'ALL' || 
       product.sale_type === saleTypeFilter || 
       (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));
-    return matchesSearch && matchesType;
+    const matchesCategoria =
+      categoriaFilter === 'ALL' ||
+      (categoriaFilter === '__none__' ? !product.category_id : product.category_id === categoriaFilter);
+    return matchesSearch && matchesType && matchesCategoria;
   });
 
   const formatCurrency = (value: number) => {
