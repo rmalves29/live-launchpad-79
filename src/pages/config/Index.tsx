@@ -405,6 +405,10 @@ const Config = () => {
                 <GiftsManager />
               </TabsContent>
 
+              <TabsContent value="promocoes" className="space-y-6 mt-6">
+                <PromocoesManager />
+              </TabsContent>
+
               <TabsContent value="printer" className="space-y-6 mt-6">
                 <PrinterSettings />
               </TabsContent>
