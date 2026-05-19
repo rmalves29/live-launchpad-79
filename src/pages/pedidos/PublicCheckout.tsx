@@ -37,6 +37,7 @@ interface OrderItem {
   image_url?: string;
   color?: string;
   size?: string;
+  category_id?: string | null;
 }
 
 interface Order {
@@ -176,6 +177,9 @@ const PublicCheckout = () => {
   const [eligibleGift, setEligibleGift] = useState<any>(null);
   const [progressGift, setProgressGift] = useState<any>(null);
 
+  // Promoções BOGO (Compre X Ganhe Y)
+  const [activePromotions, setActivePromotions] = useState<any[]>([]);
+
   // Hook para verificar pedidos pagos recentes (juntar pedidos)
   const { hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays } = useOrderMerge(
     tenant?.id || null,
@@ -245,6 +249,30 @@ const PublicCheckout = () => {
       }
     };
     loadActiveGifts();
+  }, [tenant?.id]);
+
+  // Carregar promoções BOGO ativas (Compre X Ganhe Y) por categoria
+  useEffect(() => {
+    const loadActivePromotions = async () => {
+      if (!tenant?.id) { setActivePromotions([]); return; }
+      try {
+        const nowIso = new Date().toISOString();
+        const { data, error } = await (supabase as any)
+          .from('product_promotions')
+          .select('id, name, category_id, buy_qty, get_qty, discount_percent, starts_at, ends_at, is_active')
+          .eq('tenant_id', tenant.id)
+          .eq('is_active', true);
+        if (error) throw error;
+        const filtered = (data || []).filter((p: any) =>
+          (!p.starts_at || p.starts_at <= nowIso) && (!p.ends_at || p.ends_at >= nowIso)
+        );
+        setActivePromotions(filtered);
+      } catch (e) {
+        console.error('Erro ao carregar promoções:', e);
+        setActivePromotions([]);
+      }
+    };
+    loadActivePromotions();
   }, [tenant?.id]);
 
   // Carregar handling days
@@ -892,11 +920,19 @@ const PublicCheckout = () => {
       // Calcular total combinado de todos os pedidos
       const allItems = ordersToProcess.flatMap(order => order.items);
       const productsTotal = allItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
+
+      // Recalcular BOGO somente com os pedidos selecionados (alinhado ao backend)
+      const bogoCalc = computeBogoDiscount(allItems, activePromotions);
+      const bogoDiscountValue = bogoCalc.total;
+
       const effectivePixPercentForPayment = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
+      const baseForPixPay = Math.max(0, productsTotal - bogoDiscountValue);
       const pixDiscount = paymentMethod === 'pix' && effectivePixPercentForPayment > 0
-        ? Math.round((productsTotal * effectivePixPercentForPayment / 100) * 100) / 100
+        ? Math.round((baseForPixPay * effectivePixPercentForPayment / 100) * 100) / 100
         : 0;
-      const totalWithDiscount = Math.max(0, productsTotal - couponDiscount - pixDiscount);
+      // Soma BOGO ao coupon_discount para reaproveitar a distribuição proporcional dos gateways
+      const totalCouponDiscount = Math.round((couponDiscount + bogoDiscountValue) * 100) / 100;
+      const totalWithDiscount = Math.max(0, productsTotal - totalCouponDiscount - pixDiscount);
       const totalAmount = totalWithDiscount + shippingCost;
 
       if (appliedCoupon) {
@@ -952,8 +988,10 @@ const PublicCheckout = () => {
         shippingCost: shippingCost,
         shippingData: shippingData,
         total: totalAmount.toString(),
-        coupon_discount: couponDiscount,
-        coupon_code: appliedCoupon?.code || null,
+        coupon_discount: totalCouponDiscount,
+        coupon_code: bogoDiscountValue > 0
+          ? (appliedCoupon?.code ? `${appliedCoupon.code}+BOGO` : 'BOGO')
+          : (appliedCoupon?.code || null),
         tenant_id: tenant.id,
         tenant_slug: tenant.slug || undefined,
         merge_observation: mergeObservation,
@@ -1032,7 +1070,7 @@ const PublicCheckout = () => {
 
           const { data: cartItems } = await supabase
             .from('cart_items')
-            .select('id, qty, unit_price, product_id')
+            .select('id, qty, unit_price, product_id, category_id')
             .eq('cart_id', order.cart_id)
             .eq('tenant_id', tenant.id);
 
@@ -1041,7 +1079,7 @@ const PublicCheckout = () => {
           const productIds = cartItems.map(item => item.product_id);
           const { data: products } = await supabase
             .from('products')
-            .select('id, name, code, image_url, color, size')
+            .select('id, name, code, image_url, color, size, category_id')
             .in('id', productIds)
             .eq('tenant_id', tenant.id);
 
@@ -1055,7 +1093,8 @@ const PublicCheckout = () => {
               unit_price: Number(item.unit_price),
               image_url: product?.image_url,
               color: product?.color,
-              size: product?.size
+              size: product?.size,
+              category_id: (item as any).category_id || product?.category_id || null,
             };
           });
 
@@ -1204,7 +1243,7 @@ const PublicCheckout = () => {
 
           const { data: cartItems } = await supabase
             .from('cart_items')
-            .select('id, qty, unit_price, product_id')
+            .select('id, qty, unit_price, product_id, category_id')
             .eq('cart_id', order.cart_id)
             .eq('tenant_id', tenant.id);
 
@@ -1213,7 +1252,7 @@ const PublicCheckout = () => {
           const productIds = cartItems.map(item => item.product_id);
           const { data: products } = await supabase
             .from('products')
-            .select('id, name, code, image_url, color, size')
+            .select('id, name, code, image_url, color, size, category_id')
             .in('id', productIds)
             .eq('tenant_id', tenant.id);
 
@@ -1227,7 +1266,8 @@ const PublicCheckout = () => {
               unit_price: Number(item.unit_price),
               image_url: product?.image_url,
               color: product?.color,
-              size: product?.size
+              size: product?.size,
+              category_id: (item as any).category_id || product?.category_id || null,
             };
           });
 
@@ -1283,12 +1323,49 @@ const PublicCheckout = () => {
   
   const allSelectedItems = selectedOrders.flatMap(order => order.items);
 
+  // Calcular desconto BOGO (Compre X, Ganhe Y) por categoria
+  const computeBogoDiscount = (items: any[], promos: any[]) => {
+    if (!items?.length || !promos?.length) return { total: 0, lines: [] as any[] };
+    // Expandir itens por unidade
+    const byCategory: Record<string, number[]> = {};
+    for (const it of items) {
+      const catId = it.category_id || it.product_category_id;
+      if (!catId) continue;
+      const price = Number(it.unit_price) || 0;
+      const qty = Number(it.qty) || 0;
+      if (!byCategory[catId]) byCategory[catId] = [];
+      for (let i = 0; i < qty; i++) byCategory[catId].push(price);
+    }
+    let total = 0;
+    const lines: any[] = [];
+    for (const promo of promos) {
+      const units = byCategory[promo.category_id];
+      if (!units || units.length === 0) continue;
+      const sorted = [...units].sort((a, b) => a - b); // mais baratos primeiro
+      const groupSize = (promo.buy_qty || 1) + (promo.get_qty || 1);
+      const groups = Math.floor(sorted.length / groupSize);
+      if (groups <= 0) continue;
+      const freeCount = groups * (promo.get_qty || 1);
+      const pct = Math.min(100, Math.max(0, Number(promo.discount_percent) || 100)) / 100;
+      let promoDiscount = 0;
+      for (let i = 0; i < freeCount; i++) promoDiscount += sorted[i] * pct;
+      promoDiscount = Math.round(promoDiscount * 100) / 100;
+      if (promoDiscount > 0) {
+        total += promoDiscount;
+        lines.push({ name: promo.name, discount: promoDiscount, freeCount });
+      }
+    }
+    return { total: Math.round(total * 100) / 100, lines };
+  };
+
+  const bogo = computeBogoDiscount(allSelectedItems, activePromotions);
+  const bogoDiscount = bogo.total;
+
   // Recalcular desconto PIX quando método de pagamento ou subtotal mudam
-  // Trata pixDiscountPercent === null (carregando) como 0 para a UI; o backend
-  // sempre recalcula o valor real antes de criar o pedido (blindagem servidor).
   const effectivePixPercent = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
+  const baseForPix = Math.max(0, combinedSubtotal - bogoDiscount);
   const currentPixDiscount = paymentMethod === 'pix' && effectivePixPercent > 0
-    ? Math.round((combinedSubtotal * effectivePixPercent / 100) * 100) / 100
+    ? Math.round((baseForPix * effectivePixPercent / 100) * 100) / 100
     : 0;
 
   // Função para formatar telefone com máscara
@@ -1954,14 +2031,27 @@ const PublicCheckout = () => {
                         <span>- {formatCurrency(couponDiscount)}</span>
                       </div>
                     )}
-                    
+
+                    {bogoDiscount > 0 && (
+                      <div className="space-y-1">
+                        {bogo.lines.map((l, i) => (
+                          <div key={i} className="flex justify-between items-center text-purple-600">
+                            <span className="flex items-center gap-1">
+                              <Gift className="h-4 w-4" /> {l.name}:
+                            </span>
+                            <span>- {formatCurrency(l.discount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <Separator />
                     
                     <div className="flex justify-between items-center text-xl font-bold">
                       <span>Total:</span>
                       <span className="text-green-600">
                         {formatCurrency(
-                          Math.max(0, combinedSubtotal - currentPixDiscount - couponDiscount) +
+                          Math.max(0, combinedSubtotal - currentPixDiscount - couponDiscount - bogoDiscount) +
                           (selectedShipping && selectedShipping !== 'retirada' ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || shippingOptions.find(opt => opt.id === selectedShipping)?.price || '0') : 0)
                         )}
                       </span>
