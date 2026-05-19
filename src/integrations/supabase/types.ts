@@ -2396,9 +2396,93 @@ export type Database = {
         }
         Relationships: []
       }
+      product_categories: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      product_promotions: {
+        Row: {
+          buy_qty: number
+          category_id: string
+          created_at: string
+          discount_percent: number
+          ends_at: string | null
+          get_qty: number
+          id: string
+          is_active: boolean
+          name: string
+          starts_at: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          buy_qty?: number
+          category_id: string
+          created_at?: string
+          discount_percent?: number
+          ends_at?: string | null
+          get_qty?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          starts_at?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          buy_qty?: number
+          category_id?: string
+          created_at?: string
+          discount_percent?: number
+          ends_at?: string | null
+          get_qty?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          starts_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_promotions_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           bling_product_id: number | null
+          category_id: string | null
           code: string
           color: string | null
           created_at: string | null
@@ -2418,6 +2502,7 @@ export type Database = {
         }
         Insert: {
           bling_product_id?: number | null
+          category_id?: string | null
           code: string
           color?: string | null
           created_at?: string | null
@@ -2437,6 +2522,7 @@ export type Database = {
         }
         Update: {
           bling_product_id?: number | null
+          category_id?: string | null
           code?: string
           color?: string | null
           created_at?: string | null
@@ -2455,6 +2541,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "products_tenant_id_fkey"
             columns: ["tenant_id"]

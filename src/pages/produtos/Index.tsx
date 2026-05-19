@@ -13,9 +13,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree, Gift } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
 import CategoriasManagerDialog from '@/components/produtos/CategoriasManagerDialog';
+import PromocoesManagerDialog from '@/components/produtos/PromocoesManagerDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
@@ -74,6 +75,7 @@ const Produtos = () => {
   const [importing, setImporting] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [isCategoriasOpen, setIsCategoriasOpen] = useState(false);
+  const [isPromocoesOpen, setIsPromocoesOpen] = useState(false);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [categoriaFilter, setCategoriaFilter] = useState<string>('ALL');
   const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
@@ -849,6 +851,10 @@ const Produtos = () => {
               <FolderTree className="h-4 w-4 mr-2" />
               Categorias
             </Button>
+            <Button variant="outline" onClick={() => setIsPromocoesOpen(true)}>
+              <Gift className="h-4 w-4 mr-2" />
+              Promoções
+            </Button>
             <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
@@ -1377,6 +1383,7 @@ const Produtos = () => {
           loadProducts();
         }}
       />
+      <PromocoesManagerDialog open={isPromocoesOpen} onOpenChange={setIsPromocoesOpen} />
     </div>
   );
 };
