@@ -919,11 +919,19 @@ const PublicCheckout = () => {
       // Calcular total combinado de todos os pedidos
       const allItems = ordersToProcess.flatMap(order => order.items);
       const productsTotal = allItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
+
+      // Recalcular BOGO somente com os pedidos selecionados (alinhado ao backend)
+      const bogoCalc = computeBogoDiscount(allItems, activePromotions);
+      const bogoDiscountValue = bogoCalc.total;
+
       const effectivePixPercentForPayment = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
+      const baseForPixPay = Math.max(0, productsTotal - bogoDiscountValue);
       const pixDiscount = paymentMethod === 'pix' && effectivePixPercentForPayment > 0
-        ? Math.round((productsTotal * effectivePixPercentForPayment / 100) * 100) / 100
+        ? Math.round((baseForPixPay * effectivePixPercentForPayment / 100) * 100) / 100
         : 0;
-      const totalWithDiscount = Math.max(0, productsTotal - couponDiscount - pixDiscount);
+      // Soma BOGO ao coupon_discount para reaproveitar a distribuição proporcional dos gateways
+      const totalCouponDiscount = Math.round((couponDiscount + bogoDiscountValue) * 100) / 100;
+      const totalWithDiscount = Math.max(0, productsTotal - totalCouponDiscount - pixDiscount);
       const totalAmount = totalWithDiscount + shippingCost;
 
       if (appliedCoupon) {
