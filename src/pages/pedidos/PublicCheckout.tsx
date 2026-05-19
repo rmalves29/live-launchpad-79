@@ -2018,14 +2018,27 @@ const PublicCheckout = () => {
                         <span>- {formatCurrency(couponDiscount)}</span>
                       </div>
                     )}
-                    
+
+                    {bogoDiscount > 0 && (
+                      <div className="space-y-1">
+                        {bogo.lines.map((l, i) => (
+                          <div key={i} className="flex justify-between items-center text-purple-600">
+                            <span className="flex items-center gap-1">
+                              <Gift className="h-4 w-4" /> {l.name}:
+                            </span>
+                            <span>- {formatCurrency(l.discount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <Separator />
                     
                     <div className="flex justify-between items-center text-xl font-bold">
                       <span>Total:</span>
                       <span className="text-green-600">
                         {formatCurrency(
-                          Math.max(0, combinedSubtotal - currentPixDiscount - couponDiscount) +
+                          Math.max(0, combinedSubtotal - currentPixDiscount - couponDiscount - bogoDiscount) +
                           (selectedShipping && selectedShipping !== 'retirada' ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || shippingOptions.find(opt => opt.id === selectedShipping)?.price || '0') : 0)
                         )}
                       </span>
