@@ -657,6 +657,17 @@ useEffect(() => {
               >
                 <Truck className="w-3 h-3" /> Enviado
               </button>
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'liberado_retirada' ? '' : 'liberado_retirada')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'liberado_retirada'
+                    ? 'bg-[#e0e7ff] text-[#4338ca] border-[#a5b4fc]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Package className="w-3 h-3" /> Liberado para Retirada
+              </button>
             </div>
           </div>
 
