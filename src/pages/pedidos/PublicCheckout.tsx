@@ -1348,6 +1348,13 @@ const PublicCheckout = () => {
   const bogo = computeBogoDiscount(allSelectedItems, activePromotions);
   const bogoDiscount = bogo.total;
 
+  // Recalcular desconto PIX quando método de pagamento ou subtotal mudam
+  const effectivePixPercent = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
+  const baseForPix = Math.max(0, combinedSubtotal - bogoDiscount);
+  const currentPixDiscount = paymentMethod === 'pix' && effectivePixPercent > 0
+    ? Math.round((baseForPix * effectivePixPercent / 100) * 100) / 100
+    : 0;
+
   // Função para formatar telefone com máscara
   const formatPhoneMask = (value: string) => {
     const digits = value.replace(/\D/g, '');
