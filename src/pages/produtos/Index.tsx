@@ -74,7 +74,7 @@ const Produtos = () => {
   const [importing, setImporting] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [isCategoriasOpen, setIsCategoriasOpen] = useState(false);
-  const [isPromocoesOpen, setIsPromocoesOpen] = useState(false);
+  
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [categoriaFilter, setCategoriaFilter] = useState<string>('ALL');
   const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
