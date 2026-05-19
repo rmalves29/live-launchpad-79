@@ -410,6 +410,10 @@ const Config = () => {
                 <GiftsManager />
               </TabsContent>
 
+              <TabsContent value="categorias" className="space-y-6 mt-6">
+                <CategoriasManager />
+              </TabsContent>
+
               <TabsContent value="promocoes" className="space-y-6 mt-6">
                 <PromocoesManager />
               </TabsContent>
