@@ -1857,6 +1857,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               if (order.is_paid && order.order_status === 'em_separacao') {
                                 return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309] hover:bg-[#fef3c7]">Em Separação</Badge>;
                               }
+                              if (order.is_paid && order.order_status === 'liberado_retirada') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca] hover:bg-[#e0e7ff]">Liberado p/ Retirada</Badge>;
+                              }
                               return (
                                 <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
                                   {order.is_paid ? 'Pago' : 'Pendente'}
