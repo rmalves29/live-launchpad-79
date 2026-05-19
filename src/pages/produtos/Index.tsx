@@ -13,13 +13,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
+import CategoriasManagerDialog from '@/components/produtos/CategoriasManagerDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatCurrency } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+
+interface Categoria {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
 
 interface Product {
   id: number;
@@ -35,6 +42,7 @@ interface Product {
   image_url?: string;
   is_active: boolean;
   sale_type: 'LIVE' | 'BAZAR' | 'AMBOS';
+  category_id?: string | null;
 }
 
 interface ImportRow {
@@ -65,6 +73,11 @@ const Produtos = () => {
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'LIVE' | 'BAZAR'>('ALL');
   const [importing, setImporting] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
+  const [isCategoriasOpen, setIsCategoriasOpen] = useState(false);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [categoriaFilter, setCategoriaFilter] = useState<string>('ALL');
+  const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
+  const [assigningCategory, setAssigningCategory] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[]; skipped: number; skippedDetails: string[] } | null>(null);
 
@@ -90,6 +103,7 @@ const Produtos = () => {
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
     if (currentTenantId) {
       loadProducts();
+      loadCategorias();
     } else {
       // Verificar novamente após um breve delay (tenant pode estar carregando)
       const checkTenant = setInterval(() => {
@@ -97,6 +111,7 @@ const Produtos = () => {
         if (tenantId) {
           clearInterval(checkTenant);
           loadProducts();
+          loadCategorias();
         }
       }, 100);
       
@@ -109,6 +124,19 @@ const Produtos = () => {
       return () => clearInterval(checkTenant);
     }
   }, []);
+
+  const loadCategorias = async () => {
+    try {
+      const { data, error } = await (supabaseTenant as any)
+        .from('product_categories')
+        .select('id, name, is_active')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setCategorias((data || []) as Categoria[]);
+    } catch (e) {
+      console.warn('[Produtos] Falha ao carregar categorias:', e);
+    }
+  };
 
   const loadProducts = async () => {
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
@@ -448,13 +476,58 @@ const Produtos = () => {
     }
   };
 
+  const handleAssignCategory = async (categoryIdValue: string) => {
+    if (selectedProducts.length === 0) return;
+    // "__none__" significa remover categoria (set null)
+    const newCategoryId = categoryIdValue === '__none__' ? null : categoryIdValue;
+    const targetName =
+      newCategoryId === null
+        ? 'sem categoria'
+        : categorias.find((c) => c.id === newCategoryId)?.name || 'categoria';
+
+    const confirmed = await confirm({
+      description: `Aplicar "${targetName}" a ${selectedProducts.length} produto(s)?`,
+      confirmText: 'Aplicar',
+    });
+    if (!confirmed) return;
+
+    setAssigningCategory(true);
+    try {
+      const { error } = await (supabaseTenant as any)
+        .from('products')
+        .update({ category_id: newCategoryId })
+        .in('id', selectedProducts);
+      if (error) throw error;
+
+      toast({
+        title: 'Categoria atualizada',
+        description: `${selectedProducts.length} produto(s) atualizado(s).`,
+      });
+      setBulkCategoryValue('');
+      setSelectedProducts([]);
+      loadProducts();
+    } catch (e: any) {
+      console.error('Erro ao atribuir categoria:', e);
+      toast({
+        title: 'Erro',
+        description: e?.message || 'Falha ao atribuir categoria',
+        variant: 'destructive',
+      });
+    } finally {
+      setAssigningCategory(false);
+    }
+  };
+
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product.code.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = saleTypeFilter === 'ALL' || 
       product.sale_type === saleTypeFilter || 
       (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));
-    return matchesSearch && matchesType;
+    const matchesCategoria =
+      categoriaFilter === 'ALL' ||
+      (categoriaFilter === '__none__' ? !product.category_id : product.category_id === categoriaFilter);
+    return matchesSearch && matchesType && matchesCategoria;
   });
 
   const formatCurrency = (value: number) => {
@@ -772,6 +845,10 @@ const Produtos = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setIsCategoriasOpen(true)}>
+              <FolderTree className="h-4 w-4 mr-2" />
+              Categorias
+            </Button>
             <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
@@ -1086,23 +1163,72 @@ const Produtos = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
+            <CardTitle className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
                 <span>Lista de Produtos ({filteredProducts.length})</span>
                 {selectedProducts.length > 0 && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleDeleteSelected}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Deletar Selecionados ({selectedProducts.length})
-                  </Button>
+                  <>
+                    <Select
+                      value={bulkCategoryValue}
+                      onValueChange={(v) => {
+                        setBulkCategoryValue(v);
+                        handleAssignCategory(v);
+                      }}
+                      disabled={assigningCategory}
+                    >
+                      <SelectTrigger className="w-[240px] h-9">
+                        <SelectValue
+                          placeholder={
+                            assigningCategory
+                              ? 'Aplicando...'
+                              : `Atribuir categoria (${selectedProducts.length})`
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Remover categoria</SelectItem>
+                        {categorias
+                          .filter((c) => c.is_active)
+                          .map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        {categorias.length === 0 && (
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                            Nenhuma categoria. Crie em "Categorias".
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteSelected}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Deletar ({selectedProducts.length})
+                    </Button>
+                  </>
                 )}
               </div>
               <div className="flex items-center space-x-2">
-                <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'LIVE' | 'BAZAR') => setSaleTypeFilter(value)}>
+                <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
                   <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todas as categorias</SelectItem>
+                    <SelectItem value="__none__">Sem categoria</SelectItem>
+                    {categorias.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'LIVE' | 'BAZAR') => setSaleTypeFilter(value)}>
+                  <SelectTrigger className="w-[160px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1149,6 +1275,7 @@ const Produtos = () => {
                         <TableHead>Preço</TableHead>
                         <TableHead>Estoque</TableHead>
                         <TableHead>Tipo de Evento</TableHead>
+                        <TableHead>Categoria</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
@@ -1199,6 +1326,16 @@ const Produtos = () => {
                             )}
                           </TableCell>
                           <TableCell>
+                            {(() => {
+                              const cat = categorias.find((c) => c.id === product.category_id);
+                              return cat ? (
+                                <Badge variant="secondary">{cat.name}</Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
                             <Badge variant={product.is_active ? 'default' : 'secondary'}>
                               {product.is_active ? 'Ativo' : 'Inativo'}
                             </Badge>
@@ -1232,6 +1369,14 @@ const Produtos = () => {
       </div>
       {confirmDialogElement}
       <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} preSelectedIds={selectedProducts} />
+      <CategoriasManagerDialog
+        open={isCategoriasOpen}
+        onOpenChange={setIsCategoriasOpen}
+        onChanged={() => {
+          loadCategorias();
+          loadProducts();
+        }}
+      />
     </div>
   );
 };
