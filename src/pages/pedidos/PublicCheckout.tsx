@@ -176,6 +176,9 @@ const PublicCheckout = () => {
   const [eligibleGift, setEligibleGift] = useState<any>(null);
   const [progressGift, setProgressGift] = useState<any>(null);
 
+  // Promoções BOGO (Compre X Ganhe Y)
+  const [activePromotions, setActivePromotions] = useState<any[]>([]);
+
   // Hook para verificar pedidos pagos recentes (juntar pedidos)
   const { hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays } = useOrderMerge(
     tenant?.id || null,
