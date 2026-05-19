@@ -13,13 +13,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
+import CategoriasManagerDialog from '@/components/produtos/CategoriasManagerDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatCurrency } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+
+interface Categoria {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
 
 interface Product {
   id: number;
@@ -35,6 +42,7 @@ interface Product {
   image_url?: string;
   is_active: boolean;
   sale_type: 'LIVE' | 'BAZAR' | 'AMBOS';
+  category_id?: string | null;
 }
 
 interface ImportRow {
@@ -65,6 +73,11 @@ const Produtos = () => {
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'LIVE' | 'BAZAR'>('ALL');
   const [importing, setImporting] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
+  const [isCategoriasOpen, setIsCategoriasOpen] = useState(false);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [categoriaFilter, setCategoriaFilter] = useState<string>('ALL');
+  const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
+  const [assigningCategory, setAssigningCategory] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[]; skipped: number; skippedDetails: string[] } | null>(null);
 
