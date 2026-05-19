@@ -1310,13 +1310,43 @@ const PublicCheckout = () => {
   
   const allSelectedItems = selectedOrders.flatMap(order => order.items);
 
-  // Recalcular desconto PIX quando método de pagamento ou subtotal mudam
-  // Trata pixDiscountPercent === null (carregando) como 0 para a UI; o backend
-  // sempre recalcula o valor real antes de criar o pedido (blindagem servidor).
-  const effectivePixPercent = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
-  const currentPixDiscount = paymentMethod === 'pix' && effectivePixPercent > 0
-    ? Math.round((combinedSubtotal * effectivePixPercent / 100) * 100) / 100
-    : 0;
+  // Calcular desconto BOGO (Compre X, Ganhe Y) por categoria
+  const computeBogoDiscount = (items: any[], promos: any[]) => {
+    if (!items?.length || !promos?.length) return { total: 0, lines: [] as any[] };
+    // Expandir itens por unidade
+    const byCategory: Record<string, number[]> = {};
+    for (const it of items) {
+      const catId = it.category_id || it.product_category_id;
+      if (!catId) continue;
+      const price = Number(it.unit_price) || 0;
+      const qty = Number(it.qty) || 0;
+      if (!byCategory[catId]) byCategory[catId] = [];
+      for (let i = 0; i < qty; i++) byCategory[catId].push(price);
+    }
+    let total = 0;
+    const lines: any[] = [];
+    for (const promo of promos) {
+      const units = byCategory[promo.category_id];
+      if (!units || units.length === 0) continue;
+      const sorted = [...units].sort((a, b) => a - b); // mais baratos primeiro
+      const groupSize = (promo.buy_qty || 1) + (promo.get_qty || 1);
+      const groups = Math.floor(sorted.length / groupSize);
+      if (groups <= 0) continue;
+      const freeCount = groups * (promo.get_qty || 1);
+      const pct = Math.min(100, Math.max(0, Number(promo.discount_percent) || 100)) / 100;
+      let promoDiscount = 0;
+      for (let i = 0; i < freeCount; i++) promoDiscount += sorted[i] * pct;
+      promoDiscount = Math.round(promoDiscount * 100) / 100;
+      if (promoDiscount > 0) {
+        total += promoDiscount;
+        lines.push({ name: promo.name, discount: promoDiscount, freeCount });
+      }
+    }
+    return { total: Math.round(total * 100) / 100, lines };
+  };
+
+  const bogo = computeBogoDiscount(allSelectedItems, activePromotions);
+  const bogoDiscount = bogo.total;
 
   // Função para formatar telefone com máscara
   const formatPhoneMask = (value: string) => {
