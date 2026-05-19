@@ -7,7 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Plus, Trash2, Gift } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Loader2, Plus, Trash2, Gift, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
@@ -30,6 +31,14 @@ interface Promocao {
   is_active: boolean;
 }
 
+// Converte ISO -> "YYYY-MM-DDTHH:mm" para input datetime-local (mantém horário local)
+const toLocalInput = (iso: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 export default function PromocoesManager() {
   const { toast } = useToast();
   const { confirm, confirmDialogElement } = useConfirmDialog();
@@ -38,6 +47,9 @@ export default function PromocoesManager() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Form (criação + edição)
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [buyQty, setBuyQty] = useState(1);
@@ -47,6 +59,7 @@ export default function PromocoesManager() {
   const [endsAt, setEndsAt] = useState('');
 
   const resetForm = () => {
+    setEditingId(null);
     setName(''); setCategoryId(''); setBuyQty(1); setGetQty(1);
     setDiscountPercent(100); setStartsAt(''); setEndsAt('');
   };
@@ -71,16 +84,27 @@ export default function PromocoesManager() {
 
   useEffect(() => { load(); }, []);
 
-  const handleCreate = async () => {
+  const validatePeriod = (): boolean => {
+    if (startsAt && endsAt) {
+      const s = new Date(startsAt).getTime();
+      const e = new Date(endsAt).getTime();
+      if (e <= s) {
+        toast({ title: 'Período inválido', description: 'A data de fim deve ser maior que a de início.', variant: 'destructive' });
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleSave = async () => {
     if (!name.trim() || !categoryId) {
       toast({ title: 'Preencha nome e categoria', variant: 'destructive' });
       return;
     }
+    if (!validatePeriod()) return;
     setSaving(true);
     try {
-      const tenantId = (supabaseTenant as any).getTenantId?.();
-      const { error } = await (supabaseTenant as any).from('product_promotions').insert({
-        tenant_id: tenantId,
+      const payload = {
         name: name.trim(),
         category_id: categoryId,
         buy_qty: buyQty,
@@ -88,17 +112,42 @@ export default function PromocoesManager() {
         discount_percent: discountPercent,
         starts_at: startsAt ? new Date(startsAt).toISOString() : null,
         ends_at: endsAt ? new Date(endsAt).toISOString() : null,
-        is_active: true,
-      });
-      if (error) throw error;
+      };
+      if (editingId) {
+        const { error } = await (supabaseTenant as any)
+          .from('product_promotions').update(payload).eq('id', editingId);
+        if (error) throw error;
+        toast({ title: 'Promoção atualizada' });
+      } else {
+        const tenantId = (supabaseTenant as any).getTenantId?.();
+        const { error } = await (supabaseTenant as any).from('product_promotions').insert({
+          ...payload,
+          tenant_id: tenantId,
+          is_active: true,
+        });
+        if (error) throw error;
+        toast({ title: 'Promoção criada' });
+      }
       resetForm();
+      setEditOpen(false);
       await load();
-      toast({ title: 'Promoção criada' });
     } catch (e: any) {
-      toast({ title: 'Erro', description: e?.message || 'Falha ao criar', variant: 'destructive' });
+      toast({ title: 'Erro', description: e?.message || 'Falha ao salvar', variant: 'destructive' });
     } finally {
       setSaving(false);
     }
+  };
+
+  const openEdit = (p: Promocao) => {
+    setEditingId(p.id);
+    setName(p.name);
+    setCategoryId(p.category_id);
+    setBuyQty(p.buy_qty);
+    setGetQty(p.get_qty);
+    setDiscountPercent(p.discount_percent);
+    setStartsAt(toLocalInput(p.starts_at));
+    setEndsAt(toLocalInput(p.ends_at));
+    setEditOpen(true);
   };
 
   const handleToggle = async (p: Promocao) => {
@@ -127,6 +176,46 @@ export default function PromocoesManager() {
 
   const categoryName = (id: string) => categorias.find((c) => c.id === id)?.name || '—';
 
+  const FormFields = (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="space-y-1 lg:col-span-2">
+        <Label>Nome</Label>
+        <Input placeholder="Ex: Compre 1 Ganhe 1 - Anéis" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="space-y-1 lg:col-span-2">
+        <Label>Categoria</Label>
+        <Select value={categoryId} onValueChange={setCategoryId}>
+          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+          <SelectContent>
+            {categorias.filter((c) => c.is_active).map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1">
+        <Label>Compra (qtd)</Label>
+        <Input type="number" min={1} value={buyQty} onChange={(e) => setBuyQty(Math.max(1, +e.target.value || 1))} />
+      </div>
+      <div className="space-y-1">
+        <Label>Ganha (qtd)</Label>
+        <Input type="number" min={1} value={getQty} onChange={(e) => setGetQty(Math.max(1, +e.target.value || 1))} />
+      </div>
+      <div className="space-y-1">
+        <Label>Desconto % nos "ganhos"</Label>
+        <Input type="number" min={1} max={100} value={discountPercent} onChange={(e) => setDiscountPercent(Math.max(1, Math.min(100, +e.target.value || 100)))} />
+      </div>
+      <div className="space-y-1">
+        <Label>Início (opcional)</Label>
+        <Input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+      </div>
+      <div className="space-y-1">
+        <Label>Fim (opcional)</Label>
+        <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+      </div>
+    </div>
+  );
+
   return (
     <>
       <Card>
@@ -136,52 +225,16 @@ export default function PromocoesManager() {
             Promoções (Compre X, Ganhe Y)
           </CardTitle>
           <CardDescription>
-            Defina uma categoria e quantos itens o cliente ganha ao comprar uma quantidade mínima. Os itens mais baratos do grupo recebem o desconto.
+            Defina uma categoria e quantos itens o cliente ganha ao comprar uma quantidade mínima. Os itens mais baratos do grupo recebem o desconto. Deixe as datas vazias para a promoção valer sempre.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="space-y-1 lg:col-span-2">
-              <Label>Nome</Label>
-              <Input placeholder="Ex: Compre 1 Ganhe 1 - Anéis" value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="space-y-1 lg:col-span-2">
-              <Label>Categoria</Label>
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                <SelectContent>
-                  {categorias.filter((c) => c.is_active).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Compra (qtd)</Label>
-              <Input type="number" min={1} value={buyQty} onChange={(e) => setBuyQty(Math.max(1, +e.target.value || 1))} />
-            </div>
-            <div className="space-y-1">
-              <Label>Ganha (qtd)</Label>
-              <Input type="number" min={1} value={getQty} onChange={(e) => setGetQty(Math.max(1, +e.target.value || 1))} />
-            </div>
-            <div className="space-y-1">
-              <Label>Desconto % nos "ganhos"</Label>
-              <Input type="number" min={1} max={100} value={discountPercent} onChange={(e) => setDiscountPercent(Math.max(1, Math.min(100, +e.target.value || 100)))} />
-            </div>
-            <div className="flex items-end">
-              <Button className="w-full" onClick={handleCreate} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                <span className="ml-2">Criar</span>
-              </Button>
-            </div>
-            <div className="space-y-1">
-              <Label>Início (opcional)</Label>
-              <Input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Fim (opcional)</Label>
-              <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
-            </div>
+          {FormFields}
+          <div className="flex justify-end">
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              <span className="ml-2">Criar promoção</span>
+            </Button>
           </div>
 
           {loading ? (
@@ -201,7 +254,7 @@ export default function PromocoesManager() {
                   <TableHead>Regra</TableHead>
                   <TableHead>Período</TableHead>
                   <TableHead className="w-[80px]">Ativa</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
+                  <TableHead className="w-[120px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -213,17 +266,22 @@ export default function PromocoesManager() {
                       Compra {p.buy_qty}, ganha {p.get_qty} {p.discount_percent === 100 ? 'grátis' : `com ${p.discount_percent}% off`}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {p.starts_at ? new Date(p.starts_at).toLocaleDateString('pt-BR') : 'sempre'}
+                      {p.starts_at ? new Date(p.starts_at).toLocaleString('pt-BR') : 'sempre'}
                       {' → '}
-                      {p.ends_at ? new Date(p.ends_at).toLocaleDateString('pt-BR') : 'sem fim'}
+                      {p.ends_at ? new Date(p.ends_at).toLocaleString('pt-BR') : 'sem fim'}
                     </TableCell>
                     <TableCell>
                       <Switch checked={p.is_active} onCheckedChange={() => handleToggle(p)} />
                     </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(p)} title="Editar">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(p)} title="Excluir">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -232,6 +290,23 @@ export default function PromocoesManager() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onOpenChange={(o) => { setEditOpen(o); if (!o) resetForm(); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar promoção</DialogTitle>
+          </DialogHeader>
+          <div className="py-2">{FormFields}</div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditOpen(false); resetForm(); }}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {confirmDialogElement}
     </>
   );
