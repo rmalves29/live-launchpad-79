@@ -13,10 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree, Gift } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
 import CategoriasManagerDialog from '@/components/produtos/CategoriasManagerDialog';
-import PromocoesManagerDialog from '@/components/produtos/PromocoesManagerDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
