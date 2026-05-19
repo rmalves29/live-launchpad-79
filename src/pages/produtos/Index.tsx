@@ -845,6 +845,10 @@ const Produtos = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setIsCategoriasOpen(true)}>
+              <FolderTree className="h-4 w-4 mr-2" />
+              Categorias
+            </Button>
             <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
