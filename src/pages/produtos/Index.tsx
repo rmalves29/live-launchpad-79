@@ -1275,6 +1275,7 @@ const Produtos = () => {
                         <TableHead>Preço</TableHead>
                         <TableHead>Estoque</TableHead>
                         <TableHead>Tipo de Evento</TableHead>
+                        <TableHead>Categoria</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
@@ -1325,6 +1326,16 @@ const Produtos = () => {
                             )}
                           </TableCell>
                           <TableCell>
+                            {(() => {
+                              const cat = categorias.find((c) => c.id === product.category_id);
+                              return cat ? (
+                                <Badge variant="secondary">{cat.name}</Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
                             <Badge variant={product.is_active ? 'default' : 'secondary'}>
                               {product.is_active ? 'Ativo' : 'Inativo'}
                             </Badge>
@@ -1358,6 +1369,14 @@ const Produtos = () => {
       </div>
       {confirmDialogElement}
       <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} preSelectedIds={selectedProducts} />
+      <CategoriasManagerDialog
+        open={isCategoriasOpen}
+        onOpenChange={setIsCategoriasOpen}
+        onChanged={() => {
+          loadCategorias();
+          loadProducts();
+        }}
+      />
     </div>
   );
 };
