@@ -250,6 +250,30 @@ const PublicCheckout = () => {
     loadActiveGifts();
   }, [tenant?.id]);
 
+  // Carregar promoções BOGO ativas (Compre X Ganhe Y) por categoria
+  useEffect(() => {
+    const loadActivePromotions = async () => {
+      if (!tenant?.id) { setActivePromotions([]); return; }
+      try {
+        const nowIso = new Date().toISOString();
+        const { data, error } = await (supabase as any)
+          .from('product_promotions')
+          .select('id, name, category_id, buy_qty, get_qty, discount_percent, starts_at, ends_at, is_active')
+          .eq('tenant_id', tenant.id)
+          .eq('is_active', true);
+        if (error) throw error;
+        const filtered = (data || []).filter((p: any) =>
+          (!p.starts_at || p.starts_at <= nowIso) && (!p.ends_at || p.ends_at >= nowIso)
+        );
+        setActivePromotions(filtered);
+      } catch (e) {
+        console.error('Erro ao carregar promoções:', e);
+        setActivePromotions([]);
+      }
+    };
+    loadActivePromotions();
+  }, [tenant?.id]);
+
   // Carregar handling days
   useEffect(() => {
     const loadHandlingDays = async () => {
