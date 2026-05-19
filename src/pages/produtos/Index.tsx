@@ -1383,6 +1383,7 @@ const Produtos = () => {
           loadProducts();
         }}
       />
+      <PromocoesManagerDialog open={isPromocoesOpen} onOpenChange={setIsPromocoesOpen} />
     </div>
   );
 };
