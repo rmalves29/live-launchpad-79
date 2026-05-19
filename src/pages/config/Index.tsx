@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, Building2, Users, Printer } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
+import PromocoesManager from '@/components/PromocoesManager';
 import { CompanySettings } from '@/components/CompanySettings';
 import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
 import { WhatsAppSettings } from '@/components/WhatsAppSettings';
