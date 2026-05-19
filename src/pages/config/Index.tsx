@@ -281,6 +281,10 @@ const Config = () => {
                 <Gift className="h-3.5 w-3.5" />
                 Brindes
               </TabsTrigger>
+              <TabsTrigger value="promocoes" className={tabTriggerClass}>
+                <Percent className="h-3.5 w-3.5" />
+                Promoções
+              </TabsTrigger>
               <TabsTrigger value="printer" className={tabTriggerClass}>
                 <Printer className="h-3.5 w-3.5" />
                 Impressora
