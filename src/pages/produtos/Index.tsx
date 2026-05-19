@@ -103,6 +103,7 @@ const Produtos = () => {
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
     if (currentTenantId) {
       loadProducts();
+      loadCategorias();
     } else {
       // Verificar novamente após um breve delay (tenant pode estar carregando)
       const checkTenant = setInterval(() => {
@@ -110,6 +111,7 @@ const Produtos = () => {
         if (tenantId) {
           clearInterval(checkTenant);
           loadProducts();
+          loadCategorias();
         }
       }, 100);
       
@@ -122,6 +124,19 @@ const Produtos = () => {
       return () => clearInterval(checkTenant);
     }
   }, []);
+
+  const loadCategorias = async () => {
+    try {
+      const { data, error } = await (supabaseTenant as any)
+        .from('product_categories')
+        .select('id, name, is_active')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setCategorias((data || []) as Categoria[]);
+    } catch (e) {
+      console.warn('[Produtos] Falha ao carregar categorias:', e);
+    }
+  };
 
   const loadProducts = async () => {
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
