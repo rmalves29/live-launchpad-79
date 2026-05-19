@@ -987,8 +987,10 @@ const PublicCheckout = () => {
         shippingCost: shippingCost,
         shippingData: shippingData,
         total: totalAmount.toString(),
-        coupon_discount: couponDiscount,
-        coupon_code: appliedCoupon?.code || null,
+        coupon_discount: totalCouponDiscount,
+        coupon_code: bogoDiscountValue > 0
+          ? (appliedCoupon?.code ? `${appliedCoupon.code}+BOGO` : 'BOGO')
+          : (appliedCoupon?.code || null),
         tenant_id: tenant.id,
         tenant_slug: tenant.slug || undefined,
         merge_observation: mergeObservation,
