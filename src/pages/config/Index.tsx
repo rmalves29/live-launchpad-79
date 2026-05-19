@@ -282,6 +282,10 @@ const Config = () => {
                 <Gift className="h-3.5 w-3.5" />
                 Brindes
               </TabsTrigger>
+              <TabsTrigger value="categorias" className={tabTriggerClass}>
+                <FolderTree className="h-3.5 w-3.5" />
+                Categorias
+              </TabsTrigger>
               <TabsTrigger value="promocoes" className={tabTriggerClass}>
                 <Percent className="h-3.5 w-3.5" />
                 Promoções
