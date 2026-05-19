@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,12 +30,7 @@ interface Promocao {
   is_active: boolean;
 }
 
-interface Props {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
-export default function PromocoesManagerDialog({ open, onOpenChange }: Props) {
+export default function PromocoesManager() {
   const { toast } = useToast();
   const { confirm, confirmDialogElement } = useConfirmDialog();
   const [loading, setLoading] = useState(false);
@@ -43,7 +38,6 @@ export default function PromocoesManagerDialog({ open, onOpenChange }: Props) {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // form
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [buyQty, setBuyQty] = useState(1);
@@ -53,13 +47,8 @@ export default function PromocoesManagerDialog({ open, onOpenChange }: Props) {
   const [endsAt, setEndsAt] = useState('');
 
   const resetForm = () => {
-    setName('');
-    setCategoryId('');
-    setBuyQty(1);
-    setGetQty(1);
-    setDiscountPercent(100);
-    setStartsAt('');
-    setEndsAt('');
+    setName(''); setCategoryId(''); setBuyQty(1); setGetQty(1);
+    setDiscountPercent(100); setStartsAt(''); setEndsAt('');
   };
 
   const load = async () => {
@@ -80,9 +69,7 @@ export default function PromocoesManagerDialog({ open, onOpenChange }: Props) {
     }
   };
 
-  useEffect(() => {
-    if (open) load();
-  }, [open]);
+  useEffect(() => { load(); }, []);
 
   const handleCreate = async () => {
     if (!name.trim() || !categoryId) {
@@ -117,9 +104,7 @@ export default function PromocoesManagerDialog({ open, onOpenChange }: Props) {
   const handleToggle = async (p: Promocao) => {
     try {
       const { error } = await (supabaseTenant as any)
-        .from('product_promotions')
-        .update({ is_active: !p.is_active })
-        .eq('id', p.id);
+        .from('product_promotions').update({ is_active: !p.is_active }).eq('id', p.id);
       if (error) throw error;
       await load();
     } catch (e: any) {
@@ -128,17 +113,10 @@ export default function PromocoesManagerDialog({ open, onOpenChange }: Props) {
   };
 
   const handleDelete = async (p: Promocao) => {
-    const ok = await confirm({
-      description: `Excluir promoção "${p.name}"?`,
-      confirmText: 'Excluir',
-      variant: 'destructive',
-    });
+    const ok = await confirm({ description: `Excluir promoção "${p.name}"?`, confirmText: 'Excluir', variant: 'destructive' });
     if (!ok) return;
     try {
-      const { error } = await (supabaseTenant as any)
-        .from('product_promotions')
-        .delete()
-        .eq('id', p.id);
+      const { error } = await (supabaseTenant as any).from('product_promotions').delete().eq('id', p.id);
       if (error) throw error;
       await load();
       toast({ title: 'Promoção removida' });
@@ -151,33 +129,26 @@ export default function PromocoesManagerDialog({ open, onOpenChange }: Props) {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Gift className="h-5 w-5 text-primary" />
-              Promoções BOGO (Compre X, Ganhe Y)
-            </DialogTitle>
-            <DialogDescription>
-              Defina uma categoria e quantos itens o cliente ganha ao comprar uma quantidade mínima. Os itens mais baratos do grupo recebem o desconto.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 py-3 border-b">
-            <div className="space-y-1">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Gift className="h-5 w-5 text-primary" />
+            Promoções (Compre X, Ganhe Y)
+          </CardTitle>
+          <CardDescription>
+            Defina uma categoria e quantos itens o cliente ganha ao comprar uma quantidade mínima. Os itens mais baratos do grupo recebem o desconto.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="space-y-1 lg:col-span-2">
               <Label>Nome</Label>
-              <Input
-                placeholder="Ex: Compre 1 Ganhe 1 - Anéis"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
+              <Input placeholder="Ex: Compre 1 Ganhe 1 - Anéis" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 lg:col-span-2">
               <Label>Categoria</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   {categorias.filter((c) => c.is_active).map((c) => (
                     <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
@@ -197,74 +168,70 @@ export default function PromocoesManagerDialog({ open, onOpenChange }: Props) {
               <Label>Desconto % nos "ganhos"</Label>
               <Input type="number" min={1} max={100} value={discountPercent} onChange={(e) => setDiscountPercent(Math.max(1, Math.min(100, +e.target.value || 100)))} />
             </div>
+            <div className="flex items-end">
+              <Button className="w-full" onClick={handleCreate} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                <span className="ml-2">Criar</span>
+              </Button>
+            </div>
             <div className="space-y-1">
               <Label>Início (opcional)</Label>
               <Input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
             </div>
-            <div className="space-y-1 md:col-span-1">
+            <div className="space-y-1">
               <Label>Fim (opcional)</Label>
               <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
             </div>
-            <div className="flex items-end">
-              <Button className="w-full" onClick={handleCreate} disabled={saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                <span className="ml-2">Criar promoção</span>
-              </Button>
-            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto pt-2">
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando...
-              </div>
-            ) : items.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                Nenhuma promoção criada ainda.
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead>Regra</TableHead>
-                    <TableHead>Período</TableHead>
-                    <TableHead className="w-[80px]">Ativa</TableHead>
-                    <TableHead className="w-[60px]"></TableHead>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" /> Carregando...
+            </div>
+          ) : items.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              Nenhuma promoção criada ainda.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Regra</TableHead>
+                  <TableHead>Período</TableHead>
+                  <TableHead className="w-[80px]">Ativa</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-medium">{p.name}</TableCell>
+                    <TableCell><Badge variant="secondary">{categoryName(p.category_id)}</Badge></TableCell>
+                    <TableCell className="text-sm">
+                      Compra {p.buy_qty}, ganha {p.get_qty} {p.discount_percent === 100 ? 'grátis' : `com ${p.discount_percent}% off`}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {p.starts_at ? new Date(p.starts_at).toLocaleDateString('pt-BR') : 'sempre'}
+                      {' → '}
+                      {p.ends_at ? new Date(p.ends_at).toLocaleDateString('pt-BR') : 'sem fim'}
+                    </TableCell>
+                    <TableCell>
+                      <Switch checked={p.is_active} onCheckedChange={() => handleToggle(p)} />
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((p) => (
-                    <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{categoryName(p.category_id)}</Badge>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        Compra {p.buy_qty}, ganha {p.get_qty} {p.discount_percent === 100 ? 'grátis' : `com ${p.discount_percent}% off`}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {p.starts_at ? new Date(p.starts_at).toLocaleDateString('pt-BR') : 'sempre'}
-                        {' → '}
-                        {p.ends_at ? new Date(p.ends_at).toLocaleDateString('pt-BR') : 'sem fim'}
-                      </TableCell>
-                      <TableCell>
-                        <Switch checked={p.is_active} onCheckedChange={() => handleToggle(p)} />
-                      </TableCell>
-                      <TableCell>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
       {confirmDialogElement}
     </>
   );

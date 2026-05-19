@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, Building2, Users, Printer } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
+import PromocoesManager from '@/components/PromocoesManager';
 import { CompanySettings } from '@/components/CompanySettings';
 import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
 import { WhatsAppSettings } from '@/components/WhatsAppSettings';
@@ -280,6 +281,10 @@ const Config = () => {
                 <Gift className="h-3.5 w-3.5" />
                 Brindes
               </TabsTrigger>
+              <TabsTrigger value="promocoes" className={tabTriggerClass}>
+                <Percent className="h-3.5 w-3.5" />
+                Promoções
+              </TabsTrigger>
               <TabsTrigger value="printer" className={tabTriggerClass}>
                 <Printer className="h-3.5 w-3.5" />
                 Impressora
@@ -398,6 +403,10 @@ const Config = () => {
 
               <TabsContent value="gifts" className="space-y-6 mt-6">
                 <GiftsManager />
+              </TabsContent>
+
+              <TabsContent value="promocoes" className="space-y-6 mt-6">
+                <PromocoesManager />
               </TabsContent>
 
               <TabsContent value="printer" className="space-y-6 mt-6">
