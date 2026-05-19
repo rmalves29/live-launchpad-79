@@ -37,6 +37,7 @@ interface OrderItem {
   image_url?: string;
   color?: string;
   size?: string;
+  category_id?: string | null;
 }
 
 interface Order {
