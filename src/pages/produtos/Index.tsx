@@ -850,10 +850,6 @@ const Produtos = () => {
               <FolderTree className="h-4 w-4 mr-2" />
               Categorias
             </Button>
-            <Button variant="outline" onClick={() => setIsPromocoesOpen(true)}>
-              <Gift className="h-4 w-4 mr-2" />
-              Promoções
-            </Button>
             <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
