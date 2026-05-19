@@ -1242,7 +1242,7 @@ const PublicCheckout = () => {
 
           const { data: cartItems } = await supabase
             .from('cart_items')
-            .select('id, qty, unit_price, product_id')
+            .select('id, qty, unit_price, product_id, category_id')
             .eq('cart_id', order.cart_id)
             .eq('tenant_id', tenant.id);
 
@@ -1251,7 +1251,7 @@ const PublicCheckout = () => {
           const productIds = cartItems.map(item => item.product_id);
           const { data: products } = await supabase
             .from('products')
-            .select('id, name, code, image_url, color, size')
+            .select('id, name, code, image_url, color, size, category_id')
             .in('id', productIds)
             .eq('tenant_id', tenant.id);
 
@@ -1265,7 +1265,8 @@ const PublicCheckout = () => {
               unit_price: Number(item.unit_price),
               image_url: product?.image_url,
               color: product?.color,
-              size: product?.size
+              size: product?.size,
+              category_id: (item as any).category_id || product?.category_id || null,
             };
           });
 
