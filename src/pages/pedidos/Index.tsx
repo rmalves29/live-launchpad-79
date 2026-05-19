@@ -47,7 +47,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     tenant_id: string;
     unique_order_id?: string;
     melhor_envio_tracking_code?: string;
-    order_status?: 'em_separacao' | 'enviado' | null;
+    order_status?: 'em_separacao' | 'enviado' | 'liberado_retirada' | null;
     customer_name?: string;
     bling_order_id?: number;
     customer?: {
@@ -188,6 +188,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           query = query.eq('is_cancelled', false).eq('order_status', 'em_separacao');
         } else if (filterPaid === 'enviado') {
           query = query.eq('is_cancelled', false).eq('order_status', 'enviado');
+        } else if (filterPaid === 'liberado_retirada') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'liberado_retirada');
         }
 
         if (filterEventType && filterEventType !== 'all') {
@@ -1596,6 +1598,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                         : filterPaid === 'paid' ? 'Pagos'
                         : filterPaid === 'em_separacao' ? 'Em Separação'
                         : filterPaid === 'enviado' ? 'Enviados'
+                        : filterPaid === 'liberado_retirada' ? 'Liberado para Retirada'
                         : filterPaid === 'unpaid' ? 'Não pagos'
                         : 'Cancelados'}
                     </span>
@@ -1606,6 +1609,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                   <SelectItem value="paid">Pagos</SelectItem>
                   <SelectItem value="em_separacao">Em Separação</SelectItem>
                   <SelectItem value="enviado">Enviados</SelectItem>
+                  <SelectItem value="liberado_retirada">Liberado para Retirada</SelectItem>
                   <SelectItem value="unpaid">Não pagos</SelectItem>
                   <SelectItem value="cancelled">Cancelados</SelectItem>
                 </SelectContent>
@@ -1852,6 +1856,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               }
                               if (order.is_paid && order.order_status === 'em_separacao') {
                                 return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309] hover:bg-[#fef3c7]">Em Separação</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'liberado_retirada') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca] hover:bg-[#e0e7ff]">Liberado p/ Retirada</Badge>;
                               }
                               return (
                                 <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
