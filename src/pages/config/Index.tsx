@@ -5,10 +5,11 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, Building2, Users, Printer } from 'lucide-react';
+import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift, Building2, Users, Printer, FolderTree } from 'lucide-react';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import PromocoesManager from '@/components/PromocoesManager';
+import CategoriasManager from '@/components/CategoriasManager';
 import { CompanySettings } from '@/components/CompanySettings';
 import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
 import { WhatsAppSettings } from '@/components/WhatsAppSettings';
@@ -281,6 +282,10 @@ const Config = () => {
                 <Gift className="h-3.5 w-3.5" />
                 Brindes
               </TabsTrigger>
+              <TabsTrigger value="categorias" className={tabTriggerClass}>
+                <FolderTree className="h-3.5 w-3.5" />
+                Categorias
+              </TabsTrigger>
               <TabsTrigger value="promocoes" className={tabTriggerClass}>
                 <Percent className="h-3.5 w-3.5" />
                 Promoções
@@ -403,6 +408,10 @@ const Config = () => {
 
               <TabsContent value="gifts" className="space-y-6 mt-6">
                 <GiftsManager />
+              </TabsContent>
+
+              <TabsContent value="categorias" className="space-y-6 mt-6">
+                <CategoriasManager />
               </TabsContent>
 
               <TabsContent value="promocoes" className="space-y-6 mt-6">
