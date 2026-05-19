@@ -1163,23 +1163,72 @@ const Produtos = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
+            <CardTitle className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
                 <span>Lista de Produtos ({filteredProducts.length})</span>
                 {selectedProducts.length > 0 && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleDeleteSelected}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Deletar Selecionados ({selectedProducts.length})
-                  </Button>
+                  <>
+                    <Select
+                      value={bulkCategoryValue}
+                      onValueChange={(v) => {
+                        setBulkCategoryValue(v);
+                        handleAssignCategory(v);
+                      }}
+                      disabled={assigningCategory}
+                    >
+                      <SelectTrigger className="w-[240px] h-9">
+                        <SelectValue
+                          placeholder={
+                            assigningCategory
+                              ? 'Aplicando...'
+                              : `Atribuir categoria (${selectedProducts.length})`
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Remover categoria</SelectItem>
+                        {categorias
+                          .filter((c) => c.is_active)
+                          .map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        {categorias.length === 0 && (
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                            Nenhuma categoria. Crie em "Categorias".
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteSelected}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Deletar ({selectedProducts.length})
+                    </Button>
+                  </>
                 )}
               </div>
               <div className="flex items-center space-x-2">
-                <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'LIVE' | 'BAZAR') => setSaleTypeFilter(value)}>
+                <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
                   <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todas as categorias</SelectItem>
+                    <SelectItem value="__none__">Sem categoria</SelectItem>
+                    {categorias.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'LIVE' | 'BAZAR') => setSaleTypeFilter(value)}>
+                  <SelectTrigger className="w-[160px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
