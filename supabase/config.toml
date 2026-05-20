@@ -72,6 +72,9 @@ verify_jwt = false
 [functions.public-checkout-customer-address]
 verify_jwt = false
 
+[functions.public-checkout-orders]
+verify_jwt = false
+
 [functions.admin-update-user-email]
 verify_jwt = false
 

@@ -1050,61 +1050,19 @@ const PublicCheckout = () => {
     setShowCheckout(false);
 
     try {
-      // Buscar pedidos via RPC segura (evita policy USING(true) na tabela orders)
-      const { data: allOrders, error: ordersError } = await supabase
-        .rpc('get_orders_by_phone_public', {
-          p_tenant_slug: slug!,
-          p_customer_phone: normalizedPhone
-        });
+      const { data: checkoutOrders, error: checkoutOrdersError } = await supabase.functions.invoke('public-checkout-orders', {
+        body: { tenant_slug: slug!, customer_phone: normalizedPhone }
+      });
 
-      if (ordersError) throw ordersError;
+      if (checkoutOrdersError) throw checkoutOrdersError;
+      if (checkoutOrders?.success === false) throw new Error(checkoutOrders.error || 'Erro ao buscar seus pedidos');
+
+      const allOrders = checkoutOrders?.orders || [];
 
       // Filtrar apenas pedidos não pagos E não cancelados para seleção
-      const customerOrders = (allOrders || [])
+      const ordersWithItems = (allOrders || [])
         .filter((o: any) => !o.is_paid && !o.is_cancelled)
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      const ordersWithItems = await Promise.all(
-        (customerOrders || []).map(async (order) => {
-          if (!order.cart_id) return { ...order, items: [] };
-
-          const { data: cartItems, error: cartItemsError } = await supabase
-            .from('cart_items')
-            .select('id, qty, unit_price, product_id, product_name, product_code, product_image_url')
-            .eq('cart_id', order.cart_id)
-            .eq('tenant_id', tenant.id);
-
-          if (cartItemsError) throw cartItemsError;
-
-          if (!cartItems || cartItems.length === 0) return { ...order, items: [] };
-
-          const productIds = cartItems.map(item => item.product_id).filter(Boolean);
-          const { data: products, error: productsError } = productIds.length > 0 ? await supabase
-            .from('products')
-            .select('id, name, code, image_url, color, size, category_id')
-            .in('id', productIds)
-            .eq('tenant_id', tenant.id) : { data: [], error: null } as any;
-
-          if (productsError) throw productsError;
-
-          const items = cartItems.map(item => {
-            const product = (products || []).find(p => p.id === item.product_id);
-            return {
-              id: item.id,
-              product_name: product?.name || item.product_name || `Produto ID ${item.product_id}`,
-              product_code: product?.code || item.product_code || '',
-              qty: item.qty,
-              unit_price: Number(item.unit_price),
-              image_url: product?.image_url || item.product_image_url,
-              color: product?.color,
-              size: product?.size,
-              category_id: product?.category_id || null,
-            };
-          });
-
-          return { ...order, items };
-        })
-      );
 
       setOrders(ordersWithItems);
 
@@ -1165,7 +1123,7 @@ const PublicCheckout = () => {
         });
       }
 
-      if ((customerOrders || []).length === 0) {
+      if ((ordersWithItems || []).length === 0) {
         toast({ title: 'Nenhum pedido encontrado', description: 'Não há pedidos em aberto para este telefone' });
       }
     } catch (error: any) {
@@ -1227,61 +1185,19 @@ const PublicCheckout = () => {
 
     setLoadingHistory(true);
     try {
-      // Buscar pedidos via RPC segura (evita policy USING(true) na tabela orders)
-      const { data: allOrders, error: ordersError } = await supabase
-        .rpc('get_orders_by_phone_public', {
-          p_tenant_slug: slug!,
-          p_customer_phone: normalizedPhone
-        });
+      const { data: checkoutOrders, error: checkoutOrdersError } = await supabase.functions.invoke('public-checkout-orders', {
+        body: { tenant_slug: slug!, customer_phone: normalizedPhone }
+      });
 
-      if (ordersError) throw ordersError;
+      if (checkoutOrdersError) throw checkoutOrdersError;
+      if (checkoutOrders?.success === false) throw new Error(checkoutOrders.error || 'Erro ao buscar histórico de pedidos');
+
+      const allOrders = checkoutOrders?.orders || [];
 
       // Filtrar apenas pedidos pagos OU cancelados para o histórico
-      const paidOrdersData = (allOrders || [])
+      const ordersWithItems = (allOrders || [])
         .filter((o: any) => o.is_paid || o.is_cancelled)
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      const ordersWithItems = await Promise.all(
-        (paidOrdersData || []).map(async (order) => {
-          if (!order.cart_id) return { ...order, items: [] };
-
-          const { data: cartItems, error: cartItemsError } = await supabase
-            .from('cart_items')
-            .select('id, qty, unit_price, product_id, product_name, product_code, product_image_url')
-            .eq('cart_id', order.cart_id)
-            .eq('tenant_id', tenant.id);
-
-          if (cartItemsError) throw cartItemsError;
-
-          if (!cartItems || cartItems.length === 0) return { ...order, items: [] };
-
-          const productIds = cartItems.map(item => item.product_id).filter(Boolean);
-          const { data: products, error: productsError } = productIds.length > 0 ? await supabase
-            .from('products')
-            .select('id, name, code, image_url, color, size, category_id')
-            .in('id', productIds)
-            .eq('tenant_id', tenant.id) : { data: [], error: null } as any;
-
-          if (productsError) throw productsError;
-
-          const items = cartItems.map(item => {
-            const product = (products || []).find(p => p.id === item.product_id);
-            return {
-              id: item.id,
-              product_name: product?.name || item.product_name || `Produto ID ${item.product_id}`,
-              product_code: product?.code || item.product_code || '',
-              qty: item.qty,
-              unit_price: Number(item.unit_price),
-              image_url: product?.image_url || item.product_image_url,
-              color: product?.color,
-              size: product?.size,
-              category_id: product?.category_id || null,
-            };
-          });
-
-          return { ...order, items };
-        })
-      );
 
       setPaidOrders(ordersWithItems);
     } catch (error) {
