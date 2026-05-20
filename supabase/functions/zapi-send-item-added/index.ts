@@ -528,7 +528,7 @@ serve(async (req) => {
       );
     }
 
-    const { instanceId, token, clientToken, templateSolicitacao, templateComLink } = credentials;
+    const { instanceId, token, clientToken, templateSolicitacao, templateComLink, templateItemAdded } = credentials;
     const baseUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}`;
     const formattedPhone = await resolveWhatsAppPhone(baseUrl, clientToken, customer_phone);
     const sendUrl = `${baseUrl}/send-text`;
