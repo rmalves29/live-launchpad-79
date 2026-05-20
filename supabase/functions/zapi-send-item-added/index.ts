@@ -135,6 +135,7 @@ async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanc
      // Templates da própria tenant (mantemos o que ela já configurou)
      templateSolicitacao: integration.template_solicitacao || null,
      templateComLink: integration.template_com_link || null,
+     templateItemAdded: integration.template_item_added || null,
   };
 }
 
