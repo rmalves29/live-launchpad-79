@@ -1513,6 +1513,7 @@ const PublicCheckout = () => {
                             <div className="pt-1">
                               <Checkbox 
                                 checked={isSelected}
+                                onClick={(e) => e.stopPropagation()}
                                 onCheckedChange={() => toggleOrderSelection(order.id)}
                                 disabled={isCancelled}
                                 className={`h-5 w-5 ${isCancelled ? 'opacity-50' : 'data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500'}`}
