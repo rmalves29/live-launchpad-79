@@ -85,7 +85,7 @@ function phoneMatches(a?: string | null, b?: string | null): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanceId?: string, sourceConnectedPhone?: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link")
+     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link, template_item_added")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -135,6 +135,7 @@ async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanc
      // Templates da própria tenant (mantemos o que ela já configurou)
      templateSolicitacao: integration.template_solicitacao || null,
      templateComLink: integration.template_com_link || null,
+     templateItemAdded: integration.template_item_added || null,
   };
 }
 
@@ -527,7 +528,7 @@ serve(async (req) => {
       );
     }
 
-    const { instanceId, token, clientToken, templateSolicitacao, templateComLink } = credentials;
+    const { instanceId, token, clientToken, templateSolicitacao, templateComLink, templateItemAdded } = credentials;
     const baseUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}`;
     const formattedPhone = await resolveWhatsAppPhone(baseUrl, clientToken, customer_phone);
     const sendUrl = `${baseUrl}/send-text`;
@@ -547,11 +548,11 @@ serve(async (req) => {
     const consentEnabled = consentCfg?.consent_protection_enabled === true;
 
     if (!consentEnabled) {
-      // Modo legado: envia sempre a mensagem com link, sem máquina de estados
-      console.log(`[zapi-send-item-added] ⚡ Consent protection DISABLED — sending direct message with link`);
+      // Modo legado: envia sempre o template "Item Adicionado ao Pedido", sem máquina de estados
+      console.log(`[zapi-send-item-added] ⚡ Consent protection DISABLED — sending template_item_added`);
       templateType = 'B';
       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-      const template = templateComLink || getDefaultTemplateComLink();
+      const template = templateItemAdded || templateComLink || getDefaultTemplateComLink();
       const baseMessage = formatMessage(template, body)
         .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
         .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
