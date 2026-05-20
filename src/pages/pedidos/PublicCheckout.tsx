@@ -1068,33 +1068,37 @@ const PublicCheckout = () => {
         (customerOrders || []).map(async (order) => {
           if (!order.cart_id) return { ...order, items: [] };
 
-          const { data: cartItems } = await supabase
+          const { data: cartItems, error: cartItemsError } = await supabase
             .from('cart_items')
-            .select('id, qty, unit_price, product_id, category_id')
+            .select('id, qty, unit_price, product_id, product_name, product_code, product_image_url')
             .eq('cart_id', order.cart_id)
             .eq('tenant_id', tenant.id);
 
+          if (cartItemsError) throw cartItemsError;
+
           if (!cartItems || cartItems.length === 0) return { ...order, items: [] };
 
-          const productIds = cartItems.map(item => item.product_id);
-          const { data: products } = await supabase
+          const productIds = cartItems.map(item => item.product_id).filter(Boolean);
+          const { data: products, error: productsError } = productIds.length > 0 ? await supabase
             .from('products')
             .select('id, name, code, image_url, color, size, category_id')
             .in('id', productIds)
-            .eq('tenant_id', tenant.id);
+            .eq('tenant_id', tenant.id) : { data: [], error: null } as any;
+
+          if (productsError) throw productsError;
 
           const items = cartItems.map(item => {
             const product = (products || []).find(p => p.id === item.product_id);
             return {
               id: item.id,
-              product_name: product?.name || `Produto ID ${item.product_id}`,
-              product_code: product?.code || '',
+              product_name: product?.name || item.product_name || `Produto ID ${item.product_id}`,
+              product_code: product?.code || item.product_code || '',
               qty: item.qty,
               unit_price: Number(item.unit_price),
-              image_url: product?.image_url,
+              image_url: product?.image_url || item.product_image_url,
               color: product?.color,
               size: product?.size,
-              category_id: (item as any).category_id || product?.category_id || null,
+              category_id: product?.category_id || null,
             };
           });
 
@@ -1241,33 +1245,37 @@ const PublicCheckout = () => {
         (paidOrdersData || []).map(async (order) => {
           if (!order.cart_id) return { ...order, items: [] };
 
-          const { data: cartItems } = await supabase
+          const { data: cartItems, error: cartItemsError } = await supabase
             .from('cart_items')
-            .select('id, qty, unit_price, product_id, category_id')
+            .select('id, qty, unit_price, product_id, product_name, product_code, product_image_url')
             .eq('cart_id', order.cart_id)
             .eq('tenant_id', tenant.id);
 
+          if (cartItemsError) throw cartItemsError;
+
           if (!cartItems || cartItems.length === 0) return { ...order, items: [] };
 
-          const productIds = cartItems.map(item => item.product_id);
-          const { data: products } = await supabase
+          const productIds = cartItems.map(item => item.product_id).filter(Boolean);
+          const { data: products, error: productsError } = productIds.length > 0 ? await supabase
             .from('products')
             .select('id, name, code, image_url, color, size, category_id')
             .in('id', productIds)
-            .eq('tenant_id', tenant.id);
+            .eq('tenant_id', tenant.id) : { data: [], error: null } as any;
+
+          if (productsError) throw productsError;
 
           const items = cartItems.map(item => {
             const product = (products || []).find(p => p.id === item.product_id);
             return {
               id: item.id,
-              product_name: product?.name || `Produto ID ${item.product_id}`,
-              product_code: product?.code || '',
+              product_name: product?.name || item.product_name || `Produto ID ${item.product_id}`,
+              product_code: product?.code || item.product_code || '',
               qty: item.qty,
               unit_price: Number(item.unit_price),
-              image_url: product?.image_url,
+              image_url: product?.image_url || item.product_image_url,
               color: product?.color,
               size: product?.size,
-              category_id: (item as any).category_id || product?.category_id || null,
+              category_id: product?.category_id || null,
             };
           });
 
