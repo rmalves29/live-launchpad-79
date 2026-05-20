@@ -538,61 +538,77 @@ serve(async (req) => {
     let consentDecisionAfterSend: 'request_sent' | 'active_sent' | null = null;
     let activeStateId: string | null = null;
 
-    // ============================================================
-    // MÁQUINA DE ESTADOS GLOBAL DE CONSENTIMENTO (todos os tenants)
-    // ============================================================
-    const decision = await evaluateConsent(supabase, tenant_id, formattedPhone);
-    console.log(`[zapi-send-item-added] 🧭 Consent decision for ${formattedPhone}: ${decision.action} (${('reason' in decision) ? decision.reason : ''})`);
+    // Verifica se proteção por consentimento está ativada para o tenant
+    const { data: consentCfg } = await supabase
+      .from('integration_whatsapp')
+      .select('consent_protection_enabled')
+      .eq('tenant_id', tenant_id)
+      .maybeSingle();
+    const consentEnabled = consentCfg?.consent_protection_enabled === true;
 
-    if (decision.action === 'silence') {
-      // Cliente está dentro da janela de espera (1h). Pedido foi criado normalmente
-      // pelo trigger; aqui apenas silenciamos a mensagem.
-      await markSilenced(supabase, decision.stateId);
-
-      await supabase.from('whatsapp_messages').insert({
-        tenant_id,
-        phone: formattedPhone,
-        message: `[SILENCIADO - ${decision.reason}] ${product_name} (${product_code})`,
-        type: 'item_added',
-        product_name: product_name.substring(0, 100),
-        sent_at: new Date().toISOString(),
-        order_id: order_id || null,
-        delivery_status: 'SKIPPED',
-      });
-
-      return new Response(
-        JSON.stringify({
-          sent: false,
-          skipped: true,
-          order_created: true,
-          reason: `Mensagem silenciada (${decision.reason}). Pedido foi registrado normalmente.`,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (decision.action === 'send_request') {
-      // 1ª mensagem (ou janela passou): envia SOLICITAÇÃO única
-      templateType = 'A';
-      const template = templateSolicitacao || getDefaultTemplateSolicitacao();
-      const baseMessage = formatMessage(template, body);
-      message = addMessageVariation(baseMessage);
-      consentDecisionAfterSend = 'request_sent';
-      // Com solicitação, NÃO criamos pending_message_confirmations:
-      // a fonte de verdade do estado é whatsapp_consent_state.
-      skipPendingConfirmation = true;
-    } else {
-      // send_with_link: cliente com consentimento ativo (< 3 dias) — envia COM LINK
+    if (!consentEnabled) {
+      // Modo legado: envia sempre a mensagem com link, sem máquina de estados
+      console.log(`[zapi-send-item-added] ⚡ Consent protection DISABLED — sending direct message with link`);
       templateType = 'B';
-      activeStateId = decision.stateId;
       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
       const template = templateComLink || getDefaultTemplateComLink();
       const baseMessage = formatMessage(template, body)
         .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
         .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
       message = addMessageVariation(baseMessage);
-      consentDecisionAfterSend = 'active_sent';
-      skipPendingConfirmation = true;
+      consentDecisionAfterSend = null;
+      skipPendingConfirmation = false;
+    } else {
+      // ============================================================
+      // MÁQUINA DE ESTADOS DE CONSENTIMENTO (tenant com proteção ativa)
+      // ============================================================
+      const decision = await evaluateConsent(supabase, tenant_id, formattedPhone);
+      console.log(`[zapi-send-item-added] 🧭 Consent decision for ${formattedPhone}: ${decision.action} (${('reason' in decision) ? decision.reason : ''})`);
+
+      if (decision.action === 'silence') {
+        await markSilenced(supabase, decision.stateId);
+
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id,
+          phone: formattedPhone,
+          message: `[SILENCIADO - ${decision.reason}] ${product_name} (${product_code})`,
+          type: 'item_added',
+          product_name: product_name.substring(0, 100),
+          sent_at: new Date().toISOString(),
+          order_id: order_id || null,
+          delivery_status: 'SKIPPED',
+        });
+
+        return new Response(
+          JSON.stringify({
+            sent: false,
+            skipped: true,
+            order_created: true,
+            reason: `Mensagem silenciada (${decision.reason}). Pedido foi registrado normalmente.`,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (decision.action === 'send_request') {
+        templateType = 'A';
+        const template = templateSolicitacao || getDefaultTemplateSolicitacao();
+        const baseMessage = formatMessage(template, body);
+        message = addMessageVariation(baseMessage);
+        consentDecisionAfterSend = 'request_sent';
+        skipPendingConfirmation = true;
+      } else {
+        templateType = 'B';
+        activeStateId = decision.stateId;
+        const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
+        const template = templateComLink || getDefaultTemplateComLink();
+        const baseMessage = formatMessage(template, body)
+          .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
+          .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
+        message = addMessageVariation(baseMessage);
+        consentDecisionAfterSend = 'active_sent';
+        skipPendingConfirmation = true;
+      }
     }
 
     // Check for throttling (multiple messages to same phone)
