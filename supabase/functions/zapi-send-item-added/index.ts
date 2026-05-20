@@ -548,11 +548,11 @@ serve(async (req) => {
     const consentEnabled = consentCfg?.consent_protection_enabled === true;
 
     if (!consentEnabled) {
-      // Modo legado: envia sempre a mensagem com link, sem máquina de estados
-      console.log(`[zapi-send-item-added] ⚡ Consent protection DISABLED — sending direct message with link`);
+      // Modo legado: envia sempre o template "Item Adicionado ao Pedido", sem máquina de estados
+      console.log(`[zapi-send-item-added] ⚡ Consent protection DISABLED — sending template_item_added`);
       templateType = 'B';
       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-      const template = templateComLink || getDefaultTemplateComLink();
+      const template = templateItemAdded || templateComLink || getDefaultTemplateComLink();
       const baseMessage = formatMessage(template, body)
         .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
         .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
