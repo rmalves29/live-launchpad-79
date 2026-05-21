@@ -721,8 +721,10 @@ useEffect(() => {
               setSavingMeta(true);
               try {
                 const trimmedTracking = trackingCode.trim();
-                // Auto-status: se rastreio preenchido, marca como enviado
-                const finalStatus = trimmedTracking ? 'enviado' : (orderStatus || null);
+                // Auto-status: se rastreio preenchido, marca como enviado (a menos que esteja Entregue)
+                const finalStatus = orderStatus === 'entregue'
+                  ? 'entregue'
+                  : (trimmedTracking ? 'enviado' : (orderStatus || null));
 
                 const { error } = await (supabaseTenant as any)
                   .from('orders')
