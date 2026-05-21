@@ -680,7 +680,8 @@ const Produtos = () => {
       const workbook = XLSX.read(data);
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
+      // raw:false faz o xlsx aplicar formatação (preserva zeros à esquerda e evita 51461 virar 51461.0)
+      const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { raw: false, defval: '' });
 
       // Normalizar nomes das colunas: remover acentos, lowercase, trim
       const normalizeKey = (key: string) =>
