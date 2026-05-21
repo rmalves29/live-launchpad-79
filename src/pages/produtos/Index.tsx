@@ -80,7 +80,16 @@ const Produtos = () => {
   const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
   const [assigningCategory, setAssigningCategory] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
-  const [importResults, setImportResults] = useState<{ success: number; errors: string[]; skipped: number; skippedDetails: string[] } | null>(null);
+  const [importUpdateOnly, setImportUpdateOnly] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    updated: number;
+    inserted: number;
+    insertedCodes: string[];
+    notFoundUpdateOnly: string[];
+    errors: string[];
+    skipped: number;
+    skippedDetails: string[];
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -671,7 +680,8 @@ const Produtos = () => {
       const workbook = XLSX.read(data);
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
+      // raw:false faz o xlsx aplicar formatação (preserva zeros à esquerda e evita 51461 virar 51461.0)
+      const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { raw: false, defval: '' });
 
       // Normalizar nomes das colunas: remover acentos, lowercase, trim
       const normalizeKey = (key: string) =>
@@ -713,7 +723,10 @@ const Produtos = () => {
 
       const errors: string[] = [];
       const skippedDetails: string[] = [];
-      let successCount = 0;
+      const insertedCodes: string[] = [];
+      const notFoundUpdateOnly: string[] = [];
+      let updatedCount = 0;
+      let insertedCount = 0;
       let skippedCount = 0;
 
       for (let i = 0; i < jsonData.length; i++) {
@@ -721,11 +734,11 @@ const Produtos = () => {
         setImportProgress(Math.round(((i + 1) / jsonData.length) * 100));
 
         // Validate required fields
-        if (!row.codigo || !row.nome || row.preco === undefined) {
+        if (!row.codigo || !row.nome || row.preco === undefined || String(row.preco).trim() === '') {
           const missing: string[] = [];
           if (!row.codigo) missing.push('codigo');
           if (!row.nome) missing.push('nome');
-          if (row.preco === undefined) missing.push('preco');
+          if (row.preco === undefined || String(row.preco).trim() === '') missing.push('preco');
           const rowPreview = row.codigo || row.nome || `(vazia)`;
           skippedDetails.push(`Linha ${i + 2} (${rowPreview}): faltando ${missing.join(', ')}`);
           skippedCount++;
@@ -742,13 +755,13 @@ const Produtos = () => {
         }
 
         const promoPrice = row.preco_promocional != null && String(row.preco_promocional).trim() !== ''
-          ? (typeof row.preco_promocional === 'number' ? row.preco_promocional : parseFloat(String(row.preco_promocional).replace(',', '.')))
+          ? parseFloat(String(row.preco_promocional).replace(',', '.'))
           : null;
 
         const productData = {
           code: String(row.codigo).trim(),
           name: String(row.nome).trim(),
-          price: typeof row.preco === 'number' ? row.preco : parseFloat(String(row.preco).replace(',', '.')),
+          price: parseFloat(String(row.preco).replace(',', '.')),
           promotional_price: isNaN(promoPrice as number) ? null : promoPrice,
           observation: row.observacao ? String(row.observacao).trim() : null,
           sku_erp: row.sku_erp ? String(row.sku_erp).trim() : null,
@@ -765,7 +778,7 @@ const Produtos = () => {
           sale_type: saleType
         };
 
-        // Check if product with same code exists
+        // Check if product with same code exists (case-insensitive trim)
         const { data: existing } = await supabaseTenant
           .from('products')
           .select('id')
@@ -782,9 +795,14 @@ const Produtos = () => {
           if (error) {
             errors.push(`Linha ${i + 2}: Erro ao atualizar ${productData.code} - ${error.message}`);
           } else {
-            successCount++;
+            updatedCount++;
           }
         } else {
+          // Modo "somente atualização": não cria produtos novos
+          if (importUpdateOnly) {
+            notFoundUpdateOnly.push(`Linha ${i + 2}: código "${productData.code}" não encontrado (não inserido)`);
+            continue;
+          }
           // Insert new product
           const { error } = await supabaseTenant
             .from('products')
@@ -793,24 +811,36 @@ const Produtos = () => {
           if (error) {
             errors.push(`Linha ${i + 2}: Erro ao inserir ${productData.code} - ${error.message}`);
           } else {
-            successCount++;
+            insertedCount++;
+            insertedCodes.push(productData.code);
           }
         }
       }
 
-      setImportResults({ success: successCount, errors, skipped: skippedCount, skippedDetails });
+      setImportResults({
+        updated: updatedCount,
+        inserted: insertedCount,
+        insertedCodes,
+        notFoundUpdateOnly,
+        errors,
+        skipped: skippedCount,
+        skippedDetails,
+      });
 
-      if (errors.length === 0 && skippedCount === 0) {
+      const totalOk = updatedCount + insertedCount;
+      const hasIssues = errors.length > 0 || skippedCount > 0 || notFoundUpdateOnly.length > 0;
+      if (!hasIssues) {
         toast({
           title: 'Importação concluída',
-          description: `${successCount} produto(s) importado(s) com sucesso`
+          description: `${updatedCount} atualizado(s), ${insertedCount} inserido(s)`
         });
       } else {
-        const parts = [`${successCount} importado(s)`];
+        const parts = [`${updatedCount} atualizado(s)`, `${insertedCount} inserido(s)`];
+        if (notFoundUpdateOnly.length > 0) parts.push(`${notFoundUpdateOnly.length} não encontrado(s)`);
         if (skippedCount > 0) parts.push(`${skippedCount} pulado(s)`);
         if (errors.length > 0) parts.push(`${errors.length} erro(s)`);
         toast({
-          title: skippedCount > 0 || errors.length > 0 ? 'Importação parcial' : 'Importação concluída',
+          title: errors.length > 0 ? 'Importação com erros' : 'Importação parcial',
           description: parts.join(', '),
           variant: errors.length > 0 ? 'destructive' : undefined
         });
@@ -890,6 +920,22 @@ const Produtos = () => {
                     <p className="text-sm text-muted-foreground mb-3">
                       Selecione o arquivo Excel (.xlsx) preenchido com seus produtos.
                     </p>
+                    <div className="flex items-start gap-2 mb-3 p-2 rounded bg-background border">
+                      <Checkbox
+                        id="update-only-mode"
+                        checked={importUpdateOnly}
+                        onCheckedChange={(v) => setImportUpdateOnly(v === true)}
+                        disabled={importing}
+                      />
+                      <div className="grid gap-0.5 leading-none">
+                        <Label htmlFor="update-only-mode" className="text-sm font-medium cursor-pointer">
+                          Modo somente atualização
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Códigos não encontrados não serão inseridos como novos. Útil para zerar estoque sem criar duplicatas.
+                        </p>
+                      </div>
+                    </div>
                     <div className="space-y-2">
                       <Input
                         type="file"
@@ -914,8 +960,18 @@ const Produtos = () => {
                       <h4 className="font-medium mb-2">Resultado da Importação</h4>
                       <div className="space-y-2">
                         <p className="text-sm text-green-600">
-                          ✓ {importResults.success} produto(s) importado(s) com sucesso
+                          ✓ {importResults.updated} produto(s) atualizado(s)
                         </p>
+                        {importResults.inserted > 0 && (
+                          <p className="text-sm text-blue-600">
+                            ➕ {importResults.inserted} produto(s) inserido(s) como novo(s)
+                          </p>
+                        )}
+                        {importResults.notFoundUpdateOnly.length > 0 && (
+                          <p className="text-sm text-orange-600">
+                            ⊘ {importResults.notFoundUpdateOnly.length} código(s) não encontrado(s) (modo somente atualização)
+                          </p>
+                        )}
                         {importResults.skipped > 0 && (
                           <p className="text-sm text-yellow-600">
                             ⚠ {importResults.skipped} linha(s) pulada(s) por campos obrigatórios vazios
@@ -926,9 +982,27 @@ const Produtos = () => {
                             ✗ {importResults.errors.length} erro(s) ao salvar
                           </p>
                         )}
-                        {(importResults.errors.length > 0 || (importResults.skippedDetails && importResults.skippedDetails.length > 0)) && (
-                          <div className="max-h-48 overflow-y-auto mt-2 space-y-1 border-t pt-2">
-                            {importResults.skippedDetails?.map((detail, idx) => (
+                        {(importResults.errors.length > 0 ||
+                          importResults.skippedDetails.length > 0 ||
+                          importResults.notFoundUpdateOnly.length > 0 ||
+                          importResults.insertedCodes.length > 0) && (
+                          <div className="max-h-60 overflow-y-auto mt-2 space-y-1 border-t pt-2">
+                            {importResults.insertedCodes.length > 0 && (
+                              <details className="text-xs">
+                                <summary className="text-blue-600 cursor-pointer font-medium">
+                                  ➕ Ver códigos inseridos como novos ({importResults.insertedCodes.length}) — revise se houve erro de digitação
+                                </summary>
+                                <div className="pl-3 pt-1 font-mono text-blue-600">
+                                  {importResults.insertedCodes.join(', ')}
+                                </div>
+                              </details>
+                            )}
+                            {importResults.notFoundUpdateOnly.map((detail, idx) => (
+                              <p key={`nf-${idx}`} className="text-xs text-orange-600 font-mono">
+                                ⊘ {detail}
+                              </p>
+                            ))}
+                            {importResults.skippedDetails.map((detail, idx) => (
                               <p key={`skip-${idx}`} className="text-xs text-yellow-600 font-mono">
                                 ⚠ {detail}
                               </p>
