@@ -723,7 +723,10 @@ const Produtos = () => {
 
       const errors: string[] = [];
       const skippedDetails: string[] = [];
-      let successCount = 0;
+      const insertedCodes: string[] = [];
+      const notFoundUpdateOnly: string[] = [];
+      let updatedCount = 0;
+      let insertedCount = 0;
       let skippedCount = 0;
 
       for (let i = 0; i < jsonData.length; i++) {
@@ -731,11 +734,11 @@ const Produtos = () => {
         setImportProgress(Math.round(((i + 1) / jsonData.length) * 100));
 
         // Validate required fields
-        if (!row.codigo || !row.nome || row.preco === undefined) {
+        if (!row.codigo || !row.nome || row.preco === undefined || String(row.preco).trim() === '') {
           const missing: string[] = [];
           if (!row.codigo) missing.push('codigo');
           if (!row.nome) missing.push('nome');
-          if (row.preco === undefined) missing.push('preco');
+          if (row.preco === undefined || String(row.preco).trim() === '') missing.push('preco');
           const rowPreview = row.codigo || row.nome || `(vazia)`;
           skippedDetails.push(`Linha ${i + 2} (${rowPreview}): faltando ${missing.join(', ')}`);
           skippedCount++;
@@ -752,13 +755,13 @@ const Produtos = () => {
         }
 
         const promoPrice = row.preco_promocional != null && String(row.preco_promocional).trim() !== ''
-          ? (typeof row.preco_promocional === 'number' ? row.preco_promocional : parseFloat(String(row.preco_promocional).replace(',', '.')))
+          ? parseFloat(String(row.preco_promocional).replace(',', '.'))
           : null;
 
         const productData = {
           code: String(row.codigo).trim(),
           name: String(row.nome).trim(),
-          price: typeof row.preco === 'number' ? row.preco : parseFloat(String(row.preco).replace(',', '.')),
+          price: parseFloat(String(row.preco).replace(',', '.')),
           promotional_price: isNaN(promoPrice as number) ? null : promoPrice,
           observation: row.observacao ? String(row.observacao).trim() : null,
           sku_erp: row.sku_erp ? String(row.sku_erp).trim() : null,
@@ -775,7 +778,7 @@ const Produtos = () => {
           sale_type: saleType
         };
 
-        // Check if product with same code exists
+        // Check if product with same code exists (case-insensitive trim)
         const { data: existing } = await supabaseTenant
           .from('products')
           .select('id')
@@ -792,9 +795,14 @@ const Produtos = () => {
           if (error) {
             errors.push(`Linha ${i + 2}: Erro ao atualizar ${productData.code} - ${error.message}`);
           } else {
-            successCount++;
+            updatedCount++;
           }
         } else {
+          // Modo "somente atualização": não cria produtos novos
+          if (importUpdateOnly) {
+            notFoundUpdateOnly.push(`Linha ${i + 2}: código "${productData.code}" não encontrado (não inserido)`);
+            continue;
+          }
           // Insert new product
           const { error } = await supabaseTenant
             .from('products')
@@ -803,24 +811,36 @@ const Produtos = () => {
           if (error) {
             errors.push(`Linha ${i + 2}: Erro ao inserir ${productData.code} - ${error.message}`);
           } else {
-            successCount++;
+            insertedCount++;
+            insertedCodes.push(productData.code);
           }
         }
       }
 
-      setImportResults({ success: successCount, errors, skipped: skippedCount, skippedDetails });
+      setImportResults({
+        updated: updatedCount,
+        inserted: insertedCount,
+        insertedCodes,
+        notFoundUpdateOnly,
+        errors,
+        skipped: skippedCount,
+        skippedDetails,
+      });
 
-      if (errors.length === 0 && skippedCount === 0) {
+      const totalOk = updatedCount + insertedCount;
+      const hasIssues = errors.length > 0 || skippedCount > 0 || notFoundUpdateOnly.length > 0;
+      if (!hasIssues) {
         toast({
           title: 'Importação concluída',
-          description: `${successCount} produto(s) importado(s) com sucesso`
+          description: `${updatedCount} atualizado(s), ${insertedCount} inserido(s)`
         });
       } else {
-        const parts = [`${successCount} importado(s)`];
+        const parts = [`${updatedCount} atualizado(s)`, `${insertedCount} inserido(s)`];
+        if (notFoundUpdateOnly.length > 0) parts.push(`${notFoundUpdateOnly.length} não encontrado(s)`);
         if (skippedCount > 0) parts.push(`${skippedCount} pulado(s)`);
         if (errors.length > 0) parts.push(`${errors.length} erro(s)`);
         toast({
-          title: skippedCount > 0 || errors.length > 0 ? 'Importação parcial' : 'Importação concluída',
+          title: errors.length > 0 ? 'Importação com erros' : 'Importação parcial',
           description: parts.join(', '),
           variant: errors.length > 0 ? 'destructive' : undefined
         });
