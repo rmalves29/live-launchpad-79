@@ -920,6 +920,22 @@ const Produtos = () => {
                     <p className="text-sm text-muted-foreground mb-3">
                       Selecione o arquivo Excel (.xlsx) preenchido com seus produtos.
                     </p>
+                    <div className="flex items-start gap-2 mb-3 p-2 rounded bg-background border">
+                      <Checkbox
+                        id="update-only-mode"
+                        checked={importUpdateOnly}
+                        onCheckedChange={(v) => setImportUpdateOnly(v === true)}
+                        disabled={importing}
+                      />
+                      <div className="grid gap-0.5 leading-none">
+                        <Label htmlFor="update-only-mode" className="text-sm font-medium cursor-pointer">
+                          Modo somente atualização
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Códigos não encontrados não serão inseridos como novos. Útil para zerar estoque sem criar duplicatas.
+                        </p>
+                      </div>
+                    </div>
                     <div className="space-y-2">
                       <Input
                         type="file"
@@ -944,8 +960,18 @@ const Produtos = () => {
                       <h4 className="font-medium mb-2">Resultado da Importação</h4>
                       <div className="space-y-2">
                         <p className="text-sm text-green-600">
-                          ✓ {importResults.success} produto(s) importado(s) com sucesso
+                          ✓ {importResults.updated} produto(s) atualizado(s)
                         </p>
+                        {importResults.inserted > 0 && (
+                          <p className="text-sm text-blue-600">
+                            ➕ {importResults.inserted} produto(s) inserido(s) como novo(s)
+                          </p>
+                        )}
+                        {importResults.notFoundUpdateOnly.length > 0 && (
+                          <p className="text-sm text-orange-600">
+                            ⊘ {importResults.notFoundUpdateOnly.length} código(s) não encontrado(s) (modo somente atualização)
+                          </p>
+                        )}
                         {importResults.skipped > 0 && (
                           <p className="text-sm text-yellow-600">
                             ⚠ {importResults.skipped} linha(s) pulada(s) por campos obrigatórios vazios
@@ -956,9 +982,27 @@ const Produtos = () => {
                             ✗ {importResults.errors.length} erro(s) ao salvar
                           </p>
                         )}
-                        {(importResults.errors.length > 0 || (importResults.skippedDetails && importResults.skippedDetails.length > 0)) && (
-                          <div className="max-h-48 overflow-y-auto mt-2 space-y-1 border-t pt-2">
-                            {importResults.skippedDetails?.map((detail, idx) => (
+                        {(importResults.errors.length > 0 ||
+                          importResults.skippedDetails.length > 0 ||
+                          importResults.notFoundUpdateOnly.length > 0 ||
+                          importResults.insertedCodes.length > 0) && (
+                          <div className="max-h-60 overflow-y-auto mt-2 space-y-1 border-t pt-2">
+                            {importResults.insertedCodes.length > 0 && (
+                              <details className="text-xs">
+                                <summary className="text-blue-600 cursor-pointer font-medium">
+                                  ➕ Ver códigos inseridos como novos ({importResults.insertedCodes.length}) — revise se houve erro de digitação
+                                </summary>
+                                <div className="pl-3 pt-1 font-mono text-blue-600">
+                                  {importResults.insertedCodes.join(', ')}
+                                </div>
+                              </details>
+                            )}
+                            {importResults.notFoundUpdateOnly.map((detail, idx) => (
+                              <p key={`nf-${idx}`} className="text-xs text-orange-600 font-mono">
+                                ⊘ {detail}
+                              </p>
+                            ))}
+                            {importResults.skippedDetails.map((detail, idx) => (
                               <p key={`skip-${idx}`} className="text-xs text-yellow-600 font-mono">
                                 ⚠ {detail}
                               </p>
