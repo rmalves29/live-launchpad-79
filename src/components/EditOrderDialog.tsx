@@ -668,6 +668,17 @@ useEffect(() => {
               >
                 <Package className="w-3 h-3" /> Liberado para Retirada
               </button>
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'entregue' ? '' : 'entregue')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'entregue'
+                    ? 'bg-[#bbf7d0] text-[#166534] border-[#4ade80]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3" /> Entregue
+              </button>
             </div>
           </div>
 
