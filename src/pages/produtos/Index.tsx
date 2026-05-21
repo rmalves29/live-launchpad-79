@@ -778,19 +778,25 @@ const Produtos = () => {
           sale_type: saleType
         };
 
-        // Check if product with same code exists (case-insensitive trim)
-        const { data: existing } = await supabaseTenant
+        // Busca por código exato OU com espaços/case diferentes (ilike pega trailing spaces).
+        // Filtramos em JS pra garantir match por código normalizado (trim + lowercase).
+        const { data: candidates } = await supabaseTenant
           .from('products')
-          .select('id')
-          .eq('code', productData.code)
-          .maybeSingle();
+          .select('id, code')
+          .ilike('code', `%${productData.code}%`);
 
-        if (existing) {
-          // Update existing product
+        const target = productData.code.toLowerCase();
+        const matches = (candidates || []).filter(
+          (p: any) => String(p.code || '').trim().toLowerCase() === target
+        );
+
+        if (matches.length > 0) {
+          // Atualiza TODOS os registros com esse código (incluindo duplicatas com espaço sobrando)
+          const ids = matches.map((m: any) => m.id);
           const { error } = await supabaseTenant
             .from('products')
             .update(productData)
-            .eq('id', existing.id);
+            .in('id', ids);
 
           if (error) {
             errors.push(`Linha ${i + 2}: Erro ao atualizar ${productData.code} - ${error.message}`);
