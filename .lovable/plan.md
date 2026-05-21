@@ -1,61 +1,38 @@
-## Diagnóstico (FL Semi Joias)
+## Objetivo
 
-Investiguei a empresa `fernandalimasemijoia` (tenant `b22bb1e6-…`) e os 3 códigos citados:
+Adicionar um botão de status **Entregue** no modal de edição do pedido (`EditOrderDialog`), logo após os botões existentes "Em Separação", "Enviado" e "Liberado para Retirada". O botão apenas altera o `order_status` interno — sem disparar WhatsApp ou outras automações.
 
-| Código | Nome | Estoque atual | Última alteração |
-|---|---|---|---|
-| 51460 | Berloque Árvore da Vida | 1 | 08/05 (criação) — nunca atualizado |
-| 51461 | Trava simples | 22 | 08/05 (criação) — nunca atualizado |
-| 51496 | Berloque Sanduíche | 3 | 09/05 (manual `stock_changed`) |
+## Mudanças
 
-Olhando o `audit_logs` dos últimos 7 dias dessa empresa, **toda** alteração recente de estoque é em códigos com prefixo `C` (ex.: `C76399`, `C74891`). Nenhuma das linhas com código puramente numérico (`51460/51461/51496`) aparece. Conclusão: **a planilha importada não continha esses códigos** (ou continha com grafia diferente, ex.: `C51461`, e o sistema não encontrou o produto existente e teria tentado inserir novo — mas não há registro disso, então mais provável é "ausentes da planilha").
+### 1. `src/components/EditOrderDialog.tsx`
+- Ampliar o tipo do `useState` de `orderStatus` para incluir `'entregue'`:
+  ```ts
+  useState<'em_separacao' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('')
+  ```
+- Adicionar um quarto botão tipo "pill" logo depois do "Liberado para Retirada" (linha ~670), seguindo o mesmo padrão visual dos demais:
+  - Ícone: `CheckCircle2` (lucide-react)
+  - Cor ativa: verde mais escuro (ex.: bg `#bbf7d0` / text `#166534` / border `#4ade80`) para diferenciar do "Enviado"
+  - Label: **Entregue**
+  - Comportamento: toggle (clica de novo, volta para vazio)
+- A lógica de salvar já persiste `order_status: finalStatus` — nenhum ajuste extra necessário.
+- Garantir que o auto-status do rastreio (`finalStatus = trimmedTracking ? 'enviado' : (orderStatus || null)`) **não sobrescreva** "entregue". Ajuste:
+  ```ts
+  const finalStatus = orderStatus === 'entregue'
+    ? 'entregue'
+    : (trimmedTracking ? 'enviado' : (orderStatus || null));
+  ```
 
-### Causas possíveis (em ordem de probabilidade)
+### 2. Exibição na listagem (opcional, recomendado)
+Se o `order_status` for exibido como badge em `src/pages/pedidos/Index.tsx` ou no `ViewOrderDialog`, incluir o label e a cor para `'entregue'` para que a coluna mostre corretamente o novo status. (Verifico ao implementar e só altero se já existir o mapeamento.)
 
-1. **Linhas ausentes na planilha** — produtos não listados ficam intactos. A importação só age sobre o que está no arquivo.
-2. **Código divergente** — Excel pode comer zero à esquerda, adicionar espaços, ou o usuário pode ter trocado prefixo (`51461` vs `C51461`). Com código diferente, o sistema **insere produto novo** com estoque 0 e o antigo permanece.
-3. **Linha pulada por validação** — se `codigo`, `nome` ou `preco` estiverem vazios, a linha é descartada silenciosamente (vai na contagem "pulados", mas usuário pode não ter notado).
-4. **Duplicidade** — não é o caso aqui (constraint `UNIQUE(tenant_id, code)` impede).
+## Observações técnicas
 
-## Plano
+- A coluna `orders.order_status` é `text` livre, então não exige migration.
+- O trigger `auto_set_order_status_enviado` só atua quando o **código de rastreio muda**; salvar manualmente como "entregue" não dispara o trigger.
+- Sem alterações em edge functions, banco ou webhooks.
 
-### 1. Correção imediata (SQL para o usuário rodar)
+## Fora de escopo
 
-Script para listar e zerar estoque dos produtos que ficaram esquecidos. Será entregue pronto no chat para execução no SQL Editor, parametrizando os códigos que o usuário confirmar.
-
-```sql
--- Listar primeiro
-SELECT code, name, stock FROM products
-WHERE tenant_id = 'b22bb1e6-e9a1-4469-aa4e-57ab13f29321'
-  AND code IN ('51460','51461','51496');
-
--- Zerar
-UPDATE products SET stock = 0, updated_at = now()
-WHERE tenant_id = 'b22bb1e6-e9a1-4469-aa4e-57ab13f29321'
-  AND code IN ('51460','51461','51496');
-```
-
-### 2. Melhorias na importação (`src/pages/produtos/Index.tsx`)
-
-Para evitar que isso volte a acontecer silenciosamente:
-
-- **Forçar código como texto** ao ler o Excel (`raw: false` + tratamento explícito no `XLSX.utils.sheet_to_json`) para preservar zeros à esquerda e evitar `51461.0`.
-- **Trim/normalização do `codigo`** antes do match (já é feito no produto, mas garantir no lookup também).
-- **Quando o lookup não encontrar**, em vez de inserir silenciosamente um produto novo, distinguir no relatório final entre:
-  - `X atualizado(s)`
-  - `Y inserido(s) (código novo)`
-  - `Z pulado(s) (campos vazios)`
-- **Listar os códigos inseridos como novos** no painel de resultados, para o usuário revisar se houve erro de digitação.
-- **Opção "modo somente atualização"** (checkbox): quando marcada, códigos não encontrados não são inseridos, e sim listados como aviso. Útil para casos como zerar estoque, evitando criar duplicatas acidentais.
-
-### 3. Validação
-
-- Testar com planilha contendo:
-  - Código existente com estoque 0 → atualiza
-  - Código com espaço extra → atualiza (após trim)
-  - Código com prefixo errado → no modo "somente atualização", lista no aviso ao invés de criar
-  - Linha sem `preco` → relatada explicitamente
-
-### O que preciso de você
-
-Para confirmar a causa exata desses 3 produtos: a planilha que você importou continha as linhas `51460`, `51461`, `51496`? Se sim, com qual grafia exata? Se você não tem mais a planilha, posso já aplicar o fix de SQL + as melhorias na importação.
+- Disparo automático de mensagem de "pedido entregue" no WhatsApp.
+- Coluna/botão de Entregue na tabela `/pedidos`.
+- Registro de `delivered_at` (data de entrega).
