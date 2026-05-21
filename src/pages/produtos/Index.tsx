@@ -80,7 +80,16 @@ const Produtos = () => {
   const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
   const [assigningCategory, setAssigningCategory] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
-  const [importResults, setImportResults] = useState<{ success: number; errors: string[]; skipped: number; skippedDetails: string[] } | null>(null);
+  const [importUpdateOnly, setImportUpdateOnly] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    updated: number;
+    inserted: number;
+    insertedCodes: string[];
+    notFoundUpdateOnly: string[];
+    errors: string[];
+    skipped: number;
+    skippedDetails: string[];
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     code: '',
