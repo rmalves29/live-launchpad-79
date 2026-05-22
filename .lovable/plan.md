@@ -1,38 +1,27 @@
-## Objetivo
+## Adicionar card "Valor Vendido" em Relatórios
 
-Adicionar um botão de status **Entregue** no modal de edição do pedido (`EditOrderDialog`), logo após os botões existentes "Em Separação", "Enviado" e "Liberado para Retirada". O botão apenas altera o `order_status` interno — sem disparar WhatsApp ou outras automações.
+### Contexto
+A tela `/relatorios` hoje exibe 4 KPIs (Receita Paga, Pedidos, Produtos Vendidos, Ticket Médio). O objeto `stats` já calcula `total_sales` (soma de pagos + pendentes) e `unpaid_sales`, então não é necessária nenhuma nova query — esses valores já respeitam todos os filtros (período, tipo de venda Live/Bazar, R$/Qtd).
 
-## Mudanças
+### Mudança
+Em `src/pages/relatorios/Index.tsx` (array de KPIs ~linha 1577), adicionar 1 novo card:
 
-### 1. `src/components/EditOrderDialog.tsx`
-- Ampliar o tipo do `useState` de `orderStatus` para incluir `'entregue'`:
-  ```ts
-  useState<'em_separacao' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('')
-  ```
-- Adicionar um quarto botão tipo "pill" logo depois do "Liberado para Retirada" (linha ~670), seguindo o mesmo padrão visual dos demais:
-  - Ícone: `CheckCircle2` (lucide-react)
-  - Cor ativa: verde mais escuro (ex.: bg `#bbf7d0` / text `#166534` / border `#4ade80`) para diferenciar do "Enviado"
-  - Label: **Entregue**
-  - Comportamento: toggle (clica de novo, volta para vazio)
-- A lógica de salvar já persiste `order_status: finalStatus` — nenhum ajuste extra necessário.
-- Garantir que o auto-status do rastreio (`finalStatus = trimmedTracking ? 'enviado' : (orderStatus || null)`) **não sobrescreva** "entregue". Ajuste:
-  ```ts
-  const finalStatus = orderStatus === 'entregue'
-    ? 'entregue'
-    : (trimmedTracking ? 'enviado' : (orderStatus || null));
-  ```
+- **Label:** `Valor Vendido`
+- **Valor:** `formatCurrency(stats?.total_sales ?? 0)` — soma de pagos + pendentes
+- **Sub:** `Pendente: {formatCurrency(stats?.unpaid_sales ?? 0)}`
+- **Cor da barra:** `bg-cyan-500` (para diferenciar dos outros)
+- **Ícone:** `Wallet` (lucide-react)
 
-### 2. Exibição na listagem (opcional, recomendado)
-Se o `order_status` for exibido como badge em `src/pages/pedidos/Index.tsx` ou no `ViewOrderDialog`, incluir o label e a cor para `'entregue'` para que a coluna mostre corretamente o novo status. (Verifico ao implementar e só altero se já existir o mapeamento.)
+### Layout
+O grid atual é `lg:grid-cols-4`. Passa para `lg:grid-cols-5` para acomodar 5 cards lado a lado em telas grandes, mantendo `sm:grid-cols-2` no mobile.
 
-## Observações técnicas
+### Ordem proposta dos cards
+1. Receita Paga
+2. **Valor Vendido** (novo)
+3. Pedidos
+4. Produtos Vendidos
+5. Ticket Médio
 
-- A coluna `orders.order_status` é `text` livre, então não exige migration.
-- O trigger `auto_set_order_status_enviado` só atua quando o **código de rastreio muda**; salvar manualmente como "entregue" não dispara o trigger.
-- Sem alterações em edge functions, banco ou webhooks.
-
-## Fora de escopo
-
-- Disparo automático de mensagem de "pedido entregue" no WhatsApp.
-- Coluna/botão de Entregue na tabela `/pedidos`.
-- Registro de `delivered_at` (data de entrega).
+### Fora do escopo
+- Nenhuma alteração de business logic, queries ou cálculos.
+- Nenhuma mudança nos demais widgets (gráficos, tabelas, etc.).
