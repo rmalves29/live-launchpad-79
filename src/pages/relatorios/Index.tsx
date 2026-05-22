@@ -19,7 +19,8 @@ import {
   Package, 
   Users,
   Calendar,
-  Target
+  Target,
+  Wallet
 } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
@@ -1573,9 +1574,10 @@ const Relatorios = () => {
       </div>
 
       {/* ================= KPI CARDS ================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Receita Paga', value: formatCurrency(stats?.paid_sales ?? 0), sub: `${stats?.paid_orders ?? 0} pedidos`, color: 'bg-emerald-500', icon: DollarSign },
+          { label: 'Valor Vendido', value: formatCurrency(stats?.total_sales ?? 0), sub: `Pendente: ${formatCurrency(stats?.unpaid_sales ?? 0)}`, color: 'bg-cyan-500', icon: Wallet },
           { label: 'Pedidos', value: formatNumber(stats?.total_orders ?? 0), sub: `${stats?.paid_orders ?? 0} pagos · ${stats?.unpaid_orders ?? 0} pendentes`, color: 'bg-blue-500', icon: ShoppingBag },
           { label: 'Produtos Vendidos', value: formatNumber(stats?.total_products ?? 0), sub: `${formatNumber(stats?.paid_products ?? 0)} pagos`, color: 'bg-violet-500', icon: Package },
           { label: 'Ticket Médio', value: formatCurrency(stats?.avg_ticket ?? 0), sub: `Pago: ${formatCurrency(stats?.paid_avg_ticket ?? 0)}`, color: 'bg-orange-500', icon: TrendingUp },
