@@ -19,7 +19,8 @@ import {
   Package, 
   Users,
   Calendar,
-  Target
+  Target,
+  Wallet
 } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
