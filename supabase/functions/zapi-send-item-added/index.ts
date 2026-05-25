@@ -595,7 +595,7 @@ serve(async (req) => {
         templateType = 'A';
         const template = templateSolicitacao || getDefaultTemplateSolicitacao();
         const baseMessage = formatMessage(template, body);
-        message = addMessageVariation(baseMessage);
+        message = addMessageVariation(baseMessage, false);
         consentDecisionAfterSend = 'request_sent';
         skipPendingConfirmation = true;
       } else {
