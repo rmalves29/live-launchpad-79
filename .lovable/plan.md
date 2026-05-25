@@ -1,27 +1,38 @@
-## Adicionar card "Valor Vendido" em Relatórios
+## Problema identificado
 
-### Contexto
-A tela `/relatorios` hoje exibe 4 KPIs (Receita Paga, Pedidos, Produtos Vendidos, Ticket Médio). O objeto `stats` já calcula `total_sales` (soma de pagos + pendentes) e `unpaid_sales`, então não é necessária nenhuma nova query — esses valores já respeitam todos os filtros (período, tipo de venda Live/Bazar, R$/Qtd).
+A mensagem de "Item Adicionado" está chegando colada com saudações como "Olá tudo bem ?" e "Oi, tudo bem ?" (visível no print).
 
-### Mudança
-Em `src/pages/relatorios/Index.tsx` (array de KPIs ~linha 1577), adicionar 1 novo card:
+A causa está em `supabase/functions/zapi-send-item-added/index.ts`, nas linhas 559, 598 e 609, onde a função chama:
 
-- **Label:** `Valor Vendido`
-- **Valor:** `formatCurrency(stats?.total_sales ?? 0)` — soma de pagos + pendentes
-- **Sub:** `Pendente: {formatCurrency(stats?.unpaid_sales ?? 0)}`
-- **Cor da barra:** `bg-cyan-500` (para diferenciar dos outros)
-- **Ícone:** `Wallet` (lucide-react)
+```ts
+message = addMessageVariation(baseMessage);
+```
 
-### Layout
-O grid atual é `lg:grid-cols-4`. Passa para `lg:grid-cols-5` para acomodar 5 cards lado a lado em telas grandes, mantendo `sm:grid-cols-2` no mobile.
+Sem passar o segundo parâmetro `isBulk`. O default de `addMessageVariation` é `isBulk = true`, e quando bulk está ativo a função **adiciona uma saudação aleatória** (`BULK_GREETINGS` em `_shared/anti-block-delay.ts`) no início da mensagem:
 
-### Ordem proposta dos cards
-1. Receita Paga
-2. **Valor Vendido** (novo)
-3. Pedidos
-4. Produtos Vendidos
-5. Ticket Médio
+- "Olá tudo bem ? "
+- "Oi, tudo bem ? "
+- "Olá como vai ? "
 
-### Fora do escopo
-- Nenhuma alteração de business logic, queries ou cálculos.
-- Nenhuma mudança nos demais widgets (gráficos, tabelas, etc.).
+Item adicionado é uma mensagem **transacional individual**, não disparo em massa, então não deveria receber esse prefixo.
+
+## Correção
+
+Alterar as 3 chamadas em `zapi-send-item-added/index.ts` para:
+
+```ts
+message = addMessageVariation(baseMessage, false);
+```
+
+Isso:
+- Mantém a variação invisível (zero-width space) anti-spam.
+- Mantém troca sutil de emoji desligada (segue `isBulk`).
+- **Remove** o prefixo de saudação indesejado.
+
+A função `zapi-proxy` (usada por disparo em massa real) continua chamando com `isBulk = true`, então o comportamento de massa não muda.
+
+## Arquivos afetados
+
+- `supabase/functions/zapi-send-item-added/index.ts` (3 linhas)
+
+Sem mudança de schema, sem migration, sem nova função.
