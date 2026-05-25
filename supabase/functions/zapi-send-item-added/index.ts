@@ -606,7 +606,7 @@ serve(async (req) => {
         const baseMessage = formatMessage(template, body)
           .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
           .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
-        message = addMessageVariation(baseMessage);
+        message = addMessageVariation(baseMessage, false);
         consentDecisionAfterSend = 'active_sent';
         skipPendingConfirmation = true;
       }
