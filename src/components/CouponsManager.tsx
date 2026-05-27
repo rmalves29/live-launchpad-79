@@ -560,6 +560,10 @@ export const CouponsManager = () => {
               </div>
             )}
 
+            <p className="text-xs text-muted-foreground mt-3">
+              O desconto incide somente sobre o valor dos produtos. O frete nunca é descontado.
+            </p>
+
             <div className="flex justify-end space-x-2 mt-4">
               <Button variant="outline" onClick={resetForm}>
                 Cancelar
