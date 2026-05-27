@@ -1,12 +1,30 @@
+## Diagnóstico
+
+Verifiquei no banco e o trigger **já está com a lógica correta** (envia apenas o delta):
+
+- `INSERT` em `cart_items` → envia `NEW.qty`
+- `UPDATE OF qty` em `cart_items` (com `NEW.qty > OLD.qty`) → envia `NEW.qty - OLD.qty`
+
+E a edge function `zapi-send-item-added` substitui `{{quantidade}}` por esse mesmo valor recebido.
+
+Ou seja: se o cliente tinha 2 e adicionou +1, a mensagem mostra **1**, não 3.
+
+## Possíveis causas de o cliente ainda ver o valor "somado"
+
+1. A mensagem que ele recebeu é **anterior** à correção do trigger.
+2. O cliente realmente pediu aquela quantidade num único evento (ex.: mandou `C123x3` → INSERT direto com qty=3 → mensagem mostra "3", o que está correto pela regra atual).
+3. O template em uso não tem `{{quantidade}}` — outra variável (ex.: `{{qtd_aleatoria}}`, que sorteia 2 a 4) está aparecendo no lugar.
+
 ## Plano
 
-1. Atualizar a função SQL `public.send_whatsapp_on_item_added()` para calcular a quantidade correta antes de chamar a Edge Function.
-2. Em `INSERT`, manter o envio de `NEW.qty`, pois é a primeira quantidade adicionada do produto.
-3. Em `UPDATE`, enviar apenas o acréscimo real: `NEW.qty - OLD.qty`.
-4. Ignorar o envio quando a alteração não representar aumento de quantidade, evitando mensagens indevidas.
-5. Manter o restante do payload igual: produto, código, preço unitário, preço original, telefone e tenant.
+1. **Reaplicar o SQL do trigger** (idempotente — não quebra nada se já estiver atualizado), garantindo que está com a regra do delta.
+2. **Rodar SQL de verificação** para confirmar que o trigger ativo no banco é exatamente o que esperamos.
+3. **Consultar as últimas mensagens `item_added`** do tenant Roanne/FL para ver o texto exato enviado e a `qty` registrada — isso elimina a dúvida se o problema é dado antigo ou regra nova.
+4. Conferir se o template `ITEM_ADDED` da Roanne não está usando `{{qtd_aleatoria}}` por engano (essa variável é anti-bloqueio e sorteia 2 a 4 — pode ser a fonte do "3" visto antes).
 
-## SQL que será aplicado
+## SQL para aplicar no Supabase SQL Editor
+
+### 1) Reaplicar trigger com delta
 
 ```sql
 CREATE OR REPLACE FUNCTION public.send_whatsapp_on_item_added()
@@ -37,27 +55,12 @@ BEGIN
   v_supabase_url := 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 
   SELECT id, name, code, price, promotional_price
-  INTO v_product
-  FROM products
-  WHERE id = NEW.product_id;
-
-  IF NOT FOUND THEN
-    RAISE LOG 'Produto não encontrado: %', NEW.product_id;
-    RETURN NEW;
-  END IF;
+  INTO v_product FROM products WHERE id = NEW.product_id;
+  IF NOT FOUND THEN RETURN NEW; END IF;
 
   SELECT customer_phone, tenant_id
-  INTO v_cart
-  FROM carts
-  WHERE id = NEW.cart_id;
-
-  IF NOT FOUND THEN
-    RAISE LOG 'Carrinho não encontrado: %', NEW.cart_id;
-    RETURN NEW;
-  END IF;
-
-  RAISE LOG 'Enviando WhatsApp Z-API - Produto: %, Telefone: %, Tenant: %, Qtd enviada: %',
-    v_product.code, v_cart.customer_phone, v_cart.tenant_id, v_qty_to_send;
+  INTO v_cart FROM carts WHERE id = NEW.cart_id;
+  IF NOT FOUND THEN RETURN NEW; END IF;
 
   BEGIN
     SELECT * INTO v_response FROM http_post(
@@ -73,13 +76,8 @@ BEGIN
       )::text,
       'application/json'
     );
-
-    RAISE LOG 'Z-API Item Added - Status: %, Response: %',
-      v_response.status,
-      COALESCE(substring(v_response.content, 1, 200), 'N/A');
-
   EXCEPTION WHEN OTHERS THEN
-    RAISE LOG 'Erro ao chamar Z-API item added: %', SQLERRM;
+    RAISE LOG 'Erro Z-API item added: %', SQLERRM;
   END;
 
   RETURN NEW;
@@ -87,6 +85,27 @@ END;
 $function$;
 ```
 
+### 2) Verificar últimas mensagens da Roanne / FL (substituir o `tenant_id`)
+
+```sql
+SELECT sent_at, product_name, message
+FROM whatsapp_messages
+WHERE tenant_id = '<UUID_DA_ROANNE_OU_FL>'
+  AND type = 'item_added'
+ORDER BY sent_at DESC
+LIMIT 20;
+```
+
+### 3) Verificar template ITEM_ADDED em uso
+
+```sql
+SELECT content
+FROM whatsapp_templates
+WHERE tenant_id = '<UUID_DA_ROANNE_OU_FL>'
+  AND type = 'ITEM_ADDED';
+```
+Se aparecer `{{qtd_aleatoria}}` no conteúdo, esse é o número "estranho" que sorteia 2 a 4 — basta o cliente trocar por `{{quantidade}}`.
+
 ## Resultado esperado
 
-Se a cliente já tinha 2 unidades no carrinho e adicionou mais 1, a mensagem passa a mostrar `Qtd: 1`, não `Qtd: 3`.
+Após reaplicar o SQL acima, qualquer novo item adicionado dispara mensagem com a quantidade exata daquele evento (1 quando o cliente acrescentou 1, 3 quando ele mandou C123x3, etc.) — nunca o acumulado do carrinho.
