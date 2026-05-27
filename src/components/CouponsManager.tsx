@@ -608,9 +608,24 @@ export const CouponsManager = () => {
                           : formatCurrency(coupon.discount_value)} de desconto
                       </span>
                     )}
+                    {coupon.starts_at && (
+                      <p className="text-sm text-muted-foreground">
+                        Início: {formatBrasiliaDate(coupon.starts_at)}
+                      </p>
+                    )}
                     {coupon.expires_at && (
                       <p className="text-sm text-muted-foreground">
-                        Expira em: {formatBrasiliaDate(coupon.expires_at)}
+                        Fim: {formatBrasiliaDate(coupon.expires_at)} (23:59 Brasília)
+                      </p>
+                    )}
+                    {coupon.min_purchase_amount != null && Number(coupon.min_purchase_amount) > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Mínimo: {formatCurrency(Number(coupon.min_purchase_amount))} em produtos
+                      </p>
+                    )}
+                    {coupon.min_items_quantity != null && Number(coupon.min_items_quantity) > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Mínimo: {coupon.min_items_quantity} peças
                       </p>
                     )}
                     {coupon.usage_limit && (
