@@ -115,7 +115,12 @@ function concatUint8(chunks: Uint8Array[]): Uint8Array {
 }
 
 const PublicCheckout = () => {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug: rawSlug } = useParams<{ slug: string }>();
+  const slug = (() => {
+    if (!rawSlug) return rawSlug;
+    try { return decodeURIComponent(rawSlug).replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g, '').trim().toLowerCase(); }
+    catch { return rawSlug.replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g, '').trim().toLowerCase(); }
+  })();
   const { toast } = useToast();
   
   const [tenant, setTenant] = useState<Tenant | null>(null);
