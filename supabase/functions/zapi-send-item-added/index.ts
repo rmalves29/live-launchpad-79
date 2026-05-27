@@ -369,6 +369,16 @@ async function resolveWhatsAppPhone(baseUrl: string, clientToken: string, phone:
       console.log(`[zapi-send-item-added] phone-exists ${candidate}: exists=${data?.exists} canonical=${canonicalPhone || 'n/a'}`);
 
       if (data?.exists === true) {
+        // 🇧🇷 Proteção: para celulares brasileiros (55 + DDD + 9XXXXXXXX = 13 dígitos),
+        // a Z-API às vezes devolve um "canonical" sem o 9 (formato antigo/LID).
+        // Esse JID antigo não existe mais no aparelho moderno e a mensagem nunca chega.
+        // Sempre preferimos o candidato com 9 quando ele existe na lista.
+        const isBRMobileCandidate = candidate.length === 13 && candidate.startsWith('55') && candidate[4] === '9';
+        const canonicalStripsTheNine = isBRMobileCandidate && canonicalPhone.length === 12 && canonicalPhone[4] !== '9';
+        if (canonicalStripsTheNine) {
+          console.log(`[zapi-send-item-added] ⚠️ Ignorando canonical sem o 9 (${canonicalPhone}) — usando ${candidate}`);
+          return candidate;
+        }
         return canonicalPhone || candidate;
       }
     } catch (error: any) {
