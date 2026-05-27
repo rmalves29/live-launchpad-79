@@ -400,14 +400,84 @@ export const CouponsManager = () => {
               )}
 
               <div>
-                <Label htmlFor="expires_at">Data de Expiração (opcional)</Label>
+                <Label htmlFor="starts_at">Data de Início (opcional)</Label>
+                <Input
+                  id="starts_at"
+                  type="date"
+                  value={newCoupon.starts_at}
+                  onChange={(e) => setNewCoupon({ ...newCoupon, starts_at: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="expires_at">Data de Fim (opcional)</Label>
                 <Input
                   id="expires_at"
                   type="date"
                   value={newCoupon.expires_at}
                   onChange={(e) => setNewCoupon({ ...newCoupon, expires_at: e.target.value })}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Expira às 23:59:59 (horário de Brasília) do dia selecionado.
+                </p>
               </div>
+
+              {newCoupon.discount_type !== 'progressive' && (
+                <>
+                  <div>
+                    <Label htmlFor="min_condition_type">Condição mínima (opcional)</Label>
+                    <Select
+                      value={newCoupon.min_condition_type}
+                      onValueChange={(value) =>
+                        setNewCoupon({
+                          ...newCoupon,
+                          min_condition_type: value as MinConditionType,
+                          min_purchase_amount: value === 'amount' ? newCoupon.min_purchase_amount : '',
+                          min_items_quantity: value === 'quantity' ? newCoupon.min_items_quantity : '',
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem mínimo</SelectItem>
+                        <SelectItem value="amount">Valor mínimo do pedido (R$)</SelectItem>
+                        <SelectItem value="quantity">Quantidade mínima de peças</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {newCoupon.min_condition_type === 'amount' && (
+                    <div>
+                      <Label htmlFor="min_purchase_amount">Valor mínimo do pedido (R$)</Label>
+                      <Input
+                        id="min_purchase_amount"
+                        type="number"
+                        step="0.01"
+                        value={newCoupon.min_purchase_amount}
+                        onChange={(e) => setNewCoupon({ ...newCoupon, min_purchase_amount: e.target.value })}
+                        placeholder="100.00"
+                      />
+                    </div>
+                  )}
+
+                  {newCoupon.min_condition_type === 'quantity' && (
+                    <div>
+                      <Label htmlFor="min_items_quantity">Quantidade mínima de peças</Label>
+                      <Input
+                        id="min_items_quantity"
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={newCoupon.min_items_quantity}
+                        onChange={(e) => setNewCoupon({ ...newCoupon, min_items_quantity: e.target.value })}
+                        placeholder="10"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
 
               <div>
                 <Label htmlFor="usage_limit">Limite de Uso (opcional)</Label>
