@@ -37,6 +37,11 @@ export function useTenantBySlug(slug: string | undefined) {
         return;
       }
 
+      // Remove zero-width / invisible chars que podem vir colados no link
+      let normalizedSlug = slug;
+      try { normalizedSlug = decodeURIComponent(slug); } catch {}
+      normalizedSlug = normalizedSlug.replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g, '').trim().toLowerCase();
+
       try {
         setLoading(true);
         setError(null);
@@ -44,7 +49,7 @@ export function useTenantBySlug(slug: string | undefined) {
         const { data, error: fetchError } = await (supabase as any)
           .from('tenants_public')
           .select('*')
-          .eq('slug', slug)
+          .eq('slug', normalizedSlug)
           .eq('is_active', true)
           .single();
 
