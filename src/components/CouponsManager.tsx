@@ -50,9 +50,13 @@ export const CouponsManager = () => {
     code: '',
     discount_type: 'percentage' as 'percentage' | 'fixed' | 'progressive',
     discount_value: 0,
+    starts_at: '',
     expires_at: '',
     usage_limit: '',
     is_active: true,
+    min_condition_type: 'none' as MinConditionType,
+    min_purchase_amount: '' as string,
+    min_items_quantity: '' as string,
     progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
   });
 
