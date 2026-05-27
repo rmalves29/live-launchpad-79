@@ -148,14 +148,36 @@ export const CouponsManager = () => {
     }
 
     try {
+      // Construir datas explicitamente em fuso de Brasília (-03:00)
+      const startsAtIso = newCoupon.starts_at
+        ? `${newCoupon.starts_at}T00:00:00-03:00`
+        : null;
+      const expiresAtIso = newCoupon.expires_at
+        ? `${newCoupon.expires_at}T23:59:59-03:00`
+        : null;
+
+      // Condição mínima (somente para % e valor fixo); progressivo ignora
+      const isProgressive = newCoupon.discount_type === 'progressive';
+      const minAmount =
+        !isProgressive && newCoupon.min_condition_type === 'amount' && newCoupon.min_purchase_amount
+          ? parseFloat(newCoupon.min_purchase_amount)
+          : null;
+      const minQty =
+        !isProgressive && newCoupon.min_condition_type === 'quantity' && newCoupon.min_items_quantity
+          ? parseInt(newCoupon.min_items_quantity, 10)
+          : null;
+
       const couponData: any = {
         code: newCoupon.code.toUpperCase(),
         discount_type: newCoupon.discount_type,
-        discount_value: newCoupon.discount_type === 'progressive' ? 0 : newCoupon.discount_value,
-        expires_at: newCoupon.expires_at || null,
+        discount_value: isProgressive ? 0 : newCoupon.discount_value,
+        starts_at: startsAtIso,
+        expires_at: expiresAtIso,
         usage_limit: newCoupon.usage_limit ? parseInt(newCoupon.usage_limit) : null,
         is_active: newCoupon.is_active,
-        progressive_tiers: newCoupon.discount_type === 'progressive' ? newCoupon.progressive_tiers : null
+        min_purchase_amount: minAmount,
+        min_items_quantity: minQty,
+        progressive_tiers: isProgressive ? newCoupon.progressive_tiers : null
       };
 
       if (hasTenantColumn) {
