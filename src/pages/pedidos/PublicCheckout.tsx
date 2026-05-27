@@ -739,7 +739,12 @@ const PublicCheckout = () => {
       if (error) throw error;
 
       if (coupon) {
-        if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+        const nowMs = Date.now();
+        if ((coupon as any).starts_at && new Date((coupon as any).starts_at).getTime() > nowMs) {
+          toast({ title: 'Cupom Indisponível', description: 'Este cupom ainda não está válido', variant: 'destructive' });
+          return;
+        }
+        if (coupon.expires_at && new Date(coupon.expires_at).getTime() < nowMs) {
           toast({ title: 'Cupom Expirado', description: 'Este cupom já expirou', variant: 'destructive' });
           return;
         }
@@ -752,6 +757,35 @@ const PublicCheckout = () => {
         const productsTotal = ordersToApply.reduce((total, order) => {
           return total + order.items.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
         }, 0);
+        const itemsCount = ordersToApply.reduce(
+          (total, order) => total + order.items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
+          0
+        );
+
+        // Condição mínima (não vale para progressivo) — aplica só sobre produtos
+        const minAmount = (coupon as any).min_purchase_amount;
+        const minQty = (coupon as any).min_items_quantity;
+        if (coupon.discount_type !== 'progressive') {
+          if (minAmount != null && Number(minAmount) > 0 && productsTotal < Number(minAmount)) {
+            const falta = Number(minAmount) - productsTotal;
+            toast({
+              title: 'Valor Mínimo não Atingido',
+              description: `Este cupom exige R$ ${Number(minAmount).toFixed(2)} em produtos. Faltam R$ ${falta.toFixed(2)}.`,
+              variant: 'destructive'
+            });
+            return;
+          }
+          if (minQty != null && Number(minQty) > 0 && itemsCount < Number(minQty)) {
+            const falta = Number(minQty) - itemsCount;
+            toast({
+              title: 'Quantidade Mínima não Atingida',
+              description: `Este cupom exige ${minQty} peças. Faltam ${falta}.`,
+              variant: 'destructive'
+            });
+            return;
+          }
+        }
+
         let discount = 0;
 
         if (coupon.discount_type === 'progressive') {
