@@ -395,13 +395,9 @@ function formatMessage(template: string, data: ItemAddedRequest): string {
   const originalPrice = data.original_price ? data.original_price.toFixed(2) : '';
   const promoPrice = (data.original_price && data.original_price > data.unit_price) ? data.unit_price.toFixed(2) : '';
   
-  // Gera quantidade aleatória entre 2 e 4 para variação anti-bloqueio
-  const randomQty = Math.floor(Math.random() * 3) + 2; // 2, 3 ou 4
-  
   let result = template
     .replace(/\{\{produto\}\}/g, `${data.product_name} (${data.product_code})`)
     .replace(/\{\{quantidade\}\}/g, String(data.quantity))
-    .replace(/\{\{qtd_aleatoria\}\}/g, String(randomQty))
     .replace(/\{\{valor\}\}/g, unitPrice)
     .replace(/\{\{preco\}\}/g, unitPrice)
     .replace(/\{\{total\}\}/g, total)
