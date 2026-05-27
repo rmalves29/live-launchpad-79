@@ -39,3 +39,20 @@ export function formatCPF(value: string): string {
   if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
 }
+
+/**
+ * Sanitiza um slug removendo caracteres invisíveis (zero-width, BOM, etc.)
+ * que podem ser copiados acidentalmente em links de WhatsApp/Instagram e
+ * fazer com que o tenant não seja encontrado no banco.
+ */
+export function sanitizeSlug(raw: string | undefined | null): string {
+  if (!raw) return '';
+  try {
+    return decodeURIComponent(raw)
+      .replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g, '')
+      .trim()
+      .toLowerCase();
+  } catch {
+    return raw.replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g, '').trim().toLowerCase();
+  }
+}
