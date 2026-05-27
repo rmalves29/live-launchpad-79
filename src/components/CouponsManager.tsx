@@ -248,9 +248,13 @@ export const CouponsManager = () => {
       code: '',
       discount_type: 'percentage',
       discount_value: 0,
+      starts_at: '',
       expires_at: '',
       usage_limit: '',
       is_active: true,
+      min_condition_type: 'none',
+      min_purchase_amount: '',
+      min_items_quantity: '',
       progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(false);
@@ -259,13 +263,33 @@ export const CouponsManager = () => {
 
   const startEditing = (coupon: Coupon) => {
     setEditingCoupon(coupon);
+    // Extrai YYYY-MM-DD preservando o dia em Brasília (-03:00)
+    const isoDateBR = (iso?: string | null) => {
+      if (!iso) return '';
+      // Se já vier "YYYY-MM-DD..." sem timezone, usa direto
+      const m = iso.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (!m) return '';
+      // Para timestamps com hora UTC armazenados como 23:59:59-03:00,
+      // a parte de data já é o dia correto em Brasília.
+      return m[1];
+    };
+    const minType: MinConditionType =
+      coupon.min_purchase_amount != null && Number(coupon.min_purchase_amount) > 0
+        ? 'amount'
+        : coupon.min_items_quantity != null && Number(coupon.min_items_quantity) > 0
+        ? 'quantity'
+        : 'none';
     setNewCoupon({
       code: coupon.code,
       discount_type: coupon.discount_type,
       discount_value: coupon.discount_value,
-      expires_at: coupon.expires_at ? coupon.expires_at.split('T')[0] : '',
+      starts_at: isoDateBR(coupon.starts_at),
+      expires_at: isoDateBR(coupon.expires_at),
       usage_limit: coupon.usage_limit?.toString() || '',
       is_active: coupon.is_active,
+      min_condition_type: minType,
+      min_purchase_amount: coupon.min_purchase_amount != null ? String(coupon.min_purchase_amount) : '',
+      min_items_quantity: coupon.min_items_quantity != null ? String(coupon.min_items_quantity) : '',
       progressive_tiers: coupon.progressive_tiers || [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(true);
