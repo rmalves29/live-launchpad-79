@@ -558,7 +558,9 @@ serve(async (req) => {
       console.log(`[zapi-send-item-added] ⚡ Consent protection DISABLED — sending template_item_added`);
       templateType = 'B';
       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-      const template = templateItemAdded || templateComLink || getDefaultTemplateComLink();
+      // Fonte oficial: whatsapp_templates (type=ITEM_ADDED) — editado na tela WhatsApp → Templates
+      const templateFromTable = await getTemplate(supabase, tenant_id);
+      const template = templateFromTable || templateItemAdded || templateComLink || getDefaultTemplateComLink();
       const baseMessage = formatMessage(template, body)
         .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
         .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
