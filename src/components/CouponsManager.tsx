@@ -20,16 +20,21 @@ interface Coupon {
   discount_type: 'percentage' | 'fixed' | 'progressive';
   discount_value: number;
   expires_at?: string;
+  starts_at?: string | null;
   is_active: boolean;
   usage_limit?: number;
   used_count: number;
   tenant_id?: string;
+  min_purchase_amount?: number | null;
+  min_items_quantity?: number | null;
   progressive_tiers?: Array<{
     min_value: number;
     max_value: number | null;
     discount: number;
   }>;
 }
+
+type MinConditionType = 'none' | 'amount' | 'quantity';
 
 export const CouponsManager = () => {
   const { tenant } = useTenantContext();
