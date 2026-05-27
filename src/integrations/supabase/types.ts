@@ -290,7 +290,10 @@ export type Database = {
           expires_at: string | null
           id: number
           is_active: boolean
+          min_items_quantity: number | null
+          min_purchase_amount: number | null
           progressive_tiers: Json | null
+          starts_at: string | null
           tenant_id: string | null
           updated_at: string
           usage_limit: number | null
@@ -304,7 +307,10 @@ export type Database = {
           expires_at?: string | null
           id?: number
           is_active?: boolean
+          min_items_quantity?: number | null
+          min_purchase_amount?: number | null
           progressive_tiers?: Json | null
+          starts_at?: string | null
           tenant_id?: string | null
           updated_at?: string
           usage_limit?: number | null
@@ -318,7 +324,10 @@ export type Database = {
           expires_at?: string | null
           id?: number
           is_active?: boolean
+          min_items_quantity?: number | null
+          min_purchase_amount?: number | null
           progressive_tiers?: Json | null
+          starts_at?: string | null
           tenant_id?: string | null
           updated_at?: string
           usage_limit?: number | null
@@ -1149,6 +1158,8 @@ export type Database = {
           access_token: string | null
           appmax_customer_id: number | null
           created_at: string | null
+          enable_credit_card: boolean
+          enable_pix: boolean
           environment: string | null
           id: string
           is_active: boolean | null
@@ -1160,6 +1171,8 @@ export type Database = {
           access_token?: string | null
           appmax_customer_id?: number | null
           created_at?: string | null
+          enable_credit_card?: boolean
+          enable_pix?: boolean
           environment?: string | null
           id?: string
           is_active?: boolean | null
@@ -1171,6 +1184,8 @@ export type Database = {
           access_token?: string | null
           appmax_customer_id?: number | null
           created_at?: string | null
+          enable_credit_card?: boolean
+          enable_pix?: boolean
           environment?: string | null
           id?: string
           is_active?: boolean | null
@@ -1366,6 +1381,8 @@ export type Database = {
       integration_infinitepay: {
         Row: {
           created_at: string
+          enable_credit_card: boolean
+          enable_pix: boolean
           environment: string
           handle: string | null
           id: string
@@ -1376,6 +1393,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          enable_credit_card?: boolean
+          enable_pix?: boolean
           environment?: string
           handle?: string | null
           id?: string
@@ -1386,6 +1405,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          enable_credit_card?: boolean
+          enable_pix?: boolean
           environment?: string
           handle?: string | null
           id?: string
@@ -1519,6 +1540,8 @@ export type Database = {
           client_id: string | null
           client_secret: string | null
           created_at: string
+          enable_credit_card: boolean
+          enable_pix: boolean
           environment: string
           id: string
           is_active: boolean
@@ -1533,6 +1556,8 @@ export type Database = {
           client_id?: string | null
           client_secret?: string | null
           created_at?: string
+          enable_credit_card?: boolean
+          enable_pix?: boolean
           environment?: string
           id?: string
           is_active?: boolean
@@ -1547,6 +1572,8 @@ export type Database = {
           client_id?: string | null
           client_secret?: string | null
           created_at?: string
+          enable_credit_card?: boolean
+          enable_pix?: boolean
           environment?: string
           id?: string
           is_active?: boolean
@@ -1718,6 +1745,8 @@ export type Database = {
         Row: {
           api_key: string | null
           created_at: string
+          enable_credit_card: boolean
+          enable_pix: boolean
           encryption_key: string | null
           environment: string
           id: string
@@ -1733,6 +1762,8 @@ export type Database = {
         Insert: {
           api_key?: string | null
           created_at?: string
+          enable_credit_card?: boolean
+          enable_pix?: boolean
           encryption_key?: string | null
           environment?: string
           id?: string
@@ -1748,6 +1779,8 @@ export type Database = {
         Update: {
           api_key?: string | null
           created_at?: string
+          enable_credit_card?: boolean
+          enable_pix?: boolean
           encryption_key?: string | null
           environment?: string
           id?: string
