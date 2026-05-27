@@ -1,111 +1,45 @@
-## Diagnóstico
+# Ajuste da variável `{{quantidade}}` no template de Item Adicionado
 
-Verifiquei no banco e o trigger **já está com a lógica correta** (envia apenas o delta):
+## Objetivo
+A variável `{{quantidade}}` deve refletir **exatamente** a quantidade enviada pelo cliente naquele evento (ex.: `C100` → 1, `C100x3` → 3) e **só aparecer se o lojista a incluir no template**. O sistema nunca deve injetar quantidade por conta própria.
 
-- `INSERT` em `cart_items` → envia `NEW.qty`
-- `UPDATE OF qty` em `cart_items` (com `NEW.qty > OLD.qty`) → envia `NEW.qty - OLD.qty`
+## O que está acontecendo hoje
+1. O trigger `send_whatsapp_on_item_added` **já envia o delta correto** (`NEW.qty - OLD.qty` em UPDATE, `NEW.qty` em INSERT). ✅
+2. A função `zapi-send-item-added` substitui `{{quantidade}}` pela qty recebida — então se o template não tiver `{{quantidade}}`, nada é injetado. ✅
+3. **Porém**, a função ainda suporta `{{qtd_aleatoria}}` que gera um número aleatório entre 2 e 4 (anti‑bloqueio antigo). 12 templates de tenants existentes ainda usam essa variável, então o cliente recebe "3 unidades" quando comprou só 1. ❌
 
-E a edge function `zapi-send-item-added` substitui `{{quantidade}}` por esse mesmo valor recebido.
+## Mudanças
 
-Ou seja: se o cliente tinha 2 e adicionou +1, a mensagem mostra **1**, não 3.
+### 1. Remover a injeção de quantidade aleatória do código
+**Arquivo:** `supabase/functions/zapi-send-item-added/index.ts` (função `formatMessage`)
 
-## Possíveis causas de o cliente ainda ver o valor "somado"
+- Apagar a geração de `randomQty` e a substituição de `{{qtd_aleatoria}}`.
+- Manter apenas a substituição de `{{quantidade}}` pelo valor real (delta) recebido do trigger.
+- Resultado: se o template não contém `{{quantidade}}`, nada referente a quantidade aparece na mensagem.
 
-1. A mensagem que ele recebeu é **anterior** à correção do trigger.
-2. O cliente realmente pediu aquela quantidade num único evento (ex.: mandou `C123x3` → INSERT direto com qty=3 → mensagem mostra "3", o que está correto pela regra atual).
-3. O template em uso não tem `{{quantidade}}` — outra variável (ex.: `{{qtd_aleatoria}}`, que sorteia 2 a 4) está aparecendo no lugar.
-
-## Plano
-
-1. **Reaplicar o SQL do trigger** (idempotente — não quebra nada se já estiver atualizado), garantindo que está com a regra do delta.
-2. **Rodar SQL de verificação** para confirmar que o trigger ativo no banco é exatamente o que esperamos.
-3. **Consultar as últimas mensagens `item_added`** do tenant Roanne/FL para ver o texto exato enviado e a `qty` registrada — isso elimina a dúvida se o problema é dado antigo ou regra nova.
-4. Conferir se o template `ITEM_ADDED` da Roanne não está usando `{{qtd_aleatoria}}` por engano (essa variável é anti-bloqueio e sorteia 2 a 4 — pode ser a fonte do "3" visto antes).
-
-## SQL para aplicar no Supabase SQL Editor
-
-### 1) Reaplicar trigger com delta
+### 2. Migrar templates dos tenants existentes
+SQL para rodar manualmente no SQL Editor:
 
 ```sql
-CREATE OR REPLACE FUNCTION public.send_whatsapp_on_item_added()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_product RECORD;
-  v_cart RECORD;
-  v_supabase_url TEXT;
-  v_response http_response;
-  v_qty_to_send integer;
-BEGIN
-  IF TG_OP = 'UPDATE' THEN
-    v_qty_to_send := COALESCE(NEW.qty, 0) - COALESCE(OLD.qty, 0);
-    IF v_qty_to_send <= 0 THEN
-      RETURN NEW;
-    END IF;
-  ELSE
-    v_qty_to_send := COALESCE(NEW.qty, 0);
-    IF v_qty_to_send <= 0 THEN
-      RETURN NEW;
-    END IF;
-  END IF;
-
-  v_supabase_url := 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
-
-  SELECT id, name, code, price, promotional_price
-  INTO v_product FROM products WHERE id = NEW.product_id;
-  IF NOT FOUND THEN RETURN NEW; END IF;
-
-  SELECT customer_phone, tenant_id
-  INTO v_cart FROM carts WHERE id = NEW.cart_id;
-  IF NOT FOUND THEN RETURN NEW; END IF;
-
-  BEGIN
-    SELECT * INTO v_response FROM http_post(
-      v_supabase_url || '/functions/v1/zapi-send-item-added',
-      jsonb_build_object(
-        'tenant_id', v_cart.tenant_id,
-        'customer_phone', v_cart.customer_phone,
-        'product_name', v_product.name,
-        'product_code', v_product.code,
-        'quantity', v_qty_to_send,
-        'unit_price', NEW.unit_price,
-        'original_price', v_product.price
-      )::text,
-      'application/json'
-    );
-  EXCEPTION WHEN OTHERS THEN
-    RAISE LOG 'Erro Z-API item added: %', SQLERRM;
-  END;
-
-  RETURN NEW;
-END;
-$function$;
+UPDATE whatsapp_templates
+SET content = REPLACE(content, '{{qtd_aleatoria}}', '{{quantidade}}'),
+    updated_at = now()
+WHERE type = 'ITEM_ADDED'
+  AND content LIKE '%qtd_aleatoria%';
 ```
 
-### 2) Verificar últimas mensagens da Roanne / FL (substituir o `tenant_id`)
+Isso converte os 12 templates existentes para usar a quantidade real. Se algum lojista preferir não exibir quantidade, ele edita o template manualmente e remove `{{quantidade}}` — o sistema vai respeitar.
 
-```sql
-SELECT sent_at, product_name, message
-FROM whatsapp_messages
-WHERE tenant_id = '<UUID_DA_ROANNE_OU_FL>'
-  AND type = 'item_added'
-ORDER BY sent_at DESC
-LIMIT 20;
-```
-
-### 3) Verificar template ITEM_ADDED em uso
-
-```sql
-SELECT content
-FROM whatsapp_templates
-WHERE tenant_id = '<UUID_DA_ROANNE_OU_FL>'
-  AND type = 'ITEM_ADDED';
-```
-Se aparecer `{{qtd_aleatoria}}` no conteúdo, esse é o número "estranho" que sorteia 2 a 4 — basta o cliente trocar por `{{quantidade}}`.
+### 3. Tenants futuros
+A função `create_default_whatsapp_templates` (criada quando uma empresa nova é cadastrada) já usa `{{quantidade}}` no template padrão. ✅ Sem alteração necessária.
 
 ## Resultado esperado
+- Cliente envia `C100` no grupo → mensagem mostra **1** (ou só "item adicionado" se o lojista não usar a variável).
+- Cliente envia `C100x3` → mensagem mostra **3**.
+- Cliente adiciona o mesmo código duas vezes → recebe duas mensagens, cada uma com a quantidade incremental daquele evento (nunca o acumulado do carrinho).
+- Nenhum número aleatório é injetado pelo sistema.
 
-Após reaplicar o SQL acima, qualquer novo item adicionado dispara mensagem com a quantidade exata daquele evento (1 quando o cliente acrescentou 1, 3 quando ele mandou C123x3, etc.) — nunca o acumulado do carrinho.
+## Não está no escopo
+- Mexer no trigger (já está correto).
+- Mexer na lógica de anti‑bloqueio de delays/emojis — só a quantidade aleatória sai.
+- Outras funções (`zapi-send-paid-order`, `zapi-send-tracking`, etc.) — não usam `{{qtd_aleatoria}}`.
