@@ -1,64 +1,70 @@
-## Objetivo
-Evoluir o cadastro de cupom para suportar:
-1. **Condição mínima** (escolher um): valor mínimo do pedido (R$) OU quantidade mínima de peças.
-2. **Janela de validade**: data de início e data de fim. O fim é sempre **23:59:59 de Brasília (-03:00)** do dia escolhido — após esse instante o cupom fica automaticamente inativo.
-3. **Aplicação restrita a produtos**: o desconto **nunca** incide sobre o frete; vale só sobre o subtotal de produtos (regra já é assim no cálculo atual, mas será documentada/garantida).
+# Cupom com Condição Mínima + Datas + Desconto Somente em Produtos
 
-Vale para cupons `percentage` e `fixed`. Progressivo segue como hoje (sem regra de mínimo nova).
+## Regra de cálculo (única e inegociável)
 
-## Mudanças no banco (SQL para rodar no Supabase SQL Editor)
-
-```sql
-ALTER TABLE public.coupons
-  ADD COLUMN IF NOT EXISTS min_purchase_amount numeric,
-  ADD COLUMN IF NOT EXISTS min_items_quantity  integer,
-  ADD COLUMN IF NOT EXISTS starts_at           timestamptz;
-
-COMMENT ON COLUMN public.coupons.min_purchase_amount IS 'Valor mínimo do subtotal de produtos (R$) para ativar o cupom. NULL = sem mínimo.';
-COMMENT ON COLUMN public.coupons.min_items_quantity  IS 'Quantidade mínima de peças no carrinho para ativar o cupom. NULL = sem mínimo.';
-COMMENT ON COLUMN public.coupons.starts_at           IS 'Data/hora de início da validade do cupom (UTC). NULL = válido desde já.';
-COMMENT ON COLUMN public.coupons.expires_at          IS 'Data/hora de expiração (UTC). Para "fim do dia X em Brasília", gravar X 23:59:59-03:00.';
+```
+desconto = round(productsSubtotal * (percentual/100), 2)   // tipo "percentage"
+desconto = min(valorFixo, productsSubtotal)                // tipo "fixed"
+total    = (productsSubtotal - desconto - outrosDescontos) + frete
 ```
 
-`expires_at` já existe — só passa a ser preenchido sempre com `YYYY-MM-DDT23:59:59-03:00` quando o admin escolher uma data fim.
+- `productsSubtotal` = soma de `preço * quantidade` dos itens do carrinho (SEM frete, SEM outros descontos).
+- Frete NUNCA entra na base do desconto do cupom.
+- Se carrinho mudar e deixar de atender o mínimo → cupom é removido automaticamente.
 
-## Mudanças no admin — `src/components/CouponsManager.tsx`
-- Renomear o campo atual “Data de Expiração” para **“Data de Fim”** e adicionar **“Data de Início”** (ambos `<input type="date">`).
-- Ao salvar:
-  - `starts_at = <data início>T00:00:00-03:00` (ou `null`).
-  - `expires_at = <data fim>T23:59:59-03:00` (ou `null`).
-- Ao editar: extrair a parte `YYYY-MM-DD` aplicando o offset -03:00 (usar helper de `src/lib/date-utils.ts`).
-- Quando o tipo for `percentage` ou `fixed`, novo bloco **“Condição mínima”** com:
-  - Seletor: `Nenhuma` | `Valor mínimo (R$)` | `Quantidade mínima de peças`.
-  - Campo numérico correspondente. Salva em `min_purchase_amount` **ou** `min_items_quantity` (o outro fica `null`).
-- Listagem: mostrar “Início: dd/mm/aaaa”, “Fim: dd/mm/aaaa 23:59 (Brasília)”, “Mín. R$ X” ou “Mín. N peças”.
-- Texto auxiliar no formulário: *“O cupom incide apenas sobre o valor dos produtos; o frete não é descontado.”*
+## 1. Migration SQL (public.coupons)
 
-## Mudanças na validação — `src/hooks/useCouponOrGift.ts`
-- Ampliar `applyCode(productsTotal, itemsCount)`.
-- Após carregar o cupom:
-  - **Janela de validade**: rejeitar se `now() < starts_at` (“Cupom ainda não está válido. Começa em …”) ou `now() > expires_at` (“Cupom expirado em …”).
-  - **Mínimo de valor**: se `min_purchase_amount` definido e `productsTotal < min_purchase_amount` → toast “Faltam R$ Y para usar este cupom”.
-  - **Mínimo de peças**: se `min_items_quantity` definido e `itemsCount < min_items_quantity` → toast “Faltam M peças para usar este cupom”.
-- Reforçar nos comentários que `productsTotal` é o subtotal de produtos (não inclui frete) — base do desconto.
-- Atualizar interface `AppliedCoupon` com os novos campos.
+Adicionar 3 colunas (todas nullable, sem default destrutivo):
 
-## Garantia “cupom não incide no frete”
-Auditar cada local que aplica o desconto para confirmar que o cálculo é sempre `desconto sobre subtotal de produtos` e o total final é `subtotal − pix_discount − coupon_discount + frete`:
-- `src/pages/pedidos/Checkout.tsx`
-- `src/pages/pedidos/PublicCheckout.tsx`
-- `src/pages/pedidos/Manual.tsx`
-- `src/hooks/useCouponOrGift.ts` (cálculo base já usa `productsTotal`)
+- `min_purchase_amount numeric(10,2)` — valor mínimo de produtos para ativar
+- `min_items_quantity integer` — quantidade mínima de peças para ativar
+- `starts_at timestamptz` — início de validade (`expires_at` já existe)
 
-Se algum cálculo aplicar percentual sobre `(produtos + frete)`, corrigir para usar somente `produtos`. Passar `itemsCount` (soma dos `qty`) para `applyCode` nestes 3 checkouts.
+Constraint: apenas uma das duas (`min_purchase_amount` OU `min_items_quantity`) pode ser preenchida por linha; ambas podem ser NULL.
 
-Tabela `audit_logs`/`orders` não muda.
+Sem trigger novo, sem mudança em RLS/grants existentes.
 
-## Detalhes técnicos
-- Fuso: usar helpers de `src/lib/date-utils.ts` para montar/exibir `-03:00`; nunca usar `new Date(dateStr)` direto sem offset.
-- `src/integrations/supabase/types.ts` regenera automaticamente após o SQL.
-- Sem mudanças em edge functions, gateways de pagamento ou triggers.
+## 2. Admin — `CouponsManager.tsx`
 
-## Entrega
-1. SQL acima (1 bloco) para você rodar no SQL Editor.
-2. Edição do `CouponsManager.tsx`, `useCouponOrGift.ts` e dos 3 checkouts.
+- Campo "Data de Início" (date) → salva `YYYY-MM-DDT00:00:00-03:00`.
+- Renomear "Data de Expiração" → "Data de Fim" (date) → salva `YYYY-MM-DDT23:59:59-03:00`.
+- Ao editar: converter `starts_at`/`expires_at` aplicando offset `-03:00` para exibir a data correta no input.
+- Bloco "Condição mínima" (só aparece para tipo `percentage` e `fixed`):
+  - Radio: Nenhuma / Valor mínimo (R$) / Quantidade mínima (peças)
+  - Salva no campo correspondente; zera o outro como `null`.
+- Listagem: badges "Mín R$ X" ou "Mín N peças" + datas formatadas em Brasília.
+
+## 3. Validação — `useCouponOrGift.ts`
+
+`applyCode(code, productsSubtotal, itemsCount)`:
+
+1. Buscar cupom por código + tenant.
+2. Se `starts_at` definido e `now() < starts_at` → rejeita ("Cupom ainda não está válido").
+3. Se `expires_at` definido e `now() > expires_at` → rejeita ("Cupom expirado").
+4. Se `min_purchase_amount` definido e `productsSubtotal < min_purchase_amount` → rejeita com toast informando o valor faltante.
+5. Se `min_items_quantity` definido e `itemsCount < min_items_quantity` → rejeita com toast informando peças faltantes.
+6. Cálculo do desconto sempre sobre `productsSubtotal` (nunca soma frete).
+7. `AppliedCoupon` ganha `min_purchase_amount` e `min_items_quantity` (read-only) para o checkout re-validar quando o carrinho mudar.
+
+Comparações de data usam `Date.getTime()` (timestamps absolutos — independe do fuso do browser).
+
+## 4. Checkouts — `Checkout.tsx`, `PublicCheckout.tsx`, `Manual.tsx`
+
+- Passar `productsSubtotal` e `itemsCount` para `applyCode`.
+- `useEffect` observando o carrinho: se houver cupom aplicado e o carrinho deixar de atender mínimo OU passar de `expires_at` → remover cupom + toast.
+- Auditar e garantir que o `discount` do cupom é subtraído apenas de `productsSubtotal` antes de somar o frete (corrigir qualquer ponto que aplique sobre `produtos + frete`).
+
+## 5. Fora de escopo (não muda)
+
+- Cupons progressivos (lógica existente preservada).
+- Gateways de pagamento, edge functions, triggers de pedido.
+- Cálculo de frete.
+
+## Testes manuais obrigatórios antes de entregar
+
+1. Cupom 10% com mínimo R$ 100, carrinho R$ 99 → bloqueia.
+2. Mesmo cupom, carrinho R$ 100 + frete R$ 20 → desconto = R$ 10 (não R$ 12).
+3. Cupom R$ 15 fixo com mínimo 10 peças, 9 peças → bloqueia; 10 peças → aplica R$ 15.
+4. Cupom criado para 27/05 → válido até 27/05 23:59:59 -03:00; às 28/05 00:00 -03:00 → expirado.
+5. Cupom com `starts_at` futuro → bloqueia com mensagem "ainda não está válido".
+6. Carrinho atende mínimo, cupom aplicado, usuário remove item → cupom sai automaticamente.
