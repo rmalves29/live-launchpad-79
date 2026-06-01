@@ -22,6 +22,8 @@ interface IntegrationData {
   is_active: boolean;
   appmax_customer_id: number | null;
   pix_discount_percent: number | null;
+  enable_pix: boolean | null;
+  enable_credit_card: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +35,8 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
     access_token: '',
     environment: 'production' as 'sandbox' | 'production',
     pix_discount_percent: 0,
+    enable_pix: true,
+    enable_credit_card: true,
   });
   const [isEditing, setIsEditing] = useState(false);
 
