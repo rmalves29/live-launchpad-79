@@ -304,6 +304,27 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
               </div>
             </div>
 
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+              <h4 className="font-medium flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Métodos de Pagamento Aceitos
+              </h4>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ip-enable-pix" className="cursor-pointer">Aceitar PIX no checkout</Label>
+                <Switch id="ip-enable-pix" checked={formData.enable_pix}
+                  onCheckedChange={(v) => setFormData({ ...formData, enable_pix: v })} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ip-enable-card" className="cursor-pointer">Aceitar Cartão de Crédito no checkout</Label>
+                <Switch id="ip-enable-card" checked={formData.enable_credit_card}
+                  onCheckedChange={(v) => setFormData({ ...formData, enable_credit_card: v })} />
+              </div>
+              {!formData.enable_pix && !formData.enable_credit_card && (
+                <p className="text-xs text-destructive">Pelo menos um método deve estar habilitado.</p>
+              )}
+            </div>
+
+
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription className="text-xs">
