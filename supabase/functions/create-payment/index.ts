@@ -854,7 +854,7 @@ serve(async (req) => {
         shipping: {
           address: {
             country: "BR",
-            state: payload.addressData.state,
+            state: normalizeBrState(payload.addressData.state),
             city: payload.addressData.city,
             neighborhood: payload.addressData.neighborhood,
             street: payload.addressData.street,
