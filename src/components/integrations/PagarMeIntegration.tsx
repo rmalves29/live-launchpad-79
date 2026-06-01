@@ -121,6 +121,8 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         min_installment_value: formData.min_installment_value || 0,
         max_installments_without_interest: formData.max_installments_without_interest || 1,
         pix_discount_percent: formData.pix_discount_percent || 0,
+        enable_pix: formData.enable_pix,
+        enable_credit_card: formData.enable_credit_card,
         updated_at: new Date().toISOString(),
       };
 
