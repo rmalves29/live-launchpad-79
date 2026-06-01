@@ -91,6 +91,9 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!formData.enable_pix && !formData.enable_credit_card) {
+        throw new Error('Pelo menos um método (PIX ou Cartão) deve estar habilitado');
+      }
       // Sanitiza: remove @, $, espaços e qualquer sufixo após "/" (links fixos não servem aqui)
       const cleanHandle = formData.handle
         .trim()
@@ -105,6 +108,8 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
         environment: formData.environment,
         is_active: true,
         pix_discount_percent: formData.pix_discount_percent || 0,
+        enable_pix: formData.enable_pix,
+        enable_credit_card: formData.enable_credit_card,
         updated_at: new Date().toISOString(),
       };
 
