@@ -77,6 +77,8 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
         webhook_secret: integration.webhook_secret || '',
         environment: integration.environment as 'sandbox' | 'production',
         pix_discount_percent: integration.pix_discount_percent || 0,
+        enable_pix: integration.enable_pix !== false,
+        enable_credit_card: integration.enable_credit_card !== false,
       });
     }
   }, [integration]);
