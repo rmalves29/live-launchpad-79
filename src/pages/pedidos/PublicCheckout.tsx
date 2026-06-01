@@ -328,29 +328,35 @@ const PublicCheckout = () => {
     const loadPixDiscount = async () => {
       try {
         const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
-          supabase.from('integration_appmax').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_pagarme').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_mp').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_infinitepay').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_appmax').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_pagarme').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_mp').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_infinitepay').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
         ]);
 
         let discount = 0;
         let provider: 'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null = null;
-        if (appmaxRes.data?.is_active) {
-          provider = 'appmax';
-          if (appmaxRes.data?.pix_discount_percent) discount = Number(appmaxRes.data.pix_discount_percent);
-        } else if (pagarmeRes.data?.is_active) {
-          provider = 'pagarme';
-          if (pagarmeRes.data?.pix_discount_percent) discount = Number(pagarmeRes.data.pix_discount_percent);
-        } else if (mpRes.data?.is_active) {
-          provider = 'mp';
-          if (mpRes.data?.pix_discount_percent) discount = Number(mpRes.data.pix_discount_percent);
-        } else if (infRes.data?.is_active) {
-          provider = 'infinitepay';
-          if (infRes.data?.pix_discount_percent) discount = Number(infRes.data.pix_discount_percent);
-        }
+        let pixEnabled = true;
+        let cardEnabled = true;
+        const pick = (row: any) => {
+          if (row?.pix_discount_percent) discount = Number(row.pix_discount_percent);
+          pixEnabled = row?.enable_pix !== false;
+          cardEnabled = row?.enable_credit_card !== false;
+        };
+        if (appmaxRes.data?.is_active) { provider = 'appmax'; pick(appmaxRes.data); }
+        else if (pagarmeRes.data?.is_active) { provider = 'pagarme'; pick(pagarmeRes.data); }
+        else if (mpRes.data?.is_active) { provider = 'mp'; pick(mpRes.data); }
+        else if (infRes.data?.is_active) { provider = 'infinitepay'; pick(infRes.data); }
+
         setActivePaymentProvider(provider);
+        setAcceptPix(pixEnabled);
+        setAcceptCard(cardEnabled);
+        // Auto-seleciona método disponível
         if (provider === 'infinitepay') {
+          setPaymentMethod('pix');
+        } else if (!pixEnabled && cardEnabled) {
+          setPaymentMethod('card');
+        } else if (pixEnabled && !cardEnabled) {
           setPaymentMethod('pix');
         }
 
