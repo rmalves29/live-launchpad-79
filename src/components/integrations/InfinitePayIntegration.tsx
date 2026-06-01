@@ -73,6 +73,8 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
         handle: integration.handle || '',
         environment: (integration.environment as 'sandbox' | 'production') || 'production',
         pix_discount_percent: integration.pix_discount_percent || 0,
+        enable_pix: integration.enable_pix !== false,
+        enable_credit_card: integration.enable_credit_card !== false,
       });
     }
   }, [integration]);
