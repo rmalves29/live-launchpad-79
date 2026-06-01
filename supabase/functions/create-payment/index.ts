@@ -8,6 +8,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Normaliza nome de estado brasileiro para UF de 2 letras (exigido por Pagar.me, etc.)
+const BR_STATE_MAP: Record<string, string> = {
+  "acre":"AC","alagoas":"AL","amapa":"AP","amapá":"AP","amazonas":"AM","bahia":"BA",
+  "ceara":"CE","ceará":"CE","distrito federal":"DF","espirito santo":"ES","espírito santo":"ES",
+  "goias":"GO","goiás":"GO","maranhao":"MA","maranhão":"MA","mato grosso":"MT",
+  "mato grosso do sul":"MS","minas gerais":"MG","para":"PA","pará":"PA","paraiba":"PB","paraíba":"PB",
+  "parana":"PR","paraná":"PR","pernambuco":"PE","piaui":"PI","piauí":"PI","rio de janeiro":"RJ",
+  "rio grande do norte":"RN","rio grande do sul":"RS","rondonia":"RO","rondônia":"RO","roraima":"RR",
+  "santa catarina":"SC","sao paulo":"SP","são paulo":"SP","sergipe":"SE","tocantins":"TO",
+};
+function normalizeBrState(state: string | null | undefined): string {
+  const raw = String(state || "").trim();
+  if (!raw) return "";
+  if (raw.length === 2) return raw.toUpperCase();
+  const key = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return BR_STATE_MAP[key] || raw.toUpperCase().slice(0, 2);
+}
+
+
 type CartItem = {
   product_name: string;
   product_code: string;
