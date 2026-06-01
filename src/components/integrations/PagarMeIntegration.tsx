@@ -29,6 +29,8 @@ interface IntegrationData {
   min_installment_value: number | null;
   max_installments_without_interest: number | null;
   pix_discount_percent: number | null;
+  enable_pix: boolean | null;
+  enable_credit_card: boolean | null;
 }
 
 export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps) {
@@ -43,6 +45,8 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
     min_installment_value: 0,
     max_installments_without_interest: 1,
     pix_discount_percent: 0,
+    enable_pix: true,
+    enable_credit_card: true,
   });
   const [isEditing, setIsEditing] = useState(false);
 
