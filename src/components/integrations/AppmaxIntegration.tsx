@@ -112,6 +112,9 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
   // Salvar integração
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!formData.enable_pix && !formData.enable_credit_card) {
+        throw new Error('Pelo menos um método (PIX ou Cartão) deve estar habilitado');
+      }
       console.log('[AppmaxIntegration] Salvando para tenant:', tenantId);
       
       // Desativar outros provedores antes de ativar App Max
@@ -123,6 +126,8 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
         environment: formData.environment,
         is_active: true,
         pix_discount_percent: formData.pix_discount_percent || 0,
+        enable_pix: formData.enable_pix,
+        enable_credit_card: formData.enable_credit_card,
         updated_at: new Date().toISOString(),
       };
 
