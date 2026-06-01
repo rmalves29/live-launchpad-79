@@ -170,6 +170,8 @@ const PublicCheckout = () => {
   const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
   const [pixDiscountValue, setPixDiscountValue] = useState(0);
   const [activePaymentProvider, setActivePaymentProvider] = useState<'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null>(null);
+  const [acceptPix, setAcceptPix] = useState(true);
+  const [acceptCard, setAcceptCard] = useState(true);
 
   // Cupom
   const [couponCode, setCouponCode] = useState('');
