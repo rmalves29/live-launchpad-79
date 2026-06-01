@@ -170,6 +170,8 @@ const PublicCheckout = () => {
   const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
   const [pixDiscountValue, setPixDiscountValue] = useState(0);
   const [activePaymentProvider, setActivePaymentProvider] = useState<'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null>(null);
+  const [acceptPix, setAcceptPix] = useState(true);
+  const [acceptCard, setAcceptCard] = useState(true);
 
   // Cupom
   const [couponCode, setCouponCode] = useState('');
@@ -326,29 +328,35 @@ const PublicCheckout = () => {
     const loadPixDiscount = async () => {
       try {
         const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
-          supabase.from('integration_appmax').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_pagarme').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_mp').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_infinitepay').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_appmax').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_pagarme').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_mp').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_infinitepay').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
         ]);
 
         let discount = 0;
         let provider: 'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null = null;
-        if (appmaxRes.data?.is_active) {
-          provider = 'appmax';
-          if (appmaxRes.data?.pix_discount_percent) discount = Number(appmaxRes.data.pix_discount_percent);
-        } else if (pagarmeRes.data?.is_active) {
-          provider = 'pagarme';
-          if (pagarmeRes.data?.pix_discount_percent) discount = Number(pagarmeRes.data.pix_discount_percent);
-        } else if (mpRes.data?.is_active) {
-          provider = 'mp';
-          if (mpRes.data?.pix_discount_percent) discount = Number(mpRes.data.pix_discount_percent);
-        } else if (infRes.data?.is_active) {
-          provider = 'infinitepay';
-          if (infRes.data?.pix_discount_percent) discount = Number(infRes.data.pix_discount_percent);
-        }
+        let pixEnabled = true;
+        let cardEnabled = true;
+        const pick = (row: any) => {
+          if (row?.pix_discount_percent) discount = Number(row.pix_discount_percent);
+          pixEnabled = row?.enable_pix !== false;
+          cardEnabled = row?.enable_credit_card !== false;
+        };
+        if (appmaxRes.data?.is_active) { provider = 'appmax'; pick(appmaxRes.data); }
+        else if (pagarmeRes.data?.is_active) { provider = 'pagarme'; pick(pagarmeRes.data); }
+        else if (mpRes.data?.is_active) { provider = 'mp'; pick(mpRes.data); }
+        else if (infRes.data?.is_active) { provider = 'infinitepay'; pick(infRes.data); }
+
         setActivePaymentProvider(provider);
+        setAcceptPix(pixEnabled);
+        setAcceptCard(cardEnabled);
+        // Auto-seleciona método disponível
         if (provider === 'infinitepay') {
+          setPaymentMethod('pix');
+        } else if (!pixEnabled && cardEnabled) {
+          setPaymentMethod('card');
+        } else if (pixEnabled && !cardEnabled) {
           setPaymentMethod('pix');
         }
 
@@ -1853,42 +1861,46 @@ const PublicCheckout = () => {
                           Forma de Pagamento
                         </h4>
                         <div className="space-y-2">
-                          <div 
-                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                              paymentMethod === 'pix' 
-                                ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
-                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                            }`}
-                            onClick={() => setPaymentMethod('pix')}
-                          >
-                            <div className="flex items-center gap-3">
-                              <input type="radio" checked={paymentMethod === 'pix'} onChange={() => setPaymentMethod('pix')} className="w-4 h-4" />
-                              <div>
-                                <span className="font-medium">PIX</span>
-                                {pixDiscountLoading ? (
-                                  <Badge variant="secondary" className="ml-2 text-xs">Carregando…</Badge>
-                                ) : effectivePixPercent > 0 ? (
-                                  <Badge className="ml-2 bg-emerald-500 text-white text-xs">{effectivePixPercent}% OFF</Badge>
-                                ) : null}
+                          {acceptPix && (
+                            <div 
+                              className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                                paymentMethod === 'pix' 
+                                  ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
+                                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                              }`}
+                              onClick={() => setPaymentMethod('pix')}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input type="radio" checked={paymentMethod === 'pix'} onChange={() => setPaymentMethod('pix')} className="w-4 h-4" />
+                                <div>
+                                  <span className="font-medium">PIX</span>
+                                  {pixDiscountLoading ? (
+                                    <Badge variant="secondary" className="ml-2 text-xs">Carregando…</Badge>
+                                  ) : effectivePixPercent > 0 ? (
+                                    <Badge className="ml-2 bg-emerald-500 text-white text-xs">{effectivePixPercent}% OFF</Badge>
+                                  ) : null}
+                                </div>
+                              </div>
+                              {currentPixDiscount > 0 && (
+                                <span className="text-emerald-600 font-semibold text-sm">- {formatCurrency(currentPixDiscount)}</span>
+                              )}
+                            </div>
+                          )}
+                          {acceptCard && (
+                            <div 
+                              className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                                paymentMethod === 'card' 
+                                  ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20' 
+                                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                              }`}
+                              onClick={() => setPaymentMethod('card')}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input type="radio" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="w-4 h-4" />
+                                <span className="font-medium">Cartão de Crédito</span>
                               </div>
                             </div>
-                            {currentPixDiscount > 0 && (
-                              <span className="text-emerald-600 font-semibold text-sm">- {formatCurrency(currentPixDiscount)}</span>
-                            )}
-                          </div>
-                          <div 
-                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                              paymentMethod === 'card' 
-                                ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20' 
-                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                            }`}
-                            onClick={() => setPaymentMethod('card')}
-                          >
-                            <div className="flex items-center gap-3">
-                              <input type="radio" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="w-4 h-4" />
-                              <span className="font-medium">Cartão de Crédito</span>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </>

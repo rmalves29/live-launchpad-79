@@ -22,6 +22,8 @@ interface IntegrationData {
   is_active: boolean;
   appmax_customer_id: number | null;
   pix_discount_percent: number | null;
+  enable_pix: boolean | null;
+  enable_credit_card: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +35,8 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
     access_token: '',
     environment: 'production' as 'sandbox' | 'production',
     pix_discount_percent: 0,
+    enable_pix: true,
+    enable_credit_card: true,
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -85,6 +89,8 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
         access_token: integration.access_token || '',
         environment: integration.environment as 'sandbox' | 'production',
         pix_discount_percent: integration.pix_discount_percent || 0,
+        enable_pix: integration.enable_pix !== false,
+        enable_credit_card: integration.enable_credit_card !== false,
       });
     }
   }, [integration]);
@@ -106,6 +112,9 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
   // Salvar integração
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!formData.enable_pix && !formData.enable_credit_card) {
+        throw new Error('Pelo menos um método (PIX ou Cartão) deve estar habilitado');
+      }
       console.log('[AppmaxIntegration] Salvando para tenant:', tenantId);
       
       // Desativar outros provedores antes de ativar App Max
@@ -117,6 +126,8 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
         environment: formData.environment,
         is_active: true,
         pix_discount_percent: formData.pix_discount_percent || 0,
+        enable_pix: formData.enable_pix,
+        enable_credit_card: formData.enable_credit_card,
         updated_at: new Date().toISOString(),
       };
 
@@ -389,7 +400,28 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
               </div>
             </div>
 
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+              <h4 className="font-medium flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Métodos de Pagamento Aceitos
+              </h4>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="am-enable-pix" className="cursor-pointer">Aceitar PIX no checkout</Label>
+                <Switch id="am-enable-pix" checked={formData.enable_pix}
+                  onCheckedChange={(v) => setFormData({ ...formData, enable_pix: v })} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="am-enable-card" className="cursor-pointer">Aceitar Cartão de Crédito no checkout</Label>
+                <Switch id="am-enable-card" checked={formData.enable_credit_card}
+                  onCheckedChange={(v) => setFormData({ ...formData, enable_credit_card: v })} />
+              </div>
+              {!formData.enable_pix && !formData.enable_credit_card && (
+                <p className="text-xs text-destructive">Pelo menos um método deve estar habilitado.</p>
+              )}
+            </div>
+
             <div className="flex gap-2">
+
               <Button
                 type="submit"
                 disabled={saveMutation.isPending || !formData.access_token}

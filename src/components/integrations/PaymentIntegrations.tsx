@@ -27,6 +27,8 @@ interface IntegrationData {
   created_at: string;
   updated_at: string;
   pix_discount_percent: number | null;
+  enable_pix: boolean | null;
+  enable_credit_card: boolean | null;
 }
 
 export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsProps) {
@@ -40,6 +42,8 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
     webhook_secret: '',
     environment: 'production' as 'sandbox' | 'production',
     pix_discount_percent: 0,
+    enable_pix: true,
+    enable_credit_card: true,
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -73,6 +77,8 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
         webhook_secret: integration.webhook_secret || '',
         environment: integration.environment as 'sandbox' | 'production',
         pix_discount_percent: integration.pix_discount_percent || 0,
+        enable_pix: integration.enable_pix !== false,
+        enable_credit_card: integration.enable_credit_card !== false,
       });
     }
   }, [integration]);
@@ -80,6 +86,9 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
   // Salvar integração
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!formData.enable_pix && !formData.enable_credit_card) {
+        throw new Error('Pelo menos um método (PIX ou Cartão) deve estar habilitado');
+      }
       console.log('[PaymentIntegrations] Salvando para tenant:', tenantId);
       console.log('[PaymentIntegrations] Dados do formulário:', {
         access_token: formData.access_token ? '***' : null,
@@ -98,6 +107,8 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
         environment: formData.environment,
         is_active: true,
         pix_discount_percent: formData.pix_discount_percent || 0,
+        enable_pix: formData.enable_pix,
+        enable_credit_card: formData.enable_credit_card,
         updated_at: new Date().toISOString(),
       };
 
@@ -387,7 +398,28 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
               </div>
             </div>
 
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+              <h4 className="font-medium flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Métodos de Pagamento Aceitos
+              </h4>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="mp-enable-pix" className="cursor-pointer">Aceitar PIX no checkout</Label>
+                <Switch id="mp-enable-pix" checked={formData.enable_pix}
+                  onCheckedChange={(v) => setFormData({ ...formData, enable_pix: v })} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="mp-enable-card" className="cursor-pointer">Aceitar Cartão de Crédito no checkout</Label>
+                <Switch id="mp-enable-card" checked={formData.enable_credit_card}
+                  onCheckedChange={(v) => setFormData({ ...formData, enable_credit_card: v })} />
+              </div>
+              {!formData.enable_pix && !formData.enable_credit_card && (
+                <p className="text-xs text-destructive">Pelo menos um método deve estar habilitado.</p>
+              )}
+            </div>
+
             <div className="flex gap-2">
+
               <Button
                 type="submit"
                 disabled={saveMutation.isPending || !formData.access_token}
