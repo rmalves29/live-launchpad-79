@@ -402,11 +402,49 @@ serve(async (req) => {
     // Prioridade: InfinitePay > App Max > Pagar.me > Mercado Pago
     const { data: infinitepayIntegration } = await sb
       .from("integration_infinitepay")
-      .select("is_active, handle")
+      .select("is_active, handle, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
+    // Helper: força payment_method conforme flags do gateway ativo (defesa em profundidade)
+    const enforcePaymentMethod = (
+      enablePix: boolean | null | undefined,
+      enableCard: boolean | null | undefined,
+      providerName: string,
+    ): { ok: true } | { ok: false; error: string } => {
+      const pixOn = enablePix !== false;
+      const cardOn = enableCard !== false;
+      if (!pixOn && !cardOn) {
+        return { ok: false, error: "Nenhum método de pagamento está habilitado para este lojista." };
+      }
+      const choice = String(payload.payment_method || "").toLowerCase();
+      const isPix = choice === "pix";
+      const isCard = !isPix && choice.length > 0;
+      if (!pixOn && isPix) {
+        console.log(`[create-payment] ${providerName}: PIX desabilitado, forçando cartão`);
+        payload.payment_method = "credit_card";
+      } else if (!cardOn && isCard) {
+        console.log(`[create-payment] ${providerName}: Cartão desabilitado, forçando PIX`);
+        payload.payment_method = "pix";
+      } else if (!choice) {
+        if (pixOn && !cardOn) payload.payment_method = "pix";
+        else if (cardOn && !pixOn) payload.payment_method = "credit_card";
+      }
+      return { ok: true };
+    };
+
     if (infinitepayIntegration?.is_active && infinitepayIntegration?.handle) {
+      const enforced = enforcePaymentMethod(
+        infinitepayIntegration.enable_pix,
+        infinitepayIntegration.enable_credit_card,
+        "infinitepay",
+      );
+      if (!enforced.ok) {
+        return new Response(JSON.stringify({ success: false, error: enforced.error }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       console.log("[create-payment] Delegating to create-infinitepay-payment for tenant:", payload.tenant_id);
       const ipPayload = {
         ...payload,
@@ -430,19 +468,19 @@ serve(async (req) => {
 
     const { data: appmaxIntegration } = await sb
       .from("integration_appmax")
-      .select("access_token, environment, is_active")
+      .select("access_token, environment, is_active, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
     const { data: mpIntegration } = await sb
       .from("integration_mp")
-      .select("access_token, environment, is_active")
+      .select("access_token, environment, is_active, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
     const { data: pagarmeIntegration } = await sb
       .from("integration_pagarme")
-      .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest")
+      .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
@@ -450,6 +488,18 @@ serve(async (req) => {
     const useAppmax = appmaxIntegration?.is_active && appmaxIntegration?.access_token;
     const usePagarme = !useAppmax && pagarmeIntegration?.is_active && pagarmeIntegration?.api_key;
     const useMercadoPago = !useAppmax && !usePagarme && mpIntegration?.is_active && mpIntegration?.access_token;
+
+    // Defesa em profundidade: aplica restrição de método conforme flags do gateway escolhido
+    if (useAppmax) {
+      const e = enforcePaymentMethod(appmaxIntegration!.enable_pix, appmaxIntegration!.enable_credit_card, "appmax");
+      if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    } else if (usePagarme) {
+      const e = enforcePaymentMethod(pagarmeIntegration!.enable_pix, pagarmeIntegration!.enable_credit_card, "pagarme");
+      if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    } else if (useMercadoPago) {
+      const e = enforcePaymentMethod(mpIntegration!.enable_pix, mpIntegration!.enable_credit_card, "mercado_pago");
+      if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const fallbackMpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
 
     if (!useAppmax && !usePagarme && !useMercadoPago && !fallbackMpAccessToken) {
