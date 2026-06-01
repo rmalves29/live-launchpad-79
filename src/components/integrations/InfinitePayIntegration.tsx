@@ -20,6 +20,8 @@ interface IntegrationData {
   handle: string | null;
   environment: string;
   pix_discount_percent: number | null;
+  enable_pix: boolean | null;
+  enable_credit_card: boolean | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -32,6 +34,8 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
     handle: '',
     environment: 'production' as 'sandbox' | 'production',
     pix_discount_percent: 0,
+    enable_pix: true,
+    enable_credit_card: true,
   });
   const [isEditing, setIsEditing] = useState(false);
 
