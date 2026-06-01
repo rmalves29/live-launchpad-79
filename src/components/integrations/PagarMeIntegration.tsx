@@ -105,6 +105,9 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
   // Salvar integração
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!formData.enable_pix && !formData.enable_credit_card) {
+        throw new Error('Pelo menos um método (PIX ou Cartão) deve estar habilitado');
+      }
       console.log('[PagarMeIntegration] Salvando para tenant:', tenantId);
       
       const dataToSave = {
