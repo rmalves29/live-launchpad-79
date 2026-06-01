@@ -96,6 +96,8 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         min_installment_value: integration.min_installment_value || 0,
         max_installments_without_interest: integration.max_installments_without_interest || 1,
         pix_discount_percent: integration.pix_discount_percent || 0,
+        enable_pix: integration.enable_pix !== false,
+        enable_credit_card: integration.enable_credit_card !== false,
       });
     }
   }, [integration]);
