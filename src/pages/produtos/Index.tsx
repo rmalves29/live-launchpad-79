@@ -1044,8 +1044,8 @@ const Produtos = () => {
                   Novo Produto
                 </Button>
               </DialogTrigger>
-            <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-              <DialogHeader>
+            <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col gap-0 p-0">
+              <DialogHeader className="p-6 pb-2 flex-shrink-0">
                 <DialogTitle>
                   {editingProduct ? 'Editar Produto' : 'Novo Produto'}
                 </DialogTitle>
@@ -1053,7 +1053,7 @@ const Produtos = () => {
                   Preencha as informações do produto
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+              <div className="space-y-3 overflow-y-auto flex-1 min-h-0 px-6 pb-6">
                 <div>
                   <Label htmlFor="code">Código *</Label>
                   <Input
