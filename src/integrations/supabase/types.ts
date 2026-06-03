@@ -4035,6 +4035,10 @@ export type Database = {
           slug: string
         }[]
       }
+      get_tenant_order_merge_days: {
+        Args: { p_tenant_id: string }
+        Returns: number
+      }
       get_user_tenant_id: { Args: never; Returns: string }
       http: {
         Args: { request: Database["public"]["CompositeTypes"]["http_request"] }
