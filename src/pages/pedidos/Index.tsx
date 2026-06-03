@@ -1491,6 +1491,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
     };
 
+    const isRoanneJoias = supabaseTenant.getTenantId() === '014457e5-e85f-4d62-874b-6bd0b72213bc';
     return (
       <div className="min-h-screen bg-background">
         <div className="p-6">
@@ -1549,15 +1550,17 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                   <Ban className="h-4 w-4 mr-2" />
                   Cancelar Selecionados ( {selectedOrders.size} )
                 </Button>
-                <Button
-                  onClick={deleteSelectedOrders}
-                  variant="outline"
-                  disabled={selectedOrders.size === 0}
-                  className="h-10 rounded-xl bg-white border-[#fecaca] text-[#dc2626] hover:bg-[#fef2f2] hover:text-[#b91c1c] shadow-none font-medium disabled:opacity-50"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Deletar Selecionados ( {selectedOrders.size} )
-                </Button>
+                {!isRoanneJoias && (
+                  <Button
+                    onClick={deleteSelectedOrders}
+                    variant="outline"
+                    disabled={selectedOrders.size === 0}
+                    className="h-10 rounded-xl bg-white border-[#fecaca] text-[#dc2626] hover:bg-[#fef2f2] hover:text-[#b91c1c] shadow-none font-medium disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Deletar Selecionados ( {selectedOrders.size} )
+                  </Button>
+                )}
                 <Button
                   onClick={exportToCSV}
                   variant="outline"
