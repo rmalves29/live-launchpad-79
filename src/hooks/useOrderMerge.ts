@@ -44,20 +44,19 @@ export function useOrderMerge(
     setError(null);
 
     try {
-      // Buscar configuração order_merge_days do tenant
-      const { data: tenantData, error: tenantError } = await supabase
-        .from('tenants')
-        .select('order_merge_days')
-        .eq('id', tenantId)
-        .maybeSingle();
+      // Buscar configuração order_merge_days via RPC (SECURITY DEFINER)
+      // Necessário pois tenants tem RLS que bloqueia anon (checkout público)
+      const { data: mergeDaysData, error: tenantError } = await supabase
+        .rpc('get_tenant_order_merge_days', { p_tenant_id: tenantId });
 
       if (tenantError) {
         console.error('Erro ao buscar configuração do tenant:', tenantError);
         throw tenantError;
       }
 
-      const mergeDays = (tenantData as any)?.order_merge_days ?? 0;
+      const mergeDays = Number(mergeDaysData ?? 0);
       setOrderMergeDays(mergeDays);
+
 
       // Se merge está desabilitado (0 dias), não há pedidos para juntar
       if (mergeDays <= 0) {
