@@ -1,56 +1,33 @@
-# Ativar/desativar PIX e Cartão por gateway
+## Problema (caso pedido #7713 — Roanne Joias)
 
-## Diagnóstico
+A cliente não pagou pelo link do MP (PIX), fez transferência direta para a empresa, o admin marcou o pedido como **pago manualmente**. Depois, o MP enviou um webhook de cancelamento/estorno referente à preferência original e a função `markOrderAsCancelled` reverteu automaticamente o pagamento manual (`is_paid: true → false`, `is_cancelled: true`). Foi necessário re-marcar o pedido manualmente como pago.
 
-As colunas `enable_pix` e `enable_credit_card` **já existem** nas tabelas `integration_mp`, `integration_pagarme`, `integration_appmax` e `integration_infinitepay`. O problema **não é SQL** — é que ninguém lê esses campos:
+Audit log confirma: `auto_cancel_payment_refunded` em 28/mai 18:46, `previous_is_paid: true`.
 
-1. As telas de configuração dos 4 gateways não têm switch para esses campos.
-2. O `Checkout.tsx` e `PublicCheckout.tsx` mostram PIX e Cartão fixos, sem consultar essas flags.
-3. As edge functions de pagamento não validam se o método escolhido está habilitado.
+## Mudança
 
-## O que será feito
+Remover o auto-cancelamento de pedidos quando o webhook do gateway sinaliza estorno/cancelamento. Substituir por **apenas registrar um alerta** (audit_log + webhook_log) para o admin decidir se cancela manualmente pela interface.
 
-### 1. UI de configuração (4 telas)
-Adicionar 2 switches em cada uma:
-- `src/components/integrations/PagarMeIntegration.tsx`
-- `src/components/integrations/AppmaxIntegration.tsx`
-- `src/components/integrations/InfinitePayIntegration.tsx`
-- E no card do Mercado Pago dentro de `src/components/integrations/PaymentIntegrations.tsx`
+## Arquivos afetados
 
-Switches:
-- "Aceitar PIX no checkout"
-- "Aceitar Cartão de Crédito no checkout"
+### 1. `supabase/functions/mp-webhook/index.ts`
+- Função `markOrderAsCancelled` (linhas ~493-536): remover o `UPDATE orders SET is_paid=false, is_cancelled=true`.
+- Manter apenas a inserção em `audit_logs` (action passa a ser `payment_refund_alert`) e `webhook_logs` (`webhook_type: mercadopago_payment_cancelled_alert`), incluindo no meta `previous_is_paid` e `previous_is_cancelled` para histórico.
+- Renomear a função para `logPaymentCancelAlert` para deixar claro que não muda estado.
+- Atualizar os call sites (loop em ~linha 240-260) para continuar chamando, mas sem efeito de cancelamento.
 
-Regra de proteção: não permitir desativar os dois ao mesmo tempo (toast de erro).
-Se PIX desativado, o campo "% desconto PIX" fica desabilitado.
+### 2. `supabase/functions/pagarme-webhook/index.ts`
+- Mesma mudança no bloco de cancelamento (linhas ~367-415): remover o `UPDATE` que seta `is_paid=false, is_cancelled=true`, manter o registro em `audit_logs` como alerta.
 
-### 2. Checkout (cliente)
-Em `src/pages/pedidos/Checkout.tsx` e `src/pages/pedidos/PublicCheckout.tsx`:
-- Carregar `enable_pix` / `enable_credit_card` do gateway ativo do tenant.
-- Ocultar o botão/aba PIX quando `enable_pix = false`.
-- Ocultar o botão/aba Cartão quando `enable_credit_card = false`.
-- Se só um estiver ativo, já seleciona automaticamente.
+### 3. Sem migration de banco
+Nenhuma alteração de schema. Apenas comportamento de edge functions.
 
-### 3. Edge functions de pagamento (defesa em profundidade)
-Em `create-payment` (MP), `pagarme-webhook`/criação Pagar.me, criação Appmax e `create-infinitepay-payment`:
-- Antes de chamar o gateway, ler a flag correspondente do tenant.
-- Se método solicitado estiver desativado, retornar `200 OK` com `{success: false, error: "Método de pagamento não disponível"}` (padrão do projeto).
+## Resultado esperado
 
-### 4. Sem migração
-Nenhuma alteração de schema é necessária — todas as colunas já existem.
+- Pedidos marcados como pagos manualmente (ou via outro fluxo) **nunca mais serão automaticamente revertidos** por webhooks de estorno/cancelamento do MP ou Pagar.me.
+- O admin continua podendo cancelar manualmente pela tela de pedidos quando necessário.
+- Todo evento de estorno do gateway fica registrado em `audit_logs` (`action: payment_refund_alert`) e `webhook_logs` para auditoria.
 
-## Validação
-- Desativar PIX no Pagar.me de um tenant teste → checkout mostra só Cartão.
-- Desativar Cartão no MP de outro tenant → checkout mostra só PIX e o lock continua funcionando.
-- Tentar desativar os dois → bloqueado com toast.
+## Memória a atualizar
 
-## Arquivos tocados
-- `src/components/integrations/PagarMeIntegration.tsx`
-- `src/components/integrations/AppmaxIntegration.tsx`
-- `src/components/integrations/InfinitePayIntegration.tsx`
-- `src/components/integrations/PaymentIntegrations.tsx` (card do MP)
-- `src/pages/pedidos/Checkout.tsx`
-- `src/pages/pedidos/PublicCheckout.tsx`
-- `supabase/functions/create-payment/index.ts`
-- `supabase/functions/create-infinitepay-payment/index.ts`
-- Edge functions de criação Pagar.me e Appmax (localizar e ajustar)
+Substituir a memória `mem://regras-negocio/cancelamento-automatico-por-estorno` para refletir a nova regra: "Webhooks de estorno/cancelamento NÃO alteram o pedido — apenas registram alerta em audit_logs/webhook_logs. Cancelamento é sempre manual."
