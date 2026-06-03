@@ -641,8 +641,8 @@ useEffect(() => {
                     </CardContent>
                   </Card>
                   );
-                })
-              )}
+                });
+              })()}
             </div>
           </div>
         </div>
