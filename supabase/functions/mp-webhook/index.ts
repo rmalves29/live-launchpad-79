@@ -491,7 +491,11 @@ async function syncOrderWithBling(sb: any, orderId: number, tenantId: string | n
 // ──────────────────────────────────────────────────────────────────
 
 async function markOrderAsCancelled(sb: any, orderId: number, tenantId: string | null, paymentId: string, reason: string) {
-  console.log(`[mp-webhook] Cancelling order ${orderId} (reason: ${reason})`);
+  // NOVA REGRA: webhooks de estorno/cancelamento NÃO alteram o pedido.
+  // Apenas registram um alerta para o admin decidir manualmente.
+  // Motivo: pedidos pagos manualmente (PIX direto na empresa) estavam sendo
+  // revertidos quando o MP enviava cancelamento da preferência original.
+  console.log(`[mp-webhook] ⚠️ ALERTA de cancelamento recebido para pedido ${orderId} (reason: ${reason}) — NÃO será cancelado automaticamente`);
 
   const { data: existingOrder } = await sb
     .from("orders")
@@ -499,41 +503,36 @@ async function markOrderAsCancelled(sb: any, orderId: number, tenantId: string |
     .eq("id", orderId)
     .single();
 
-  if (!existingOrder || existingOrder.is_cancelled) {
-    console.log(`[mp-webhook] Order ${orderId} not found or already cancelled`);
+  if (!existingOrder) {
+    console.log(`[mp-webhook] Order ${orderId} not found`);
     return;
   }
 
   const orderTenantId = existingOrder.tenant_id || tenantId;
 
-  const { error } = await sb
-    .from("orders")
-    .update({ is_paid: false, is_cancelled: true })
-    .eq("id", orderId);
-
-  if (error) {
-    console.error(`[mp-webhook] Error cancelling order ${orderId}:`, error);
-    return;
-  }
-
-  console.log(`[mp-webhook] ✅ Order ${orderId} cancelled and unmarked as paid`);
-
   await sb.from("audit_logs").insert({
     entity: "order",
     entity_id: String(orderId),
-    action: "auto_cancel_payment_refunded",
+    action: "payment_refund_alert",
     tenant_id: orderTenantId,
-    meta: { reason, payment_id: paymentId, previous_is_paid: existingOrder.is_paid },
+    meta: {
+      reason,
+      payment_id: paymentId,
+      current_is_paid: existingOrder.is_paid,
+      current_is_cancelled: existingOrder.is_cancelled,
+      note: "Webhook de cancelamento recebido — nenhuma ação automática tomada. Cancelar manualmente se necessário.",
+    },
   });
 
   await sb.from("webhook_logs").insert({
-    webhook_type: "mercadopago_payment_cancelled",
+    webhook_type: "mercadopago_payment_cancelled_alert",
     status_code: 200,
     tenant_id: orderTenantId,
     payload: { order_id: orderId, payment_id: paymentId, reason },
-    response: `Order ${orderId} cancelled`,
+    response: `Alert logged for order ${orderId} — no auto-cancel`,
   });
 }
+
 
 // ──────────────────────────────────────────────────────────────────
 // Helpers
