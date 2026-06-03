@@ -72,6 +72,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [products, setProducts] = useState<Product[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [cartSearchQuery, setCartSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
@@ -557,6 +558,12 @@ useEffect(() => {
               <Badge variant="outline">Total: {formatCurrency(currentTotal)}</Badge>
             </div>
 
+            <Input
+              placeholder="Buscar nos itens do pedido (nome ou código)..."
+              value={cartSearchQuery}
+              onChange={(e) => setCartSearchQuery(e.target.value)}
+            />
+
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {cartItems.length === 0 ? (
                 <Card>
@@ -564,8 +571,25 @@ useEffect(() => {
                     Nenhum item no pedido
                   </CardContent>
                 </Card>
-              ) : (
-                cartItems.map((item) => {
+              ) : (() => {
+                const q = cartSearchQuery.trim().toLowerCase();
+                const filtered = q
+                  ? cartItems.filter((item) => {
+                      const name = (item.product?.name || item.product_name || '').toLowerCase();
+                      const code = (item.product?.code || item.product_code || '').toLowerCase();
+                      return name.includes(q) || code.includes(q);
+                    })
+                  : cartItems;
+                if (filtered.length === 0) {
+                  return (
+                    <Card>
+                      <CardContent className="p-6 text-center text-muted-foreground">
+                        Nenhum item encontrado para "{cartSearchQuery}"
+                      </CardContent>
+                    </Card>
+                  );
+                }
+                return filtered.map((item) => {
                   const productName = item.product?.name || item.product_name || 'Produto deletado';
                   const productCode = item.product?.code || item.product_code || 'N/A';
                   const productImage = item.product?.image_url || item.product_image_url;
@@ -617,8 +641,8 @@ useEffect(() => {
                     </CardContent>
                   </Card>
                   );
-                })
-              )}
+                });
+              })()}
             </div>
           </div>
         </div>
