@@ -172,12 +172,23 @@ const Clientes = () => {
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const { data: customersData, error: customersError } = await supabaseTenant
-        .from('customers')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Paginação em lotes de 1000 para contornar limite do PostgREST
+      const PAGE_SIZE = 1000;
+      let customersData: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data: batch, error: customersError } = await supabaseTenant
+          .from('customers')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
 
-      if (customersError) throw customersError;
+        if (customersError) throw customersError;
+        if (!batch || batch.length === 0) break;
+        customersData = customersData.concat(batch);
+        if (batch.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
 
       // Get order statistics and tags for each customer
       const customersWithStats = await Promise.all(
