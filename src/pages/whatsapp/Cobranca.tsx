@@ -524,15 +524,24 @@ export default function Cobranca() {
         const phoneToSend = normalizeForSending(customer.customer_phone);
         console.log(`📱 Enviando para ${phoneToSend} (${i + 1}/${customers.length})`);
 
-        // Enviar mensagem via Z-API
+        // Enviar mensagem via Z-API (com ou sem imagem)
         try {
+          const invokeBody: any = imageDataUrl
+            ? {
+                action: 'send-image',
+                tenant_id: tenant.id,
+                phone: phoneToSend,
+                mediaUrl: imageDataUrl,
+                caption: variedMessage,
+              }
+            : {
+                action: 'send-text',
+                tenant_id: tenant.id,
+                phone: phoneToSend,
+                message: variedMessage,
+              };
           const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-            body: { 
-              action: 'send-text', 
-              tenant_id: tenant.id,
-              phone: phoneToSend,
-              message: variedMessage
-            }
+            body: invokeBody,
           });
 
           if (error) {
