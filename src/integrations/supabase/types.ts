@@ -3998,6 +3998,11 @@ export type Database = {
           total_amount: number
         }[]
       }
+      get_own_role: {
+        Args: never
+        Returns: Database["public"]["Enums"]["user_role"]
+      }
+      get_own_tenant_id: { Args: never; Returns: string }
       get_paid_orders_for_merge: {
         Args: {
           p_customer_phone: string
