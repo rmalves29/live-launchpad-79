@@ -1380,6 +1380,78 @@ const Relatorios = () => {
     propagateGlobalPeriod('custom');
   };
 
+  const loadCouponStats = async () => {
+    try {
+      const range = computeGlobalRange();
+      if (!range) { setCouponStats([]); return; }
+
+      let orders = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('id, total_amount, coupon_code, coupon_discount, is_paid, cart_id, created_at')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .not('coupon_code', 'is', null)
+          .neq('coupon_code', '')
+          .gte('created_at', range.startISO)
+          .lte('created_at', range.endISO)
+      );
+
+      // Filtro por tipo de venda
+      if (saleTypeFilter !== 'ALL' && orders.length > 0) {
+        const cartIds = orders.map((o) => o.cart_id).filter(Boolean);
+        if (cartIds.length === 0) { orders = []; }
+        else {
+          const { data: cartItems } = await supabaseTenant
+            .from('cart_items')
+            .select('cart_id, product_code')
+            .in('cart_id', cartIds);
+          const productCodes = [...new Set((cartItems || []).map((ci: any) => ci.product_code).filter(Boolean))];
+          let productSaleTypes: Record<string, string> = {};
+          if (productCodes.length > 0) {
+            const { data: products } = await supabaseTenant
+              .from('products')
+              .select('code, sale_type')
+              .in('code', productCodes);
+            (products || []).forEach((p: any) => { productSaleTypes[p.code] = p.sale_type; });
+          }
+          const validCartIds = new Set<number>();
+          (cartItems || []).forEach((item: any) => {
+            const st = item.product_code ? productSaleTypes[item.product_code] : null;
+            if (st === saleTypeFilter || st === 'AMBOS') validCartIds.add(item.cart_id);
+          });
+          orders = orders.filter((o: any) => o.cart_id && validCartIds.has(o.cart_id));
+        }
+      }
+
+      const map = new Map<string, any>();
+      for (const o of orders) {
+        const code = String(o.coupon_code).toUpperCase().trim();
+        if (!code) continue;
+        const entry = map.get(code) || {
+          code, total_orders: 0, paid_orders: 0, unpaid_orders: 0,
+          total_discount: 0, paid_discount: 0, total_revenue: 0, paid_revenue: 0,
+        };
+        const discount = Number(o.coupon_discount) || 0;
+        const total = Number(o.total_amount) || 0;
+        entry.total_orders += 1;
+        entry.total_discount += discount;
+        entry.total_revenue += total;
+        if (o.is_paid) {
+          entry.paid_orders += 1;
+          entry.paid_discount += discount;
+          entry.paid_revenue += total;
+        } else {
+          entry.unpaid_orders += 1;
+        }
+        map.set(code, entry);
+      }
+      const list = Array.from(map.values()).sort((a, b) => b.paid_revenue - a.paid_revenue);
+      setCouponStats(list);
+    } catch (e: any) {
+      console.error('Erro ao carregar relatório de cupons:', e);
+    }
+  };
+
   const loadAllReports = async () => {
     setLoading(true);
     try {
@@ -1390,6 +1462,7 @@ const Relatorios = () => {
         loadWhatsAppGroupStats(),
         loadTopCustomers(),
         loadDailySeries(),
+        loadCouponStats(),
       ]);
     } finally {
       setLoading(false);
