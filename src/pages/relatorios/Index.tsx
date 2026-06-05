@@ -139,10 +139,21 @@ const Relatorios = () => {
   const [globalStart, setGlobalStart] = useState('');
   const [globalEnd, setGlobalEnd] = useState('');
   const [metricMode, setMetricMode] = useState<'value' | 'qty'>('value');
-  const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos'>('produtos');
+  const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos' | 'cupons'>('produtos');
   const [dailySeries, setDailySeries] = useState<Array<{ date: string; paid: number; unpaid: number; total: number; orders: number }>>([]);
   const [globalStats, setGlobalStats] = useState<PeriodStats | null>(null);
   const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
+  const [couponStats, setCouponStats] = useState<Array<{
+    code: string;
+    total_orders: number;
+    paid_orders: number;
+    unpaid_orders: number;
+    total_discount: number;
+    paid_discount: number;
+    total_revenue: number;
+    paid_revenue: number;
+  }>>([]);
+  const [couponSearch, setCouponSearch] = useState('');
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
