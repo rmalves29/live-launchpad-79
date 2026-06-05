@@ -1815,6 +1815,7 @@ const Relatorios = () => {
             { id: 'produtos', label: '🏆 Produtos' },
             { id: 'clientes', label: '👥 Clientes' },
             { id: 'grupos', label: '💬 Grupos' },
+            { id: 'cupons', label: '🎟️ Cupons' },
           ] as const).map((t) => (
             <button
               key={t.id}
