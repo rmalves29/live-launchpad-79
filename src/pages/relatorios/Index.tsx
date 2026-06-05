@@ -1504,7 +1504,7 @@ const Relatorios = () => {
 
   // Recarrega série diária quando o período global muda
   useEffect(() => {
-    if (tenantId) loadDailySeries();
+    if (tenantId) { loadDailySeries(); loadCouponStats(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalPeriod, globalStart, globalEnd, saleTypeFilter, tenantId]);
 
