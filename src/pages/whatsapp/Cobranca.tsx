@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Loader2, Send, Users, Calendar as CalendarIcon, Filter, Tag, RefreshCw, Clock, Database } from 'lucide-react';
+import { Loader2, Send, Users, Calendar as CalendarIcon, Filter, Tag, RefreshCw, Clock, Database, ImagePlus, X as XIcon } from 'lucide-react';
 import { normalizeForSending } from '@/lib/phone-utils';
 import { addMessageVariation, getHumanizedDelayMs } from '@/lib/whatsapp-anti-block';
 import { format } from 'date-fns';
