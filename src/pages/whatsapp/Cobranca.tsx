@@ -76,6 +76,8 @@ export default function Cobranca() {
   });
   
   const [messageTemplate, setMessageTemplate] = useState('');
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
+  const [imageFileName, setImageFileName] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
