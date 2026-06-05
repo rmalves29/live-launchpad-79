@@ -1957,6 +1957,113 @@ const Relatorios = () => {
             </Table>
           </div>
         )}
+
+        {tableTab === 'cupons' && (() => {
+          const filtered = couponStats.filter(c =>
+            !couponSearch.trim() || c.code.toLowerCase().includes(couponSearch.toLowerCase().trim())
+          );
+          const totals = filtered.reduce((acc, c) => ({
+            orders: acc.orders + c.total_orders,
+            paid_orders: acc.paid_orders + c.paid_orders,
+            discount: acc.discount + c.total_discount,
+            paid_discount: acc.paid_discount + c.paid_discount,
+            paid_revenue: acc.paid_revenue + c.paid_revenue,
+            total_revenue: acc.total_revenue + c.total_revenue,
+          }), { orders: 0, paid_orders: 0, discount: 0, paid_discount: 0, paid_revenue: 0, total_revenue: 0 });
+
+          const exportCouponsCSV = (rowsData: typeof filtered, filename: string) => {
+            const lines: string[] = [];
+            lines.push('Cupom;Pedidos;Pedidos Pagos;Desconto Total;Desconto Pago;Receita Total;Receita Paga');
+            rowsData.forEach(r => {
+              lines.push([
+                `"${r.code.replace(/"/g, '""')}"`,
+                r.total_orders,
+                r.paid_orders,
+                r.total_discount.toFixed(2).replace('.', ','),
+                r.paid_discount.toFixed(2).replace('.', ','),
+                r.total_revenue.toFixed(2).replace('.', ','),
+                r.paid_revenue.toFixed(2).replace('.', ','),
+              ].join(';'));
+            });
+            const blob = new Blob(["\uFEFF" + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast({ title: 'Exportado', description: 'Arquivo CSV gerado com sucesso.' });
+          };
+
+          return (
+            <div>
+              <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-border/60">
+                <Input
+                  placeholder="Buscar cupom por código..."
+                  value={couponSearch}
+                  onChange={(e) => setCouponSearch(e.target.value)}
+                  className="h-9 max-w-xs"
+                />
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {filtered.length} cupom(ns) · {totals.paid_orders} pedidos pagos · {formatCurrency(totals.paid_revenue)} em receita paga
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => exportCouponsCSV(filtered, `cupons-${new Date().toISOString().slice(0, 10)}.csv`)}
+                    disabled={filtered.length === 0}
+                  >
+                    Exportar CSV
+                  </Button>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-muted/40 backdrop-blur z-10">
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>Cupom</TableHead>
+                      <TableHead className="text-center">Pedidos</TableHead>
+                      <TableHead className="text-center">Pagos</TableHead>
+                      <TableHead className="text-right">Desconto Total</TableHead>
+                      <TableHead className="text-right">Desconto Pago</TableHead>
+                      <TableHead className="text-right">Receita Total</TableHead>
+                      <TableHead className="text-right">Receita Paga</TableHead>
+                      <TableHead className="text-center w-24">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.length === 0 ? (
+                      <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum cupom utilizado no período</TableCell></TableRow>
+                    ) : filtered.map((c, i) => (
+                      <TableRow key={c.code} className="hover:bg-muted/30">
+                        <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                        <TableCell><Badge variant="outline" className="font-mono">{c.code}</Badge></TableCell>
+                        <TableCell className="text-center">{c.total_orders}</TableCell>
+                        <TableCell className="text-center"><Badge className="bg-emerald-100 text-emerald-800">{c.paid_orders}</Badge></TableCell>
+                        <TableCell className="text-right text-orange-600">{formatCurrency(c.total_discount)}</TableCell>
+                        <TableCell className="text-right font-semibold text-orange-600">{formatCurrency(c.paid_discount)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(c.total_revenue)}</TableCell>
+                        <TableCell className="text-right font-semibold text-emerald-600">{formatCurrency(c.paid_revenue)}</TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => exportCouponsCSV([c], `cupom-${c.code}-${new Date().toISOString().slice(0, 10)}.csv`)}
+                          >
+                            Exportar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {saleTypeFilter !== 'ALL' && (
