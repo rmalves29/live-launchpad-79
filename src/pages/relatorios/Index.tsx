@@ -139,10 +139,21 @@ const Relatorios = () => {
   const [globalStart, setGlobalStart] = useState('');
   const [globalEnd, setGlobalEnd] = useState('');
   const [metricMode, setMetricMode] = useState<'value' | 'qty'>('value');
-  const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos'>('produtos');
+  const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos' | 'cupons'>('produtos');
   const [dailySeries, setDailySeries] = useState<Array<{ date: string; paid: number; unpaid: number; total: number; orders: number }>>([]);
   const [globalStats, setGlobalStats] = useState<PeriodStats | null>(null);
   const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
+  const [couponStats, setCouponStats] = useState<Array<{
+    code: string;
+    total_orders: number;
+    paid_orders: number;
+    unpaid_orders: number;
+    total_discount: number;
+    paid_discount: number;
+    total_revenue: number;
+    paid_revenue: number;
+  }>>([]);
+  const [couponSearch, setCouponSearch] = useState('');
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -1369,6 +1380,78 @@ const Relatorios = () => {
     propagateGlobalPeriod('custom');
   };
 
+  const loadCouponStats = async () => {
+    try {
+      const range = computeGlobalRange();
+      if (!range) { setCouponStats([]); return; }
+
+      let orders = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('id, total_amount, coupon_code, coupon_discount, is_paid, cart_id, created_at')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .not('coupon_code', 'is', null)
+          .neq('coupon_code', '')
+          .gte('created_at', range.startISO)
+          .lte('created_at', range.endISO)
+      );
+
+      // Filtro por tipo de venda
+      if (saleTypeFilter !== 'ALL' && orders.length > 0) {
+        const cartIds = orders.map((o) => o.cart_id).filter(Boolean);
+        if (cartIds.length === 0) { orders = []; }
+        else {
+          const { data: cartItems } = await supabaseTenant
+            .from('cart_items')
+            .select('cart_id, product_code')
+            .in('cart_id', cartIds);
+          const productCodes = [...new Set((cartItems || []).map((ci: any) => ci.product_code).filter(Boolean))];
+          let productSaleTypes: Record<string, string> = {};
+          if (productCodes.length > 0) {
+            const { data: products } = await supabaseTenant
+              .from('products')
+              .select('code, sale_type')
+              .in('code', productCodes);
+            (products || []).forEach((p: any) => { productSaleTypes[p.code] = p.sale_type; });
+          }
+          const validCartIds = new Set<number>();
+          (cartItems || []).forEach((item: any) => {
+            const st = item.product_code ? productSaleTypes[item.product_code] : null;
+            if (st === saleTypeFilter || st === 'AMBOS') validCartIds.add(item.cart_id);
+          });
+          orders = orders.filter((o: any) => o.cart_id && validCartIds.has(o.cart_id));
+        }
+      }
+
+      const map = new Map<string, any>();
+      for (const o of orders) {
+        const code = String(o.coupon_code).toUpperCase().trim();
+        if (!code) continue;
+        const entry = map.get(code) || {
+          code, total_orders: 0, paid_orders: 0, unpaid_orders: 0,
+          total_discount: 0, paid_discount: 0, total_revenue: 0, paid_revenue: 0,
+        };
+        const discount = Number(o.coupon_discount) || 0;
+        const total = Number(o.total_amount) || 0;
+        entry.total_orders += 1;
+        entry.total_discount += discount;
+        entry.total_revenue += total;
+        if (o.is_paid) {
+          entry.paid_orders += 1;
+          entry.paid_discount += discount;
+          entry.paid_revenue += total;
+        } else {
+          entry.unpaid_orders += 1;
+        }
+        map.set(code, entry);
+      }
+      const list = Array.from(map.values()).sort((a, b) => b.paid_revenue - a.paid_revenue);
+      setCouponStats(list);
+    } catch (e: any) {
+      console.error('Erro ao carregar relatório de cupons:', e);
+    }
+  };
+
   const loadAllReports = async () => {
     setLoading(true);
     try {
@@ -1379,6 +1462,7 @@ const Relatorios = () => {
         loadWhatsAppGroupStats(),
         loadTopCustomers(),
         loadDailySeries(),
+        loadCouponStats(),
       ]);
     } finally {
       setLoading(false);
@@ -1420,7 +1504,7 @@ const Relatorios = () => {
 
   // Recarrega série diária quando o período global muda
   useEffect(() => {
-    if (tenantId) loadDailySeries();
+    if (tenantId) { loadDailySeries(); loadCouponStats(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalPeriod, globalStart, globalEnd, saleTypeFilter, tenantId]);
 
@@ -1731,6 +1815,7 @@ const Relatorios = () => {
             { id: 'produtos', label: '🏆 Produtos' },
             { id: 'clientes', label: '👥 Clientes' },
             { id: 'grupos', label: '💬 Grupos' },
+            { id: 'cupons', label: '🎟️ Cupons' },
           ] as const).map((t) => (
             <button
               key={t.id}
@@ -1872,6 +1957,113 @@ const Relatorios = () => {
             </Table>
           </div>
         )}
+
+        {tableTab === 'cupons' && (() => {
+          const filtered = couponStats.filter(c =>
+            !couponSearch.trim() || c.code.toLowerCase().includes(couponSearch.toLowerCase().trim())
+          );
+          const totals = filtered.reduce((acc, c) => ({
+            orders: acc.orders + c.total_orders,
+            paid_orders: acc.paid_orders + c.paid_orders,
+            discount: acc.discount + c.total_discount,
+            paid_discount: acc.paid_discount + c.paid_discount,
+            paid_revenue: acc.paid_revenue + c.paid_revenue,
+            total_revenue: acc.total_revenue + c.total_revenue,
+          }), { orders: 0, paid_orders: 0, discount: 0, paid_discount: 0, paid_revenue: 0, total_revenue: 0 });
+
+          const exportCouponsCSV = (rowsData: typeof filtered, filename: string) => {
+            const lines: string[] = [];
+            lines.push('Cupom;Pedidos;Pedidos Pagos;Desconto Total;Desconto Pago;Receita Total;Receita Paga');
+            rowsData.forEach(r => {
+              lines.push([
+                `"${r.code.replace(/"/g, '""')}"`,
+                r.total_orders,
+                r.paid_orders,
+                r.total_discount.toFixed(2).replace('.', ','),
+                r.paid_discount.toFixed(2).replace('.', ','),
+                r.total_revenue.toFixed(2).replace('.', ','),
+                r.paid_revenue.toFixed(2).replace('.', ','),
+              ].join(';'));
+            });
+            const blob = new Blob(["\uFEFF" + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast({ title: 'Exportado', description: 'Arquivo CSV gerado com sucesso.' });
+          };
+
+          return (
+            <div>
+              <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-border/60">
+                <Input
+                  placeholder="Buscar cupom por código..."
+                  value={couponSearch}
+                  onChange={(e) => setCouponSearch(e.target.value)}
+                  className="h-9 max-w-xs"
+                />
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {filtered.length} cupom(ns) · {totals.paid_orders} pedidos pagos · {formatCurrency(totals.paid_revenue)} em receita paga
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => exportCouponsCSV(filtered, `cupons-${new Date().toISOString().slice(0, 10)}.csv`)}
+                    disabled={filtered.length === 0}
+                  >
+                    Exportar CSV
+                  </Button>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-muted/40 backdrop-blur z-10">
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>Cupom</TableHead>
+                      <TableHead className="text-center">Pedidos</TableHead>
+                      <TableHead className="text-center">Pagos</TableHead>
+                      <TableHead className="text-right">Desconto Total</TableHead>
+                      <TableHead className="text-right">Desconto Pago</TableHead>
+                      <TableHead className="text-right">Receita Total</TableHead>
+                      <TableHead className="text-right">Receita Paga</TableHead>
+                      <TableHead className="text-center w-24">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.length === 0 ? (
+                      <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum cupom utilizado no período</TableCell></TableRow>
+                    ) : filtered.map((c, i) => (
+                      <TableRow key={c.code} className="hover:bg-muted/30">
+                        <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                        <TableCell><Badge variant="outline" className="font-mono">{c.code}</Badge></TableCell>
+                        <TableCell className="text-center">{c.total_orders}</TableCell>
+                        <TableCell className="text-center"><Badge className="bg-emerald-100 text-emerald-800">{c.paid_orders}</Badge></TableCell>
+                        <TableCell className="text-right text-orange-600">{formatCurrency(c.total_discount)}</TableCell>
+                        <TableCell className="text-right font-semibold text-orange-600">{formatCurrency(c.paid_discount)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(c.total_revenue)}</TableCell>
+                        <TableCell className="text-right font-semibold text-emerald-600">{formatCurrency(c.paid_revenue)}</TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => exportCouponsCSV([c], `cupom-${c.code}-${new Date().toISOString().slice(0, 10)}.csv`)}
+                          >
+                            Exportar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {saleTypeFilter !== 'ALL' && (
