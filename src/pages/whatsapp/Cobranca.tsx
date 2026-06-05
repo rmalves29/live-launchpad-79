@@ -819,6 +819,59 @@ export default function Cobranca() {
               <div className="text-xs text-muted-foreground text-right">{messageTemplate.length} caracteres</div>
             </div>
 
+            {/* Anexar imagem */}
+            <div className="space-y-2">
+              <Label className="text-sm">Imagem (opcional)</Label>
+              {imageDataUrl ? (
+                <div className="relative rounded-xl border border-[#e5e7eb] bg-white p-2">
+                  <img src={imageDataUrl} alt="Pré-visualização" className="max-h-48 w-full object-contain rounded-lg" />
+                  <div className="flex items-center justify-between mt-2 px-1">
+                    <span className="text-xs text-muted-foreground truncate max-w-[70%]">{imageFileName}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setImageDataUrl(null); setImageFileName(null); }}
+                      className="h-7 px-2 text-xs"
+                    >
+                      <XIcon className="w-3 h-3 mr-1" /> Remover
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-2 p-4 rounded-xl border border-dashed border-[#e5e7eb] bg-[#f9fafb] cursor-pointer hover:bg-[#f3f4f6] transition-colors">
+                  <ImagePlus className="w-4 h-4 text-primary" />
+                  <span className="text-sm text-muted-foreground">Clique para anexar uma imagem</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 5 * 1024 * 1024) {
+                        toast({ title: 'Imagem muito grande', description: 'Tamanho máximo: 5MB', variant: 'destructive' });
+                        e.target.value = '';
+                        return;
+                      }
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setImageDataUrl(reader.result as string);
+                        setImageFileName(file.name);
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              )}
+              {imageDataUrl && isScheduled && (
+                <p className="text-xs text-amber-600">
+                  ⚠️ Imagens não são suportadas em envios agendados — só serão enviadas no envio imediato.
+                </p>
+              )}
+            </div>
+
             <div className="pt-2">
               <div className="flex items-center justify-between p-3 bg-[#f9fafb] rounded-xl border border-[#e5e7eb] mb-3">
                 <div className="flex items-center gap-2">
