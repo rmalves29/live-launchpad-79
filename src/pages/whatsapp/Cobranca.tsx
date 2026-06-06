@@ -26,6 +26,13 @@ interface FilterCriteria {
   orderDate: DateRange | undefined;
 }
 
+interface OrderItem {
+  product_name: string;
+  product_code: string;
+  qty: number;
+  unit_price: number;
+}
+
 interface Customer {
   customer_phone: string;
   customer_name?: string;
@@ -33,6 +40,9 @@ interface Customer {
   event_date?: string;
   total_amount?: number;
   is_paid?: boolean;
+  order_id?: number;
+  payment_link?: string;
+  items?: OrderItem[];
 }
 
 interface SendStatus {
