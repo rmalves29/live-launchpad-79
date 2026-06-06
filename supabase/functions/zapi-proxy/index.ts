@@ -171,6 +171,7 @@ serve(async (req) => {
         };
         break;
 
+      case "send-document":
         endpoint = "/send-document";
         method = "POST";
         body = {
@@ -178,6 +179,7 @@ serve(async (req) => {
           document: mediaUrl
         };
         break;
+
 
       case "list-groups": {
         // Fetch ALL groups using pagination - Z-API requires iterating through pages
