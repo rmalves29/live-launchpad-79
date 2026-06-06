@@ -154,7 +154,23 @@ serve(async (req) => {
         };
         break;
 
-      case "send-document":
+      case "send-button-actions":
+        // Z-API: /send-button-actions — mensagem com até 3 botões (URL/CALL/REPLY)
+        if (!Array.isArray(buttonActions) || buttonActions.length === 0) {
+          return new Response(
+            JSON.stringify({ error: "buttonActions é obrigatório para send-button-actions" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        endpoint = "/send-button-actions";
+        method = "POST";
+        body = {
+          phone: phone,
+          message: message,
+          buttonActions: buttonActions
+        };
+        break;
+
         endpoint = "/send-document";
         method = "POST";
         body = {
