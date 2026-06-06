@@ -237,7 +237,8 @@ export default function Cobranca() {
       const fromStr = format(filters.orderDate.from, 'yyyy-MM-dd');
       let query = supabaseTenant
         .from('orders')
-        .select('customer_phone, customer_name, event_type, event_date, total_amount, is_paid');
+        .select('id, cart_id, payment_link, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, created_at')
+        .order('created_at', { ascending: false });
 
       if (filters.orderDate.to) {
         const toStr = format(filters.orderDate.to, 'yyyy-MM-dd');
@@ -264,23 +265,71 @@ export default function Cobranca() {
 
       if (error) throw error;
 
-      // Remover duplicatas por telefone (pegar apenas o mais recente)
-      const uniqueCustomers = data?.reduce((acc: Customer[], current) => {
+      // Remover duplicatas por telefone (pegar apenas o mais recente — já ordenado desc)
+      const uniqueCustomers = data?.reduce((acc: Customer[], current: any) => {
         const exists = acc.find(c => c.customer_phone === current.customer_phone);
         if (!exists) {
-          acc.push(current);
+          acc.push({
+            customer_phone: current.customer_phone,
+            customer_name: current.customer_name,
+            event_type: current.event_type,
+            event_date: current.event_date,
+            total_amount: current.total_amount,
+            is_paid: current.is_paid,
+            order_id: current.id,
+            payment_link: current.payment_link,
+            items: [],
+          });
         }
         return acc;
       }, []) || [];
 
+      // Buscar itens dos carrinhos correspondentes
+      const cartIds = data
+        ?.filter((o: any) => uniqueCustomers.some(c => c.order_id === o.id) && o.cart_id)
+        .map((o: any) => ({ orderId: o.id, cartId: o.cart_id })) || [];
+
+      if (cartIds.length > 0) {
+        const uniqueCartIds = Array.from(new Set(cartIds.map(c => c.cartId)));
+        const { data: items, error: itemsError } = await supabaseTenant
+          .from('cart_items')
+          .select('cart_id, qty, unit_price, product_name, product_code')
+          .in('cart_id', uniqueCartIds);
+
+        if (!itemsError && items) {
+          const itemsByCart = new Map<number, OrderItem[]>();
+          items.forEach((it: any) => {
+            const list = itemsByCart.get(it.cart_id) || [];
+            list.push({
+              product_name: it.product_name || '',
+              product_code: it.product_code || '',
+              qty: Number(it.qty || 0),
+              unit_price: Number(it.unit_price || 0),
+            });
+            itemsByCart.set(it.cart_id, list);
+          });
+
+          // Mapear carrinho → pedido → customer
+          const orderToCart = new Map<number, number>();
+          cartIds.forEach(c => orderToCart.set(c.orderId, c.cartId));
+          uniqueCustomers.forEach(c => {
+            if (c.order_id) {
+              const cartId = orderToCart.get(c.order_id);
+              if (cartId) c.items = itemsByCart.get(cartId) || [];
+            }
+          });
+        }
+      }
+
       setCustomers(uniqueCustomers);
-      
+
       // Inicializar status como pendente para todos
       const initialStatuses: Record<string, SendStatus> = {};
       uniqueCustomers.forEach(c => {
         initialStatuses[c.customer_phone] = { phone: c.customer_phone, status: 'pending' };
       });
       setSendStatuses(initialStatuses);
+
       
       toast({
         title: 'Filtro aplicado',
