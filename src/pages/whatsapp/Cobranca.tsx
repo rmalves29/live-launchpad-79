@@ -113,6 +113,11 @@ export default function Cobranca() {
   // Estado para filtro de toda base
   const [useAllCustomers, setUseAllCustomers] = useState(false);
 
+  // Estado para botão (CTA) customizável
+  const [buttonEnabled, setButtonEnabled] = useState(false);
+  const [buttonLabel, setButtonLabel] = useState('Acessar');
+  const [buttonUrl, setButtonUrl] = useState('');
+
   // Carregar template padrão MSG_MASSA e URL do WhatsApp
   useEffect(() => {
     loadDefaultTemplate();
