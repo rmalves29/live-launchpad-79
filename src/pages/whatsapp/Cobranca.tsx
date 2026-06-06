@@ -602,6 +602,22 @@ export default function Cobranca() {
       return;
     }
 
+    // Validar botão se ativado
+    if (buttonEnabled) {
+      if (!buttonLabel.trim()) {
+        toast({ title: 'Erro', description: 'Defina o texto do botão', variant: 'destructive' });
+        return;
+      }
+      // O URL pode conter variáveis — só rejeitamos se for evidente que não vira link
+      const sampleUrl = buttonUrl.trim();
+      if (!sampleUrl || (!sampleUrl.includes('{{') && !/^https?:\/\/.+/i.test(sampleUrl))) {
+        toast({ title: 'Erro', description: 'Informe um link válido (começando com http:// ou https://)', variant: 'destructive' });
+        return;
+      }
+    }
+
+
+
     console.log('🚀 Iniciando envio em massa para', customers.length, 'clientes');
     if (selectedTagId && selectedTagId !== 'none') {
       const tagName = tags.find(t => t.id === selectedTagId)?.name;
