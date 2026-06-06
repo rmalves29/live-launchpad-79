@@ -563,22 +563,8 @@ export default function Cobranca() {
           [customer.customer_phone]: { phone: customer.customer_phone, status: 'sending' }
         }));
 
-        // Personalizar mensagem com nome do cliente (com fallback genérico)
-        let personalizedMessage = messageTemplate;
-        const rawName = (customer.customer_name || '').trim();
-        // Usa só o primeiro nome quando disponível; senão, fallback neutro
-        const firstName = rawName ? rawName.split(/\s+/)[0] : '';
-        if (firstName) {
-          personalizedMessage = personalizedMessage.replace(/\{\{nome\}\}/g, firstName);
-        } else {
-          // Sem nome: remove a saudação "Olá {{nome}}, " ou "Oi {{nome}}, " inteira
-          // e, se restar algum {{nome}} solto, troca por "tudo bem"
-          personalizedMessage = personalizedMessage
-            .replace(/(Olá|Oi|Ola|Olá,)\s*\{\{nome\}\}\s*,?\s*/gi, 'Olá, ')
-            .replace(/\{\{nome\}\}/g, '');
-          // Limpa espaços duplicados resultantes
-          personalizedMessage = personalizedMessage.replace(/\s{2,}/g, ' ').trim();
-        }
+        // Personalizar mensagem com nome, produtos, total, pedido
+        let personalizedMessage = renderTemplate(messageTemplate, customer);
 
         // 🛡️ Anti-bloqueio: aplicar variação sutil (emoji swap + zero-width space)
         // para evitar que o WhatsApp filtre mensagens idênticas em massa
@@ -588,25 +574,60 @@ export default function Cobranca() {
         const phoneToSend = normalizeForSending(customer.customer_phone);
         console.log(`📱 Enviando para ${phoneToSend} (${i + 1}/${customers.length})`);
 
-        // Enviar mensagem via Z-API (com ou sem imagem)
+        // Resolver botão (CTA) com variáveis também
+        const resolvedButtonLabel = buttonEnabled
+          ? renderTemplate(buttonLabel, customer).slice(0, 20)
+          : '';
+        const resolvedButtonUrl = buttonEnabled
+          ? renderTemplate(buttonUrl, customer).trim()
+          : '';
+        const hasValidButton =
+          buttonEnabled &&
+          resolvedButtonLabel.length > 0 &&
+          /^https?:\/\/.+/i.test(resolvedButtonUrl);
+
+        // Enviar mensagem via Z-API
+        // Regras: imagem+botão → envia imagem primeiro, depois mensagem com botão
         try {
-          const invokeBody: any = imageDataUrl
-            ? {
+          // 1) imagem (sempre primeiro se houver)
+          if (imageDataUrl) {
+            await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+              body: {
                 action: 'send-image',
                 tenant_id: tenant.id,
                 phone: phoneToSend,
                 mediaUrl: imageDataUrl,
-                caption: variedMessage,
+                caption: hasValidButton ? '' : variedMessage,
+              },
+            });
+            // pequena pausa antes do botão
+            if (hasValidButton) await new Promise(r => setTimeout(r, 600));
+          }
+
+          // 2) mensagem principal — com botão ou texto
+          const invokeBody: any = hasValidButton
+            ? {
+                action: 'send-button-actions',
+                tenant_id: tenant.id,
+                phone: phoneToSend,
+                message: imageDataUrl ? variedMessage : variedMessage,
+                buttonActions: [
+                  { id: '1', type: 'URL', url: resolvedButtonUrl, label: resolvedButtonLabel },
+                ],
               }
+            : imageDataUrl
+            ? null // já enviado acima como send-image com caption
             : {
                 action: 'send-text',
                 tenant_id: tenant.id,
                 phone: phoneToSend,
                 message: variedMessage,
               };
-          const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-            body: invokeBody,
-          });
+
+          const { data, error } = invokeBody
+            ? await supabaseTenant.raw.functions.invoke('zapi-proxy', { body: invokeBody })
+            : { data: { ok: true }, error: null };
+
 
           if (error) {
             console.error(`❌ Erro ao enviar para ${phoneToSend}:`, error);
