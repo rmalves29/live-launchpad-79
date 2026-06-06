@@ -16,7 +16,7 @@ serve(async (req) => {
   const timestamp = new Date().toISOString();
 
   try {
-    const { action, tenant_id, message, phone, mediaUrl, caption, tagId } = await req.json();
+    const { action, tenant_id, message, phone, mediaUrl, caption, tagId, buttonActions } = await req.json();
 
     console.log(`[${timestamp}] [zapi-proxy] Action: ${action}, Tenant: ${tenant_id}`);
 
