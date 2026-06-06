@@ -118,6 +118,60 @@ export default function Cobranca() {
   const [buttonLabel, setButtonLabel] = useState('Acessar');
   const [buttonUrl, setButtonUrl] = useState('');
 
+
+  // Formata moeda no padrão BR (sem símbolo R$ duplicado)
+  const fmtBRL = (n: number) =>
+    `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Renderiza variáveis do template para um cliente específico
+  const renderTemplate = (tpl: string, customer: Customer): string => {
+    let out = tpl || '';
+
+    // {{nome}} — primeiro nome ou fallback
+    const rawName = (customer.customer_name || '').trim();
+    const firstName = rawName ? rawName.split(/\s+/)[0] : '';
+    if (firstName) {
+      out = out.replace(/\{\{nome\}\}/g, firstName);
+    } else {
+      out = out
+        .replace(/(Olá|Oi|Ola|Olá,)\s*\{\{nome\}\}\s*,?\s*/gi, 'Olá, ')
+        .replace(/\{\{nome\}\}/g, '');
+    }
+
+    // {{produtos}} — lista formatada
+    const items = customer.items || [];
+    const produtosBlock = items.length > 0
+      ? items
+          .map(it => {
+            const code = it.product_code ? ` (${it.product_code})` : '';
+            return `• ${it.product_name}${code} — ${it.qty}x ${fmtBRL(it.unit_price)}`;
+          })
+          .join('\n')
+      : '';
+
+    if (items.length === 0) {
+      // Remove linhas que contenham {{produtos}} se não houver itens
+      out = out
+        .split('\n')
+        .filter(line => !line.includes('{{produtos}}'))
+        .join('\n');
+    } else {
+      out = out.replace(/\{\{produtos\}\}/g, produtosBlock);
+    }
+
+    // {{total}} e {{pedido}}
+    const totalNum = Number(customer.total_amount || 0);
+    out = out.replace(/\{\{total\}\}/g, totalNum ? fmtBRL(totalNum) : '');
+    out = out.replace(/\{\{valor\}\}/g, totalNum ? fmtBRL(totalNum) : '');
+    out = out.replace(/\{\{pedido\}\}/g, customer.order_id ? `#${customer.order_id}` : '');
+    out = out.replace(/\{\{payment_link\}\}/g, customer.payment_link || '');
+    out = out.replace(/\{\{link\}\}/g, customer.payment_link || '');
+
+    // Limpa espaços duplicados
+    out = out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    return out;
+  };
+
   // Carregar template padrão MSG_MASSA e URL do WhatsApp
   useEffect(() => {
     loadDefaultTemplate();
