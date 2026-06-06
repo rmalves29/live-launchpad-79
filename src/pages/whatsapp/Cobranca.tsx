@@ -957,14 +957,83 @@ export default function Cobranca() {
             <div className="space-y-2">
               <Label className="text-sm">Mensagem personalizada</Label>
               <Textarea
-                placeholder="Olá {nome}! 👋&#10;&#10;Você ainda tem um pedido pendente no valor de *R$ {valor}*."
+                placeholder={'Olá {{nome}}! 👋\n\nVocê tem um pedido pendente:\n{{produtos}}\n\nTotal: {{total}}'}
                 value={messageTemplate}
                 onChange={(e) => setMessageTemplate(e.target.value)}
                 rows={9}
                 className="resize-none rounded-xl bg-white border-[#e5e7eb]"
               />
               <div className="text-xs text-muted-foreground text-right">{messageTemplate.length} caracteres</div>
+
+              {/* Variáveis disponíveis */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {[
+                  { token: '{{nome}}', label: 'Nome' },
+                  { token: '{{produtos}}', label: 'Lista de produtos' },
+                  { token: '{{total}}', label: 'Total' },
+                  { token: '{{pedido}}', label: 'Nº pedido' },
+                ].map(v => (
+                  <button
+                    key={v.token}
+                    type="button"
+                    onClick={() => setMessageTemplate(prev => (prev || '') + (prev && !prev.endsWith('\n') ? ' ' : '') + v.token)}
+                    className="text-[11px] px-2 py-1 rounded-full bg-[#eef2ff] border border-[#c7d2fe] text-[#4338ca] hover:bg-[#e0e7ff] transition-colors"
+                    title={`Inserir ${v.token}`}
+                  >
+                    + {v.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setMessageTemplate(prev => (prev || '') + '\n\nSeus itens:\n{{produtos}}\n\nTotal: {{total}}')}
+                  className="text-[11px] px-2 py-1 rounded-full bg-[#ecfdf5] border border-[#a7f3d0] text-[#047857] hover:bg-[#d1fae5] transition-colors"
+                >
+                  + Inserir bloco de produtos
+                </button>
+              </div>
             </div>
+
+            {/* Botão de ação (CTA) */}
+            <div className="space-y-2 p-3 rounded-xl border border-[#e5e7eb] bg-[#f9fafb]">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="buttonEnabled" className="font-medium text-sm">Botão clicável (opcional)</Label>
+                <Switch id="buttonEnabled" checked={buttonEnabled} onCheckedChange={setButtonEnabled} />
+              </div>
+              {buttonEnabled && (
+                <div className="space-y-2 pt-1">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="buttonLabel" className="text-xs text-muted-foreground">Texto do botão (máx. 20 caracteres)</Label>
+                    <Input
+                      id="buttonLabel"
+                      value={buttonLabel}
+                      onChange={(e) => setButtonLabel(e.target.value.slice(0, 20))}
+                      placeholder="Pagar agora"
+                      maxLength={20}
+                      className="h-10 rounded-lg bg-white border-[#e5e7eb]"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="buttonUrl" className="text-xs text-muted-foreground">Link do botão (URL)</Label>
+                    <Input
+                      id="buttonUrl"
+                      value={buttonUrl}
+                      onChange={(e) => setButtonUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="h-10 rounded-lg bg-white border-[#e5e7eb]"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Você pode usar variáveis aqui também: <code className="bg-white px-1 rounded">{'{{payment_link}}'}</code> para o link de pagamento do pedido de cada cliente.
+                    </p>
+                  </div>
+                  {imageDataUrl && (
+                    <p className="text-[11px] text-amber-600">
+                      ⚠️ Com imagem + botão, a imagem é enviada primeiro e o botão vai numa mensagem separada (limitação da Z-API).
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
 
             {/* Anexar imagem */}
             <div className="space-y-2">
