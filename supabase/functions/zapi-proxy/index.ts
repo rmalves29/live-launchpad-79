@@ -16,7 +16,7 @@ serve(async (req) => {
   const timestamp = new Date().toISOString();
 
   try {
-    const { action, tenant_id, message, phone, mediaUrl, caption, tagId } = await req.json();
+    const { action, tenant_id, message, phone, mediaUrl, caption, tagId, buttonActions } = await req.json();
 
     console.log(`[${timestamp}] [zapi-proxy] Action: ${action}, Tenant: ${tenant_id}`);
 
@@ -154,6 +154,23 @@ serve(async (req) => {
         };
         break;
 
+      case "send-button-actions":
+        // Z-API: /send-button-actions — mensagem com até 3 botões (URL/CALL/REPLY)
+        if (!Array.isArray(buttonActions) || buttonActions.length === 0) {
+          return new Response(
+            JSON.stringify({ error: "buttonActions é obrigatório para send-button-actions" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        endpoint = "/send-button-actions";
+        method = "POST";
+        body = {
+          phone: phone,
+          message: message,
+          buttonActions: buttonActions
+        };
+        break;
+
       case "send-document":
         endpoint = "/send-document";
         method = "POST";
@@ -162,6 +179,7 @@ serve(async (req) => {
           document: mediaUrl
         };
         break;
+
 
       case "list-groups": {
         // Fetch ALL groups using pagination - Z-API requires iterating through pages

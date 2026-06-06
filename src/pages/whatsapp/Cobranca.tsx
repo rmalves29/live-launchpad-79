@@ -26,6 +26,13 @@ interface FilterCriteria {
   orderDate: DateRange | undefined;
 }
 
+interface OrderItem {
+  product_name: string;
+  product_code: string;
+  qty: number;
+  unit_price: number;
+}
+
 interface Customer {
   customer_phone: string;
   customer_name?: string;
@@ -33,6 +40,9 @@ interface Customer {
   event_date?: string;
   total_amount?: number;
   is_paid?: boolean;
+  order_id?: number;
+  payment_link?: string;
+  items?: OrderItem[];
 }
 
 interface SendStatus {
@@ -102,6 +112,65 @@ export default function Cobranca() {
 
   // Estado para filtro de toda base
   const [useAllCustomers, setUseAllCustomers] = useState(false);
+
+  // Estado para botão (CTA) customizável
+  const [buttonEnabled, setButtonEnabled] = useState(false);
+  const [buttonLabel, setButtonLabel] = useState('Acessar');
+  const [buttonUrl, setButtonUrl] = useState('');
+
+
+  // Formata moeda no padrão BR (sem símbolo R$ duplicado)
+  const fmtBRL = (n: number) =>
+    `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Renderiza variáveis do template para um cliente específico
+  const renderTemplate = (tpl: string, customer: Customer): string => {
+    let out = tpl || '';
+
+    // {{nome}} — primeiro nome ou fallback
+    const rawName = (customer.customer_name || '').trim();
+    const firstName = rawName ? rawName.split(/\s+/)[0] : '';
+    if (firstName) {
+      out = out.replace(/\{\{nome\}\}/g, firstName);
+    } else {
+      out = out
+        .replace(/(Olá|Oi|Ola|Olá,)\s*\{\{nome\}\}\s*,?\s*/gi, 'Olá, ')
+        .replace(/\{\{nome\}\}/g, '');
+    }
+
+    // {{produtos}} — lista formatada
+    const items = customer.items || [];
+    const produtosBlock = items.length > 0
+      ? items
+          .map(it => {
+            const code = it.product_code ? ` (${it.product_code})` : '';
+            return `• ${it.product_name}${code} — ${it.qty}x ${fmtBRL(it.unit_price)}`;
+          })
+          .join('\n')
+      : '';
+
+    if (items.length === 0) {
+      // Remove linhas que contenham {{produtos}} se não houver itens
+      out = out
+        .split('\n')
+        .filter(line => !line.includes('{{produtos}}'))
+        .join('\n');
+    } else {
+      out = out.replace(/\{\{produtos\}\}/g, produtosBlock);
+    }
+
+    // {{total}} e {{pedido}}
+    const totalNum = Number(customer.total_amount || 0);
+    out = out.replace(/\{\{total\}\}/g, totalNum ? fmtBRL(totalNum) : '');
+    out = out.replace(/\{\{valor\}\}/g, totalNum ? fmtBRL(totalNum) : '');
+    out = out.replace(/\{\{pedido\}\}/g, customer.order_id ? `#${customer.order_id}` : '');
+    out = out.replace(/\{\{payment_link\}\}/g, customer.payment_link || '');
+    out = out.replace(/\{\{link\}\}/g, customer.payment_link || '');
+
+    // Limpa espaços duplicados
+    out = out.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    return out;
+  };
 
   // Carregar template padrão MSG_MASSA e URL do WhatsApp
   useEffect(() => {
@@ -222,7 +291,8 @@ export default function Cobranca() {
       const fromStr = format(filters.orderDate.from, 'yyyy-MM-dd');
       let query = supabaseTenant
         .from('orders')
-        .select('customer_phone, customer_name, event_type, event_date, total_amount, is_paid');
+        .select('id, cart_id, payment_link, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, created_at')
+        .order('created_at', { ascending: false });
 
       if (filters.orderDate.to) {
         const toStr = format(filters.orderDate.to, 'yyyy-MM-dd');
@@ -249,23 +319,71 @@ export default function Cobranca() {
 
       if (error) throw error;
 
-      // Remover duplicatas por telefone (pegar apenas o mais recente)
-      const uniqueCustomers = data?.reduce((acc: Customer[], current) => {
+      // Remover duplicatas por telefone (pegar apenas o mais recente — já ordenado desc)
+      const uniqueCustomers = data?.reduce((acc: Customer[], current: any) => {
         const exists = acc.find(c => c.customer_phone === current.customer_phone);
         if (!exists) {
-          acc.push(current);
+          acc.push({
+            customer_phone: current.customer_phone,
+            customer_name: current.customer_name,
+            event_type: current.event_type,
+            event_date: current.event_date,
+            total_amount: current.total_amount,
+            is_paid: current.is_paid,
+            order_id: current.id,
+            payment_link: current.payment_link,
+            items: [],
+          });
         }
         return acc;
       }, []) || [];
 
+      // Buscar itens dos carrinhos correspondentes
+      const cartIds = data
+        ?.filter((o: any) => uniqueCustomers.some(c => c.order_id === o.id) && o.cart_id)
+        .map((o: any) => ({ orderId: o.id, cartId: o.cart_id })) || [];
+
+      if (cartIds.length > 0) {
+        const uniqueCartIds = Array.from(new Set(cartIds.map(c => c.cartId)));
+        const { data: items, error: itemsError } = await supabaseTenant
+          .from('cart_items')
+          .select('cart_id, qty, unit_price, product_name, product_code')
+          .in('cart_id', uniqueCartIds);
+
+        if (!itemsError && items) {
+          const itemsByCart = new Map<number, OrderItem[]>();
+          items.forEach((it: any) => {
+            const list = itemsByCart.get(it.cart_id) || [];
+            list.push({
+              product_name: it.product_name || '',
+              product_code: it.product_code || '',
+              qty: Number(it.qty || 0),
+              unit_price: Number(it.unit_price || 0),
+            });
+            itemsByCart.set(it.cart_id, list);
+          });
+
+          // Mapear carrinho → pedido → customer
+          const orderToCart = new Map<number, number>();
+          cartIds.forEach(c => orderToCart.set(c.orderId, c.cartId));
+          uniqueCustomers.forEach(c => {
+            if (c.order_id) {
+              const cartId = orderToCart.get(c.order_id);
+              if (cartId) c.items = itemsByCart.get(cartId) || [];
+            }
+          });
+        }
+      }
+
       setCustomers(uniqueCustomers);
-      
+
       // Inicializar status como pendente para todos
       const initialStatuses: Record<string, SendStatus> = {};
       uniqueCustomers.forEach(c => {
         initialStatuses[c.customer_phone] = { phone: c.customer_phone, status: 'pending' };
       });
       setSendStatuses(initialStatuses);
+
       
       toast({
         title: 'Filtro aplicado',
@@ -404,12 +522,20 @@ export default function Cobranca() {
           message_template: messageTemplate,
           customers: customers.map(c => ({
             phone: c.customer_phone,
-            name: c.customer_name || ''
+            name: c.customer_name || '',
+            order_id: c.order_id || null,
+            total_amount: c.total_amount || 0,
+            payment_link: c.payment_link || '',
+            items: c.items || [],
           })),
           tag_id: selectedTagId && selectedTagId !== 'none' ? selectedTagId : null,
           delay_between_messages: delayBetweenMessages,
           messages_before_pause: messagesBeforePause,
           pause_duration: pauseDuration,
+          button: buttonEnabled && buttonUrl && buttonLabel ? {
+            label: buttonLabel.slice(0, 20),
+            url: buttonUrl,
+          } : null,
           filters: {
             is_paid: filters.isPaid,
             event_type: filters.eventType,
@@ -476,6 +602,22 @@ export default function Cobranca() {
       return;
     }
 
+    // Validar botão se ativado
+    if (buttonEnabled) {
+      if (!buttonLabel.trim()) {
+        toast({ title: 'Erro', description: 'Defina o texto do botão', variant: 'destructive' });
+        return;
+      }
+      // O URL pode conter variáveis — só rejeitamos se for evidente que não vira link
+      const sampleUrl = buttonUrl.trim();
+      if (!sampleUrl || (!sampleUrl.includes('{{') && !/^https?:\/\/.+/i.test(sampleUrl))) {
+        toast({ title: 'Erro', description: 'Informe um link válido (começando com http:// ou https://)', variant: 'destructive' });
+        return;
+      }
+    }
+
+
+
     console.log('🚀 Iniciando envio em massa para', customers.length, 'clientes');
     if (selectedTagId && selectedTagId !== 'none') {
       const tagName = tags.find(t => t.id === selectedTagId)?.name;
@@ -499,22 +641,8 @@ export default function Cobranca() {
           [customer.customer_phone]: { phone: customer.customer_phone, status: 'sending' }
         }));
 
-        // Personalizar mensagem com nome do cliente (com fallback genérico)
-        let personalizedMessage = messageTemplate;
-        const rawName = (customer.customer_name || '').trim();
-        // Usa só o primeiro nome quando disponível; senão, fallback neutro
-        const firstName = rawName ? rawName.split(/\s+/)[0] : '';
-        if (firstName) {
-          personalizedMessage = personalizedMessage.replace(/\{\{nome\}\}/g, firstName);
-        } else {
-          // Sem nome: remove a saudação "Olá {{nome}}, " ou "Oi {{nome}}, " inteira
-          // e, se restar algum {{nome}} solto, troca por "tudo bem"
-          personalizedMessage = personalizedMessage
-            .replace(/(Olá|Oi|Ola|Olá,)\s*\{\{nome\}\}\s*,?\s*/gi, 'Olá, ')
-            .replace(/\{\{nome\}\}/g, '');
-          // Limpa espaços duplicados resultantes
-          personalizedMessage = personalizedMessage.replace(/\s{2,}/g, ' ').trim();
-        }
+        // Personalizar mensagem com nome, produtos, total, pedido
+        let personalizedMessage = renderTemplate(messageTemplate, customer);
 
         // 🛡️ Anti-bloqueio: aplicar variação sutil (emoji swap + zero-width space)
         // para evitar que o WhatsApp filtre mensagens idênticas em massa
@@ -524,25 +652,60 @@ export default function Cobranca() {
         const phoneToSend = normalizeForSending(customer.customer_phone);
         console.log(`📱 Enviando para ${phoneToSend} (${i + 1}/${customers.length})`);
 
-        // Enviar mensagem via Z-API (com ou sem imagem)
+        // Resolver botão (CTA) com variáveis também
+        const resolvedButtonLabel = buttonEnabled
+          ? renderTemplate(buttonLabel, customer).slice(0, 20)
+          : '';
+        const resolvedButtonUrl = buttonEnabled
+          ? renderTemplate(buttonUrl, customer).trim()
+          : '';
+        const hasValidButton =
+          buttonEnabled &&
+          resolvedButtonLabel.length > 0 &&
+          /^https?:\/\/.+/i.test(resolvedButtonUrl);
+
+        // Enviar mensagem via Z-API
+        // Regras: imagem+botão → envia imagem primeiro, depois mensagem com botão
         try {
-          const invokeBody: any = imageDataUrl
-            ? {
+          // 1) imagem (sempre primeiro se houver)
+          if (imageDataUrl) {
+            await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+              body: {
                 action: 'send-image',
                 tenant_id: tenant.id,
                 phone: phoneToSend,
                 mediaUrl: imageDataUrl,
-                caption: variedMessage,
+                caption: hasValidButton ? '' : variedMessage,
+              },
+            });
+            // pequena pausa antes do botão
+            if (hasValidButton) await new Promise(r => setTimeout(r, 600));
+          }
+
+          // 2) mensagem principal — com botão ou texto
+          const invokeBody: any = hasValidButton
+            ? {
+                action: 'send-button-actions',
+                tenant_id: tenant.id,
+                phone: phoneToSend,
+                message: imageDataUrl ? variedMessage : variedMessage,
+                buttonActions: [
+                  { id: '1', type: 'URL', url: resolvedButtonUrl, label: resolvedButtonLabel },
+                ],
               }
+            : imageDataUrl
+            ? null // já enviado acima como send-image com caption
             : {
                 action: 'send-text',
                 tenant_id: tenant.id,
                 phone: phoneToSend,
                 message: variedMessage,
               };
-          const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-            body: invokeBody,
-          });
+
+          const { data, error } = invokeBody
+            ? await supabaseTenant.raw.functions.invoke('zapi-proxy', { body: invokeBody })
+            : { data: { ok: true }, error: null };
+
 
           if (error) {
             console.error(`❌ Erro ao enviar para ${phoneToSend}:`, error);
@@ -810,14 +973,83 @@ export default function Cobranca() {
             <div className="space-y-2">
               <Label className="text-sm">Mensagem personalizada</Label>
               <Textarea
-                placeholder="Olá {nome}! 👋&#10;&#10;Você ainda tem um pedido pendente no valor de *R$ {valor}*."
+                placeholder={'Olá {{nome}}! 👋\n\nVocê tem um pedido pendente:\n{{produtos}}\n\nTotal: {{total}}'}
                 value={messageTemplate}
                 onChange={(e) => setMessageTemplate(e.target.value)}
                 rows={9}
                 className="resize-none rounded-xl bg-white border-[#e5e7eb]"
               />
               <div className="text-xs text-muted-foreground text-right">{messageTemplate.length} caracteres</div>
+
+              {/* Variáveis disponíveis */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {[
+                  { token: '{{nome}}', label: 'Nome' },
+                  { token: '{{produtos}}', label: 'Lista de produtos' },
+                  { token: '{{total}}', label: 'Total' },
+                  { token: '{{pedido}}', label: 'Nº pedido' },
+                ].map(v => (
+                  <button
+                    key={v.token}
+                    type="button"
+                    onClick={() => setMessageTemplate(prev => (prev || '') + (prev && !prev.endsWith('\n') ? ' ' : '') + v.token)}
+                    className="text-[11px] px-2 py-1 rounded-full bg-[#eef2ff] border border-[#c7d2fe] text-[#4338ca] hover:bg-[#e0e7ff] transition-colors"
+                    title={`Inserir ${v.token}`}
+                  >
+                    + {v.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setMessageTemplate(prev => (prev || '') + '\n\nSeus itens:\n{{produtos}}\n\nTotal: {{total}}')}
+                  className="text-[11px] px-2 py-1 rounded-full bg-[#ecfdf5] border border-[#a7f3d0] text-[#047857] hover:bg-[#d1fae5] transition-colors"
+                >
+                  + Inserir bloco de produtos
+                </button>
+              </div>
             </div>
+
+            {/* Botão de ação (CTA) */}
+            <div className="space-y-2 p-3 rounded-xl border border-[#e5e7eb] bg-[#f9fafb]">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="buttonEnabled" className="font-medium text-sm">Botão clicável (opcional)</Label>
+                <Switch id="buttonEnabled" checked={buttonEnabled} onCheckedChange={setButtonEnabled} />
+              </div>
+              {buttonEnabled && (
+                <div className="space-y-2 pt-1">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="buttonLabel" className="text-xs text-muted-foreground">Texto do botão (máx. 20 caracteres)</Label>
+                    <Input
+                      id="buttonLabel"
+                      value={buttonLabel}
+                      onChange={(e) => setButtonLabel(e.target.value.slice(0, 20))}
+                      placeholder="Pagar agora"
+                      maxLength={20}
+                      className="h-10 rounded-lg bg-white border-[#e5e7eb]"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="buttonUrl" className="text-xs text-muted-foreground">Link do botão (URL)</Label>
+                    <Input
+                      id="buttonUrl"
+                      value={buttonUrl}
+                      onChange={(e) => setButtonUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="h-10 rounded-lg bg-white border-[#e5e7eb]"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Você pode usar variáveis aqui também: <code className="bg-white px-1 rounded">{'{{payment_link}}'}</code> para o link de pagamento do pedido de cada cliente.
+                    </p>
+                  </div>
+                  {imageDataUrl && (
+                    <p className="text-[11px] text-amber-600">
+                      ⚠️ Com imagem + botão, a imagem é enviada primeiro e o botão vai numa mensagem separada (limitação da Z-API).
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
 
             {/* Anexar imagem */}
             <div className="space-y-2">

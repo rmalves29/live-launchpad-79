@@ -1,33 +1,83 @@
-## Problema (caso pedido #7713 — Roanne Joias)
+## Objetivo
+Adicionar à cobrança em massa **dois recursos novos**:
+1. Lista de produtos do pedido na mensagem (nome, código, qtd, valor unitário, total)
+2. Um **botão clicável customizável** com label e URL definidos pelo usuário
 
-A cliente não pagou pelo link do MP (PIX), fez transferência direta para a empresa, o admin marcou o pedido como **pago manualmente**. Depois, o MP enviou um webhook de cancelamento/estorno referente à preferência original e a função `markOrderAsCancelled` reverteu automaticamente o pagamento manual (`is_paid: true → false`, `is_cancelled: true`). Foi necessário re-marcar o pedido manualmente como pago.
+## 1. Lista de produtos no template (já planejado)
 
-Audit log confirma: `auto_cancel_payment_refunded` em 28/mai 18:46, `previous_is_paid: true`.
+### Buscar itens junto com clientes
+Em `loadCustomers()` (`src/pages/whatsapp/Cobranca.tsx`), ampliar o select para incluir `id, cart_id`. Em seguida, buscar `cart_items` (qty, unit_price, product_name, product_code) dos carrinhos. Guardar `order_id`, `items[]` e `total_amount` no estado de cada Customer.
 
-## Mudança
+Quando o telefone tem vários pedidos no período → usar o pedido **mais recente**.
 
-Remover o auto-cancelamento de pedidos quando o webhook do gateway sinaliza estorno/cancelamento. Substituir por **apenas registrar um alerta** (audit_log + webhook_log) para o admin decidir se cancela manualmente pela interface.
+### Novas variáveis no template
+- `{{produtos}}` → bloco multilinha:
+  ```
+  • Brinco Pérola (C123) — 2x R$ 19,90
+  • Colar Coração (C456) — 1x R$ 39,90
+  ```
+- `{{total}}` → total formatado em `R$ xx,xx`
+- `{{pedido}}` → número do pedido
+- `{{nome}}` (já existe)
+
+Se o cliente não tiver itens, `{{produtos}}` vira vazio e linhas órfãs são limpas.
+
+### UI
+Abaixo do textarea, mostrar chips de variáveis disponíveis (clique insere o token) e um botão "Inserir lista de produtos" que injeta o trecho padrão.
+
+## 2. Botão customizável (CTA)
+
+### Z-API — endpoint
+A Z-API expõe `POST /send-button-actions`, que aceita até 3 botões dos tipos `URL`, `CALL` ou `REPLY`. Para nosso caso usaremos **um único botão tipo URL**.
+
+Payload enviado (via `zapi-proxy`):
+```json
+{
+  "phone": "55...",
+  "message": "<mensagem com produtos + total>",
+  "buttonActions": [
+    { "id": "1", "type": "URL", "url": "<link customizado>", "label": "<CTA customizado>" }
+  ]
+}
+```
+
+### UI na página de Cobrança
+Adicionar dentro do card de Mensagem um bloco "Botão de ação (opcional)":
+- Switch **Adicionar botão à mensagem** (off por padrão)
+- Quando ligado, mostrar 2 campos:
+  - **Texto do botão (CTA)** — `Input` máx. 20 caracteres (limite do WhatsApp)
+  - **Link do botão (URL)** — `Input` validado (precisa começar com `http://` ou `https://`)
+- Suporte a variáveis no link e no CTA também: `{{nome}}`, `{{pedido}}`, `{{total}}` — útil quando o link é dinâmico por cliente (ex.: link de pagamento). Mostrar dica abaixo do campo.
+
+### Lógica de envio
+Em `handleSendMessages()`:
+- Se botão ativo + URL válido → chamar `zapi-proxy` com `action: 'send-button-actions'` em vez de `send-text`.
+- Se houver imagem **e** botão → enviar imagem com legenda primeiro e o botão em mensagem separada (limitação Z-API: `send-button-image` existe mas é instável; mais seguro separar).
+- Se botão ativo mas URL inválido → bloquear envio com toast.
+
+### Suporte no zapi-proxy
+Verificar/estender `supabase/functions/zapi-proxy/index.ts` para encaminhar a action `send-button-actions` ao endpoint correto da Z-API. Se já existir uma action genérica, reutilizar; se não, adicionar bloco análogo aos atuais `send-text` / `send-image`.
+
+### Agendamento
+Em `scheduleMessage()`, persistir no `job_data`:
+```ts
+{
+  button: { enabled: boolean, label: string, url: string } | null,
+  customers: [{ phone, name, items, total, order_id, payment_link }, ...]
+}
+```
+para que o processador agendado possa reconstruir o envio com botão.
 
 ## Arquivos afetados
+- `src/pages/whatsapp/Cobranca.tsx` — carga de itens, novos campos de estado (botão), UI, substituição de variáveis no envio.
+- `supabase/functions/zapi-proxy/index.ts` — encaminhar `send-button-actions` (se ainda não suportar).
+- (Possivelmente) worker que processa `sending_jobs` agendados — adicionar suporte ao novo `button` no `job_data`.
 
-### 1. `supabase/functions/mp-webhook/index.ts`
-- Função `markOrderAsCancelled` (linhas ~493-536): remover o `UPDATE orders SET is_paid=false, is_cancelled=true`.
-- Manter apenas a inserção em `audit_logs` (action passa a ser `payment_refund_alert`) e `webhook_logs` (`webhook_type: mercadopago_payment_cancelled_alert`), incluindo no meta `previous_is_paid` e `previous_is_cancelled` para histórico.
-- Renomear a função para `logPaymentCancelAlert` para deixar claro que não muda estado.
-- Atualizar os call sites (loop em ~linha 240-260) para continuar chamando, mas sem efeito de cancelamento.
+## Limitações a comunicar ao usuário
+- WhatsApp aceita no máximo ~20 caracteres no rótulo do botão.
+- Botões só funcionam de forma consistente com instâncias Z-API conectadas via WhatsApp Business; em WhatsApp pessoal de algumas versões antigas o cliente pode ver o link como texto comum.
+- Mensagens com botão **não** podem ter imagem anexada no mesmo envio (vamos enviar a imagem separada antes do botão).
 
-### 2. `supabase/functions/pagarme-webhook/index.ts`
-- Mesma mudança no bloco de cancelamento (linhas ~367-415): remover o `UPDATE` que seta `is_paid=false, is_cancelled=true`, manter o registro em `audit_logs` como alerta.
-
-### 3. Sem migration de banco
-Nenhuma alteração de schema. Apenas comportamento de edge functions.
-
-## Resultado esperado
-
-- Pedidos marcados como pagos manualmente (ou via outro fluxo) **nunca mais serão automaticamente revertidos** por webhooks de estorno/cancelamento do MP ou Pagar.me.
-- O admin continua podendo cancelar manualmente pela tela de pedidos quando necessário.
-- Todo evento de estorno do gateway fica registrado em `audit_logs` (`action: payment_refund_alert`) e `webhook_logs` para auditoria.
-
-## Memória a atualizar
-
-Substituir a memória `mem://regras-negocio/cancelamento-automatico-por-estorno` para refletir a nova regra: "Webhooks de estorno/cancelamento NÃO alteram o pedido — apenas registram alerta em audit_logs/webhook_logs. Cancelamento é sempre manual."
+## Pontos a confirmar
+1. Quando o cliente tem **mais de um pedido** no período → usar só o mais recente, ou consolidar tudo em uma lista única?
+2. O botão deve ser **único e fixo para todos** os clientes do disparo, ou queremos suportar URL dinâmica via variáveis (ex.: `{{payment_link}}` para mandar o link de pagamento individual de cada pedido)?
