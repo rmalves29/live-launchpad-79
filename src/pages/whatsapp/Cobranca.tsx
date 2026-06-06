@@ -522,12 +522,20 @@ export default function Cobranca() {
           message_template: messageTemplate,
           customers: customers.map(c => ({
             phone: c.customer_phone,
-            name: c.customer_name || ''
+            name: c.customer_name || '',
+            order_id: c.order_id || null,
+            total_amount: c.total_amount || 0,
+            payment_link: c.payment_link || '',
+            items: c.items || [],
           })),
           tag_id: selectedTagId && selectedTagId !== 'none' ? selectedTagId : null,
           delay_between_messages: delayBetweenMessages,
           messages_before_pause: messagesBeforePause,
           pause_duration: pauseDuration,
+          button: buttonEnabled && buttonUrl && buttonLabel ? {
+            label: buttonLabel.slice(0, 20),
+            url: buttonUrl,
+          } : null,
           filters: {
             is_paid: filters.isPaid,
             event_type: filters.eventType,
