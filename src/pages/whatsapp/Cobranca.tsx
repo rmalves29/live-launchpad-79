@@ -706,6 +706,58 @@ export default function Cobranca() {
     cancelledRef.current = false;
     setIsPaused(false);
 
+    // Persistir início do envio em sending_jobs
+    jobIdRef.current = null;
+    try {
+      const { data: jobRow, error: jobErr } = await supabaseTenant
+        .from('sending_jobs')
+        .insert({
+          tenant_id: tenant.id,
+          job_type: 'cobranca',
+          status: 'running',
+          total_items: customers.length,
+          processed_items: 0,
+          current_index: 0,
+          started_at: new Date().toISOString(),
+          job_data: {
+            phones: customers.map((c) => c.customer_phone),
+            message_preview: messageTemplate.slice(0, 200),
+            has_image: !!imageDataUrl,
+            has_button: buttonEnabled,
+            tag_id: selectedTagId || null,
+          },
+        })
+        .select('id')
+        .single();
+      if (jobErr) throw jobErr;
+      jobIdRef.current = (jobRow as any).id;
+      console.log('📌 Envio persistido em sending_jobs:', jobIdRef.current);
+    } catch (e) {
+      console.warn('Falha ao persistir job (envio continua):', e);
+    }
+
+    // Polling: a cada 4s checa se foi cancelado/pausado externamente (outra aba ou painel)
+    const pollIntervalId = window.setInterval(async () => {
+      if (!jobIdRef.current) return;
+      try {
+        const { data } = await supabaseTenant
+          .from('sending_jobs')
+          .select('status')
+          .eq('id', jobIdRef.current)
+          .maybeSingle();
+        const status = (data as any)?.status;
+        if (status === 'cancelled') {
+          cancelledRef.current = true;
+        } else if (status === 'paused' && !pausedRef.current) {
+          pausedRef.current = true;
+          setIsPaused(true);
+        } else if (status === 'running' && pausedRef.current) {
+          pausedRef.current = false;
+          setIsPaused(false);
+        }
+      } catch {}
+    }, 4000);
+
     let successCount = 0;
     let errorCount = 0;
 
