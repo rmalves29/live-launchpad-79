@@ -807,25 +807,44 @@ export default function Cobranca() {
         }
 
         // Sistema de delay customizado com jitter humanizado (anti-bloqueio)
+        // Helper: dorme em fatias curtas para responder a cancelamento rapidamente
+        const interruptibleSleep = async (ms: number) => {
+          const step = 250;
+          let waited = 0;
+          while (waited < ms) {
+            if (cancelledRef.current) return;
+            await new Promise(r => setTimeout(r, Math.min(step, ms - waited)));
+            waited += step;
+          }
+        };
+
         if (i < customers.length - 1) {
-          // Delay entre cada mensagem com variação 0.7x-1.3x para parecer humano
           const humanDelay = getHumanizedDelayMs(delayBetweenMessages);
           console.log(`⏱️ Aguardando ${(humanDelay / 1000).toFixed(1)}s (humanizado)`);
-          await new Promise(resolve => setTimeout(resolve, humanDelay));
+          await interruptibleSleep(humanDelay);
+
+          if (cancelledRef.current) break;
 
           // Pausa maior a cada X mensagens
           if ((i + 1) % messagesBeforePause === 0) {
             const humanPause = getHumanizedDelayMs(pauseDuration);
             console.log(`⏸️ Pausa de ${(humanPause / 1000).toFixed(1)}s após ${i + 1} mensagens`);
-            await new Promise(resolve => setTimeout(resolve, humanPause));
+            await interruptibleSleep(humanPause);
           }
         }
       }
 
-      toast({
-        title: 'Envio concluído',
-        description: `${successCount} enviada(s), ${errorCount} erro(s)${selectedTagId && selectedTagId !== 'none' ? '. Tags aplicadas!' : ''}`,
-      });
+      if (cancelledRef.current) {
+        toast({
+          title: 'Envio cancelado',
+          description: `${successCount} enviada(s), ${errorCount} erro(s) antes do cancelamento`,
+        });
+      } else {
+        toast({
+          title: 'Envio concluído',
+          description: `${successCount} enviada(s), ${errorCount} erro(s)${selectedTagId && selectedTagId !== 'none' ? '. Tags aplicadas!' : ''}`,
+        });
+      }
 
       console.log('✅ Processo de envio finalizado');
       console.log(`📊 Sucesso: ${successCount}, Erros: ${errorCount}`);
@@ -840,6 +859,9 @@ export default function Cobranca() {
     } finally {
       setSending(false);
       setSendProgress({ current: 0, total: 0 });
+      pausedRef.current = false;
+      cancelledRef.current = false;
+      setIsPaused(false);
     }
   };
 
