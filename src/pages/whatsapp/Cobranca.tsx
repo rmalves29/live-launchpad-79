@@ -1326,14 +1326,43 @@ export default function Cobranca() {
               )}
             </Button>
 
-            <Button
-              variant="outline"
-              className="w-full h-11 rounded-xl border-[#e5e7eb] font-medium"
-              disabled={!sending}
-              onClick={() => { /* placeholder pause */ }}
-            >
-              ⏸ Pausar
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                className="w-full h-11 rounded-xl border-[#e5e7eb] font-medium"
+                disabled={!sending}
+                onClick={() => {
+                  const next = !pausedRef.current;
+                  pausedRef.current = next;
+                  setIsPaused(next);
+                  toast({
+                    title: next ? 'Envio pausado' : 'Envio retomado',
+                    description: next
+                      ? 'Clique em Retomar para continuar.'
+                      : 'O envio continuará de onde parou.',
+                  });
+                }}
+              >
+                {isPaused ? '▶ Retomar' : '⏸ Pausar'}
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-11 rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10 font-medium"
+                disabled={!sending}
+                onClick={() => {
+                  cancelledRef.current = true;
+                  pausedRef.current = false;
+                  setIsPaused(false);
+                  toast({
+                    title: 'Cancelando envio…',
+                    description: 'O envio será interrompido após a mensagem atual.',
+                  });
+                }}
+              >
+                <XIcon className="w-4 h-4 mr-1" /> Cancelar
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
