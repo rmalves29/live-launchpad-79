@@ -315,8 +315,19 @@ export default function Cobranca() {
         query = query.eq('event_type', filters.eventType.toUpperCase());
       }
 
-      const { data, error } = await query;
-
+      // Paginação para superar o limite default de 1000 do PostgREST
+      const PAGE = 1000;
+      let from = 0;
+      let data: any[] = [];
+      while (true) {
+        const { data: pageData, error } = await query.range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!pageData || pageData.length === 0) break;
+        data = data.concat(pageData);
+        if (pageData.length < PAGE) break;
+        from += PAGE;
+      }
+      const error = null as any;
       if (error) throw error;
 
       // Remover duplicatas por telefone (pegar apenas o mais recente — já ordenado desc)
