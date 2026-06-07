@@ -777,6 +777,19 @@ export default function Cobranca() {
         const customer = customers[i];
         setSendProgress({ current: i + 1, total: customers.length });
 
+        // Atualiza progresso no banco (fire-and-forget)
+        if (jobIdRef.current) {
+          supabaseTenant
+            .from('sending_jobs')
+            .update({
+              processed_items: i,
+              current_index: i,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', jobIdRef.current)
+            .then(() => {}, () => {});
+        }
+
         // Atualizar status para "enviando"
         setSendStatuses(prev => ({
           ...prev,
@@ -950,6 +963,26 @@ export default function Cobranca() {
         variant: 'destructive'
       });
     } finally {
+      window.clearInterval(pollIntervalId);
+      // Marcar status final no job
+      if (jobIdRef.current) {
+        const finalStatus = cancelledRef.current ? 'cancelled' : 'completed';
+        try {
+          await supabaseTenant
+            .from('sending_jobs')
+            .update({
+              status: finalStatus,
+              processed_items: successCount + errorCount,
+              current_index: successCount + errorCount,
+              completed_at: new Date().toISOString(),
+              error_message: cancelledRef.current ? 'Cancelado pelo usuário' : null,
+            })
+            .eq('id', jobIdRef.current);
+        } catch (e) {
+          console.warn('Falha ao finalizar job:', e);
+        }
+        jobIdRef.current = null;
+      }
       setSending(false);
       setSendProgress({ current: 0, total: 0 });
       pausedRef.current = false;
