@@ -187,8 +187,45 @@ export default function Cobranca() {
     loadWhatsAppUrl();
     if (tenant?.id) {
       loadTags();
+      checkOrphanJob();
     }
   }, [tenant]);
+
+  // Detecta envio órfão (running/paused) ao montar — provavelmente o usuário recarregou a página
+  const checkOrphanJob = async () => {
+    if (!tenant?.id) return;
+    try {
+      const { data, error } = await supabaseTenant
+        .from('sending_jobs')
+        .select('id, status, processed_items, total_items, updated_at')
+        .eq('job_type', 'cobranca')
+        .in('status', ['running', 'paused'])
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      if (data && data.length > 0) {
+        const j = data[0] as any;
+        setOrphanJob({ id: j.id, processed: j.processed_items, total: j.total_items, status: j.status });
+      }
+    } catch (e) {
+      console.warn('Erro ao checar envios órfãos:', e);
+    }
+  };
+
+  const cancelOrphanJob = async () => {
+    if (!orphanJob) return;
+    try {
+      await supabaseTenant
+        .from('sending_jobs')
+        .update({ status: 'cancelled', completed_at: new Date().toISOString(), error_message: 'Cancelado pelo usuário (banner)' })
+        .eq('id', orphanJob.id);
+      toast({ title: 'Envio anterior cancelado' });
+      setOrphanJob(null);
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    }
+  };
+
 
   const loadTags = async () => {
     if (!tenant?.id) return;
