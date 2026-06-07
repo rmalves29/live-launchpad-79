@@ -661,6 +661,9 @@ export default function Cobranca() {
 
     setSending(true);
     setSendProgress({ current: 0, total: customers.length });
+    pausedRef.current = false;
+    cancelledRef.current = false;
+    setIsPaused(false);
 
     let successCount = 0;
     let errorCount = 0;
