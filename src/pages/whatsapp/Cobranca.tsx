@@ -426,12 +426,22 @@ export default function Cobranca() {
     try {
       setLoading(true);
       
-      const { data, error } = await supabaseTenant
-        .from('customers')
-        .select('phone, name')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
+      // Paginação para superar o limite default de 1000 do PostgREST
+      const PAGE = 1000;
+      let offset = 0;
+      let data: any[] = [];
+      while (true) {
+        const { data: pageData, error } = await supabaseTenant
+          .from('customers')
+          .select('phone, name')
+          .order('name', { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        if (!pageData || pageData.length === 0) break;
+        data = data.concat(pageData);
+        if (pageData.length < PAGE) break;
+        offset += PAGE;
+      }
 
       // Mapear para o formato esperado
       const mappedCustomers: Customer[] = data?.map(c => ({
