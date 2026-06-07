@@ -350,14 +350,30 @@ export default function Cobranca() {
 
       if (cartIds.length > 0) {
         const uniqueCartIds = Array.from(new Set(cartIds.map(c => c.cartId)));
-        const { data: items, error: itemsError } = await supabaseTenant
-          .from('cart_items')
-          .select('cart_id, qty, unit_price, product_name, product_code')
-          .in('cart_id', uniqueCartIds);
+        // Buscar em chunks de IN + paginar cada chunk para superar limite de 1000
+        const CHUNK = 200;
+        const PAGE2 = 1000;
+        const allItems: any[] = [];
+        for (let i = 0; i < uniqueCartIds.length; i += CHUNK) {
+          const chunk = uniqueCartIds.slice(i, i + CHUNK);
+          let off = 0;
+          while (true) {
+            const { data: pageItems, error: itemsError } = await supabaseTenant
+              .from('cart_items')
+              .select('cart_id, qty, unit_price, product_name, product_code')
+              .in('cart_id', chunk)
+              .range(off, off + PAGE2 - 1);
+            if (itemsError) break;
+            if (!pageItems || pageItems.length === 0) break;
+            allItems.push(...pageItems);
+            if (pageItems.length < PAGE2) break;
+            off += PAGE2;
+          }
+        }
 
-        if (!itemsError && items) {
+        if (allItems.length > 0) {
           const itemsByCart = new Map<number, OrderItem[]>();
-          items.forEach((it: any) => {
+          allItems.forEach((it: any) => {
             const list = itemsByCart.get(it.cart_id) || [];
             list.push({
               product_name: it.product_name || '',
@@ -368,7 +384,6 @@ export default function Cobranca() {
             itemsByCart.set(it.cart_id, list);
           });
 
-          // Mapear carrinho → pedido → customer
           const orderToCart = new Map<number, number>();
           cartIds.forEach(c => orderToCart.set(c.orderId, c.cartId));
           uniqueCustomers.forEach(c => {
