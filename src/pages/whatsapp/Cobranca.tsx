@@ -118,6 +118,11 @@ export default function Cobranca() {
   const [buttonLabel, setButtonLabel] = useState('Acessar');
   const [buttonUrl, setButtonUrl] = useState('');
 
+  // Controle de pausa/cancelamento do envio em massa
+  const [isPaused, setIsPaused] = useState(false);
+  const pausedRef = useRef(false);
+  const cancelledRef = useRef(false);
+
 
   // Formata moeda no padrão BR (sem símbolo R$ duplicado)
   const fmtBRL = (n: number) =>
