@@ -123,6 +123,10 @@ export default function Cobranca() {
   const pausedRef = useRef(false);
   const cancelledRef = useRef(false);
 
+  // Persistência em sending_jobs
+  const jobIdRef = useRef<string | null>(null);
+  const [orphanJob, setOrphanJob] = useState<{ id: string; processed: number; total: number; status: string } | null>(null);
+
 
   // Formata moeda no padrão BR (sem símbolo R$ duplicado)
   const fmtBRL = (n: number) =>
