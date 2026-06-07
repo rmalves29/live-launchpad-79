@@ -289,46 +289,40 @@ export default function Cobranca() {
       setLoading(true);
       
       const fromStr = format(filters.orderDate.from, 'yyyy-MM-dd');
-      let query = supabaseTenant
-        .from('orders')
-        .select('id, cart_id, payment_link, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, created_at')
-        .order('created_at', { ascending: false });
+      const buildQuery = () => {
+        let q = supabaseTenant
+          .from('orders')
+          .select('id, cart_id, payment_link, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, created_at')
+          .order('created_at', { ascending: false });
 
-      if (filters.orderDate.to) {
-        const toStr = format(filters.orderDate.to, 'yyyy-MM-dd');
-        query = query.gte('event_date', fromStr).lte('event_date', toStr);
-      } else {
-        query = query.eq('event_date', fromStr);
-      }
+        if (filters.orderDate!.to) {
+          const toStr = format(filters.orderDate!.to, 'yyyy-MM-dd');
+          q = q.gte('event_date', fromStr).lte('event_date', toStr);
+        } else {
+          q = q.eq('event_date', fromStr);
+        }
 
-      // Aplicar filtro de pagamento
-      if (filters.isPaid === 'paid') {
-        query = query.eq('is_paid', true);
-      } else if (filters.isPaid === 'unpaid') {
-        query = query.eq('is_paid', false);
-      }
+        if (filters.isPaid === 'paid') q = q.eq('is_paid', true);
+        else if (filters.isPaid === 'unpaid') q = q.eq('is_paid', false);
 
-      // Aplicar filtro de tipo de evento
-      if (filters.eventType === 'bazar') {
-        query = query.in('event_type', ['BAZAR', 'MANUAL']);
-      } else if (filters.eventType !== 'all') {
-        query = query.eq('event_type', filters.eventType.toUpperCase());
-      }
+        if (filters.eventType === 'bazar') q = q.in('event_type', ['BAZAR', 'MANUAL']);
+        else if (filters.eventType !== 'all') q = q.eq('event_type', filters.eventType.toUpperCase());
+
+        return q;
+      };
 
       // Paginação para superar o limite default de 1000 do PostgREST
       const PAGE = 1000;
-      let from = 0;
+      let offset = 0;
       let data: any[] = [];
       while (true) {
-        const { data: pageData, error } = await query.range(from, from + PAGE - 1);
+        const { data: pageData, error } = await buildQuery().range(offset, offset + PAGE - 1);
         if (error) throw error;
         if (!pageData || pageData.length === 0) break;
         data = data.concat(pageData);
         if (pageData.length < PAGE) break;
-        from += PAGE;
+        offset += PAGE;
       }
-      const error = null as any;
-      if (error) throw error;
 
       // Remover duplicatas por telefone (pegar apenas o mais recente — já ordenado desc)
       const uniqueCustomers = data?.reduce((acc: Customer[], current: any) => {
