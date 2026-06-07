@@ -1,83 +1,54 @@
-## Objetivo
-Adicionar à cobrança em massa **dois recursos novos**:
-1. Lista de produtos do pedido na mensagem (nome, código, qtd, valor unitário, total)
-2. Um **botão clicável customizável** com label e URL definidos pelo usuário
+# Persistência da Cobrança + Painel de Envios Ativos
 
-## 1. Lista de produtos no template (já planejado)
+## Parte 1 — Persistir envios da Cobrança no banco
 
-### Buscar itens junto com clientes
-Em `loadCustomers()` (`src/pages/whatsapp/Cobranca.tsx`), ampliar o select para incluir `id, cart_id`. Em seguida, buscar `cart_items` (qty, unit_price, product_name, product_code) dos carrinhos. Guardar `order_id`, `items[]` e `total_amount` no estado de cada Customer.
+Hoje o envio em massa da página **Cobrança** roda 100% no estado React. Se o usuário recarrega a página ou fecha a aba, perde controle e o envio fica órfão. Vamos espelhar o progresso na tabela `sending_jobs` (já existente, já usada pelo SendFlow).
 
-Quando o telefone tem vários pedidos no período → usar o pedido **mais recente**.
+### Mudanças em `src/pages/whatsapp/Cobranca.tsx`
 
-### Novas variáveis no template
-- `{{produtos}}` → bloco multilinha:
-  ```
-  • Brinco Pérola (C123) — 2x R$ 19,90
-  • Colar Coração (C456) — 1x R$ 39,90
-  ```
-- `{{total}}` → total formatado em `R$ xx,xx`
-- `{{pedido}}` → número do pedido
-- `{{nome}}` (já existe)
+1. Ao iniciar envio:
+   - `INSERT` em `sending_jobs` com `job_type='cobranca'`, `status='running'`, `total_items`, `job_data` (lista de telefones + mensagem) e guardar o `id` retornado num ref.
+2. A cada cliente processado (sucesso ou falha):
+   - `UPDATE sending_jobs SET processed_items, current_index, updated_at` — sem bloquear o loop (fire-and-forget).
+3. Ao pausar / retomar / cancelar / concluir:
+   - `UPDATE` correspondente em `status` (`paused`, `running`, `cancelled`, `completed`) com `paused_at` / `completed_at`.
+4. No `useEffect` de mount:
+   - Buscar `sending_jobs` desse tenant com `job_type='cobranca'` e `status IN ('running','paused')`.
+   - Se houver, mostrar banner: **"Envio em andamento detectado — Retomar / Cancelar"**.
+   - "Retomar" reidrata o estado a partir de `job_data` + `current_index` e continua do ponto que parou.
+   - "Cancelar" marca como `cancelled` no banco.
 
-Se o cliente não tiver itens, `{{produtos}}` vira vazio e linhas órfãs são limpas.
+### Observações
+- Polling do status remoto a cada 5s enquanto envia — se outra aba marcou `cancelled`, este loop também para.
+- Sem mudanças no backend; é só CRUD em tabela existente.
+
+## Parte 2 — Painel "Envios Ativos"
+
+Nova página `src/pages/EnviosAtivos.tsx` acessível na sidebar (menu WhatsApp), listando tudo num único lugar.
+
+### Fontes consolidadas
+- `sending_jobs` (Cobrança + SendFlow mass_message)
+- `sendflow_tasks` (tasks pendentes do SendFlow)
+- `scheduled_jobs` / `scheduled_messages` (agendamentos)
 
 ### UI
-Abaixo do textarea, mostrar chips de variáveis disponíveis (clique insere o token) e um botão "Inserir lista de produtos" que injeta o trecho padrão.
+Tabela com colunas:
+| Origem | Tipo | Status | Progresso | Iniciado em | Ações |
+|---|---|---|---|---|---|
 
-## 2. Botão customizável (CTA)
+- **Progresso**: barra `processed / total` + percentual.
+- **Status** com badge colorido (running=verde, paused=amarelo, cancelled/failed=vermelho, completed=cinza).
+- **Ações**: Pausar, Retomar, Cancelar, Ver detalhes. Botões habilitados conforme status.
+- Auto-refresh a cada 5s (`setInterval`).
+- Filtro por tipo (Cobrança / SendFlow / Agendamento) e por status.
 
-### Z-API — endpoint
-A Z-API expõe `POST /send-button-actions`, que aceita até 3 botões dos tipos `URL`, `CALL` ou `REPLY`. Para nosso caso usaremos **um único botão tipo URL**.
+### Rota
+- `/envios-ativos` com guard de autenticação padrão.
+- Item de menu na sidebar do WhatsApp: "Envios Ativos" com ícone `Activity`.
 
-Payload enviado (via `zapi-proxy`):
-```json
-{
-  "phone": "55...",
-  "message": "<mensagem com produtos + total>",
-  "buttonActions": [
-    { "id": "1", "type": "URL", "url": "<link customizado>", "label": "<CTA customizado>" }
-  ]
-}
-```
+## Ordem de implementação
+1. Criar `EnviosAtivos.tsx` + rota + item de menu (parte 2 — mais simples, depende só do que já existe).
+2. Adicionar persistência em `Cobranca.tsx` (parte 1).
+3. Validar fluxo completo: iniciar envio → recarregar → retomar → ver no painel.
 
-### UI na página de Cobrança
-Adicionar dentro do card de Mensagem um bloco "Botão de ação (opcional)":
-- Switch **Adicionar botão à mensagem** (off por padrão)
-- Quando ligado, mostrar 2 campos:
-  - **Texto do botão (CTA)** — `Input` máx. 20 caracteres (limite do WhatsApp)
-  - **Link do botão (URL)** — `Input` validado (precisa começar com `http://` ou `https://`)
-- Suporte a variáveis no link e no CTA também: `{{nome}}`, `{{pedido}}`, `{{total}}` — útil quando o link é dinâmico por cliente (ex.: link de pagamento). Mostrar dica abaixo do campo.
-
-### Lógica de envio
-Em `handleSendMessages()`:
-- Se botão ativo + URL válido → chamar `zapi-proxy` com `action: 'send-button-actions'` em vez de `send-text`.
-- Se houver imagem **e** botão → enviar imagem com legenda primeiro e o botão em mensagem separada (limitação Z-API: `send-button-image` existe mas é instável; mais seguro separar).
-- Se botão ativo mas URL inválido → bloquear envio com toast.
-
-### Suporte no zapi-proxy
-Verificar/estender `supabase/functions/zapi-proxy/index.ts` para encaminhar a action `send-button-actions` ao endpoint correto da Z-API. Se já existir uma action genérica, reutilizar; se não, adicionar bloco análogo aos atuais `send-text` / `send-image`.
-
-### Agendamento
-Em `scheduleMessage()`, persistir no `job_data`:
-```ts
-{
-  button: { enabled: boolean, label: string, url: string } | null,
-  customers: [{ phone, name, items, total, order_id, payment_link }, ...]
-}
-```
-para que o processador agendado possa reconstruir o envio com botão.
-
-## Arquivos afetados
-- `src/pages/whatsapp/Cobranca.tsx` — carga de itens, novos campos de estado (botão), UI, substituição de variáveis no envio.
-- `supabase/functions/zapi-proxy/index.ts` — encaminhar `send-button-actions` (se ainda não suportar).
-- (Possivelmente) worker que processa `sending_jobs` agendados — adicionar suporte ao novo `button` no `job_data`.
-
-## Limitações a comunicar ao usuário
-- WhatsApp aceita no máximo ~20 caracteres no rótulo do botão.
-- Botões só funcionam de forma consistente com instâncias Z-API conectadas via WhatsApp Business; em WhatsApp pessoal de algumas versões antigas o cliente pode ver o link como texto comum.
-- Mensagens com botão **não** podem ter imagem anexada no mesmo envio (vamos enviar a imagem separada antes do botão).
-
-## Pontos a confirmar
-1. Quando o cliente tem **mais de um pedido** no período → usar só o mais recente, ou consolidar tudo em uma lista única?
-2. O botão deve ser **único e fixo para todos** os clientes do disparo, ou queremos suportar URL dinâmica via variáveis (ex.: `{{payment_link}}` para mandar o link de pagamento individual de cada pedido)?
+Sem migrations — `sending_jobs` já tem todas as colunas necessárias.
