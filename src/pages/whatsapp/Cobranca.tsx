@@ -670,6 +670,17 @@ export default function Cobranca() {
 
     try {
       for (let i = 0; i < customers.length; i++) {
+        // Cancelamento imediato
+        if (cancelledRef.current) {
+          console.log('🛑 Envio cancelado pelo usuário');
+          break;
+        }
+        // Pausa: aguardar enquanto pausedRef estiver true
+        while (pausedRef.current && !cancelledRef.current) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+        if (cancelledRef.current) break;
+
         const customer = customers[i];
         setSendProgress({ current: i + 1, total: customers.length });
 
