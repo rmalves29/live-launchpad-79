@@ -47,6 +47,7 @@ import RenovarAssinatura from "./pages/RenovarAssinatura";
 import WhatsappTemplates from "./pages/whatsapp/Templates";
 import Cobranca from "./pages/whatsapp/Cobranca";
 import ConexaoZAPI from "./pages/whatsapp/ConexaoZAPI";
+import EnviosAtivos from "./pages/EnviosAtivos";
 import AgenteIA from "./pages/agente-ia/Index";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfUse from "./pages/TermsOfUse";
@@ -187,6 +188,14 @@ const AppContent = () => {
         {/* Rota para cobrança em massa */}
         <Route path="/whatsapp/cobranca" element={
           <RequireTenantAuth><Cobranca /></RequireTenantAuth>
+        } />
+
+        {/* Painel de envios ativos */}
+        <Route path="/envios-ativos" element={
+          <RequireTenantAuth><EnviosAtivos /></RequireTenantAuth>
+        } />
+        <Route path="/whatsapp/envios-ativos" element={
+          <RequireTenantAuth><EnviosAtivos /></RequireTenantAuth>
         } />
         
         {/* Rota para conexão WhatsApp Z-API */}
