@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { DateRange } from 'react-day-picker';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
@@ -117,6 +117,11 @@ export default function Cobranca() {
   const [buttonEnabled, setButtonEnabled] = useState(false);
   const [buttonLabel, setButtonLabel] = useState('Acessar');
   const [buttonUrl, setButtonUrl] = useState('');
+
+  // Controle de pausa/cancelamento do envio em massa
+  const [isPaused, setIsPaused] = useState(false);
+  const pausedRef = useRef(false);
+  const cancelledRef = useRef(false);
 
 
   // Formata moeda no padrão BR (sem símbolo R$ duplicado)
@@ -656,12 +661,26 @@ export default function Cobranca() {
 
     setSending(true);
     setSendProgress({ current: 0, total: customers.length });
+    pausedRef.current = false;
+    cancelledRef.current = false;
+    setIsPaused(false);
 
     let successCount = 0;
     let errorCount = 0;
 
     try {
       for (let i = 0; i < customers.length; i++) {
+        // Cancelamento imediato
+        if (cancelledRef.current) {
+          console.log('🛑 Envio cancelado pelo usuário');
+          break;
+        }
+        // Pausa: aguardar enquanto pausedRef estiver true
+        while (pausedRef.current && !cancelledRef.current) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+        if (cancelledRef.current) break;
+
         const customer = customers[i];
         setSendProgress({ current: i + 1, total: customers.length });
 
@@ -788,25 +807,44 @@ export default function Cobranca() {
         }
 
         // Sistema de delay customizado com jitter humanizado (anti-bloqueio)
+        // Helper: dorme em fatias curtas para responder a cancelamento rapidamente
+        const interruptibleSleep = async (ms: number) => {
+          const step = 250;
+          let waited = 0;
+          while (waited < ms) {
+            if (cancelledRef.current) return;
+            await new Promise(r => setTimeout(r, Math.min(step, ms - waited)));
+            waited += step;
+          }
+        };
+
         if (i < customers.length - 1) {
-          // Delay entre cada mensagem com variação 0.7x-1.3x para parecer humano
           const humanDelay = getHumanizedDelayMs(delayBetweenMessages);
           console.log(`⏱️ Aguardando ${(humanDelay / 1000).toFixed(1)}s (humanizado)`);
-          await new Promise(resolve => setTimeout(resolve, humanDelay));
+          await interruptibleSleep(humanDelay);
+
+          if (cancelledRef.current) break;
 
           // Pausa maior a cada X mensagens
           if ((i + 1) % messagesBeforePause === 0) {
             const humanPause = getHumanizedDelayMs(pauseDuration);
             console.log(`⏸️ Pausa de ${(humanPause / 1000).toFixed(1)}s após ${i + 1} mensagens`);
-            await new Promise(resolve => setTimeout(resolve, humanPause));
+            await interruptibleSleep(humanPause);
           }
         }
       }
 
-      toast({
-        title: 'Envio concluído',
-        description: `${successCount} enviada(s), ${errorCount} erro(s)${selectedTagId && selectedTagId !== 'none' ? '. Tags aplicadas!' : ''}`,
-      });
+      if (cancelledRef.current) {
+        toast({
+          title: 'Envio cancelado',
+          description: `${successCount} enviada(s), ${errorCount} erro(s) antes do cancelamento`,
+        });
+      } else {
+        toast({
+          title: 'Envio concluído',
+          description: `${successCount} enviada(s), ${errorCount} erro(s)${selectedTagId && selectedTagId !== 'none' ? '. Tags aplicadas!' : ''}`,
+        });
+      }
 
       console.log('✅ Processo de envio finalizado');
       console.log(`📊 Sucesso: ${successCount}, Erros: ${errorCount}`);
@@ -821,6 +859,9 @@ export default function Cobranca() {
     } finally {
       setSending(false);
       setSendProgress({ current: 0, total: 0 });
+      pausedRef.current = false;
+      cancelledRef.current = false;
+      setIsPaused(false);
     }
   };
 
@@ -1285,14 +1326,43 @@ export default function Cobranca() {
               )}
             </Button>
 
-            <Button
-              variant="outline"
-              className="w-full h-11 rounded-xl border-[#e5e7eb] font-medium"
-              disabled={!sending}
-              onClick={() => { /* placeholder pause */ }}
-            >
-              ⏸ Pausar
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                className="w-full h-11 rounded-xl border-[#e5e7eb] font-medium"
+                disabled={!sending}
+                onClick={() => {
+                  const next = !pausedRef.current;
+                  pausedRef.current = next;
+                  setIsPaused(next);
+                  toast({
+                    title: next ? 'Envio pausado' : 'Envio retomado',
+                    description: next
+                      ? 'Clique em Retomar para continuar.'
+                      : 'O envio continuará de onde parou.',
+                  });
+                }}
+              >
+                {isPaused ? '▶ Retomar' : '⏸ Pausar'}
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-11 rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10 font-medium"
+                disabled={!sending}
+                onClick={() => {
+                  cancelledRef.current = true;
+                  pausedRef.current = false;
+                  setIsPaused(false);
+                  toast({
+                    title: 'Cancelando envio…',
+                    description: 'O envio será interrompido após a mensagem atual.',
+                  });
+                }}
+              >
+                <XIcon className="w-4 h-4 mr-1" /> Cancelar
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
