@@ -1461,6 +1461,11 @@ export default function Cobranca() {
                   const next = !pausedRef.current;
                   pausedRef.current = next;
                   setIsPaused(next);
+                  if (jobIdRef.current) {
+                    const patch: any = { status: next ? 'paused' : 'running' };
+                    if (next) patch.paused_at = new Date().toISOString();
+                    supabaseTenant.from('sending_jobs').update(patch).eq('id', jobIdRef.current).then(() => {}, () => {});
+                  }
                   toast({
                     title: next ? 'Envio pausado' : 'Envio retomado',
                     description: next
@@ -1480,6 +1485,13 @@ export default function Cobranca() {
                   cancelledRef.current = true;
                   pausedRef.current = false;
                   setIsPaused(false);
+                  if (jobIdRef.current) {
+                    supabaseTenant
+                      .from('sending_jobs')
+                      .update({ status: 'cancelled', completed_at: new Date().toISOString(), error_message: 'Cancelado pelo usuário' })
+                      .eq('id', jobIdRef.current)
+                      .then(() => {}, () => {});
+                  }
                   toast({
                     title: 'Cancelando envio…',
                     description: 'O envio será interrompido após a mensagem atual.',
