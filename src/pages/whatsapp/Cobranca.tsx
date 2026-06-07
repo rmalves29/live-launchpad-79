@@ -1452,7 +1452,29 @@ export default function Cobranca() {
                   style={{ width: `${sendProgress.total ? (sendProgress.current / sendProgress.total) * 100 : 0}%` }}
                 />
               </div>
+              {(() => {
+                const remaining = sending
+                  ? Math.max((sendProgress.total || customers.length) - sendProgress.current, 0)
+                  : customers.length;
+                if (remaining <= 0) return null;
+                const pauses = messagesBeforePause > 0 ? Math.floor(remaining / messagesBeforePause) : 0;
+                const totalSec = remaining * delayBetweenMessages + pauses * pauseDuration;
+                const h = Math.floor(totalSec / 3600);
+                const m = Math.floor((totalSec % 3600) / 60);
+                const s = totalSec % 60;
+                const formatted = h > 0 ? `${h}h ${m}min` : m > 0 ? `${m}min ${s}s` : `${s}s`;
+                return (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {sending ? 'Tempo restante estimado' : 'Tempo estimado total'}
+                    </span>
+                    <span className="font-medium text-foreground">{formatted}</span>
+                  </div>
+                );
+              })()}
             </div>
+
 
             <Button
               onClick={handleSendMessages}
