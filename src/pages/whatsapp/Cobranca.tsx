@@ -1000,6 +1000,31 @@ export default function Cobranca() {
         <p className="text-muted-foreground mt-1">Configure o envio automático de cobranças para clientes pendentes</p>
       </div>
 
+      {orphanJob && (
+        <div className="rounded-xl border border-yellow-400/60 bg-yellow-50 dark:bg-yellow-950/20 p-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-start gap-3">
+            <Clock className="w-5 h-5 text-yellow-600 mt-0.5" />
+            <div>
+              <div className="font-semibold text-yellow-900 dark:text-yellow-200">
+                Envio anterior detectado ({orphanJob.status})
+              </div>
+              <div className="text-sm text-yellow-800 dark:text-yellow-300">
+                Progresso: {orphanJob.processed} de {orphanJob.total} processados. Esse envio ficou em aberto após recarregar a página.
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => window.open('/whatsapp/envios-ativos', '_blank')}>
+              Ver no painel
+            </Button>
+            <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={cancelOrphanJob}>
+              Cancelar envio antigo
+            </Button>
+          </div>
+        </div>
+      )}
+
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ============ COLUNA 1 — FILTROS DE CLIENTES ============ */}
         <Card className="rounded-2xl border-[#e5e7eb] shadow-sm">
