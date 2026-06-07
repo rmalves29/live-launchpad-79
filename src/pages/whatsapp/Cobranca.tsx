@@ -123,6 +123,10 @@ export default function Cobranca() {
   const pausedRef = useRef(false);
   const cancelledRef = useRef(false);
 
+  // Persistência em sending_jobs
+  const jobIdRef = useRef<string | null>(null);
+  const [orphanJob, setOrphanJob] = useState<{ id: string; processed: number; total: number; status: string } | null>(null);
+
 
   // Formata moeda no padrão BR (sem símbolo R$ duplicado)
   const fmtBRL = (n: number) =>
@@ -183,8 +187,45 @@ export default function Cobranca() {
     loadWhatsAppUrl();
     if (tenant?.id) {
       loadTags();
+      checkOrphanJob();
     }
   }, [tenant]);
+
+  // Detecta envio órfão (running/paused) ao montar — provavelmente o usuário recarregou a página
+  const checkOrphanJob = async () => {
+    if (!tenant?.id) return;
+    try {
+      const { data, error } = await supabaseTenant
+        .from('sending_jobs')
+        .select('id, status, processed_items, total_items, updated_at')
+        .eq('job_type', 'cobranca')
+        .in('status', ['running', 'paused'])
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      if (data && data.length > 0) {
+        const j = data[0] as any;
+        setOrphanJob({ id: j.id, processed: j.processed_items, total: j.total_items, status: j.status });
+      }
+    } catch (e) {
+      console.warn('Erro ao checar envios órfãos:', e);
+    }
+  };
+
+  const cancelOrphanJob = async () => {
+    if (!orphanJob) return;
+    try {
+      await supabaseTenant
+        .from('sending_jobs')
+        .update({ status: 'cancelled', completed_at: new Date().toISOString(), error_message: 'Cancelado pelo usuário (banner)' })
+        .eq('id', orphanJob.id);
+      toast({ title: 'Envio anterior cancelado' });
+      setOrphanJob(null);
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    }
+  };
+
 
   const loadTags = async () => {
     if (!tenant?.id) return;
@@ -665,6 +706,58 @@ export default function Cobranca() {
     cancelledRef.current = false;
     setIsPaused(false);
 
+    // Persistir início do envio em sending_jobs
+    jobIdRef.current = null;
+    try {
+      const { data: jobRow, error: jobErr } = await supabaseTenant
+        .from('sending_jobs')
+        .insert({
+          tenant_id: tenant.id,
+          job_type: 'cobranca',
+          status: 'running',
+          total_items: customers.length,
+          processed_items: 0,
+          current_index: 0,
+          started_at: new Date().toISOString(),
+          job_data: {
+            phones: customers.map((c) => c.customer_phone),
+            message_preview: messageTemplate.slice(0, 200),
+            has_image: !!imageDataUrl,
+            has_button: buttonEnabled,
+            tag_id: selectedTagId || null,
+          },
+        })
+        .select('id')
+        .single();
+      if (jobErr) throw jobErr;
+      jobIdRef.current = (jobRow as any).id;
+      console.log('📌 Envio persistido em sending_jobs:', jobIdRef.current);
+    } catch (e) {
+      console.warn('Falha ao persistir job (envio continua):', e);
+    }
+
+    // Polling: a cada 4s checa se foi cancelado/pausado externamente (outra aba ou painel)
+    const pollIntervalId = window.setInterval(async () => {
+      if (!jobIdRef.current) return;
+      try {
+        const { data } = await supabaseTenant
+          .from('sending_jobs')
+          .select('status')
+          .eq('id', jobIdRef.current)
+          .maybeSingle();
+        const status = (data as any)?.status;
+        if (status === 'cancelled') {
+          cancelledRef.current = true;
+        } else if (status === 'paused' && !pausedRef.current) {
+          pausedRef.current = true;
+          setIsPaused(true);
+        } else if (status === 'running' && pausedRef.current) {
+          pausedRef.current = false;
+          setIsPaused(false);
+        }
+      } catch {}
+    }, 4000);
+
     let successCount = 0;
     let errorCount = 0;
 
@@ -683,6 +776,19 @@ export default function Cobranca() {
 
         const customer = customers[i];
         setSendProgress({ current: i + 1, total: customers.length });
+
+        // Atualiza progresso no banco (fire-and-forget)
+        if (jobIdRef.current) {
+          supabaseTenant
+            .from('sending_jobs')
+            .update({
+              processed_items: i,
+              current_index: i,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', jobIdRef.current)
+            .then(() => {}, () => {});
+        }
 
         // Atualizar status para "enviando"
         setSendStatuses(prev => ({
@@ -857,6 +963,26 @@ export default function Cobranca() {
         variant: 'destructive'
       });
     } finally {
+      window.clearInterval(pollIntervalId);
+      // Marcar status final no job
+      if (jobIdRef.current) {
+        const finalStatus = cancelledRef.current ? 'cancelled' : 'completed';
+        try {
+          await supabaseTenant
+            .from('sending_jobs')
+            .update({
+              status: finalStatus,
+              processed_items: successCount + errorCount,
+              current_index: successCount + errorCount,
+              completed_at: new Date().toISOString(),
+              error_message: cancelledRef.current ? 'Cancelado pelo usuário' : null,
+            })
+            .eq('id', jobIdRef.current);
+        } catch (e) {
+          console.warn('Falha ao finalizar job:', e);
+        }
+        jobIdRef.current = null;
+      }
       setSending(false);
       setSendProgress({ current: 0, total: 0 });
       pausedRef.current = false;
@@ -873,6 +999,31 @@ export default function Cobranca() {
         </h1>
         <p className="text-muted-foreground mt-1">Configure o envio automático de cobranças para clientes pendentes</p>
       </div>
+
+      {orphanJob && (
+        <div className="rounded-xl border border-yellow-400/60 bg-yellow-50 dark:bg-yellow-950/20 p-4 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-start gap-3">
+            <Clock className="w-5 h-5 text-yellow-600 mt-0.5" />
+            <div>
+              <div className="font-semibold text-yellow-900 dark:text-yellow-200">
+                Envio anterior detectado ({orphanJob.status})
+              </div>
+              <div className="text-sm text-yellow-800 dark:text-yellow-300">
+                Progresso: {orphanJob.processed} de {orphanJob.total} processados. Esse envio ficou em aberto após recarregar a página.
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => window.open('/whatsapp/envios-ativos', '_blank')}>
+              Ver no painel
+            </Button>
+            <Button size="sm" variant="outline" className="border-destructive/40 text-destructive hover:bg-destructive/10" onClick={cancelOrphanJob}>
+              Cancelar envio antigo
+            </Button>
+          </div>
+        </div>
+      )}
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ============ COLUNA 1 — FILTROS DE CLIENTES ============ */}
@@ -1335,6 +1486,11 @@ export default function Cobranca() {
                   const next = !pausedRef.current;
                   pausedRef.current = next;
                   setIsPaused(next);
+                  if (jobIdRef.current) {
+                    const patch: any = { status: next ? 'paused' : 'running' };
+                    if (next) patch.paused_at = new Date().toISOString();
+                    supabaseTenant.from('sending_jobs').update(patch).eq('id', jobIdRef.current).then(() => {}, () => {});
+                  }
                   toast({
                     title: next ? 'Envio pausado' : 'Envio retomado',
                     description: next
@@ -1354,6 +1510,13 @@ export default function Cobranca() {
                   cancelledRef.current = true;
                   pausedRef.current = false;
                   setIsPaused(false);
+                  if (jobIdRef.current) {
+                    supabaseTenant
+                      .from('sending_jobs')
+                      .update({ status: 'cancelled', completed_at: new Date().toISOString(), error_message: 'Cancelado pelo usuário' })
+                      .eq('id', jobIdRef.current)
+                      .then(() => {}, () => {});
+                  }
                   toast({
                     title: 'Cancelando envio…',
                     description: 'O envio será interrompido após a mensagem atual.',

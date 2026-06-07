@@ -142,6 +142,7 @@ const Navbar = () => {
                           { path: '/whatsapp/zapi', label: 'Z-API' },
                           { path: '/whatsapp/templates', label: 'Templates' },
                           { path: '/whatsapp/cobranca', label: 'Cobrança em Massa' },
+                          { path: '/whatsapp/envios-ativos', label: 'Envios Ativos' },
                         ].map((item) => (
                           <NavLink
                             key={item.path}
@@ -277,6 +278,9 @@ const Navbar = () => {
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate('/whatsapp/cobranca')} className="cursor-pointer">
                     Cobrança em Massa
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/whatsapp/envios-ativos')} className="cursor-pointer">
+                    Envios Ativos
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
