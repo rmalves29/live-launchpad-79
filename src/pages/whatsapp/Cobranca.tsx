@@ -289,35 +289,40 @@ export default function Cobranca() {
       setLoading(true);
       
       const fromStr = format(filters.orderDate.from, 'yyyy-MM-dd');
-      let query = supabaseTenant
-        .from('orders')
-        .select('id, cart_id, payment_link, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, created_at')
-        .order('created_at', { ascending: false });
+      const buildQuery = () => {
+        let q = supabaseTenant
+          .from('orders')
+          .select('id, cart_id, payment_link, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, created_at')
+          .order('created_at', { ascending: false });
 
-      if (filters.orderDate.to) {
-        const toStr = format(filters.orderDate.to, 'yyyy-MM-dd');
-        query = query.gte('event_date', fromStr).lte('event_date', toStr);
-      } else {
-        query = query.eq('event_date', fromStr);
+        if (filters.orderDate!.to) {
+          const toStr = format(filters.orderDate!.to, 'yyyy-MM-dd');
+          q = q.gte('event_date', fromStr).lte('event_date', toStr);
+        } else {
+          q = q.eq('event_date', fromStr);
+        }
+
+        if (filters.isPaid === 'paid') q = q.eq('is_paid', true);
+        else if (filters.isPaid === 'unpaid') q = q.eq('is_paid', false);
+
+        if (filters.eventType === 'bazar') q = q.in('event_type', ['BAZAR', 'MANUAL']);
+        else if (filters.eventType !== 'all') q = q.eq('event_type', filters.eventType.toUpperCase());
+
+        return q;
+      };
+
+      // Paginação para superar o limite default de 1000 do PostgREST
+      const PAGE = 1000;
+      let offset = 0;
+      let data: any[] = [];
+      while (true) {
+        const { data: pageData, error } = await buildQuery().range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        if (!pageData || pageData.length === 0) break;
+        data = data.concat(pageData);
+        if (pageData.length < PAGE) break;
+        offset += PAGE;
       }
-
-      // Aplicar filtro de pagamento
-      if (filters.isPaid === 'paid') {
-        query = query.eq('is_paid', true);
-      } else if (filters.isPaid === 'unpaid') {
-        query = query.eq('is_paid', false);
-      }
-
-      // Aplicar filtro de tipo de evento
-      if (filters.eventType === 'bazar') {
-        query = query.in('event_type', ['BAZAR', 'MANUAL']);
-      } else if (filters.eventType !== 'all') {
-        query = query.eq('event_type', filters.eventType.toUpperCase());
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
 
       // Remover duplicatas por telefone (pegar apenas o mais recente — já ordenado desc)
       const uniqueCustomers = data?.reduce((acc: Customer[], current: any) => {
@@ -345,14 +350,30 @@ export default function Cobranca() {
 
       if (cartIds.length > 0) {
         const uniqueCartIds = Array.from(new Set(cartIds.map(c => c.cartId)));
-        const { data: items, error: itemsError } = await supabaseTenant
-          .from('cart_items')
-          .select('cart_id, qty, unit_price, product_name, product_code')
-          .in('cart_id', uniqueCartIds);
+        // Buscar em chunks de IN + paginar cada chunk para superar limite de 1000
+        const CHUNK = 200;
+        const PAGE2 = 1000;
+        const allItems: any[] = [];
+        for (let i = 0; i < uniqueCartIds.length; i += CHUNK) {
+          const chunk = uniqueCartIds.slice(i, i + CHUNK);
+          let off = 0;
+          while (true) {
+            const { data: pageItems, error: itemsError } = await supabaseTenant
+              .from('cart_items')
+              .select('cart_id, qty, unit_price, product_name, product_code')
+              .in('cart_id', chunk)
+              .range(off, off + PAGE2 - 1);
+            if (itemsError) break;
+            if (!pageItems || pageItems.length === 0) break;
+            allItems.push(...pageItems);
+            if (pageItems.length < PAGE2) break;
+            off += PAGE2;
+          }
+        }
 
-        if (!itemsError && items) {
+        if (allItems.length > 0) {
           const itemsByCart = new Map<number, OrderItem[]>();
-          items.forEach((it: any) => {
+          allItems.forEach((it: any) => {
             const list = itemsByCart.get(it.cart_id) || [];
             list.push({
               product_name: it.product_name || '',
@@ -363,7 +384,6 @@ export default function Cobranca() {
             itemsByCart.set(it.cart_id, list);
           });
 
-          // Mapear carrinho → pedido → customer
           const orderToCart = new Map<number, number>();
           cartIds.forEach(c => orderToCart.set(c.orderId, c.cartId));
           uniqueCustomers.forEach(c => {
@@ -406,12 +426,22 @@ export default function Cobranca() {
     try {
       setLoading(true);
       
-      const { data, error } = await supabaseTenant
-        .from('customers')
-        .select('phone, name')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
+      // Paginação para superar o limite default de 1000 do PostgREST
+      const PAGE = 1000;
+      let offset = 0;
+      let data: any[] = [];
+      while (true) {
+        const { data: pageData, error } = await supabaseTenant
+          .from('customers')
+          .select('phone, name')
+          .order('name', { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        if (!pageData || pageData.length === 0) break;
+        data = data.concat(pageData);
+        if (pageData.length < PAGE) break;
+        offset += PAGE;
+      }
 
       // Mapear para o formato esperado
       const mappedCustomers: Customer[] = data?.map(c => ({
