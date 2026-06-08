@@ -493,14 +493,30 @@ serve(async (req) => {
     // Map Z-API status to our format
     if (action === "status") {
       const isConnected = data.connected === true || data.smartphoneConnected === true;
-      
-      // Update connected phone in database if available
-      if (isConnected && data.phoneConnected) {
+
+      // Z-API /status nem sempre traz phoneConnected. Quando conectado, buscar /device
+      // para descobrir o número emparelhado (campo "phone" no retorno do /device).
+      let phoneConnected: string | null = data.phoneConnected || null;
+      if (isConnected && !phoneConnected) {
+        try {
+          const devHeaders: Record<string, string> = { "Content-Type": "application/json" };
+          if (clientToken) devHeaders["Client-Token"] = clientToken;
+          const devRes = await fetch(`${baseUrl}/device`, { method: "GET", headers: devHeaders });
+          if (devRes.ok) {
+            const devData = await devRes.json().catch(() => null);
+            phoneConnected = devData?.phone || devData?.phoneConnected || devData?.me?.user || null;
+          }
+        } catch (e) {
+          console.warn("[zapi-proxy] Falha ao buscar /device:", (e as any)?.message);
+        }
+      }
+
+      if (isConnected && phoneConnected) {
         await supabase
           .from("integration_whatsapp")
-          .update({ 
-            connected_phone: data.phoneConnected,
-            last_status_check: new Date().toISOString()
+          .update({
+            connected_phone: phoneConnected,
+            last_status_check: new Date().toISOString(),
           })
           .eq("tenant_id", tenant_id);
       }
@@ -510,8 +526,8 @@ serve(async (req) => {
           connected: isConnected,
           status: isConnected ? "connected" : "disconnected",
           message: isConnected ? "WhatsApp conectado via Z-API" : "WhatsApp desconectado",
-          user: data.phoneConnected ? { phone: data.phoneConnected } : null,
-          raw: data
+          user: phoneConnected ? { phone: phoneConnected } : null,
+          raw: data,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
