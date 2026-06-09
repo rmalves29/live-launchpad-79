@@ -81,7 +81,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [trackingCode, setTrackingCode] = useState<string>('');
   const [observation, setObservation] = useState<string>('');
   const [printed, setPrinted] = useState<boolean>(false);
-  const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
+  const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
   const [savingMeta, setSavingMeta] = useState(false);
 
 
