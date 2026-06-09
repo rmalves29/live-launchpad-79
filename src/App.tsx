@@ -263,12 +263,12 @@ const AppContent = () => {
           </RequireAuth>
         } />
 
-        {/* Painel de erros do Sentry - apenas super_admin */}
+        {/* Painel de erros do Sentry - apenas rafael@maniadmulher.com */}
         <Route path="/admin/erros" element={
           <RequireAuth>
-            <SuperAdminOnly>
+            <RafaelOnly>
               <AdminErros />
-            </SuperAdminOnly>
+            </RafaelOnly>
           </RequireAuth>
         } />
         <Route path="/design-preview" element={
