@@ -40,6 +40,7 @@ import CadastroInstagram from "./pages/tenant/CadastroInstagram";
 
 import EmpresasIndex from "./pages/empresas/Index";
 import Debug from "./pages/Debug";
+import AdminErros from "./pages/admin/Erros";
 import LandingPage from "./pages/LandingPage";
 import RenovarAssinatura from "./pages/RenovarAssinatura";
 
@@ -246,8 +247,15 @@ const AppContent = () => {
             </SuperAdminOnly>
           </RequireAuth>
         } />
-        
-        {/* Preview do novo design (isolado, dados mockados) */}
+
+        {/* Painel de erros do Sentry - apenas super_admin */}
+        <Route path="/admin/erros" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <AdminErros />
+            </SuperAdminOnly>
+          </RequireAuth>
+        } />
         <Route path="/design-preview" element={
           <RequireAuth><DesignPreview /></RequireAuth>
         } />
