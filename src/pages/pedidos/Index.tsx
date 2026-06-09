@@ -1864,6 +1864,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               if (order.is_paid && order.order_status === 'em_separacao') {
                                 return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309] hover:bg-[#fef3c7]">Em Separação</Badge>;
                               }
+                              if (order.is_paid && order.order_status === 'envio_pendente') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#ffedd5] text-[#c2410c] hover:bg-[#ffedd5]">Envio Pendente</Badge>;
+                              }
                               if (order.is_paid && order.order_status === 'liberado_retirada') {
                                 return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca] hover:bg-[#e0e7ff]">Liberado p/ Retirada</Badge>;
                               }
