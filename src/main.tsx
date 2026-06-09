@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import {
@@ -19,7 +19,7 @@ Sentry.init({
   integrations: [
     Sentry.browserTracingIntegration(),
     Sentry.reactRouterV6BrowserTracingIntegration({
-      useEffect: require("react").useEffect,
+      useEffect,
       useLocation,
       useNavigationType,
       createRoutesFromChildren,
