@@ -43,6 +43,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
+    const loadingFallback = window.setTimeout(() => {
+      if (isMounted && !currentUserId.current) {
+        setIsLoading(false);
+      }
+    }, 4000);
     
     // Evitar inicialização dupla
     if (isInitialized.current) return;
@@ -132,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       isMounted = false;
+      window.clearTimeout(loadingFallback);
       subscription.unsubscribe();
     };
   }, []);
