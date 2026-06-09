@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Plus, Trash2, Search, Package, Truck, CheckCircle2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, Search, Package, Truck, CheckCircle2, Clock } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { formatCurrency } from '@/lib/utils';
