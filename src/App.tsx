@@ -84,10 +84,10 @@ const AppContent = () => {
 
   // Componente para restringir acesso apenas a super_admin
   const SuperAdminOnly = ({ children }: { children: ReactNode }) => {
-    const { profile, loading } = useAuth();
+    const { profile, isLoading } = useAuth();
     
     // Aguardar carregamento do perfil
-    if (loading) {
+    if (isLoading) {
       return <div className="flex items-center justify-center h-screen">Carregando...</div>;
     }
     
@@ -101,9 +101,9 @@ const AppContent = () => {
 
   // Componente para restringir acesso apenas ao usuário rafael@maniadmulher.com
   const RafaelOnly = ({ children }: { children: ReactNode }) => {
-    const { user, profile, loading } = useAuth();
+    const { user, profile, isLoading } = useAuth();
     
-    if (loading) {
+    if (isLoading) {
       return <div className="flex items-center justify-center h-screen">Carregando...</div>;
     }
     
