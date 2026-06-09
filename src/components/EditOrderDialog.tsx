@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Plus, Trash2, Search, Package, Truck, CheckCircle2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, Search, Package, Truck, CheckCircle2, Clock } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { formatCurrency } from '@/lib/utils';
@@ -81,7 +81,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [trackingCode, setTrackingCode] = useState<string>('');
   const [observation, setObservation] = useState<string>('');
   const [printed, setPrinted] = useState<boolean>(false);
-  const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
+  const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
   const [savingMeta, setSavingMeta] = useState(false);
 
 
@@ -669,6 +669,17 @@ useEffect(() => {
                 }`}
               >
                 <Package className="w-3 h-3" /> Em Separação
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'envio_pendente' ? '' : 'envio_pendente')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'envio_pendente'
+                    ? 'bg-[#ffedd5] text-[#c2410c] border-[#fdba74]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Clock className="w-3 h-3" /> Envio Pendente
               </button>
               <button
                 type="button"

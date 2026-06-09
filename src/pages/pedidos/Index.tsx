@@ -47,7 +47,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     tenant_id: string;
     unique_order_id?: string;
     melhor_envio_tracking_code?: string;
-    order_status?: 'em_separacao' | 'enviado' | 'liberado_retirada' | null;
+    order_status?: 'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | null;
     customer_name?: string;
     bling_order_id?: number;
     customer?: {
@@ -186,6 +186,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           query = query.eq('is_cancelled', true);
         } else if (filterPaid === 'em_separacao') {
           query = query.eq('is_cancelled', false).eq('order_status', 'em_separacao');
+        } else if (filterPaid === 'envio_pendente') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'envio_pendente');
         } else if (filterPaid === 'enviado') {
           query = query.eq('is_cancelled', false).eq('order_status', 'enviado');
         } else if (filterPaid === 'liberado_retirada') {
@@ -1600,6 +1602,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       {filterPaid === 'all' ? 'Todos'
                         : filterPaid === 'paid' ? 'Pagos'
                         : filterPaid === 'em_separacao' ? 'Em Separação'
+                        : filterPaid === 'envio_pendente' ? 'Envio Pendente'
                         : filterPaid === 'enviado' ? 'Enviados'
                         : filterPaid === 'liberado_retirada' ? 'Liberado para Retirada'
                         : filterPaid === 'unpaid' ? 'Não pagos'
@@ -1611,6 +1614,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="paid">Pagos</SelectItem>
                   <SelectItem value="em_separacao">Em Separação</SelectItem>
+                  <SelectItem value="envio_pendente">Envio Pendente</SelectItem>
                   <SelectItem value="enviado">Enviados</SelectItem>
                   <SelectItem value="liberado_retirada">Liberado para Retirada</SelectItem>
                   <SelectItem value="unpaid">Não pagos</SelectItem>
@@ -1859,6 +1863,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               }
                               if (order.is_paid && order.order_status === 'em_separacao') {
                                 return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309] hover:bg-[#fef3c7]">Em Separação</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'envio_pendente') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#ffedd5] text-[#c2410c] hover:bg-[#ffedd5]">Envio Pendente</Badge>;
                               }
                               if (order.is_paid && order.order_status === 'liberado_retirada') {
                                 return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca] hover:bg-[#e0e7ff]">Liberado p/ Retirada</Badge>;
