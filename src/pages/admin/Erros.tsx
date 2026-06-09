@@ -59,7 +59,7 @@ export default function AdminErros() {
 
       const params = new URLSearchParams();
       params.set('action', 'issues');
-      params.set('status', status);
+      if (status !== 'all') params.set('status', status);
       params.set('statsPeriod', period);
       params.set('sort', sort === 'date' ? 'date' : 'freq');
       if (query) params.set('query', query);
