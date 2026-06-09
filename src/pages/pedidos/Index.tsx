@@ -1602,6 +1602,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       {filterPaid === 'all' ? 'Todos'
                         : filterPaid === 'paid' ? 'Pagos'
                         : filterPaid === 'em_separacao' ? 'Em Separação'
+                        : filterPaid === 'envio_pendente' ? 'Envio Pendente'
                         : filterPaid === 'enviado' ? 'Enviados'
                         : filterPaid === 'liberado_retirada' ? 'Liberado para Retirada'
                         : filterPaid === 'unpaid' ? 'Não pagos'
@@ -1613,6 +1614,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="paid">Pagos</SelectItem>
                   <SelectItem value="em_separacao">Em Separação</SelectItem>
+                  <SelectItem value="envio_pendente">Envio Pendente</SelectItem>
                   <SelectItem value="enviado">Enviados</SelectItem>
                   <SelectItem value="liberado_retirada">Liberado para Retirada</SelectItem>
                   <SelectItem value="unpaid">Não pagos</SelectItem>
