@@ -672,6 +672,17 @@ useEffect(() => {
               </button>
               <button
                 type="button"
+                onClick={() => setOrderStatus(orderStatus === 'envio_pendente' ? '' : 'envio_pendente')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'envio_pendente'
+                    ? 'bg-[#ffedd5] text-[#c2410c] border-[#fdba74]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Clock className="w-3 h-3" /> Envio Pendente
+              </button>
+              <button
+                type="button"
                 onClick={() => setOrderStatus(orderStatus === 'enviado' ? '' : 'enviado')}
                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
                   orderStatus === 'enviado'
