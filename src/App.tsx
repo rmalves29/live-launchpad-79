@@ -101,13 +101,17 @@ const AppContent = () => {
 
   // Componente para restringir acesso apenas ao usuário rafael@maniadmulher.com
   const RafaelOnly = ({ children }: { children: ReactNode }) => {
-    const { user, profile, isLoading } = useAuth();
+    const { user, isLoading } = useAuth();
     
     if (isLoading) {
-      return <div className="flex items-center justify-center h-screen">Carregando...</div>;
+      return <div className="flex items-center justify-center min-h-[60vh]">Carregando...</div>;
+    }
+
+    if (!user) {
+      return <Navigate to="/auth" replace />;
     }
     
-    if (profile?.role !== 'super_admin' || user?.email !== 'rafael@maniadmulher.com') {
+    if (user.email !== 'rafael@maniadmulher.com') {
       return <Navigate to="/" replace />;
     }
     
