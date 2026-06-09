@@ -26,6 +26,9 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+
 interface SentryIssue {
   id: string;
   title: string;
@@ -66,12 +69,18 @@ export default function AdminErros() {
       if (pageCursor) params.set('cursor', pageCursor);
       params.set('limit', '25');
 
-      const { data, error: invokeError } = await supabase.functions.invoke(`sentry-proxy?${params.toString()}`, {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/sentry-proxy?${params.toString()}`, {
         method: 'GET',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${sessionData.session?.access_token || SUPABASE_ANON_KEY}`,
+        },
       });
 
-      if (invokeError) throw new Error(invokeError.message);
-      if (!data?.success) throw new Error(data?.error || 'Unknown error');
+      const data = await response.json().catch(() => null);
+
+      if (!data?.success) throw new Error(data?.error || `Falha ao buscar erros (${response.status})`);
 
       const sentryIssues: SentryIssue[] = data.data || [];
       setIssues(sentryIssues);
