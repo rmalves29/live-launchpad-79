@@ -235,7 +235,7 @@ export default function AdminErros() {
                   <SelectItem value="unresolved">Não resolvido</SelectItem>
                   <SelectItem value="resolved">Resolvido</SelectItem>
                   <SelectItem value="ignored">Ignorado</SelectItem>
-                  <SelectItem value="">Todos</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
