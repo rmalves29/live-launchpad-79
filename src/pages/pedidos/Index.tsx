@@ -186,6 +186,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           query = query.eq('is_cancelled', true);
         } else if (filterPaid === 'em_separacao') {
           query = query.eq('is_cancelled', false).eq('order_status', 'em_separacao');
+        } else if (filterPaid === 'envio_pendente') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'envio_pendente');
         } else if (filterPaid === 'enviado') {
           query = query.eq('is_cancelled', false).eq('order_status', 'enviado');
         } else if (filterPaid === 'liberado_retirada') {
