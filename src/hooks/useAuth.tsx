@@ -37,11 +37,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Refs para evitar operações duplicadas
   const isInitialized = useRef(false);
   const loadingProfile = useRef(false);
+  const currentUserId = useRef<string | null>(null);
 
   const isSuperAdmin = profile?.role === 'super_admin';
 
   useEffect(() => {
     let isMounted = true;
+    const loadingFallback = window.setTimeout(() => {
+      if (isMounted && !currentUserId.current) {
+        setIsLoading(false);
+      }
+    }, 4000);
     
     // Evitar inicialização dupla
     if (isInitialized.current) return;
@@ -60,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       setSession(session);
       setUser(session?.user ?? null);
+      currentUserId.current = session?.user?.id ?? null;
       
       if (session?.user) {
         // Se já temos profile em cache para este user, usar
@@ -79,9 +86,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, newSession) => {
         if (!isMounted) return;
         
-        // Ignorar eventos que não são ações explícitas do usuário
-        // TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED podem causar re-renders desnecessários
+        // Ignorar eventos automáticos quando já há sessão carregada, mas recuperar a sessão
+        // se o carregamento inicial falhou e o refresh chegou depois.
         if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
+          if (!currentUserId.current && newSession?.user) {
+            setSession(newSession);
+            setUser(newSession.user);
+            currentUserId.current = newSession.user.id;
+
+            if (profileCache && profileCache.id === newSession.user.id) {
+              setProfile(profileCache);
+              setIsLoading(false);
+            } else {
+              setTimeout(() => {
+                if (isMounted) loadProfile(newSession.user.id);
+              }, 0);
+            }
+          }
           return;
         }
         
@@ -89,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === 'SIGNED_IN') {
           setSession(newSession);
           setUser(newSession?.user ?? null);
+          currentUserId.current = newSession?.user?.id ?? null;
           if (newSession?.user) {
             // Se já temos profile em cache para este user, usar
             if (profileCache && profileCache.id === newSession.user.id) {
@@ -106,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           profileCache = null;
           setSession(null);
           setUser(null);
+          currentUserId.current = null;
           setProfile(null);
           setIsLoading(false);
         }
@@ -114,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       isMounted = false;
+      window.clearTimeout(loadingFallback);
       subscription.unsubscribe();
     };
   }, []);
