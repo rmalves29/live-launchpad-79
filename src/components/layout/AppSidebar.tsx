@@ -49,6 +49,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const enableLive = tenant?.enable_live ?? true;
   const enableSendflow = tenant?.enable_sendflow ?? true;
   const isSuperAdmin = profile?.role === 'super_admin';
+  const isRafael = user?.email === 'rafael@maniadmulher.com';
 
   const isActive = (path: string) => {
     if (path === '/pedidos') return location.pathname === '/pedidos';
@@ -230,7 +231,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   <span className="truncate flex-1 text-left">Cloud Lovable</span>
                 </button>
                 {renderItem({ path: '/debug', label: 'Debug', icon: Settings }, true)}
-                {renderItem({ path: '/admin/erros', label: 'Monitor de Erros', icon: Bug }, true)}
+                {isRafael && renderItem({ path: '/admin/erros', label: 'Monitor de Erros', icon: Bug }, true)}
               </>,
             )}
           </div>
