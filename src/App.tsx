@@ -99,6 +99,21 @@ const AppContent = () => {
     return <>{children}</>;
   };
 
+  // Componente para restringir acesso apenas ao usuário rafael@maniadmulher.com
+  const RafaelOnly = ({ children }: { children: ReactNode }) => {
+    const { user, profile, loading } = useAuth();
+    
+    if (loading) {
+      return <div className="flex items-center justify-center h-screen">Carregando...</div>;
+    }
+    
+    if (profile?.role !== 'super_admin' || user?.email !== 'rafael@maniadmulher.com') {
+      return <Navigate to="/" replace />;
+    }
+    
+    return <>{children}</>;
+  };
+
   const routes = (
     <Routes>
       {/* Landing page pública institucional */}
