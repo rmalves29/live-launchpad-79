@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
@@ -93,6 +94,7 @@ const Clientes = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [newCustomer, setNewCustomer] = useState({ phone: '', name: '', instagram: '' });
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -580,17 +582,17 @@ const Clientes = () => {
     if (filterBlocked === 'blocked' && !customer.is_blocked) return false;
     if (filterBlocked === 'active' && customer.is_blocked) return false;
 
-    const searchLower = searchTerm.toLowerCase().trim();
+    const searchLower = debouncedSearchTerm.toLowerCase().trim();
     if (!searchLower) return true;
-    
+
     if (customer.name.toLowerCase().includes(searchLower)) return true;
-    
-    const normalizedSearch = normalizeForStorage(searchTerm);
+
+    const normalizedSearch = normalizeForStorage(debouncedSearchTerm);
     const normalizedCustomerPhone = normalizeForStorage(customer.phone);
     if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
-    if (customer.phone.includes(searchTerm)) return true;
-    
-    if (customer.cpf && customer.cpf.includes(searchTerm)) return true;
+    if (customer.phone.includes(debouncedSearchTerm)) return true;
+
+    if (customer.cpf && customer.cpf.includes(debouncedSearchTerm)) return true;
     if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
     
     return false;
@@ -1194,7 +1196,7 @@ const Clientes = () => {
                   </div>
                 ) : filteredCustomers.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    {searchTerm ? 'Nenhum cliente encontrado com os critérios de busca.' : 'Nenhum cliente cadastrado.'}
+                    {debouncedSearchTerm ? 'Nenhum cliente encontrado com os critérios de busca.' : 'Nenhum cliente cadastrado.'}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">

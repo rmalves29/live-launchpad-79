@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
@@ -69,6 +70,7 @@ const Produtos = () => {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'LIVE' | 'BAZAR'>('ALL');
   const [importing, setImporting] = useState(false);
@@ -529,8 +531,8 @@ const Produtos = () => {
   };
 
   const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.code.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = product.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+      product.code.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
     const matchesType = saleTypeFilter === 'ALL' || 
       product.sale_type === saleTypeFilter || 
       (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));

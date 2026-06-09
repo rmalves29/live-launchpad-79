@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import type { DateRange } from 'react-day-picker';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
@@ -101,6 +102,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     const [viewOrderOpen, setViewOrderOpen] = useState(false);
     const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
     const ensureOrderCartItems = async (order: Order): Promise<Order> => {
       if (!order?.cart_id) return order;
@@ -1359,7 +1361,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
     // Filtrar pedidos por telefone, nome, CPF, Instagram ou número do pedido
     const filteredOrders = orders.filter(order => {
-      const search = searchTerm.trim().toLowerCase();
+      const search = debouncedSearchTerm.trim().toLowerCase();
       if (!search) return true;
 
       const numericSearch = search.replace(/\D/g, '');
@@ -1405,8 +1407,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
         return (
           normalizedPhone.includes(normalizedSearch) ||
-          order.customer_phone.includes(searchTerm) ||
-          formatPhoneForDisplay(order.customer_phone).includes(searchTerm)
+          order.customer_phone.includes(debouncedSearchTerm) ||
+          formatPhoneForDisplay(order.customer_phone).includes(debouncedSearchTerm)
         );
       }
 
@@ -1487,7 +1489,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     // Reset página quando filtros mudam
     useEffect(() => {
       setCurrentPage(1);
-    }, [filterPaid, filterEventType, filterDate, filterPrinted, searchTerm]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted, debouncedSearchTerm]);
 
     const formatCurrencyLocal = (value: number) => {
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -1792,7 +1794,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                 ) : paginatedOrders.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
-                      {searchTerm ? 'Nenhum pedido encontrado para esta busca' : 'Nenhum pedido encontrado'}
+                      {debouncedSearchTerm ? 'Nenhum pedido encontrado para esta busca' : 'Nenhum pedido encontrado'}
                     </TableCell>
                   </TableRow>
                 ) : (
