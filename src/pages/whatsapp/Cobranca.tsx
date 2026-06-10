@@ -1104,7 +1104,7 @@ export default function Cobranca() {
         </div>
       )}
 
-      <BulkSendHistory refreshKey={historyRefreshKey} />
+      
 
       <ZapiDisconnectedModal
         open={disconnectedModal.open}
