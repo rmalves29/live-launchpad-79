@@ -202,7 +202,12 @@ export function ZAPISettings() {
          // Botão "Pagar Agora"
          item_added_button_enabled: itemAddedButtonEnabled,
          item_added_button_label: (itemAddedButtonLabel || 'Pagar Agora').slice(0, 20),
-         item_added_button_url: (itemAddedButtonUrl || '').trim() || null,
+          item_added_button_url: (() => {
+            const v = (itemAddedButtonUrl || '').trim();
+            if (!v) return null;
+            if (/^https?:\/\//i.test(v)) return v;
+            return `https://${v.replace(/^[a-z]{0,4}:?\/\//i, '')}`;
+          })(),
       };
 
       if (integration?.id) {
