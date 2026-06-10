@@ -196,15 +196,46 @@ export function ZAPIAdvancedSettings() {
           <div className="space-y-2">
             <Label className="text-sm font-medium">Template B — Com Link (Consentimento Válido)</Label>
             <p className="text-xs text-muted-foreground">
-              Variáveis: {'{{produto}}'}, {'{{quantidade}}'}, {'{{valor}}'}, {'{{link_checkout}}'}
+              Variáveis: {'{{produto}}'}, {'{{quantidade}}'}, {'{{valor}}'}, {'{{link_checkout}}'}, {'{{itens_pedido}}'}, {'{{total_pedido}}'}, {'{{numero_pedido}}'}
             </p>
             <Textarea
               value={templateComLink}
               onChange={(e) => setTemplateComLink(e.target.value)}
               rows={6}
               className="font-mono text-sm"
-              placeholder={`🛒 *Item adicionado*\n\n✅ {{produto}}\nQtd: *{{quantidade}}*\nValor: *R$ {{valor}}*\n\n👉 Finalize: {{link_checkout}}`}
+              placeholder={`🛒 *Item adicionado*\n\n{{itens_pedido}}\n\nTotal: *R$ {{total_pedido}}*\nPedido: #{{numero_pedido}}\n\n👉 Finalize: {{link_checkout}}`}
             />
+          </div>
+
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5 pr-4">
+                <Label className="text-sm font-medium">Botão "Pagar Agora" (clicável)</Label>
+                <p className="text-xs text-muted-foreground">Envia a mensagem com um botão clicável de URL no WhatsApp</p>
+              </div>
+              <Switch checked={itemAddedButtonEnabled} onCheckedChange={setItemAddedButtonEnabled} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Texto do botão (máx. 20)</Label>
+                <Input
+                  value={itemAddedButtonLabel}
+                  maxLength={20}
+                  onChange={(e) => setItemAddedButtonLabel(e.target.value)}
+                  placeholder="Pagar Agora"
+                  disabled={!itemAddedButtonEnabled}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">URL do botão (opcional)</Label>
+                <Input
+                  value={itemAddedButtonUrl}
+                  onChange={(e) => setItemAddedButtonUrl(e.target.value)}
+                  placeholder="Padrão: link do checkout"
+                  disabled={!itemAddedButtonEnabled}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
