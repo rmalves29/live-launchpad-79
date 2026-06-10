@@ -96,6 +96,8 @@ export default function Cobranca() {
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
   const [whatsappApiUrl, setWhatsappApiUrl] = useState<string | null>(null);
   const [sendStatuses, setSendStatuses] = useState<Record<string, SendStatus>>({});
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [disconnectedModal, setDisconnectedModal] = useState<{ open: boolean; reason?: string; context?: 'precheck' | 'mid-send' }>({ open: false });
   
   // Tags state
   const [tags, setTags] = useState<WhatsAppTag[]>([]);
