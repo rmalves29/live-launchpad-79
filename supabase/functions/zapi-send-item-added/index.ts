@@ -732,10 +732,24 @@ serve(async (req) => {
       headers['Client-Token'] = clientToken;
     }
 
-    const response = await fetch(sendUrl, {
+    const shouldUseButton = useButton && resolvedButtonUrl;
+    const targetUrl = shouldUseButton ? sendButtonUrl : sendTextUrl;
+    const requestBody: Record<string, unknown> = shouldUseButton
+      ? {
+          phone: formattedPhone,
+          message,
+          buttonActions: [
+            { id: '1', type: 'URL', url: resolvedButtonUrl, label: buttonLabel || 'Pagar Agora' },
+          ],
+        }
+      : { phone: formattedPhone, message };
+
+    console.log(`[zapi-send-item-added] Endpoint: ${shouldUseButton ? 'send-button-actions' : 'send-text'} | button=${shouldUseButton ? `${buttonLabel} -> ${resolvedButtonUrl}` : 'no'}`);
+
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ phone: formattedPhone, message })
+      body: JSON.stringify(requestBody),
     });
 
     const responseText = await response.text();
