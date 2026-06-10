@@ -1640,6 +1640,8 @@ export default function Cobranca() {
           </CardContent>
         </Card>
       </div>
+
+      <BulkSendHistory refreshKey={historyRefreshKey} />
     </div>
   );
 }
