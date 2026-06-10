@@ -1067,6 +1067,7 @@ export default function Cobranca() {
       pausedRef.current = false;
       cancelledRef.current = false;
       setIsPaused(false);
+      setHistoryRefreshKey((k) => k + 1);
     }
   };
 
