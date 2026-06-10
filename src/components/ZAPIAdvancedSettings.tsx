@@ -47,7 +47,7 @@ export function ZAPIAdvancedSettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-        .select('id, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, consent_protection_enabled, template_solicitacao, template_com_link')
+        .select('id, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, consent_protection_enabled, template_solicitacao, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
       if (error && error.code !== 'PGRST116') throw error;
@@ -62,6 +62,9 @@ export function ZAPIAdvancedSettings() {
         setConsentProtectionEnabled((data as any).consent_protection_enabled ?? false);
         setTemplateSolicitacao((data as any).template_solicitacao ?? '');
         setTemplateComLink((data as any).template_com_link ?? '');
+        setItemAddedButtonEnabled((data as any).item_added_button_enabled ?? true);
+        setItemAddedButtonLabel((data as any).item_added_button_label ?? 'Pagar Agora');
+        setItemAddedButtonUrl((data as any).item_added_button_url ?? '');
       }
     } catch (e: any) {
       console.error('Error loading advanced settings:', e);
