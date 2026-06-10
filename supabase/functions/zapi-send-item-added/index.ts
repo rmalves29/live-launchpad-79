@@ -447,12 +447,20 @@ async function resolveWhatsAppPhone(baseUrl: string, clientToken: string, phone:
   return candidates[0];
 }
 
-function formatMessage(template: string, data: ItemAddedRequest): string {
+function formatMessage(
+  template: string,
+  data: ItemAddedRequest,
+  extras?: { itensPedido?: string; totalPedido?: string; numeroPedido?: string },
+): string {
   const unitPrice = data.unit_price.toFixed(2);
   const total = (data.quantity * data.unit_price).toFixed(2);
   const originalPrice = data.original_price ? data.original_price.toFixed(2) : '';
   const promoPrice = (data.original_price && data.original_price > data.unit_price) ? data.unit_price.toFixed(2) : '';
-  
+
+  const itensPedido = extras?.itensPedido || '';
+  const totalPedido = extras?.totalPedido || '';
+  const numeroPedido = extras?.numeroPedido || '';
+
   let result = template
     .replace(/\{\{produto\}\}/g, `${data.product_name} (${data.product_code})`)
     .replace(/\{\{quantidade\}\}/g, String(data.quantity))
@@ -462,22 +470,27 @@ function formatMessage(template: string, data: ItemAddedRequest): string {
     .replace(/\{\{subtotal\}\}/g, total)
     .replace(/\{\{codigo\}\}/g, data.product_code)
     .replace(/\{\{valor_original\}\}/g, originalPrice)
-    .replace(/\{\{valor_promo\}\}/g, promoPrice);
+    .replace(/\{\{valor_promo\}\}/g, promoPrice)
+    .replace(/\{\{itens_pedido\}\}/g, itensPedido)
+    .replace(/\{\{total_pedido\}\}/g, totalPedido)
+    .replace(/\{\{numero_pedido\}\}/g, numeroPedido);
 
-  // Remove linhas que contenham variáveis vazias (sem valor promocional)
-  if (!originalPrice || !promoPrice) {
-    result = result
-      .split('\n')
-      .filter(line => {
-        if (!originalPrice && line.includes('{{valor_original}}')) return false;
-        if (!promoPrice && line.includes('{{valor_promo}}')) return false;
-        return true;
-      })
-      .join('\n');
-  }
+  // Remove linhas que contenham variáveis vazias
+  result = result
+    .split('\n')
+    .filter(line => {
+      if (!originalPrice && line.includes('{{valor_original}}')) return false;
+      if (!promoPrice && line.includes('{{valor_promo}}')) return false;
+      if (!numeroPedido && line.includes('{{numero_pedido}}')) return false;
+      if (!itensPedido && line.includes('{{itens_pedido}}')) return false;
+      if (!totalPedido && line.includes('{{total_pedido}}')) return false;
+      return true;
+    })
+    .join('\n');
 
   return result;
 }
+
 
 // Build checkout URL for tenant
  async function getCheckoutUrl(supabase: any, tenantId: string, phone: string): Promise<string> {
