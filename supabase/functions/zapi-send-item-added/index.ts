@@ -612,7 +612,7 @@ serve(async (req) => {
       );
     }
 
-    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id } = body;
+    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id, cart_id } = body;
     const source_instance_id = hasServiceRoleAuthorization(req) ? body.source_instance_id : undefined;
     const source_connected_phone = hasServiceRoleAuthorization(req) ? body.source_connected_phone : undefined;
 
@@ -671,7 +671,12 @@ serve(async (req) => {
     const sendButtonUrl = `${baseUrl}/send-button-actions`;
 
     // Carrega contexto do pedido (itens, total, número) para variáveis novas
-    const orderCtx = await loadOrderContext(supabase, tenant_id, order_id);
+    const orderCtx = await loadOrderContext(supabase, tenant_id, order_id, cart_id, {
+      product_name,
+      product_code,
+      quantity,
+      unit_price,
+    });
 
     let message: string;
     let templateType: 'A' | 'B' = 'A';
