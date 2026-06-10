@@ -3673,6 +3673,7 @@ export type Database = {
       whatsapp_messages: {
         Row: {
           amount: number | null
+          batch_id: string | null
           created_at: string | null
           delivered_at: string | null
           delivery_status: string | null
@@ -3695,6 +3696,7 @@ export type Database = {
         }
         Insert: {
           amount?: number | null
+          batch_id?: string | null
           created_at?: string | null
           delivered_at?: string | null
           delivery_status?: string | null
@@ -3717,6 +3719,7 @@ export type Database = {
         }
         Update: {
           amount?: number | null
+          batch_id?: string | null
           created_at?: string | null
           delivered_at?: string | null
           delivery_status?: string | null

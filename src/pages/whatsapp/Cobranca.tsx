@@ -19,6 +19,8 @@ import { addMessageVariation, getHumanizedDelayMs } from '@/lib/whatsapp-anti-bl
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import BulkSendHistory from '@/components/whatsapp/BulkSendHistory';
+import ZapiDisconnectedModal from '@/components/whatsapp/ZapiDisconnectedModal';
 
 interface FilterCriteria {
   isPaid: string;
@@ -94,6 +96,8 @@ export default function Cobranca() {
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
   const [whatsappApiUrl, setWhatsappApiUrl] = useState<string | null>(null);
   const [sendStatuses, setSendStatuses] = useState<Record<string, SendStatus>>({});
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [disconnectedModal, setDisconnectedModal] = useState<{ open: boolean; reason?: string; context?: 'precheck' | 'mid-send' }>({ open: false });
   
   // Tags state
   const [tags, setTags] = useState<WhatsAppTag[]>([]);
@@ -700,6 +704,33 @@ export default function Cobranca() {
       console.log(`🏷️ Tag selecionada: ${tagName} (${selectedTagId})`);
     }
 
+    // 🛡️ Pré-check: WhatsApp precisa estar conectado antes do disparo
+    try {
+      const { data: statusData, error: statusErr } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+        body: { action: 'status', tenant_id: tenant.id }
+      });
+      if (statusErr) throw statusErr;
+      if (!statusData?.connected) {
+        setDisconnectedModal({
+          open: true,
+          reason: statusData?.message || 'A instância Z-API retornou status desconectado.',
+          context: 'precheck',
+        });
+        return;
+      }
+    } catch (e: any) {
+      setDisconnectedModal({
+        open: true,
+        reason: e?.message || 'Não foi possível verificar o status da Z-API.',
+        context: 'precheck',
+      });
+      return;
+    }
+
+    // Gera batch_id único para este disparo (agrupa logs no histórico)
+    const batchId = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+    let consecutiveDisconnectFails = 0;
+
     setSending(true);
     setSendProgress({ current: 0, total: customers.length });
     pausedRef.current = false;
@@ -861,32 +892,64 @@ export default function Cobranca() {
             ? await supabaseTenant.raw.functions.invoke('zapi-proxy', { body: invokeBody })
             : { data: { ok: true }, error: null };
 
+          // Detectar erro real: erro da function OU payload com error/sem messageId
+          const payloadErrorMsg: string | null =
+            (data && typeof data === 'object' && (data.error || data.message))
+              ? String(data.error || data.message)
+              : null;
+          const hasMessageId = !!(data && (data.messageId || data.zaapId || data.id));
+          const looksDisconnected = !!payloadErrorMsg && /not.?connected|disconnect|desconect|sessão|session|qrcode|qr.code/i.test(payloadErrorMsg);
+          // Quando enviamos apenas imagem (sem texto seguinte), invokeBody é null e consideramos OK acima.
+          const sendFailed = !!error || (!!invokeBody && !hasMessageId && (payloadErrorMsg || data?.connected === false));
+          let deliveryStatus: string;
 
-          if (error) {
-            console.error(`❌ Erro ao enviar para ${phoneToSend}:`, error);
-            
+          if (sendFailed) {
+            const errMsg = error?.message || payloadErrorMsg || 'Falha desconhecida no envio';
+            console.error(`❌ Erro ao enviar para ${phoneToSend}:`, errMsg, data);
+
             setSendStatuses(prev => ({
               ...prev,
-              [customer.customer_phone]: { 
-                phone: customer.customer_phone, 
+              [customer.customer_phone]: {
+                phone: customer.customer_phone,
                 status: 'error',
-                error: error.message || 'Erro ao enviar'
+                error: errMsg,
               }
             }));
             errorCount++;
+            deliveryStatus = 'FAILED';
+
+            if (looksDisconnected) {
+              consecutiveDisconnectFails++;
+              if (consecutiveDisconnectFails >= 3 && !pausedRef.current) {
+                console.warn('🛑 Circuit breaker: 3 falhas consecutivas de desconexão. Pausando envio.');
+                pausedRef.current = true;
+                setIsPaused(true);
+                if (jobIdRef.current) {
+                  supabaseTenant.from('sending_jobs')
+                    .update({ status: 'paused', paused_at: new Date().toISOString(), error_message: 'Z-API desconectado' })
+                    .eq('id', jobIdRef.current)
+                    .then(() => {}, () => {});
+                }
+                setDisconnectedModal({ open: true, reason: errMsg, context: 'mid-send' });
+              }
+            } else {
+              consecutiveDisconnectFails = 0;
+            }
           } else {
             console.log(`✅ Mensagem enviada com sucesso para ${phoneToSend}`);
-            
+            consecutiveDisconnectFails = 0;
+
             // Adicionar tag ao contato se selecionada
             if (selectedTagId && selectedTagId !== 'none') {
               await addTagToContact(phoneToSend, selectedTagId);
             }
-            
+
             setSendStatuses(prev => ({
               ...prev,
               [customer.customer_phone]: { phone: customer.customer_phone, status: 'sent' }
             }));
             successCount++;
+            deliveryStatus = hasMessageId ? 'SENT' : 'PENDING';
           }
 
           // Registrar no banco de dados
@@ -894,22 +957,38 @@ export default function Cobranca() {
             phone: phoneToSend,
             message: variedMessage,
             type: 'bulk',
+            batch_id: batchId,
+            delivery_status: deliveryStatus,
+            zapi_message_id: hasMessageId ? String(data.messageId || data.zaapId || data.id) : null,
             sent_at: new Date().toISOString(),
-            processed: true
+            processed: true,
           });
 
         } catch (error) {
           console.error(`❌ Erro ao enviar mensagem para ${customer.customer_phone}:`, error);
-          
+
           setSendStatuses(prev => ({
             ...prev,
-            [customer.customer_phone]: { 
-              phone: customer.customer_phone, 
+            [customer.customer_phone]: {
+              phone: customer.customer_phone,
               status: 'error',
               error: error instanceof Error ? error.message : 'Erro desconhecido'
             }
           }));
           errorCount++;
+
+          // grava falha também no histórico
+          try {
+            await supabaseTenant.from('whatsapp_messages').insert({
+              phone: phoneToSend,
+              message: variedMessage,
+              type: 'bulk',
+              batch_id: batchId,
+              delivery_status: 'FAILED',
+              sent_at: new Date().toISOString(),
+              processed: true,
+            });
+          } catch {}
         }
 
         // Sistema de delay customizado com jitter humanizado (anti-bloqueio)
@@ -988,6 +1067,7 @@ export default function Cobranca() {
       pausedRef.current = false;
       cancelledRef.current = false;
       setIsPaused(false);
+      setHistoryRefreshKey((k) => k + 1);
     }
   };
 
@@ -1023,6 +1103,15 @@ export default function Cobranca() {
           </div>
         </div>
       )}
+
+      <BulkSendHistory refreshKey={historyRefreshKey} />
+
+      <ZapiDisconnectedModal
+        open={disconnectedModal.open}
+        onClose={() => setDisconnectedModal({ open: false })}
+        reason={disconnectedModal.reason}
+        context={disconnectedModal.context}
+      />
 
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
