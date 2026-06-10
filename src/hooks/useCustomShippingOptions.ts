@@ -143,12 +143,14 @@ function filterByGeographicCoverage(options: any[], customerState?: string, cust
 
 /**
  * Função standalone para buscar opções de frete customizadas (para uso fora de componentes React)
- * Agora aceita estado e cidade do cliente para filtrar por cobertura geográfica
+ * Aceita estado e cidade do cliente para filtrar por cobertura geográfica,
+ * e cartTotal para filtrar frete grátis por valor mínimo de pedido.
  */
 export async function fetchCustomShippingOptions(
   tenantId: string,
   customerState?: string,
-  customerCity?: string
+  customerCity?: string,
+  cartTotal?: number
 ): Promise<CustomShippingOption[]> {
   if (!tenantId) return [];
 
@@ -167,18 +169,28 @@ export async function fetchCustomShippingOptions(
 
     if (data && data.length > 0) {
       // Filtrar por cobertura geográfica
-      const filtered = filterByGeographicCoverage(data, customerState, customerCity);
-      console.log(`📦 Frete customizado: ${data.length} total, ${filtered.length} após filtro geográfico (estado: ${customerState}, cidade: ${customerCity})`);
+      let filtered = filterByGeographicCoverage(data, customerState, customerCity);
+
+      // Filtrar frete grátis por valor mínimo de pedido
+      if (cartTotal !== undefined) {
+        filtered = filtered.filter((opt: any) => {
+          const minOrder = opt.free_shipping_min_order != null ? Number(opt.free_shipping_min_order) : null;
+          if (minOrder !== null && cartTotal < minOrder) return false;
+          return true;
+        });
+      }
+
+      console.log(`📦 Frete customizado: ${data.length} total, ${filtered.length} após filtros (estado: ${customerState}, cidade: ${customerCity}, total: ${cartTotal})`);
 
       return filtered.map((opt: any) => ({
         id: `custom_${opt.id}`,
         name: opt.name,
         company: opt.delivery_days === 0 ? 'Retirada' : 'Envio',
         price: parseFloat(opt.price).toFixed(2),
-        delivery_time: opt.description 
+        delivery_time: opt.description
           ? opt.description
-          : opt.delivery_days === 0 
-            ? 'Imediato' 
+          : opt.delivery_days === 0
+            ? 'Imediato'
             : `${opt.delivery_days} dias para postagem + 5-10 dias úteis`,
         custom_price: parseFloat(opt.price).toFixed(2)
       }));

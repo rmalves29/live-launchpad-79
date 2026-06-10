@@ -441,7 +441,8 @@ const PublicCheckout = () => {
       const customs = await fetchCustomShippingOptions(
         tenant.id,
         customerData.state || undefined,
-        customerData.city || undefined
+        customerData.city || undefined,
+        combinedSubtotal
       );
       if (cancelled || customs.length === 0) return;
       setShippingOptions(prev => {
@@ -569,8 +570,8 @@ const PublicCheckout = () => {
         }));
       }
 
-      // 2. Buscar opções de frete customizadas FILTRADAS por cobertura geográfica
-      const customOptions = await fetchCustomShippingOptions(tenant.id, customerState, customerCity);
+      // 2. Buscar opções de frete customizadas FILTRADAS por cobertura geográfica e valor mínimo
+      const customOptions = await fetchCustomShippingOptions(tenant.id, customerState, customerCity, combinedSubtotal);
     
       // Usar opções customizadas do banco ou fallback padrão
       const fallbackShipping = customOptions;
