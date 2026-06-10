@@ -461,29 +461,35 @@ function formatMessage(
   const totalPedido = extras?.totalPedido || '';
   const numeroPedido = extras?.numeroPedido || '';
 
-  let result = template
-    .replace(/\{\{produto\}\}/g, `${data.product_name} (${data.product_code})`)
-    .replace(/\{\{quantidade\}\}/g, String(data.quantity))
-    .replace(/\{\{valor\}\}/g, unitPrice)
-    .replace(/\{\{preco\}\}/g, unitPrice)
-    .replace(/\{\{total\}\}/g, total)
-    .replace(/\{\{subtotal\}\}/g, total)
-    .replace(/\{\{codigo\}\}/g, data.product_code)
-    .replace(/\{\{valor_original\}\}/g, originalPrice)
-    .replace(/\{\{valor_promo\}\}/g, promoPrice)
-    .replace(/\{\{itens_pedido\}\}/g, itensPedido)
-    .replace(/\{\{total_pedido\}\}/g, totalPedido)
-    .replace(/\{\{numero_pedido\}\}/g, numeroPedido);
+  // Aceita {{var}} ou {var} (templates legados usam chave única)
+  const v = (name: string) => new RegExp(`\\{\\{\\s*${name}\\s*\\}\\}|\\{\\s*${name}\\s*\\}`, 'g');
 
-  // Remove linhas que contenham variáveis vazias
+  let result = template
+    .replace(v('produto'), `${data.product_name} (${data.product_code})`)
+    .replace(v('quantidade'), String(data.quantity))
+    .replace(v('valor'), unitPrice)
+    .replace(v('preco'), unitPrice)
+    .replace(v('total'), total)
+    .replace(v('subtotal'), total)
+    .replace(v('codigo'), data.product_code)
+    .replace(v('valor_original'), originalPrice)
+    .replace(v('valor_promo'), promoPrice)
+    .replace(v('itens_pedido'), itensPedido)
+    .replace(v('total_pedido'), totalPedido)
+    .replace(v('numero_pedido'), numeroPedido);
+
+  // Remove linhas com variáveis vazias (suporta {{x}} e {x})
+  const hasVar = (line: string, name: string) =>
+    new RegExp(`\\{\\{\\s*${name}\\s*\\}\\}|\\{\\s*${name}\\s*\\}`).test(line);
+
   result = result
     .split('\n')
     .filter(line => {
-      if (!originalPrice && line.includes('{{valor_original}}')) return false;
-      if (!promoPrice && line.includes('{{valor_promo}}')) return false;
-      if (!numeroPedido && line.includes('{{numero_pedido}}')) return false;
-      if (!itensPedido && line.includes('{{itens_pedido}}')) return false;
-      if (!totalPedido && line.includes('{{total_pedido}}')) return false;
+      if (!originalPrice && hasVar(line, 'valor_original')) return false;
+      if (!promoPrice && hasVar(line, 'valor_promo')) return false;
+      if (!numeroPedido && hasVar(line, 'numero_pedido')) return false;
+      if (!itensPedido && hasVar(line, 'itens_pedido')) return false;
+      if (!totalPedido && hasVar(line, 'total_pedido')) return false;
       return true;
     })
     .join('\n');
