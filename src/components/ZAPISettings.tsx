@@ -110,6 +110,11 @@ export function ZAPISettings() {
    const [templateSolicitacao, setTemplateSolicitacao] = useState('');
    const [templateComLink, setTemplateComLink] = useState('');
 
+   // Botão "Pagar Agora" na mensagem de Item Adicionado
+   const [itemAddedButtonEnabled, setItemAddedButtonEnabled] = useState(true);
+   const [itemAddedButtonLabel, setItemAddedButtonLabel] = useState('Pagar Agora');
+   const [itemAddedButtonUrl, setItemAddedButtonUrl] = useState('');
+
   useEffect(() => {
     loadIntegration();
   }, [tenant?.id]);
@@ -121,7 +126,7 @@ export function ZAPISettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, template_item_added, item_added_confirmation_template, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link')
+        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, template_item_added, item_added_confirmation_template, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
@@ -149,6 +154,10 @@ export function ZAPISettings() {
          setConsentProtectionEnabled(typedData.consent_protection_enabled ?? false);
          setTemplateSolicitacao(typedData.template_solicitacao ?? '');
          setTemplateComLink(typedData.template_com_link ?? '');
+         // Botão "Pagar Agora"
+         setItemAddedButtonEnabled((typedData as any).item_added_button_enabled ?? true);
+         setItemAddedButtonLabel((typedData as any).item_added_button_label ?? 'Pagar Agora');
+         setItemAddedButtonUrl((typedData as any).item_added_button_url ?? '');
       }
     } catch (error: any) {
       console.error('Error loading Z-API integration:', error);
@@ -190,6 +199,10 @@ export function ZAPISettings() {
          consent_protection_enabled: consentProtectionEnabled,
          template_solicitacao: templateSolicitacao || null,
          template_com_link: templateComLink || null,
+         // Botão "Pagar Agora"
+         item_added_button_enabled: itemAddedButtonEnabled,
+         item_added_button_label: (itemAddedButtonLabel || 'Pagar Agora').slice(0, 20),
+         item_added_button_url: (itemAddedButtonUrl || '').trim() || null,
       };
 
       if (integration?.id) {
@@ -515,6 +528,55 @@ export function ZAPISettings() {
                 onCheckedChange={() => handleToggleFlag('send_item_added_msg')}
               />
             </div>
+
+            {messageFlags.send_item_added_msg && (
+              <div className="ml-3 pl-4 border-l-2 border-primary/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="item_added_button_enabled" className="text-sm font-medium cursor-pointer">
+                      Enviar com botão clicável
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Adiciona um botão de ação (ex.: "Pagar Agora") com link direto.
+                    </p>
+                  </div>
+                  <Switch
+                    id="item_added_button_enabled"
+                    checked={itemAddedButtonEnabled}
+                    onCheckedChange={setItemAddedButtonEnabled}
+                  />
+                </div>
+
+                {itemAddedButtonEnabled && (
+                  <>
+                    <div className="space-y-1">
+                      <Label htmlFor="item_added_button_label" className="text-xs">Texto do botão (máx. 20)</Label>
+                      <Input
+                        id="item_added_button_label"
+                        maxLength={20}
+                        value={itemAddedButtonLabel}
+                        onChange={(e) => setItemAddedButtonLabel(e.target.value)}
+                        placeholder="Pagar Agora"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="item_added_button_url" className="text-xs">Link do botão</Label>
+                      <Input
+                        id="item_added_button_url"
+                        type="url"
+                        value={itemAddedButtonUrl}
+                        onChange={(e) => setItemAddedButtonUrl(e.target.value)}
+                        placeholder="Deixe em branco para usar o checkout padrão da loja"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Variáveis disponíveis no template ITEM_ADDED: <code>{'{{itens_pedido}}'}</code>, <code>{'{{total_pedido}}'}</code>, <code>{'{{numero_pedido}}'}</code>, <code>{'{{produto}}'}</code>, <code>{'{{quantidade}}'}</code>, <code>{'{{valor}}'}</code>, <code>{'{{codigo}}'}</code>.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
 
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
               <div className="space-y-0.5">

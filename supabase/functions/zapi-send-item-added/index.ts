@@ -85,7 +85,7 @@ function phoneMatches(a?: string | null, b?: string | null): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanceId?: string, sourceConnectedPhone?: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link, template_item_added")
+     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link, template_item_added, item_added_button_enabled, item_added_button_label, item_added_button_url")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -136,6 +136,64 @@ async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanc
      templateSolicitacao: integration.template_solicitacao || null,
      templateComLink: integration.template_com_link || null,
      templateItemAdded: integration.template_item_added || null,
+     // Botão "Pagar Agora"
+     buttonEnabled: integration.item_added_button_enabled !== false,
+     buttonLabel: (integration.item_added_button_label || 'Pagar Agora').toString().slice(0, 20),
+     buttonUrl: integration.item_added_button_url || null,
+  };
+}
+
+function formatBRL(value: number): string {
+  return `R$ ${value.toFixed(2).replace('.', ',')}`;
+}
+
+// Busca itens do carrinho + número do pedido para popular as variáveis novas
+async function loadOrderContext(
+  supabase: any,
+  tenantId: string,
+  orderId?: number | null,
+): Promise<{ itensPedido: string; totalPedido: string; numeroPedido: string }> {
+  if (!orderId) return { itensPedido: '', totalPedido: '', numeroPedido: '' };
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, cart_id')
+    .eq('id', orderId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (!order) return { itensPedido: '', totalPedido: '', numeroPedido: '' };
+
+  let itensPedido = '';
+  let totalPedido = '';
+
+  if (order.cart_id) {
+    const { data: items } = await supabase
+      .from('cart_items')
+      .select('qty, unit_price, products:product_id(name, code)')
+      .eq('cart_id', order.cart_id);
+
+    if (Array.isArray(items) && items.length > 0) {
+      let total = 0;
+      const lines: string[] = [];
+      for (const it of items) {
+        const qty = Number(it.qty) || 0;
+        const price = Number(it.unit_price) || 0;
+        total += qty * price;
+        const name = it.products?.name || 'Produto';
+        const code = it.products?.code || '';
+        const codeStr = code ? ` (${code})` : '';
+        lines.push(`• ${name}${codeStr} — ${qty}x ${formatBRL(price)}`);
+      }
+      itensPedido = lines.join('\n');
+      totalPedido = formatBRL(total);
+    }
+  }
+
+  return {
+    itensPedido,
+    totalPedido,
+    numeroPedido: String(order.id || ''),
   };
 }
 
@@ -389,12 +447,20 @@ async function resolveWhatsAppPhone(baseUrl: string, clientToken: string, phone:
   return candidates[0];
 }
 
-function formatMessage(template: string, data: ItemAddedRequest): string {
+function formatMessage(
+  template: string,
+  data: ItemAddedRequest,
+  extras?: { itensPedido?: string; totalPedido?: string; numeroPedido?: string },
+): string {
   const unitPrice = data.unit_price.toFixed(2);
   const total = (data.quantity * data.unit_price).toFixed(2);
   const originalPrice = data.original_price ? data.original_price.toFixed(2) : '';
   const promoPrice = (data.original_price && data.original_price > data.unit_price) ? data.unit_price.toFixed(2) : '';
-  
+
+  const itensPedido = extras?.itensPedido || '';
+  const totalPedido = extras?.totalPedido || '';
+  const numeroPedido = extras?.numeroPedido || '';
+
   let result = template
     .replace(/\{\{produto\}\}/g, `${data.product_name} (${data.product_code})`)
     .replace(/\{\{quantidade\}\}/g, String(data.quantity))
@@ -404,22 +470,27 @@ function formatMessage(template: string, data: ItemAddedRequest): string {
     .replace(/\{\{subtotal\}\}/g, total)
     .replace(/\{\{codigo\}\}/g, data.product_code)
     .replace(/\{\{valor_original\}\}/g, originalPrice)
-    .replace(/\{\{valor_promo\}\}/g, promoPrice);
+    .replace(/\{\{valor_promo\}\}/g, promoPrice)
+    .replace(/\{\{itens_pedido\}\}/g, itensPedido)
+    .replace(/\{\{total_pedido\}\}/g, totalPedido)
+    .replace(/\{\{numero_pedido\}\}/g, numeroPedido);
 
-  // Remove linhas que contenham variáveis vazias (sem valor promocional)
-  if (!originalPrice || !promoPrice) {
-    result = result
-      .split('\n')
-      .filter(line => {
-        if (!originalPrice && line.includes('{{valor_original}}')) return false;
-        if (!promoPrice && line.includes('{{valor_promo}}')) return false;
-        return true;
-      })
-      .join('\n');
-  }
+  // Remove linhas que contenham variáveis vazias
+  result = result
+    .split('\n')
+    .filter(line => {
+      if (!originalPrice && line.includes('{{valor_original}}')) return false;
+      if (!promoPrice && line.includes('{{valor_promo}}')) return false;
+      if (!numeroPedido && line.includes('{{numero_pedido}}')) return false;
+      if (!itensPedido && line.includes('{{itens_pedido}}')) return false;
+      if (!totalPedido && line.includes('{{total_pedido}}')) return false;
+      return true;
+    })
+    .join('\n');
 
   return result;
 }
+
 
 // Build checkout URL for tenant
  async function getCheckoutUrl(supabase: any, tenantId: string, phone: string): Promise<string> {
@@ -534,16 +605,23 @@ serve(async (req) => {
       );
     }
 
-    const { instanceId, token, clientToken, templateSolicitacao, templateComLink, templateItemAdded } = credentials;
+    const { instanceId, token, clientToken, templateSolicitacao, templateComLink, templateItemAdded, buttonEnabled, buttonLabel, buttonUrl } = credentials;
     const baseUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}`;
     const formattedPhone = await resolveWhatsAppPhone(baseUrl, clientToken, customer_phone);
-    const sendUrl = `${baseUrl}/send-text`;
+    const sendTextUrl = `${baseUrl}/send-text`;
+    const sendButtonUrl = `${baseUrl}/send-button-actions`;
+
+    // Carrega contexto do pedido (itens, total, número) para variáveis novas
+    const orderCtx = await loadOrderContext(supabase, tenant_id, order_id);
 
     let message: string;
     let templateType: 'A' | 'B' = 'A';
     let skipPendingConfirmation = false;
     let consentDecisionAfterSend: 'request_sent' | 'active_sent' | null = null;
     let activeStateId: string | null = null;
+    // Só mensagens "com link" (B) recebem o botão; solicitação (A) continua texto puro
+    let useButton = false;
+    let resolvedButtonUrl: string | null = null;
 
     // Verifica se proteção por consentimento está ativada para o tenant
     const { data: consentCfg } = await supabase
@@ -561,12 +639,16 @@ serve(async (req) => {
       // Fonte oficial: whatsapp_templates (type=ITEM_ADDED) — editado na tela WhatsApp → Templates
       const templateFromTable = await getTemplate(supabase, tenant_id);
       const template = templateFromTable || templateItemAdded || templateComLink || getDefaultTemplateComLink();
-      const baseMessage = formatMessage(template, body)
+      const baseMessage = formatMessage(template, body, orderCtx)
         .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
         .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
       message = addMessageVariation(baseMessage, false);
       consentDecisionAfterSend = null;
       skipPendingConfirmation = false;
+      if (buttonEnabled) {
+        useButton = true;
+        resolvedButtonUrl = (buttonUrl && buttonUrl.trim()) ? buttonUrl.trim() : checkoutUrl;
+      }
     } else {
       // ============================================================
       // MÁQUINA DE ESTADOS DE CONSENTIMENTO (tenant com proteção ativa)
@@ -602,7 +684,7 @@ serve(async (req) => {
       if (decision.action === 'send_request') {
         templateType = 'A';
         const template = templateSolicitacao || getDefaultTemplateSolicitacao();
-        const baseMessage = formatMessage(template, body);
+        const baseMessage = formatMessage(template, body, orderCtx);
         message = addMessageVariation(baseMessage, false);
         consentDecisionAfterSend = 'request_sent';
         skipPendingConfirmation = true;
@@ -613,14 +695,19 @@ serve(async (req) => {
         // Fonte oficial: whatsapp_templates (type=ITEM_ADDED) — editado na tela WhatsApp → Templates
         const templateFromTable = await getTemplate(supabase, tenant_id);
         const template = templateFromTable || templateComLink || getDefaultTemplateComLink();
-        const baseMessage = formatMessage(template, body)
+        const baseMessage = formatMessage(template, body, orderCtx)
           .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
           .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
         message = addMessageVariation(baseMessage, false);
         consentDecisionAfterSend = 'active_sent';
         skipPendingConfirmation = true;
+        if (buttonEnabled) {
+          useButton = true;
+          resolvedButtonUrl = (buttonUrl && buttonUrl.trim()) ? buttonUrl.trim() : checkoutUrl;
+        }
       }
     }
+
 
     // Check for throttling (multiple messages to same phone)
     const throttleDelay = await getThrottleDelay(formattedPhone);
@@ -645,10 +732,24 @@ serve(async (req) => {
       headers['Client-Token'] = clientToken;
     }
 
-    const response = await fetch(sendUrl, {
+    const shouldUseButton = useButton && resolvedButtonUrl;
+    const targetUrl = shouldUseButton ? sendButtonUrl : sendTextUrl;
+    const requestBody: Record<string, unknown> = shouldUseButton
+      ? {
+          phone: formattedPhone,
+          message,
+          buttonActions: [
+            { id: '1', type: 'URL', url: resolvedButtonUrl, label: buttonLabel || 'Pagar Agora' },
+          ],
+        }
+      : { phone: formattedPhone, message };
+
+    console.log(`[zapi-send-item-added] Endpoint: ${shouldUseButton ? 'send-button-actions' : 'send-text'} | button=${shouldUseButton ? `${buttonLabel} -> ${resolvedButtonUrl}` : 'no'}`);
+
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ phone: formattedPhone, message })
+      body: JSON.stringify(requestBody),
     });
 
     const responseText = await response.text();
