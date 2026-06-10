@@ -149,10 +149,58 @@ export default function WhatsappTemplates() {
   const [sendCadastroDm, setSendCadastroDm] = useState(false);
   const [loadingFlag, setLoadingFlag] = useState(false);
 
+  const [itemAddedBtnEnabled, setItemAddedBtnEnabled] = useState(true);
+  const [itemAddedBtnLabel, setItemAddedBtnLabel] = useState('Pagar Agora');
+  const [itemAddedBtnUrl, setItemAddedBtnUrl] = useState('');
+  const [savingItemBtn, setSavingItemBtn] = useState(false);
+  const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<number | null>(null);
+
   useEffect(() => {
     initializeTemplates();
     loadCadastroDmFlag();
+    loadItemAddedButton();
   }, []);
+
+  const loadItemAddedButton = async () => {
+    try {
+      const { data } = await supabaseTenant
+        .from('integration_whatsapp')
+        .select('id, item_added_button_enabled, item_added_button_label, item_added_button_url')
+        .maybeSingle();
+      if (data) {
+        setWhatsappIntegrationId((data as any).id);
+        setItemAddedBtnEnabled((data as any).item_added_button_enabled ?? true);
+        setItemAddedBtnLabel((data as any).item_added_button_label ?? 'Pagar Agora');
+        setItemAddedBtnUrl((data as any).item_added_button_url ?? '');
+      }
+    } catch (e) {
+      console.error('Erro ao carregar botão ITEM_ADDED:', e);
+    }
+  };
+
+  const saveItemAddedButton = async () => {
+    if (!whatsappIntegrationId) {
+      toast.error('Configure a integração Z-API primeiro');
+      return;
+    }
+    setSavingItemBtn(true);
+    try {
+      const { error } = await supabaseTenant
+        .from('integration_whatsapp')
+        .update({
+          item_added_button_enabled: itemAddedBtnEnabled,
+          item_added_button_label: (itemAddedBtnLabel || '').slice(0, 20),
+          item_added_button_url: itemAddedBtnUrl,
+          updated_at: new Date().toISOString(),
+        });
+      if (error) throw error;
+      toast.success('Botão "Pagar Agora" salvo');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao salvar botão');
+    } finally {
+      setSavingItemBtn(false);
+    }
+  };
 
   const loadCadastroDmFlag = async () => {
     try {
@@ -462,6 +510,55 @@ export default function WhatsappTemplates() {
                   </p>
                 )}
               </div>
+
+              {formData.type === 'ITEM_ADDED' && (
+                <div className="space-y-3 p-4 rounded-xl border border-[#e5e7eb] bg-[#f9fafb]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-semibold">Botão "Pagar Agora"</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Adiciona um botão clicável abaixo da mensagem
+                      </p>
+                    </div>
+                    <Switch
+                      checked={itemAddedBtnEnabled}
+                      onCheckedChange={setItemAddedBtnEnabled}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Texto do botão (máx 20 caracteres)</Label>
+                    <Input
+                      value={itemAddedBtnLabel}
+                      onChange={(e) => setItemAddedBtnLabel(e.target.value.slice(0, 20))}
+                      placeholder="Pagar Agora"
+                      maxLength={20}
+                      disabled={!itemAddedBtnEnabled}
+                      className="h-10 rounded-lg border-[#e5e7eb] bg-white"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">URL do botão</Label>
+                    <Input
+                      value={itemAddedBtnUrl}
+                      onChange={(e) => setItemAddedBtnUrl(e.target.value)}
+                      placeholder="https://... ou {link_checkout}"
+                      disabled={!itemAddedBtnEnabled}
+                      className="h-10 rounded-lg border-[#e5e7eb] bg-white"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Use <code className="bg-white px-1 rounded">{'{link_checkout}'}</code> para o link dinâmico do pedido.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={saveItemAddedButton}
+                    disabled={savingItemBtn}
+                    className="w-full bg-[#10b981] hover:bg-[#059669] text-white rounded-lg h-10"
+                  >
+                    {savingItemBtn ? 'Salvando...' : 'Salvar Botão'}
+                  </Button>
+                </div>
+              )}
 
               {formData.type === 'DM_INSTAGRAM_CADASTRO' ? (
                 <div className="flex items-center gap-3">
