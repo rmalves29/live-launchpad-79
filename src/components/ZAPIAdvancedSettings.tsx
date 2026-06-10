@@ -106,6 +106,9 @@ export function ZAPIAdvancedSettings() {
           consent_protection_enabled: consentProtectionEnabled,
           template_solicitacao: templateSolicitacao || null,
           template_com_link: templateComLink || null,
+          item_added_button_enabled: itemAddedButtonEnabled,
+          item_added_button_label: (itemAddedButtonLabel || 'Pagar Agora').slice(0, 20),
+          item_added_button_url: itemAddedButtonUrl || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', integrationId);
