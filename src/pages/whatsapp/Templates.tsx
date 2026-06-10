@@ -511,6 +511,55 @@ export default function WhatsappTemplates() {
                 )}
               </div>
 
+              {formData.type === 'ITEM_ADDED' && (
+                <div className="space-y-3 p-4 rounded-xl border border-[#e5e7eb] bg-[#f9fafb]">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-semibold">Botão "Pagar Agora"</Label>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Adiciona um botão clicável abaixo da mensagem
+                      </p>
+                    </div>
+                    <Switch
+                      checked={itemAddedBtnEnabled}
+                      onCheckedChange={setItemAddedBtnEnabled}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Texto do botão (máx 20 caracteres)</Label>
+                    <Input
+                      value={itemAddedBtnLabel}
+                      onChange={(e) => setItemAddedBtnLabel(e.target.value.slice(0, 20))}
+                      placeholder="Pagar Agora"
+                      maxLength={20}
+                      disabled={!itemAddedBtnEnabled}
+                      className="h-10 rounded-lg border-[#e5e7eb] bg-white"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">URL do botão</Label>
+                    <Input
+                      value={itemAddedBtnUrl}
+                      onChange={(e) => setItemAddedBtnUrl(e.target.value)}
+                      placeholder="https://... ou {link_checkout}"
+                      disabled={!itemAddedBtnEnabled}
+                      className="h-10 rounded-lg border-[#e5e7eb] bg-white"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Use <code className="bg-white px-1 rounded">{'{link_checkout}'}</code> para o link dinâmico do pedido.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={saveItemAddedButton}
+                    disabled={savingItemBtn}
+                    className="w-full bg-[#10b981] hover:bg-[#059669] text-white rounded-lg h-10"
+                  >
+                    {savingItemBtn ? 'Salvando...' : 'Salvar Botão'}
+                  </Button>
+                </div>
+              )}
+
               {formData.type === 'DM_INSTAGRAM_CADASTRO' ? (
                 <div className="flex items-center gap-3">
                   <Switch
