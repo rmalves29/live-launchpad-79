@@ -185,12 +185,21 @@ export default function WhatsappTemplates() {
     }
     setSavingItemBtn(true);
     try {
+      const normalizeUrl = (raw: string) => {
+        const v = (raw || '').trim();
+        if (!v) return '';
+        if (/^https?:\/\//i.test(v)) return v;
+        const stripped = v.replace(/^[a-z]{0,4}:?\/\//i, '');
+        return `https://${stripped}`;
+      };
+      const cleanUrl = normalizeUrl(itemAddedBtnUrl);
+      if (cleanUrl !== itemAddedBtnUrl) setItemAddedBtnUrl(cleanUrl);
       const { error } = await supabaseTenant
         .from('integration_whatsapp')
         .update({
           item_added_button_enabled: itemAddedBtnEnabled,
           item_added_button_label: (itemAddedBtnLabel || '').slice(0, 20),
-          item_added_button_url: itemAddedBtnUrl,
+          item_added_button_url: cleanUrl,
           updated_at: new Date().toISOString(),
         });
       if (error) throw error;
