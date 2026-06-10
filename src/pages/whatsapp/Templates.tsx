@@ -25,7 +25,7 @@ const TEMPLATE_TYPES = [
     value: 'ITEM_ADDED',
     label: 'Item Adicionado',
     description: 'Enviado quando um item é adicionado ao pedido',
-    variables: ['{nome}', '{produto}', '{codigo}', '{quantidade}', '{valor}'],
+    variables: ['{nome}', '{produto}', '{codigo}', '{quantidade}', '{valor}', '{itens_pedido}', '{total_pedido}', '{numero_pedido}', '{link_checkout}'],
     color: {
       badgeBg: 'bg-[#dbeafe]',
       badgeText: 'text-[#2563eb]',
