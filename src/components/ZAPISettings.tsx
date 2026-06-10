@@ -110,6 +110,11 @@ export function ZAPISettings() {
    const [templateSolicitacao, setTemplateSolicitacao] = useState('');
    const [templateComLink, setTemplateComLink] = useState('');
 
+   // Botão "Pagar Agora" na mensagem de Item Adicionado
+   const [itemAddedButtonEnabled, setItemAddedButtonEnabled] = useState(true);
+   const [itemAddedButtonLabel, setItemAddedButtonLabel] = useState('Pagar Agora');
+   const [itemAddedButtonUrl, setItemAddedButtonUrl] = useState('');
+
   useEffect(() => {
     loadIntegration();
   }, [tenant?.id]);
