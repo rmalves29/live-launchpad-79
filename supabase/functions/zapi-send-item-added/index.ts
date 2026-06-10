@@ -25,6 +25,7 @@ interface ItemAddedRequest {
   unit_price: number;
   original_price?: number;
   order_id?: number;
+  cart_id?: number;
   source_instance_id?: string;
   source_connected_phone?: string;
 }
@@ -152,48 +153,100 @@ async function loadOrderContext(
   supabase: any,
   tenantId: string,
   orderId?: number | null,
+  cartId?: number | null,
+  currentItem?: Pick<ItemAddedRequest, 'product_name' | 'product_code' | 'quantity' | 'unit_price'>,
 ): Promise<{ itensPedido: string; totalPedido: string; numeroPedido: string }> {
-  if (!orderId) return { itensPedido: '', totalPedido: '', numeroPedido: '' };
+  if (!orderId && !cartId && !currentItem) return { itensPedido: '', totalPedido: '', numeroPedido: '' };
 
-  const { data: order } = await supabase
-    .from('orders')
-    .select('id, cart_id')
-    .eq('id', orderId)
-    .eq('tenant_id', tenantId)
-    .maybeSingle();
+  let order: { id: number; cart_id: number | null } | null = null;
 
-  if (!order) return { itensPedido: '', totalPedido: '', numeroPedido: '' };
+  if (orderId) {
+    const { data } = await supabase
+      .from('orders')
+      .select('id, cart_id')
+      .eq('id', orderId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    order = data;
+  }
+
+  const resolvedCartId = cartId || order?.cart_id || null;
+
+  if (!order && resolvedCartId) {
+    const { data } = await supabase
+      .from('orders')
+      .select('id, cart_id')
+      .eq('cart_id', resolvedCartId)
+      .eq('tenant_id', tenantId)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    order = data;
+  }
+
+  const finalCartId = resolvedCartId || order?.cart_id || null;
 
   let itensPedido = '';
   let totalPedido = '';
 
-  if (order.cart_id) {
+  if (finalCartId) {
     const { data: items } = await supabase
       .from('cart_items')
-      .select('qty, unit_price, products:product_id(name, code)')
-      .eq('cart_id', order.cart_id);
+      .select('qty, unit_price, product_name, product_code, products:product_id(name, code)')
+      .eq('cart_id', finalCartId);
 
-    if (Array.isArray(items) && items.length > 0) {
+    const visibleItems = Array.isArray(items) ? items : [];
+    const merged = new Map<string, { name: string; code: string; qty: number; price: number }>();
+
+    for (const it of visibleItems) {
+      const name = it.product_name || it.products?.name || 'Produto';
+      const code = it.product_code || it.products?.code || '';
+      const key = code || name;
+      merged.set(key, {
+        name,
+        code,
+        qty: Number(it.qty) || 0,
+        price: Number(it.unit_price) || 0,
+      });
+    }
+
+    // O trigger chama a Edge Function antes do commit do cart_items; por isso
+    // garantimos que o item recém-adicionado entre na lista mesmo que a consulta
+    // ainda não enxergue a linha nova/atualizada.
+    if (currentItem) {
+      const code = currentItem.product_code || '';
+      const name = currentItem.product_name || 'Produto';
+      const key = code || name;
+      const existing = merged.get(key);
+      merged.set(key, {
+        name: existing?.name || name,
+        code: existing?.code || code,
+        qty: (existing?.qty || 0) + (Number(currentItem.quantity) || 0),
+        price: Number(currentItem.unit_price) || existing?.price || 0,
+      });
+    }
+
+    if (merged.size > 0) {
       let total = 0;
       const lines: string[] = [];
-      for (const it of items) {
-        const qty = Number(it.qty) || 0;
-        const price = Number(it.unit_price) || 0;
-        total += qty * price;
-        const name = it.products?.name || 'Produto';
-        const code = it.products?.code || '';
-        const codeStr = code ? ` (${code})` : '';
-        lines.push(`• ${name}${codeStr} — ${qty}x ${formatBRL(price)}`);
+      for (const it of merged.values()) {
+        total += it.qty * it.price;
+        const codeStr = it.code ? ` (${it.code})` : '';
+        lines.push(`• ${it.name}${codeStr} — ${it.qty}x ${formatBRL(it.price)}`);
       }
       itensPedido = lines.join('\n');
       totalPedido = formatBRL(total);
     }
+  } else if (currentItem) {
+    const codeStr = currentItem.product_code ? ` (${currentItem.product_code})` : '';
+    itensPedido = `• ${currentItem.product_name}${codeStr} — ${currentItem.quantity}x ${formatBRL(Number(currentItem.unit_price) || 0)}`;
+    totalPedido = formatBRL((Number(currentItem.quantity) || 0) * (Number(currentItem.unit_price) || 0));
   }
 
   return {
     itensPedido,
     totalPedido,
-    numeroPedido: String(order.id || ''),
+    numeroPedido: String(order?.id || orderId || ''),
   };
 }
 
@@ -559,7 +612,7 @@ serve(async (req) => {
       );
     }
 
-    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id } = body;
+    const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id, cart_id } = body;
     const source_instance_id = hasServiceRoleAuthorization(req) ? body.source_instance_id : undefined;
     const source_connected_phone = hasServiceRoleAuthorization(req) ? body.source_connected_phone : undefined;
 
@@ -618,7 +671,12 @@ serve(async (req) => {
     const sendButtonUrl = `${baseUrl}/send-button-actions`;
 
     // Carrega contexto do pedido (itens, total, número) para variáveis novas
-    const orderCtx = await loadOrderContext(supabase, tenant_id, order_id);
+    const orderCtx = await loadOrderContext(supabase, tenant_id, order_id, cart_id, {
+      product_name,
+      product_code,
+      quantity,
+      unit_price,
+    });
 
     let message: string;
     let templateType: 'A' | 'B' = 'A';
@@ -646,8 +704,8 @@ serve(async (req) => {
       const templateFromTable = await getTemplate(supabase, tenant_id);
       const template = templateFromTable || templateItemAdded || templateComLink || getDefaultTemplateComLink();
       const baseMessage = formatMessage(template, body, orderCtx)
-        .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
-        .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
+        .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl)
+        .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
       message = addMessageVariation(baseMessage, false);
       consentDecisionAfterSend = null;
       skipPendingConfirmation = false;
@@ -702,8 +760,8 @@ serve(async (req) => {
         const templateFromTable = await getTemplate(supabase, tenant_id);
         const template = templateFromTable || templateComLink || getDefaultTemplateComLink();
         const baseMessage = formatMessage(template, body, orderCtx)
-          .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
-          .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
+          .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl)
+          .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
         message = addMessageVariation(baseMessage, false);
         consentDecisionAfterSend = 'active_sent';
         skipPendingConfirmation = true;
