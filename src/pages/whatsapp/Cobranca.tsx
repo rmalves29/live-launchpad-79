@@ -1104,6 +1104,15 @@ export default function Cobranca() {
         </div>
       )}
 
+      <BulkSendHistory refreshKey={historyRefreshKey} />
+
+      <ZapiDisconnectedModal
+        open={disconnectedModal.open}
+        onClose={() => setDisconnectedModal({ open: false })}
+        reason={disconnectedModal.reason}
+        context={disconnectedModal.context}
+      />
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ============ COLUNA 1 — FILTROS DE CLIENTES ============ */}
